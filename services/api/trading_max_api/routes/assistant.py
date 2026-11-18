@@ -147,7 +147,9 @@ async def role_reading(request: Request, role_id: str, body: ReadingRequest) -> 
     deps = service.assistant.deps_for_run(role.page, None)
     if body.snapshot_id and body.snapshot_id != deps.snapshot_id:
         try:
-            deps = replace(deps, manifest=deps.store.load_manifest(body.snapshot_id))
+            deps = replace(
+                deps, manifest=deps.store.load_manifest(body.snapshot_id, require_retained=True)
+            )
         except FileNotFoundError:
             raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
 

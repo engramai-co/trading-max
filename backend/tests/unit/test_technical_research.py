@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from trading_max.research.technical import (
+    MarketDataError,
     _clean_contracts,
     _contract_rows,
     _expiry_summary,
@@ -202,9 +203,11 @@ def test_unavailable_option_gex_does_not_become_positive_gamma(monkeypatch) -> N
         }
     )
     security = SimpleNamespace(
-        info={"quoteType": "EQUITY", "exchange": "NMS", "currency": "USD"},
+        info={"symbol": "TEST", "quoteType": "EQUITY", "exchange": "NMS", "currency": "USD"},
         options=[expiry],
-        option_chain=lambda _expiry: SimpleNamespace(calls=raw, puts=pd.DataFrame()),
+        option_chain=lambda _expiry: SimpleNamespace(
+            calls=raw, puts=pd.DataFrame(), underlying={"symbol": "TEST", "exchange": "NMS"}
+        ),
     )
     monkeypatch.setattr("trading_max.research.technical.yf.Ticker", lambda _symbol: security)
     monkeypatch.setattr(
@@ -213,6 +216,8 @@ def test_unavailable_option_gex_does_not_become_positive_gamma(monkeypatch) -> N
 
     result = analyze_options("TEST", "TEST", 100)
 
+    assert result.provider_venue == {"symbol": "TEST", "exchangeName": "NMS"}
+    assert result.expiries[0]["provider_venue"] == result.provider_venue
     assert result.aggregate["net_gex_1pct_proxy"] is None
     assert result.gamma_proxy["gamma_regime"] is None
 
@@ -240,3 +245,38 @@ def test_technical_publisher_checks_injected_history_identity_before_scoring():
     frame.attrs.update(exchange="LSE", provider_venue={"symbol": "OTHER.L", "exchangeName": "LSE"})
     with pytest.raises(MarketDataError, match="listing"):
         analyze_ticker("SYN.L", "SYN.L", frame, {})
+
+
+@pytest.mark.parametrize(
+    ("ticker", "info_symbol", "last_underlying"),
+    [
+        ("SYN", "OTHER", {"symbol": "OTHER", "exchange": "NYQ"}),
+        ("SYN", "SYN", {"symbol": "OTHER", "exchange": "NYQ"}),
+        ("VOO", "VOO", {"symbol": "OTHER", "exchange": "NYQ"}),
+        ("VOO", "VOO", {"symbol": "VOO", "exchange": "LSE"}),
+        ("VOO", "VOO", {}),
+    ],
+)
+def test_options_check_underlying_for_every_expiry(
+    monkeypatch, ticker, info_symbol, last_underlying
+):
+    info = {"symbol": info_symbol, "exchange": "NYQ", "currency": "USD", "quoteType": "ETF"}
+    expiries = [(datetime.now(UTC).date() + timedelta(days=n)).isoformat() for n in (7, 14)]
+    raw = pd.DataFrame(
+        {"contractSymbol": ["SYNTHETIC"], "strike": [50], "openInterest": [10], "volume": [1]}
+    )
+
+    def chain(expiry):
+        return SimpleNamespace(
+            calls=raw,
+            puts=pd.DataFrame(),
+            underlying=info if expiry == expiries[0] else last_underlying,
+        )
+
+    monkeypatch.setattr(
+        "trading_max.research.technical.yf.Ticker",
+        lambda _: SimpleNamespace(info=info, options=expiries, option_chain=chain),
+    )
+    monkeypatch.setattr("trading_max.research.technical.treasury_rate", lambda _: {"value": None})
+    with pytest.raises(MarketDataError, match="underlying"):
+        analyze_options(ticker, ticker, 50)

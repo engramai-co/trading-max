@@ -27,6 +27,10 @@ class Selection(BaseModel):
     indices: list[int] = Field(min_length=2, max_length=4)
 
 
+class SingleSelection(BaseModel):
+    indices: list[Literal[0]] = Field(min_length=1, max_length=1)
+
+
 class ReadingEvent(BaseModel):
     type: Literal["reading", "lines", "result", "error", "empty"]
     reading: RoleReading | None = None
@@ -121,10 +125,14 @@ class ReadingService:
         try:
             tools = role.reader(deps, context)
             version = deps.snapshot_id
+            as_of = deps.manifest.created_at if deps.manifest else None
             # A material-data digest belongs to the displayed statements or estimates.
             # A scheduled digest for a previous revision cannot describe a new result.
             material = role.data_version is not None and (not latest or match_data_version)
-            if material and version:
+            if not latest and role.record_anchor:
+                anchor = await asyncio.to_thread(role.record_anchor, tools, context)
+                version, as_of = anchor or (None, None)
+            elif material and version:
                 version = await asyncio.to_thread(role.data_version, tools, context)
                 if (
                     not version
@@ -146,10 +154,26 @@ class ReadingService:
             None if latest and not material else version,
             scheduled=scheduled or latest,
         )
+        if cached_only and not latest and role.refresh_cached_facts:
+            saved = self.cached(role, context, version, scheduled=True) or saved
+        if saved and not latest and role.refresh_cached_facts:
+            facts = await asyncio.to_thread(role.facts, tools, context)
+            tools.attach_evidence(facts)
+            by_section = {fact.section: fact for fact in facts}
+            if not all(line.section in by_section for line in saved.lines):
+                yield ReadingEvent(type="empty")
+                return
+            saved = saved.model_copy(
+                update={
+                    "as_of": deps.manifest.created_at,
+                    "snapshot_id": deps.snapshot_id,
+                    "lines": [by_section[line.section] for line in saved.lines],
+                }
+            )
         if saved:
             yield ReadingEvent(type="result", reading=saved)
             return
-        if cached_only or not deps.manifest or not version:
+        if cached_only or not as_of or not version:
             yield ReadingEvent(type="empty")
             return
         key = (
@@ -167,7 +191,8 @@ class ReadingService:
             yield ReadingEvent(type="reading")
             facts = await asyncio.to_thread(role.facts, tools, context)
             tools.attach_evidence(facts)
-            if len(facts) < 2:
+            single = len(facts) == 1 and role.allow_single_observation
+            if len(facts) < 2 and not single:
                 yield ReadingEvent(type="empty")
                 return
             if not permitted():
@@ -181,7 +206,11 @@ class ReadingService:
             if not permitted() or not reserve():
                 yield ReadingEvent(type="error", code="assistant_disabled")
                 return
-            agent = Agent(output_type=Selection, instructions=role.prompt, retries=1)
+            agent = Agent(
+                output_type=SingleSelection if single else Selection,
+                instructions=role.prompt,
+                retries=1,
+            )
             prompt = json.dumps(
                 [
                     {"index": i, "section": fact.section, "observation": fact.en}
@@ -228,7 +257,7 @@ class ReadingService:
                 role=role.id,
                 version=version,
                 snapshot_id=deps.snapshot_id,
-                as_of=deps.manifest.created_at,
+                as_of=as_of,
                 lines=lines,
             )
             if not permitted() or not (await self.assistant.status())["ready"]:

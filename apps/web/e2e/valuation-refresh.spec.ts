@@ -1,6 +1,14 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { join } from "node:path";
 import type { ResearchLensSnapshot } from "../lib/types";
+
+// These cases read with the wide section index pinned; it starts closed for a new reader.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("mx-research-index-open", "true");
+    localStorage.setItem("mx-research-index-pinned", "true");
+  });
+});
 
 // Synthetic research desk: a held security whose broker price moves from 100 to
 // 120 while its assumptions are being edited, and a second, unheld security.
@@ -15,7 +23,7 @@ function preview(ticker: string, spot: number, asOf: string, held: boolean, inpu
     id: `synthetic-${ticker}-${spot}-${JSON.stringify(inputs)}`,
     formulaVersion: "equity-proxy-projection-v1",
     basis: {
-      ticker, quoteId: `${ticker}-quote`, dataVersion: `${ticker}-research`, currency: "USD",
+      ticker, family: "cash-flow", quoteId: `${ticker}-quote`, dataVersion: `${ticker}-research`, currency: "USD",
       spot, spotSource: held ? "broker" : "quote", spotAsOf: asOf,
       revenue: 1000, shares: 100, startMargin: 0.1, evidence: [],
       cashFlowType: "operating-cash-flow-less-capex-equity-proxy", discountRateType: "cost-of-equity",
@@ -273,35 +281,112 @@ test.describe("valuation refresh", () => {
     await expect(page.getByRole("link", { name: "Worksheet" })).toHaveAttribute("aria-current", "location");
   });
 
-  test("the readout keeps its space and shows the signed gap for a large base value", async ({ page, isMobile }) => {
-    if (isMobile) await page.setViewportSize({ width: 320, height: 844 });
-    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
-    await synthetic(page, false);
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    await page.route("**/SYNT/valuation-preview*", async (route) => {
-      await gate;
-      const model = preview("SYNT", 150000, "2026-11-04", true, {});
-      model.basis.currency = "JPY";
-      model.scenarios.base.value = 135956.78;
-      model.scenarios.base.upside = model.scenarios.base.value / model.basis.spot - 1;
-      await route.fulfill({ json: model });
+  for (const { width, height } of [{ width: 800, height: 900 }, { width: 768, height: 1024 }]) {
+    test(`a delayed target-margin reading keeps Historical valuation in place at ${width}×${height}`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await synthetic(page, false);
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      await page.route("**/SYNT/valuation-preview*", async route => {
+        await gate;
+        const model = preview("SYNT", 100, "2026-11-04", true, {});
+        await route.fulfill({ json: { ...model, formulaVersion: "statement-equity-v2", defaultSource: "sector-template",
+          basis: { ...model.basis, family: "cash-flow", startMargin: -0.05 }, reverseMetric: "target-margin", reverseValue: 0.17,
+        } });
+      });
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      const history = page.locator("#research-history");
+      const reverse = page.locator(".mx-valuation-readout .mx-metric").nth(1);
+      await expect(reverse).toContainText("Price-implied growth");
+      await page.evaluate(() => document.fonts.ready);
+      const top = (await history.boundingBox())!.y;
+      release();
+      await expect(reverse).toContainText("Target margin implied by price");
+      await expect(reverse.locator(".mx-number-value")).toHaveText("17.0%");
+      expect((await history.boundingBox())!.y).toBe(top);
     });
-    await page.goto("/research?ticker=SYNT&view=valuation");
-    const history = page.locator("#research-history");
-    await expect(history).toBeVisible();
-    const before = await history.boundingBox();
-    release();
-    const readout = page.locator(".mx-valuation-readout");
-    await expect(readout).toContainText("135,956.78");
-    await expect.soft(readout).toContainText(/[-−]9.4%/);
-    expect.soft(Math.abs((await history.boundingBox())!.y - before!.y)).toBeLessThan(1);
-    if (isMobile) {
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
-      const metrics = await readout.locator(".mx-metric").evaluateAll((items) => items.map((node) => node.getBoundingClientRect().top));
-      expect(metrics[1]).toBeGreaterThan(metrics[0]);
+
+    for (const locale of ["en", "zh"] as const) {
+      test(`a delayed floor keeps Historical valuation in place at ${width}×${height} · ${locale}`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+        await synthetic(page, false);
+        const history = page.locator("#research-history");
+        const readout = page.locator(".mx-valuation-readout");
+        const note = readout.getByText(locale === "en" ? "Negative equity value floored at zero" : "股权估值为负，按零计");
+        const endpoint = "**/SYNT/valuation-preview*";
+        let standardTop: number | undefined;
+        for (const example of ["floored", "exact-zero", "larger-text", "narrow-pane"]) {
+          let release!: () => void;
+          const gate = new Promise<void>(resolve => { release = resolve; });
+          const model = preview("SYNT", 100, "2026-11-04", true, {});
+          const adjustment = example === "exact-zero" ? 0 : 3;
+          Object.assign(model.scenarios.base, {
+            operatingValue: -adjustment - 1, terminalPresentValue: 1, equityFloorAdjustment: adjustment, value: 0, upside: -1,
+          });
+          await page.route(endpoint, async route => { await gate; await route.fulfill({ json: model }); });
+          await page.goto("/research?ticker=SYNT&view=valuation");
+          if (example === "narrow-pane") {
+            await page.locator(".mx-reading-container").evaluate(container => { container.style.maxWidth = "475px"; });
+          }
+          if (example === "larger-text") {
+            await page.addStyleTag({ content: ".mx-valuation-readout .mx-valuation-floor { font-size: 32px; }" });
+          }
+          await expect(history).toBeVisible();
+          await expect(note).toBeHidden();
+          await page.evaluate(() => document.fonts.ready);
+          const top = (await history.boundingBox())!.y;
+          if (example === "floored") standardTop = top;
+          if (example === "exact-zero") expect(top).toBe(standardTop);
+          release();
+          await expect(readout).toContainText("US$0.00");
+          if (adjustment) await expect(note).toBeVisible();
+          else await expect(note).toBeHidden();
+          if (example === "larger-text") {
+            const lines = await note.evaluate(element => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight));
+            expect(lines).toBeGreaterThan(1.5);
+          }
+          expect((await history.boundingBox())!.y).toBe(top);
+          await page.unroute(endpoint);
+        }
+      });
     }
-  });
+  }
+
+  for (const example of ["large", "floored"] as const) {
+    test(`the readout keeps its space and shows the signed gap for a ${example} base value`, async ({ page, isMobile }) => {
+      if (isMobile) await page.setViewportSize({ width: example === "large" ? 320 : 390, height: 844 });
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await synthetic(page, false);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      await page.route("**/SYNT/valuation-preview*", async (route) => {
+        await gate;
+        const model = preview("SYNT", 150000, "2026-11-04", true, {});
+        model.basis.currency = "JPY";
+        model.scenarios.base.value = example === "large" ? 135956.78 : 0;
+        model.scenarios.base.equityFloorAdjustment = example === "floored" ? 3 : 0;
+        model.scenarios.base.upside = model.scenarios.base.value / model.basis.spot - 1;
+        await route.fulfill({ json: model });
+      });
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      const history = page.locator("#research-history");
+      await expect(history).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      const before = await history.boundingBox();
+      release();
+      const readout = page.locator(".mx-valuation-readout");
+      await expect(readout).toContainText(example === "large" ? "135,956.78" : "Negative equity value floored at zero");
+      await expect.soft(readout).toContainText(example === "large" ? /[-−]9.4%/ : /[-−]100.0%/);
+      expect.soft(Math.abs((await history.boundingBox())!.y - before!.y)).toBeLessThan(1);
+      if (isMobile) {
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+        const metrics = await readout.locator(".mx-metric").evaluateAll((items) => items.map((node) => node.getBoundingClientRect().top));
+        expect(metrics[1]).toBeGreaterThan(metrics[0]);
+      }
+    });
+  }
 
   test("a failed broker refresh keeps edited assumptions and retries inline", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
@@ -414,6 +499,65 @@ test.describe("valuation refresh", () => {
     await expect(growth).toHaveValue("20%");
     await expect(growth).toBeFocused();
     await expect(page).toHaveURL(/ticker=SYNT&view=valuation$/);
+  });
+
+  for (const [unit, scale, symbol] of [
+    ["GBp", 100, "£"], ["GBP", 1, "£"], ["USD", 1, "US$"], ["EUR", 1, "€"],
+  ] as const) {
+    test(`live and saved valuations agree in ${unit}`, async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await synthetic(page, false);
+      const data = preview("SYNT", 31 * scale, "2026-02-03", false, {});
+      data.basis.currency = unit;
+      for (const key of scenarios) {
+        data.scenarios[key].value = 1.5 * scale;
+        for (const year of data.scenarios[key].years) year.presentValue = 1.5 * scale;
+      }
+      for (const cell of data.sensitivity) cell.value = 1.5 * scale;
+      const saved = { id: "frozen", savedAt: "2026-02-03T21:00:00Z", preview: data };
+      await page.route("**/api/backend/research/SYNT/valuation-preview", (route) => route.fulfill({ json: data }));
+      await page.route("**/api/backend/research/SYNT/journal", (route) => route.fulfill({ json: {
+        ticker: "SYNT", notes: [], models: [saved],
+      } }));
+      const value = symbol + "1.50";
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      await expect(page.locator(".mx-scenario-spot strong")).toHaveText(symbol + "31.00");
+      await expect(page.locator(".mx-scenario-cards strong").first()).toHaveText(value);
+      await expect.soft(page.locator(".mx-valuation-readout")).toContainText(value, { timeout: 1000 });
+      await expect.soft(page.locator("#research-worksheet").getByRole("row", { name: /^Value per share/ })).toContainText(value, { timeout: 1000 });
+      await expect.soft(page.locator(".mx-sensitivity-matrix td strong").first()).toHaveText("1.50", { timeout: 1000 });
+
+      await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+      await page.getByRole("button", { name: "New note" }).click();
+      await page.getByRole("combobox", { name: "Related model version" }).click();
+      await expect.soft(page.getByRole("option").first()).toContainText(value, { timeout: 1000 });
+
+      await page.goto("/research?ticker=SYNT&view=ledger&notebook=models");
+      const comparison = page.getByRole("region", { name: "Saved model comparison" });
+      await expect.soft(comparison.getByRole("row", { name: /^Base value/ })).toContainText(value, { timeout: 1000 });
+      await expect.soft(comparison.getByRole("row", { name: /^Price at save/ })).toContainText(symbol + "31.00", { timeout: 1000 });
+      await comparison.getByRole("button", { name: "Open worksheet" }).click();
+      await expect(page.getByRole("dialog")).toContainText("Value per share: " + value);
+    });
+  }
+
+  test("archived vendor EPS keeps its unverified unit separate from the price", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    const history = forwardHistory(true)!;
+    state.forwardPe = { ...history, currency: "GBp", points: [{
+      ...history.points[0], price: 3100, eps: 200, pe: 15.5, source: "yahoo-forward-pe",
+    }] };
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const section = page.locator(".mx-pe-history");
+    const reading = section.locator(".mx-chart-readout-values");
+    await expect(reading).toContainText("Price 31.00");
+    await expect.soft(reading).toContainText("Forward EPS (unit unverified) 200.00", { timeout: 1000 });
+    await section.locator(".mx-info").first().click();
+    // Phones open the same help as a sheet.
+    const help = page.locator(":is(.mx-help-popover, .mx-help-sheet)");
+    await expect(help).toContainText("Price currency: GBP.");
+    await expect(help).not.toContainText("Price and EPS currency");
   });
 
   test("trailing P/E reuses the lens and makes its basis readable from the chart", async ({ page, isMobile }, testInfo) => {
@@ -562,6 +706,58 @@ test.describe("valuation refresh", () => {
   });
 
 });
+
+for (const locale of ["en", "zh"] as const) {
+  test(`disclose a floored valuation and distinguish an unverified share unit · ${locale}`, async ({ page, isMobile }) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    let error: string | undefined;
+    let raw = -3;
+    await page.route("**/SYNT/valuation-preview*", route => {
+      if (error) return route.fulfill({ status: 422, json: { detail: error } });
+      const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", false, {});
+      const base = p.scenarios.base;
+      base.operatingValue = raw - 1;
+      base.terminalPresentValue = 1;
+      base.equityFloorAdjustment = Math.max(0, -raw);
+      base.value = Math.max(0, raw);
+      base.upside = base.value / p.basis.spot - 1;
+      return route.fulfill({ json: { ...p, formulaVersion: "statement-equity-v2" } });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const row = page.locator(".mx-valuation-readout .mx-metric").last();
+    const cards = page.locator(".mx-scenario-cards button");
+    const reason = locale === "en" ? "Negative equity value floored at zero" : "股权估值为负，按零计";
+    const readout = row.locator(".mx-number-value");
+    await expect(readout).toContainText("US$0.00");
+    await expect(row.getByText(reason, { exact: true })).toBeVisible();
+    await expect(cards.nth(1)).toContainText(locale === "en" ? "Zero floor" : "按零计");
+    await expect(cards.first()).not.toContainText(locale === "en" ? "Zero floor" : "按零计");
+    for (raw of [0, 0.003]) {
+      await page.reload();
+      await expect(readout).toContainText("US$0.00");
+      await expect(row).not.toContainText(reason);
+      await expect(cards.nth(1)).not.toContainText(locale === "en" ? "Zero floor" : "按零计");
+    }
+    const panel = page.locator("#valuation-assumptions");
+    error = "listed-share-unit-unverified";
+    await page.reload();
+    const missingUnit = locale === "en" ? "Share unit unverified for this listing" : "上市股数口径未核实";
+    await expect(panel).toContainText(missingUnit);
+    await expect(row).toContainText(missingUnit);
+    error = "receipt-ratio-unverified";
+    await page.reload();
+    const ratio = locale === "en" ? "Ordinary shares per receipt unverified" : "存托凭证换股比例未核实";
+    await expect(panel).toContainText(ratio);
+    await expect(row).toContainText(ratio);
+    error = "complete-ttm-currency-and-share-count-required";
+    await page.reload();
+    await expect(panel).toContainText(locale === "en"
+      ? "Matching statements, a quote and verified listing shares are required" : "此模型缺少完整同期报表、报价或上市股数");
+  });
+}
 
 for (const locale of ["en", "zh"] as const) {
   for (const scheme of ["light", "dark"] as const) {
@@ -820,3 +1016,677 @@ test("set and clear a saved valuation baseline from its journal", async ({ page 
   await expect(page.getByRole("button", { name: "Set as baseline" })).toHaveAttribute("aria-pressed", "false");
   expect(journal.baselineModelId).toBe(null);
 });
+
+const draftProposals = [
+  { scenario: "base", field: "revenue_cagr", value: 0.19, category: "consensus", source: "consensus-growth", evidenceIds: ["estimate"] },
+  { scenario: "base", field: "target_fcf_margin", value: 0.12, category: "derived", source: "statement-margin", evidenceIds: ["statement", "revenue"] },
+  { scenario: "bear", field: "discount_rate", value: 0.12, category: "template", source: "sector-template", originId: "template", evidenceIds: [] },
+];
+const draftResponse = { phase: "complete", result: { id: "synthetic-draft", snapshotId:"synthetic-run", family:"cash-flow", familySelection:"automatic", proposals: draftProposals, deskReadings:{base:{value:183, upside:.83}, bear:{value:141,upside:.41}, bull:{value:150,upside:.5}},
+  origins: { template: { source: "sector-template", inputs: { profile:"hardware", effectiveDiscountRate:.1, annualRevenueGrowth:.1,
+    growthCap:.3, marginCap:.18, shareCagr:.01, exitMultiple:16, basis:{startMargin:.12} },
+    scenarios:{bear:{discountRate:.12}}, evidenceIds:["statement"] } },
+  evidence: {
+    estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {kind:"forecast",forecastSlot:"+1y",end:"2026-12-31"},
+      publishedAt:"2025-12-20", observedAt:"2026-11-03T21:00:00Z", value: 0.19, unit: "ratio" },
+    statement: { locator: { dataset: "financials" }, metric: "freeCashflow", period: {kind:"annual",end:"2025-12-31"},
+      observedAt:"2026-02-10T21:00:00Z", value: 120, unit: "currency", currency: "USD" },
+    revenue: { locator: { dataset: "financials" }, metric: "revenue", period: {kind:"annual",end:"2025-12-31"},
+      observedAt:"2026-02-10T21:00:00Z", value: 1000, unit: "currency", currency: "USD" },
+  } } };
+
+async function captureDraft(page: Page, project: string, locale: string, scheme: string, example: string, anchor = "#valuation-assumptions") {
+  const dir = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
+  if (!dir) return;
+  await page.locator(anchor).evaluate(el => {
+    window.scrollBy({top: el.getBoundingClientRect().top - (window.innerWidth < 768 ? 140 : 75), behavior: "instant"});
+  });
+  if (project === "desktop") {
+    await expect(page.locator("#valuation-results canvas").first()).toBeVisible();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  }
+  await page.screenshot({scale: "css", path: join(dir, `${example}-${project}-${locale}-${scheme}.png`)});
+}
+
+for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`stage a valuation draft field and review the changed basis · ${locale} · ${scheme}`, async ({ page }, info) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    const en = locale === "en";
+    await page.setViewportSize(info.project.name === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
+    await page.route("**/SYNT/valuation-preview*", async route => {
+      const body = route.request().method() === "POST" ? route.request().postDataJSON() : null;
+      const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", true, body?.scenarios ?? {});
+      return route.fulfill({json: {...p, formulaVersion:"statement-equity-v2",
+        scenarios:Object.fromEntries(Object.entries(p.scenarios).map(([key, scenario]) => [key, {
+          ...scenario, inputs:{rampYears:3, ...scenario.inputs},
+        }])), reverseMetric:"revenue-growth", reverseValue:p.impliedGrowth}});
+    });
+    let runs = 0;
+    await page.route("**/SYNT/valuation-draft", route => {
+      runs++;
+      return route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(draftResponse) + "\n" });
+    });
+    let saved: Record<string, unknown> | null = null;
+    await page.route("**/SYNT/models", route => { saved = route.request().postDataJSON(); return route.fulfill({
+      status: 409, json: { detail: "valuation-draft-review-required" },
+    }); });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const editor = page.locator("#valuation-assumptions");
+    const entry = editor.getByRole("button", { name: en ? "✦ Draft" : "✦ 起草", exact: true });
+    await expect(entry).toBeVisible();
+    expect(runs).toBe(0);
+    await entry.click();
+    const growth = en ? "Revenue growth · years 1–5" : "前五年营收增长";
+    const margin = en ? "Target FCF margin" : "目标现金流率";
+    const accept = editor.getByRole("button", {name: (en ? "Accept " : "接受 ") + growth, exact: true});
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("183.00");
+    await expect(page.locator(".mx-draft-reading")).toHaveCount(2);
+    await accept.focus();
+    await accept.press("Enter");
+    await expect(accept).toHaveAttribute("aria-pressed","true");
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
+    expect(saved).toBeNull();
+    await expect(editor.getByRole("link", {name: en ? "Analysts" : "分析师", exact:true})).toHaveAttribute("href", "#draft-evidence-estimate");
+    await expect(accept.locator("xpath=ancestor::div[contains(@class,'mx-draft-row')]")).toContainText(en ? "As of" : "截至");
+    await captureDraft(page, info.project.name, locale, scheme, "cash-flow");
+    await editor.getByRole("link", { name: en ? "Analysts" : "分析师", exact:true }).first().click();
+    const evidence = page.locator("#draft-evidence-estimate");
+    await expect(evidence).toContainText("19%");
+    await expect(evidence).toContainText(en ? "Next fiscal year" : "下一财年");
+    await expect(evidence).toContainText(en ? "As of 20 Dec 2025" : "截至 2025年12月20日");
+    await expect(evidence.getByRole("link")).toHaveAttribute("href", /view=analyst/);
+    await editor.getByRole("button", {name:(en ? "Reject " : "拒绝 ") + margin, exact:true}).click();
+    await editor.getByRole("button", {name:en ? "Save model version" : "保存模型版本",exact:true}).click();
+    await page.getByRole("dialog").getByRole("button",{name:en ? "Save version" : "保存版本",exact:true}).click();
+    await expect(page.getByRole("dialog").getByRole("button",{name:en ? "Reload for review" : "重新载入并重审"})).toBeVisible();
+    expect(saved).toMatchObject({scenarios:{base:{revenueCagr:0.19,targetFcfMargin:0.15}},
+      draftReview:{decisions:{base:{revenue_cagr:"accepted",target_fcf_margin:"rejected"},bear:{discount_rate:"unreviewed"}}}});
+    expect(runs).toBe(1);
+  });
+}
+
+for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`review a bank assumption and withhold an ambiguous reading · ${locale} · ${scheme}`, async ({page}, info) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    await page.setViewportSize(info.project.name === "mobile" ? {width:390, height:844} : {width:1440, height:900});
+    await page.emulateMedia({colorScheme:scheme, reducedMotion:"reduce"});
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
+    let withheld = false;
+    let runs = 0;
+    await page.route("**/SYNT/valuation-preview*", route => {
+      const post = route.request().method() === "POST" ? route.request().postDataJSON() : undefined;
+      const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", false, {});
+      return route.fulfill({json: {...p, formulaVersion:"statement-equity-v2",
+        basis:{...p.basis, family:withheld ? "cash-flow" : "residual-income", bookPerShare:25, commonEarnings:150},
+        scenarios: Object.fromEntries(Object.entries(p.scenarios).map(([k,v]) => [k,{...v,
+          inputs: post?.scenarios[k] ?? {...v.inputs, initialRoe:0.15, payout:0.3, terminalPb:1, rampYears:3}}])),
+        reverseMetric: withheld ? "target-margin" : "initial-roe", reverseValue: withheld ? null : 0.18,
+        reverseReason: withheld ? "target-margin-not-unique" : null,
+      }});
+    });
+    await page.route("**/SYNT/valuation-draft", route => {
+      runs++;
+      const evidence = {
+        earnings: {...draftResponse.result.evidence.statement, metric:"netIncome", value:200},
+        equity: {...draftResponse.result.evidence.revenue, metric:"commonEquity"},
+      };
+      return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({phase:"complete", result:{
+        id:"bank-draft", deskReadings:{base:{value:175,upside:.75}}, snapshotId:"synthetic-run", family:"residual-income", familySelection:"automatic", origins:{}, evidence,
+        proposals:[{scenario:"base", field:"initial_roe", category:"derived", source:"common-roe",
+          value:0.2, evidenceIds:["earnings","equity"]}],
+      }})+"\n"});
+    });
+    const en = locale === "en";
+    const editor = page.locator("#valuation-assumptions");
+    const entry = editor.getByRole("button", {name: en ? "✦ Draft" : "✦ 起草"});
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    await entry.click();
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(1);
+    const accept = editor.getByRole("button", {name:en ? "Accept Year-one ROE" : "接受 第一年 ROE"});
+    await accept.click();
+    await expect(accept).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".mx-draft-reading")).not.toContainText("…");
+    await captureDraft(page, info.project.name, locale, scheme, "residual-income");
+    await editor.getByRole("button", {name:en ? "Discard draft" : "放弃草稿"}).click();
+    withheld = true;
+    await page.reload();
+    await expect(entry).toBeDisabled();
+    await expect(editor.locator("#valuation-draft-block")).toContainText(en ? "unique target margin" : "唯一的目标利润率");
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+    await captureDraft(page, info.project.name, locale, scheme, "withheld");
+    expect(runs).toBe(1);
+  });
+}
+
+test("a missing valuation basis disables drafting without starting a run", async ({page}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await synthetic(page, false);
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
+  await page.route("**/SYNT/valuation-preview*", route => route.fulfill({status:422,json:{detail:"complete-ttm-currency-and-share-count-required"}}));
+  let runs = 0;
+  await page.route("**/SYNT/valuation-draft", route => { runs++; return route.abort(); });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor=page.locator("#valuation-assumptions");
+  await expect(editor.getByRole("button",{name:"✦ Draft"})).toBeDisabled();
+  await expect(editor.locator("#valuation-draft-block")).toContainText("verified listing shares");
+  expect(runs).toBe(0);
+});
+
+test("cancel a valuation draft and discard a late proposal", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await synthetic(page, false);
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/SYNT/valuation-draft", async route => {
+    await delayed;
+    await route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(draftResponse) + "\n" }).catch(() => {});
+  });
+  await page.route("**/SYNT/valuation-preview*", route => route.fulfill({
+    json:{...preview("SYNT",100,"2026-11-04T15:40:00Z",true,{}),defaultSource:"saved-model"},
+  }));
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const entry = editor.getByRole("button",{name:"✦ Draft",exact:true});
+  await expect(entry).toHaveAccessibleDescription("");
+  await expect(entry).not.toHaveAttribute("title", /.+/);
+  const status = editor.locator('[role="status"][aria-atomic="true"]');
+  await expect(status).toHaveText("");
+  await status.evaluate(el => el.setAttribute("data-original-region", "true"));
+  await entry.click();
+  await expect(status).toContainText("Reading valuation basis");
+  await editor.getByRole("button",{name:"Cancel draft",exact:true}).click();
+  await expect(status).toContainText("Draft cancelled");
+  await expect(status).toHaveAttribute("data-original-region","true");
+  release();
+  await expect(editor.getByRole("button",{name:"✦ Draft",exact:true})).toBeVisible();
+  await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+  await expect(editor.getByLabel("Revenue growth · years 1–5")).toHaveValue("10%");
+  await entry.click();
+  await expect(status).toContainText("proposed");
+  await expect(status).toHaveAttribute("data-original-region","true");
+});
+
+async function reviewDraft(page: Page) {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const state = await synthetic(page, false);
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
+  let calls = 0;
+  await page.route("**/SYNT/valuation-draft", route => { calls++; return route.fulfill({
+    contentType:"application/x-ndjson", body:JSON.stringify(draftResponse)+"\n",
+  }); });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const entry = editor.getByRole("button", {name:"✦ Draft",exact:true});
+  await expect(entry).toBeVisible();
+  return {state, editor, entry, calls:() => calls};
+}
+
+// Locate the painted stroke between its endpoint dots, in CSS pixels. Exclude the
+// left-hand labels and inspect each settled row near the centre of its category.
+async function settledStroke(plot: Locator, scenario: "bear" | "bull") {
+  return plot.locator("canvas").first().evaluate((canvas: HTMLCanvasElement, key) => {
+    const ratio = canvas.width / canvas.clientWidth;
+    const left = Math.ceil(canvas.width / 3);
+    const top = Math.round(canvas.height * (key === "bear" ? 0.25 : 0.69));
+    const band = canvas.getContext("2d")!.getImageData(left, top, canvas.width - left, Math.ceil(15 * ratio));
+    let longest = {start:0, end:0, y:0};
+    for (let y = 0; y < band.height; y++) {
+      let start = 0;
+      for (let x = 0; x < band.width; x++) {
+        const alpha = band.data[(y * band.width + x) * 4 + 3];
+        if (alpha < 24) start = x + 1;
+        else if (x - start > longest.end - longest.start) longest = {start,end:x,y};
+      }
+    }
+    if (longest.end - longest.start < 10 * ratio) throw new Error("Settled scenario line missing");
+    return {start:(left + longest.start) / ratio, end:(left + longest.end) / ratio, y:(top + longest.y) / ratio};
+  }, scenario);
+}
+
+async function pendingBaseReview(page: Page) {
+  const {editor, entry} = await reviewDraft(page);
+  await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
+    body:JSON.stringify({...draftResponse, result:{...draftResponse.result, proposals:[
+      ...draftProposals, {...draftProposals[0],scenario:"bull"},
+    ], deskReadings:{bear:{value:141,upside:.41},base:{value:345,upside:2.45},bull:{value:210,upside:1.1}}}})+"\n"}));
+  let release!: () => void;
+  const hold = new Promise<void>(resolve => {release=resolve;});
+  await page.route("**/SYNT/valuation-preview*", async route => {
+    if (route.request().method() === "POST") await hold;
+    await route.fallback();
+  });
+  await entry.click();
+  const comparison = page.locator(".mx-scenario-comparison");
+  const readings = comparison.locator(".mx-draft-reading");
+  const plot = comparison.getByRole("group", {name:/Scenario valuations relative to current price/});
+  await expect(readings).toHaveText([/141.00/,/345.00/,/210.00/]);
+  await comparison.scrollIntoViewIfNeeded();
+  await expect(plot).toHaveAttribute("data-tm-chart-ready","true");
+  async function accept() {
+    const pending = page.waitForRequest(req => req.method() === "POST" && req.url().includes("/SYNT/valuation-preview"));
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"}).click();
+    await pending;
+    await expect(plot).toHaveAccessibleName(/Base · Pending/);
+  }
+  return {comparison, readings, plot, accept, release};
+}
+
+test.describe("frozen draft review", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  test("discard explicitly before redrafting accepted values", async ({page}) => {
+    const {editor, entry, calls} = await reviewDraft(page);
+    await entry.click();
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
+    await editor.getByRole("button",{name:"Discard draft",exact:true}).click({timeout:1800});
+    await expect(editor.getByLabel("Revenue growth · years 1–5")).toHaveValue("10%");
+    expect(calls()).toBe(1);
+    await entry.click();
+    await expect(editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true})).toHaveAttribute("aria-pressed","false");
+  });
+
+  test("a new publication suspends review and preserves manual edits on reload", async ({page}) => {
+    await page.clock.install();
+    const {state, editor, entry} = await reviewDraft(page);
+    await editor.getByLabel("Revenue growth · years 1–5").fill("14");
+    await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(.14);
+    await entry.click();
+    const accept = editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true});
+    await expect(accept).toBeVisible();
+    state.publication = "synthetic-reviewed-two";
+    const fresh = page.waitForResponse(response => response.url().includes("/research/shell") && response.ok());
+    await page.clock.fastForward(60_000);
+    await fresh;
+    await expect(accept).toBeDisabled({timeout:1500});
+    await editor.getByRole("button",{name:"Reload for review"}).click();
+    await expect(editor.getByRole("textbox", {name:"Revenue growth · years 1–5", exact:true})).toHaveValue("14%");
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+  });
+
+  test("each scenario moves from its offered reading to its reviewed inputs independently", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await entry.click();
+    const base = page.locator(".mx-scenario-cards button[aria-pressed=true]");
+    const bear = page.locator(".mx-scenario-cards button").first();
+    await expect(base.locator(".mx-draft-reading")).toContainText("183.00");
+    await editor.getByRole("button",{name:"Reject Target FCF margin",exact:true}).click();
+    await expect(base.locator(".mx-draft-reading")).toContainText("150.00");
+    await expect(bear.locator(".mx-draft-reading")).toContainText("141.00");
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+    await expect(base.locator(".mx-draft-reading")).toContainText("195.00");
+    await editor.getByRole("button",{name:"Reject Revenue growth · years 1–5",exact:true}).click();
+    await expect(base.locator(".mx-draft-reading")).toHaveCount(0);
+    await expect(base.locator("strong")).toContainText("150.00");
+    await expect(bear.locator(".mx-draft-reading")).toContainText("141.00");
+  });
+
+  test("a pending base review keeps settled bear and bull readings visible", async ({page}, info) => {
+    const {comparison, readings, plot, accept, release} = await pendingBaseReview(page);
+    const reading = comparison.getByRole("status");
+    const lines = () => Promise.all([settledStroke(plot, "bear"), settledStroke(plot, "bull")]);
+    const offered = await lines();
+    await captureDraft(page, info.project.name, "en", "light", "base-offered", ".mx-scenario-comparison");
+    try {
+      await accept();
+      await expect.poll(lines).toEqual(offered);
+      await expect(readings).toHaveText([/141.00/,/Draft …/,/210.00/]);
+      await expect(plot).toHaveAccessibleName(/Bear · Draft.*Base · Pending.*Bull · Draft/);
+      await plot.press("End");
+      await expect(reading).toContainText("Bear · Draft: +41%");
+      await expect(reading).toContainText("Bull · Draft: +110%");
+      await expect(reading).not.toContainText("Base");
+      await captureDraft(page, info.project.name, "en", "light", "base-pending", ".mx-scenario-comparison");
+    } finally {
+      release();
+    }
+    await expect(readings).toHaveText([/141.00/,/195.00/,/210.00/]);
+    await expect(plot).toHaveAccessibleName(/Base · Draft/);
+    await expect(reading).toContainText("Base · Draft: +95%");
+    await expect.poll(async () => (await settledStroke(plot, "bull")).end).toBeGreaterThan(offered[1].end);
+  });
+
+  test("a newly settled Bear endpoint fits while Base is still pending", async ({page}, info) => {
+    await page.clock.install();
+    const {editor, entry} = await reviewDraft(page);
+    const {result} = draftResponse;
+    await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
+      body:JSON.stringify({...draftResponse, result:{...result,
+        proposals:[...result.proposals, {...draftProposals[0], scenario:"bear", value:.82, evidenceIds:["bear-growth"]}],
+        evidence:{...result.evidence, "bear-growth":{...result.evidence.estimate, value:.82}},
+        deskReadings:{...result.deskReadings, bear:{value:210, upside:1.1}},
+      }})+"\n"}));
+    await entry.click();
+    const comparison = page.locator(".mx-scenario-comparison");
+    const plot = comparison.getByRole("group", {name:/Scenario valuations relative to current price/});
+    await comparison.scrollIntoViewIfNeeded();
+    await expect(plot).toHaveAttribute("data-tm-chart-ready","true");
+    const originalBull = await settledStroke(plot, "bull");
+    const bear = Promise.withResolvers<Route>();
+    const base = Promise.withResolvers<Route>();
+    await page.route("**/SYNT/valuation-preview*", route => {
+      if (route.request().method() !== "POST") return route.fallback();
+      const request = route.request().postDataJSON();
+      (request.scenarios.base.revenueCagr === defaults.revenueCagr ? bear : base).resolve(route);
+    });
+    const accept = editor.getByRole("button", {name:"Accept Revenue growth · years 1–5"});
+    await editor.getByRole("button", {name:"Bear", exact:true}).click();
+    await accept.click();
+    const first = await bear.promise;
+    await editor.getByRole("button", {name:"Base", exact:true}).click();
+    // Deliver Bear after the Base edit but before its debounce switches requests.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+    await accept.press("Enter");
+    const delivered = page.waitForResponse(response => response.request() === first.request());
+    await first.fallback();
+    await (await delivered).finished();
+    await page.clock.runFor(64);
+    await page.clock.resume();
+    const second = await base.promise;
+    await expect(plot).toHaveAccessibleName(/Bear · Draft.*Base · Pending/);
+    await plot.press("End");
+    await expect(comparison.getByRole("status")).toContainText("Bear · Draft: +410%");
+    await expect(comparison.locator(".mx-draft-reading").first()).toContainText("+410.00%");
+    await expect.poll(async () => (await settledStroke(plot, "bull")).end).toBeLessThan(originalBull.end);
+    const overlap = await settledStroke(plot, "bear");
+    await captureDraft(page, info.project.name, "en", "light", "overlap", ".mx-scenario-comparison");
+    await second.fallback();
+    await expect(plot).toHaveAccessibleName(/Base · Draft/);
+    await expect.poll(async () => Math.abs((await settledStroke(plot, "bear")).end - overlap.end)).toBeLessThanOrEqual(1);
+  });
+
+  test("hovering settled line bodies and endpoints highlights their own cards", async ({page, isMobile}, info) => {
+    test.skip(isMobile, "Continuous mouse hover is verified on desktop.");
+    const {comparison, plot, accept, release} = await pendingBaseReview(page);
+    async function checkHover() {
+      for (const key of ["bear","bull"] as const) {
+        const line = await settledStroke(plot, key);
+        const card = comparison.getByRole("button", {name:key === "bear" ? /^Bear/ : /^Bull/});
+        for (const x of [(line.start + line.end) / 2, line.end - 3]) {
+          await plot.hover({position:{x:2,y:5}});
+          await plot.hover({position:{x,y:line.y}});
+          await expect(card).toHaveAttribute("data-hover","true");
+        }
+      }
+    }
+    try {
+      await checkHover();
+      await accept();
+      await checkHover();
+      const screenshots = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
+      if (screenshots) {
+        const bull = await settledStroke(plot, "bull");
+        await plot.hover({position:{x:(bull.start + bull.end) / 2, y:bull.y}});
+        await expect(comparison.getByRole("button", {name:/^Bull/})).toHaveAttribute("data-hover","true");
+        await comparison.screenshot({path:join(screenshots, `bull-hover-${info.project.name}.png`), scale:"css"});
+      }
+    } finally {
+      release();
+    }
+  });
+
+  test("calculating reserves the English phone result header height", async ({page, isMobile}) => {
+    test.skip(!isMobile, "The result actions wrap on phones.");
+    const {accept, release} = await pendingBaseReview(page);
+    const results = page.locator("#valuation-results");
+    async function offsets() {
+      const values = [];
+      for (const width of [320, 390, 404, 430]) {
+        await page.setViewportSize({width, height:844});
+        values.push(await results.evaluate(el =>
+          el.querySelector(".mx-scenario-spot")!.getBoundingClientRect().top - el.getBoundingClientRect().top));
+      }
+      return values;
+    }
+    const settled = await offsets();
+    try {
+      await accept();
+      await expect(results.locator(".mx-preview-status")).toHaveText("Calculating…");
+      expect(await offsets()).toEqual(settled);
+    } finally {
+      release();
+    }
+  });
+
+  test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await entry.click();
+    await editor.getByRole("button", {name:"Bear", exact:true}).click();
+    await editor.getByRole("link", {name:"Template source", exact:true}).click();
+    const origin = page.locator("#draft-origin-template");
+    await expect(origin).toContainText("hardware");
+    await expect(origin).toContainText("Exit multiple 16×");
+    await expect(origin).toContainText("Bear · Cost of equity 12%");
+    await origin.getByRole("link").click();
+    await expect(page.locator("#draft-evidence-statement")).toContainText("120 USD");
+  });
+
+  test("reject and edit retain keyboard focus and name both values", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await entry.click();
+    const reject = editor.getByRole("button",{name:"Reject Target FCF margin",exact:true});
+    await reject.focus();
+    await reject.press("Enter");
+    await expect(editor.getByRole("button",{name:/^Target FCF margin/})).toBeFocused({timeout:1000});
+    const edit = editor.getByRole("button",{name:"Edit Revenue growth · years 1–5",exact:true});
+    const row = edit.locator("xpath=ancestor::div[contains(@class,'mx-draft-row')]");
+    await expect(row.getByText("Previous value",{exact:true})).toBeAttached();
+    await expect(row.getByText("Proposed value",{exact:true})).toBeAttached();
+    await edit.focus();
+    await edit.press("Enter");
+    await expect(editor.getByLabel("Revenue growth · years 1–5",{exact:true})).toBeFocused();
+  });
+
+  test("proposal rows keep the grid stable and name the staged chart series", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await page.emulateMedia({reducedMotion:"reduce"});
+    let release!: () => void;
+    const delivery = new Promise<void>(resolve => { release=resolve; });
+    await page.route("**/SYNT/valuation-draft", async route => {
+      await delivery;
+      await route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({
+        ...draftResponse, result:{...draftResponse.result, proposals:[
+          ...draftResponse.result.proposals,
+          ...(["discount_rate","exit_fcf_multiple","share_cagr"] as const).map((field,i) => ({
+            scenario:"base", field, value:[.09,18,-.02][i], category:"template", source:"sector-template",
+            originId:"template", evidenceIds:[],
+          })),
+        ]},
+      })+"\n"});
+    });
+    const width = (await editor.boundingBox())!.width;
+    await entry.click();
+    const top = () => page.locator("#research-sensitivity").evaluate(el => el.getBoundingClientRect().top + scrollY);
+    await expect(editor.getByRole("status")).toContainText("Reading valuation basis");
+    await page.evaluate(() => document.fonts.ready.then(() => {}));
+    const pending = await top();
+    release();
+    await expect(editor.getByRole("status")).toContainText("proposed");
+    expect(Math.abs(await top() - pending)).toBeLessThanOrEqual(1);
+    if (page.viewportSize()!.width >= 1200) {
+      const results = (await page.locator("#valuation-results").boundingBox())!;
+      const review = (await editor.boundingBox())!;
+      expect(results.x + results.width).toBeLessThanOrEqual(review.x);
+      expect(Math.abs(results.y - review.y)).toBeLessThanOrEqual(1);
+    }
+
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
+    expect((await editor.boundingBox())!.width).toBe(width);
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true]")).toContainText("+95.00%");
+    await expect(page.getByLabel(/Scenario valuations relative to current price.*Base.*Draft/i)).toBeAttached();
+  });
+});
+
+test("explicitly choosing the displayed model preserves edited saved assumptions on reopen", async ({page}, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await synthetic(page,false);
+  let stored = {familySelection:"automatic", scenarios:{base:{...defaults, revenueCagr:0.22}}};
+  const selections: (string | null)[] = [];
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
+  await page.route("**/SYNT/valuation-preview*", route => {
+    const family = new URL(route.request().url()).searchParams.get("family");
+    const body = route.request().method() === "POST" ? route.request().postDataJSON() : undefined;
+    if (!body) selections.push(family);
+    const configured = {base:{...defaults, revenueCagr:0.1111}};
+    const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", true, body?.scenarios ?? (family ? configured : stored.scenarios));
+    return route.fulfill({json:{...p, familySelection:family ? "override" : stored.familySelection,
+      defaultSource:family ? "configured-scenarios" : "saved-model"}});
+  });
+  await page.route("**/SYNT/models", route => {
+    stored = route.request().postDataJSON();
+    return route.fulfill({json:{models:[]}});
+  });
+  await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
+    body:JSON.stringify({...draftResponse,result:{...draftResponse.result,familySelection:"override"}})+"\n"}));
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const select = editor.getByRole("combobox",{name:"Valuation model"});
+  await expect(select).toHaveValue("Equity cash flow");
+  const growth = editor.getByLabel("Revenue growth · years 1–5", {exact:true});
+  await expect(growth).toHaveValue("22%");
+  await growth.fill("23");
+  await select.click();
+  await page.getByRole("option",{name:"Equity cash flow",exact:true}).click();
+  await expect(growth).toHaveValue("23%");
+  await editor.getByRole("button",{name:"Save model version",exact:true}).click();
+  await page.getByRole("dialog").getByRole("button",{name:"Save version",exact:true}).click();
+  await expect.poll(() => stored.familySelection).toBe("override");
+  expect(stored.scenarios.base.revenueCagr).toBe(0.23);
+  expect(selections).toEqual([null]);
+  await page.reload();
+  await expect(select).toHaveValue("Equity cash flow");
+  await expect(growth).toHaveValue("23%");
+  await captureDraft(page, info.project.name, "en", "light", "same-family-reopened");
+  await editor.getByRole("button",{name:"✦ Draft",exact:true}).click();
+  await expect(editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"})).toBeVisible();
+  expect(selections.at(-1)).toBeNull();
+});
+
+test("cold disabled valuation stays dormant and cross-tab withdrawal clears shell and review", async ({page,context}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await context.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const state = await synthetic(page, false);
+  let enabled = false;
+  let hold = false;
+  let release!: () => void;
+  const refresh = new Promise<void>(resolve => { release = resolve; });
+  const scripts: Promise<string>[] = [];
+  const requests: string[] = [];
+  page.on("response", response => {
+    if (response.request().resourceType() === "script")
+      scripts.push(response.text().catch(() => ""));
+  });
+  page.on("request", request => { requests.push(request.url()); });
+  await page.route("**/api/backend/profile", async route => {
+    if (hold) await refresh;
+    await route.fulfill({json:{assistantEnabled:enabled, accountLabels:{}}});
+  });
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:enabled, code:null}}));
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[]}));
+  await page.route("**/SYNT/valuation-draft", route => route.fulfill({
+    contentType:"application/x-ndjson", body:JSON.stringify(draftResponse)+"\n",
+  }));
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const entry = editor.getByRole("button", {name:"✦ Draft", exact:true});
+  const growth = editor.getByLabel("Revenue growth · years 1–5", {exact:true});
+  await expect(growth).toHaveValue("10%");
+  const hasScript = async (text: string) => (await Promise.all(scripts)).some(s => s.includes(text));
+  const renderer = "Divides common earnings by common equity", streamReader = "assistant_interrupted";
+  expect(await hasScript(renderer)).toBe(false);
+  expect(await hasScript(streamReader)).toBe(false);
+  expect(requests.filter(url => /settings\/assistant|valuation-draft|assistant\/(status|conversations|chat)/.test(url))).toEqual([]);
+  await expect(entry).toHaveCount(0);
+  await growth.fill("14");
+  await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(.14);
+  async function consent(value: boolean) {
+    enabled = value;
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", {key:"trading_max-assistant-settings-revision"})));
+  }
+  await consent(true);
+  await entry.click();
+  expect(await hasScript(renderer)).toBe(true);
+  expect(await hasScript(streamReader)).toBe(true);
+  await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+  await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel.locator("textarea")).toBeVisible();
+  const other = await context.newPage();
+  const settings = {enabled:true, revision:1, route:"openai/model-a", acceptedConsentRevision:2,
+    consentRevision:2, acceptedAt:"2026-01-01", providers:[], integrations:[]};
+  await other.route("**/api/backend/settings/assistant", route => {
+    if (route.request().method() === "PUT") {
+      enabled = false;
+      hold = true;
+      return route.fulfill({json:{...settings,enabled:false,revision:2,acceptedConsentRevision:null}});
+    }
+    return route.fulfill({json:settings});
+  });
+  try {
+    await other.goto("/settings?tab=assistant");
+    const checkingConsent = page.waitForRequest(request =>
+      hold && new URL(request.url()).pathname === "/api/backend/profile");
+    await other.getByRole("button",{name:"Withdraw consent"}).click();
+    await checkingConsent;
+    await page.bringToFront();
+    await expect(panel).toContainText("Checking connection");
+    await expect(panel.locator("textarea")).toBeHidden();
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+    await expect(page.locator(".mx-draft-reading")).toHaveCount(0);
+  } finally {
+    release();
+    await other.close();
+  }
+  await expect(panel.getByRole("link",{name:"Open Settings"})).toBeVisible();
+  await expect(panel.locator("textarea")).toHaveCount(0);
+  await panel.getByRole("button",{name:"Close sidebar"}).click();
+  await expect(growth).toHaveValue("14%");
+  await expect(entry).toHaveCount(0);
+  await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+  await expect(page.locator(".mx-draft-reading")).toHaveCount(0);
+  await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] strong")).toContainText("170.00");
+});
+
+for (const locale of ["en", "zh"] as const) {
+  test(`saved worksheets distinguish floored and exact zeros · ${locale}`, async ({ page, isMobile }) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    const models = [3, 0].map((adjustment, index) => {
+      const savedAt = `2026-10-${20 - index}T12:00:00Z`;
+      const p = preview("SYNT", 100, savedAt, false, {});
+      Object.assign(p.scenarios.base, { operatingValue: -adjustment, terminalPresentValue: 0,
+        equityFloorAdjustment: adjustment, value: 0, upside: -1 });
+      return { id: `model-${index}`, savedAt, preview: p };
+    });
+    await page.route("**/research/SYNT/journal", r => r.fulfill({ json: { ticker: "SYNT", notes: [], models } }));
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=models");
+    const table = page.getByRole("region", { name: locale === "en" ? "Saved model comparison" : "冻结模型对比" });
+    const cells = table.getByRole("row").filter({ hasText: locale === "en" ? "Base value" : "中性估值" }).getByRole("cell");
+    const note = locale === "en" ? "Negative equity value floored at zero" : "股权估值为负，按零计";
+    await expect.soft(cells.first()).toContainText(note, { timeout: 1500 });
+    await expect(cells.nth(1)).toHaveText("US$0.00");
+    for (const index of [0, 1]) {
+      await table.getByRole("button", { name: locale === "en" ? "Open worksheet" : "查看底稿" }).nth(index).click();
+      const drawer = page.getByRole("dialog");
+      const total = drawer.locator("p").filter({ hasText: locale === "en" ? "Value per share" : "每股价值" });
+      await expect(total).toContainText("US$0.00");
+      if (index === 0) await expect.soft(total).toContainText(note, { timeout: 1500 });
+      else await expect(total).not.toContainText(note);
+      await page.keyboard.press("Escape");
+      await expect(drawer).toBeHidden();
+    }
+  });
+}

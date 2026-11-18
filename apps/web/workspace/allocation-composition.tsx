@@ -2,7 +2,7 @@
 
 import { VisuallyHidden } from "@mantine/core";
 import { useReducedMotion } from "@mantine/hooks";
-import { useId, useMemo, useRef, useState } from "react";
+import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ECharts, EChartsOption } from "echarts";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useAllocationChartColours, useChartColours } from "@/ui/charts/palette";
@@ -15,13 +15,19 @@ export type AllocationSlice = {
   value: number | null;
   weight: number | null;
   fullName?: string;
+  category?: string;
+  entityId?: string;
+  group?: "tail" | "unresolved";
   directValue?: number;
   indirectValue?: number;
 };
 
-export function AllocationComposition({ rows, companies = false, remainder }: {
+export function AllocationComposition({ rows, companies = false, remainder, initialGroup, onInspect, reading }: {
   rows: AllocationSlice[];
   companies?: boolean;
+  initialGroup?: AllocationSlice["group"];
+  onInspect?: (row: AllocationSlice) => void;
+  reading?: ReactNode;
   remainder?: { value: number; weight: number };
 }) {
   const t = useCopy();
@@ -30,7 +36,6 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
   const reduced = useReducedMotion();
   const description = useId();
   const detailId = useId();
-  const [selected, setSelected] = useState(0);
   // The slice or row under the pointer or keyboard focus; the centre shows it until the pointer leaves.
   const [preview, setPreview] = useState<number | null>(null);
   const chart = useRef<ECharts | null>(null);
@@ -40,6 +45,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
     const rest = rows.slice(12);
     const grouped = rest.length ? [...visible, {
       name: companies ? t("其余公司", "Other companies") : t("其余分类", "Other categories"),
+      category: "tail", group: "tail" as const,
       value: rest.every((row) => row.value !== null)
         ? rest.reduce((sum, row) => sum + row.value!, 0) : null,
       weight: rest.every((row) => row.weight !== null)
@@ -51,13 +57,19 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
     }] : visible;
     return remainder ? [...grouped, {
       name: t("未穿透与其他资产", "Unresolved & other assets"),
+      category: "unresolved", group: "unresolved" as const,
       ...remainder,
     }] : grouped;
   }, [rows, t, companies, remainder]);
+  const [selected, setSelected] = useState(() => initialGroup ? Math.max(0,slices.findIndex(s => s.group === initialGroup)) : 0);
   const colour = (index: number) => remainder && index === slices.length - 1
     ? colours.axis : palette[index];
   const activeIndex = Math.min(selected, Math.max(0, slices.length - 1));
   const active = slices[activeIndex];
+  function select(index: number) {
+    setSelected(index);
+    onInspect?.(slices[index]);
+  }
   const shown = slices[preview ?? activeIndex] ?? active;
   const option = useMemo<EChartsOption>(() => ({
     backgroundColor: "transparent",
@@ -86,7 +98,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
   }), [activeIndex, colours, palette, reduced, slices, remainder]);
   const { ref: canvas } = useECharts(option, "core", chart, undefined, (event) => {
     if (event.componentType === "series" && event.seriesType === "pie")
-      setSelected(event.dataIndex);
+      select(event.dataIndex);
   });
   // Bound on first approach, so a chart rebuilt after a resize or theme change is bound too.
   const bind = () => {
@@ -125,7 +137,7 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
           onKeyDown={(event) => {
             if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
             event.preventDefault();
-            setSelected(event.key === "Home" ? 0 : event.key === "End" ? slices.length - 1
+            select(event.key === "Home" ? 0 : event.key === "End" ? slices.length - 1
               : (activeIndex + (event.key === "ArrowRight" ? 1 : -1) + slices.length) % slices.length);
           }}
         />
@@ -161,10 +173,11 @@ export function AllocationComposition({ rows, companies = false, remainder }: {
             </details>
           )}
         </section>
+        {reading}
         <div role="group" aria-label={t("选择配置分类", "Choose allocation category")} className="mx-allocation-choices">
           {slices.map((row, index) => (
             <button key={index} type="button" aria-pressed={index === activeIndex}
-              aria-controls={detailId} onClick={() => setSelected(index)}
+              aria-controls={detailId} onClick={() => select(index)}
               onPointerEnter={() => highlight(index)} onPointerLeave={() => highlight(null)}
               onFocus={() => highlight(index)} onBlur={() => highlight(null)}>
               <i aria-hidden="true" style={{ backgroundColor: colour(index) }} />

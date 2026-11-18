@@ -12,6 +12,7 @@ import type { Reading } from "./evidence";
 export type RoleCard = {
   role: string; title: string; object: string; questions: readonly string[]; reading?: Reading | null;
   status?: string; context?: Record<string, unknown>;
+  pendingBinding?: boolean;
   origin?: { page: string; search: string; snapshotId?: string };
 };
 const statusFreshFor = 30_000;
@@ -57,13 +58,14 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const checkStatus = !waitingForConsent && (optedIn === true ||
     (externalRevision === 0 && optedIn === undefined && open && !profile.isPending));
   const status = useQuery({ queryKey: [...assistantStatusKey, settings.data?.revision ?? null, externalRevision],
-    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal, priority: "low" }),
-    enabled: checkStatus, staleTime: statusFreshFor, retry: false,
+    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]), priority: "low" }),
+    enabled: checkStatus, staleTime: statusFreshFor, retry: false, networkMode: "always",
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
-  // A failed status read leaves the previous approval unconfirmed. Keep the local
-  // thread hidden until a fresh answer arrives, just as for a pending consent signal.
-  const suspended = waitingForConsent || (checkStatus && status.isError);
+  const consentDenied = optedIn === false || status.data?.code === "assistant_disabled" || status.data?.code === "assistant_consent_required";
+  // Keep the local draft hidden through an outage or an unresolved profile.
+  // Only a confirmed loss of consent discards it.
+  const suspended = !ready && (waitingForConsent || !consentDenied);
   const confirmConsent = useCallback(async () => {
     const revision = ++nextRevision.current;
     setExternalRevision(revision);
@@ -125,7 +127,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && !consentDenied, pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }

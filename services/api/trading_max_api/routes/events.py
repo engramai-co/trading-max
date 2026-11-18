@@ -115,6 +115,9 @@ CitedKind = Literal[
 
 
 class CitedHoldingEvent(UpcomingItem):
+    firm: str | None = None
+    from_grade: str | None = None
+    to_grade: str | None = None
     kind: CitedKind
     amount: float | None = None
     basis: str | None = None

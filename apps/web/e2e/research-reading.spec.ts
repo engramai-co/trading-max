@@ -27,12 +27,46 @@ async function analystFixture(page: Page) {
   } }));
 }
 
+/** Wide readings start with the index closed; these cases navigate with it pinned. */
+async function openSectionIndex(page: Page) {
+  await page.addInitScript(() => {
+    localStorage.setItem("mx-research-index-open", "true");
+    localStorage.setItem("mx-research-index-pinned", "true");
+  });
+}
+
 test.describe("research section navigation", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await openSectionIndex(page);
     await analystFixture(page);
+  });
+
+  test("a London technical close keeps its pence unit and observation date", async ({ page }) => {
+    await page.route("**/api/backend/research/shell*", async (route) => {
+      const response = await route.fetch(), shell = await response.json();
+      await route.fulfill({ response, json: { ...shell, instruments: [...shell.instruments, {
+        ...shell.instruments[0], ticker: "ARCH.L", name: "Archive London", exchange: "LSE",
+        held: false, watchlisted: true, isFund: false, brokerPrice: null,
+      }] } });
+    });
+    await page.route("**/api/backend/research/ARCH.L/lens/technical?**", async (route) => {
+      const response = await route.fetch({ url: route.request().url().replace("/ARCH.L/", "/AAPL/") });
+      const lens = await response.json();
+      await route.fulfill({ response, json: { ...lens, ticker: "ARCH.L", market: null, valuation: null,
+        context: { ...lens.context, quote: { price: null, currency: "GBP", exchange: "LSE" } },
+        technical: { ...lens.technical, ticker: "ARCH", price: 3100, currency: "GBp", asOf: "2026-02-03" },
+      } });
+    });
+    await page.route("**/api/backend/research/ARCH.L/prices?**", (route) => route.fulfill({ json: {
+      ticker: "ARCH.L", currency: "GBp", points: [{ date: "2026-02-03", close: 3100 }], actualInterval: "1d",
+    } }));
+    await page.goto("/research?ticker=ARCH.L&view=technical");
+    const header = page.locator(".mx-security-price");
+    await expect(header.locator("strong")).toHaveText("£31.00");
+    await expect(header).toContainText(/3 Feb(?: 2026)? close/);
   });
 
   test("legacy links, keyboard navigation, Back and manual scrolling follow the section headings", async ({ page, isMobile }) => {
@@ -367,5 +401,95 @@ test.describe("research section navigation", () => {
     await expect(reading).toContainText("Sample Partners · Target 111.00");
     await expect(reading).not.toContainText("Close");
     await expect(page.getByRole("group", { name: "Historical firm targets" })).toHaveCount(0);
+  });
+
+  test("price, diagnosis and seasonality read as one page", async ({ page }) => {
+    const seasonality: string[] = [];
+    page.on("request", (request) => {
+      if (/\/research\/AAPL\/lens\/technical\?.*detail=seasonality/.test(request.url())) seasonality.push(request.url());
+    });
+    await page.goto("/research?ticker=AAPL&view=technical&technicalView=seasonality");
+    const index = page.getByRole("navigation", { name: "On this page" });
+    await expect(index.getByRole("link")).toHaveText(["Price", "Technical diagnosis", "Seasonality"]);
+    await expect(page.locator("#research-seasonality h2").first()).toBeFocused();
+    await expect(page.locator("#research-seasonality")).toContainText("Monthly seasonality");
+    expect(seasonality.length).toBeGreaterThan(0);
+    await index.getByRole("link", { name: "Technical diagnosis" }).click();
+    await expect(page.locator("#research-data h2").first()).toBeFocused();
+    await expect(index.getByRole("link", { name: "Technical diagnosis" })).toHaveAttribute("aria-current", "location");
+    await expect(page.getByRole("tab", { name: "Seasonality" })).toHaveCount(0);
+  });
+
+  test("financial sections read as one page and load every reported row on approach", async ({ page }) => {
+    let full = 0;
+    page.on("request", (request) => {
+      if (/\/research\/AAPL\/lens\/fundamentals\?.*detail=full/.test(request.url())) full += 1;
+    });
+    await page.goto("/research?ticker=AAPL&view=fundamentals");
+    const index = page.getByRole("navigation", { name: "On this page" });
+    await expect(index.getByRole("link")).toHaveText([
+      "Operating analysis", "Income", "Balance sheet", "Cash flow", "Segments", "Ownership & dividends", "All reported rows",
+    ]);
+    await expect(page.getByRole("region", { name: "Income statement" })).toBeAttached();
+    await expect(page.getByRole("region", { name: "Balance sheet" })).toBeAttached();
+    await expect(page.getByRole("region", { name: "Cash flow statement" })).toBeAttached();
+    expect(full).toBe(0);
+    await index.getByRole("link", { name: "All reported rows" }).click();
+    await expect(page.locator("#research-full h2").first()).toBeFocused();
+    await expect.poll(() => full).toBeGreaterThan(0);
+    // A former mode link opens its section, with the shared reporting controls above.
+    await page.goto("/research?ticker=AAPL&view=fundamentals&financialMode=cash&frequency=ttm");
+    await expect(page.locator("#research-cash h2").first()).toBeFocused();
+    await expect(index.getByRole("link", { name: "Cash flow" })).toHaveAttribute("aria-current", "location");
+    await expect(page.getByRole("radiogroup", { name: "Reporting frequency" }).or(page.getByRole("group", { name: "Reporting frequency" })).first()).toBeAttached();
+  });
+});
+
+test.describe("research section index", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+
+  test("a wide index floats over the reading until the reader pins it", async ({ page, isMobile }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.goto("/research?ticker=AAPL&view=technical");
+    const index = page.getByRole("navigation", { name: "On this page" });
+    const toggle = page.getByRole("button", { name: "Sections on this page" });
+    const pin = page.getByRole("button", { name: "Pin sections" });
+    const reading = page.locator(".mx-reading-sections");
+    if (isMobile) {
+      // Phones keep the index as the sticky strip.
+      await expect(index.getByRole("link", { name: "Seasonality" })).toBeVisible();
+      await expect(toggle).toBeHidden();
+      return;
+    }
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(index).toBeHidden();
+    await expect(pin).toHaveCount(0);
+    const width = (await reading.boundingBox())!.width;
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // Floating: the reading keeps its width and the faint index sits above it.
+    await expect(pin).toHaveAttribute("aria-pressed", "false");
+    expect((await reading.boundingBox())!.width).toBe(width);
+    // Frosted glass: a translucent tint over the blurred reading.
+    const glass = await page.locator(".mx-section-panel").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { tint: style.backgroundColor, blur: style.backdropFilter };
+    });
+    expect(glass.tint).toMatch(/\/ 0\.\d+\)$|^rgba\(/);
+    expect(glass.blur).toContain("blur(");
+    await toggle.evaluate((element) => (element as HTMLElement).blur());
+    await page.mouse.move(10, 600);
+    await expect.poll(() => index.evaluate((element) => getComputedStyle(element).opacity)).toBe("0.55");
+    await index.getByRole("link", { name: "Seasonality" }).click();
+    await expect(page.locator("#research-seasonality h2").first()).toBeFocused();
+    // Pinned: the index takes its own column and the reading narrows.
+    await pin.click();
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(async () => (await reading.boundingBox())!.width).toBeLessThan(width);
+    await page.reload();
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
+    await expect(index.getByRole("link", { name: "Seasonality" })).toBeVisible();
+    await pin.click();
+    await expect.poll(async () => (await reading.boundingBox())!.width).toBe(width);
   });
 });

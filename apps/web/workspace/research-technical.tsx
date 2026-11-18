@@ -8,13 +8,17 @@
 // FINISH: bounded desktop/mobile comparison, fresh finish review, local surface record.
 import type { ResearchLensSnapshot, TechnicalScoreSummary } from "@/lib/types";
 import { ArrowRight, CaretDown, CaretRight, Minus, TrendDown, TrendUp } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
 import { number, percent } from "./data";
 import { Empty, Help, Panel, Pending, QueryError, useCopy } from "./foundation";
 import { PriceHistory } from "./research-price";
 import { TechnicalView } from "./research-company";
+import { researchLensQuery } from "./research-queries";
+import { ResearchReading, technicalSections, useApproached } from "./research-reading";
+import { Seasonality } from "./research-seasonality";
 import { useRouteState } from "./route-state";
 import { factorMeaning, impactTone, isLatestSession, stateName, technicalGroups } from "./technical-diagnosis";
 
@@ -61,8 +65,8 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
   const [opened, setOpened] = useState<string | null>("trend");
   const tech = data.technical;
   const breakdown = tech?.scoreBreakdown;
-  if (!tech) return <div id="technical-diagnosis" tabIndex={-1}><Panel><Empty title={t("技术诊断尚未就绪", "Technical diagnosis unavailable")} /></Panel></div>;
-  return <div id="technical-diagnosis" tabIndex={-1}><Panel className="mx-tech-diagnosis" title={t("技术诊断", "Technical diagnosis")}
+  if (!tech) return <Panel bare title={t("技术诊断", "Technical diagnosis")}><Empty title={t("技术诊断尚未就绪", "Technical diagnosis unavailable")} /></Panel>;
+  return <Panel bare className="mx-tech-diagnosis" title={t("技术诊断", "Technical diagnosis")}
     help={t("每组右侧的数字是它对总分的影响：现有评分规则实际加减的分数，不是四个独立的百分制评分。缺失读数不参与评分；原始指标仍可展开查看。", "The number beside each group is its contribution to the total score: the points the existing scoring rules actually add or subtract, not four independent /100 scores. Missing readings add no points; original metrics remain available below.")}>
     {breakdown ? <div>{breakdown.groups.map((g) => {
       const open = opened === g.key;
@@ -89,27 +93,36 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
       {breakdown.clampAdjustment !== 0 && <p>{t("0–100 边界调整", "0–100 boundary adjustment")} {breakdown.clampAdjustment > 0 ? "+" : ""}{breakdown.clampAdjustment} → {breakdown.score}</p>}
     </details></div> : <Empty title={tech.scoreExplanationState === "mismatch" ? t("评分依据暂不可核对", "Score inputs cannot be reconciled") : t("评分依据尚未就绪", "Score inputs unavailable")} />}
     <details className="mx-details"><summary>{t("原始指标", "Original readings")}</summary><TechnicalView data={data} embedded /></details>
-  </Panel></div>;
+  </Panel>;
 }
 
-export function TechnicalWorkspace({ ticker, runId, snapshotId, data, pending, error, retry }: {
+export function TechnicalWorkspace({ ticker, runId, snapshotId, data, pending, error, retry, seasonality }: {
   ticker: string; runId: string; snapshotId?: string; data?: ResearchLensSnapshot; pending: boolean; error: boolean; retry: () => void;
+  /** A security's monthly seasonality, read below its diagnosis. */
+  seasonality?: ReactNode;
 }) {
+  const t = useCopy();
+  return <ResearchReading sections={seasonality ? technicalSections : technicalSections.slice(0, 2)} parameter="technicalView">
+    <div className="mx-tech-workspace">
+      <div id="research-price" className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} snapshotId={snapshotId} technical compactChart context={data} /></div>
+      <Panel bare className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
+      <div id="research-data" className="mx-tech-diagnosis-slot">{data ? <TechnicalDiagnosis data={data} />
+        : <Panel bare title={t("技术诊断", "Technical diagnosis")}>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}</div>
+    </div>
+    {seasonality}
+  </ResearchReading>;
+}
+
+/** Monthly seasonality loads as the reader approaches it, or at once when a link opens it. */
+export function SeasonalitySection({ ticker, revision, preview }: { ticker: string; revision?: string | null; preview: boolean }) {
+  const t = useCopy();
   const { params } = useRouteState("push");
-  const focused = useRef(false);
-  const focusDiagnosis = params.get("technicalView") === "data";
-  useEffect(() => {
-    if (focusDiagnosis && data && !focused.current) {
-      const target = document.getElementById("technical-diagnosis");
-      target?.scrollIntoView({ block: "nearest" });
-      target?.focus({ preventScroll: true });
-      focused.current = true;
-    }
-    if (!focusDiagnosis) focused.current = false;
-  }, [data, focusDiagnosis]);
-  return <div className="mx-tech-workspace">
-    <div className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} snapshotId={snapshotId} technical compactChart context={data} /></div>
-    <Panel className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
-    <div className="mx-tech-diagnosis-slot">{data ? <TechnicalDiagnosis data={data} /> : <Panel>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}</div>
+  const [box, near] = useApproached(params.get("technicalView") === "seasonality");
+  const lens = useQuery({ ...researchLensQuery(ticker, "technical", revision, "seasonality", preview), enabled: near });
+  return <div id="research-seasonality" ref={box}>
+    {lens.data ? <Seasonality data={lens.data} revision={revision} />
+      : <Panel title={t("月度季节性", "Monthly seasonality")}>
+        {lens.isError ? <QueryError retry={() => { void lens.refetch(); }} error={lens.error} /> : <Pending shape="chart" height={300} quiet />}
+      </Panel>}
   </div>;
 }

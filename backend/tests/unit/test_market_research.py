@@ -2,6 +2,7 @@ from datetime import UTC
 
 import numpy as np
 import pandas as pd
+import pytest
 from trading_max.research.market import MarketResearchService, _gbp_benchmark_series
 
 
@@ -59,16 +60,87 @@ def test_market_service_returns_typed_batches_without_network() -> None:
 
 
 def test_gbp_benchmark_preserves_fx_only_weekdays_without_duplicate_dates() -> None:
-    asset_index = pd.DatetimeIndex(["2026-08-03 00:00:00-04:00", "2026-08-05 00:00:00-04:00"])
-    fx_index = pd.date_range("2026-08-03", periods=3, freq="D", tz=UTC)
+    asset_index = pd.DatetimeIndex(["2026-11-25 00:00:00-04:00", "2026-11-27 00:00:00-04:00"])
+    fx_index = pd.date_range("2026-11-25", periods=3, freq="D", tz=UTC)
     asset = pd.DataFrame({"Close": [100.0, 110.0]}, index=asset_index)
     fx = pd.DataFrame({"Close": [2.0, 2.0, 2.0]}, index=fx_index)
 
+    asset.attrs.update(ticker="VOO", exchange="PCX")
     points = _gbp_benchmark_series(asset, fx)
 
     assert [point["date"] for point in points] == [
-        "2026-08-03",
-        "2026-08-04",
-        "2026-08-05",
+        "2026-11-25",
+        "2026-11-26",
+        "2026-11-27",
     ]
     assert [point["close"] for point in points] == [50.0, 50.0, 55.0]
+
+
+@pytest.mark.parametrize(
+    ("clock", "expected"),
+    [
+        ("2026-11-27T18:01:00Z", [("2026-11-25", 50), ("2026-11-26", 50)]),
+        ("2026-11-28T00:01:00Z", [("2026-11-26", 50), ("2026-11-27", 50)]),
+    ],
+)
+def test_benchmark_waits_for_both_final_closes(monkeypatch, clock, expected):
+    from trading_max.research import market
+    from trading_max.research import technical as technical_module
+
+    now = pd.Timestamp(clock)
+
+    class Clock(pd.Timestamp):
+        @classmethod
+        def now(cls, *, tz):
+            return now
+
+    class SyntheticPandas:
+        Timestamp = Clock
+
+        def __getattr__(self, name):
+            return getattr(pd, name)
+
+    monkeypatch.setattr(market, "pd", SyntheticPandas())
+    monkeypatch.setattr(technical_module, "pd", SyntheticPandas())
+
+    def history(symbol, period):
+        frame = _history(symbol, period)
+        index = ["2026-11-25", "2026-11-27"]
+        close = [100, 200]
+        if symbol == "GBPUSD=X":
+            index.insert(1, "2026-11-26")  # Genuine FX-only weekday.
+            close = [2, 2, 4]
+        tail = pd.DataFrame(
+            {
+                "Close": close,
+                "Open": close,
+                "Low": close,
+                "High": close,
+                "Volume": 1000,
+            },
+            index=pd.to_datetime(index, utc=True),
+        )
+        frame = pd.concat([frame, tail])
+        exchange = None if symbol == "GBPUSD=X" else "PCX"
+        frame.attrs.update(
+            ticker=symbol,
+            exchange=exchange,
+            provider_venue={"symbol": symbol, "exchangeName": exchange},
+        )
+        return frame
+
+    service = market.MarketResearchService(history_loader=history, adr_loader=lambda *args: None)
+    result, _ = service.run(["VOO"], include_options=False)
+    assert result.rows[0].as_of == "2026-11-27"
+    assert [(row["date"], row["close"]) for row in result.benchmark_series["VOO"][-2:]] == expected
+
+
+def test_benchmark_withholds_missing_equity_session_and_following_holiday():
+    dates = pd.date_range("2026-11-24", "2026-11-27")
+    asset = pd.DataFrame({"Close": [100, 200]}, index=dates[[0, 3]])
+    asset.attrs.update(ticker="VOO", exchange="PCX")
+    fx = pd.DataFrame({"Close": [2, 2, 2, 4]}, index=dates)
+    assert [(p["date"], p["close"]) for p in _gbp_benchmark_series(asset, fx)] == [
+        ("2026-11-24", 50),
+        ("2026-11-27", 50),
+    ]

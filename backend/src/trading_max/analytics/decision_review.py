@@ -37,9 +37,10 @@ import numpy as np
 import pandas as pd
 
 from trading_max.analytics.decision_prices import SecurityPrices
+from trading_max.analytics.review_evidence import HoldingMove
 from trading_max.research.calendar import market_calendar
 
-CALCULATION_VERSION = "decisions-v5"
+CALCULATION_VERSION = "decisions-v8"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
 MAX_ROUND_TRIPS = 500
@@ -118,7 +119,11 @@ def _hindsight(
     days = days[(days >= opening) & (days <= end)]
     if len(days) < 2 or not days.isin(security.final_days).all():
         return None
-    prices = security.closes.loc[days]
+    prices = security.observed_closes_gbp.reindex(days)
+    prices = prices[(prices > 0) & np.isfinite(prices)]
+    if opening not in prices.index or end not in prices.index:
+        return None
+    days = prices.index
     dividends = security.dividends
     if dividends.empty:
         dividends = pd.Series(0.0, index=days)
@@ -212,6 +217,7 @@ def build_decision_review(
     prices: Mapping[str, SecurityPrices],
     *,
     campaigns: Sequence[Mapping[str, Any]] = (),
+    holding_moves: Sequence[HoldingMove] = (),
     unpriced: Sequence[str] = (),
     as_of: pd.Timestamp,
     market: pd.Series | None = None,
@@ -259,6 +265,47 @@ def build_decision_review(
     means = (running["purchase_value"] / running["purchases"]).where(
         running["missing_purchase"] == 0
     )
+    # An untraded fall is an observation, never a broker fill. Measure a hypothetical
+    # purchase at that close using only this account's purchases through that day.
+    identities = {}
+    for identity, security in prices.items():
+        identities.setdefault(security.ticker, []).append(identity)
+    for move in holding_moves:
+        candidates = identities.get(move.ticker, [])
+        if move.change >= 0 or len(candidates) != 1 or candidates[0] not in means.index.levels[0]:
+            continue
+        identity = candidates[0]
+        security = prices[identity]
+        day = pd.Timestamp(move.date)
+        prior = means.loc[identity]
+        prior = prior[pd.to_datetime(prior.index) <= day]
+        if prior.empty or pd.isna(prior.iloc[-1]) or day not in security.final_days:
+            continue
+        basis = float(prior.iloc[-1])
+        after = security.closes_after(day)
+        if basis <= 0 or not len(after):
+            continue
+        move.average_purchase_gbp = _round(basis)
+        start = int(security.closes.index.get_loc(day))
+        close = float(security.closes.iloc[start])
+        for field, end in (
+            (
+                "hypothetical_horizon_gbp",
+                after[HORIZON_DAYS - 1] if len(after) >= HORIZON_DAYS else None,
+            ),
+            ("hypothetical_to_date_gbp", security.final_days[-1]),
+        ):
+            if end is not None and end > day and end in security.final_days:
+                change, _ = _window(security, start, close, end)
+                setattr(move, field, _round(basis * change) if change is not None else None)
+    # Basket membership is a ledger fact, independent of listing resolution or prices.
+    net_shares = fills["SharesN"].where(fills["Side"] == "buy", -fills["SharesN"])
+    net_buys = net_shares.groupby([fills["SecurityIdentity"], fills["BusinessDate"]]).sum(
+        min_count=1
+    )
+    positive = net_buys[net_buys > 0]
+    basket_members = positive[positive.groupby(level=1).transform("size") >= 2]
+    unpriced_basket_buys = []
     decisions: list[dict[str, Any]] = []
     round_trips: list[dict[str, Any]] = []
     unscored = 0
@@ -275,12 +322,33 @@ def build_decision_review(
             )
             for side, rows in day_rows.groupby("Side", sort=True)
         }
-        if security is None:
+        start = _close_on(security.closes, pd.Timestamp(day)) if security else None
+        basket_buy = (identity, day) in basket_members.index
+        unsettled_basket = basket_buy and not np.isfinite(day_rows["AmountGBP"]).all()
+        if security is None or start is None or start[1] <= 0 or unsettled_basket:
             unscored += len(legs)
-            continue
-        start = _close_on(security.closes, pd.Timestamp(day))
-        if start is None or start[1] <= 0:
-            unscored += len(legs)
+            if basket_buy:
+                amount, shares = legs["buy"]
+                bought = day_rows[day_rows["Side"] == "buy"]
+                if shares > 0:
+                    unit = amount / shares if np.isfinite(bought["AmountGBP"]).all() else None
+                    net = float(basket_members.loc[(identity, day)])
+                    ticker = str(bought["Ticker"].iloc[0])
+                    unpriced_basket_buys.append(
+                        {
+                            "date": pd.Timestamp(day).date().isoformat(),
+                            "ticker": ticker,
+                            "name": str(bought.iloc[0].get("Name") or ticker),
+                            "side": "buy",
+                            "kind": "T" if len(legs) > 1 else "B",
+                            "quantity": _round(net, 6),
+                            "amount_gbp": _round(net * unit) if unit is not None else None,
+                            "settled_per_share_gbp": _round(unit, 4),
+                            "first_fill_at": day_rows["Time"].min().isoformat(),
+                            "basket_buy": True,
+                            "unpriced": True,
+                        }
+                    )
             continue
         stamp = pd.Timestamp(day)
         stamp = (stamp.tz_convert("UTC").tz_localize(None) if stamp.tz else stamp).normalize()
@@ -348,6 +416,11 @@ def build_decision_review(
                 if horizon_return is not None:
                     ending = _market_close(market, sessions, horizon_day)
                     market_horizon = None if ending is None else ending / opening - 1.0
+        observed_closes = security.observed_closes_gbp
+        prior_index = observed_closes.index.searchsorted(stamp, side="left") - 1
+        prior_day = observed_closes.index[prior_index] if prior_index >= 0 else None
+        prior_close = float(observed_closes.iloc[prior_index]) if prior_day is not None else None
+        first_fill = day_rows["Time"].min()
         for side, (amount, shares) in legs.items():
             if not amount:
                 unscored += 1
@@ -375,6 +448,14 @@ def build_decision_review(
                     "kind": "T" if traded_both else side[0].upper(),
                     "quantity": _round(shares, 6),
                     "amount_gbp": _round(amount),
+                    "first_fill_at": first_fill.isoformat() if pd.notna(first_fill) else None,
+                    "prior_close_gbp": _round(prior_close, 4),
+                    "prior_close_date": prior_day.date().isoformat()
+                    if prior_close is not None
+                    else None,
+                    "settled_per_share_gbp": _round(amount / shares, 4) if shares > 0 else None,
+                    "listing": security.symbol,
+                    **({"basket_buy": True} if side == "buy" and basket_buy else {}),
                     "return_horizon": _round(horizon_return, 6),
                     "effect_horizon_gbp": None
                     if horizon_return is None
@@ -418,6 +499,9 @@ def build_decision_review(
         "buys": _side_summary([row for row in decisions if row["side"] == "buy"]),
         "sells": _side_summary([row for row in decisions if row["side"] == "sell"]),
         "decisions": decisions[-MAX_DECISIONS:],
+        "unpriced_basket_buys": sorted(
+            unpriced_basket_buys, key=lambda r: (r["date"], r["ticker"])
+        )[-MAX_DECISIONS:],
         "round_trips": round_trips[-MAX_ROUND_TRIPS:],
         "round_trip_summary": {
             "count": len(round_trips),

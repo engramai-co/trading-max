@@ -169,6 +169,7 @@ def _api_record(record: DomainJobRecord) -> JobRecord:
     status = JobStatus(record.status.value)
     stage_codes = [stage.return_code for stage in record.stages if stage.return_code is not None]
     return JobRecord(
+        attempts=record.attempts,
         schema_version=2,
         job_id=record.job_id,
         scope=record.scope,
@@ -781,9 +782,12 @@ class TypedJobManager:
         except KeyError as exc:
             raise FileNotFoundError(str(exc)) from exc
 
-    def get(self, job_id: str) -> JobRecord:
+    def get(self, job_id: str, *, include_system: bool = True) -> JobRecord:
         try:
-            return _api_record(self.queue.get(job_id))
+            record = self.queue.get(job_id)
+            if not include_system and record.trigger == "system":
+                raise FileNotFoundError("Internal job")
+            return _api_record(record)
         except KeyError as exc:
             raise FileNotFoundError(str(exc)) from exc
 

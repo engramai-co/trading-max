@@ -17,6 +17,38 @@ class PinnedListing:
     held: FundListingIdentity | None = None
     price_row: dict | None = None
     fund_bars: bool = False
+    quote_unit: str = ""
+
+    @property
+    def symbol(self):
+        """Qualified symbol for this listing, independent of the legacy bar key."""
+        return next((s for s in (self.requested, self.route, self.ticker) if "." in s), self.ticker)
+
+    def feed_row(self, lookup):
+        """Prefer the qualified feed. Only a verified stored bar key can supply its fallback."""
+        row = lookup(self.symbol)
+        if (
+            row is None
+            and self.ticker != self.symbol
+            and self.ticker in (*self.aliases, self.requested)
+        ):
+            row = lookup(self.ticker)
+        return row
+
+    def published_row(self, rows):
+        return self.feed_row(lambda symbol: exact_row(rows, symbol))
+
+    def same_listing(self, other):
+        if self.symbol != other.symbol or self.venue().conflict or other.venue().conflict:
+            return False
+        if self.held and other.held and self.held.key != other.held.key:
+            return False
+        return not resolve_venue(
+            self.symbol,
+            *self.claims,
+            *other.claims,
+            aliases=(*self.aliases, self.requested, *other.aliases, other.requested),
+        ).conflict
 
     @classmethod
     def from_price_series(cls, requested, series):

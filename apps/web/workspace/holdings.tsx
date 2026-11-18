@@ -15,6 +15,7 @@ import { useAllocationChartColours } from "@/ui/charts/palette";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
+import { quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
@@ -72,15 +73,16 @@ function Positions() {
   const { locale, timeZone } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
-  const query = useDashboardLens("holdings-positions");
-  const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
-  const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
+  const cited = params.get("evidence") && params.get("snapshotId") || undefined;
   const account = ["A", "B"].includes(params.get("account") ?? "")
     ? params.get("account")!
     : "all";
+  const query = useDashboardLens("holdings-positions",cited && (account === "A" || account === "B") ? account : undefined,true,cited ? {detail:"summary"} : undefined,cited);
+  const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
+  const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const search = params.get("q") ?? "";
   const requestedSort = holdingSort(params.get("positionSort"));
-  const [selected, setSelected] = useState<{ holding: Holding; runId?: string; accountAsOf?: string | null; scope: string } | null>(null);
+  const [selected, setSelected] = useState<{ holding: Holding; runId?: string; positionAsOf?: string | null; scope: string } | null>(null);
   const positionData = query.data;
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
@@ -108,23 +110,25 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
-  const accountStamp = (holding: Holding) => positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf;
+  const positionStamp = (holding: Holding) => positionData?.positionAsOf && (holding.account === "A" || holding.account === "B")
+    ? positionData.positionAsOf[holding.account]
+    : positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf;
   const snapshotBasis = (holding: Holding) => {
-    const at = accountStamp(holding);
+    const at = positionStamp(holding);
     return <small className="mx-holding-quote-basis">{t("券商快照", "Broker snapshot")} · {at
       ? <time dateTime={at}>{formatDateTime(at, locale, timeZone, now)}</time>
-      : t("时间未提供", "time unavailable")}</small>;
+      : t("时间未提供", "Time unavailable")}</small>;
   };
   function selectHolding(holding: Holding) {
     // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.
-    const accountAsOf = accountStamp(holding);
-    setSelected({ holding, accountAsOf, runId: positionData?.runId, scope: account });
+    const positionAsOf = positionStamp(holding);
+    setSelected({ holding, positionAsOf, runId: positionData?.runId, scope: account });
   }
   // Totals come from the broker's account summaries, matching Overview; positions are the fallback.
   const summary = account === "all" ? null : query.data?.accounts?.find((item) => item.code === account);
-  const invested = (account === "all" ? query.data?.totalInvestedGbp : summary?.investedGbp)
+  const invested = ((cited || account === "all") ? query.data?.totalInvestedGbp : summary?.investedGbp)
     ?? scoped.reduce((sum, h) => sum + h.currentValueGbp, 0);
-  const pnl = (account === "all" ? query.data?.totalUnrealizedPnlGbp : summary?.unrealizedPnlGbp)
+  const pnl = ((cited || account === "all") ? query.data?.totalUnrealizedPnlGbp : summary?.unrealizedPnlGbp)
     ?? scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
   // Weight bars compare positions with each other: the largest fills the track.
   const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));
@@ -154,6 +158,7 @@ function Positions() {
       )}
     </button>
   );
+  if (cited && query.isError) return <Empty title={t("引用的数据版本暂不可用","Cited publication unavailable")} />;
   return (
     <>
           <div className="mx-panel mx-holdings-summary">
@@ -176,7 +181,7 @@ function Positions() {
                 ]}
               />
               <span className="mx-freshness-group">
-                <Freshness date={query.data?.brokerAsOf} />
+                <Freshness date={summary?.asOf ?? query.data?.brokerAsOf} />
                 {failure && <UpdateFailure {...failure} />}
               </span>
             </div>
@@ -320,15 +325,11 @@ function Positions() {
                               <td className="mx-align-right">
                                 {currency(h.costGbp, "GBP", 2)}
                                 <small>
-                                  {currency(
-                                    h.dilutedCostPerShareNative,
-                                    h.dilutedCostCurrency,
-                                    2,
-                                  )}
+                                  {quoteValue(h.dilutedCostPerShareNative, h.dilutedCostCurrency)}
                                 </small>
                               </td>
                               <td className="mx-align-right">
-                                {currency(h.currentPrice, h.priceCurrency, 2)}
+                                {quoteValue(h.currentPrice, h.priceCurrency)}
                                 {snapshotBasis(h)}
                               </td>
                               <td className="mx-align-right">
@@ -454,7 +455,7 @@ function Positions() {
                           </span>
                           <span>
                             {t("报价", "Price")}{" "}
-                            {currency(h.currentPrice, h.priceCurrency, 2)}
+                            {quoteValue(h.currentPrice, h.priceCurrency)}
                             {snapshotBasis(h)}
                           </span>
                         </footer>
@@ -508,7 +509,7 @@ function Positions() {
           <HoldingDetail
             holding={selected.holding}
             account={accountName(profile, selected.holding.account)}
-            accountAsOf={selected.accountAsOf}
+            positionAsOf={selected.positionAsOf}
             runId={selected.runId}
             today={today}
             now={now}

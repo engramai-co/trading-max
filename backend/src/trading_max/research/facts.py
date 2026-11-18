@@ -529,27 +529,32 @@ def make_quote(
     venue: VenueResolution | None = None,
 ) -> QuoteSnapshot:
     metrics = fundamental.get("metrics") or {}
-    raw_unit = str(fundamental.get("currency") or market.get("currency") or "") or None
-    currency, divisor = major_quote_unit(raw_unit or "")
-    price = number(market.get("spot", market.get("price")))
+    native_unit = fundamental.get("currency") or metrics.get("currency")
+    native_currency, native_divisor = major_quote_unit(str(native_unit or ""))
     timestamp = metrics.get("regularMarketTime")
     regular_price = number(metrics.get("regularMarketPrice"))
-    if regular_price is not None and isinstance(timestamp, (int, float)):
-        price = regular_price / divisor
-    as_of = (
-        datetime.fromtimestamp(timestamp, UTC).isoformat()
-        if isinstance(timestamp, (float, int))
-        else str(market.get("asOf") or "") or None
-    )
+    if regular_price is not None and isinstance(timestamp, (int, float)) and native_currency:
+        price = regular_price / native_divisor
+        currency, raw_unit = native_currency, native_unit
+        as_of = datetime.fromtimestamp(timestamp, UTC).isoformat()
+        session = "regular"
+    else:
+        market_unit = market.get("currency")
+        currency, divisor = major_quote_unit(str(market_unit or ""))
+        amount = number(market.get("spot", market.get("price")))
+        compatible = currency and (not native_currency or currency == native_currency)
+        price = amount / divisor if amount is not None and compatible else None
+        as_of = (str(market.get("asOf") or "") or None) if price is not None else None
+        # Analyst targets and the previous close use the listing's native unit.
+        raw_unit = native_unit or market.get("quoteUnit") or market_unit
+        currency = currency if price is not None else native_currency or currency
+        session = "unknown"
     previous = number(metrics.get("regularMarketPreviousClose"))
-    if previous is not None:
-        previous /= divisor
+    if previous is not None and native_currency and native_currency == currency:
+        previous /= native_divisor
+    else:
+        previous = None
     change = price - previous if price is not None and previous is not None else None
-    session = (
-        "regular"
-        if regular_price is not None and isinstance(timestamp, (int, float))
-        else "unknown"
-    )
     return QuoteSnapshot(
         id=fingerprint([ticker, currency, price, as_of]),
         ticker=ticker,

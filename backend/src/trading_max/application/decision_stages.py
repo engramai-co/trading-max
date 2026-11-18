@@ -73,7 +73,7 @@ class AccountDecisionStage:
     """Publish decision outcomes and reconciled allocation evidence."""
 
     name = "accounts.decisions"
-    version = "decision-review-stage-v9"
+    version = "decision-review-stage-v10"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -242,6 +242,7 @@ class AccountDecisionStage:
             trades,
             prices,
             campaigns=campaigns,
+            holding_moves=evidence.holding_moves,
             unpriced=unpriced,
             as_of=end_day,
             market=self._market(start, end_day, now),

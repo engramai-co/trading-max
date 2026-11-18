@@ -28,6 +28,7 @@ export function TimelineChart({
   observations,
   reading,
   recordSource,
+  retainedRecords = false,
   showHistoryEvidence = true,
   range,
   pendingCashFlows = false,
@@ -35,6 +36,7 @@ export function TimelineChart({
   drawdownHeading,
   emptyHeadingLevel,
   fullscreen = false,
+  onBrush,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -46,6 +48,7 @@ export function TimelineChart({
   /** The surface's own figures for a row; by default every plotted line. */
   reading?: TimelineReading;
   recordSource?: HistorySelection;
+  retainedRecords?: boolean;
   /** Keep the plotted source styles and tooltip when a surface puts provenance in its help. */
   showHistoryEvidence?: boolean;
   range?: Range;
@@ -55,6 +58,7 @@ export function TimelineChart({
   drawdownHeading?: ReactNode;
   emptyHeadingLevel?: 2 | 3;
   fullscreen?: boolean;
+  onBrush?: (start: string, end: string) => void;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -86,7 +90,7 @@ export function TimelineChart({
               : t("出入金核对完成后，将恢复本区间的净盈亏曲线。", "The net P&L chart returns after deposits and withdrawals are reconciled.")
             : undefined}
         />
-        {showHistoryEvidence && recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} label={label} />}
+        {showHistoryEvidence && recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} retained={retainedRecords} label={label} />}
       </>
     );
   }
@@ -155,6 +159,10 @@ export function TimelineChart({
       key={range ?? label}
       label={label}
       fullscreen={fullscreen}
+        onBrush={onBrush && ((start,end) => {
+          const a=rows.get(start), b=rows.get(end);
+          if (a!=null && b!=null) onBrush(dates[a], dates[b]);
+        })}
       overlay={moneyLayout && <>
         <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
           <Legend items={layers[1].lines.map((line, index) => ({ label: line.name, dashed: line.dashed, colour: timelineLineColour(colours, 1, index, line) }))} />
@@ -181,7 +189,7 @@ export function TimelineChart({
           ))}
         </div>
       )}
-      {showHistoryEvidence && (recordSource ? <HistoryRecords key={recordSource.range + ":" + recordSource.scope} selection={recordSource} label={label} /> : <details className="mx-chart-data">
+      {showHistoryEvidence && (recordSource ? <HistoryRecords key={recordSource.range + ":" + recordSource.scope} selection={recordSource} retained={retainedRecords} label={label} /> : <details className="mx-chart-data">
         <summary>{intraday || observations?.some((point) => point.intraday) ? t("查看精确记录", "View exact observations") : t("查看同日精确数据", "View aligned exact values")}</summary>
         <EvidenceTable
           label={label}

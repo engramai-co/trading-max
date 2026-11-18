@@ -837,7 +837,7 @@ class ResearchPriceSeries(ApiModel):
     quote_exchange: str | None = None
     observed_series_id: str | None = None
     snapshot_id: str | None = None
-    # The route ticker can be an alias. Event readers join the actual published bar row.
+    # The legacy storage key can differ from the verified listing used for external reads.
     published_bar_ticker: str | None = Field(default=None, exclude=True)
     venue_claims: tuple[VenueClaim, ...] = Field(default=(), exclude=True)
     published_fund_row: bool = Field(default=False, exclude=True)
@@ -1066,6 +1066,7 @@ class ValuationSensitivity(ApiModel):
 class ValuationRow(ApiModel):
     baseline_model_id: str | None = None
     ticker: str
+    spot_as_of: str | None = None
     assumptions: dict[str, Any] = Field(default_factory=dict)
     as_of: str
     currency: str
@@ -1396,7 +1397,7 @@ class TradeDecision(ApiModel):
     side: Literal["buy", "sell"]
     kind: Literal["B", "S", "T"]
     quantity: float | None = None
-    amount_gbp: float
+    amount_gbp: float | None = None
     return_horizon: float | None = None
     effect_horizon_gbp: float | None = None
     return_to_date: float | None = None
@@ -1412,6 +1413,9 @@ class TradeDecision(ApiModel):
     observed_days: int | None = None
     #: Whether the HORIZON_DAYS window has closed and is scored; absent on older artifacts.
     horizon_complete: bool | None = None
+    before_earnings: bool | None = None
+    basket_buy: bool | None = None
+    unpriced: bool | None = None
     #: Present on the decisions the review lists: events from a week before to the horizon.
     events: list[DecisionEvent] | None = None
 
@@ -1468,6 +1472,7 @@ class AccountDecisions(ApiModel):
     buys: DecisionSide = Field(default_factory=DecisionSide)
     sells: DecisionSide = Field(default_factory=DecisionSide)
     decisions: list[TradeDecision] = Field(default_factory=list)
+    unpriced_basket_buys: list[TradeDecision] = Field(default_factory=list)
     round_trips: list[RoundTripReview] = Field(default_factory=list)
     round_trip_summary: RoundTripSummary = Field(default_factory=RoundTripSummary)
     closed_trades: list[ClosedTradeReview] = Field(default_factory=list)
@@ -1504,6 +1509,8 @@ class DashboardLensSnapshot(ApiModel):
     #: When the selected account review was built. Its figures are as of this
     #: moment, which can be hours older than broker_as_of.
     review_as_of: str | None = None
+    # Layout hint for review clients. Tool and reading access still requires live readiness.
+    review_habits_consented: bool = False
     selected_cfd_review: CfdAccountReview | None = None
     selected_account_report: dict[str, Any] | None = None
     selected_account_decisions: AccountDecisions | None = None
@@ -1513,6 +1520,7 @@ class DashboardLensSnapshot(ApiModel):
     cfd: CfdSummary | None = None
     cfd_review: CfdAccountReview | None = None
     review_summaries: list[OverviewReviewSummary] = Field(default_factory=list)
+    position_as_of: dict[InvestableAccountCode, str | None] = Field(default_factory=dict)
     holdings: list[Holding] = Field(default_factory=list)
     nav: list[NavPoint] = Field(default_factory=list)
     intraday_nav: list[NavPoint] = Field(default_factory=list)
@@ -1534,6 +1542,7 @@ class DashboardResponse(ApiModel):
     total_invested_gbp: float
     total_unrealized_pnl_gbp: float
     latest_model_day_return: float | None
+    position_as_of: dict[InvestableAccountCode, str | None] = Field(default_factory=dict)
     accounts: list[AccountSummary]
     account_analysis: dict[AccountCode, AccountAnalysisMetrics]
     account_reviews: dict[InvestableAccountCode, AccountReview] = Field(default_factory=dict)

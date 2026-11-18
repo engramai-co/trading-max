@@ -6,18 +6,62 @@
 }
 .mx-reading-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 142px;
-  gap: 24px;
+  grid-template-columns: minmax(0, 1fr) 32px;
+  gap: 16px;
   align-items: start;
 }
-.mx-section-index {
+/* Closed or floating, the reading keeps its width; only a pinned index takes a column. */
+.mx-reading-layout[data-index="pin"] {
+  grid-template-columns: minmax(0, 1fr) 142px;
+  gap: 24px;
+}
+.mx-section-rail {
   position: sticky;
   top: calc(var(--mx-reading-top) + 12px);
   grid-column: 2;
   grid-row: 1;
   display: grid;
-  gap: 4px;
+  gap: 8px;
+  min-width: 0;
   z-index: 4;
+}
+.mx-section-panel {
+  display: grid;
+  gap: 6px;
+}
+.mx-section-tools {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+}
+.mx-section-toggle,
+.mx-section-pin {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mx-muted);
+  cursor: pointer;
+}
+.mx-section-toggle:hover,
+.mx-section-pin:hover {
+  background: var(--mx-soft);
+  color: var(--mx-ink);
+}
+.mx-section-toggle[aria-expanded="true"],
+.mx-section-pin[aria-pressed="true"] {
+  color: var(--mx-ink);
+}
+.mx-section-index {
+  display: grid;
+  gap: 4px;
+}
+.mx-reading-layout[data-index="closed"] .mx-section-index {
+  display: none;
 }
 .mx-section-index a {
   padding: 7px 10px;
@@ -48,6 +92,10 @@
   gap: 16px;
   scroll-margin-top: calc(var(--mx-reading-top) + 12px);
 }
+/* The chart and its diagnosis share the score rail's grid; each still lands below the bar. */
+.mx-reading-sections .mx-tech-workspace > [id] {
+  scroll-margin-top: calc(var(--mx-reading-top) + 12px);
+}
 .mx-reading-sections > section > h2 {
   font-size: 18px;
   margin: 0;
@@ -64,7 +112,7 @@
 }
 .mx-valuation-readout {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(min-content, 1fr);
 }
 .mx-valuation-readout > .mx-metric {
   min-width: 0;
@@ -75,11 +123,38 @@
   border: 0;
   padding-inline-start: 0;
 }
+.mx-valuation-readout > .mx-metric:last-child {
+  padding-inline-end: 0;
+}
+.mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
+  flex-wrap: nowrap;
+}
 .mx-valuation-readout .mx-number {
   font-size: clamp(18px, 2.3cqi, 28px);
 }
 .mx-valuation-readout .mx-metric-note {
   min-height: 1lh;
+}
+/* Keep the source line while the preview is pending. The disclosure wraps in its own column. */
+.mx-valuation-source {
+  display: block;
+  min-height: 1lh;
+}
+/* A compact readout can lend width to the translated note before it needs another line. */
+.mx-valuation-readout .mx-valuation-floor {
+  inline-size: max-content;
+  max-inline-size: 40cqi;
+}
+.mx-valuation-floor[data-label]::before {
+  visibility: hidden;
+  content: attr(data-label);
+}
+.mx-valuation-floor[data-label]:not([data-pending]) {
+  block-size: 0;
+  overflow: hidden;
+}
+.mx-valuation-readout > .mx-metric:last-child .mx-metric-note {
+  min-height: 2lh;
 }
 .mx-reverse-feedback {
   display: grid;
@@ -91,8 +166,12 @@
 .mx-reverse-status[data-settled]:not(:focus-within) {
   visibility: hidden;
 }
-.mx-reverse-status {
+.mx-reverse-status,
+.mx-valuation-floor {
   display: block;
+}
+.mx-financial-table .mx-valuation-floor {
+  white-space: normal;
 }
 .mx-valuation-readout .mx-metric-change {
   white-space: nowrap;
@@ -142,18 +221,78 @@
 .mx-reading-sections .mx-model-reference-grid {
   grid-template-columns: minmax(0, 1fr);
 }
+@container research-reading (min-width: 921px) {
+  .mx-reading-sections > .mx-model-workbench[data-draft-enabled] {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .mx-model-workbench[data-draft-enabled] .mx-model-output {
+    grid-column: 1;
+  }
+  .mx-model-workbench[data-draft-enabled] .mx-model-reference-grid {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.mx-assumption-picker[data-reviewing] {
+  block-size: 26rem;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-gutter: stable;
+}
+.mx-model-workbench:has(.mx-assumption-picker[data-reviewing]) .mx-scenario-cards button {
+  grid-template-rows: auto auto auto 3lh;
+  align-content: start;
+}
+.mx-draft-status:empty {
+  margin: 0;
+}
+/* A floating index grows from its button as frosted glass over the reading; its text stays faint
+   until the reader points at it. */
+@container research-reading (min-width: 921px) {
+  .mx-reading-layout[data-index="float"] .mx-section-panel {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 184px;
+    padding: 4px 4px 8px;
+    border: 1px solid color-mix(in srgb, var(--mx-border) 70%, transparent);
+    border-radius: 12px;
+    /* A fine grain over a thin tint gives the blur a frosted surface. */
+    background: url("/textures/frost-grain.svg"), color-mix(in srgb, var(--mx-surface) 22%, transparent);
+    -webkit-backdrop-filter: blur(12px) saturate(1.5);
+    backdrop-filter: blur(12px) saturate(1.5);
+    box-shadow: 0 8px 28px rgb(17 24 39 / 10%);
+  }
+  .mx-reading-layout[data-index="float"] .mx-section-index {
+    opacity: 0.55;
+    transition: opacity 160ms ease-out;
+  }
+  .mx-reading-layout[data-index="float"] .mx-section-panel:is(:hover, :has(:focus-visible)) .mx-section-index {
+    opacity: 1;
+  }
+}
 @container research-reading (max-width: 920px) {
-  .mx-reading-layout {
+  .mx-reading-layout,
+  .mx-reading-layout[data-index="pin"] {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
-  .mx-section-index {
+  /* Narrow readings keep the index as the sticky strip, so the control is not needed. */
+  .mx-section-rail {
     grid-area: 1 / 1;
     top: var(--mx-reading-top);
-    display: flex;
-    overflow-x: auto;
+    display: block;
     background: var(--mx-canvas);
     border-bottom: 1px solid var(--mx-border);
+  }
+  .mx-section-tools {
+    display: none;
+  }
+  .mx-section-index,
+  .mx-reading-layout[data-index="closed"] .mx-section-index {
+    display: flex;
+    overflow-x: auto;
     gap: 8px;
   }
   .mx-section-index a {
@@ -169,7 +308,8 @@
   .mx-reading-sections {
     grid-area: 2 / 1;
   }
-  .mx-reading-sections > [id], .mx-reading-sections #valuation-results {
+  .mx-reading-sections > [id], .mx-reading-sections #valuation-results,
+  .mx-reading-sections .mx-tech-workspace > [id] {
     scroll-margin-top: calc(var(--mx-reading-top) + 56px);
   }
   .mx-reading-sections .mx-model-workbench, .mx-reading-sections .mx-model-reference-grid {
@@ -215,8 +355,15 @@
   .mx-compact-records abbr {
     text-decoration: none;
   }
+}
+/* A side panel can leave the readout as little room as a phone viewport. */
+@container research-reading (max-width: 39rem) {
   .mx-valuation-readout {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .mx-valuation-readout .mx-valuation-floor {
+    inline-size: auto;
+    max-inline-size: none;
   }
   .mx-valuation-readout > .mx-metric {
     display: grid;
@@ -234,7 +381,6 @@
   /* Reserve the wrapped reverse label and its help control before the model arrives. */
   .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
     min-height: 2lh;
-    flex-wrap: nowrap;
   }
   .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-note {
     min-height: 2lh;
@@ -251,6 +397,8 @@
     margin: 0;
     font-size: 18px;
   }
+}
+@media (max-width: 767px) {
   .mx-reading-sections .mx-table {
     width: max-content;
     min-width: 100%;

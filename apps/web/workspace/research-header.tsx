@@ -6,13 +6,12 @@ import { ArrowClockwise, CaretDown, DotsThree, Trash } from "@phosphor-icons/rea
 import { useEffect, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
-import { numeric } from "@/lib/numeric";
-import { currency, object, percent, tone } from "@/workspace/data";
+import { currency, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
 import { companyLogoSrc, Panel, Tag, UpdateFailure, useCopy } from "./foundation";
 import { DemoAsOf, useDemonstration } from "./demonstration";
 import Link from "./link";
-import { priceBasis, type PriceTime } from "./research-price-basis";
+import { lensFallback, priceBasis, type PriceTime } from "./research-price-basis";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
 
@@ -77,13 +76,11 @@ export function SecurityHeader({
   onSwitch: () => void;
 }) {
   const t = useCopy();
-  const market = object(quote?.market);
   const now = useMinuteClock();
   const basis = priceBasis(
     selected,
     quote?.context?.quote,
-    numeric(market.spot ?? quote?.technical?.price ?? quote?.valuation?.spot),
-    typeof market.currency === "string" ? market.currency : null,
+    lensFallback(quote),
     new Date(now),
   );
   // Older services report only the look-through exposure.
@@ -153,14 +150,14 @@ export function SecurityHeader({
             {quoteValue(
               basis.price,
               basis.currency,
-              t("币种未提供", "Currency unavailable"),
+              { unknownLabel: t("币种未提供", "Currency unavailable") },
             )}
           </strong>}
           {basis.changePct != null && (
             <small className={"mx-security-change mx-" + tone(basis.changePct)}>
               {percent(basis.changePct, true, 2)}
               {basis.change != null &&
-                " (" + quoteValue(basis.change, basis.currency, "—") + ")"}
+                " (" + quoteValue(basis.change, basis.currency) + ")"}
             </small>
           )}
           <div className="mx-quote-as-of">

@@ -13,21 +13,21 @@ import { valuationNote } from "@/lib/portfolio/history";
 import type { HistoryPage, HistorySelection } from "@/lib/portfolio/prepared";
 
 /** Exact source rows load only when opened; page keys pin the chart's snapshot. */
-export function HistoryRecords({ selection, label }: { selection: HistorySelection; label: string }) {
+export function HistoryRecords({ selection, label, retained = false }: { selection: HistorySelection; label: string; retained?: boolean }) {
   const t = useCopy();
   const [open, setOpen] = useState(false);
   useReadingLock(open);
   const [page, setPage] = useState(1);
   const labels = usePaginationLabels();
   const query = useQuery({
-    queryKey: ["history-records", selection, page], enabled: open,
-    queryFn: ({ signal }) => fetchHistory<HistoryPage>(selection, signal, page),
-    staleTime: Infinity, gcTime: 60_000, retry: 1,
+    queryKey: ["history-records", selection, page, retained], enabled: open,
+    queryFn: ({ signal }) => fetchHistory<HistoryPage>(selection, signal, page, [], retained),
+    staleTime: retained ? 0 : Infinity, gcTime: 60_000, retry: 1,
   });
   const data = query.data;
   return <details className="mx-chart-data" onToggle={(event) => setOpen(event.currentTarget.open)}>
     <summary>{t("查看精确记录", "View exact observations")}</summary>
-    {open && (query.isPending ? <Pending compact /> : query.isError ? <QueryError retry={query.refetch} /> : data && <>
+    {open && ((query.isPending || (retained && query.isFetching)) ? <Pending compact /> : query.isError ? <QueryError retry={query.refetch} /> : data && <>
       <EvidenceTable label={label} totalRows={data.total}
         rows={data.points.map((point, index) => ({ point, index }))}
         columns={[

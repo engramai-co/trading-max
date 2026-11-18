@@ -529,19 +529,21 @@ export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
 export function QueryError({
   retry,
   showDataStatusLink = true,
+  title,
   error,
 }: {
   error?: unknown;
   retry: () => unknown;
   showDataStatusLink?: boolean;
+  title?: string;
 }) {
   const t = useCopy();
   const detail = useReadErrorCopy();
   return (
     <Panel>
       <Empty
-        title={isReadTimeout(error)
-          ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable")}
+        title={title ?? (isReadTimeout(error)
+          ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable"))}
         description={detail}
         action={
           <Group>
@@ -706,7 +708,7 @@ export function Tabs<T extends string>({
   value: T;
   onChange: (value: T) => void;
   /** `short` is the phone label, so a long tab row fits without scrolling. */
-  options: Array<{ value: T; label: string; short?: string }>;
+  options: Array<{ value: T; label: string; short?: string; ref?: RefObject<HTMLButtonElement | null> }>;
   label: string;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -754,6 +756,7 @@ export function Tabs<T extends string>({
           type="button"
           role="tab"
           key={option.value}
+          ref={option.ref}
           aria-label={option.short ? option.label : undefined}
           aria-selected={value === option.value}
           tabIndex={value === option.value ? 0 : -1}

@@ -4,8 +4,10 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { formatCalendarDate, formatCompactCurrency } from "@/ui/formatters";
-import { currency, number, percent, tone } from "@/workspace/data";
+import { number, percent, tone } from "@/workspace/data";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { Metric, Panel, useCopy } from "./foundation";
+import { ValuationFloorNote } from "./valuation-floor-note";
 import type { Preview } from "./research-facts";
 
 export type ModelReading = {
@@ -32,7 +34,12 @@ function RevenueReading({ result, retry, refreshing }: { result: Preview } & Ref
   }, [attempt, refreshing, retry]);
 
   const label = t("现价隐含的第五年营收", "Year-five revenue implied by price");
-  const amount = formatCompactCurrency(result.reverseValue, locale, result.basis.currency);
+  const unit = quoteUnit(result.basis.currency);
+  const amount = formatCompactCurrency(
+    result.reverseValue == null ? null : result.reverseValue / unit.divisor,
+    locale,
+    unit.currency || result.basis.currency,
+  );
   return <Metric label={label}
     value={<span ref={value} tabIndex={-1} role="group" aria-label={label + " · " + amount}>
       {amount}
@@ -88,10 +95,11 @@ function ReverseReading({ result, retry, refreshing }: { result?: Preview } & Re
     helpBasis={limits && t("求解区间", "Search range") + " " + percent(limits[0]) + " – " + percent(limits[1])} />;
 }
 
-export function ValuationReadout({ data, preview, reading, retry, refreshing }: {
+export function ValuationReadout({ data, preview, reading, retry, refreshing, withheldReason }: {
   data: ResearchLensSnapshot;
   preview?: Preview;
   reading?: ModelReading;
+  withheldReason?: string;
   retry?: () => Promise<unknown>;
   refreshing?: boolean;
 }) {
@@ -110,9 +118,12 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing }: 
       note={[percentile, latest && formatCalendarDate(latest.date, locale)].filter(Boolean).join(" · ")} />
     <ReverseReading result={result} retry={retry} refreshing={refreshing} />
     <Metric label={t("中性情景", "Base scenario")} value={base && result ? <>
-      {currency(base.value, result.basis.currency, 2)}
+      {quoteValue(base.value, result.basis.currency)}
       {base.upside != null && <small className={"mx-metric-change mx-" + tone(base.upside)}>{percent(base.upside, true)}</small>}
     </> : "—"}
-      note={<span>{[status, modelSource, base && result && result.horizon + t(" 年", "Y")].filter(Boolean).join(" · ")}</span>} />
+      note={<>
+        <span className="mx-valuation-source">{[status, modelSource, base && result && result.horizon + t(" 年", "Y"), withheldReason].filter(Boolean).join(" · ")}</span>
+        <ValuationFloorNote adjustment={base?.equityFloorAdjustment} pending={!result && Boolean(refreshing)} />
+      </>} />
   </Panel>;
 }

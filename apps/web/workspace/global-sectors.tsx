@@ -117,6 +117,7 @@ export function GlobalSectors({ query, demo, phone, sector, onSelect, returnTo, 
   const heading = t("全球板块地图", "Global sector map");
   const detail = group && selected && <SectorDetail key={group.key} group={group} board={board}
     sessions={[]} kind="gics" openSubgroup={null} focusOnOpen={phone && Boolean(explicit)}
+    inspection={answer.asOf && !answer.pricesStale && !query.isError ? {market:"global",observed:answer.asOf,selected:Boolean(explicit)} : undefined}
     indexFacts={<WorldSectorFacts sector={selected} answer={answer} />} />;
   return <>
     {phone ? <div className="mx-sectors-phone">

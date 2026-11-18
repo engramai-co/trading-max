@@ -3,6 +3,7 @@ import historicalDividend from "../tests/fixtures/historical-dividend.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
+import type { DashboardLens } from "../lib/types";
 import { backendFixture } from "../tests/loading/fixtures";
 import { ASSISTANT_NAME } from "../workspace/assistant-settings";
 
@@ -232,6 +233,45 @@ test("an open Overview discovers a scheduled reading without starting a model ru
   await page.clock.fastForward(65_000);
   await expect(page.locator(".mx-digest-summary")).toHaveText(/修订 [2-9]/);
 });
+test("an undated Holdings quote discloses its missing time in the sidebar and announcement", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("trading_max-locale", "en");
+    localStorage.setItem("trading_max-time-zone", "Europe/London");
+  });
+  const balanceTime = "2026-08-01T21:15:00Z";
+  const quote = {ticker:"SYN", scope:"isa", current_price:7, price_currency:"GBP", observed_at:null};
+  await page.route("**/dashboard/lens/holdings-positions*", route => {
+    const lens = backendFixture(new URL(route.request().url())) as DashboardLens;
+    return route.fulfill({json:{...lens, brokerAsOf:balanceTime, positionAsOf:{B:null},
+      holdings:[{...lens.holdings?.[0], ticker:quote.ticker, account:"B", currentPrice:quote.current_price,
+        priceCurrency:quote.price_currency, quantity:10, currentValueGbp:70}],
+      accounts:[{code:"B", isInvestable:true, totalValueGbp:70, asOf:balanceTime}]}});
+  });
+  const output = {evidence_id:"ev_quote", status:"ok", scope:"isa", sources:[{as_of:"2026-08-02T07:00:00Z"}],
+    data:{items:[quote]}};
+  const chunks = [{type:"start", messageId:"quote"}, {type:"start-step"},
+    {type:"tool-input-available", toolCallId:"quote", toolName:"position_detail", input:{args:{scope:"isa",ticker:"SYN"}}},
+    {type:"tool-output-available", toolCallId:"quote", output},
+    {type:"text-start", id:"t"}, {type:"text-delta", id:"t", delta:"{{/data/items/0/current_price}} [ev_quote]\n{{insufficient-evidence}} [inference]"},
+    {type:"text-end", id:"t"}, {type:"finish-step"}, {type:"finish", finishReason:"stop"}];
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
+    headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+    body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n",
+  }));
+  await page.goto("/holdings?account=B");
+  await expect(page.locator(".mx-holdings-summary .mx-freshness")).toContainText("22:15");
+  await expect(page.locator(".mx-holding-quote-basis:visible")).toContainText("Time unavailable");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  await input.fill("What was the unit price of SYN?");
+  await input.press("Enter");
+  const expected = "SYN · ISA · Unit price £7.0000 · Time unavailable";
+  await expect(page.locator(".mx-turn-assistant .mx-reading-line").first()).toContainText(expected);
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toContainText(expected);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-undated-quote.png")});
+});
+
 test("uncited or invented chat evidence stays out of the transcript and announcement", async ({page}) => {
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   await fixtures(page);
@@ -259,6 +299,30 @@ test("cited money and ex-dividend dates open their published evidence", async ({
   await expect(page.locator(".mx-money-summary[data-assistant-evidence]")).toBeVisible();
   await page.goto("/research?ticker=SYNT&view=overview&event=exDividend&date=2026-11-28&evidence=read_research_lens");
   await expect(page.locator("[data-reading-event]")).toContainText("引用的数据版本或事件暂不可用");
+});
+
+test("keyboard navigation scrolls the focused History row into view", async ({page, isMobile}, info) => {
+  if (!isMobile) await page.setViewportSize({width:1100, height:900});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const rows = Array.from({length:48}, (_, i) => ({id:i.toString(16).padStart(32, "0"), title:"Synthetic " + (i + 1)}));
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:rows}));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.getByRole("dialog", {name:ASSISTANT_NAME});
+  await panel.getByRole("button", {name:"Conversation history"}).click();
+  const back = panel.getByRole("button", {name:"Back to conversation"});
+  await expect(back).toBeFocused();
+  const last = panel.getByRole("button", {name:"Delete conversation · Synthetic 48"});
+  await expect(last).toBeAttached();
+  await expect(last).not.toBeInViewport();
+  await page.keyboard.press("Shift+Tab");
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport();
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name+"-history-last-focused.png")});
+  await page.keyboard.press("Tab");
+  await expect(back).toBeFocused();
+  await expect(back).toBeInViewport();
 });
 
 test("keyboard Back from History restores focus inside the tablet sidebar", async ({page}, info) => {
@@ -313,7 +377,7 @@ for (const locale of ["zh", "en"] as const) {
     await page.locator("[data-assistant-trigger]").click();
     const input = page.locator(".mx-assistant-composer textarea");
     await input.fill(locale === "zh" ? "SYNT 的哪些数据需要更新？" : "Which SYNT datasets need an update?");
-    await input.press("Enter");
+    await page.getByRole("button", {name:locale === "zh" ? "发送" : "Send", exact:true}).click();
     const rows = page.locator(".mx-turn-assistant .mx-reading-line");
     await expect(rows.nth(0)).toContainText(locale === "zh" ? "技术指标 · 已过时" : "Technical data · Stale");
     await expect(rows.nth(1)).toContainText(locale === "zh" ? "业绩数据 · 缺失" : "Earnings data · Missing");
@@ -900,16 +964,18 @@ test("a historical dividend in chat reopens its published amount and basis", asy
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
 });
 
-async function streamHistoricalEventReplies(page: Page, turns: string[][]) {
-  const items = historicalEvents.data.items;
+async function streamHistoricalEventReplies(page: Page, turns: string[][], output = historicalEvents, field: "date" | "local_date" = "date") {
+  const items = output.data.items;
   let next = 0;
   await page.route("**/api/backend/assistant/chat*", route => {
     const id = "historical-" + next;
-    const text = turns[next++].map(kind =>
-      `{{/data/items/${items.findIndex(row => row.kind === kind)}/date}} [${historicalEvents.evidence_id}]`).join("\n");
+    const lines = turns[next++].map(kind =>
+      `{{/data/items/${items.findIndex(row => row.kind === kind)}/${field}}} [${output.evidence_id}]`);
+    if (lines.length === 1) lines.push("{{insufficient-evidence}} [inference]");
+    const text = lines.join("\n");
     const chunks = [{type:"start",messageId:id},{type:"start-step"},
-      {type:"tool-input-available",toolCallId:id,toolName:"news_and_events",input:{args:{scope:"invest",start:historicalEvents.data.start,end:historicalEvents.data.end}}},
-      {type:"tool-output-available",toolCallId:id,output:historicalEvents},
+      {type:"tool-input-available",toolCallId:id,toolName:"news_and_events",input:{args:{scope:"invest",start:output.data.start,end:output.data.end}}},
+      {type:"tool-output-available",toolCallId:id,output},
       {type:"text-start",id},{type:"text-delta",id,delta:text},{type:"text-end",id},
       {type:"finish-step"},{type:"finish",finishReason:"stop"}];
     return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
@@ -969,20 +1035,25 @@ async function openDraftBeforeStatusCheck(page: Page) {
   return {panel, draft, send:panel.getByRole("button", {name:"Send"})};
 }
 
-async function holdPassiveStatus(page: Page) {
-  let release!: (status: number) => void;
-  const held = new Promise<number>(resolve => { release = resolve; });
+type StatusOutcome = 200 | 503 | "network error" | "provider_not_configured";
+
+async function holdPassiveStatus(page: Page, time = "2026-03-01T12:00:31Z") {
+  let release!: (status: StatusOutcome) => void;
+  const held = new Promise<StatusOutcome>(resolve => { release = resolve; });
   await page.route("**/api/backend/assistant/status", async route => {
     const status = await held;
+    if (status === "network error") return route.abort("failed");
+    if (status === "provider_not_configured") return route.fulfill({json:{ready:false, code:status}});
     await route.fulfill({status, json:status === 200 ? {ready:true,code:null} : {detail:"Temporarily unavailable"}});
   }, {times:1});
-  await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+  await page.clock.setFixedTime(new Date(time));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.locator("#mx-assistant-panel").getByText("Checking connection…")).toBeVisible();
   return release;
 }
 
-test("a passive status failure preserves the draft until readiness recovers", async ({page}) => {
+for (const failure of [503, "network error", "provider_not_configured"] as const) test(
+  "a passive status failure preserves the draft until readiness recovers (" + failure + ")", async ({page}) => {
   const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
   const posts: string[] = [];
   page.on("request", request => {
@@ -992,10 +1063,11 @@ test("a passive status failure preserves the draft until readiness recovers", as
   await expect(send).toBeDisabled();
   await page.keyboard.type("s through recovery");
   await expect(draft).toHaveValue("Continues through recovery");
-  fail(503);
+  fail(failure);
   await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
   await expect(draft).toBeHidden();
-  const retry = await holdPassiveStatus(page);
+  if (failure === "provider_not_configured") await expect(panel.getByText("Check the model connection in Settings.")).toBeVisible();
+  const retry = await holdPassiveStatus(page, "2026-03-01T12:01:02Z");
   // Exercise the actual submission handler even if the composer is hidden during confirmation.
   await panel.locator("form").evaluateAll(forms => forms.forEach(form => (form as HTMLFormElement).requestSubmit()));
   expect(posts).toEqual([]);
@@ -1081,6 +1153,43 @@ test("a Broker citation opens the retained decision and reports expiry", async (
   }
   expect(requests.every(run => run === snapshot)).toBe(true);
 });
+
+for (const [zone, localDay] of [
+  ["America/New_York", "2026-11-24"], ["Europe/London", "2026-11-25"], ["Asia/Tokyo", "2026-11-25"],
+]) {
+  test("an overnight Broker citation opens the original ledger decision in " + zone, async ({page}) => {
+    await fixtures(page);
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.route("**/api/backend/profile", route => route.fulfill({json:{accountLabels:{}, assistantEnabled:true, timeZone:zone}}));
+    const output = structuredClone(historicalEvents);
+    const trade = output.data.items.find(row => row.kind === "own_trade")!;
+    trade.instant = "2026-11-25T00:30:00Z";
+    trade.local_date = localDay;
+    await streamHistoricalEventReplies(page, [["own_trade"]], output, "local_date");
+    await page.route("**/api/backend/dashboard/lens/account-analysis?**", route => {
+      const run = new URL(route.request().url()).searchParams.get("runId");
+      expect(run).toBe(output.snapshot_id);
+      const shared = {ticker:trade.ticker, side:"buy", kind:"B", observedDays:2, events:[]};
+      return route.fulfill({json:{runId:run, accounts:[], holdings:[], nav:[], brokerAsOf:trade.date, selectedAccountDecisions:{
+        status:"available", asOf:trade.date, decisions:[
+          {...shared, date:"2026-11-24", amountGbp:35, name:"Earlier synthetic fill"},
+          {...shared, date:"2026-11-25", amountGbp:125, name:"Original synthetic fill"},
+        ],
+      }}});
+    });
+    await page.goto("/");
+    await page.locator("[data-assistant-trigger]").click();
+    const draft = page.getByRole("textbox", {name:"Message"});
+    await draft.fill("When was the original synthetic purchase?");
+    await draft.press("Enter");
+    const reply = page.locator(".mx-turn-assistant");
+    await expect(reply).toContainText(localDay);
+    await reply.getByRole("link", {name:"Broker"}).first().click();
+    const decision = page.locator(".mx-decision-focus");
+    await expect(decision).toContainText("£125");
+    await expect(decision).toContainText("Original synthetic fill");
+  });
+}
 
 test("first approval focuses the lazy composer after the opening consent check", async ({page}, info) => {
   if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});

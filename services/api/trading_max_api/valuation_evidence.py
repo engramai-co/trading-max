@@ -19,6 +19,7 @@ from trading_max.research.facts import (
 )
 from trading_max.research.valuation_basis import (
     EXCLUDED_ASSETS,
+    Family,
     classify,
     listing_shares,
     period_choice,
@@ -38,6 +39,7 @@ from trading_max.research.valuation_evidence import (
     evidence_item,
     publication_within,
 )
+from trading_max.research.venues import resolve_venue, row_claims
 
 from .models import SnapshotManifest
 from .research import (
@@ -45,7 +47,7 @@ from .research import (
     _analyst_rows,
     _financials_rows,
     _fundamentals_rows,
-    _market_rows,
+    _market_rows_with_claims,
     retained_share_unit,
 )
 
@@ -328,13 +330,14 @@ def _revenue_expectations(capture: _Capture, row: _Row | None) -> None:
         period = EvidencePeriod(
             kind="forecast", end=_day(estimate.get("endDate")), forecast_slot=slot
         )
-        stamp = _instant(estimate.get("asOf") or analyst.get("asOf"))
+        as_of = estimate.get("asOf") or analyst.get("asOf")
+        stamp = _instant(as_of) or _day(as_of)
         currency = _currency(estimate.get("currency"))
         usable = (
             row is not None
             and period.end is not None
             and stamp is not None
-            and stamp <= row.observed_at
+            and publication_within(stamp, row.observed_at)
         )
         for metric, field, value, unit in (
             (
@@ -352,6 +355,7 @@ def _revenue_expectations(capture: _Capture, row: _Row | None) -> None:
                 row=row,
                 dataset="analyst",
                 field="revenueEstimate." + field,
+                published_at=stamp if usable else None,
                 period=period if usable else EvidencePeriod(kind="forecast", forecast_slot=slot),
                 currency=currency if usable and unit == "currency" else None,
                 basis="provider-consensus",
@@ -449,6 +453,7 @@ def freeze_valuation_evidence(
     *,
     snapshots: SnapshotReader,
     estimate_reader: EstimateReader | None = None,
+    selected_family: Family | None = None,
 ) -> FrozenValuationEvidence:
     """Read only public artifacts for one exact listing and snapshot. No live fallback."""
     binding = EvidenceBinding.model_validate(binding.model_dump(mode="json"))
@@ -459,17 +464,17 @@ def freeze_valuation_evidence(
     fundamental = _read_row(
         snapshots, manifest, binding, "research/fundamentals.json", _fundamentals_rows
     )
-    market = _read_row(snapshots, manifest, binding, CURRENT_MARKET_KEY, _market_rows)
+    market = _read_row(snapshots, manifest, binding, CURRENT_MARKET_KEY, _market_rows_with_claims)
     data = fundamental.data if fundamental else {}
     metrics = data.get("metrics") or {}
-    quote = make_quote(binding.ticker, market.data if market else {}, data)
-    if quote.session != "regular":
-        # A fallback price and timestamp must come from the same public row.
-        quote = make_quote(
-            binding.ticker,
-            market.data if market else {},
-            {**data, "metrics": {**metrics, "regularMarketTime": None}},
-        )
+    venue = resolve_venue(
+        binding.ticker,
+        *row_claims(binding.ticker, data),
+        *(market.data["_venue_claims"] if market else ()),
+    )
+    if venue.conflict:
+        return FrozenValuationEvidence(binding=binding, eligibility="unknown", rows=())
+    quote = make_quote(binding.ticker, market.data if market else {}, data, venue=venue)
     if quote.listing is not None and quote.listing != binding.listing:
         raise EvidenceScopeError("quote listing mismatch")
     if quote.listing is None:
@@ -496,7 +501,7 @@ def freeze_valuation_evidence(
     stored = valuation.data.get("assumptions") or {} if valuation else {}
     valuation_currency = valuation.data.get("currency") if valuation else None
     aligned = quoted is not None and valuation_currency == quoted
-    family = stored.get("family") or classify(binding.ticker, "", raw)[0]
+    family = selected_family or stored.get("family") or classify(binding.ticker, "", raw)[0]
     ttm, selected = statement_basis(facts, family, binding.listing)
     metrics_for_basis = {Metric.REVENUE: "revenue"}
     if family == "cash-flow":

@@ -107,7 +107,19 @@ freshness states and available valuation evidence values. For a calendar event s
 items/N/date, items/N/end_date or items/N/status from its row. For a historical dividend in news_and_events,
 select its items/N/amount for the published payment per share, or items/N/basis. For a research lens, select
 items/N/value for a typed price (with currency), technical score, expiry count,
-as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
+as-of date, sector, industry or country. For Review, select /data/items/N/security_return,
+/data/items/N/market_return or /data/items/N/hindsight/missed_gbp from decision_timing_and_habits.
+For review_patterns select /data/groups/GROUP/count, evaluated, mean_return or effect_gbp
+using the actual habit key from its result. Use {{/status}} if values are unavailable.
+For page readings, select selected_money /data/pnl, exposure_benchmark /data/weight,
+selected_exposure /data/current/weight_fraction or /data/previous/weight_fraction,
+selected_daily (or daily_returns) /data/window_twr_fraction, /data/worst_day/return_fraction, /data/largest_move/return_fraction (largest absolute daily move) or
+/data/window_benchmarks/VOO (or QQQ, VT), holding_fx_split /data/accounts/isa/fx_effect_gbp
+(or invest, local_price_effect_gbp), selected_fx /data/fx_effect_gbp or /data/local_price_effect_gbp, market_sector /data/move or /data/breadth/up,
+global_map /data/markets/N/contribution or /data/markets/N/move, and update_issue
+/data/completed, /data/stages, /data/attempts, /data/failed_stages/N/en or /data/finished_at. Use an actual returned array index
+in place of N. A sector_headline or news_and_events /data/items/N/title_en is a publisher's headline;
+keep it separate from a measured change.
 For research_position select /data/close, /data/change, /data/trade_date, /data/event/date
 or /data/benchmarks/N/asset or benchmark; /data/sector_comparison explains missing coverage. For price_key_moments use the row of the selected
 date: /data/items/N/move_fraction, volume_z_score, or /data/items/N/events/M/kind for a dated non-news event. For subsequent sessions choose /data/following/N/return_fraction. Cite a separate research_headline

@@ -1,7 +1,7 @@
 """Read dated evidence from a single publication with account-scoped trades."""
 
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from itertools import chain
 from typing import Annotated, Literal
 from urllib.parse import quote
@@ -253,6 +253,71 @@ def _public(ticker, data, upcoming):
             reference=r.get("accession") or r.get("id"),
         )
     yield from listed_headlines(ticker, _headline_rows(data, ticker))
+
+
+def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill: str | None):
+    """The latest verified item of each kind, from the selected listing and before its first fill."""
+    trade_day = date.fromisoformat(day)
+    if not listing or trade_day <= date.min + timedelta(days=8):
+        return None
+    cutoff = datetime.fromisoformat(first_fill) if first_fill else None
+    cutoff = (
+        cutoff.astimezone(UTC)
+        if cutoff and cutoff.tzinfo
+        else datetime.combine(trade_day, time.min, UTC)
+    )
+    start = cutoff - timedelta(days=7)
+    data = {
+        ANALYST: _indexed(read.read(ANALYST)),
+        FINANCIALS: _indexed(read.read(FINANCIALS)),
+        NEWS_KEY: (read.read(NEWS_KEY) or {}).get("securities", {}),
+        EARNINGS: {},
+        FUNDAMENTALS: {},
+    }
+    latest = {}
+    for item in _public(listing, data, upcoming=False):
+        if not item:
+            continue
+        kind = item["kind"]
+        if kind not in {"news", "rating_change"} and not (
+            kind == "earnings" and item.get("status") == "reported"
+        ):
+            continue
+        if item["instant"]:
+            stamp = datetime.fromisoformat(item["instant"])
+            if kind == "news" and stamp.astimezone(UTC).date() >= trade_day:
+                continue
+            if not start <= stamp < cutoff:
+                continue
+            local_date = stamp.astimezone(read.deps.timezone).date()
+        else:
+            local_date = date.fromisoformat(item["date"])
+            if kind == "news" and local_date >= trade_day:
+                continue
+            # With no publisher zone, even the end of this day in UTC−12 must precede the fill.
+            stamp = datetime.combine(local_date, time.min, UTC)
+            if local_date < start.date() or stamp + timedelta(hours=36) > cutoff:
+                continue
+        if kind not in latest or latest[kind][0] < stamp:
+            fields = {
+                k: item[k]
+                for k in (
+                    "kind",
+                    "firm",
+                    "to_grade",
+                    "title_en",
+                    "title_zh",
+                    "publisher",
+                    "source_url",
+                )
+                if k in item
+            }
+            if kind != "news":
+                fields["record_id"] = _published_row(read.deps.snapshot_id, item, None)[
+                    "evidence_id"
+                ]
+            latest[kind] = (stamp, {**fields, "local_date": local_date.isoformat()})
+    return [item for _, item in latest.values()]
 
 
 def _headline_rows(data, ticker):
@@ -528,6 +593,7 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
         financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
         entries = _reported_dividends(ticker, financials.get("evidence", {}))
     else:
+        # Historical earnings, rating changes and filings remain citable after publication.
         data = {
             key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS)
         }
@@ -549,12 +615,14 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     return None
 
 
-def event_data(deps, args, *, upcoming):
+def event_data(deps, args, *, upcoming, session_zone=None):
     name = "upcoming_events" if upcoming else "news_and_events"
     read = _Read(deps, name, args, args.scope)
     codes = read.account_codes(args.scope)
     if not deps.manifest:
         return read.missing()
+    if deps.listing_error:
+        return read.missing(deps.listing_error)
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     issues = []
     keys = []
@@ -609,17 +677,23 @@ def event_data(deps, args, *, upcoming):
                 technical.get(requested),
                 funds.get(requested),
             )
-        ticker = pinned.ticker
+        ticker = pinned.symbol
         if args.ticker:
             trade_args = args.model_copy(update={"ticker": ticker})
         if ticker in selected_tickers:
             continue
         selected_tickers.add(ticker)
-        pinned = pinned.with_event_claims(
-            news_rows.get(ticker),
-            status_rows.get(ticker),
-            *(rows.get(ticker) for key, rows in data.items() if key != NEWS_KEY),
-        )
+        news = pinned.feed_row(news_rows.get)
+        status = pinned.feed_row(status_rows.get)
+        raw_rows = {
+            key: pinned.feed_row(rows.get) or {} for key, rows in data.items() if key != NEWS_KEY
+        }
+        if not pinned.venue().venues:
+            pinned = pinned.with_event_claims(
+                news,
+                status,
+                *raw_rows.values(),
+            )
         venue = pinned.venue()
         if venue.conflict:
             issues.append("listing_calendar_unavailable")
@@ -628,20 +702,25 @@ def event_data(deps, args, *, upcoming):
             names.add(venue.calendar)
         elif upcoming:
             issues.append("listing_calendar_unavailable")
-        if not upcoming and not data[NEWS_KEY].get(ticker, {}).get("as_of"):
-            issues.append("security_news_unavailable")
-        if not upcoming and data[NEWS_KEY].get(ticker, {}).get("error"):
-            issues.append("security_news_refresh_failed")
-        if ticker not in data[ANALYST]:
-            issues.append("analyst_events_unavailable")
-        if not data[EARNINGS].get(ticker, {}).get("calendar"):
-            issues.append("security_calendar_unavailable")
         selected = {}
-        for key, rows in data.items():
-            row, rejected = pinned.event_row(rows.get(ticker))
+        for key, row in raw_rows.items():
+            row, rejected = pinned.event_row(row)
             if rejected:
                 issues.append("listing_calendar_unavailable")
             selected[key] = {ticker: row}
+        feed_pin = pinned.with_event_claims(news, status)
+        feed, rejected = feed_pin.event_row({**(news or {}), **(status or {})})
+        if rejected:
+            issues.append("listing_calendar_unavailable")
+        selected[NEWS_KEY] = {ticker: feed}
+        if not upcoming and not feed.get("as_of"):
+            issues.append("security_news_unavailable")
+        if not upcoming and feed.get("error"):
+            issues.append("security_news_refresh_failed")
+        if not selected[ANALYST][ticker]:
+            issues.append("analyst_events_unavailable")
+        if not selected[EARNINGS][ticker].get("calendar"):
+            issues.append("security_calendar_unavailable")
         for entry in _public(ticker, selected, upcoming):
             if entry and entry["kind"] == "earnings" and entry.pop("currency_missing", False):
                 issues.append("earnings_currency_unavailable")
@@ -688,9 +767,10 @@ def event_data(deps, args, *, upcoming):
             else None
         )
         day = local.date().isoformat() if local else row["date"]
-        if local and args.market:
-            day = local.astimezone(ZoneInfo(MARKET_ZONES[args.market])).date().isoformat()
-        first, last = window_bounds(day, row.get("end_date"))
+        # A selected release market filters by its own session date.
+        zone = ZoneInfo(MARKET_ZONES[args.market]) if args.market else session_zone
+        filter_day = local.astimezone(zone).date().isoformat() if local and zone else day
+        first, last = window_bounds(filter_day, row.get("end_date"))
         if args.start > last or first > args.end:
             continue
         item = _published_row(deps.snapshot_id, row, local)

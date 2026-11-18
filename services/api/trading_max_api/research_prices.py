@@ -21,6 +21,8 @@ from trading_max.research.venues import VenueClaim, VenueConflict, resolve_venue
 from .dashboard_models import ResearchPriceSeries
 from .valuation_assumptions import _atomic_write
 
+PRICE_HISTORY_UNAVAILABLE = "security-price-history-unavailable"
+
 
 def verified_provider_claims(ticker: str, series: ResearchPriceSeries) -> tuple[VenueClaim, ...]:
     """Resolve the price provider's own observation before adding any routing evidence."""

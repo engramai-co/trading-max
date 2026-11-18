@@ -1,3 +1,4 @@
+import pageOutputs from "./page-figures.fixture.json";
 import { describe, expect, it } from "vitest";
 import { dividendAmount } from "@/lib/dividend-disclosure";
 import earlyClose from "../../tests/fixtures/market-early-close.json";
@@ -96,6 +97,18 @@ it("keeps a row's subject and native unit and uses only its selected evidence", 
   expect(pence.text).toContain("18.25 GBp");
   expect(verifiedLines(fieldReply("list_holdings", {data:{items:[{current_price:3}]}}, "/data/items/0/current_price"))).toEqual([]);
 });
+it.each(["list_holdings", "position_detail"])("%s dates a quote only from the position observation", tool => {
+  const quote = {ticker:"SYN", scope:"isa", price_currency:"GBP", current_price:7};
+  const output = {sources:[{as_of:"2026-08-02T07:00:00Z"}], data:{items:[
+    {...quote, observed_at:null},
+    {...quote, scope:"invest", observed_at:"2026-08-01T19:00:00Z"},
+  ]}};
+  const undated = fieldReply(tool, output, "/data/items/0/current_price");
+  expect(verifiedLines(undated)[0].text).toBe("SYN · ISA · Unit price £7.0000 · Time unavailable");
+  expect(verifiedLines(undated, "zh")[0].text).toBe("SYN · ISA · 单位价格 £7.0000 · 时间未提供");
+  const dated = fieldReply(tool, output, "/data/items/1/current_price");
+  expect(verifiedLines(dated)[0].text).toMatch(/SYN · Invest · Unit price £7\.0000 · .*20:00$/);
+});
 it("uses a submetric's window and refuses unavailable or ambiguous results", () => {
   const output = {data:{window_start:"2026-01-01",window_end:"2026-03-31",twr:{status:"ok",fraction:-0.125,start:"2026-03-02",end:"2026-03-30"}}};
   const message = fieldReply("period_performance", output, "/data/twr/fraction");
@@ -134,6 +147,60 @@ it("keeps the selected research lens, object and evidence destination", () => {
   const story = { ...evidence, tool: "research_headline", source: "publisher" as const, arguments: {ticker:"SYNT",url:"https://example.invalid/news"} };
   expect(evidenceHref(story)).toBe(story.arguments.url);
   expect(evidenceHref({...story, arguments:{...story.arguments,url:"javascript:alert(1)"}})).not.toMatch(/^javascript:/);
+});
+
+describe("page readings in the sidebar", () => {
+  it.each([
+    ["selected_money","/data/pnl",["ISA","80.00","Cash-flow-adjusted net P&L"]],
+    ["exposure_benchmark","/data/weight",["MSCI ACWI (SSAC)","61.00%","2026-02-02"]],
+    ["market_sector","/data/contribution",["Information Technology","MSCI World","0.30 pp","2026-02-03"]],
+    ["global_map","/data/markets/0/move",["US","-1.00%","2026-02-03"]],
+    ["selected_daily","/data/window_benchmarks/VOO",["VOO","GBP","adjusted prices"]],
+    ["selected_exposure","/data/current/weight_fraction",["United States","100.00%","2026-02-03"]],
+    ["selected_fx","/data/fx_effect_gbp",["ISA","Held-share currency effect","34.00"]],
+    ["sector_headline","/data/items/0/title_en",["Headline","Synthetic issuer update"]],
+    ["update_issue","/data/failed_stages/0/en",["Failed stage","Fundamentals"]],
+    ["update_issue","/data/attempts",["Recorded attempts","2"]],
+    ["update_issue","/data/finished_at",["Update ended","17:00"]],
+    ["daily_returns","/data/worst_day/return_fraction",["Lowest observed daily return","-7.27%","2026-02-02","2026-02-03"]],
+    ["daily_returns","/data/window_benchmarks/VOO",["VOO","GBP","adjusted prices","+8.00%"]],
+  ] as const)("renders the captured %s field %s", (tool, pointer, fragments) => {
+    const output = {...pageOutputs[tool], evidence_id:"ev_local"};
+    const [line] = verifiedLines(fieldReply(tool,output,pointer));
+    for(const fragment of fragments) expect(line.text).toContain(fragment);
+    expect(line.evidence?.arguments).toMatchObject({metric:pointer,snapshotId:"synthetic-figures"});
+    expect(verifiedLines(fieldReply(tool,output,pointer),"zh")[0].text).not.toBe(line.text);
+  });
+  it("withholds a closed market value, wrong unit and unpublished benchmark",()=>{
+    for (const [tool,pointer,output] of [
+      ["global_map","/data/markets/0/move",{...pageOutputs.global_map,data:{...pageOutputs.global_map.data,markets:[{...pageOutputs.global_map.data.markets[0],not_open:true}]}}],
+      ["selected_money","/data/pnl",{...pageOutputs.selected_money,data:{...pageOutputs.selected_money.data,currency:"USD"}}],
+      ["daily_returns","/data/window_benchmarks/QQQ",pageOutputs.daily_returns],
+    ] as const) {
+      expect(verifiedLines(fieldReply(tool,{...output,evidence_id:"ev_local"},pointer))).toEqual([]);
+    }
+  });
+});
+
+it("opens the earnings and ratings sections from their own evidence", () => {
+  for (const section of ["events","actions","ratings"]) {
+    const href = evidenceHref({evidenceId:"ev_source",tool:"news_and_events",source:section === "events" ? "financials" : "analysts",arguments:{ticker:"TEST",lens:"analyst",analystView:section}});
+    const url = new URL(href!, "http://localhost");
+    expect(url.searchParams.get("analystView")).toBe(section === "ratings" ? "actions" : section);
+    expect(url.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
+  }
+});
+
+it.each(["events", "actions", "ratings"])("opens the selected listing’s %s section from a decision", section => {
+  const href = evidenceHref({evidenceId: "ev_decision", tool: "decision_timing_and_habits",
+    source: section === "events" ? "financials" : "analysts",
+    arguments: {ticker: "TEST", listing: "TEST.L", lens: "analyst", analystView: section,
+      snapshotId:"saved-run", calendarEventId:"ev_0123456789abcdef", date:"2026-08-28"}});
+  const opened = new URL(href!, "https://example.org");
+  expect(opened.pathname).toBe("/research");
+  expect(opened.searchParams.get("ticker")).toBe("TEST.L");
+  expect(Object.fromEntries(opened.searchParams)).toMatchObject({snapshotId:"saved-run", calendarEventId:"ev_0123456789abcdef", date:"2026-08-28"});
+  expect(opened.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
 });
 
 it.each([
@@ -219,6 +286,31 @@ it("resolves the saved event identity when the same retained result is presented
   expect(researchFigure(cited,observation,"/data/items/0/title_en","en","Europe/London")?.text).toContain("Selected earnings");
 });
 
+it("qualifies partial daily returns with observed intervals and dates the largest move", () => {
+  const output = {status:"partial",quality:{issues:["daily_twr_missing"]},data:{
+    window_start:"2026-01-01",window_end:"2026-01-08",window_twr_fraction:0.155,
+    largest_move:{from_date:"2026-01-05",date:"2026-01-06",return_fraction:0.3},
+    observed_intervals:2,total_intervals:4,
+  }};
+  expect(verifiedLines(fieldReply("selected_daily",output,"/data/window_twr_fraction"))[0].text).toContain("2 of 4 intervals");
+  const largest = verifiedLines(fieldReply("selected_daily",output,"/data/largest_move/return_fraction"))[0].text;
+  for(const part of ["Largest observed daily move","+30.00%","2026-01-05 – 2026-01-06","2 of 4 intervals"]) expect(largest).toContain(part);
+});
+it("links the market observation and the immutable holding selection",()=>{
+  const params=(tool:string,args:Record<string,string>)=>new URL(evidenceHref({tool,source:"exposure",evidenceId:"ev_test",arguments:args})!,"https://example.org").searchParams;
+  const market=params("global_map",{market:"jp",observed:"2026-01-30T12:00:00Z",snapshotId:"older"});
+  expect(Object.fromEntries(market)).toMatchObject({market:"global",region:"jp",observed:"2026-01-30T12:00:00Z",snapshotId:"older"});
+  expect(Object.fromEntries(params("selected_exposure",{dimension:"company",category:"DUP",entityId:"issuer-2",snapshotId:"older"}))).toMatchObject({entityId:"issuer-2",snapshotId:"older"});
+});
+
+it("displays a Tokyo session headline in the reader's time zone", () => {
+  const evidence = {tool:"sector_headline",source:"publisher" as const,evidenceId:"ev_news",
+    arguments:{instant:"2026-02-02T23:30:00Z",start:"2026-02-03"}};
+  const line = {en:"2026-02-03 · TEST headline",zh:"2026-02-03 · TEST 新闻",evidence};
+  expect(observationText(line,"en","Asia/Tokyo")).toMatch(/3 Feb 2026.*08:30/);
+  expect(observationText(line,"en","Europe/London")).toMatch(/2 Feb 2026.*23:30/);
+});
+
 it("carries both the calendar row and publication into the earnings target", () => {
   const ref = {source:"financials" as const, tool:"upcoming_events",evidenceId:"ev_page",
     arguments:{snapshotId:"old",eventId:"ev_calendar_row",researchEventId:"earn-1",date:"2026-02-04",holdingTicker:"TEST",event:"earnings"}};
@@ -241,6 +333,30 @@ it("reads the selected calendar row's title, Tokyo day and exact source", () => 
   expect(Object.fromEntries(new URL(evidenceHref(earnings.evidence!)!, "http://localhost").searchParams)).toMatchObject({
     snapshotId:"saved",calendarEventId:"ev_report",eventId:"report",date:"2026-02-05",ticker:"SYNT"
   });
+});
+
+it("reports coverage for the cited metric on a partially observed portfolio",()=>{
+  const data={window_start:"2026-01-02",window_end:"2026-01-08",window_twr_fraction:0.155,
+    window_benchmarks:{VOO:0.08},benchmark_currency:"USD",benchmark_basis:"auto_adjusted_close",observed_intervals:2,total_intervals:4};
+  for(const tool of ["selected_daily","daily_returns"]){
+    const output={data,status:"partial",quality:{issues:["daily_twr_missing"]}};
+    const benchmark=verifiedLines(fieldReply(tool,output,"/data/window_benchmarks/VOO"),"en")[0].text;
+    expect(benchmark).toContain("+8.00%");
+    expect(benchmark).toContain("both endpoint prices observed");
+    expect(benchmark).not.toMatch(/2 of 4|limited coverage/);
+    expect(verifiedLines(fieldReply(tool,output,"/data/window_twr_fraction"),"en")[0].text).toContain("2 of 4 intervals");
+  }
+});
+
+it("carries the fund observation in both reading and chat weight citations",()=>{
+  const args={dimension:"sector",category:"Information Technology",snapshotId:"older",benchmarkSource:"SWDA",benchmarkAsOf:"2026-02-02",benchmarkObservation:"bw_0123456789abcdef"};
+  const reading={tool:"exposure_benchmark",source:"exposure" as const,evidenceId:"ev_weight",arguments:args};
+  const reply=fieldReply("exposure_benchmark",{snapshot_id:"older",bound_arguments:{dimension:"sector",category:args.category},
+    data:{dimension:"sector",weight:0.28,as_of:args.benchmarkAsOf,source:args.benchmarkSource,observation:args.benchmarkObservation}},"/data/weight");
+  for(const evidence of [reading,verifiedLines(reply)[0].evidence!]){
+    const params=new URL(evidenceHref(evidence)!,"http://localhost").searchParams;
+    expect(Object.fromEntries(params)).toMatchObject(args);
+  }
 });
 
 it.each([
@@ -350,6 +466,21 @@ it("preserves the selected market on an early-close source link", () => {
   expect(Object.fromEntries(url.searchParams)).toMatchObject({
     market:args.market,eventTicker:args.ticker,eventId:output.data.items[0].evidence_id,snapshotId:output.snapshot_id,
   });
+});
+
+it.each([
+  ["America/New_York", "2026-11-24T19:30:00-05:00", "2026-11-24", "2026-11-25"],
+  ["Europe/London", "2026-11-25T00:30:00Z", "2026-11-25", "2026-11-25"],
+  ["Asia/Tokyo", "2026-11-25T23:30:00Z", "2026-11-26", "2026-11-25"],
+  ["Asia/Tokyo", "2026-11-28T12:00:00Z", "2026-11-28", "2026-11-27"],
+])("keeps the Broker decision identifier on its UTC ledger weekday in %s at %s", (zone, instant, localDay, ledgerDay) => {
+  const fill = historicalEvents.data.items.find(row => row.kind === "own_trade")!;
+  const output = {...historicalEvents, data:{items:[{...fill, date:instant.slice(0, 10), instant, local_date:localDay}]}};
+  const [line] = verifiedLines(fieldReply("news_and_events", output, "/data/items/0/local_date"), "en", zone);
+  expect(line.text).toContain(localDay);
+  const href = new URL(evidenceHref(line.evidence!)!, "http://localhost");
+  expect(href.searchParams.get("decision")).toBe(ledgerDay + ".buy.ALFA");
+  expect(href.searchParams.get("snapshotId")).toBe(historicalEvents.snapshot_id);
 });
 
 it("withholds Broker links without an investing account and a decision identity", () => {

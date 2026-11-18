@@ -410,6 +410,15 @@ class IndexService:
             self._global_clock = (now, read_global_reference(self.prices, now))
             return self._global_clock
 
+    def observed_contribution(self) -> GlobalMarketContribution | None:
+        """Read the last page observation without initiating a provider request."""
+        with self._contribution_lock:
+            return self._contribution[1] if self._contribution else None
+
+    def observed_world_sectors(self) -> GlobalSectorBoard | None:
+        with self._global_sectors_lock:
+            return self._global_sectors[1] if self._global_sectors else None
+
     def global_contribution(self) -> GlobalMarketContribution:
         with self._contribution_lock:
             now, reference = self._global_reference()

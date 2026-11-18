@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useLocalStorage } from "@mantine/hooks";
+import { PushPin } from "@phosphor-icons/react";
+import { useCallback, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useCopy } from "./foundation";
 import { Plot } from "./plot";
 import { useRouteState } from "./route-state";
@@ -19,19 +21,48 @@ export const analystSections = [
   ["actions", "机构行动", "Institutional actions"],
 ] as const;
 
+// Ids keep the former sub-tab values, so existing links open the same content.
+export const technicalSections = [
+  ["price", "走势", "Price"],
+  ["data", "技术诊断", "Technical diagnosis"],
+  ["seasonality", "季节性", "Seasonality"],
+] as const;
+
+export const financialSections = [
+  ["performance", "经营分析", "Operating analysis"],
+  ["income", "利润表", "Income"],
+  ["balance", "资产负债表", "Balance sheet"],
+  ["cash", "现金流量表", "Cash flow"],
+  ["business", "业务分部", "Segments"],
+  ["ownership", "股权与分红", "Ownership & dividends"],
+  ["full", "完整报表", "All reported rows"],
+] as const;
+
 type Section = readonly [id: string, zh: string, en: string];
 
-export function ResearchReading({ sections, parameter, children, before }: {
+function OutlineIcon() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+    <circle cx="4" cy="4.5" r="2" />
+    <circle cx="4" cy="11.5" r="2" />
+    <path d="M8.5 4.5h5.5M8.5 11.5h5.5" />
+  </svg>;
+}
+
+export function ResearchReading({ sections, parameter, children, before, initial }: {
   sections: readonly Section[];
-  parameter: "analystView" | "valuationView";
+  parameter: "analystView" | "valuationView" | "technicalView" | "financialMode";
   children: ReactNode;
   before?: ReactNode;
+  /** The section a legacy route opens when it names none. */
+  initial?: string;
 }) {
   const t = useCopy();
   const { params, update } = useRouteState("push");
   const legacySection = parameter === "valuationView"
     ? params.has("estimateRef") && "scenario"
-    : (params.has("forecastPeriod") || params.has("estimateFrequency")) && "forecast";
+    : parameter === "analystView"
+      ? (params.has("forecastPeriod") || params.has("estimateFrequency")) && "forecast"
+      : initial;
   const requested = params.get(parameter) ?? legacySection;
   const ids = sections.map(([id]) => id).join(",");
   const [active, setActive] = useState(sections[0][0]);
@@ -42,6 +73,12 @@ export function ResearchReading({ sections, parameter, children, before }: {
   const pending = useRef<string | null>(null);
   const pinned = useRef<string | null>(null);
   const focusedHeading = useRef<HTMLElement | null>(null);
+  // Wide layouts give the reading the full width: the index is hidden or floats over the page
+  // unless the reader pins it to its own column.
+  const [indexOpen, setIndexOpen] = useLocalStorage({ key: "mx-research-index-open", defaultValue: false });
+  const [indexPinned, setIndexPinned] = useLocalStorage({ key: "mx-research-index-pinned", defaultValue: false });
+  const indexMode = !indexOpen ? "closed" : indexPinned ? "pin" : "float";
+  const indexId = useId();
   const visitSection = useCallback((id: string) => {
     const section = document.getElementById("research-" + id);
     const heading = section?.querySelector<HTMLElement>("h2");
@@ -172,8 +209,22 @@ export function ResearchReading({ sections, parameter, children, before }: {
   }, [active]);
 
   return <div className="mx-reading-container">
-    <div className="mx-reading-layout">
-      <nav ref={nav} className="mx-section-index" aria-label={t("本页分节", "On this page")}>
+    <div className="mx-reading-layout" data-index={indexMode}>
+      <div className="mx-section-rail">
+      <div className="mx-section-panel">
+        <div className="mx-section-tools">
+          {indexOpen && <button type="button" className="mx-section-pin" aria-pressed={indexPinned}
+            aria-label={t("固定本页分节", "Pin sections")} title={indexPinned ? t("取消固定", "Unpin") : t("固定", "Pin")}
+            onClick={() => setIndexPinned((pinned) => !pinned)}>
+            <PushPin size={15} weight={indexPinned ? "fill" : "regular"} aria-hidden="true" />
+          </button>}
+        <button type="button" className="mx-section-toggle" aria-expanded={indexOpen} aria-controls={indexId}
+          aria-label={t("本页分节", "Sections on this page")} title={indexOpen ? t("收起分节", "Hide sections") : t("展开分节", "Show sections")}
+          onClick={() => setIndexOpen((open) => !open)}>
+          <OutlineIcon />
+        </button>
+        </div>
+      <nav id={indexId} ref={nav} className="mx-section-index" aria-label={t("本页分节", "On this page")}>
         {sections.map(([id, zh, en]) => {
           const next = new URLSearchParams(params.toString());
           next.set(parameter, id);
@@ -186,6 +237,8 @@ export function ResearchReading({ sections, parameter, children, before }: {
             }}>{t(zh, en)}</a>;
         })}
       </nav>
+      </div>
+      </div>
       <div ref={content} className="mx-reading-sections">{before}{children}</div>
     </div>
   </div>;
@@ -206,4 +259,23 @@ export function DeferredPlot(props: ComponentProps<typeof Plot>) {
     return () => observer.disconnect();
   }, []);
   return <div ref={box} style={{ minHeight: props.height ?? 300 }}>{visible && <Plot {...props} />}</div>;
+}
+
+/** True once the section approaches the viewport, or at once when a link asks for it. */
+export function useApproached(requested: boolean) {
+  const box = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  const near = seen || requested;
+  useEffect(() => {
+    if (near) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setSeen(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "600px 0px" });
+    if (box.current) observer.observe(box.current);
+    return () => observer.disconnect();
+  }, [near]);
+  return [box, near] as const;
 }

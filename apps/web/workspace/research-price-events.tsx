@@ -7,6 +7,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { formatNumber } from "@/ui/formatters";
 import { number, str } from "@/workspace/data";
+import { quoteValue } from "./financial-values";
 import { useCopy } from "./foundation";
 
 type Marker = NonNullable<ResearchPriceSeries["tradeMarkers"]>[number];
@@ -113,7 +114,7 @@ export function PriceEventTrack({ days, openEarnings, moments }: {
           {day.company.map((event, i) => <li key={i}>
             <span>{eventLabel(event.kind)}</span>
             <time dateTime={event.date}>{formatCalendarDate(event.date, locale)}</time>
-            {event.value != null && <strong>{number(event.value, 4)} {event.currency}</strong>}
+            {event.value != null && <strong>{event.kind === "dividend" ? quoteValue(event.value, event.currency, { style: "code", digits: 4 }) : number(event.value, 4)}</strong>}
             {event.kind === "earnings" && openEarnings && <button type="button" className="mx-text-link" onClick={() => openEarnings(event)}>
               {t("实际与预期", "Actual vs. estimate")}
             </button>}

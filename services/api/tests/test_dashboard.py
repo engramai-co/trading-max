@@ -580,6 +580,22 @@ def test_dashboard_overlays_live_totals_and_only_reconciled_positions(
     assert by_holding["BE"]["currentValueGbp"] == 1100
     assert by_holding["BE"]["pnlGbp"] == 200
     assert by_holding["XUSE"]["currentValueGbp"] == 700
+    from fastapi.testclient import TestClient
+
+    from services.api.trading_max_api.app import create_app
+    from services.api.trading_max_api.config import Settings
+
+    run = store.latest_manifest().run_id
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    with TestClient(app) as client:
+        for query in ({"detail": "summary", "run_id": run, "account": "B"}, {}):
+            lens = client.get("/v1/dashboard/lens/holdings-positions", params=query).json()
+            assert lens["positionAsOf"]["B"] == "2026-08-01T19:00:00Z"
+            assert lens["brokerAsOf"] == "2026-08-01T20:10:00Z"
+            isa = next(row for row in lens["holdings"] if row["account"] == "B")
+            assert isa["currentValueGbp"] == 700
+            if query:
+                assert lens["totalInvestedGbp"] == 750
 
 
 def test_combined_twr_is_unchanged_by_an_internal_account_transfer() -> None:

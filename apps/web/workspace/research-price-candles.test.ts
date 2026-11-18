@@ -9,22 +9,27 @@ function bar(date: string, close = 100): PriceBar {
 }
 
 describe("price bars and period display", () => {
+  it("reads pence OHLC and the absolute change in the panel’s displayed pounds", () => {
+    const reading = priceReading({ bar: { ...bar("2026-02-03", 3100), open: 3000, high: 3150, low: 2950 },
+      unit: "GBp", previous: 3050, time: "3 Feb", candle: true, labels: { change: "Change", volume: "Volume" } });
+    expect(reading.ohlc).toEqual({ close: "31.00", open: "30.00", high: "31.50", low: "29.50", change: "+0.50 · +1.64%", tone: "up" });
+  });
   it("reads a candle as the close and its move, then open, high, low and volume", () => {
     const bar = { date: "2026-10-08", open: 336.82, high: 341.57, low: 335.9, close: 340.42, volume: 34_400_000, sma20: null, sma50: null, sma200: null };
     const labels = { change: "Change", volume: "Volume" };
-    const reading = priceReading({ bar, previous: 336.89, time: "8 Oct", candle: true, volume: "34.4m", labels });
+    const reading = priceReading({ bar, unit: "USD", previous: 336.89, time: "8 Oct", candle: true, volume: "34.4m", labels });
     expect(reading).toEqual({
       time: "8 Oct",
       ohlc: { close: "340.42", change: "+3.53 · +1.05%", tone: "up", open: "336.82", high: "341.57", low: "335.90", volume: "34.4m" },
     });
     // No currency or interval beside the figures: the panel names them once.
     expect(readingText(reading, "en")).toBe("8 Oct\nClose 340.42 +3.53 · +1.05%\nOpen 336.82\nHigh 341.57\nLow 335.90\nVolume 34.4m");
-    expect(priceReading({ bar, previous: 341.5, time: "8 Oct", candle: false, labels })).toEqual({
+    expect(priceReading({ bar, unit: "USD", previous: 341.5, time: "8 Oct", candle: false, labels })).toEqual({
       time: "8 Oct",
       primary: { value: "340.42" },
       groups: [[{ label: "Change", value: "\u22121.08 · \u22120.32%", tone: "down" }]],
     });
-    expect(priceReading({ bar, time: "8 Oct", candle: true, labels }).ohlc?.change).toBeUndefined();
+    expect(priceReading({ bar, unit: "USD", time: "8 Oct", candle: true, labels }).ohlc?.change).toBeUndefined();
   });
 
   it("measures intraday moves from the previous session's last bar and daily moves from the bar before", () => {

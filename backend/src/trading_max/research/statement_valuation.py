@@ -45,20 +45,26 @@ def freeze_basis(
     name: str = "",
     is_adr: bool = False,
     ordinary_listing: bool = False,
+    legacy_reasons: bool = False,
 ) -> FrozenValuationBasis:
     period, values = statement_basis(facts, family, listing)
-    if family == "residual-income" and not period:
-        raise ValueError("positive-common-equity-and-common-income-required")
-    shares, ratio = listing_shares(ticker, listing, name, shares, values, is_adr, ordinary_listing)
+    # A class or receipt can require a share count in the same period. A complete
+    # book and earnings period without that count keeps the missing-shares reason.
     if (
-        not period
-        or not shares
-        or shares <= 0
-        or not currency
-        or not facts.currency
-        or not spot
-        or spot <= 0
+        family == "residual-income"
+        and not period
+        and (legacy_reasons or not listing or not statement_basis(facts, family)[0])
     ):
+        raise ValueError("positive-common-equity-and-common-income-required")
+    if not period or not currency or not facts.currency or not spot or spot <= 0:
+        raise ValueError("complete-ttm-currency-and-share-count-required")
+    shares, ratio = listing_shares(ticker, listing, name, shares, values, is_adr, ordinary_listing)
+    if not shares or shares <= 0:
+        if not legacy_reasons and listing and ratio is None:
+            if is_adr:
+                raise ValueError("receipt-ratio-unverified")
+            if not ordinary_listing:
+                raise ValueError("listed-share-unit-unverified")
         raise ValueError("complete-ttm-currency-and-share-count-required")
     if facts.currency == currency:
         fx = 1
@@ -109,6 +115,13 @@ def freeze_basis(
     )
 
 
+def annualised_change(first: float, last: float, first_day: date, last_day: date) -> float | None:
+    years = (last_day - first_day).days / 365.25
+    if years < 0.9 or min(first, last) <= 0:
+        return None
+    return (last / first) ** (1 / years) - 1
+
+
 def annual_growth(facts: FinancialFacts) -> tuple[float | None, list[AssumptionReference]]:
     revenues = {
         o.period_id: o
@@ -122,13 +135,15 @@ def annual_growth(facts: FinancialFacts) -> tuple[float | None, list[AssumptionR
     if len(annual) < 2:
         return None, []
     first, last = annual[0], annual[-1]
-    years = (
-        date.fromisoformat(last.provider_end) - date.fromisoformat(first.provider_end)
-    ).days / 365.25
-    if years < 0.9:
-        return None, []
     a, b = revenues[first.id], revenues[last.id]
-    growth = (b.value / a.value) ** (1 / years) - 1
+    growth = annualised_change(
+        a.value,
+        b.value,
+        date.fromisoformat(first.provider_end),
+        date.fromisoformat(last.provider_end),
+    )
+    if growth is None:
+        return None, []
     return growth, [
         AssumptionReference(
             scenario=key,
@@ -150,9 +165,25 @@ def scenario_defaults(
     cost: float,
     overrides: Mapping[str, Mapping[str, Any]] | None = None,
 ):
+    growth, references = (None, []) if basis.family == "residual-income" else annual_growth(facts)
+    defaults = scenario_template_inputs(basis, profile, cost, growth, overrides)
+    if overrides or basis.family == "residual-income":
+        return defaults, []
+    for ref in references:
+        ref.value = defaults[ref.scenario].revenue_cagr
+        ref.adjustment = ref.value - growth
+    return defaults, references
+
+
+def scenario_template_inputs(
+    basis: FrozenValuationBasis,
+    profile: "_SectorProfile",
+    cost: float,
+    growth: float | None,
+    overrides: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, ScenarioInputs]:
     from .fundamentals import _scenario_params
 
-    growth, references = (None, []) if basis.family == "residual-income" else annual_growth(facts)
     growth_base = max(-0.1, min(profile.growth_cap, growth)) if growth is not None else None
     margin = min(basis.start_margin, profile.margin_cap)
     if margin < 0.03:
@@ -199,12 +230,7 @@ def scenario_defaults(
                     updated[field] = specified
             params = ScenarioInputs.model_validate(updated)
         defaults[key] = params
-    if overrides or basis.family == "residual-income":
-        return defaults, []
-    for ref in references:
-        ref.value = defaults[ref.scenario].revenue_cagr
-        ref.adjustment = ref.value - growth
-    return defaults, references
+    return defaults
 
 
 def statement_row(

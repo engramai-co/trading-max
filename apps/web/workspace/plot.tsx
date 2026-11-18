@@ -79,6 +79,7 @@ export function Plot({
   option,
   height = 300,
   research = false,
+  updateWhileReading = false,
   controller,
   onZoom,
   readPoint,
@@ -88,11 +89,13 @@ export function Plot({
   customGestures = false,
   initialSelection = null,
   onSelectionChange,
+  onBrush,
 }: {
   label: string;
   option: (colours: ChartColours) => EChartsOption;
   height?: number;
   research?: boolean;
+  updateWhileReading?: boolean;
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
   readPoint?: (index: number) => string;
@@ -101,6 +104,7 @@ export function Plot({
   fullscreen?: boolean;
   customGestures?: boolean;
   initialSelection?: number | null;
+  onBrush?: (start: number, end: number) => void;
   onSelectionChange?: (position: number | null) => void;
 }) {
   const t = useCopy();
@@ -110,7 +114,7 @@ export function Plot({
   const hasReadout = Boolean(readout);
   const touchLayout = useMediaQuery(TOUCH_LAYOUT) === true;
   const description = useId();
-  const [reading, setReading] = useState("");
+  const [reading, setReading] = useState<{index: number; text: string} | null>(null);
   const [pinned, setPinned] = useState(false);
   const [picked, setPicked] = useState<number | null>(initialSelection);
   const [gapSpan, setGapSpan] = useState<readonly [number, number] | null>(null);
@@ -143,6 +147,9 @@ export function Plot({
   const suppressed = useRef(false);
   const touchStart = useRef<{ x: number; y: number; scrub: boolean } | null>(null);
   // Where the finger last touched, so a docked strip can keep clear of the point being read.
+  const brush = useRef<{position:number; x:number} | null>(null);
+  const keyboardAnchor = useRef<number | null>(null);
+  const [brushPixels, setBrushPixels] = useState<[number,number] | null>(null);
   const touchY = useRef<number | null>(null);
   // The pane under the pointer or touch; keyboard readings have none.
   const [pane, setPane] = useState<number | undefined>(undefined);
@@ -223,6 +230,7 @@ export function Plot({
     },
     undefined,
     pinned || picked != null || gapSpan != null || Boolean(reading),
+    updateWhileReading,
   );
   const gestures = useChartGestures(() => control.current, expanded || customGestures);
   useEffect(() => {
@@ -341,7 +349,7 @@ export function Plot({
     control.current?.setOption({ tooltip: { alwaysShowContent: false } });
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
-    setReading("");
+    setReading(null);
     // The live region returns to the latest reading.
     setAnnounced(null);
   };
@@ -559,6 +567,11 @@ export function Plot({
         aria-describedby={description}
         tabIndex={0}
         onPointerMove={(event) => {
+          if (brush.current && event.buttons === 1) {
+            const hit = pickAt(event);
+            if (hit && "position" in hit) setBrushPixels([brush.current.x, hit.x]);
+            return;
+          }
           if (readout && event.pointerType === "touch") {
             scrub(event);
             return;
@@ -580,14 +593,32 @@ export function Plot({
           suppressed.current = false;
           if (readout && !pinned) choose(null);
         }}
-        onPointerCancel={(event) => { gestures.end(event); touchStart.current = null; }}
+        onPointerCancel={(event) => { brush.current = null; setBrushPixels(null); gestures.end(event); touchStart.current = null; }}
         onPointerDown={(event) => {
-          gestures.down(event);
+          if (onBrush && !touchLayout && event.button === 0 && (!expanded || event.shiftKey)) {
+            const hit = pickAt(event);
+            if (hit && "position" in hit) {
+              brush.current = {position:hit.position,x:hit.x};
+              setBrushPixels(null);
+              event.currentTarget.setPointerCapture(event.pointerId);
+            }
+          }
+          if (!brush.current) gestures.down(event);
           touchY.current = event.pointerType === "touch" ? event.clientY : null;
           if (event.pointerType === "touch" || readout)
             touchStart.current = { x: event.clientX, y: event.clientY, scrub: false };
         }}
         onPointerUp={(event) => {
+          const anchor = brush.current;
+          brush.current = null;
+          const hit = anchor && pickAt(event);
+          if (anchor && hit && "position" in hit && anchor.position !== hit.position && Math.abs(hit.x-anchor.x)>4) {
+            touchStart.current = null;
+            onBrush?.(Math.min(anchor.position,hit.position),Math.max(anchor.position,hit.position));
+            setBrushPixels([anchor.x,hit.x]);
+            return;
+          }
+          setBrushPixels(null);
           const start = touchStart.current;
           touchStart.current = null;
           if (start?.scrub) {
@@ -638,6 +669,7 @@ export function Plot({
         }}
         onKeyDown={(event) => {
           if (event.key === "Escape") {
+            brush.current = null; keyboardAnchor.current=null; setBrushPixels(null);
             if (pinned || reading || active != null || gap != null) {
               event.preventDefault();
               event.stopPropagation();
@@ -664,6 +696,7 @@ export function Plot({
             const index = active == null ? values.length - 1 : closestChartPosition(values, active);
             const next = event.key === "Home" ? 0 : event.key === "End" ? values.length - 1
               : Math.max(0, Math.min(values.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)));
+            if (onBrush && event.shiftKey) keyboardAnchor.current ??= values[index];
             choose(values[next], true);
             announce(values[next]);
             return;
@@ -695,11 +728,22 @@ export function Plot({
             seriesIndex: 0,
             dataIndex: selected.current,
           });
-          setReading(readPoint?.(selected.current) ?? chartReading(option, selected.current, locale, t));
+          setReading({
+            index: selected.current,
+            text: readPoint?.(selected.current) ?? chartReading(option, selected.current, locale, t),
+          });
+        }}
+        onKeyUp={(event) => {
+          if (event.key === "Shift" && keyboardAnchor.current != null) {
+            const anchor=keyboardAnchor.current;
+            keyboardAnchor.current=null;
+            if (active!=null && active!==anchor) onBrush?.(Math.min(anchor,active),Math.max(anchor,active));
+          }
         }}
         ref={ref}
         style={{ height: "100%", width: "100%", touchAction: readout || expanded || customGestures ? "pan-y" : undefined }}
       />
+      {onBrush && brushPixels && <div aria-hidden="true" className="mx-chart-brush" style={{left:Math.min(...brushPixels),width:Math.abs(brushPixels[1]-brushPixels[0])}}/>}
       {readout && <div className="mx-chart-cursor" ref={cursor} aria-hidden="true" />}
       {readout?.marks && <div className="mx-chart-marks" ref={marksLayer} aria-hidden="true">
         {marks.map((mark, index) => <span key={index} className="mx-chart-mark" style={{ "--mark": mark.colour } as CSSProperties} />)}
@@ -712,6 +756,7 @@ export function Plot({
           : <button className="mx-inline-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</button>}
       </div>}
       <span id={description} className="sr-only">
+        {onBrush && t("拖动选择归因区间，或按住 Shift 并用方向键选择。","Drag to select an attribution range, or hold Shift and use the arrow keys.")}
         {t(
           "左右方向键查看相邻读数，Home 和 End 到首尾，Escape 关闭。触控轻点或横向拖动查看读数，再次轻点关闭。",
           "Use arrow keys for adjacent readings, Home and End for the first and last point, and Escape to dismiss. Tap or drag sideways to read, then tap again to dismiss.",
@@ -723,7 +768,9 @@ export function Plot({
         aria-live="polite"
         aria-atomic="true"
       >
-        {reading}
+        {reading && (updateWhileReading
+          ? readPoint?.(reading.index) ?? chartReading(settings, reading.index, locale, t)
+          : reading.text)}
       </span>
       {pinned && !readout && (
         <button type="button" className="mx-chart-tip-close" aria-label={t("关闭读数", "Close reading")} onClick={dismiss}>

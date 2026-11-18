@@ -5,9 +5,11 @@ import { formatCalendarDate } from "@/ui/formatters";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Checkbox, Group, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
-import { compact, currency, number, object, objects, percent, str, type Json } from "@/workspace/data";
+import { compact, number, object, objects, percent, str, type Json } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import {
+  quoteUnit,
+  quoteValue,
   statementUnit,
   statementValue,
   trailingStatement,
@@ -39,6 +41,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
         <Empty title={t("技术数据尚未就绪", "Technical data is not ready")} />
       </Panel>
     );
+  const priceFigure = (value: unknown, digits = 2) => quoteValue(value, tech.currency, { style: "figure", digits });
   const relative =
     tech.currency === "USD"
       ? object(tech.relativeStrength?.[benchmark + "_63d"])
@@ -66,7 +69,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
       title={t("技术数据", "Technical data")}
       action={
         <span className="mx-unit">
-          {tech.asOf} · {t("日线", "Daily")} · {tech.currency}
+          {tech.asOf} · {t("日线", "Daily")} · {quoteUnit(tech.currency).currency}
         </span>
       }
       help={t(
@@ -89,7 +92,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
               ],
               [
                 t("52 周区间", "52-week range"),
-                `${number(tech.low52w, 2)} – ${number(tech.high52w, 2)}`,
+                `${priceFigure(tech.low52w, 2)} – ${priceFigure(tech.high52w, 2)}`,
               ],
               [
                 t("距 52 周高点", "From 52-week high"),
@@ -101,7 +104,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
             <thead>
               <tr>
                 <th>{t("日均线", "Daily SMA")}</th>
-                <th>{tech.currency}</th>
+                <th>{quoteUnit(tech.currency).currency}</th>
                 <th>{t("价格偏离", "Distance")}</th>
               </tr>
             </thead>
@@ -116,7 +119,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
                       {key.toUpperCase()}
                     </button>
                   </th>
-                  <td>{number(tech[key], 2)}</td>
+                  <td>{priceFigure(tech[key], 2)}</td>
                   <td>
                     {percent(relativeToPrice(tech.price, tech[key]), true, 2)}
                   </td>
@@ -125,14 +128,14 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
             </tbody>
           </table>
           {more(t("更多价格位置", "More price levels"), [
-            [t("日线收盘", "Daily close"), number(tech.price, 2)],
+            [t("日线收盘", "Daily close"), priceFigure(tech.price, 2)],
             [
               t("此前 20 日低点", "Prior 20-session low"),
-              number(tech.support20, 2),
+              priceFigure(tech.support20, 2),
             ],
             [
               t("此前 20 日高点", "Prior 20-session high"),
-              number(tech.resistance20, 2),
+              priceFigure(tech.resistance20, 2),
             ],
           ])}
         </section>
@@ -155,9 +158,9 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
             ]}
           />
           {more(t("详细动量读数", "Detailed momentum readings"), [
-            ["MACD · 12/26", number(tech.macd, 3)],
-            [t("信号线 · 9", "Signal · 9"), number(tech.macdSignal, 3)],
-            [t("MACD 差值", "MACD difference"), number(tech.macdHistogram, 3)],
+            ["MACD · 12/26", priceFigure(tech.macd, 3)],
+            [t("信号线 · 9", "Signal · 9"), priceFigure(tech.macdSignal, 3)],
+            [t("MACD 差值", "MACD difference"), priceFigure(tech.macdHistogram, 3)],
             [
               "+DI / −DI · 14",
               `${number(tech.plusDi, 1)} / ${number(tech.minusDi, 1)}`,
@@ -176,7 +179,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
           <h3>{t("波动", "Volatility")}</h3>
           <Facts
             rows={[
-              ["ATR · 14", number(tech.atr, 2)],
+              ["ATR · 14", priceFigure(tech.atr, 2)],
               [t("ATR / 价格", "ATR / price"), percent(tech.atrPct)],
               [
                 t("布林带位置 %B", "Bollinger %B"),
@@ -191,9 +194,9 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
           {more(
             t("布林带读数 · 20 日 / 2σ", "Bollinger levels · 20 days / 2σ"),
             [
-              [t("上轨", "Upper band"), number(tech.bollingerUpper, 2)],
-              [t("中轨", "Middle band"), number(tech.sma20, 2)],
-              [t("下轨", "Lower band"), number(tech.bollingerLower, 2)],
+              [t("上轨", "Upper band"), priceFigure(tech.bollingerUpper, 2)],
+              [t("中轨", "Middle band"), priceFigure(tech.sma20, 2)],
+              [t("下轨", "Lower band"), priceFigure(tech.bollingerLower, 2)],
             ],
           )}
         </section>
@@ -285,7 +288,7 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
               ],
               [
                 t("平价价值", "Parity value"),
-                currency(tech.adrResearch.parityUsd, "USD", 2),
+                quoteValue(tech.adrResearch.parityUsd, "USD"),
               ],
               [
                 t("相对平价溢价", "Premium to parity"),
@@ -402,9 +405,11 @@ const statementNames: Record<string, [string, string]> = {
 export function FinancialStatements({
   data,
   controlledFrequency,
+  title,
 }: {
   data: ResearchLensSnapshot;
   controlledFrequency?: string;
+  title?: string;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -474,7 +479,7 @@ export function FinancialStatements({
   });
   return (
     <Panel
-      title={t("财务报表", "Financial statements")}
+      title={title ?? t("财务报表", "Financial statements")}
       help={t(
         "报告期从新到旧。同比仅匹配上一财年同一季度或年度，基数非正或缺失时不计算。TTM 汇总完整四季；资产负债为期末值。",
         "Newest periods first. YoY matches the same fiscal quarter or year; non-positive or missing baselines stay unavailable. TTM sums four quarters; balance-sheet items use the ending value.",

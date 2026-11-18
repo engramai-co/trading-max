@@ -2,10 +2,13 @@ import { dividendAmount, dividendBasis } from "@/lib/dividend-disclosure";
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { Locale } from "@/components/locale-provider";
 import type { ResearchFigure } from "./research-figures";
+import { formatPageField, type ToolField } from "./page-figures";
 import type { Evidence } from "./evidence";
 import { formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
+import { tradingDay } from "@/lib/portfolio/history";
 import { numeric } from "@/lib/numeric";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
+import { renderReviewField } from "./review-figures";
 
 type Words = readonly [en: string, zh: string];
 const word = (words: Words, locale: Locale) => words[locale === "en" ? 0 : 1];
@@ -71,12 +74,23 @@ export function inferenceText(key: string, locale: Locale) {
   return Object.hasOwn(caveats, key) ? word(caveats[key], locale) : null;
 }
 
-function resolveField(output: Json, pointer: string) {
+function resolveField(output: Json, pointer: string): ToolField | null {
+  const data = object(output.data);
+  const fx = /^\/data\/accounts\/(invest|isa)\/(fx_effect_gbp|local_price_effect_gbp)$/.exec(pointer);
+  if (fx) {
+    const [,scope,field] = fx;
+    const parent = object(object(data.accounts)[scope]);
+    return Object.hasOwn(parent,field) ? {data,parent:{...parent,scope},group:"accounts",field,value:parent[field]} : null;
+  }
+  const benchmark = /^\/data\/window_benchmarks\/(VOO|QQQ|VT)$/.exec(pointer);
+  if (benchmark) {
+    const parent = object(data.window_benchmarks), field = benchmark[1];
+    return Object.hasOwn(parent,field) ? {data,parent,group:"window_benchmarks",field,value:parent[field]} : null;
+  }
   // The supported paths cover a summary, a typed subobject and a published row.
   const match = /^\/data\/(?:([a-z_]+)\/(?:(0|[1-9]\d{0,4})\/)?)?([a-z_]+)$/.exec(pointer);
   if (!match) return null;
   const [, group, index, field] = match;
-  const data = object(output.data);
   const section = group && Object.hasOwn(data, group) ? data[group] : undefined;
   const parent = !group ? data : index === undefined ? object(section) : Array.isArray(section) ? object(section[Number(index)]) : {};
   if (!Object.hasOwn(parent, field)) return null;
@@ -160,6 +174,8 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
     source = historicalSources[args.event];
     if (row.source_url) args.url = str(row.source_url);
     if (args.event === "own_trade") {
+      // Review groups fills by the UTC ledger weekday, even when the reader sees another date.
+      args.date = tradingDay(str(row.instant) || dateText(day), "UTC") ?? "";
       args.scope = str(row.account) || str(output.scope);
       args.ticker = ticker;
       args.side = str(row.side);
@@ -238,24 +254,42 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   if (status !== "ok" && status !== "partial") return null;
   if (pointer === "/data/coverage" && coverage) return limited ? limitedText : word(["Complete coverage", "覆盖完整"], locale);
   if (research !== undefined) return research ? [research.text, limited ? limitedText : ""].filter(Boolean).join(" · ") : null;
+  if (tool === "review_patterns" || tool === "decision_timing_and_habits") return renderReviewField(tool, output, pointer, locale);
   const row = resolveField(output, pointer);
   if (!row || (row.group === "twr" && row.parent.status !== "ok")) return null;
-  const formatted = formatField(tool, row, locale);
+  const pageFormat = formatPageField(tool, row, locale, str(output.scope), timeZone);
+  const formatted = pageFormat ?? formatField(tool, row, locale);
   if (!formatted) return null;
   const {parent, field} = row;
-  const date = dateText(parent.observed_at) || dateText(parent.as_of) || dateText(parent.date)
+  const pageDate = pageFormat && (tool === "sector_headline" && parent.instant ? dateText(parent.instant) : tool === "market_sector" && field === "weight" ? dateText(data.weights_as_of) :
+    dateText(parent.date) || dateText(data.day) || dateText(data.finished_at));
+  const date = pageDate || dateText(parent.observed_at) || dateText(parent.as_of) || dateText(parent.date)
     || dateText(field.includes("pnl") ? parent.pnl_as_of : parent.values_as_of) || dateText(data.broker_as_of);
-  const start = dateText(object(parent.period).start) || dateText(parent.start) || dateText(data.window_start) || dateText(data.start);
-  const end = dateText(object(parent.period).end) || dateText(parent.end) || dateText(data.window_end) || dateText(data.end);
-  // A freshness result can cite several datasets. Only this row dates its state.
+  const fxWindow = tool === "holding_fx_split" && ["invest","isa"].includes(str(parent.scope))
+    ? object(object(data.accounts)[str(parent.scope)]) : {};
+  const datedItem = (tool==="daily_returns" || tool==="selected_daily") && (row.group==="worst_day" || row.group==="largest_move" || row.group==="items");
+  const start = (datedItem ? dateText(parent.from_date) : "") || dateText(fxWindow.since) || dateText(parent.since) || dateText(object(parent.period).start) || dateText(parent.start) || dateText(data.window_start) || dateText(data.start);
+  const end = (datedItem ? dateText(parent.date) : tool==="holding_fx_split" ? dateText(fxWindow.as_of) || dateText(parent.as_of) : "") || dateText(object(parent.period).end) || dateText(parent.end) || dateText(data.window_end) || dateText(data.end);
   const freshness = tool === "data_freshness";
   const sourceDates = freshness ? [] : objects(output.sources).map(source => dateText(source.as_of)).filter(Boolean);
   const localDate = (value: string) => value.includes("T") ? formatDateTime(value, locale, timeZone) : value;
-  const period = start && end ? localDate(start) + " – " + localDate(end) : localDate(end || date) || [...new Set(sourceDates)].map(localDate).join(" / ");
+  const holdingPrice = (tool === "list_holdings" || tool === "position_detail") && row.group === "items" && field === "current_price";
+  const period = holdingPrice ? localDate(dateText(parent.observed_at)) || word(["Time unavailable", "时间未提供"], locale)
+    : start && end ? localDate(start) + " – " + localDate(end) : localDate(end || date) || [...new Set(sourceDates)].map(localDate).join(" / ");
   const accounts: Record<string, Words> = {invest:["Invest", "投资账户"], isa:["ISA", "ISA"], cfd:["CFD", "CFD"],
     broker_total:["All investment accounts", "全部投资账户"], household:["Household", "家庭账户"]};
   const scope = str(parent.scope) || str(output.scope);
-  const subject = [str(parent.ticker) || str(parent.name) || str(data.ticker) || (freshness ? "" : str(parent.dataset)), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
+  const subject = [str(parent.ticker) || str(parent.name) || (tool==="global_map" ? str(parent.market).toUpperCase() : "") || str(data.name) || str(data.ticker) || (freshness ? "" : str(parent.dataset)), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
     .filter(Boolean).join(" · ");
-  return [subject, formatted.join(freshness ? " · " : " "), period === formatted[1] ? "" : period, limited || parent.status === "partial" ? limitedText : ""].filter(Boolean).join(" · ");
+  const {observed_intervals: observed, total_intervals: total} = data;
+  const daily = tool === "daily_returns" || tool === "selected_daily";
+  let coverageText = limited || parent.status === "partial" ? limitedText : "";
+  if (daily && row.group === "window_benchmarks" && start && end) {
+    // The tool publishes a window benchmark only when both selected closes are priced.
+    coverageText = word(["both endpoint prices observed", "已观测到两个端点价格"], locale);
+  } else if (daily && (field === "window_twr_fraction" || datedItem) && typeof observed === "number" && typeof total === "number") {
+    coverageText = observed < total
+      ? word([`${observed} of ${total} intervals observed`, `已观测 ${observed}/${total} 个区间`], locale) : "";
+  }
+  return [subject, formatted.join(freshness ? " · " : " "), period === formatted[1] ? "" : period, coverageText].filter(Boolean).join(" · ");
 }

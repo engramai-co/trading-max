@@ -434,20 +434,30 @@
     gap: 4px;
   }
 }
-/* Daily technical diagnosis: score rail, chart and divided evidence, not a second chart state. */
+/* The chart, its score and the diagnosis share one surface divided by hairlines. */
 .mx-tech-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 230px;
-  gap: 20px;
-  align-items: start;
-}
-/* The diagnosis spans the chart column. Keep this class apart from .mx-tech-evidence,
-   whose direct children are flex factor rows. */
-.mx-tech-diagnosis-slot {
+  grid-template-columns: minmax(0, 1fr) 248px;
   min-width: 0;
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-border);
+  border-radius: 12px;
+  box-shadow: var(--mx-shadow);
+}
+/* The diagnosis spans the surface below the chart and score. Keep this class apart from
+   .mx-tech-evidence, whose direct children are flex factor rows. */
+.mx-tech-diagnosis-slot {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-tech-diagnosis-slot > section {
+  padding: 18px 20px 10px;
 }
 .mx-tech-rail {
-  grid-row: span 2;
+  min-width: 0;
+  padding: 16px 20px;
+  border-inline-start: 1px solid var(--mx-border);
 }
 .mx-tech-main {
   min-width: 0;
@@ -689,7 +699,8 @@
 }
 @media (max-width: 1000px) {
   .mx-tech-rail {
-    grid-row: auto;
+    border-inline-start: 0;
+    border-top: 1px solid var(--mx-border);
   }
   .mx-tech-workspace {
     grid-template-columns: minmax(0, 1fr);
@@ -783,4 +794,105 @@
   .mx-tech-chart .mx-chart-data > summary {
     min-height: 36px;
   }
+}
+
+/* Keep review in the editable assumption row at every workspace width. */
+.mx-draft-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--mx-border);
+  min-width: 0;
+}
+.mx-draft-values {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+}
+.mx-draft-values .mx-draft-field {
+  flex: 1 1 84px;
+  width: auto;
+  padding: 4px 0;
+}
+.mx-draft-values del, .mx-draft-status, .mx-draft-reason {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-draft-values del, .mx-draft-candidate {
+  font-variant-numeric: tabular-nums;
+}
+.mx-draft-candidate {
+  padding: 4px 6px;
+  font-size: 14px;
+}
+.mx-draft-candidate small {
+  display: block;
+  font-size: 11px;
+  color: var(--mx-muted);
+}
+.mx-draft-row[data-decision="accepted"] .mx-draft-candidate {
+  background: var(--mx-brand-soft);
+  border-radius: 5px;
+}
+.mx-draft-row[data-decision="accepted"] strong::before, .mx-draft-reading::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-inline-end: 5px;
+  background: var(--mx-brand);
+  vertical-align: middle;
+}
+.mx-draft-actions {
+  display: flex;
+  gap: 3px;
+}
+.mx-draft-actions button {
+  width: 26px;
+  min-height: 28px;
+  justify-content: center;
+  padding: 0;
+  border-color: var(--mx-border);
+}
+.mx-draft-actions button[aria-pressed="true"] {
+  color: var(--mx-brand);
+  background: var(--mx-brand-soft);
+}
+.mx-draft-actions button:disabled {
+  opacity: .55;
+}
+.mx-draft-reason {
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+.mx-draft-reason a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: inherit;
+}
+.mx-draft-status {
+  margin: 4px 0 10px;
+}
+@media (max-width: 767px) {
+  .mx-assumption-picker .mx-draft-actions button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+.mx-draft-reason a {
+  white-space: nowrap;
+}
+.mx-draft-evidence > div {
+  display: grid;
+  gap: 3px;
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+  scroll-margin-block: 100px;
+}
+.mx-draft-evidence span, .mx-draft-evidence a {
+  color: var(--mx-muted);
+}
+
+.mx-draft-citation {
+  display: block;
 }

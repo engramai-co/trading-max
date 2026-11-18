@@ -156,7 +156,7 @@ function SessionPeek({ ticker, session, position }: { ticker: string; session: P
   const t = useCopy();
   return (
     <>
-      <PeekHead ticker={ticker} price={quoteValue(session.price, session.currency, "")} />
+      <PeekHead ticker={ticker} price={quoteValue(session.price, session.currency)} />
       <Facts rows={[
         [session.label, session.closed ? <ClosedMarket /> : <span key="session" className={session.share == null ? undefined : "mx-" + tone(session.share)}>
           {percent(session.share, true, 2)}
@@ -204,7 +204,7 @@ function DayPeek({ ticker, position }: { ticker: string; position?: PeekPosition
   const moveDay = held ? held.moveDay : day;
   const move = held ? held.move : change;
   const label = !moveDay || moveDay.slice(0, 10) === today ? t("今日", "Today") : formatCalendarDate(moveDay.slice(0, 10), locale, now);
-  const price = held ? quoteValue(held.price, held.currency, "") : last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—";
+  const price = held ? quoteValue(held.price, held.currency) : last != null ? quoteValue(last, query.data?.currency) : query.isPending ? "" : "—";
   const note = held && day && held.moveDay && day !== held.moveDay.slice(0, 10)
     ? t("券商快照", "Broker snapshot") + (held.asOf ? " " + formatDateTime(held.asOf, locale, timeZone, now) : "")
       + t("；走势为行情 ", "; the path is market data from ") + formatCalendarDate(day, locale, now)
@@ -235,7 +235,7 @@ function PeekBody({ ticker, position }: { ticker: string; position?: PeekPositio
   const change = first && last != null ? last / first - 1 : null;
   return (
     <>
-      <PeekHead ticker={ticker} price={last != null ? quoteValue(last, query.data?.currency, "") : query.isPending ? "" : "—"} />
+      <PeekHead ticker={ticker} price={last != null ? quoteValue(last, query.data?.currency) : query.isPending ? "" : "—"} />
       {query.isPending ? <div className="mx-peek-skeleton" /> : closes.length > 1 && <Sparkline values={closes} className={"mx-" + tone(change)} />}
       <Facts
         rows={[

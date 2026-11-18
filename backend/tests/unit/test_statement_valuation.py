@@ -79,7 +79,7 @@ def test_verified_receipt_uses_ordinary_statement_shares_once():
     assert (b.shares, b.ordinary_per_receipt, b.revenue, b.start_margin) == (100, 5, 3, 0.2)
     with pytest.raises(ValueError, match="currency-conversion"):
         freeze_basis(facts, "cash-flow", **(kwargs | {"fx": None}))
-    with pytest.raises(ValueError, match="share-count"):
+    with pytest.raises(ValueError, match="receipt-ratio-unverified"):
         freeze_basis(
             facts, "cash-flow", **(kwargs | {"ticker": "SYN", "listing": "US:SYN", "is_adr": True})
         )
@@ -285,6 +285,10 @@ def test_batch_requires_share_unit_evidence_for_the_quote(filed_listing, unit, e
     if eligible:
         assert row["assumptions"]["shareUnit"] == "ordinary"
         assert row["assumptions"]["shareUnitFiling"] == "https://issuer.invalid/cover"
+    elif unit == "receipt":
+        assert row["model_warnings"] == ["receipt-ratio-unverified"]
+    else:
+        assert row["model_warnings"] == ["listed-share-unit-unverified"]
 
 
 def test_class_count_requires_a_period_with_company_wide_shares():

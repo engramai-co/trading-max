@@ -101,7 +101,9 @@ def test_reported_52_week_period_preserves_provider_key():
 def test_quote_keeps_currency_unknown_and_converts_only_pence_baseline():
     assert make_quote("X", {"price": 10}, {}).currency is None
     quote = make_quote(
-        "X.L", {"price": 10}, {"currency": "GBp", "metrics": {"regularMarketPreviousClose": 900}}
+        "X.L",
+        {"price": 10, "currency": "GBP"},
+        {"currency": "GBp", "metrics": {"regularMarketPreviousClose": 900}},
     )
     assert quote.currency == "GBP"
     assert quote.change == 1

@@ -170,6 +170,21 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
                 or (role.id != "earnings-brief" and context.scope != "broker_total")
             ):
                 raise ValueError("Research reading must keep the same listing, lens and snapshot")
+            if role.id in {"exposure", "attribution", "market-map", "market-sector", "diagnosis"}:
+                job_record = role.id == "diagnosis" and context.object["issue"] == "job"
+                if (not context.snapshot_id and not job_record) or context.ticker or context.lens:
+                    raise ValueError("A page reading requires its published origin")
+                if role.id == "exposure" and context.scope != "broker_total":
+                    raise ValueError("Look-through covers the combined broker accounts")
+                if role.id != "attribution" and (context.range or context.benchmark):
+                    raise ValueError("This page selection has no performance window")
+                if role.id in {"market-map", "market-sector", "diagnosis"} and context.scope:
+                    raise ValueError("This selection has no account filter")
+                if role.id == "attribution" and any(
+                    context.object[key] != getattr(context, key)
+                    for key in ("scope", "range", "benchmark")
+                ):
+                    raise ValueError("The selected range must match its page origin")
         elif context.object or context.snapshot_id:
             raise ValueError("object requires a role")
         return context
@@ -282,11 +297,16 @@ class AssistantService:
         deps = self.deps_for_run(context.page, zone.key)
         if context.snapshot_id and context.snapshot_id != deps.snapshot_id:
             try:
-                deps = replace(deps, manifest=deps.store.load_manifest(context.snapshot_id))
+                deps = replace(
+                    deps,
+                    manifest=deps.store.load_manifest(context.snapshot_id, require_retained=True),
+                )
             except FileNotFoundError:
                 raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
         if context._reading:
             role, selected = context._reading
+            if role.id == "diagnosis" and not context.snapshot_id:
+                deps = replace(deps, manifest=None)
             deps = role.bind(deps, selected)
         model = bound.model
         started = time.monotonic()

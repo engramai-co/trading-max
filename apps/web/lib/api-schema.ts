@@ -326,7 +326,11 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * History Retention
+         * @description Validate a cached chart or exact page without loading its observations.
+         */
+        head: operations["history_retention_v1_dashboard_history_head"];
         patch?: never;
         trace?: never;
     };
@@ -1014,6 +1018,23 @@ export interface paths {
         get: operations["research_timeline_v1_research__ticker__timeline_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/research/{ticker}/valuation-draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Valuation Draft */
+        post: operations["valuation_draft_v1_research__ticker__valuation_draft_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1894,6 +1915,8 @@ export interface components {
              * @enum {string}
              */
             status: "available" | "unavailable";
+            /** Unpricedbasketbuys */
+            unpricedBasketBuys?: components["schemas"]["TradeDecision"][];
         };
         /** AccountEffects */
         AccountEffects: {
@@ -3260,8 +3283,12 @@ export interface components {
             estimated_eps?: number | null;
             /** Evidence Id */
             evidence_id: string;
+            /** Firm */
+            firm?: string | null;
             /** Fiscal Period */
             fiscal_period?: string | null;
+            /** From Grade */
+            from_grade?: string | null;
             /** Instant */
             instant?: string | null;
             /**
@@ -3297,6 +3324,8 @@ export interface components {
             title_en: string;
             /** Title Zh */
             title_zh: string;
+            /** To Grade */
+            to_grade?: string | null;
             /** Unit */
             unit?: string | null;
         };
@@ -3372,16 +3401,28 @@ export interface components {
             currency: string;
             /** Items */
             items: components["schemas"]["DailyReturn"][];
+            largest_move: components["schemas"]["DailyReturn"];
             /** Next Cursor */
             next_cursor: number | null;
+            /** Observed Intervals */
+            observed_intervals: number;
             /** Range */
             range: string;
+            /** Total Intervals */
+            total_intervals: number;
             /** Total Items */
             total_items: number;
+            /** Window Benchmarks */
+            window_benchmarks: {
+                [key: string]: number;
+            };
             /** Window End */
             window_end: string;
             /** Window Start */
             window_start: string;
+            /** Window Twr Fraction */
+            window_twr_fraction: number | null;
+            worst_day: components["schemas"]["DailyReturn"];
         };
         /** DailyTracking */
         DailyTracking: {
@@ -3493,11 +3534,20 @@ export interface components {
             /** Nav */
             nav?: components["schemas"]["NavPoint"][];
             policy?: components["schemas"]["PolicySummary"] | null;
+            /** Positionasof */
+            positionAsOf?: {
+                [key: string]: string | null;
+            };
             /** Researchasof */
             researchAsOf: string;
             /** Reviewasof */
             reviewAsOf?: string | null;
             reviewEvidence?: components["schemas"]["InvestmentReviewEvidence"] | null;
+            /**
+             * Reviewhabitsconsented
+             * @default false
+             */
+            reviewHabitsConsented: boolean;
             /** Reviewsummaries */
             reviewSummaries?: components["schemas"]["OverviewReviewSummary"][];
             /** Risk */
@@ -3572,6 +3622,10 @@ export interface components {
             /** Options */
             options: components["schemas"]["OptionSnapshot"][];
             policy: components["schemas"]["PolicySummary"];
+            /** Positionasof */
+            positionAsOf?: {
+                [key: string]: string | null;
+            };
             /** Researchasof */
             researchAsOf: string;
             /** Risk */
@@ -3622,6 +3676,8 @@ export interface components {
             broker_as_of: string | null;
             /** Company Limit */
             company_limit: number | null;
+            /** Company Table Truncated */
+            company_table_truncated: boolean;
             /** Currency */
             currency: string;
             /** Dimension */
@@ -3738,13 +3794,33 @@ export interface components {
             date: string;
             /** Effect Gbp */
             effect_gbp: number | null;
+            /** First Fill At */
+            first_fill_at?: string | null;
             hindsight: components["schemas"]["Timing"] | null;
             /** Horizon */
             horizon: string;
+            /** Listing */
+            listing?: string | null;
+            /** Market Return */
+            market_return?: number | null;
+            /** Name */
+            name?: string | null;
             /** Observed Days */
             observed_days: number | null;
+            /** Ordinal */
+            ordinal: number;
+            /** Prior Close Date */
+            prior_close_date?: string | null;
+            /** Prior Close Gbp */
+            prior_close_gbp?: number | null;
+            /** Prior Events */
+            prior_events?: components["schemas"]["PriorDecisionEvent"][] | null;
             /** Scope */
             scope: string;
+            /** Security Return */
+            security_return?: number | null;
+            /** Settled Per Share Gbp */
+            settled_per_share_gbp?: number | null;
             /** Side */
             side: string;
             /** Ticker */
@@ -3780,6 +3856,125 @@ export interface components {
             model: string;
             /** Validationtoken */
             validationToken: string;
+        };
+        /** DeskReading */
+        DeskReading: {
+            /** Upside */
+            upside: number;
+            /** Value */
+            value: number;
+        };
+        /** DraftAudit */
+        DraftAudit: {
+            draft: components["schemas"]["DraftRecord"];
+            /** Requestdigest */
+            requestDigest: string;
+            review: components["schemas"]["DraftReview"];
+        };
+        /** DraftEvent */
+        DraftEvent: {
+            /** Code */
+            code?: string | null;
+            /**
+             * Phase
+             * @enum {string}
+             */
+            phase: "preparing" | "basis" | "operating" | "expectations" | "market" | "evaluating" | "complete" | "error";
+            result?: components["schemas"]["DraftResult"] | null;
+        };
+        /** DraftInput */
+        DraftInput: {
+            /**
+             * Horizon
+             * @enum {integer}
+             */
+            horizon: 5 | 10;
+            /** Previewid */
+            previewId: string;
+            /** Requestedfamily */
+            requestedFamily?: ("cash-flow" | "net-income" | "residual-income") | null;
+            /** Scenarios */
+            scenarios: {
+                [key: string]: components["schemas"]["ScenarioInputs"];
+            };
+        };
+        /** DraftRecord */
+        DraftRecord: {
+            evidence: components["schemas"]["FrozenValuationEvidence"];
+            /**
+             * Formulaversion
+             * @enum {string}
+             */
+            formulaVersion: "equity-proxy-projection-v1" | "statement-equity-v2";
+            /**
+             * Horizon
+             * @enum {integer}
+             */
+            horizon: 5 | 10;
+            /** Original */
+            original: {
+                [key: string]: components["schemas"]["ScenarioInputs"];
+            };
+            /** Parentmodelid */
+            parentModelId: string | null;
+            /**
+             * Promptversion
+             * @default valuation-draft-v1
+             * @constant
+             */
+            promptVersion: "valuation-draft-v1";
+            /** Publicevaluationid */
+            publicEvaluationId: string;
+            result: components["schemas"]["DraftResult"];
+            reviewBasis: components["schemas"]["FrozenValuationBasis"];
+        };
+        /** DraftResult */
+        DraftResult: {
+            /** Deskreadings */
+            deskReadings: {
+                [key: string]: components["schemas"]["DeskReading"];
+            };
+            /** Evidence */
+            evidence: {
+                [key: string]: components["schemas"]["EvidenceItem"];
+            };
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "cash-flow" | "net-income" | "residual-income";
+            /**
+             * Familyselection
+             * @enum {string}
+             */
+            familySelection: "automatic" | "override";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Origins */
+            origins: {
+                [key: string]: components["schemas"]["TemplateOrigin"] | components["schemas"]["SavedOrigin"];
+            };
+            /** Proposals */
+            proposals: components["schemas"]["Proposal"][];
+            /** Snapshotid */
+            snapshotId: string;
+        };
+        /** DraftReview */
+        DraftReview: {
+            /** Decisions */
+            decisions: {
+                [key: string]: {
+                    [key: string]: "accepted" | "rejected" | "edited" | "unreviewed";
+                };
+            };
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
         };
         /** ETFDetail */
         ETFDetail: {
@@ -4085,6 +4280,118 @@ export interface components {
             /** Source Id */
             source_id: string;
         };
+        /**
+         * EvidenceBinding
+         * @description Set by trusted code before any tool arguments are parsed.
+         */
+        EvidenceBinding: {
+            /**
+             * Cutoff
+             * Format: date-time
+             */
+            cutoff: string;
+            /** Listing */
+            listing: string;
+            /** Permittedfields */
+            permittedFields: components["schemas"]["Metric"][];
+            /** Snapshotrunid */
+            snapshotRunId: string;
+            /** Ticker */
+            ticker: string;
+            /** Workspaceid */
+            workspaceId: string;
+        };
+        /**
+         * EvidenceGroup
+         * @enum {string}
+         */
+        EvidenceGroup: "basis" | "operating" | "expectations" | "market";
+        /** EvidenceItem */
+        EvidenceItem: {
+            /**
+             * Basis
+             * @enum {string}
+             */
+            basis: "reported-statement" | "statement-derived" | "same-fiscal-period-yoy" | "public-quote" | "listing-shares" | "identity-fx" | "stored-valuation-fx" | "provider-consensus" | "same-fiscal-period-revision" | "vendor-context" | "analyst-target" | "cost-of-equity-proxy";
+            /** Countercurrency */
+            counterCurrency?: string | null;
+            /** Currency */
+            currency?: string | null;
+            group: components["schemas"]["EvidenceGroup"];
+            /** Id */
+            id: string;
+            /** Listing */
+            listing: string;
+            locator: components["schemas"]["EvidenceLocator"];
+            metric: components["schemas"]["Metric"];
+            /** Nativequoteunit */
+            nativeQuoteUnit?: string | ("GBp" | "GBX" | "GBx") | null;
+            /** Observedat */
+            observedAt?: string | null;
+            period: components["schemas"]["EvidencePeriod"];
+            /** Publishedat */
+            publishedAt?: string | null;
+            /**
+             * Quality
+             * @enum {string}
+             */
+            quality: "observed" | "derived" | "retained" | "recovered" | "unavailable";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "yahoo-finance" | "yahoo-finance-financials" | "yahoo-finance-consensus" | "research-valuation" | "currency-identity";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "available" | "missing" | "unsupported";
+            /** Ticker */
+            ticker: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "currency" | "perShare" | "shares" | "ratio" | "multiple" | "fx" | "ratio-point";
+            /** Value */
+            value?: number | null;
+            /** Version */
+            version?: string | null;
+        };
+        /**
+         * EvidenceLocator
+         * @description A local logical key; there are no paths or provider URLs.
+         */
+        EvidenceLocator: {
+            /** Accession */
+            accession?: string | null;
+            /**
+             * Dataset
+             * @enum {string}
+             */
+            dataset: "financials" | "fundamentals" | "valuation" | "market" | "analyst" | "pe-archive";
+            /** Field */
+            field: string;
+        };
+        /** EvidencePeriod */
+        EvidencePeriod: {
+            /**
+             * Componentends
+             * @default []
+             */
+            componentEnds: string[];
+            /** End */
+            end?: string | null;
+            /** Forecastslot */
+            forecastSlot?: ("0q" | "+1q" | "0y" | "+1y") | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "spot" | "ttm" | "annual" | "quarterly" | "semiannual" | "irregular" | "forecast";
+            /** Start */
+            start?: string | null;
+        };
         /** EvidenceRef */
         EvidenceRef: {
             /** Accession */
@@ -4106,6 +4413,8 @@ export interface components {
             classification_status?: string | null;
             /** Code */
             code?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
             /** Isin */
             isin?: string | null;
             /** Name */
@@ -4314,6 +4623,42 @@ export interface components {
             startMargin: number;
             /** Ticker */
             ticker: string;
+        };
+        /**
+         * FrozenValuationEvidence
+         * @description Self-contained replay input; validate again on deserialization.
+         */
+        FrozenValuationEvidence: {
+            binding: components["schemas"]["EvidenceBinding"];
+            /**
+             * Eligibility
+             * @enum {string}
+             */
+            eligibility: "equity" | "fund" | "financial" | "unknown";
+            /** Factsversion */
+            factsVersion?: string | null;
+            /**
+             * Family
+             * @default cash-flow
+             * @enum {string}
+             */
+            family: "cash-flow" | "net-income" | "residual-income";
+            /**
+             * Formulaversion
+             * @default statement-equity-v2
+             * @enum {string}
+             */
+            formulaVersion: "equity-proxy-projection-v1" | "statement-equity-v2";
+            /** Ordinaryperreceipt */
+            ordinaryPerReceipt?: number | null;
+            /** Periodchoice */
+            periodChoice?: ("latest-four-quarters" | "previous-four-quarters" | "latest-fiscal-year" | "previous-fiscal-year") | null;
+            /** Periodid */
+            periodId?: string | null;
+            /** Quoteid */
+            quoteId?: string | null;
+            /** Rows */
+            rows: components["schemas"]["EvidenceItem"][];
         };
         /** FundBenchmark */
         FundBenchmark: {
@@ -5071,6 +5416,8 @@ export interface components {
         };
         /** HoldingMove */
         HoldingMove: {
+            /** Averagepurchasegbp */
+            averagePurchaseGbp?: number | null;
             /** Basis */
             basis?: ("volatility" | "short_history") | null;
             /** Change */
@@ -5080,6 +5427,10 @@ export interface components {
              * Format: date
              */
             date: string;
+            /** Hypotheticalhorizongbp */
+            hypotheticalHorizonGbp?: number | null;
+            /** Hypotheticaltodategbp */
+            hypotheticalToDateGbp?: number | null;
             /** Priorreturns */
             priorReturns?: number | null;
             /** Quotecurrency */
@@ -5865,6 +6216,8 @@ export interface components {
         };
         /** JobRecord */
         JobRecord: {
+            /** Attempts */
+            attempts?: number | null;
             /**
              * Createdat
              * Format: date-time
@@ -6252,6 +6605,11 @@ export interface components {
             /** Weighttotalpct */
             weightTotalPct: number;
         };
+        /**
+         * Metric
+         * @enum {string}
+         */
+        Metric: "cash" | "netIncome" | "commonEquity" | "spot" | "sharesOutstanding" | "reportingToQuoteFx" | "revenue" | "freeCashflow" | "operatingCashflow" | "capex" | "fcfMargin" | "shareCount" | "revenueGrowth" | "consensusRevenue" | "consensusRevenueGrowth" | "consensusRevenueGrowthChange" | "consensusEps" | "consensusEpsChange" | "forwardPe" | "trailingPe" | "forwardEps" | "trailingEps" | "priceToSales" | "priceToBook" | "enterpriseToEbitda" | "analystTargetMedian" | "costOfEquity";
         /** MetricObservation */
         MetricObservation: {
             /** Basis */
@@ -6988,6 +7346,30 @@ export interface components {
             /** Volume */
             volume: number | null;
         };
+        /** PriorDecisionEvent */
+        PriorDecisionEvent: {
+            /** Firm */
+            firm?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earnings" | "rating_change" | "news";
+            /** Local Date */
+            local_date: string;
+            /** Publisher */
+            publisher: string;
+            /** Record Id */
+            record_id?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Title En */
+            title_en: string;
+            /** Title Zh */
+            title_zh: string;
+            /** To Grade */
+            to_grade?: string | null;
+        };
         /** ProjectionYear */
         ProjectionYear: {
             /** Cashflowpershare */
@@ -7016,6 +7398,38 @@ export interface components {
             shares: number;
             /** Year */
             year: number;
+        };
+        /** Proposal */
+        Proposal: {
+            /**
+             * Category
+             * @enum {string}
+             */
+            category: "consensus" | "reported" | "derived" | "template" | "judgment";
+            /**
+             * Evidenceids
+             * @default []
+             */
+            evidenceIds: string[];
+            /**
+             * Field
+             * @enum {string}
+             */
+            field: "revenue_cagr" | "target_fcf_margin" | "discount_rate" | "exit_fcf_multiple" | "share_cagr" | "initial_roe" | "payout" | "ramp_years" | "terminal_pb";
+            /** Originid */
+            originId?: string | null;
+            /**
+             * Scenario
+             * @enum {string}
+             */
+            scenario: "bear" | "base" | "bull";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "sector-template" | "saved-assumption" | "consensus-growth" | "statement-growth" | "statement-margin" | "common-roe" | "cost-of-equity" | "book-multiple";
+            /** Value */
+            value: number;
         };
         /** Quality */
         Quality: {
@@ -7788,8 +8202,11 @@ export interface components {
         ResearchModelSaveRequest: {
             /** Dataversion */
             dataVersion?: string | null;
+            draftReview?: components["schemas"]["DraftReview"] | null;
             /** Family */
             family?: ("cash-flow" | "net-income" | "residual-income") | null;
+            /** Familyselection */
+            familySelection?: ("automatic" | "override") | null;
             /**
              * Formulaversion
              * @default statement-equity-v2
@@ -8766,8 +9183,24 @@ export interface components {
             /** Resultgbp */
             resultGbp?: number | null;
         };
+        /** SavedOrigin */
+        SavedOrigin: {
+            /** Modelid */
+            modelId: string | null;
+            /** Scenarios */
+            scenarios: {
+                [key: string]: components["schemas"]["ScenarioInputs"];
+            };
+            /**
+             * Source
+             * @default saved-assumption
+             * @constant
+             */
+            source: "saved-assumption";
+        };
         /** SavedResearchModel */
         SavedResearchModel: {
+            draftAudit?: components["schemas"]["DraftAudit"] | null;
             /** Id */
             id: string;
             preview: components["schemas"]["ValuationPreview"];
@@ -9533,6 +9966,42 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** TemplateInputs */
+        TemplateInputs: {
+            /** Annualrevenuegrowth */
+            annualRevenueGrowth: number | null;
+            basis: components["schemas"]["FrozenValuationBasis"];
+            /** Effectivediscountrate */
+            effectiveDiscountRate: number;
+            /** Exitmultiple */
+            exitMultiple: number;
+            /** Growthcap */
+            growthCap: number;
+            /** Margincap */
+            marginCap: number;
+            /** Profile */
+            profile: string;
+            /** Profilediscount */
+            profileDiscount: number;
+            /** Sharecagr */
+            shareCagr: number;
+        };
+        /** TemplateOrigin */
+        TemplateOrigin: {
+            /** Evidenceids */
+            evidenceIds: string[];
+            inputs: components["schemas"]["TemplateInputs"];
+            /** Scenarios */
+            scenarios: {
+                [key: string]: components["schemas"]["ScenarioInputs"];
+            };
+            /**
+             * Source
+             * @default sector-template
+             * @constant
+             */
+            source: "sector-template";
+        };
         /** TerminalCheck */
         TerminalCheck: {
             /**
@@ -9569,7 +10038,11 @@ export interface components {
          */
         TradeDecision: {
             /** Amountgbp */
-            amountGbp: number;
+            amountGbp?: number | null;
+            /** Basketbuy */
+            basketBuy?: boolean | null;
+            /** Beforeearnings */
+            beforeEarnings?: boolean | null;
             /** Date */
             date: string;
             /** Dividendhorizongbp */
@@ -9610,6 +10083,8 @@ export interface components {
             side: "buy" | "sell";
             /** Ticker */
             ticker: string;
+            /** Unpriced */
+            unpriced?: boolean | null;
         };
         /** Trading212IntegrationCandidate */
         Trading212IntegrationCandidate: {
@@ -10030,6 +10505,8 @@ export interface components {
             basis: components["schemas"]["FrozenValuationBasis"];
             /** Defaultsource */
             defaultSource?: ("saved-model" | "configured-scenarios" | "sector-template" | "user-input") | null;
+            /** Familyselection */
+            familySelection?: ("automatic" | "override") | null;
             /**
              * Formulaversion
              * @default equity-proxy-projection-v1
@@ -10152,6 +10629,8 @@ export interface components {
             sensitivity: components["schemas"]["ValuationSensitivity"] | null;
             /** Spot */
             spot: number;
+            /** Spotasof */
+            spotAsOf?: string | null;
             terminalCheck: components["schemas"]["TerminalCheck"];
             /** Ticker */
             ticker: string;
@@ -11072,6 +11551,35 @@ export interface operations {
             };
         };
     };
+    history_retention_v1_dashboard_history_head: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     dashboard_lens_v1_dashboard_lens__view__get: {
         parameters: {
             query?: {
@@ -11079,6 +11587,7 @@ export interface operations {
                 account?: ("A" | "B" | "C") | null;
                 range?: ("1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL") | null;
                 scope?: ("invest" | "isa" | "total" | "household" | "cfd") | null;
+                projection?: "returns" | "risk";
                 /** @description summary returns the page projection without NAV and intraday history; interactive clients and agents should use it and read history from /v1/dashboard/history. full (the compatible default) also embeds the complete history, which grows with every snapshot and can reach many megabytes on a long-running installation. */
                 detail?: "full" | "summary";
             };
@@ -12393,6 +12902,43 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResearchTimelinePoint"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    valuation_draft_v1_research__ticker__valuation_draft_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DraftInput"];
+            };
+        };
+        responses: {
+            /** @description One draft event per line. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": components["schemas"]["DraftEvent"];
                 };
             };
             /** @description Validation Error */
@@ -13873,6 +14419,7 @@ export interface operations {
                 since?: components["schemas"]["CalendarDay"] | null;
                 decision_date?: components["schemas"]["CalendarDay"] | null;
                 side?: ("buy" | "sell") | null;
+                ordinal?: number | null;
             };
             header?: never;
             path: {

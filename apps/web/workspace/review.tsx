@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowRight } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateSpan } from "@/ui/formatters";
 import { usePublicationFailure } from "@/ui/publication-provider";
@@ -42,17 +43,20 @@ import { reviewHighlights } from "./review-highlights";
 import {
   BestCloses,
   DecisionTimelinePanel,
+  horizonScope,
   HorizonSwitch,
   type HorizonChoices,
   RoundTrips,
   decisionParam,
   linkedDecision,
   parseDecisionParam,
+  sameDecision,
   roundTripVerdict,
   useDecisionHorizon,
 } from "./review-decisions";
 import {
   type DecisionAccount,
+  type DecisionExpansion,
   type ReviewScope,
   type ScopedDecision,
   DecisionExtremes,
@@ -68,7 +72,30 @@ import {
 import { useRetainedResult } from "./retained-result";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
+import { useAssistant } from "./assistant/context";
+import { fallObservations, habitDecisions, habitLabels, isHabit, toolHorizon, type Habit } from "./review-patterns";
+const ReviewHabits = lazy(async () => ({ default: (await import("./assistant/review")).ReviewHabits }));
+const DecisionReading = dynamic(() => import("./assistant/review").then(module => module.DecisionReading));
+const FallTimeline = dynamic(() => import("./assistant/review-falls").then(module => module.FallTimeline));
+
 const ACCOUNT_REVIEW_SELECTION = { detail: "summary" as const };
+
+function HabitsSpace({ unavailable = false }: { unavailable?: boolean }) {
+  const t = useCopy();
+  const [expanded] = useState(() => {
+    try { return localStorage.getItem("tm-reading-review-habits") === "open"; }
+    catch { return false; }
+  });
+  return <div className="mx-review-habits-space" data-expanded={expanded || undefined} aria-hidden={!unavailable || undefined}>
+    <strong>{t("习惯", "Habits")}</strong>
+    <p>{t("模型暂不可用。", "The model is unavailable.")} <Link href="/settings?tab=assistant" prefetch={false} tabIndex={unavailable ? undefined : -1}>{t("助手设置", "Assistant settings")}</Link></p>
+  </div>;
+}
+
+function focusHabitFilter(button: HTMLButtonElement | null) {
+  button?.focus({ preventScroll: true });
+  button?.scrollIntoView({ block: "center", behavior: "instant" });
+}
 
 /**
  * One review for every account: the scope beside the title, then what the decisions did, each
@@ -85,9 +112,12 @@ export function ReviewWorkspace() {
   const all = scope === "all";
   const snapshotId = params.get("snapshotId");
   const pinned = snapshotId !== null;
-  const decision = parseDecisionParam(params.get("decision"));
-  const canRead = !pinned || (!!snapshotId && (scope === "A" || scope === "B") && !!decision);
-  const overview = useDashboardLens("review", undefined, all && canRead);
+  const decisionParamValue = params.get("decision");
+  const reference = parseDecisionParam(decisionParamValue);
+  const validScope = params.get("account") === null || params.get("account") === scope;
+  const canRead = !pinned || (!!snapshotId && validScope && scope !== "C" &&
+    (decisionParamValue === null || (!all && !!reference)));
+  const overview = useDashboardLens("review", undefined, all && canRead, pinned ? ACCOUNT_REVIEW_SELECTION : undefined, snapshotId ?? undefined);
   const single = useDashboardLens("account-analysis", all ? "A" : scope, !all && canRead, ACCOUNT_REVIEW_SELECTION, snapshotId ?? undefined);
   const query = all ? overview : single;
   const current = useMemo(
@@ -105,17 +135,62 @@ export function ReviewWorkspace() {
   const [horizons, setHorizons] = useState<HorizonChoices>({});
   const shown = result?.scope ?? scope;
   const data = result?.data;
-  const rows = useMemo<ScopedDecision[]>(
+  const ledgerRows = useMemo<ScopedDecision[]>(
     () => !data || shown === "C" ? [] : shown === "all" ? allDecisions(data.decisionReviews) : scopedDecisions(shown, data.selectedAccountDecisions),
     [data, shown],
   );
-  const focus = shown === "all" || shown === "C" ? undefined : linkedDecision(rows, decision);
-  const missingDecision = pinned && (!canRead || (!!result && !focus));
-  const { horizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
+  const rows = useMemo(() => ledgerRows.filter(row => !row.unpriced), [ledgerRows]);
+  const {ready, consented, pending: readinessPending} = useAssistant();
+  const ordinal = params.get("reviewOrdinal");
+  // A cited decision can disambiguate two listings with the same ticker on one day.
+  const focus = shown === "all" || shown === "C" ? undefined : ordinal && /^\d{1,4}$/.test(ordinal) && reference
+    ? ledgerRows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(ready || snapshotId ? ledgerRows : rows,reference);
+  const missingDecision = pinned && (!canRead || (decisionParamValue !== null && !!result && !focus));
+  const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
+  const requestedHorizon = ready || snapshotId ? params.get("reviewWindow") : null;
+  const horizon = requestedHorizon === "to_date" ? "date" : requestedHorizon === "20_sessions" ? "horizon" : localHorizon;
+  const rawHabit = params.get("habit");
+  const habit = (ready || snapshotId) && shown === scope && isHabit(rawHabit) ? rawHabit : null;
+  const habitRows = habit === "basket_buy" ? ledgerRows : rows;
+  const filtered = useMemo(() => habitDecisions(habitRows,habit),[habitRows,habit]);
+  const falls = useMemo(() => fallObservations(data?.reviewEvidence,shown === "all" ? ["A","B"] : shown === "C" ? [] : [shown]),[data,shown]);
+  const [selection,setSelection] = useState<{row:ScopedDecision;location:"extremes"|"recent";trigger:HTMLElement} | null>(null);
+  const selected = ready && selection && filtered.includes(selection.row) && shown === scope ? selection : null;
+  const closeReading = () => {setSelection(null); selected?.trigger.focus({preventScroll:true});};
+  const readingId = useId();
+  const expansion: DecisionExpansion | undefined = ready && shown !== "C" && data ? {
+    snapshot: data.runId, horizon, habit, selected:selected?.row ?? null,location:selected?.location ?? null,id:readingId,
+    toggle:(row,location,trigger) => setSelection(selected?.row === row && selected.location === location ? null : {row,location,trigger}),
+    reading:selected && <div id={readingId}><DecisionReading key={readingId + selected.location + horizonScope(selected.row.account, selected.row) + horizon + data.runId}
+      snapshot={data.runId} scope={shown} row={selected.row} horizon={horizon} habit={habit} onClose={closeReading}/></div>,
+  } : undefined;
+  const filterButton = useRef<HTMLButtonElement>(null);
+  const focusFilter = useRef<Habit | null>(null);
+  const attachFilter = useCallback((button: HTMLButtonElement | null) => {
+    filterButton.current = button;
+    if (button && habit && focusFilter.current === habit) {
+      focusFilter.current = null;
+      focusHabitFilter(button);
+    }
+  }, [habit]);
+  const focusAfterClear = useRef(false);
+  const filterChip = habit ? <button ref={attachFilter} type="button" className="mx-review-filter" onClick={() => {focusAfterClear.current = true; setSelection(null);update({habit:null, snapshotId: null});}}>
+    {t("只看","Only")} · {t(habitLabels[habit][0],habitLabels[habit][1])} <span aria-hidden="true">×</span><span className="sr-only">{t("清除筛选","Clear filter")}</span></button> : undefined;
   const reviews = shown === "all"
     ? (["A", "B"] as const).map((code) => data?.decisionReviews?.[code])
     : shown === "C" ? [] : [data?.selectedAccountDecisions];
   const available = reviews.some((review) => review?.status === "available");
+  // A cold citation can lose its heading while the live dashboard is loading.
+  const unfilteredTimelineVisible = available && !habit;
+  useEffect(() => {
+    if (!unfilteredTimelineVisible || !focusAfterClear.current) return;
+    const heading = document.querySelector<HTMLElement>(".mx-decision-review h2");
+    if (heading) {
+      heading.tabIndex = -1;
+      if (document.activeElement === document.body) heading.focus();
+      focusAfterClear.current = false;
+    }
+  }, [unfilteredTimelineVisible]);
   const days = reviews.find((review) => review?.horizonDays)?.horizonDays ?? 20;
   const asOf = !data ? undefined : shown === "all"
     ? data.reviewAsOf ?? data.brokerAsOf
@@ -124,10 +199,10 @@ export function ReviewWorkspace() {
     <Page
       className="mx-review-page"
       title={t("投资复盘", "Investment review")}
-      nav={<ScopeSwitch value={scope} onChange={(value) => update({ account: value === "all" ? null : value, decision: null, snapshotId:null })} />}
+      nav={<ScopeSwitch value={scope} onChange={(value) => update({ account: value === "all" ? null : value, decision: null, reviewOrdinal: null, snapshotId: null, habit:null, reviewWindow:null })} />}
       actions={
         <span className="mx-freshness-group">
-          {available && <HorizonSwitch horizon={horizon} days={days} onChange={choose} />}
+          {available && <HorizonSwitch horizon={horizon} days={days} onChange={value => {choose(value); if (requestedHorizon) update({reviewWindow:null});}} />}
           <Freshness date={asOf} />
           {failure && <UpdateFailure {...failure} />}
         </span>
@@ -153,7 +228,7 @@ export function ReviewWorkspace() {
                 {shown === "all" ? (
                   <ReviewAccounts
                     horizon={horizon}
-                    onOpen={(code) => update({ account: code, decision: null })}
+                    onOpen={(code) => update({ account: code, decision: null, reviewOrdinal: null, snapshotId: null })}
                     accounts={(["A", "B"] as const).map((code) => ({
                       code,
                       rows: rows.filter((row) => row.account === code),
@@ -167,20 +242,37 @@ export function ReviewWorkspace() {
               </ReviewLead>
               {available ? (
                 <>
-                  <DecisionTimelinePanel
-                    rows={rows}
+                  {ready ? (
+                    <Suspense fallback={<HabitsSpace />}>
+                      <ReviewHabits key={shown + data.runId} snapshot={data.runId} scope={shown}
+                        horizon={horizon} habit={habit} active={!selected} onSelect={(value, options) => {
+                          setSelection(null);
+                          if (options.focusFilter) {
+                            if (value === habit) requestAnimationFrame(() => focusHabitFilter(filterButton.current));
+                            else focusFilter.current = value;
+                          }
+                          update({
+                            habit: value, decision: null, reviewOrdinal: null,
+                            ...(options.citation ? { evidence: "review_patterns", reviewWindow: toolHorizon(horizon), snapshotId: data.runId } : {}),
+                          });
+                        }} />
+                    </Suspense>
+                  ) : readinessPending ? ((data.reviewHabitsConsented || consented) && <HabitsSpace />) : consented ? <HabitsSpace unavailable /> : null}
+                  {habit === "untraded_fall" ? <FallTimeline moves={falls} horizon={horizon} action={filterChip}/> : <DecisionTimelinePanel
+                    action={filterChip}
+                    rows={filtered}
                     days={days}
                     horizon={horizon}
-                    focus={focus}
+                    focus={focus && ((!habit && focus.unpriced) || filtered.includes(focus as ScopedDecision)) ? focus : undefined}
                     onClear={() => {
                       release();
-                      update({ decision: null, snapshotId:null });
+                      update({ decision: null, reviewOrdinal: null, snapshotId: null });
                     }}
-                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row) })}
+                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row), reviewOrdinal:row.reviewOrdinal != null ? String(row.reviewOrdinal) : null })}
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}
                     unpriced={[...new Set(reviews.flatMap((review) => review?.coverage?.unpricedTickers ?? []))]}
-                  />
-                  <DecisionExtremes rows={rows} horizon={horizon} showAccount={shown === "all"} />
+                  />}
+                  {habit !== "untraded_fall" && <DecisionExtremes expansion={expansion} rows={filtered} horizon={horizon} showAccount={shown === "all"} />}
                 </>
               ) : (
                 <Panel>
@@ -194,7 +286,9 @@ export function ReviewWorkspace() {
                 </Panel>
               )}
               <RecentJournal
-                decisions={rows}
+                expansion={expansion}
+                filter={habit === "untraded_fall" ? "falls" : habit ? "trades" : null}
+                decisions={filtered}
                 evidence={data.reviewEvidence}
                 accounts={shown === "all" ? ["A", "B"] : [shown]}
                 showAccount={shown === "all"}

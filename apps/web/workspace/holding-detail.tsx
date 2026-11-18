@@ -40,10 +40,10 @@ function PositionMove({ label, amount, ratio, closed }: {
   );
 }
 
-export function HoldingDetail({ holding, account, accountAsOf, runId, today, now }: {
+export function HoldingDetail({ holding, account, positionAsOf, runId, today, now }: {
   holding: Holding;
   account: string;
-  accountAsOf?: string | null;
+  positionAsOf?: string | null;
   runId?: string;
   today: string;
   now: number;
@@ -66,8 +66,8 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
     );
   }
   calculation.push([
-    t("账户快照", "Account snapshot"),
-    accountAsOf ? <time dateTime={accountAsOf}>{formatDateTime(accountAsOf, locale, timeZone, now)}</time> : "—",
+    t("持仓快照", "Position snapshot"),
+    positionAsOf ? <time dateTime={positionAsOf}>{formatDateTime(positionAsOf, locale, timeZone, now)}</time> : t("时间未提供", "Time unavailable"),
   ]);
   const day = holding.dayChangeClosedOn ?? holding.dayChangeDate;
   const dayDate = day && formatCalendarDate(day, locale, now);
@@ -91,7 +91,7 @@ export function HoldingDetail({ holding, account, accountAsOf, runId, today, now
       />
       <div className="mx-position-summary">
         <Metric label={t("券商快照报价", "Broker snapshot price")} value={quote.price}
-          note={accountAsOf ? formatDateTime(accountAsOf, locale, timeZone, now) : t("时间未提供", "Time unavailable")} />
+          note={positionAsOf ? <time dateTime={positionAsOf}>{formatDateTime(positionAsOf, locale, timeZone, now)}</time> : t("时间未提供", "Time unavailable")} />
         <Metric label={t("买入总成本", "Total purchase cost")} value={currency(holding.costGbp, "GBP", 2)} />
         <Metric label={t("组合占比", "Portfolio weight")} value={weight} />
       </div>

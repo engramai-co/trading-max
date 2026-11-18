@@ -6,17 +6,18 @@ from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 
 import exchange_calendars as xcals
+import numpy as np
 import pandas as pd
 from exchange_calendars.common_holidays import ascension_day, corpus_christi, whit_monday
 from exchange_calendars.errors import CalendarError
 from exchange_calendars.exchange_calendar import HolidayCalendar
 from exchange_calendars.exchange_calendar_xfra import XFRAExchangeCalendar
-from pandas.tseries.holiday import Holiday
+from pandas.tseries.holiday import EasterMonday, GoodFriday, Holiday
 from pydantic import Field
 
 from trading_max.domain import DomainModel
 
-from .venues import provider_claim, resolve_venue, row_claims, watchlist_claim
+from .venues import VenueResolution, provider_claim, resolve_venue, row_claims, watchlist_claim
 
 # A schedule covers the recent sessions a quote or broker price can belong to
 # and the coming ones a page can stay open into.
@@ -45,6 +46,20 @@ class SessionSchedule(DomainModel):
     calendar: str
     sessions: list[ScheduledSession] = Field(default_factory=list)
     until: str | None = None
+
+
+def fx_rate_due(days: pd.DatetimeIndex) -> np.ndarray:
+    """Whether each day should have a daily exchange rate of its own.
+
+    None is due at weekends, on Christmas Day and New Year's Day, when the
+    currency market closes, or on Good Friday and Easter Monday, which the
+    provider can skip.
+    """
+
+    first, last = days.min(), days.max()
+    easter = GoodFriday.dates(first, last).union(EasterMonday.dates(first, last))
+    holiday = ((days.month == 12) & (days.day == 25)) | ((days.month == 1) & (days.day == 1))
+    return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
 
 
 def calendar_name(exchange: str | None) -> str | None:
@@ -149,23 +164,28 @@ def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
     )
 
 
-def _frame_calendar(attrs, ticker=None, exchange=None):
-    if not (
-        exchange
-        or attrs.get("exchange")
-        or attrs.get("provider_venue")
-        or attrs.get("venue_claims")
-        or attrs.get("mic")
-    ):
-        # A requested symbol alone does not attest that the fetched frame is its session.
-        return None
+def frame_venue(attrs, ticker=None, exchange=None):
+    """Validate observed history identity and retain verified session evidence."""
     requested = ticker or attrs.get("ticker") or (attrs.get("provider_venue") or {}).get("symbol")
-    return resolve_venue(
+    venue = resolve_venue(
         requested,
         *row_claims(requested, attrs),
         *attrs.get("venue_claims", ()),
         provider_claim(exchange),
-    ).calendar
+        aliases=attrs.get("venue_aliases", ()),
+    )
+    if not (
+        exchange
+        or attrs.get("exchange")
+        or attrs.get("provider_venue")
+        or any(
+            claim.source not in {"symbol", "identity"} for claim in attrs.get("venue_claims", ())
+        )
+        or attrs.get("mic")
+    ):
+        # A requested symbol alone does not attest that the fetched frame is its session.
+        return VenueResolution(venue.venues, venue.conflict)
+    return venue
 
 
 def completed_daily_bars(
@@ -179,7 +199,7 @@ def completed_daily_bars(
     today = pd.Timestamp(local.date())
     days = frame.index.tz_localize(None).normalize()
     complete = days < today
-    name = _frame_calendar(frame.attrs, ticker)
+    name = frame_venue(frame.attrs, ticker).calendar
     if name:
         cal = market_calendar(name, today.year, today.year)
         if cal.is_session(today) and cal.session_close(today) <= now:
@@ -195,7 +215,7 @@ def completed_months(close: pd.Series, *, exchange: str | None, now: pd.Timestam
     timestamps = close.index.tz_localize(None).normalize()
     daily = pd.Series(close.to_numpy(), index=timestamps)
     monthly = daily.resample("ME").last()
-    name = _frame_calendar(close.attrs, exchange=exchange)
+    name = frame_venue(close.attrs, exchange=exchange).calendar
     if not name:
         # Legacy data with unknown exchange: final observed month stays pending.
         cutoff = min(

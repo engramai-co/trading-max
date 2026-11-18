@@ -279,3 +279,166 @@ a.mx-journal-act:focus-visible,
   }
 }
 
+
+.mx-review-expand-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mx-review-expand-head > .mx-review-line {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  border-inline: 0;
+  background: transparent;
+}
+.mx-review-expand-head > a {
+  display: grid;
+  place-items: center;
+  min-width: 28px;
+  min-height: 40px;
+  color: var(--mx-muted);
+}
+.mx-review-expandable[data-open] .mx-review-expand-head {
+  background: var(--mx-brand-soft);
+  border-radius: 7px;
+}
+.mx-review-expandable[data-open] .mx-review-line > svg {
+  transform: rotate(180deg);
+}
+.mx-journal-body button.mx-journal-act,
+.mx-journal-chips button {
+  font: inherit;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.mx-journal-chips button {
+  border: 1px solid var(--mx-border);
+  border-radius: 7px;
+  padding: 3px 7px;
+}
+.mx-journal-reading {
+  grid-column: 1 / -1;
+}
+.mx-review-filter,
+.mx-phone-habits {
+  color: var(--mx-ink);
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-border);
+  border-radius: 7px;
+  font: inherit;
+  cursor: pointer;
+}
+.mx-review-filter {
+  padding: 5px 9px;
+  font-size: 12px;
+}
+.mx-habit-list {
+  padding-block: 6px;
+}
+.mx-habit-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-habit-line > button {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 4px;
+  text-align: start;
+}
+.mx-habit-line > button svg {
+  flex: none;
+}
+.mx-habit-line[data-selected] {
+  background: var(--mx-brand-soft);
+}
+/* The consented layout arrives with the review, independently of credential checks and the brief. */
+.mx-review-body {
+  --mx-habits-head-height: 66px;
+}
+.mx-review-habits-space[aria-hidden] {
+  visibility: hidden;
+}
+.mx-review-habits-space {
+  padding: 8px 18px;
+  border: 1px solid var(--mx-border);
+  border-radius: 12px;
+  background: var(--mx-surface);
+}
+.mx-review-habits-space p {
+  margin: 0;
+}
+.mx-review-habits-space,
+.mx-review-body > .mx-digest {
+  min-block-size: var(--mx-habits-head-height);
+}
+@media (min-width: 768px) {
+  .mx-review-habits-space[data-expanded] {
+    block-size: calc(var(--mx-habits-head-height) + 18rem);
+  }
+  .mx-review-body > .mx-digest > div:not(.mx-digest-head):not([hidden]) {
+    block-size: 18rem;
+    overflow: auto;
+  }
+}
+@media (max-width: 767px) {
+  .mx-review-body {
+    --mx-habits-head-height: max(70px, calc(2lh + 30px));
+  }
+}
+.mx-phone-habits {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  text-align: start;
+  min-height: 44px;
+}
+.mx-phone-habits-label {
+  display: grid;
+  min-width: 0;
+}
+/* Reserve the summary line while the cached brief is being read. */
+.mx-phone-habits-label .mx-digest-summary {
+  min-height: 1lh;
+}
+.mx-phone-habits > svg {
+  margin-inline-start: auto;
+}
+@media (max-width: 767px) {
+  .mx-review-expand-head > a,
+  .mx-journal-body button,
+  .mx-habit-line > button,
+  .mx-review-filter {
+    min-height: 44px;
+  }
+  .mx-review-expand-head > a {
+    min-width: 44px;
+  }
+  .mx-habit-line > button {
+    font: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+  }
+}
+.mx-review-expandable .mx-inline-reading,
+.mx-journal-reading .mx-inline-reading {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--mx-border);
+  padding: 12px 6px;
+}
+.mx-review-expandable .mx-reading-line + .mx-reading-line {
+  border-top: 1px solid var(--mx-border);
+}

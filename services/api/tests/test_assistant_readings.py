@@ -455,3 +455,20 @@ def test_overview_calendar_preserves_a_single_published_earnings_date(tmp_path):
     assert entry.en == "2026-02-05 · TEST estimated earnings"
     assert "instant" not in entry.evidence.arguments
     assert not entry.related
+
+
+def test_reading_refuses_a_pruned_previously_cached_publication(tmp_path, monkeypatch):
+    service, deps, *_ = sample(tmp_path)
+    app = FastAPI()
+    app.state.settings = type("Settings", (), {"api_token": None})()
+    app.state.assistant_readings = service
+    app.include_router(router)
+    client = TestClient(app)
+    external_store = ArtifactStore(deps.store.data_root)
+    publication(external_store, invest_total=1500)
+    path = "/v1/assistant/roles/weekly/reading"
+    body = {"snapshotId": deps.snapshot_id, "cachedOnly": True}
+    assert client.post(path, json=body).status_code == 200
+    monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+    assert deps.snapshot_id in external_store.prune_snapshots(keep_recent=1)
+    assert client.post(path, json=body).status_code == 404

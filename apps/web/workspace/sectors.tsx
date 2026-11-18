@@ -48,7 +48,9 @@ export function SectorsWorkspace() {
   const t = useCopy();
   const demonstration = useDemonstration();
   const { locale, timeZone } = useLocale();
-  const { params, update } = useRouteState();
+  const { params, update: updateRoute } = useRouteState();
+  const update = (values: Record<string,string|null>, state?: Record<string,unknown> | null) =>
+    updateRoute({region:null,observed:null,snapshotId:null,evidence:null,...values},state);
   const phone = useMediaQuery("(max-width: 767px)") ?? false;
   const now = useMinute();
   const openedIndex = demonstration ? null : params.get("index");
@@ -258,6 +260,10 @@ export function SectorsWorkspace() {
   const sectorNext = nextRun
     ? t("下一次采集：", "Next collection: ") + formatDateTime(nextRun, locale, timeZone)
     : t("请在数据状态查看板块行情的更新计划。", "Check the sector quote schedule in Data status.");
+  const citedSector = params.get("evidence") === "market_sector" && params.get("observed");
+  const observed = requested === "global" ? world.data?.asOf : board?.fetchedAt;
+  const expiredSector = citedSector && !(requested === "global" ? world.isPending : query.isPending) &&
+    (!observed || Date.parse(citedSector) !== Date.parse(observed) || (requested === "global" ? world.data?.pricesStale || !world.data?.sectors.some(s=>s.gics === requestedSector) : !explicit || refreshFailed));
   const body = indicesOnly
     ? <p className="mx-index-note">{t("本市场仅有指数覆盖。可切换市场查看板块。", "Only index quotes are covered here. Switch markets to see sector boards.")}</p>
     : !rejected && (query.isPending || switching) ? (
@@ -293,13 +299,14 @@ export function SectorsWorkspace() {
           <SectorMap groups={groups} kind={kind} selected={selected} onSelect={select}
             label={locale === "zh" ? `${names[market]}板块地图` : `${names[market]} sector map`} />
           {detail && <SectorDetail key={market + kind + detail.key} group={detail} board={board}
+            inspection={demonstration || refreshFailed ? undefined : {market,observed:board.fetchedAt,selected:Boolean(explicit)}}
             sessions={status?.sessions ?? []} kind={kind}
             openSubgroup={subgroup?.group === detail.key ? subgroup.key : null} />}
         </div>
       )}
       <div className="mx-sectors-phone" data-fetching={query.isPlaceholderData ? "" : undefined}>
         {phoneDetail ? (
-          <SectorDetail key={phoneDetail.key} group={phoneDetail} board={board} sessions={status?.sessions ?? []}
+          <SectorDetail key={phoneDetail.key} group={phoneDetail} board={board} inspection={demonstration || refreshFailed ? undefined : {market,observed:board.fetchedAt,selected:true}} sessions={status?.sessions ?? []}
             kind={kind} openSubgroup={null} focusOnOpen />
         ) : (
           <SectorList groups={groups} board={board} sessions={status?.sessions ?? []} kind={kind}
@@ -368,7 +375,7 @@ export function SectorsWorkspace() {
           {board && !phoneDetail && (market === "jp" || market === "hk" || market === "kr") && (
             <p className="mx-index-note">{t("板块篮子：", "Sector basket: ")}{board.source.universe}</p>
           )}
-          {market === "global" ? (view === "sectors"
+          {expiredSector ? <Empty title={t("引用的行情记录暂不可用","Cited market observation unavailable")} /> : market === "global" ? (view === "sectors"
             ? <GlobalSectors query={world} demo={demonstration} phone={phone} sector={globalSector}
                 onSelect={select} returnTo={returnTo} onFocused={() => setReturnTo(null)} />
             : <GlobalMarkets demo={demonstration} onMarket={(value) =>

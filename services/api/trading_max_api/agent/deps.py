@@ -17,6 +17,7 @@ from ..dashboard_models import ResearchPriceSeries, ResearchTradeMarker
 from ..index_models import IndexHistory
 from ..models import SnapshotManifest
 from ..research_listing import PinnedListing
+from .page_sources import PageSources
 
 ListingReader = Callable[[str, SnapshotManifest], PinnedListing]
 
@@ -59,7 +60,7 @@ def bind_arguments(
 class AssistantSnapshotReader(Protocol):
     """Only the immutable read surface is needed by the assistant."""
 
-    def load_manifest(self, run_id: str) -> SnapshotManifest: ...
+    def load_manifest(self, run_id: str, *, require_retained: bool = False) -> SnapshotManifest: ...
     def read_json(self, run_id: str, key: str) -> dict: ...
     def read_text(self, run_id: str, key: str) -> str: ...
 
@@ -86,8 +87,11 @@ class AssistantDeps:
     listing_markers: MarkerReader | None = None
     observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
     index_history: Callable[[str, str], IndexHistory | None] | None = None
-    role_bindings: ToolBindings | None = None
+
+    page_sources: PageSources | None = None
     pin_listing: ListingReader | None = None
+    listing_error: str | None = None
+    role_bindings: ToolBindings | None = None
 
     def selected_listing(self, ticker: str) -> PinnedListing:
         if self.pin_listing and self.manifest:
@@ -134,6 +138,7 @@ class AssistantDepsFactory:
     observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
     index_history: Callable[[str, str], IndexHistory | None] | None = None
     bind_price_series: Callable[[], tuple[PublishedPriceReader, ListingReader]] | None = None
+    bind_page_sources: Callable[[], PageSources] | None = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
@@ -143,17 +148,25 @@ class AssistantDepsFactory:
         manifest = self.store.latest_manifest()
         price_series = None
         pin_listing = None
+        listing_error = None
         if self.bind_price_series is not None:
             # An unreadable watchlist prevents safe chart routing for this run.
             # The other tools read their own immutable snapshot artifacts.
-            with suppress(OSError, ValueError):
+            try:
                 price_series, pin_listing = self.bind_price_series()
+            except (OSError, ValueError):
+                listing_error = "watchlist_routing_unavailable"
         return AssistantDeps(
             index_history=self.index_history,
             observed_prices=self.observed_prices,
             listing_markers=self.listing_markers,
+            page_sources=self.bind_page_sources()
+            if self.bind_page_sources
+            and page_hint in {"holdings", "analytics", "sectors", "health"}
+            else None,
             price_series=price_series,
             pin_listing=pin_listing,
+            listing_error=listing_error,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

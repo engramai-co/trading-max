@@ -19,13 +19,11 @@ def _observed_at(account: JsonObject) -> datetime | None:
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
 
-def _positions_observed_at(account: JsonObject) -> str | None:
+def positions_observed_at(account: JsonObject) -> str | None:
     """When an account's positions (and their prices) were observed."""
 
-    value = (
-        account.get("positions_observed_at")
-        or account.get("fetched_at")
-        or account.get("fetched_at_utc")
+    value = account.get(
+        "positions_observed_at", account.get("fetched_at") or account.get("fetched_at_utc")
     )
     return str(value) if value else None
 
@@ -94,7 +92,7 @@ def overlay_live_broker_snapshot(
         account = dict(raw_canonical)
         # Live totals can be newer than the positions kept below, so positions
         # carry their own observation time for any price quoted from them.
-        account["positions_observed_at"] = _positions_observed_at(raw_canonical)
+        account["positions_observed_at"] = positions_observed_at(raw_canonical)
         account.pop("pie_cash_in_investments_gbp", None)
         for key in (
             "profile",
@@ -115,7 +113,7 @@ def overlay_live_broker_snapshot(
         live_positions = _verified_live_positions(raw_live)
         if live_positions is not None:
             account["positions"] = live_positions
-            account["positions_observed_at"] = _positions_observed_at(raw_live)
+            account["positions_observed_at"] = positions_observed_at(raw_live)
             # When live positions are absent or fail reconciliation, deliberately
             # leave the previous canonical verified positions in place.
         merged_accounts[code] = account

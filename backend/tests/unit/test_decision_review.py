@@ -86,6 +86,7 @@ def _review_from_quotes(
         )
         if dividends and symbol in dividends:
             frame["Dividends"] = dividends[symbol].reindex(frame.index, fill_value=0.0)
+        frame.attrs.update(quotes.attrs)
         if symbol in _EXCHANGES:
             frame.attrs["exchange"] = _EXCHANGES[symbol]
         return frame
@@ -998,7 +999,9 @@ def test_cache_reads_the_exchange_from_the_history_request_itself(tmp_path, monk
         def history(self, *, start: str, end: str, **_: object) -> pd.DataFrame:
             requests.append("history " + self.symbol)
             # yfinance keeps the chart response's metadata from this request.
-            self._price_history = SimpleNamespace(_history_metadata={"exchangeName": "NMS"})
+            self._price_history = SimpleNamespace(
+                _history_metadata={"exchangeName": "NMS", "currency": "USD"}
+            )
             last = pd.Timestamp(end) - pd.Timedelta(days=1)
             index = pd.bdate_range(start, last, tz="America/New_York")
             return pd.DataFrame({"Close": 125.0, "Stock Splits": 0.0}, index=index)
@@ -1017,6 +1020,8 @@ def test_cache_reads_the_exchange_from_the_history_request_itself(tmp_path, monk
     # A warm cache in a new process asks for nothing more.
     warm = CachedDailyHistory(tmp_path, now=lambda: clock["now"])
     assert [warm(symbol, *window).attrs["exchange"] for symbol in ("NVDA", "AMD")] == ["NMS"] * 2
+    assert warm.read_cached("NVDA", *window).attrs["currency"] == "USD"
+    assert warm("NVDA", *window).attrs["currency"] == "USD"
     assert len(requests) == 2
     # The next close is one history request again.
     clock["now"] = datetime.fromisoformat("2026-11-05T21:30:00+00:00")
@@ -1120,7 +1125,15 @@ def test_hindsight_includes_dividends_and_stops_at_the_selected_close():
         )
     )
     identity = trades["SecurityIdentity"].iloc[0]
-    security = SecurityPrices(identity, "NVDA", "NVDA Inc", "NVDA", closes, dividends=dividends)
+    security = SecurityPrices(
+        identity,
+        "NVDA",
+        "NVDA Inc",
+        "NVDA",
+        closes,
+        dividends=dividends,
+        observed_closes_gbp=closes,
+    )
     buy, sell = build_decision_review(trades, {identity: security}, as_of=closes.index[-1])[
         "decisions"
     ]
@@ -1153,3 +1166,165 @@ def test_sell_hindsight_requires_a_known_purchase_size(earlier_buy):
     sell = next(row for row in result["decisions"] if row["side"] == "sell")
     assert sell["effect_to_date_gbp"] is not None
     assert sell["hindsight_to_date"] is None
+
+
+def test_untraded_fall_uses_only_prior_purchases_and_final_matching_windows():
+    from trading_max.analytics.review_evidence import HoldingMove
+
+    closes = _closes("2026-01-05", [100, 95, 80] + [90] * 19 + [100, 64])
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-01-05T10:00:00Z", "Market buy", 1, 100),
+                _fill("2026-01-05T14:00:00Z", "Market buy", 3, 300),
+                _fill("2026-01-06T12:00:00Z", "Market sell", 1, 95),
+                _fill("2026-01-08T12:00:00Z", "Market buy", 10, 900),
+            ]
+        )
+    )
+    key = trades["SecurityIdentity"].iloc[0]
+    security = SecurityPrices(key, "NVDA", "Synthetic", "NVDA", closes, observed_closes_gbp=closes)
+    drop = HoldingMove(date=date(2026, 1, 7), ticker="NVDA", quote_currency="GBP", change=-0.15)
+    pending = drop.model_copy(update={"date": closes.index[-1].date()})
+    review = build_decision_review(
+        trades, {key: security}, as_of=closes.index[-1], holding_moves=[drop, pending]
+    )
+    assert len(review["decisions"]) == 3
+    assert review["decisions"][1]["prior_close_date"] == "2026-01-05"
+    assert review["decisions"][1]["prior_close_gbp"] == 100
+    assert drop.average_purchase_gbp == 200
+    assert drop.hypothetical_horizon_gbp == 50
+    assert drop.hypothetical_to_date_gbp == -40
+    assert pending.hypothetical_to_date_gbp is None
+
+
+@pytest.mark.parametrize("missing", ["close", "fx", "zero_close", "zero_fx", "negative_fx"])
+def test_pre_trade_close_requires_an_observed_bar_and_its_published_fx(missing):
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    quotes = pd.Series(127.5, index=dates)
+    rates = pd.Series(1.25, index=dates)
+    absent = pd.Timestamp("2026-02-05")
+    if missing == "close":
+        quotes = quotes.drop(absent)
+    elif missing == "zero_close":
+        quotes.loc[absent] = 0
+    else:
+        if missing == "fx":
+            rates = rates.drop(absent)
+        else:
+            rates.loc[absent] = 0 if missing == "zero_fx" else -1.25
+    review = _review_from_quotes(
+        [_usd_fill("2026-02-06T02:00:00Z", "Market buy", 1, 102)],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+        rates=rates,
+    )
+    row = review["decisions"][0]
+    assert (row["prior_close_date"], row["prior_close_gbp"]) == ("2026-02-04", 102)
+    assert pd.Timestamp(row["first_fill_at"]) == pd.Timestamp("2026-02-06T02:00:00Z")
+
+
+@pytest.mark.parametrize(("settlement", "quoted"), [(True, False), (False, False), (False, True)])
+def test_basket_counts_net_ledger_purchases_with_an_unpriced_member(settlement, quoted):
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-02-02T14:00:00Z", "Market buy", 1, 100),
+                _fill("2026-02-02T15:00:00Z", "Market buy", 3, 300, "AMD"),
+                _fill("2026-02-02T16:00:00Z", "Market sell", 2, 180, "AMD"),
+            ]
+        )
+    )
+    if not settlement:
+        trades.loc[trades["Ticker"] == "AMD", "TotalGBP"] = float("nan")
+    key = trades["SecurityIdentity"].iloc[0]
+    prices = _closes("2026-02-02", [100, 102, 110])
+    listings = {key: SecurityPrices(key, "NVDA", "NVDA", "NVDA", prices)}
+    if quoted:
+        amd = trades["SecurityIdentity"].iloc[1]
+        listings[amd] = SecurityPrices(amd, "AMD", "AMD", "AMD", prices)
+    review = build_decision_review(trades, listings, as_of=prices.index[-1])
+    basket = [r for r in review["decisions"] if r.get("basket_buy")] + review[
+        "unpriced_basket_buys"
+    ]
+    assert {r["ticker"] for r in basket} == {"AMD", "NVDA"}
+    missing = next(r for r in basket if r["ticker"] == "AMD")
+    assert missing["quantity"] == 1 and missing["amount_gbp"] == (100 if settlement else None)
+    assert missing["settled_per_share_gbp"] == (100 if settlement else None)
+    assert missing.get("effect_to_date_gbp") is None and missing.get("unpriced")
+    assert review["coverage"]["scored"] == 1
+
+
+@pytest.mark.parametrize("gap", ["middle", "baseline", "end"])
+def test_hindsight_uses_only_observed_trade_prices(gap):
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    missing = {"middle": dates[3], "baseline": dates[2], "end": dates[-1]}[gap]
+    quotes = pd.Series(127.5, index=dates).drop(missing)
+    rates = pd.Series(1.25, index=dates)
+    rates.loc[missing] = 0.625
+    review = _review_from_quotes(
+        [
+            _usd_fill("2026-02-02T14:00:00Z", "Market buy", 1, 102),
+            _usd_fill("2026-02-04T14:00:00Z", "Market sell", 1, 102),
+        ],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+        now="2026-03-06T12:00:00Z",
+        rates=rates,
+    )
+    sell = review["decisions"][-1]["hindsight_to_date"]
+    if gap == "middle":
+        assert sell["best_close_gbp"] == 102 and sell["missed_gbp"] == 0
+    else:
+        assert sell is None
+
+
+@pytest.mark.parametrize("bad_rate", [0, -1.25, float("inf")])
+def test_verified_usd_listing_on_invalid_fill_day_keeps_sterling_prior_close(bad_rate):
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    quotes = pd.Series(127.5, index=dates)
+    quotes.attrs["currency"] = "USD"
+    rates = pd.Series(1.25, index=dates)
+    rates.loc["2026-02-05"] = bad_rate
+    review = _review_from_quotes(
+        [_usd_fill("2026-02-05T14:00:00Z", "Market buy", 1, 102)],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+        rates=rates,
+    )
+    (row,) = review["decisions"]
+    assert (row["prior_close_date"], row["prior_close_gbp"]) == ("2026-02-04", 102)
+    assert row["hindsight_to_date"] is None
+
+
+def test_verified_quote_unit_wins_even_if_the_fill_is_closer_to_another_unit():
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    quotes = pd.Series(127.5, index=dates)
+    quotes.attrs["currency"] = "USD"
+    review = _review_from_quotes(
+        [_usd_fill("2026-02-05T14:00:00Z", "Market buy", 1, 127.5)],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+    )
+    (row,) = review["decisions"]
+    assert row["prior_close_gbp"] == 102
+    assert row["settled_per_share_gbp"] == 127.5
+
+
+def test_cached_review_marks_keep_verified_calendar_without_display_exchange(tmp_path):
+    from trading_max.analytics.review_evidence import ReviewListing, _ListingMarks
+
+    def history(symbol, start, end):
+        frame = pd.DataFrame({"Close": [123.0]}, index=pd.DatetimeIndex(["2026-11-27"]))
+        frame.attrs["provider_venue"] = {"symbol": symbol, "mic": "XNYS"}
+        return frame
+
+    clock = pd.Timestamp("2026-11-27T18:01Z")
+    cache = CachedDailyHistory(tmp_path, fetch=history, now=lambda: clock.to_pydatetime())
+    window = (date(2026, 11, 26), date(2026, 11, 27))
+    cache("SYN", *window)
+    frame = cache.read_cached("SYN", *window)
+    listing = ReviewListing("SYN", "USD", "SYN", "USD", frame)
+    marks = _ListingMarks(listing, pd.Timestamp(window[0]), pd.Timestamp(window[1]))
+    assert marks.price(clock - pd.Timedelta(minutes=2)) is None
+    assert marks.price(clock) == 123

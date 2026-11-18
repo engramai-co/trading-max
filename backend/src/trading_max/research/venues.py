@@ -30,6 +30,7 @@ YAHOO_SUFFIX_BY_MIC = {
     "XLIS": ".LS",
     "XOSL": ".OL",
     "XWBO": ".VI",
+    "XWAR": ".WA",
     "XNAS": "",
     "XNYS": "",
     "ARCX": "",
@@ -46,7 +47,6 @@ YAHOO_SUFFIX_BY_MIC = {
     "XCNQ": ".CN",
     "NEOE": ".NE",
     "XTSX": ".V",
-    "XWAR": ".WA",
 }
 YAHOO_MIC_BY_SUFFIX = {s: mic for mic, s in YAHOO_SUFFIX_BY_MIC.items() if s}
 
@@ -140,6 +140,7 @@ _FIGI = _codes(
         "XLIS": "PL",
         "XOSL": "NO",
         "XWBO": "AV",
+        "XWAR": "PW",
         "XNSE": "IS",
         "XBOM": "IB",
         "XSOM": "BO",
@@ -218,8 +219,8 @@ _MICS = {
         "XTKS",
         "XTSE",
         "XTSX",
-        "XWAR",
         "XWBO",
+        "XWAR",
     ]
 }
 _MICS["XNAS"] = _NASDAQ
@@ -340,12 +341,13 @@ _CALENDARS = {
         "XHEL",
         "XLIS",
         "XOSL",
-        "XWAR",
         "XWBO",
+        "XWAR",
     ]
 }
 _CALENDARS.update(dict.fromkeys(["XNYS", *_NASDAQ, "XASE", "ARCX", "BATS"], "XNYS"))
 _CALENDARS["XMCE"] = "XMAD"
+# KOSDAQ has its own listing MIC but trades on the Korea Exchange schedule.
 _CALENDARS["XKOS"] = "XKRX"
 
 
