@@ -3457,6 +3457,26 @@ export interface components {
             /** Worstclosegbp */
             worstCloseGbp?: number | null;
         };
+        /**
+         * ConsensusBaseline
+         * @description Consensus when a version was saved: the baseline later estimates are compared with.
+         */
+        ConsensusBaseline: {
+            /** Asof */
+            asOf?: string | null;
+            /**
+             * Metric
+             * @constant
+             */
+            metric: "consensusRevenueGrowth";
+            /**
+             * Periodend
+             * Format: date
+             */
+            periodEnd: string;
+            /** Value */
+            value: number;
+        };
         /** ConsensusEstimate */
         ConsensusEstimate: {
             /** Analystcount */
@@ -9446,6 +9466,8 @@ export interface components {
         };
         /** SavedResearchModel */
         SavedResearchModel: {
+            /** Consensus */
+            consensus?: components["schemas"]["ConsensusBaseline"][] | null;
             draftAudit?: components["schemas"]["DraftAudit"] | null;
             /** Id */
             id: string;
@@ -10814,6 +10836,8 @@ export interface components {
             current: components["schemas"]["BasisPoint"];
             /** Estimates */
             estimates: components["schemas"]["EstimateChange"][];
+            /** Evidencekeys */
+            evidenceKeys?: string[];
             /**
              * Family
              * @enum {string}

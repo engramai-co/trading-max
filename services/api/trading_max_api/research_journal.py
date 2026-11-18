@@ -64,6 +64,15 @@ class ResearchNote(DomainModel):
     revisions: list[NoteRevision]
 
 
+class ConsensusBaseline(DomainModel):
+    """Consensus when a version was saved: the baseline later estimates are compared with."""
+
+    metric: Literal["consensusRevenueGrowth"]
+    period_end: date
+    value: float
+    as_of: datetime | date | None = None
+
+
 class SavedResearchModel(DomainModel):
     id: str
     saved_at: datetime
@@ -73,6 +82,11 @@ class SavedResearchModel(DomainModel):
     # Versions without locks keep the earlier journal format.
     locked_inputs: list[LockedInput] = Field(
         default_factory=list, exclude_if=lambda locked: not locked
+    )
+    # Recorded at each save, apart from the assumptions' own references. Versions saved
+    # before it was recorded have none and are compared with their references.
+    consensus: list[ConsensusBaseline] | None = Field(
+        default=None, exclude_if=lambda consensus: consensus is None
     )
 
 
@@ -224,6 +238,7 @@ class ResearchJournalStore:
         drafts: ValuationDraftStore,
         calculate: Callable[[ValuationPreviewRequest, SnapshotManifest], ValuationPreview],
         store: ArtifactStore,
+        consensus: Callable[[SnapshotManifest], list[ConsensusBaseline]] | None = None,
     ) -> ResearchJournal:
         with self.lock:
             review = body.draft_review
@@ -259,7 +274,14 @@ class ResearchJournalStore:
             result.family_selection = draft.result.family_selection
             audit = DraftAudit(draft=draft, review=review, request_digest=digest)
             state.models.insert(
-                0, self._model_version(result, body.reason, audit, body.locked_inputs)
+                0,
+                self._model_version(
+                    result,
+                    body.reason,
+                    audit,
+                    body.locked_inputs,
+                    consensus(manifest) if consensus else None,
+                ),
             )
             path = self._path(ticker)
             with (
@@ -276,6 +298,7 @@ class ResearchJournalStore:
         reason: str,
         audit: DraftAudit | None,
         locked: list[LockedInput] | None = None,
+        consensus: list[ConsensusBaseline] | None = None,
     ) -> SavedResearchModel:
         reason = reason.strip()
         locked = locked_set(locked or [])
@@ -293,6 +316,7 @@ class ResearchJournalStore:
             reason=reason,
             draft_audit=audit,
             locked_inputs=locked,
+            consensus=consensus,
         )
 
     def save_model(
@@ -301,10 +325,11 @@ class ResearchJournalStore:
         reason: str = "",
         audit: DraftAudit | None = None,
         locked: list[LockedInput] | None = None,
+        consensus: list[ConsensusBaseline] | None = None,
     ) -> ResearchJournal:
         with self.lock:
             state = self.load(model.basis.ticker)
-            version = self._model_version(model, reason, audit, locked)
+            version = self._model_version(model, reason, audit, locked, consensus)
             if not any(m.id == version.id for m in state.models):
                 state.models.insert(0, version)
                 self._save(state)

@@ -80,3 +80,15 @@ def test_new_statements_and_restatements_name_their_period():
     # A period that cannot be checked is not evidence on its own.
     missing = Restating(None, [], "unavailable", "period-missing")
     assert statement_items("ttm:2025-12-31", "ttm:2025-12-31", missing) == []
+
+
+def test_only_statements_ending_later_are_a_new_report():
+    unchanged = Restating(None, [], "unchanged")
+    # An incomplete publication can fall back to an older period: that is no new report.
+    assert statement_items("ttm:2026-03-31", "ttm:2025-12-31", unchanged) == []
+    # Four quarters replacing the fiscal year that ends on the same day are not newer either.
+    assert statement_items("annual:2025-12-31", "ttm:2025-12-31", unchanged) == []
+    assert statement_items(None, "ttm:2026-03-31", unchanged) == []
+    assert statement_items("ttm:2025-12-31", "ttm:not-a-day", unchanged) == []
+    [later] = statement_items("annual:2025-12-31", "ttm:2026-03-31", unchanged)
+    assert later.key == "statements:ttm:2026-03-31"

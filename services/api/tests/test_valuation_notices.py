@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 
 from services.api.tests.test_valuation_draft import HEADERS, PATH, inputs
 from services.api.tests.test_valuation_evidence import AS_OF, MATURE, _publish
-from services.api.tests.test_valuation_maintenance import Archive, next_report, save
+from services.api.tests.test_valuation_maintenance import REVIEW, Archive, next_report, save
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.evidence_notices import EvidenceNoticeStore
 from services.api.trading_max_api.models import SecuritySearchResult
@@ -120,6 +120,10 @@ def test_new_evidence_is_announced_once_and_never_drafts_or_saves(desk):
     assert (growth["saved"], growth["current"]) == (0.15, 0.31)
     # The same evidence is one notice, however often it is asked for.
     assert notices(client)["notices"] == [notice]
+    # The comparison names the same evidence, so opening it settles exactly these keys.
+    view, body = inputs(client)
+    shown = client.post(REVIEW, json={"modelId": model_id, "horizon": 5, "scenarios": body["scenarios"]})
+    assert sorted(shown.json()["evidenceKeys"]) == sorted(item["key"] for item in notice["items"])
     # An unreadable journal of another security leaves this notice in place.
     (state.research_journal.root / "unreadable.json").write_text("{")
     assert notices(client)["notices"] == [notice]
@@ -159,6 +163,72 @@ def test_only_the_newest_version_carries_a_notice(desk):
     key = notice["items"][0]["key"]
     stale = client.post(NOTICES + "/SYNM/seen", json={"modelId": first, "keys": [key]})
     assert (stale.status_code, stale.json()["detail"]) == (409, "research-model-not-latest")
+
+
+def test_a_new_version_records_the_consensus_it_was_saved_against(desk):
+    client, state, switch, _ = desk
+    switch.evidence_notices_enabled = True
+    view, body = inputs(client)
+    first = save(client, view, body["scenarios"], references=[REFERENCE])["models"][0]
+    assert [(c["metric"], c["periodEnd"], c["value"]) for c in first["consensus"]] == [
+        ("consensusRevenueGrowth", "2027-12-31", 0.15)
+    ]
+    _publish(state.store, MATURE, inject=next_report)
+    [notice] = notices(client)["notices"]
+    assert "consensusRevenueGrowth:2027-12-31::8" in [item["key"] for item in notice["items"]]
+    # Saved again on the new evidence, the version inherits the 15% reference as an
+    # assumption source but records the 31% it was saved against: nothing is new.
+    view, body = inputs(client)
+    assert [(ref["source"], ref["value"]) for ref in view["references"]] == [
+        ("yahoo-finance-consensus", 0.15)
+    ]
+    second = save(client, view, body["scenarios"], references=view["references"])["models"][0]
+    assert [(c["periodEnd"], c["value"]) for c in second["consensus"]] == [("2027-12-31", 0.31)]
+    assert notices(client)["notices"] == []
+    review = client.post(
+        REVIEW, json={"modelId": second["id"], "horizon": 5, "scenarios": body["scenarios"]}
+    ).json()
+    assert review["estimates"] == [] and review["evidenceKeys"] == []
+
+
+def test_a_version_saved_before_baselines_compares_with_its_references(desk):
+    client, state, switch, _ = desk
+    switch.evidence_notices_enabled = True
+    view, body = inputs(client)
+    save(client, view, body["scenarios"], references=[REFERENCE])
+    journal = state.research_journal.load("SYNM")
+    journal.models[0].consensus = None
+    state.research_journal._save(journal)
+    assert '"consensus":' not in state.research_journal._path("SYNM").read_text()
+    _publish(state.store, MATURE, inject=next_report)
+    [notice] = notices(client)["notices"]
+    assert [
+        (item["saved"], item["current"])
+        for item in notice["items"]
+        if item["metric"] == "consensusRevenueGrowth"
+    ] == [(0.15, 0.31)]
+
+
+def test_an_older_period_after_an_incomplete_publication_is_not_a_new_report(desk):
+    client, state, switch, _ = desk
+    switch.evidence_notices_enabled = True
+    _publish(state.store, MATURE, inject=next_report)
+    view, body = inputs(client)
+    assert view["basis"]["periodId"] == "ttm:2026-03-31"
+    model_id = save(client, view, body["scenarios"])["models"][0]["id"]
+
+    def without_the_new_quarter(batches):
+        # The same consensus as at the save, but statements that end a quarter earlier.
+        batches["research/analyst.json"]["rows"][0]["analyst"]["revenueEstimate"][0]["growth"] = 0.31
+
+    _publish(state.store, MATURE, inject=without_the_new_quarter)
+    assert notices(client)["notices"] == []
+    view, body = inputs(client)
+    review = client.post(
+        REVIEW, json={"modelId": model_id, "horizon": 5, "scenarios": body["scenarios"]}
+    ).json()
+    assert review["current"]["periodId"] == "ttm:2025-12-31"
+    assert review["newStatements"] is False and review["evidenceKeys"] == []
 
 
 def test_review_finds_the_version_saved_by_the_end_of_a_decision_day(desk):

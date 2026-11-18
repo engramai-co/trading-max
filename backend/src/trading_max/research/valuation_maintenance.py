@@ -165,6 +165,8 @@ class ValuationMaintenance(DomainModel):
     locked_inputs: list[LockedInput]
     new_statements: bool
     new_estimates: bool
+    # The keys of the new evidence shown, as notices of new evidence name them.
+    evidence_keys: list[str] = Field(default_factory=list)
 
 
 def _same(a: float, b: float) -> bool:

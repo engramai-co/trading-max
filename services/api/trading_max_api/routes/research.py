@@ -63,6 +63,7 @@ from ..research_public import public_lens
 from ..valuation_preview_v1 import OperatingScenarioInputs, OperatingValuationPreview
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
+from .valuation_maintenance import consensus_baseline
 from .valuation_preview import family_valuation_preview
 
 LOGGER = logging.getLogger(__name__)
@@ -163,6 +164,7 @@ def research_model_save(
                         ticker, request, inputs, manifest=manifest
                     ),
                     app_service(request, "store"),
+                    lambda manifest: consensus_baseline(ticker, request, manifest),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -174,13 +176,18 @@ def research_model_save(
         for params in body.scenarios.values()
     )
     requested = inputs.family if body.family_selection == "override" else None
+    manifest = latest_or_503(request)
     result = family_valuation_preview(
-        ticker, request, inputs, requested_family=requested, legacy=legacy
+        ticker, request, inputs, requested_family=requested, manifest=manifest, legacy=legacy
     )
     if not result.scenarios:
         raise HTTPException(status_code=422, detail="no-valuation-range-to-save")
+    # Each version records the consensus it was saved against, apart from its references.
     return app_service(request, "research_journal").save_model(
-        result, body.reason, locked=body.locked_inputs
+        result,
+        body.reason,
+        locked=body.locked_inputs,
+        consensus=consensus_baseline(ticker, request, manifest),
     )
 
 

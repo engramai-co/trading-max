@@ -49,12 +49,26 @@ def estimate_step(change: EstimateChange) -> int:
     return int(round(moved, 9))
 
 
+def period_end(period_id: str | None) -> date | None:
+    """The end of a statement period from its identity, such as "ttm:2026-03-31"."""
+    kind, _, end = (period_id or "").partition(":")
+    try:
+        return date.fromisoformat(end) if kind and end else None
+    except ValueError:
+        return None
+
+
 def statement_items(
     saved_period: str | None, current_period: str | None, restating: Restating
 ) -> list[EvidenceNoticeItem]:
-    """A newer statement basis, and a restatement of the saved period."""
+    """Statements that end after the saved period, and a restatement of the saved period.
+
+    A basis that ends no later, such as an older period after an incomplete
+    publication, or one whose end cannot be read, is not a new report.
+    """
     items = []
-    if current_period and current_period != saved_period:
+    saved_end, current_end = period_end(saved_period), period_end(current_period)
+    if current_period and saved_end and current_end and current_end > saved_end:
         items.append(
             EvidenceNoticeItem(
                 key="statements:" + current_period, kind="statements", period_id=current_period

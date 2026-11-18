@@ -5545,6 +5545,49 @@
         "title": "ClosedTradeReview",
         "type": "object"
       },
+      "ConsensusBaseline": {
+        "additionalProperties": false,
+        "description": "Consensus when a version was saved: the baseline later estimates are compared with.",
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "metric": {
+            "const": "consensusRevenueGrowth",
+            "title": "Metric",
+            "type": "string"
+          },
+          "periodEnd": {
+            "format": "date",
+            "title": "Periodend",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "metric",
+          "periodEnd",
+          "value"
+        ],
+        "title": "ConsensusBaseline",
+        "type": "object"
+      },
       "ConsensusEstimate": {
         "additionalProperties": false,
         "properties": {
@@ -24386,6 +24429,20 @@
       "SavedResearchModel": {
         "additionalProperties": false,
         "properties": {
+          "consensus": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ConsensusBaseline"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consensus"
+          },
           "draftAudit": {
             "anyOf": [
               {
@@ -28276,6 +28333,13 @@
               "$ref": "#/components/schemas/EstimateChange"
             },
             "title": "Estimates",
+            "type": "array"
+          },
+          "evidenceKeys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidencekeys",
             "type": "array"
           },
           "family": {

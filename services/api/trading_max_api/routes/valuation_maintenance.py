@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
+from trading_max.research.evidence_notice import estimate_items, statement_items
 from trading_max.research.facts import number
 from trading_max.research.valuation_evidence import Metric
 from trading_max.research.valuation_maintenance import (
@@ -29,7 +30,7 @@ from trading_max.research.valuation_preview import (
 )
 
 from ..models import SnapshotManifest
-from ..research_journal import SavedResearchModel
+from ..research_journal import ConsensusBaseline, SavedResearchModel
 from .dependencies import app_service, latest_or_503
 from .valuation_preview import family_valuation_preview
 
@@ -48,7 +49,18 @@ def _moment(value: Any) -> datetime | date | None:
 
 
 def _saved_revenue_growth(saved: SavedResearchModel):
-    """Revenue-growth consensus as recorded with the saved version, when it was."""
+    """Revenue-growth consensus at the save.
+
+    A version records it when saved. One saved before that is read from its
+    consensus references and reviewed evidence instead; a reference can be
+    inherited from an earlier version, so the recorded baseline comes first.
+    """
+    if saved.consensus is not None:
+        return [
+            (point.period_end, point.value, point.as_of)
+            for point in saved.consensus
+            if point.metric == "consensusRevenueGrowth"
+        ]
     points = []
     for ref in saved.preview.references:
         end = _moment(ref.period)
@@ -82,6 +94,17 @@ def _current_revenue_growth(analyst: dict[str, Any] | None):
         if type(end) is date and growth is not None:
             points.append((end, growth, _moment(row.get("asOf") or analyst.get("asOf"))))
     return points
+
+
+def consensus_baseline(
+    ticker: str, request: Request, manifest: SnapshotManifest
+) -> list[ConsensusBaseline]:
+    """The revenue-growth consensus a version records when it is saved."""
+    analyst = app_service(request, "research").lens_snapshot(ticker, "analyst", manifest).analyst
+    return [
+        ConsensusBaseline(metric="consensusRevenueGrowth", period_end=end, value=value, as_of=as_of)
+        for end, value, as_of in _current_revenue_growth(analyst)
+    ]
 
 
 def saved_estimate_changes(
@@ -146,6 +169,11 @@ def valuation_maintenance(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     listing = lens.context.quote.listing if lens.context else None
     estimates = saved_estimate_changes(ticker, request, manifest, saved, listing)
+    # The evidence a notice names, so the reader's client can settle exactly what was shown.
+    evidence = [
+        *statement_items(model.basis.period_id, current.basis.period_id, restating),
+        *estimate_items(estimates),
+    ]
     locked = locked_set(body.locked_inputs)
     return ValuationMaintenance(
         model_id=saved.id,
@@ -167,7 +195,7 @@ def valuation_maintenance(
         estimates=estimates,
         assumptions=assumption_changes(model, body.scenarios, locked),
         locked_inputs=locked,
-        new_statements=model.basis.period_id != current.basis.period_id
-        or restating.check == "restated",
+        new_statements=any(item.kind != "estimate" for item in evidence),
         new_estimates=bool(estimates),
+        evidence_keys=[item.key for item in evidence],
     )
