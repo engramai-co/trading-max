@@ -637,7 +637,9 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
     await page.locator("[data-assistant-trigger]").click();
     const panel = page.locator("#mx-assistant-panel");
     const draft = panel.getByRole("textbox", {name:"Message"});
+    await draft.click();
     await draft.fill("Keep this draft");
+    await expect(draft).toHaveValue("Keep this draft");
     const shots = process.env.ASSISTANT_SCREENSHOTS;
     const control = outcome === "history button" ? panel.getByRole("button", {name:"Conversation history"}) : draft;
     await control.focus();
