@@ -1,6 +1,7 @@
 """Attribution for observed chart endpoints, using the page benchmark and matching FX window."""
 
-from datetime import datetime
+import re
+from datetime import UTC, datetime
 from typing import Literal
 
 from pydantic import model_validator
@@ -10,6 +11,11 @@ from . import insights, tools
 from .deps import AccountScope
 from .overview_roles import LONDON, line
 from .roles import PageRole, RoleContext, RoleTools
+
+
+def chart_instant(value: str) -> datetime:
+    stamp = datetime.fromisoformat(value)
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
 
 
 class AttributionContext(RoleContext):
@@ -23,20 +29,13 @@ class AttributionContext(RoleContext):
     @model_validator(mode="after")
     def ordered(self):
         for value in (self.start, self.end):
-            if len(value) > 40 or len(value) < 10:
+            if len(value) > 40 or not re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T.+)?", value):
                 raise ValueError("Invalid chart endpoint")
             stamp = datetime.fromisoformat(value)
             if len(value) > 10 and stamp.utcoffset() is None:
                 raise ValueError("Intraday endpoints need offsets")
-        if len(self.start) == 10 and len(self.end) == 10:
-            if self.end < self.start:
-                raise ValueError("Reversed endpoints")
-        elif (
-            len(self.start) == 10
-            or len(self.end) == 10
-            or datetime.fromisoformat(self.start) > datetime.fromisoformat(self.end)
-        ):
-            raise ValueError("Inconsistent endpoints")
+        if chart_instant(self.end) <= chart_instant(self.start):
+            raise ValueError("Select two distinct endpoints in order")
         return self
 
 
@@ -58,15 +57,15 @@ def selected_money(ctx: tools.Context, args: AttributionContext):
     """Cash-flow-adjusted money result from the chart's full-cadence records."""
     read = tools._Read(ctx.deps, "selected_money", args, args.scope)
     read.account_codes(args.scope)
-    loaded = tools._history_input(read, args.scope, "ALL")
+    loaded = tools._history_input(read, args.scope, args.range)
     if not loaded:
         return read.missing("history_unavailable")
     source, keys = loaded
     scope = tools._math_scope(args.scope)
-    if len(args.start) > 10:
+    if args.view == "money" or len(args.start) > 10 or len(args.end) > 10:
         # Use the history projection for verified flows and the household CFD proxy.
         history = select_portfolio_history(
-            range="ALL",
+            range=args.range,
             scope=scope,
             daily=source["nav"],
             intraday=source["intradayNav"],
@@ -76,16 +75,12 @@ def selected_money(ctx: tools.Context, args: AttributionContext):
         series = history["points"]
     else:
         series = source["nav"]
-    start, end = (datetime.fromisoformat(value) for value in (args.start, args.end))
-    rows = []
-    for row in series:
-        stamp = datetime.fromisoformat(row["date"])
-        if (stamp.tzinfo is None) == (start.tzinfo is None) and start <= stamp <= end:
-            rows.append(row)
+    start, end = map(chart_instant, (args.start, args.end))
+    rows = [row for row in series if start <= chart_instant(row["date"]) <= end]
     if (
         len(rows) < 2
-        or datetime.fromisoformat(rows[0]["date"]) != start
-        or datetime.fromisoformat(rows[-1]["date"]) != end
+        or datetime.fromisoformat(rows[0]["date"]) != datetime.fromisoformat(args.start)
+        or datetime.fromisoformat(rows[-1]["date"]) != datetime.fromisoformat(args.end)
     ):
         return read.missing("endpoint_unavailable", keys=keys)
     money = portfolio_money(rows, scope)
@@ -156,7 +151,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                     "market",
                 )
             )
-    if not any(f.section == "return" for f in facts):
+    if context.view == "money" or not any(f.section == "return" for f in facts):
         amount = read.read(selected_money, context)
         money = amount.get("data") or {}
         if (pnl := money.get("pnl")) is not None:
@@ -166,6 +161,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
             if money["estimated"]:
                 zh += "（含估算）"
                 en += " (includes estimates)"
+            facts = [fact for fact in facts if fact.section != "return"]
             facts.append(
                 observed(
                     "return",
@@ -195,17 +191,26 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
             matches(row.get("since"), row.get("as_of"), context) for row in accounts.values()
         ):
             continue
+        windows = {
+            (chart_instant(row["since"]), chart_instant(row["as_of"])) for row in accounts.values()
+        }
+        if len(windows) != 1:
+            continue
         if all(
             row.get("fx_effect_gbp") is not None and row.get("local_price_effect_gbp") is not None
             for row in accounts.values()
         ):
             fx = sum(row["fx_effect_gbp"] for row in accounts.values())
             price = sum(row["local_price_effect_gbp"] for row in accounts.values())
+            since, until = next(iter(windows))
+            interval = (
+                f"{since.astimezone(LONDON).isoformat()} – {until.astimezone(LONDON).isoformat()}"
+            )
             facts.append(
                 observed(
                     "fx",
-                    f"持股价格影响 £{price:+,.2f}，汇率影响 £{fx:+,.2f}。",
-                    f"Held-share price effect was £{price:+,.2f} and currency effect was £{fx:+,.2f}.",
+                    f"{interval}，持股价格影响 £{price:+,.2f}，汇率影响 £{fx:+,.2f}。",
+                    f"{interval}: held-share price effect was £{price:+,.2f} and currency effect was £{fx:+,.2f}.",
                     "holdings",
                     split,
                     "holding_fx_split",

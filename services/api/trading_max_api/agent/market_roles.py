@@ -106,6 +106,7 @@ def sector_facts(read: RoleTools, context: SectorContext):
                 result,
                 source,
                 "market_sector",
+                metric=section,
                 **context.model_dump(exclude_none=True),
             )
         )
@@ -178,6 +179,9 @@ def sector_facts(read: RoleTools, context: SectorContext):
                 "publisher",
                 "news_and_events",
                 ticker=ticker,
+                metric="headline",
+                start=day,
+                end=day,
                 url=row["source_url"],
             )
             lead.evidence.publisher = row["publisher"][:80]
@@ -230,6 +234,7 @@ def map_facts(read: RoleTools, context: MarketContext):
             result,
             "market",
             "global_map",
+            metric=section,
             **context.model_dump(exclude_none=True),
         )
         for m in data["markets"]:
@@ -254,7 +259,13 @@ def map_facts(read: RoleTools, context: MarketContext):
                     f"{day} 缺少本地指数报价。",
                     f"A local index quote was unavailable on {day}.",
                 )
-            item.variants[m["market"]] = LinkedObservation(zh=zh, en=en, evidence=item.evidence)
+            item.variants[m["market"]] = LinkedObservation(
+                zh=zh,
+                en=en,
+                evidence=item.evidence.model_copy(
+                    update={"arguments": {**item.evidence.arguments, "market": m["market"]}}
+                ),
+            )
         # The model sees the observations behind both editorial angles in one run.
         item.en += ". " + " ".join(
             f"{market.upper()}: {value.en}" for market, value in item.variants.items()

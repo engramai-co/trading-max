@@ -95,8 +95,10 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
         "snapshotId": read.deps.snapshot_id,
     }
 
-    def observation(section, zh, en, result=current, tool="lookthrough_exposure"):
-        return line(section, zh, en, result, "exposure", tool, metric=section, **arguments)
+    def observation(section, zh, en, result=current, tool="lookthrough_exposure", **window):
+        return line(
+            section, zh, en, result, "exposure", tool, metric=section, **arguments, **window
+        )
 
     weight = item["weight_fraction"]
     facts = [
@@ -123,6 +125,8 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
                 f"The weight was {previous:.2%} on {stamp}, a change of {(weight - previous) * 100:+.2f} pp since then.",
                 history,
                 "dated_exposure",
+                on_or_before=cutoff,
+                end=day.isoformat(),
             )
         )
     else:
@@ -133,6 +137,8 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
                 f"No comparable weight is recorded on or before {cutoff}.",
                 history,
                 "dated_exposure",
+                on_or_before=cutoff,
+                end=day.isoformat(),
             )
         )
     if context.dimension in {"country", "sector"}:
@@ -146,7 +152,17 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
                 f"{benchmark} 截至 {stamp} 的权重为 {ref:.2%}，相差 {(weight - ref) * 100:+.2f} 个百分点。",
                 f"{benchmark} had a {ref:.2%} weight on {stamp}, a difference of {(weight - ref) * 100:+.2f} pp.",
             )
-        facts.append(observation("benchmark", zh, en, result, "exposure_benchmark"))
+        facts.append(
+            observation(
+                "benchmark",
+                zh,
+                en,
+                result,
+                "exposure_benchmark",
+                end=day.isoformat(),
+                **({"start": basis["as_of"]} if basis else {}),
+            )
+        )
     if (coverage := data.get("lookthrough_coverage_fraction")) is not None and coverage < 0.99995:
         facts.append(
             observation(

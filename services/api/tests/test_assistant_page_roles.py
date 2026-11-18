@@ -174,3 +174,67 @@ def test_currency_effect_requires_matching_chart_endpoints():
     assert not matches("2026-07-15T08:00:00Z", "2026-07-15T12:00:00Z", context)
     with pytest.raises(ValidationError):
         AttributionContext(scope="isa", benchmark="QQQ", start="2026-07-15T10:00:00", end=STAMP)
+
+
+def test_money_range_pins_full_cadence_gbp_and_missing_endpoints(tmp_path):
+    _, deps, *_ = sample(tmp_path)
+    role = role_registry()["attribution"]
+    context = AttributionContext(
+        scope="isa",
+        range="1D",
+        view="money",
+        benchmark="QQQ",
+        start="2026-02-03T12:00:00Z",
+        end=STAMP,
+    )
+    read = RoleTools.pinned(deps, role.allowed_tools)
+    facts = role.facts(read, context)
+    pnl = next(f for f in facts if f.section == "return")
+    assert "£-80.00" in pnl.en and pnl.evidence.tool == "selected_money"
+    assert pnl.evidence.arguments == {
+        **context.model_dump(),
+        "snapshotId": deps.snapshot_id,
+        "metric": "return",
+    }
+    assert all("unavailable" in f.en or "No QQQ comparison" in f.en for f in facts if f != pnl)
+    no_opening = context.model_copy(update={"start": "2026-02-03T11:59:00Z"})
+    assert not any(f.section == "return" for f in role.facts(read, no_opening))
+    with pytest.raises(ValidationError):
+        AttributionContext(**{**context.model_dump(), "start": "2026-W06-2"})
+
+
+def test_sidebar_validates_page_scope_range_benchmark_and_snapshot(tmp_path):
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from services.api.trading_max_api.agent.service import _context
+
+    _, deps, *_ = sample(tmp_path)
+    selected = {
+        "scope": "isa",
+        "range": "1W",
+        "view": "returns",
+        "benchmark": "QQQ",
+        "start": DATES[0],
+        "end": DATES[-1],
+    }
+    origin = {
+        "role": "attribution",
+        "page": "analytics",
+        "scope": "isa",
+        "range": "1W",
+        "benchmark": "QQQ",
+        "snapshotId": deps.snapshot_id,
+        "object": selected,
+    }
+    request = Request({"type": "http", "query_string": b""})
+    assert _context({"context": origin}, request).object == selected
+    for mismatch in (
+        {"scope": "invest"},
+        {"range": "1M"},
+        {"benchmark": "VOO"},
+        {"page": "health"},
+        {"snapshotId": None},
+    ):
+        with pytest.raises(HTTPException, match="assistant_context_invalid"):
+            _context({"context": {**origin, **mismatch}}, request)

@@ -70,7 +70,15 @@ def diagnosis_facts(read: RoleTools, context: DiagnosisContext):
 
     def add(section, zh, en, source="health"):
         return line(
-            section, zh, en, result, source, "update_issue", **context.model_dump(exclude_none=True)
+            section,
+            zh,
+            en,
+            result,
+            source,
+            "update_issue",
+            metric=section,
+            observed=data.get("finished_at") or data["last_publication"],
+            **context.model_dump(exclude_none=True),
         )
 
     if context.issue == "stale":
