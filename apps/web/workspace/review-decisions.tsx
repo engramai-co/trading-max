@@ -800,6 +800,7 @@ export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; d
  * context, and focus moves to it once each time one is named.
  */
 export function DecisionTimelinePanel({
+  action,
   rows,
   days,
   horizon,
@@ -819,6 +820,7 @@ export function DecisionTimelinePanel({
   /** Across accounts, the account each reading names. */
   accountOf?: (row: TradeDecision) => string | undefined;
   unpriced?: string[];
+  action?: ReactNode;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -844,6 +846,7 @@ export function DecisionTimelinePanel({
   return (
     <Panel
       className="mx-decision-review"
+      action={action}
       title={title}
       helpLabel={t("买卖决定", "Buy and sell decisions")}
       help={<>

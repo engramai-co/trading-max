@@ -16,6 +16,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
+  decision_timing_and_habits: ["/review", "review"], review_patterns: ["/review", "review"], news_and_events: ["/research","disclosure"],
   data_freshness: ["/health", "health"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
@@ -25,6 +26,15 @@ export function evidenceHref(ref: Evidence) {
   const [path] = entry;
   const params = new URLSearchParams();
   const a = ref.arguments ?? {};
+  if (ref.tool === "news_and_events" && a.url && /^https:\/\//i.test(a.url)) {
+    try { const url = new URL(a.url); if (!url.username && !url.password) return url.href; } catch {}
+  }
+  if (path === "/review") {
+    if (a.scope === "invest" || a.scope === "isa") params.set("account", a.scope === "invest" ? "A" : "B");
+    if (a.ticker && a.side && a.decision_date) params.set("decision",[a.decision_date,a.side,a.ticker].join("."));
+    if (a.horizon === "20_sessions" || a.horizon === "to_date") params.set("reviewWindow",a.horizon);
+    if (a.habit) params.set("habit",a.habit);
+  }
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
     if (a.range) params.set("range", a.range);
@@ -41,7 +51,7 @@ export function evidenceHref(ref: Evidence) {
   }
   if (a.scope && a.scope !== "broker_total") {
     if (path === "/holdings" && ["invest", "isa"].includes(a.scope)) params.set("account", a.scope === "invest" ? "A" : "B");
-    else if (path !== "/holdings") params.set("scope", a.scope);
+    else if (path !== "/holdings" && path !== "/review") params.set("scope", a.scope);
   }
   if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);

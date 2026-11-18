@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight } from "@phosphor-icons/react";
+import { ArrowUpRight, CaretDown } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
@@ -38,6 +38,14 @@ type Copy = (zh: string, en: string) => string;
 export type DecisionAccount = "A" | "B";
 export type ReviewScope = "all" | AccountCode;
 export type ScopedDecision = TradeDecision & { account: DecisionAccount };
+
+export type DecisionExpansion = {
+  selected: ScopedDecision | null;
+  location: "extremes" | "recent" | null;
+  reading: ReactNode;
+  id: string;
+  toggle: (row: ScopedDecision, location: "extremes" | "recent", trigger: HTMLElement) => void;
+};
 
 /** More of a list, opened in place. */
 export function ReviewDisclosure({ label, children }: { label: string; children: ReactNode }) {
@@ -274,26 +282,31 @@ export function ReviewAccounts({ accounts, horizon, onOpen }: {
 }
 
 /** One decision in a short list: the security, what was done and when, and what it did since. */
-function DecisionLine({ row, horizon, account, href }: { row: TradeDecision; horizon: Horizon; account?: string; href: string }) {
+function DecisionLine({ row, horizon, account, href, expansion }: { row: ScopedDecision; horizon: Horizon; account?: string; href: string; expansion?: DecisionExpansion }) {
   const t = useCopy();
   const { locale } = useLocale();
   const effect = decisionEffect(row, horizon);
   const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
   const detail = [decisionAction(row, t).trim(), formatCalendarDate(row.date, locale), currency(row.amountGbp), account].filter(Boolean).join(" · ");
-  return (
-    <Link className="mx-row-link mx-review-line" href={href}>
+  const contents = <>
       <Instrument ticker={row.ticker} name={detail} small />
       <span className={"mx-row-value mx-" + effectTone(effect)}>
         <span>{signedMoney(effect)}</span>
         {change != null && <small>{t("之后 ", "then ") + percent(change, true, 1)}</small>}
       </span>
-      <ArrowUpRight size={15} aria-hidden="true" />
-    </Link>
-  );
+    </>;
+  if (!expansion) return <Link className="mx-row-link mx-review-line" href={href}>{contents}<ArrowUpRight size={15} aria-hidden="true" /></Link>;
+  const open = expansion.location === "extremes" && expansion.selected === row;
+  return <div className="mx-review-expandable" data-open={open || undefined}>
+    <div className="mx-review-expand-head">
+      <button type="button" className="mx-row-link mx-review-line" aria-expanded={open} aria-controls={open ? expansion.id : undefined}
+        onClick={event => expansion.toggle(row,"extremes",event.currentTarget)}>{contents}<CaretDown size={15} aria-hidden="true"/></button>
+      <Link href={href} aria-label={t("查看这笔决定", "View this decision") + " · " + row.ticker}><ArrowUpRight size={15} aria-hidden="true"/></Link>
+    </div>{open && expansion.reading}</div>;
 }
 
 /** The decisions that helped and cost the most at the review's horizon, buys and sells together. */
-export function DecisionExtremes({ rows, horizon, showAccount }: { rows: ScopedDecision[]; horizon: Horizon; showAccount: boolean }) {
+export function DecisionExtremes({ rows, horizon, showAccount, expansion }: { rows: ScopedDecision[]; horizon: Horizon; showAccount: boolean; expansion?: DecisionExpansion }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { helped, cost } = decisionExtremes(rows, horizon);
@@ -301,7 +314,7 @@ export function DecisionExtremes({ rows, horizon, showAccount }: { rows: ScopedD
   const list = (items: ScopedDecision[], empty: string) => {
     const keys = decisionKeys(items);
     return items.length ? items.map((row, index) => (
-      <DecisionLine key={keys[index]} row={row} horizon={horizon}
+      <DecisionLine key={keys[index]} row={row} horizon={horizon} expansion={expansion}
         account={showAccount ? accountName(profile, row.account) : undefined} href={decisionHref(row.account, row)} />
     )) : <p className="mx-review-empty">{empty}</p>;
   };
@@ -316,7 +329,7 @@ export function DecisionExtremes({ rows, horizon, showAccount }: { rows: ScopedD
 const VISIBLE_ENTRIES = 6;
 const MORE_ENTRIES = 40;
 
-function JournalItem({ entry, showAccount }: { entry: JournalEntry; showAccount: boolean }) {
+function JournalItem({ entry, showAccount, expansion }: { entry: JournalEntry; showAccount: boolean; expansion?: DecisionExpansion }) {
   const t = useCopy();
   const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
@@ -339,11 +352,17 @@ function JournalItem({ entry, showAccount }: { entry: JournalEntry; showAccount:
       : sides.size > 1
         ? (locale === "zh" ? `调仓 ${entry.rows.length} 笔` : `Rebalanced ${entry.rows.length}`)
         : (entry.rows[0].side === "buy" ? t("买入", "Bought") : t("卖出", "Sold")) + (locale === "zh" ? ` ${entry.rows.length} 笔` : ` ${entry.rows.length}`);
+    function tradeTrigger(row: ScopedDecision, content: ReactNode, className?: string) {
+      if (!expansion) return <Link className={className} href={decisionHref(row.account,row)}>{content}</Link>;
+      const open = expansion.selected === row && expansion.location === "recent";
+      return <button type="button" className={className} aria-expanded={open} aria-controls={open ? expansion.id : undefined}
+        onClick={event => expansion.toggle(row,"recent",event.currentTarget)}>{content} <CaretDown size={12} aria-hidden="true"/></button>;
+    }
     body = (
       <>
         <p className="mx-journal-line">
           {single
-            ? <Link className="mx-journal-act" href={decisionHref(entry.account, single)}>{label}</Link>
+            ? tradeTrigger(single, label, "mx-journal-act")
             : <strong className="mx-journal-act">{label}</strong>}
           {single && (
             <span className="mx-muted">
@@ -357,11 +376,11 @@ function JournalItem({ entry, showAccount }: { entry: JournalEntry; showAccount:
           <ul className="mx-journal-chips">
             {entry.rows.map((row, index) => (
               <li key={chipKeys[index]}>
-                <Link href={decisionHref(entry.account, row)}>
+                {tradeTrigger(row, <>
                   {sides.size > 1 && <span className={"mx-journal-mark mx-journal-mark-" + row.side} aria-hidden="true" />}
                   <span className="sr-only">{decisionAction(row, t)}</span>
                   {row.ticker} <span className="mx-muted">{currency(row.amountGbp)}</span>
-                </Link>
+                </>)}
               </li>
             ))}
           </ul>
@@ -427,6 +446,8 @@ function JournalItem({ entry, showAccount }: { entry: JournalEntry; showAccount:
       <span className={"mx-journal-mark mx-journal-mark-" + mark} aria-hidden="true" />
       <div className="mx-journal-body">{body}</div>
       <span className="mx-journal-figure">{figure}</span>
+      {expansion?.location === "recent" && entry.kind === "trade" && expansion.selected && entry.rows.includes(expansion.selected) &&
+        <div className="mx-journal-reading">{expansion.reading}</div>}
     </li>
   );
 }
@@ -435,7 +456,9 @@ function JournalItem({ entry, showAccount }: { entry: JournalEntry; showAccount:
  * What happened lately, as one record: decisions with the side effects of their fills, holdings
  * that moved with nothing done, weights that drifted and cash that sat.
  */
-export function RecentJournal({ decisions, evidence, accounts, showAccount }: {
+export function RecentJournal({ decisions, evidence, accounts, showAccount, expansion, filter }: {
+  expansion?: DecisionExpansion;
+  filter?: "trades" | "falls" | null;
   decisions: ScopedDecision[];
   evidence: Evidence | null | undefined;
   accounts: DecisionAccount[];
@@ -443,7 +466,12 @@ export function RecentJournal({ decisions, evidence, accounts, showAccount }: {
 }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const entries = journalEntries(decisions, evidence, accounts);
+  const all = journalEntries(decisions, filter === "trades" ? null : evidence, accounts);
+  const entries = filter === "falls" ? all.flatMap((entry): JournalEntry[] => {
+    if (entry.kind !== "moves") return [];
+    const rows = entry.rows.filter(move => move.change < 0);
+    return rows.length ? [{...entry, rows}] : [];
+  }) : all;
   const rules = evidence?.rules;
   const partial = accounts.some((code) => evidence?.accounts?.[code]?.coverage === "partial");
   const percentage = (value: number) => Number((value * 100).toFixed(4));
@@ -473,12 +501,12 @@ export function RecentJournal({ decisions, evidence, accounts, showAccount }: {
       {entries.length ? (
         <>
           <ol className="mx-review-journal">
-            {entries.slice(0, VISIBLE_ENTRIES).map((entry) => <JournalItem key={entry.key} entry={entry} showAccount={showAccount} />)}
+            {entries.slice(0, VISIBLE_ENTRIES).map((entry) => <JournalItem key={entry.key} entry={entry} showAccount={showAccount} expansion={expansion} />)}
           </ol>
           {entries.length > VISIBLE_ENTRIES && (
             <ReviewDisclosure label={t("更多记录", "More")}>
               <ol className="mx-review-journal">
-                {entries.slice(VISIBLE_ENTRIES, VISIBLE_ENTRIES + MORE_ENTRIES).map((entry) => <JournalItem key={entry.key} entry={entry} showAccount={showAccount} />)}
+                {entries.slice(VISIBLE_ENTRIES, VISIBLE_ENTRIES + MORE_ENTRIES).map((entry) => <JournalItem key={entry.key} entry={entry} showAccount={showAccount} expansion={expansion} />)}
               </ol>
             </ReviewDisclosure>
           )}
