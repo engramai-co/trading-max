@@ -943,3 +943,55 @@ test("mixed historical event replies retain their published dates and citations"
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dates-"+index+".png")});
   }
 });
+
+async function openDraftBeforeStatusCheck(page: Page) {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const draft = panel.getByRole("textbox", {name:"Message"});
+  await expect(draft).toBeFocused();
+  await page.keyboard.type("Continue");
+  await expect(draft).toHaveValue("Continue");
+  return {panel, draft, send:panel.getByRole("button", {name:"Send"})};
+}
+
+async function holdPassiveStatus(page: Page) {
+  let release!: (status: number) => void;
+  const held = new Promise<number>(resolve => { release = resolve; });
+  await page.route("**/api/backend/assistant/status", async route => {
+    const status = await held;
+    await route.fulfill({status, json:status === 200 ? {ready:true,code:null} : {detail:"Temporarily unavailable"}});
+  }, {times:1});
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.locator("#mx-assistant-panel").getByText("Checking connection…")).toBeVisible();
+  return release;
+}
+
+test("a passive status failure preserves the draft until readiness recovers", async ({page}) => {
+  const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
+  const posts: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.endsWith("/assistant/chat")) posts.push(request.postDataJSON().messages[0].parts[0].text);
+  });
+  const fail = await holdPassiveStatus(page);
+  await expect(send).toBeDisabled();
+  await page.keyboard.type("s through recovery");
+  await expect(draft).toHaveValue("Continues through recovery");
+  fail(503);
+  await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+  await expect(draft).toBeHidden();
+  const retry = await holdPassiveStatus(page);
+  // Exercise the actual submission handler even if the composer is hidden during confirmation.
+  await panel.locator("form").evaluateAll(forms => forms.forEach(form => (form as HTMLFormElement).requestSubmit()));
+  expect(posts).toEqual([]);
+  retry(200);
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue("Continues through recovery");
+  await expect(send).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => posts).toEqual(["Continues through recovery"]);
+});
