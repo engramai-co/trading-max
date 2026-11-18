@@ -157,7 +157,8 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
                 mode="json"
             )
             if role.id in {"exposure", "attribution", "market-map", "market-sector", "diagnosis"}:
-                if not context.snapshot_id or context.ticker or context.lens:
+                job_record = role.id == "diagnosis" and context.object["issue"] == "job"
+                if (not context.snapshot_id and not job_record) or context.ticker or context.lens:
                     raise ValueError("A page reading requires its published origin")
                 if role.id == "exposure" and context.scope != "broker_total":
                     raise ValueError("Look-through covers the combined broker accounts")

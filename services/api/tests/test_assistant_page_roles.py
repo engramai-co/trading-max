@@ -365,6 +365,7 @@ def test_failed_refresh_is_diagnosed_from_its_terminal_record(tmp_path, with_pub
         .model_copy(
             update={
                 "error": None,
+                "attempts": 2,
                 "finished_at": datetime(2026, 2, 5, 13, tzinfo=UTC),
                 "stages": [
                     JobStageRecord(
@@ -401,6 +402,7 @@ def test_failed_refresh_is_diagnosed_from_its_terminal_record(tmp_path, with_pub
         and "PRIVATE" not in event.reading.model_dump_json()
     )
     assert "基本面" in event.reading.model_dump_json()
+    assert "2 attempts" in event.reading.model_dump_json()
     assert event.reading.version != deps.snapshot_id
 
 

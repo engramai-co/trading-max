@@ -13112,6 +13112,18 @@
       },
       "JobRecord": {
         "properties": {
+          "attempts": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempts"
+          },
           "createdAt": {
             "format": "date-time",
             "title": "Createdat",

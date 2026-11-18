@@ -36,6 +36,7 @@ def published_page_sources(indices, jobs) -> PageSources:
         except (OSError, ValueError):
             return None
 
+    @lru_cache(maxsize=1)
     def published_job(job_id: str):
         # Match the workspace's public refresh history. Internal queue jobs never enter model context.
         for item in jobs.list(limit=200):

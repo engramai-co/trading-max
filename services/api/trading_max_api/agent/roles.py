@@ -113,6 +113,9 @@ class PageRole:
     publication_targets: Callable[[JobRecord, RoleTools], list[BriefTarget]] | None = None
     data_version: Callable[[RoleTools, Any], str] | None = None
 
+    # A terminal operational record can precede a workspace's first publication.
+    record_anchor: Callable[[RoleTools, Any], tuple[str, datetime] | None] | None = None
+
     @property
     def is_digest(self) -> bool:
         return bool(self.scheduled or self.publication_targets or self.weekly_fold)

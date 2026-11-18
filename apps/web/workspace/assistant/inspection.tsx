@@ -162,7 +162,7 @@ export function Inspection({
   );
   const card = useMemo<RoleCard>(
     () => ({
-      role: hasContext && origin.snapshotId ? role : "",
+      role: hasContext && (origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading)) ? role : "",
       origin,
       title: t(descriptor.title[0], descriptor.title[1]),
       object,

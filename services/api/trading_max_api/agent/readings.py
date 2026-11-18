@@ -107,7 +107,11 @@ class ReadingService:
             return
         tools = RoleTools.pinned(deps, role.allowed_tools)
         version = deps.snapshot_id
-        if not latest and version and role.data_version:
+        as_of = deps.manifest.created_at if deps.manifest else None
+        if not latest and role.record_anchor:
+            anchor = await asyncio.to_thread(role.record_anchor, tools, context)
+            version, as_of = anchor or (None, None)
+        elif not latest and version and role.data_version:
             version = await asyncio.to_thread(role.data_version, tools, context)
         if not latest and not version:
             yield ReadingEvent(type="empty")
@@ -116,7 +120,7 @@ class ReadingService:
         if saved:
             yield ReadingEvent(type="result", reading=saved)
             return
-        if cached_only or not deps.manifest or not version:
+        if cached_only or not as_of or not version:
             yield ReadingEvent(type="empty")
             return
         key = (
@@ -194,7 +198,7 @@ class ReadingService:
                 role=role.id,
                 version=version,
                 snapshot_id=deps.snapshot_id,
-                as_of=deps.manifest.created_at,
+                as_of=as_of,
                 lines=lines,
             )
             if not permitted() or not (await self.assistant.status())["ready"]:

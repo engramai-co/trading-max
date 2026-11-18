@@ -169,6 +169,7 @@ def _api_record(record: DomainJobRecord) -> JobRecord:
     status = JobStatus(record.status.value)
     stage_codes = [stage.return_code for stage in record.stages if stage.return_code is not None]
     return JobRecord(
+        attempts=record.attempts,
         schema_version=2,
         job_id=record.job_id,
         scope=record.scope,

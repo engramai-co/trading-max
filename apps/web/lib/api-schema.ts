@@ -5703,6 +5703,8 @@ export interface components {
         };
         /** JobRecord */
         JobRecord: {
+            /** Attempts */
+            attempts?: number | null;
             /**
              * Createdat
              * Format: date-time
