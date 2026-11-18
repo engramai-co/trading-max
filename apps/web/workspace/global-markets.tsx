@@ -9,6 +9,8 @@ import { presentationLink } from "./desktop-routing";
 import { Empty, Help, Pending, QueryError, Tag, useCopy, useEscapeLayer } from "./foundation";
 import { CHINA_MAP_INDEX, globalHeatStyle, globalMarketReading, useGlobalContribution, type GlobalMapMarket } from "./global-markets-data";
 import { MARKET_PATHS, WIDE_WORLD_VIEWBOX, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
+import { PageInspection } from "./assistant/inspection-entry";
+import { useAssistant } from "./assistant/context";
 import Link from "./link";
 import { heat } from "./sectors-data";
 
@@ -141,6 +143,10 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const title = t("对 MSCI 全球的贡献", "Contribution to MSCI ACWI");
   const query = useGlobalContribution(!demo);
   const answer = query.data;
+  const {ready} = useAssistant();
+  const [openingObservation,setOpeningObservation] = useState<string | null>(null);
+  const [readingSlot,setReadingSlot] = useState<HTMLDivElement|null>(null);
+  if (ready && !openingObservation && answer?.asOf && !answer.pricesStale && !query.isError) setOpeningObservation(answer.asOf);
   const change = (value: number | null | undefined) => formatDeltaPercent(value, locale, 2);
   const pp = (value: number) => formatNumber(value * 100, locale, {
     minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero",
@@ -192,6 +198,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       setPlacement(null);
       return;
     }
+    const place = () => {
     const bounds = host.getBoundingClientRect();
     const labels = Array.from(host.querySelectorAll<SVGTextElement>(".mx-global-region text"))
       .filter((text) => text.closest(".mx-global-region")?.getAttribute("data-market") !== inspection.market)
@@ -199,6 +206,11 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       .map((box) => ({ left: box.left - bounds.left, top: box.top - bounds.top, right: box.right - bounds.left, bottom: box.bottom - bounds.top }));
     setPlacement(placeInspection(inspection.anchor, { width: card.offsetWidth, height: card.offsetHeight },
       { width: bounds.width, height: bounds.height }, labels));
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(card);
+    return () => observer.disconnect();
   }, [inspection]);
   useEffect(() => {
     // A card opened by a tap or click stays in view, above the phone dock.
@@ -240,6 +252,10 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const inspectedStatus = quoteStatus(inspectedMove?.move, inspectedMove?.notOpen);
   return (
     <section className="mx-global-panel" aria-labelledby="mx-global-title">
+      <PageInspection role="market-map" object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
+        context={openingObservation ? {observed:openingObservation} : undefined} market={inspection?.market}
+        showMapLine={answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
+        portal={readingSlot}/>
       <header className="mx-global-lead">
         <div className="mx-global-heading">
           <h2 id="mx-global-title">{title}</h2>
@@ -287,7 +303,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
               onKeyDown={(event) => {
                 if ((event.key === "Tab" && !event.shiftKey) && inspection?.market === market) {
                   event.preventDefault();
-                  detailLink.current?.focus();
+                  (popover.current?.querySelector<HTMLElement>("button, a") ?? detailLink.current)?.focus();
                 }
               }}>
               {market !== "hk" && <path className="mx-global-shape" d={MARKET_PATHS[market]} fillRule="evenodd" />}
@@ -320,9 +336,10 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             <div><dt>{t("贡献", "Contribution")}</dt>
               <dd>{inspectedContribution == null ? contributionText(inspection.market) : pp(inspectedContribution)}</dd></div>
           </dl>
+          {ready && <div ref={setReadingSlot}/>}
           <Link ref={detailLink} href={url(inspection.market)} prefetch={false}
             onClick={(event) => open(event, inspection.market)} onKeyDown={(event) => {
-              if (event.key !== "Tab") return;
+              if (event.key !== "Tab" || event.shiftKey && readingSlot?.querySelector("button")) return;
               const regions = Array.from(mapHost.current?.querySelectorAll<MapAnchor>(".mx-global-region") ?? []);
               const source = trigger.current;
               if (!source) return;

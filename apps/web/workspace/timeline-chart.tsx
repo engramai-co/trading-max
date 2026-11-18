@@ -35,6 +35,7 @@ export function TimelineChart({
   drawdownHeading,
   emptyHeadingLevel,
   fullscreen = false,
+  onBrush,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -55,6 +56,7 @@ export function TimelineChart({
   drawdownHeading?: ReactNode;
   emptyHeadingLevel?: 2 | 3;
   fullscreen?: boolean;
+  onBrush?: (start: string, end: string) => void;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -155,6 +157,10 @@ export function TimelineChart({
       key={range ?? label}
       label={label}
       fullscreen={fullscreen}
+        onBrush={onBrush && ((start,end) => {
+          const a=rows.get(start), b=rows.get(end);
+          if (a!=null && b!=null) onBrush(dates[a], dates[b]);
+        })}
       overlay={moneyLayout && <>
         <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
           <Legend items={layers[1].lines.map((line, index) => ({ label: line.name, dashed: line.dashed, colour: timelineLineColour(colours, 1, index, line) }))} />

@@ -16,7 +16,10 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
-  data_freshness: ["/health", "health"],
+  daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
+  dated_exposure: ["/holdings","exposure"], exposure_benchmark: ["/holdings","exposure"],
+  market_sector: ["/sectors","market"], global_map: ["/sectors","market"], update_issue: ["/health","health"],
+  news_and_events: ["/research","publisher"], data_freshness: ["/health", "health"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence) {
@@ -25,11 +28,15 @@ export function evidenceHref(ref: Evidence) {
   const [path] = entry;
   const params = new URLSearchParams();
   const a = ref.arguments ?? {};
+  if (ref.source === "inference") return null;
+  if (ref.source === "publisher" && a.url) {
+    try {const url = new URL(a.url); return ["https:","http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;} catch {return null;}
+  }
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && a.range === "1D" ? "money" : "returns");
     if (a.range) params.set("range", a.range);
     if (a.benchmark) params.set("benchmark", a.benchmark);
-    if (ref.tool === "compare_benchmarks" && a.start && a.end) {
+    if (a.start && a.end && a.start.length === 10 && a.end.length === 10) {
       params.set("returnFrom", a.start);
       params.set("returnTo", a.end);
     }
@@ -38,7 +45,17 @@ export function evidenceHref(ref: Evidence) {
     if (path === "/holdings" && ["invest", "isa"].includes(a.scope)) params.set("account", a.scope === "invest" ? "A" : "B");
     else if (path !== "/holdings") params.set("scope", a.scope);
   }
-  if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
+  if (["lookthrough_exposure","dated_exposure","exposure_benchmark"].includes(ref.tool)) {
+    params.set("view","lookthrough");
+    if (a.dimension) params.set("dimension",a.dimension);
+    if (a.category) params.set("category",a.category);
+  }
+  if (path === "/sectors") {
+    params.set("market",a.market ?? "global");
+    if (a.sector) {params.set("sector",a.sector); if(a.market === "global") params.set("view","sectors");}
+    if (a.grouping) params.set("grouping",a.grouping);
+  }
+  if (ref.tool === "update_issue" && a.job) params.set("job",a.job);
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
     if (a.ticker) params.set("ticker", a.ticker);

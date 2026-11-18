@@ -5,6 +5,7 @@ from typing import Literal
 
 from pydantic import Field, field_validator
 
+from ..index_models import GlobalMapMarket
 from ..sector_models import SectorGroupingKind, SectorMarketCode
 from . import events, tools
 from .overview_roles import line
@@ -20,6 +21,10 @@ class MarketContext(RoleContext):
         if datetime.fromisoformat(value).utcoffset() is None:
             raise ValueError("Market observations need an offset")
         return value
+
+
+class RegionalMapContext(MarketContext):
+    market: GlobalMapMarket | None = None
 
 
 class SectorContext(MarketContext):
@@ -255,7 +260,7 @@ MARKET_ROLES = (
         "market-map",
         "sectors",
         frozenset({"global_map"}),
-        MarketContext,
+        RegionalMapContext,
         "Order the two regional-map angles by relevance, starting with estimated contribution where published.",
         map_facts,
     ),

@@ -1,0 +1,35 @@
+.mx-allocation-details .mx-inline-reading,
+.mx-sector-detail .mx-inline-reading,
+.mx-performance-chart .mx-inline-reading {
+  border: 0;
+  border-block: 1px solid var(--mx-border);
+  border-radius: 0;
+  padding: 12px 0;
+}
+.mx-inspection-status, .mx-map-reading { font-size: 14px; line-height: 1.5; }
+.mx-inspection-status button, .mx-map-reading button, .mx-why {
+  border: 0;
+  background: transparent;
+  color: var(--mx-brand);
+  font: inherit;
+  cursor: pointer;
+}
+.mx-map-reading { max-width: 30ch; }
+.mx-map-reading p { margin: 6px 0; }
+.mx-inspection-anchor { position: relative; }
+.mx-inspection-anchor .mx-anchored-reading { width: min(360px, calc(100vw - 48px)); right: 0; }
+.mx-why { min-height: 36px; padding-inline: 8px; white-space: nowrap; }
+@media (max-width: 767px) {
+  .mx-why, .mx-map-reading button { min-height: 44px; }
+}
+.mx-chart-brush {
+  position: absolute; inset-block: 0 24px; pointer-events: none;
+  background: var(--mx-brand-soft); opacity: .65; border-inline: 1px solid var(--mx-brand);
+}
+.mx-range-inspect-mobile { display:none; }
+@media (max-width:767px) {
+  .mx-range-inspect-mobile { display:inline-flex; align-items:center; min-height:44px; color:var(--mx-brand); background:transparent; border:none; }
+}
+.mx-job-with-why { display:flex; align-items:center; gap:4px; }
+.mx-job-with-why .mx-job-row { flex:1; min-width:0; }
+.mx-inspection-anchor .mx-inline-reading { box-shadow:var(--mx-popover-shadow); }

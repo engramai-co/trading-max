@@ -39,6 +39,9 @@ import {
   useCopy,
 } from "./foundation";
 
+import { useAssistant } from "./assistant/context";
+import { PageInspection } from "./assistant/inspection-entry";
+import { useSearchParams } from "next/navigation";
 import { DemoAsOf } from "./demonstration";
 import { activityState } from "./desktop-status";
 import { collapseRoutineRuns } from "./job-history";
@@ -55,7 +58,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   });
   const demoSnapshot = useDashboardLens("overview", undefined, readOnly, { detail: "summary" });
   const [scope, setScope] = useState<RefreshJob["scope"]>(initialScope);
-  const [selected, setSelected] = useState<string | null>(null);
+  const {ready: assistantReady} = useAssistant();
+  const params=useSearchParams();
+  const [selected, setSelected] = useState<string | null>(()=>params?.get("job") ?? null);
+  const [diagnosis, setDiagnosis] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
   const [everyRun, setEveryRun] = useState(false);
   const [controlsOpen, setControlsOpen] = useState(initialScope !== "all");
@@ -143,6 +149,16 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             "查看下面的服务状态和任务详情，定位未完成的步骤。",
             "Check the service status and task details below to find the unfinished step.",
           );
+  const lastFailed = activity.failures[0];
+  const heroIssue = staleHours != null ? "stale" : lastFailed?.jobId;
+  function why(issue: string, label: string, location: string) {
+    if (!assistantReady || readOnly) return null;
+    const key = location + issue;
+    return <div className="mx-inspection-anchor"><button type="button" className="mx-why" aria-expanded={diagnosis===key}
+      onClick={() => setDiagnosis(diagnosis===key ? null : key)}>✦ {t("为什么","Why")}</button>
+      {diagnosis===key && <PageInspection role="diagnosis" object={label} snapshotId={latestRunId ?? undefined}
+        anchored context={issue==="stale" ? {issue:"stale"} : {issue:"job",job:issue}} onClose={() => setDiagnosis(null)}/>}</div>;
+  }
   const schedule = data && (
     <Panel title={t("下一次自动更新", "Next scheduled updates")}
       description={t("运行服务的设备需要保持开机，且任务服务正在运行。", "Scheduled updates run while the host device and its worker are running.")}>
@@ -289,6 +305,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 <Freshness date={lastSuccess} label={t("最近成功更新", "Last successful update")} />
               )}
             </div>
+            {heroIssue && why(heroIssue,heroIssue==="stale" ? t("快照未更新","Stale snapshot") : scopes.find(item=>item.value===lastFailed.scope)?.label ?? t("更新失败","Update failure"),"hero:")}
+            {!diagnosis && <PageInspection role="diagnosis" object={t("数据状态","Data status")} />}
             {/* Ready and fresh is the normal state: the heading says it, no tag repeats it. */}
             {!(tone === "ready" && staleHours == null) && (
               <Tag tone={tone === "setup" ? "neutral" : tone === "ready" && staleHours == null ? "good" : "warn"}>
@@ -449,8 +467,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 {(filter === "all" && !everyRun
                   ? collapseRoutineRuns(data.jobs)
                   : data.jobs.filter((j) => filter === "all" || j.status === filter).map((job) => ({ job, repeats: 0 }))
-                ).map(({ job: j, repeats }) => (
-                    <button
+                ).map(({ job: j, repeats }) => {
+                  const row = <button
                       className="mx-job-row"
                       key={j.jobId}
                       onClick={() => setSelected(j.jobId)}
@@ -492,8 +510,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                         </Tag>
                       )}
                       <ArrowRight size={17} />
-                    </button>
-                  ))}
+                    </button>;
+                  return assistantReady && !readOnly && ["failed","interrupted"].includes(j.status)
+                    ? <div className="mx-job-with-why" key={j.jobId}>{row}{why(j.jobId,scopes.find(item=>item.value===j.scope)?.label ?? j.scope,"history:")}</div> : row;
+                })}
               </div>
               {filter === "all" && data.jobs.some((j) => j.status === "succeeded") && (
                 <Button variant="subtle" size="compact-sm" mt="sm" onClick={() => setEveryRun((value) => !value)}>

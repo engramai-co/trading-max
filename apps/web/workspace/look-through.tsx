@@ -39,6 +39,9 @@ import {
 } from "./foundation";
 import { countryCode, countryName, industryName } from "./exposure-names";
 import { SecurityPeek } from "./security-peek";
+import { PageInspection } from "./assistant/inspection-entry";
+import { useAssistant } from "./assistant/context";
+import { useSearchParams } from "next/navigation";
 import { Narrative } from "./narrative";
 
 /** Coverage below this is named; above it the page stays quiet. */
@@ -201,9 +204,17 @@ function Exposure({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const {ready} = useAssistant();
+  const params = useSearchParams();
+  const dimensionsByKey = {company: "companies", country:"countries", sector:"sectors", gics:"gics"} as const;
+  const linkedDimension = params?.get("dimension") as keyof typeof dimensionsByKey;
+  const [choice, setChoice] = useState<{category: string; name:string} | null>(() => {
+    const category=params?.get("category");
+    return category && dimensionsByKey[linkedDimension] ? {category,name:category} : null;
+  });
   const [view, setView] = useState<
     "companies" | "countries" | "sectors" | "gics" | "sources"
-  >("companies");
+  >(dimensionsByKey[linkedDimension] ?? "companies");
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("all");
   const [selected, setSelected] = useState<LookthroughPosition | null>(null);
@@ -349,6 +360,12 @@ function Exposure({
     r.country != null
       ? countryLabel(str(r.country))
       : className(str(r.subIndustry ?? r.name ?? r.industry ?? r.label)) || "—";
+  const dimension = view === "companies" ? "company" : view === "sectors" ? "sector" : view === "countries" ? "country" : "gics";
+  const inspect = (row: {name: string; category?: string}) => setChoice(row.category ? {name:row.name,category:row.category} : null);
+  const categoryKey = (row: Record<string,unknown>) => str(row.country ?? row.subIndustry ?? row.industry ?? row.name);
+  const role = <PageInspection role="exposure" object={choice?.name ?? t("穿透配置","Look-through allocation")}
+    context={choice ? {dimension,category:choice.category} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
+  const changeChart = (value: string) => {setChoice(null); setChart(value);};
   const top = companyComposition.rows.slice(0, 3);
   const concentration = top.reduce((sum, row) => sum + (row.weight ?? 0), 0);
   // The backend measures resolved securities against total invested value.
@@ -380,7 +397,7 @@ function Exposure({
         <Tabs
           label={t("穿透维度", "Exposure dimension")}
           value={view}
-          onChange={setView}
+          onChange={(value) => {setChoice(null); setView(value);}}
           options={dimensions}
         />
         {/* The open dimension heads its section, so the details below sit one level under it. */}
@@ -481,7 +498,7 @@ function Exposure({
                 <Segments
                   label={t("公司视图", "Company view")}
                   value={chart}
-                  onChange={setChart}
+                  onChange={changeChart}
                   options={[
                     { value: "rank", label: t("排名", "Rank") },
                     // Phones show "Mix", so sort and the view switch share one row down to 320px.
@@ -497,6 +514,7 @@ function Exposure({
             {chart === "pie" && <AllocationComposition
               key={`companies-${snapshot}`}
               companies
+              onInspect={ready ? inspect : undefined} reading={role}
               rows={companyComposition.rows}
               remainder={companyComposition.remainder}
             />}
@@ -515,7 +533,7 @@ function Exposure({
                 <button
                   key={p.entityId || i}
                   className="mx-holding-mobile"
-                  onClick={() => setSelected(p)}
+                  onClick={() => {setSelected(p); if (ready) inspect({name:p.name,category:p.isin || p.ticker || p.name});}}
                 >
                   <div>
                     <Instrument
@@ -567,7 +585,7 @@ function Exposure({
                         <td>
                           <button
                             className="mx-table-button"
-                            onClick={() => setSelected(p)}
+                            onClick={() => {setSelected(p); if (ready) inspect({name:p.name,category:p.isin || p.ticker || p.name});}}
                           >
                             <SecurityPeek
                               ticker={p.ticker}
@@ -720,7 +738,7 @@ function Exposure({
               <Segments
                 label={t("配置图形", "Allocation chart")}
                 value={chart}
-                onChange={setChart}
+                onChange={changeChart}
                 options={[
                   { value: "rank", label: t("明细", "Details") },
                   { value: "pie", label: t("组成", "Composition"), short: t("组成", "Mix") },
@@ -728,19 +746,21 @@ function Exposure({
               />
             </Group>
             {chart === "pie" && <AllocationComposition
+              onInspect={ready ? inspect : undefined} reading={role}
               key={`${view}-${snapshot}`}
               rows={allocations.map((row) => ({
-                name: allocationLabel(row),
+                name: allocationLabel(row),category: categoryKey(row),
                 value: numeric(row.valueGbp),
                 weight: numeric(row.allocationPct),
               }))}
             />}
+            {chart !== "pie" && role}
             <EvidenceTable
               key={view}
               label={t("完整配置明细", "Complete allocation details")}
               rows={allocations}
               columns={[
-                { label: t("分类", "Category"), value: allocationLabel },
+                { label: t("分类", "Category"), value: row => ready ? <button type="button" className="mx-text-link" onClick={() => inspect({name:allocationLabel(row),category:categoryKey(row)})}>{allocationLabel(row)}</button> : allocationLabel(row) },
                 {
                   label: t("金额 · GBP", "Value · GBP"),
                   value: (r) => currency(r.valueGbp),
@@ -757,9 +777,10 @@ function Exposure({
         )}
       </Panel>
       <Narrative snapshot={snapshot} lens="hidden_exposure" page="holdings" />
+      {view === "companies" && chart !== "pie" && !selected && role}
       <Drawer
         opened={selected !== null}
-        onClose={() => setSelected(null)}
+        onClose={() => {setSelected(null); setChoice(null);}}
         title={t("穿透后的真实敞口", "Underlying exposure")}
       >
         {selected && (
@@ -794,6 +815,7 @@ function Exposure({
                 ["ISIN", selected.isin ?? "—"],
               ]}
             />
+            {chart !== "pie" && role}
             <Panel title={t("通过这些基金持有", "Held through these funds")}>
               {objects(selected.etfContributors).length ? (
                 objects(selected.etfContributors).map((c, i) => (

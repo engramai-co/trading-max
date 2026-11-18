@@ -7,6 +7,7 @@ export function companyAllocation(data: Pick<LookthroughData, "positions" | "non
     .map((position) => ({
       name: position.ticker || position.name,
       fullName: position.name,
+      category: position.isin || position.ticker || position.name,
       value: position.valueGbp,
       weight: position.allocationPct,
       directValue: position.directValueGbp,

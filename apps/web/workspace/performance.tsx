@@ -37,6 +37,9 @@ import {
   UpdateFailure,
   useCopy,
 } from "./foundation";
+import { useAssistant } from "./assistant/context";
+import { PageInspection } from "./assistant/inspection-entry";
+import type { ReactNode } from "react";
 import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
@@ -81,6 +84,9 @@ export function PerformanceContent({
   const range = portfolioRange(params.get("range"));
   const preferredBenchmark = usePerformanceBenchmark();
   const benchmark = benchmarkValue(params.get("benchmark")) ?? preferredBenchmark;
+  const {ready} = useAssistant();
+  const [selectionRange,setSelectionRange] = useState<{start:string; end:string; identity:string} | null>(null);
+  const [phoneRange,setPhoneRange] = useState<string | null>(null);
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const start = params.get("returnFrom"), end = params.get("returnTo");
   const customRange = view === "returns" && start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start < end
@@ -159,6 +165,14 @@ export function PerformanceContent({
     : null;
   const returnsPoints = comparison?.points ?? [];
   const points = comparison?.points ?? availablePoints;
+  const identity = [view,scope,actualRange,data?.runId,benchmark,start,end].join("|");
+  const brush = ready ? (a:string,b:string) => {setPhoneRange(null); setSelectionRange({start:a,end:b,identity});} : undefined;
+  const phoneIdentity = [view,scope,actualRange,data?.runId].join("|");
+  const selectedWindow = selectionRange?.identity===identity ? selectionRange
+    : phoneRange===phoneIdentity && points.length && !rangeMismatch ? {start:points[0].date,end:points.at(-1)!.date} : null;
+  const inspection = <PageInspection role="attribution" snapshotId={data?.runId} object={selectedWindow ? selectedWindow.start.slice(0,10)+" – "+selectedWindow.end.slice(0,10) : t("所选区间","Selected range")}
+    context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,start:selectedWindow.start,end:selectedWindow.end} : undefined}
+    onClose={() => {setSelectionRange(null);setPhoneRange(null);}}/>;
   const first = points[0],
     last = points.at(-1);
   const money = view === "money" && shown?.history ? shown.history.money : portfolioMoney(points, scope);
@@ -322,7 +336,7 @@ export function PerformanceContent({
         </Notice>
       ) : view === "risk" ? (
         <div className="mx-data-body mx-performance-risk" aria-busy={waiting || undefined}>
-          <RiskDashboard data={runtime.status === "ready" ? data : undefined} scope={scope}
+          <RiskDashboard onBrush={brush} inspection={inspection} data={runtime.status === "ready" ? data : undefined} scope={scope}
             unavailable={unavailable} retry={usesAnalytics ? summary.refetch : undefined} />
         </div>
       ) : (
@@ -365,7 +379,12 @@ export function PerformanceContent({
                 {runtime.status === "ready" && comparison && comparison.comparisons.length > 0
                   ? <span className="mx-comparison-basis">{t("共同区间", "Shared dates")} <PeriodSpan points={points} /></span>
                   : <PeriodSpan points={runtime.status === "ready" ? points : []} reserve />}
-                <DashboardRanges value={requestedRange} onChange={(value) => update({ range: value, returnFrom: null, returnTo: null })}
+                <DashboardRanges value={requestedRange} onChange={(value) => {
+                  if (ready && window.matchMedia("(max-width: 767px)").matches) {
+                    setSelectionRange(null); setPhoneRange([view,scope,value,data?.runId].join("|"));
+                  }
+                  update({range:value,returnFrom:null,returnTo:null});
+                }}
                   label={t("绩效区间", "Performance range")} intraday={view === "money"} />
               </div>
             </div>
@@ -420,6 +439,7 @@ export function PerformanceContent({
                 colour: ["var(--mx-brand)", "var(--mx-muted)", "var(--mx-ink)", "var(--mx-muted)"][i],
               }))} />}
               <TimelineChart
+                onBrush={brush}
                 fullscreen
                 emptyHeadingLevel={2}
                 dates={points.map((p) => p.date)}
@@ -449,6 +469,7 @@ export function PerformanceContent({
                       )
                 }
               />
+            {inspection}
             {view === "returns" && <DrawdownReading episode={returnEpisode} dates={returnDates} basis="selected" />}
             {view === "returns" && (
               <div className="mx-table-wrap mx-return-table" tabIndex={0} role="region" aria-label={t("收益与回撤对比", "Return and drawdown comparison")}>
@@ -559,7 +580,9 @@ function RiskReadings({ rows, scope, pending }: { rows: NavPoint[]; scope: Scope
   </div>;
 }
 
-function RiskDashboard({ data, scope, unavailable, retry }: {
+function RiskDashboard({ data, scope, unavailable, retry, onBrush, inspection }: {
+  onBrush?: (start:string,end:string)=>void;
+  inspection:ReactNode;
   data?: DashboardLens;
   scope: Scope;
   unavailable: { label: string; retry: () => unknown } | null;
@@ -581,12 +604,12 @@ function RiskDashboard({ data, scope, unavailable, retry }: {
             "Time-weighted returns on end-of-day account values, in pounds; intraday records are not used.",
           )}</DataBasis>
         </>}
-        action={<span className="mx-risk-basis">{t("全部可用历史", "All available history")} <PeriodSpan points={rows} /></span>}
+        action={<span className="mx-risk-basis">{onBrush && dates.length>1 && <button className="mx-range-inspect-mobile" onClick={()=>onBrush(dates[0],dates.at(-1)!)}>{t("解读区间","Read range")}</button>}{t("全部可用历史", "All available history")} <PeriodSpan points={rows} /></span>}
       >
         <RiskReadings rows={rows} scope={scope} pending={!data && !unavailable} />
         {unavailable ? <div className="mx-performance-unavailable"><InlineRetry {...unavailable} /></div>
           : !data ? <Pending shape="chart" height={260} quiet />
-          : <HistoryChart
+          : <HistoryChart onBrush={onBrush}
           fullscreen
           label={t("收益回撤曲线", "Portfolio return drawdown")}
           dates={dates}
@@ -602,6 +625,7 @@ function RiskDashboard({ data, scope, unavailable, retry }: {
           percentage
           height={260}
         />}
+        {inspection}
         {data && <DrawdownReading episode={episode} dates={dates} basis="all" />}
       </Panel>
       {data && <div className="mx-grid">

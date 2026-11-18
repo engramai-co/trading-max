@@ -293,13 +293,14 @@ export function SectorsWorkspace() {
           <SectorMap groups={groups} kind={kind} selected={selected} onSelect={select}
             label={locale === "zh" ? `${names[market]}板块地图` : `${names[market]} sector map`} />
           {detail && <SectorDetail key={market + kind + detail.key} group={detail} board={board}
+            inspection={demonstration || refreshFailed ? undefined : {market,observed:board.fetchedAt,selected:Boolean(explicit)}}
             sessions={status?.sessions ?? []} kind={kind}
             openSubgroup={subgroup?.group === detail.key ? subgroup.key : null} />}
         </div>
       )}
       <div className="mx-sectors-phone" data-fetching={query.isPlaceholderData ? "" : undefined}>
         {phoneDetail ? (
-          <SectorDetail key={phoneDetail.key} group={phoneDetail} board={board} sessions={status?.sessions ?? []}
+          <SectorDetail key={phoneDetail.key} group={phoneDetail} board={board} inspection={demonstration || refreshFailed ? undefined : {market,observed:board.fetchedAt,selected:true}} sessions={status?.sessions ?? []}
             kind={kind} openSubgroup={null} focusOnOpen />
         ) : (
           <SectorList groups={groups} board={board} sessions={status?.sessions ?? []} kind={kind}
