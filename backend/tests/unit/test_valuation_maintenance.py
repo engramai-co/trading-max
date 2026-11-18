@@ -46,6 +46,8 @@ def statements(
     duplicate=None,
     income=None,
     equity=None,
+    net_income=None,
+    annual_rows=(),
 ):
     ends = tuple(revenue)
     raw = {
@@ -55,21 +57,30 @@ def statements(
             {"index": "Capital Expenditure", **dict.fromkeys(ends, capex)},
         ],
         "quarterlyBalanceSheet": [
-            {"index": "Ordinary Shares Number", **dict.fromkeys(ends, shares)},
             {
                 "index": "Cash Cash Equivalents And Short Term Investments",
-                **dict.fromkeys(ends, cash),
+                **(cash if isinstance(cash, dict) else dict.fromkeys(ends, cash)),
             },
         ],
     }
+    if shares is not None:
+        raw["quarterlyBalanceSheet"].append(
+            {"index": "Ordinary Shares Number", **dict.fromkeys(ends, shares)}
+        )
     if income is not None:
         raw["quarterlyIncomeStatement"].append(
             {"index": "Net Income Common Stockholders", **dict.fromkeys(ends, income)}
+        )
+    if net_income is not None:
+        raw["quarterlyIncomeStatement"].append(
+            {"index": "Net Income", **dict.fromkeys(ends, net_income)}
         )
     if equity is not None:
         raw["quarterlyBalanceSheet"].append({"index": "Common Stock Equity", **equity})
     if annual:
         raw["incomeStatement"] = [{"index": "Total Revenue", **annual}]
+    if annual_rows:
+        raw.setdefault("incomeStatement", []).extend(annual_rows)
     if duplicate:
         raw["quarterlyIncomeStatement"].append({"index": "Total Revenue", **duplicate})
     return build_financial_facts(raw, {"financialCurrency": currency})
@@ -79,14 +90,14 @@ def quarters(value=1000.0, ends=QUARTERS, **changes):
     return {**dict.fromkeys(ends, value), **changes}
 
 
-def basis(facts, *, spot=20.0, fx=None, family="cash-flow"):
+def basis(facts, *, spot=20.0, fx=None, family="cash-flow", quoted_shares=100):
     return freeze_basis(
         facts,
         family,
         ticker="TEST",
         spot=spot,
         currency="USD",
-        shares=100,
+        shares=quoted_shares,
         fx=fx,
         quote_id=f"quote-{spot}",
         listing="US:TEST",
@@ -157,8 +168,8 @@ def test_price_moves_a_value_only_through_financed_dilution():
 def test_a_restated_saved_period_is_measured_on_its_own():
     saved = saved_model(basis(statements(quarters())))
     revised = statements(quarters(ends=(*QUARTERS, NEXT), **{QUARTERS[-1]: 850.0, NEXT: 1200.0}))
-    restated, changes, check = restate(saved.basis, revised)
-    assert check == "restated"
+    restated, changes, check, gap, unchecked = restate(saved.basis, revised)
+    assert (check, gap, unchecked) == ("restated", None, ())
     assert [(c.metric, c.saved, c.current, c.currency) for c in changes] == [
         ("revenue", 4000, 3850, "USD")
     ]
@@ -174,24 +185,68 @@ def test_a_restated_saved_period_is_measured_on_its_own():
     assert step.restated == project(restated, INPUTS, 5).value
     assert step.restatement_effect == step.restated - step.saved < 0
     assert step.statements_effect == step.statements - step.saved
-    assert restate(saved.basis, statements(quarters())) == (None, [], "unchanged")
+    assert restate(saved.basis, statements(quarters())) == (None, [], "unchanged", None, ())
 
 
 def test_restated_share_counts_need_a_balance_sheet_source():
     saved = saved_model(basis(statements(quarters(), shares=100.0)))
-    _, changes, _ = restate(saved.basis, statements(quarters(), shares=96.0))
-    assert [(c.metric, c.saved, c.current, c.unit) for c in changes] == [
+    restating = restate(saved.basis, statements(quarters(), shares=96.0))
+    assert [(c.metric, c.saved, c.current, c.unit) for c in restating.changes] == [
         ("listingShares", 100, 96, "shares")
     ]
+    assert restating.basis.shares == 96
     quoted = saved.basis.model_copy(update={"evidence": []})
-    assert restate(quoted, statements(quarters(), shares=96.0))[2] == "unchanged"
+    assert restate(quoted, statements(quarters(), shares=96.0)).check == "unchanged"
 
 
-def test_a_saved_period_that_left_the_statements_cannot_be_checked():
+def test_a_quoted_share_count_stays_when_another_figure_is_restated():
+    # Saved on a quoted count of 110. The statements now report 96 shares, and
+    # restate revenue: only revenue is restated, so only revenue moves the value.
+    saved = saved_model(basis(statements(quarters(), shares=None), quoted_shares=110))
+    assert saved.basis.shares == 110
+    revised = statements(quarters(**{QUARTERS[-1]: 850.0}), shares=96.0)
+    restating = restate(saved.basis, revised)
+    assert [(c.metric, c.saved, c.current) for c in restating.changes] == [("revenue", 4000, 3850)]
+    assert restating.basis.shares == 110
+    current = basis(revised)
+    assert current.shares == 96
+    step = scenario_walk(saved, current, dict.fromkeys(KEYS, INPUTS), 5, restating.basis)["base"]
+    lower = saved.basis.model_copy(update={"revenue": 3850, "start_margin": 500 / 3850})
+    assert step.restated == pytest.approx(project(lower, INPUTS, 5).value, rel=1e-12)
+    assert step.restatement_effect < 0
+    # The new denominator belongs to the new financial base, not to the restatement.
+    assert step.statements == pytest.approx(
+        project(current.model_copy(update={"spot": 20.0}), INPUTS, 5).value, rel=1e-12
+    )
+
+
+def test_a_saved_period_that_cannot_be_compared_says_why():
     saved = saved_model(basis(statements(quarters())))
     later = statements(quarters(ends=(*QUARTERS[2:], NEXT, "2026-06-30")))
-    assert restate(saved.basis, later) == (None, [], "unavailable")
-    assert restate(saved.basis, statements(quarters(), currency="EUR"))[2] == "unavailable"
+    assert restate(saved.basis, later) == (None, [], "unavailable", "period-missing", ())
+    assert restate(saved.basis, None).gap == "period-missing"
+    euro = restate(saved.basis, statements(quarters(), currency="EUR"))
+    assert (euro.check, euro.gap) == ("unavailable", "currency-changed")
+
+
+def test_figures_still_reported_are_checked_when_another_is_missing():
+    saved = saved_model(basis(statements(quarters())))
+    # The current statements restate revenue and no longer report the period's cash.
+    without_cash = dict.fromkeys(QUARTERS[:-1], 500.0)
+    revised = statements(quarters(**{QUARTERS[-1]: 850.0}), cash=without_cash)
+    restating = restate(saved.basis, revised)
+    assert (restating.check, restating.gap, restating.unchecked) == (
+        "restated",
+        "metrics-incomplete",
+        ("cash",),
+    )
+    assert [(c.metric, c.saved, c.current) for c in restating.changes] == [("revenue", 4000, 3850)]
+    # The combined effect needs every figure the saved basis used, so it is withheld.
+    assert restating.basis is None
+    step = scenario_walk(saved, basis(revised), dict.fromkeys(KEYS, INPUTS), 5, None)["base"]
+    assert step.restated is None and step.restatement_effect is None
+    same = restate(saved.basis, statements(quarters(), cash=without_cash))
+    assert same == (None, [], "unchanged", "metrics-incomplete", ("cash",))
 
 
 def test_a_restated_book_moves_a_residual_income_value():
@@ -200,11 +255,11 @@ def test_a_restated_book_moves_a_residual_income_value():
     roe = ScenarioInputs(initial_roe=0.2, payout=0.3, discount_rate=0.1, terminal_pb=1.2)
     saved = saved_model(banked, inputs=roe)
     revised = statements(quarters(), income=100.0, equity={**equity, QUARTERS[-1]: 1800.0})
-    restated, changes, _ = restate(saved.basis, revised)
-    assert [c.metric for c in changes] == ["commonEquity"]
-    assert restated.book_per_share == pytest.approx(18)
+    restating = restate(saved.basis, revised)
+    assert [c.metric for c in restating.changes] == ["commonEquity"]
+    assert restating.basis.book_per_share == pytest.approx(18)
     current = basis(revised, family="residual-income")
-    step = scenario_walk(saved, current, dict.fromkeys(KEYS, roe), 5, restated)["base"]
+    step = scenario_walk(saved, current, dict.fromkeys(KEYS, roe), 5, restating.basis)["base"]
     # The period is unchanged, so the whole change in the base is the restatement.
     assert step.restatement_effect < 0
     assert step.restatement_effect == pytest.approx(step.statements_effect)
@@ -225,14 +280,43 @@ def test_quarters_and_fiscal_year_disagreements_are_disclosed_not_blended():
     assert source_conflicts(near, "cash-flow", basis(near).period_id) == []
 
 
+def test_net_income_is_compared_when_common_earnings_are_not_reported():
+    facts = statements(
+        quarters(),
+        net_income=100.0,
+        annual_rows=[{"index": "Net Income", "2025-12-31": 500.0}],
+    )
+    frozen = basis(facts, family="net-income")
+    assert frozen.period_id == "ttm:2025-12-31" and frozen.start_margin == pytest.approx(0.1)
+    conflicts = source_conflicts(facts, "net-income", frozen.period_id)
+    assert [(c.kind, c.metric, c.quarters, c.fiscal_year) for c in conflicts] == [
+        ("quarters-vs-fiscal-year", "netIncome", 400, 500)
+    ]
+
+
+def test_conflicting_rows_in_the_compared_fiscal_year_are_disclosed():
+    facts = statements(
+        quarters(),
+        annual={"2025-12-31": 4100.0},
+        annual_rows=[{"index": "Total Revenue", "2025-12-31": 4200.0}],
+    )
+    frozen = basis(facts)
+    assert frozen.period_id == "ttm:2025-12-31"
+    conflicts = source_conflicts(facts, "cash-flow", frozen.period_id)
+    # The fiscal year has two revenue rows, so the four quarters cannot be checked against it.
+    assert [(c.kind, c.period_id, c.metric, c.blocks_comparison) for c in conflicts] == [
+        ("conflicting-source-rows", "annual:2025-12-31", "revenue", True)
+    ]
+
+
 def test_conflicting_rows_in_a_newer_quarter_are_disclosed():
     facts = statements(quarters(ends=(*QUARTERS, NEXT)), duplicate={NEXT: 1100.0})
     frozen = basis(facts)
     assert frozen.period_id == "ttm:2025-12-31"
     assert [
-        (c.kind, c.period_id, c.metric)
+        (c.kind, c.period_id, c.metric, c.blocks_comparison)
         for c in source_conflicts(facts, "cash-flow", frozen.period_id)
-    ] == [("conflicting-source-rows", "quarterly:2026-03-31", "revenue")]
+    ] == [("conflicting-source-rows", "quarterly:2026-03-31", "revenue", False)]
 
 
 def test_consensus_changes_compare_the_same_fiscal_year_and_currency():

@@ -9897,6 +9897,11 @@ export interface components {
          * @description Two statements of one quantity that disagree; neither is blended into the other.
          */
         SourceConflict: {
+            /**
+             * Blockscomparison
+             * @default false
+             */
+            blocksComparison: boolean;
             /** Currency */
             currency?: string | null;
             /** Fiscalyear */
@@ -10695,6 +10700,8 @@ export interface components {
              * @enum {string}
              */
             restatementCheck: "unchanged" | "restated" | "unavailable";
+            /** Restatementgap */
+            restatementGap?: ("period-missing" | "metrics-incomplete" | "currency-changed") | null;
             /** Restatements */
             restatements: components["schemas"]["Restatement"][];
             saved: components["schemas"]["BasisPoint"];
@@ -10707,6 +10714,8 @@ export interface components {
             scenarios: {
                 [key: string]: components["schemas"]["ScenarioWalk"];
             };
+            /** Uncheckedfigures */
+            uncheckedFigures?: ("revenue" | "startMargin" | "freeCashflow" | "earnings" | "cash" | "commonEquity" | "listingShares")[];
         };
         /** ValuationMaintenanceRequest */
         ValuationMaintenanceRequest: {

@@ -18,14 +18,14 @@ from __future__ import annotations
 import math
 from collections.abc import Iterable, Mapping
 from datetime import date, datetime
-from typing import Literal, get_args
+from typing import Literal, NamedTuple, get_args
 
 from pydantic import Field
 
 from trading_max.domain import DomainModel
 
 from .estimate_history import EstimateObservation
-from .facts import METRICS, FinancialFacts
+from .facts import METRICS, FinancialFacts, MetricObservation
 from .valuation_basis import Family, PeriodChoice
 from .valuation_preview import (
     FormulaVersion,
@@ -53,6 +53,8 @@ FigureMetric = Literal[
     "listingShares",
 ]
 RestatementCheck = Literal["unchanged", "restated", "unavailable"]
+# Why some or all of the saved period could not be compared with the current statements.
+RestatementGap = Literal["period-missing", "metrics-incomplete", "currency-changed"]
 
 
 class ValuationMaintenanceRequest(DomainModel):
@@ -116,6 +118,9 @@ class SourceConflict(DomainModel):
     fiscal_year: float | None = None
     unit: Literal["currency", "shares"]
     currency: str | None = None
+    # Conflicting rows in the fiscal year the four quarters are checked against:
+    # that check cannot run for this figure.
+    blocks_comparison: bool = False
 
 
 class EstimateChange(DomainModel):
@@ -150,6 +155,9 @@ class ValuationMaintenance(DomainModel):
     scenarios: dict[Scenario, ScenarioWalk]
     figures: list[FigureChange]
     restatement_check: RestatementCheck
+    restatement_gap: RestatementGap | None = None
+    # Figures of the saved period that the current statements no longer report.
+    unchecked_figures: list[FigureMetric] = Field(default_factory=list)
     restatements: list[Restatement]
     conflicts: list[SourceConflict]
     estimates: list[EstimateChange]
@@ -230,23 +238,40 @@ def _statement_shares(basis: FrozenValuationBasis) -> bool:
     return any(ref.field.partition(".")[2] in _ORDINARY_FIELDS for ref in basis.evidence)
 
 
-def restate(
-    saved: FrozenValuationBasis, facts: FinancialFacts | None
-) -> tuple[FrozenValuationBasis | None, list[Restatement], RestatementCheck]:
-    """Compare the saved period with the current statements of that same period."""
-    if (
-        facts is None
-        or not saved.period_id
-        or not saved.fx_rate
-        or facts.currency != saved.reporting_currency
-    ):
-        return None, [], "unavailable"
+class Restating(NamedTuple):
+    """The saved period as the current statements report it.
+
+    ``basis`` is the saved basis with the restated figures. It is None, and the
+    combined effect withheld, unless every figure the saved basis used is restated
+    or confirmed.
+    """
+
+    basis: FrozenValuationBasis | None
+    changes: list[Restatement]
+    check: RestatementCheck
+    gap: RestatementGap | None = None
+    unchecked: tuple[FigureMetric, ...] = ()
+
+
+def restate(saved: FrozenValuationBasis, facts: FinancialFacts | None) -> Restating:
+    """Compare the saved period with the current statements of that same period.
+
+    Each figure that the current statements still report is compared on its own.
+    """
+    if facts is None or not saved.period_id or not saved.fx_rate or not saved.reporting_currency:
+        return Restating(None, [], "unavailable", "period-missing")
+    if facts.currency != saved.reporting_currency:
+        return Restating(None, [], "unavailable", "currency-changed")
+    if all(p.id != saved.period_id for p in facts.periods):
+        return Restating(None, [], "unavailable", "period-missing")
     before = basis_figures(saved)
     if not _statement_shares(saved):
         before.pop("listingShares", None)
     after = period_figures(facts, saved.family, saved.period_id, saved.ordinary_per_receipt)
-    if any(metric not in after for metric in before):
-        return None, [], "unavailable"
+    unchecked = tuple(m for m in get_args(FigureMetric) if m in before and m not in after)
+    gap: RestatementGap | None = "metrics-incomplete" if unchecked else None
+    if len(unchecked) == len(before):
+        return Restating(None, [], "unavailable", "metrics-incomplete", unchecked)
     changes = [
         Restatement(
             period_id=saved.period_id,
@@ -257,12 +282,16 @@ def restate(
             currency=None if metric == "listingShares" else saved.reporting_currency,
         )
         for metric, value in before.items()
-        if not _same(value, after[metric])
+        if metric in after and not _same(value, after[metric])
     ]
     if not changes:
-        return None, [], "unchanged"
+        return Restating(None, [], "unchanged", gap, unchecked)
+    if unchecked:
+        return Restating(None, changes, "restated", gap, unchecked)
     fx = saved.fx_rate
-    shares = after.get("listingShares", saved.shares)
+    # Only a share count from the period's balance sheet can be restated. A quoted
+    # count stays; a change of its source belongs to the new financial base.
+    shares = after["listingShares"] if "listingShares" in before else saved.shares
     update: dict[str, float] = {"shares": shares}
     if "revenue" in before:
         update["revenue"] = after["revenue"] * fx
@@ -276,7 +305,7 @@ def restate(
             update["common_earnings"] = after["earnings"] * fx
         if "commonEquity" in before:
             update["book_per_share"] = after["commonEquity"] * fx / shares
-    return saved.model_copy(update=update), changes, "restated"
+    return Restating(saved.model_copy(update=update), changes, "restated")
 
 
 def _with_market(
@@ -396,12 +425,20 @@ _SOURCE_METRICS: dict[str, tuple[str, ...]] = {
 def source_conflicts(
     facts: FinancialFacts | None, family: Family, period_id: str | None
 ) -> list[SourceConflict]:
-    """Disagreements behind the current statement basis and any newer period it skipped."""
+    """Disagreements behind the current statement basis, the fiscal year it is checked
+    against and any newer period it skipped."""
     periods = {p.id: p for p in facts.periods} if facts else {}
     period = periods.get(period_id or "")
     if facts is None or period is None:
         return []
     observed = {(o.period_id, o.metric): o for o in facts.observations}
+
+    def available(pid: str, metric: str) -> MetricObservation | None:
+        row = observed.get((pid, metric))
+        if row is None or row.state != "available" or row.value is None:
+            return None
+        return row
+
     conflicts = []
     annual = (
         next(
@@ -415,16 +452,15 @@ def source_conflicts(
         if period.kind == "ttm"
         else None
     )
-    income = "commonIncome" if (period.id, "commonIncome") in observed else "netIncome"
+    # The precedence of the basis: available common earnings, then net income.
+    income = "commonIncome" if available(period.id, "commonIncome") else "netIncome"
     for metric in _CONFLICT_METRICS[family] if annual else ():
         if metric in {"commonIncome", "netIncome"} and metric != income:
             continue
-        quarters, year = observed.get((period.id, metric)), observed.get((annual.id, metric))
+        quarters, year = available(period.id, metric), available(annual.id, metric)
         if (
             quarters is not None
             and year is not None
-            and quarters.value is not None
-            and year.value is not None
             and not math.isclose(quarters.value, year.value, rel_tol=CONFLICT_TOLERANCE)
         ):
             shares = metric == "ordinaryShares"
@@ -445,7 +481,9 @@ def source_conflicts(
         for p in facts.periods
         if p.kind in {"quarterly", "annual"} and p.provider_end > period.provider_end
     }
-    for candidate in sorted(covered | newer, key=lambda pid: (periods[pid].provider_end, pid)):
+    compared = {annual.id} if annual else set()
+    scanned = sorted(covered | newer | compared, key=lambda pid: (periods[pid].provider_end, pid))
+    for candidate in scanned:
         for metric in _SOURCE_METRICS[family]:
             row = observed.get((candidate, metric))
             if row is not None and row.reason == "conflicting-source-rows":
@@ -457,6 +495,8 @@ def source_conflicts(
                         metric=metric,
                         unit="shares" if shares else "currency",
                         currency=None if shares else facts.currency,
+                        blocks_comparison=candidate in compared
+                        and (metric not in {"commonIncome", "netIncome"} or metric == income),
                     )
                 )
     return conflicts

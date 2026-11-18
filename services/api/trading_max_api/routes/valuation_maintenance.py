@@ -115,9 +115,9 @@ def valuation_maintenance(
     research = app_service(request, "research")
     lens = research.lens_snapshot(ticker, "valuation", manifest)
     facts = lens.financial_facts
-    restated, restatements, check = restate(model.basis, facts)
+    restating = restate(model.basis, facts)
     try:
-        walk = scenario_walk(model, current.basis, body.scenarios, body.horizon, restated)
+        walk = scenario_walk(model, current.basis, body.scenarios, body.horizon, restating.basis)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     listing = lens.context.quote.listing if lens.context else None
@@ -146,12 +146,15 @@ def valuation_maintenance(
         fx_separated=fx_separable(model.basis, current.basis),
         scenarios=walk,
         figures=figure_changes(model.basis, current.basis),
-        restatement_check=check,
-        restatements=restatements,
+        restatement_check=restating.check,
+        restatement_gap=restating.gap,
+        unchecked_figures=list(restating.unchecked),
+        restatements=restating.changes,
         conflicts=source_conflicts(facts, model.basis.family, current.basis.period_id),
         estimates=estimates,
         assumptions=assumption_changes(model, body.scenarios, locked),
         locked_inputs=locked,
-        new_statements=model.basis.period_id != current.basis.period_id or check == "restated",
+        new_statements=model.basis.period_id != current.basis.period_id
+        or restating.check == "restated",
         new_estimates=bool(estimates),
     )

@@ -25554,6 +25554,11 @@
         "additionalProperties": false,
         "description": "Two statements of one quantity that disagree; neither is blended into the other.",
         "properties": {
+          "blocksComparison": {
+            "default": false,
+            "title": "Blockscomparison",
+            "type": "boolean"
+          },
           "currency": {
             "anyOf": [
               {
@@ -28053,6 +28058,22 @@
             "title": "Restatementcheck",
             "type": "string"
           },
+          "restatementGap": {
+            "anyOf": [
+              {
+                "enum": [
+                  "period-missing",
+                  "metrics-incomplete",
+                  "currency-changed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restatementgap"
+          },
           "restatements": {
             "items": {
               "$ref": "#/components/schemas/Restatement"
@@ -28081,6 +28102,22 @@
             },
             "title": "Scenarios",
             "type": "object"
+          },
+          "uncheckedFigures": {
+            "items": {
+              "enum": [
+                "revenue",
+                "startMargin",
+                "freeCashflow",
+                "earnings",
+                "cash",
+                "commonEquity",
+                "listingShares"
+              ],
+              "type": "string"
+            },
+            "title": "Uncheckedfigures",
+            "type": "array"
           }
         },
         "required": [

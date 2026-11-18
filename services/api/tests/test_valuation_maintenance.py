@@ -172,6 +172,7 @@ def test_new_evidence_splits_the_change_from_the_saved_version(desk):
     )
     assert (result["saved"]["spot"], result["current"]["spot"]) == (25, 30)
     assert result["restatementCheck"] == "restated"
+    assert result["restatementGap"] is None and result["uncheckedFigures"] == []
     assert [(r["metric"], r["saved"], r["current"]) for r in result["restatements"]] == [
         ("revenue", 4000, 3850)
     ]
@@ -211,6 +212,7 @@ def test_unchanged_evidence_reports_no_new_statements_or_estimates(desk):
     model = save(client, view, body["scenarios"])["models"][0]
     result = review(client, {"modelId": model["id"], "horizon": 10, "scenarios": body["scenarios"]})
     assert result["restatementCheck"] == "unchanged" and result["restatements"] == []
+    assert result["restatementGap"] is None
     assert not result["newStatements"] and not result["newEstimates"]
     assert result["figures"] == [] and result["assumptions"] == [] and result["conflicts"] == []
     for step in result["scenarios"].values():
