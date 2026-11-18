@@ -16,7 +16,15 @@ async function fixtures(page: Page, ready = true) {
       lines:[line("market","market","compare_benchmarks","组合与 VOO 同期回报接近。","The portfolio tracked VOO over the shared period."),
         line("portfolio","account","period_performance","本期净盈亏 £18.40。","Period net P&L was £18.40."),
         line("events","review","recent_decisions","本周有一笔 SYNT 买入记录。","One SYNT purchase was recorded this week."),
-        line("next","financials","read_research_lens","2 月 4 日 · SYNT 财报","4 February · SYNT earnings")],
+        {...line("next","calendar","upcoming_events","2026-02-03 · JP · 消费者价格","2026-02-03 · JP · Consumer prices"),
+          evidence:{source:"calendar",tool:"upcoming_events",evidenceId:"ev_cal",arguments:{
+            date:"2026-02-03",instant:"2026-02-04T08:30:00+09:00",url:"https://example.org/calendar"}},
+          related:[
+            {...line("next","financials","upcoming_events","2026-02-04 – 2026-02-06 · SYNT 预计财报","2026-02-04 – 2026-02-06 · SYNT estimated earnings"),
+              evidence:{source:"financials",tool:"upcoming_events",evidenceId:"ev_earnings",arguments:{date:"2026-02-04",endDate:"2026-02-06",event:"earningsWindow",holdingTicker:"SYNT"}}},
+            {...line("next","disclosure","upcoming_events","2026-02-09 · SYNT 除息","2026-02-09 · SYNT ex-dividend"),
+              evidence:{source:"disclosure",tool:"upcoming_events",evidenceId:"ev_ex",arguments:{date:"2026-02-09",event:"exDividend",holdingTicker:"SYNT"}}},
+          ]}],
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
       const {scope, range, snapshotId} = route.request().postDataJSON().context;
@@ -93,7 +101,10 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
   test("brief and sidebar " + language + " " + theme, async ({ page }, info) => {
     if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
     await page.emulateMedia({colorScheme:theme,reducedMotion:"reduce"});
-    await page.addInitScript(lang => localStorage.setItem("trading_max-locale",lang),language);
+    await page.addInitScript(lang => {
+      localStorage.setItem("trading_max-locale",lang);
+      localStorage.setItem("trading_max-time-zone","Asia/Tokyo");
+    },language);
     await fixtures(page);
     await page.goto("/");
     const digest = page.locator(".mx-digest");
@@ -101,6 +112,11 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
     await expect(digest.locator(".mx-digest-summary")).toContainText("£18.40");
     await digest.locator("[aria-expanded]").click();
     await expect(digest.locator(".mx-reading-line")).toHaveCount(4);
+    const comingUp = digest.locator(".mx-digest-grid > div").last();
+    await expect(comingUp).toContainText(language === "zh" ? /2026年2月4日.*08:30/ : /4 Feb 2026.*08:30/);
+    await expect(comingUp.getByRole("link")).toHaveText(language === "zh" ? ["日历", "财报", "披露"] : ["Calendar", "Financials", "Disclosure"]);
+    await expect(comingUp.getByRole("link").first()).toHaveAttribute("href","https://example.org/calendar");
+    await expect(comingUp).toContainText("2026-02-04 – 2026-02-06");
     const shots = process.env.ASSISTANT_SCREENSHOTS;
     await digest.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
     if (shots) await page.screenshot({path:join(shots, info.project.name+"-"+language+"-"+theme+"-brief.png")});
@@ -231,7 +247,7 @@ test("cited money and ex-dividend dates open their published evidence", async ({
   await expect(page.locator(".mx-money-summary[data-assistant-evidence]")).toBeVisible();
   await page.route("**/api/backend/research/SYNT/lens/overview?**", route => {
     const data = backendFixture(new URL(route.request().url())) as Record<string,unknown>;
-    return route.fulfill({json:{...data,fundamentals:{earningsCalendar:{"Ex-Dividend Date":"2026-11-28"}}}});
+    return route.fulfill({json:{...data,fundamentals:{metrics:{exDividendDate:Date.parse("2026-11-28")/1000}}}});
   });
   await page.goto("/research?ticker=SYNT&view=overview&event=exDividend&date=2026-11-28&evidence=read_research_lens");
   await expect(page.locator("[data-reading-event]")).toContainText("2026-11-28");
@@ -298,3 +314,44 @@ for (const locale of ["zh", "en"] as const) {
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name+"-"+locale+"-freshness.png")});
   });
 }
+
+test("a saved benchmark citation reopens its portfolio and prices and discloses expiry", async ({page}, info) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await fixtures(page);
+  const dates = ["2026-02-02", "2026-02-03"];
+  let expired = false;
+  await page.route("**/api/backend/dashboard/lens/analytics?**", route => {
+    const historical = new URL(route.request().url()).searchParams.get("runId") === "old-brief";
+    if (historical && expired) return route.fulfill({status:404,json:{detail:"snapshot not found"}});
+    const nav = dates.map((date, i) => ({date,isa:100,isaTwr:i * (historical ? 0.02 : 0.09)}));
+    const prices = dates.map((date, i) => ({date,close:100 + i * (historical ? 1 : 3)}));
+    return route.fulfill({json:{runId: historical ? "old-brief" : "new-brief", nav, benchmarkSeries:{VOO:prices}}});
+  });
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[{id:"old",title:"Saved benchmark"}]}));
+  await page.route("**/api/backend/assistant/conversations/old", route => route.fulfill({json:{id:"old",messages:[
+    {id:"user",role:"user",parts:[{type:"text",text:"Compare this period"}]},
+    {id:"saved",role:"assistant",parts:[
+      {type:"dynamic-tool",toolName:"compare_benchmarks",toolCallId:"c",state:"output-available",input:{},
+       output:{status:"ok",scope:"isa",snapshot_id:"old-brief",evidence_id:"ev_old",
+          bound_arguments:{scope:"isa",benchmark:"VOO",range:"1W",snapshotId:"old-brief"},
+          data:{start:dates[0],end:dates[1],portfolio_twr_fraction:0.02}}},
+      {type:"text",text:"{{/data/portfolio_twr_fraction}} [ev_old]\n{{other-drivers}} [inference]"}]},
+  ]}}));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.getByRole("button",{name:"Conversation history"}).click();
+  await page.getByRole("button",{name:"Saved benchmark",exact:true}).click();
+  await expect(page.locator(".mx-turn-assistant")).toContainText("2.00%");
+  await page.locator(".mx-turn-assistant").getByRole("link",{name:"Market"}).click();
+  const result = page.locator(".mx-return-reading");
+  await expect(result).toContainText("+2.00%");
+  await expect(result).toContainText("+1.00%");
+  await result.scrollIntoViewIfNeeded();
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-reopened-benchmark.png")});
+  expired = true;
+  await page.reload();
+  await expect(page.getByText("Cited publication unavailable", {exact:true})).toBeVisible();
+  await expect(result).toHaveCount(0);
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-benchmark.png")});
+});

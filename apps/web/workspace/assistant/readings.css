@@ -181,6 +181,9 @@
 .mx-digest-head > span {
   color: var(--mx-muted);
 }
+.mx-reading-observation {
+  display: block;
+}
 .mx-reading-line {
   padding: 9px 0;
   line-height: 1.55;

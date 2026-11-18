@@ -15,8 +15,10 @@ async function fetchDashboardLens(
   account?: AccountCode,
   selection?: DashboardSelection,
   signal?: AbortSignal,
+  runId?: string,
 ): Promise<DashboardLens> {
   const params = new URLSearchParams();
+  if (runId) params.set("runId", runId);
   if (account) params.set("account", account);
   for (const [key, value] of Object.entries(selection ?? {})) if (value) params.set(key, value);
   const query = params.size ? `?${params}` : "";
@@ -26,7 +28,9 @@ async function fetchDashboardLens(
   if (!response.ok) {
     throw new Error(`dashboard lens returned ${response.status}`);
   }
-  return (await response.json()) as DashboardLens;
+  const data = await response.json() as DashboardLens;
+  if (runId && data.runId !== runId) throw new Error("Cited publication unavailable");
+  return data;
 }
 
 export function useDashboardLens(
@@ -34,23 +38,24 @@ export function useDashboardLens(
   account?: AccountCode,
   enabled = true,
   selection?: DashboardSelection,
+  runId?: string,
 ) {
   const queryClient = useQueryClient();
   const query = useQuery({
     enabled,
-    queryFn: ({ signal }) => fetchDashboardLens(view, account, selection, signal),
-    queryKey: dashboardLensLatestKey(view, account, selection),
+    queryFn: ({ signal }) => fetchDashboardLens(view, account, selection, signal, runId),
+    queryKey: runId ? dashboardLensSnapshotKey(runId, view, account, selection) : dashboardLensLatestKey(view, account, selection),
     retry: 1,
-    staleTime: 30_000,
+    staleTime: runId ? 0 : 30_000,
   });
 
   useEffect(() => {
-    if (!query.data) return;
+    if (!query.data || runId) return;
     queryClient.setQueryData(
       dashboardLensSnapshotKey(query.data.runId, view, account, selection),
       query.data,
     );
-  }, [account, query.data, queryClient, view, selection]);
+  }, [account, query.data, queryClient, view, selection, runId]);
 
   return query;
 }

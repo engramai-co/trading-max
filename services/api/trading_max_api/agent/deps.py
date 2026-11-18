@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from pydantic import BaseModel
 from pydantic_ai import ModelRetry
 
 from ..dashboard_models import ResearchPriceSeries, ResearchTradeMarker
@@ -30,7 +31,19 @@ type MarkerReader = Callable[
 type ToolBindings = dict[str, dict[str, str | int | bool | None]]
 
 
-def bind_arguments(supplied: dict[str, Any], bound: dict[str, Any]) -> dict[str, Any]:
+def bind_arguments(
+    supplied: dict[str, Any], bound: dict[str, Any], schema: type[BaseModel] | None = None
+) -> dict[str, Any]:
+    supplied = supplied.copy()
+    for name, field in schema.model_fields.items() if schema else ():
+        wire = field.validation_alias
+        if isinstance(wire, str) and wire != name and name in supplied:
+            value = supplied.pop(name)
+            if wire in supplied and (
+                type(supplied[wire]) is not type(value) or supplied[wire] != value
+            ):
+                raise ModelRetry("Conflicting tool arguments: " + wire)
+            supplied[wire] = value
     for key, selected in bound.items():
         if key in supplied and (
             type(supplied[key]) is not type(selected) or supplied[key] != selected
