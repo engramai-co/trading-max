@@ -63,6 +63,8 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
     const active = document.activeElement;
     // An explicit open can precede the lazy composer. A non-modal panel leaves background focus alone.
     if (!needsOpeningFocus.current && !overlay && active && active !== document.body && !panel.current?.contains(active)) return;
+    // The lazy thread can mount its Close button one render before its composer ref arrives.
+    if (needsOpeningFocus.current && showThread && !composer && !lastControl.current) return;
     const dismiss = panel.current?.querySelectorAll<HTMLElement>("[data-assistant-dismiss]") ?? [];
     if (focusAssistantControl(lastControl.current, composer, ...dismiss)) needsOpeningFocus.current = false;
   }, [open, overlay, pending, ready, suspended, searchOpen, composer, showThread]);
