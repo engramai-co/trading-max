@@ -152,6 +152,13 @@ continuous-trading listings. An instrument-specific suspension, price-monitoring
 extension or execution time would require evidence from the exchange.
 A missing schedule, or a missing instrument type that could change the assigned
 session, withholds the timed headline and reports `listing_calendar_unavailable`.
+Charts, held-fund routes, calendars and dated evidence use the same
+[listing venue resolver](research-workspace.md#listing-venue-resolution).
+Fund price publications retain the observed product type. Older fund rows use
+the exact listing's fundamentals. Unknown funds and conflicting product types
+have no verified closing auction. Vienna Global Market equities and continuously traded ETFs use
+the shorter auction. Auction-only segments have their own cutoff. Missing segment evidence limits a timed lead to sessions
+on which all applicable closing schedules agree.
 A venue code or qualified listing identifies the calendar. Frankfurt shares and
 funds use the 22:00 local close (20:00 on traded public holidays), with the
 exchange's shorter year-end session. On a regular Xetra day the closing auction

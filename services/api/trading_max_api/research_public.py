@@ -5,10 +5,16 @@ from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
-from trading_max.research.calendar import listing_calendar, session_schedule
+from trading_max.research.calendar import session_schedule
 from trading_max.research.facts import ResearchCapability, ResearchContext, make_quote
 from trading_max.research.fund_references import us_fund
 from trading_max.research.technical import analyze_ticker
+from trading_max.research.venues import (
+    VenueConflict,
+    provider_claim,
+    resolve_venue,
+    watchlist_claims,
+)
 
 from .dashboard_models import ResearchLensName, ResearchLensSnapshot
 from .models import SecuritySearchResult, SnapshotManifest
@@ -34,11 +40,22 @@ def public_lens(
     market = {}
     metrics = {"fullExchangeName": security.exchange, "quoteType": asset_type}
     technical = None
-    if view in {"overview", "technical"}:
+    claims = list(
+        watchlist_claims(
+            ticker, security.exchange, security.bloomberg_ticker, security.exchange_source
+        )
+    )
+    if reference:
+        claims.append(provider_claim(reference.exchange, ticker))
+    venue = resolve_venue(ticker, *claims)
+    if view in {"overview", "technical"} and not venue.conflict:
         try:
             series = (
                 price_reader.alpaca_etf(ticker, "1d") if reference else None
             ) or price_reader.get(ticker, "1d", market_etf=True)
+            venue = resolve_venue(ticker, *claims, *series.venue_claims)
+            if venue.conflict:
+                raise VenueConflict("public quote belongs to another venue")
             frame = pd.DataFrame(
                 {
                     "Close": [row.close for row in series.points],
@@ -69,10 +86,8 @@ def public_lens(
             # The verified listing remains readable when the market source fails.
             LOGGER.debug("Public listing history unavailable")
     fundamental = {"metrics": metrics}
-    quote = make_quote(ticker, market, fundamental)
-    quote.schedule = session_schedule(
-        listing_calendar(ticker, quote.exchange, quote.timezone), datetime.now(UTC)
-    )
+    quote = make_quote(ticker, market, fundamental, venue=venue)
+    quote.schedule = session_schedule(venue.calendar, datetime.now(UTC))
     summary = view == "overview" and detail == "summary"
     return ResearchLensSnapshot(
         ticker=ticker,

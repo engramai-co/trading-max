@@ -14,6 +14,7 @@ from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
+from trading_max.research.venues import VenueConflict
 
 from ..dashboard import _benchmark_series
 from ..dashboard_models import ResearchPriceSeries
@@ -544,6 +545,12 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         return read.missing("published_daily_bars_unavailable")
     try:
         series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+    except VenueConflict:
+        return read.result(
+            "unavailable",
+            reason="published_daily_bars_unavailable",
+            issues=["listing_calendar_unavailable"],
+        )
     except (FileNotFoundError, SnapshotIntegrityError, ValueError):
         return read.missing("published_daily_bars_unavailable")
     series_id = series.published_series_id

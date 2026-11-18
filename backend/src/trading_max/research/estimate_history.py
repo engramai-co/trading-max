@@ -18,9 +18,10 @@ from trading_max.infrastructure import (
     SqliteDatabase,
 )
 from trading_max.reference.quote_units import major_quote_unit
+from trading_max.research.venues import resolve_venue, row_claims
 
 from .facts import number
-from .listing import quote_listing
+from .listing import resolved_quote_listing
 
 LOGGER = logging.getLogger(__name__)
 FUNDAMENTALS_KEY = "research/fundamentals.json"
@@ -187,10 +188,8 @@ def estimate_observations(
         price = price if price is not None and price > 0 and unit else None
         yield EstimateObservation(
             ticker=ticker,
-            listing=quote_listing(
-                ticker,
-                _text(metrics.get("fullExchangeName")),
-                _text(metrics.get("exchangeTimezoneName")),
+            listing=resolved_quote_listing(
+                ticker, resolve_venue(ticker, *row_claims(ticker, row, metrics))
             ),
             currency=currency,
             quote_unit=unit,

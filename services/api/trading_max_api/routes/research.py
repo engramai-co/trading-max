@@ -18,7 +18,7 @@ from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_ben
 from trading_max.research.calendar import calendar_name
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
-from trading_max.research.fund_references import us_fund
+from trading_max.research.fund_references import us_fund, us_fund_listing
 from trading_max.research.valuation_preview import (
     AssumptionReference,
     FrozenValuationBasis,
@@ -27,6 +27,7 @@ from trading_max.research.valuation_preview import (
     ValuationPreviewRequest,
     preview,
 )
+from trading_max.research.venues import VenueConflict
 
 from ..dashboard_models import (
     PriceSeriesPoint,
@@ -506,21 +507,27 @@ def research_prices(
         raise HTTPException(status_code=422, detail="invalid-security-symbol")
     manifest = latest_or_503(request)
     research = app_service(request, "research")
-    listing = research.held_fund(ticker, manifest)
-    if listing:
-        ticker = listing.ticker
+    ticker = ticker.upper()
+    exchanges = research.watchlist.listing_exchanges()
+    listing = research.held_fund(ticker, manifest, exchanges)
     # Comparison ETFs and confirmed held US ETF listings use Alpaca's price
     # chart. The typed snapshot remains the source for broker events and research.
-    symbol = ticker.upper()
+    symbol = listing.ticker if listing else ticker
     reference = us_fund(symbol) if listing is None else None
     market_etf = is_alpaca_listing(symbol) and (
         reference is not None
         or symbol in {"SPY", "VOO", "QQQ", "VT"}
-        or (listing is not None and listing.mic in {"ARCX", "XNAS", "XNYS", "US"})
+        or (listing is not None and us_fund_listing(listing))
     )
     security_prices = app_service(request, "security_prices")
 
     def live_window(series: ResearchPriceSeries) -> ResearchPriceSeries:
+        try:
+            venue = research.price_venue(ticker, series, manifest, exchanges, listing, reference)
+        except VenueConflict as exc:
+            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+        if venue.venues or series.published_bar_exchange:
+            series.exchange_calendar = venue.calendar
         series.points = series.points[-limit:]
         series.coverage_start = series.points[0].date if series.points else None
         series.coverage_end = series.points[-1].date if series.points else None
@@ -537,7 +544,9 @@ def research_prices(
         # Prefer the listing's published technical history when it was researched
         # directly. Otherwise use the shared close-only chart and budget.
         try:
-            published = research.price_series(reference.ticker, manifest, limit=limit)
+            published = research.price_series(ticker, manifest, limit=limit, exchanges=exchanges)
+        except VenueConflict as exc:
+            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
         except FileNotFoundError:
             published = None
         if published:
@@ -559,10 +568,18 @@ def research_prices(
                 else None
             )
             return live_window(public)
+        except VenueConflict as exc:
+            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+        except HTTPException:
+            raise
         except Exception:
             LOGGER.debug("Public OHLC history unavailable; trying daily closes")
         try:
             series = app_service(request, "market_prices").history(reference.ticker)
+        except VenueConflict as exc:
+            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+        except HTTPException:
+            raise
         except Exception:
             series = None
         if series is None:
@@ -604,25 +621,35 @@ def research_prices(
     fallback_reason = None
     if interval != "1d":
         try:
-            result = security_prices.get(ticker, interval, market_etf=market_etf)
+            result = security_prices.get(symbol, interval, market_etf=market_etf)
             return live_window(result)
+        except VenueConflict as exc:
+            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+        except HTTPException:
+            raise
         except Exception:
             fallback_reason = "requested-interval-unavailable-daily-history-retained"
     try:
-        result = research.price_series(ticker, manifest, limit=limit)
+        result = research.price_series(ticker, manifest, limit=limit, exchanges=exchanges)
         result.requested_interval = interval
         result.coverage_reason = fallback_reason
         result.coverage_start = result.points[0].date if result.points else None
         result.coverage_end = result.points[-1].date if result.points else None
         return price_window(result, window)
+    except VenueConflict as exc:
+        raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
     except FileNotFoundError as exc:
         try:
             result = security_prices.get(
-                ticker, "1d", preview=window == "3M", market_etf=market_etf
+                symbol, "1d", preview=window == "3M", market_etf=market_etf
             )
             result.requested_interval = interval
             result.coverage_reason = fallback_reason
             return live_window(result)
+        except VenueConflict as exc:
+            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+        except HTTPException:
+            raise
         except Exception:
             raise HTTPException(
                 status_code=404, detail="security-price-history-unavailable"

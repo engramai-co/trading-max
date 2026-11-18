@@ -8,11 +8,12 @@ from urllib.parse import quote
 
 from exchange_calendars.errors import CalendarError
 from pydantic import AfterValidator, StringConstraints, model_validator
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import market_calendar
 from trading_max.research.calendars.events import window_bounds
 from trading_max.research.calendars.refresh import MACRO_KEY
 from trading_max.research.listing import LONDON, broker_listing
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY, web_url
+from trading_max.research.venues import resolve_venue, row_claims
 
 from .tools import (
     ANALYST,
@@ -520,8 +521,34 @@ def event_data(deps, args, *, upcoming):
         symbols.update(data[NEWS_KEY])
         if raw is None:
             issues.append("research_universe_unavailable")
+    technical = _indexed(read.read(TECHNICAL))
+    funds = _indexed(read.read(FUND_PRICES))
+    keys.extend([TECHNICAL, FUND_PRICES])
+    names = set()
     entries = []
     for ticker in sorted(symbols):
+        fundamental = data[FUNDAMENTALS].get(ticker, {})
+        claims = list(deps.listing_exchanges.get(ticker, ()))
+        for observed in (
+            technical.get(ticker),
+            funds.get(ticker),
+            fundamental,
+            data[NEWS_KEY].get(ticker),
+            data[EARNINGS].get(ticker),
+            data.get(FINANCIALS, {}).get(ticker),
+        ):
+            if observed:
+                claims.extend(
+                    row_claims(ticker, observed, observed.get("metrics") or observed.get("info"))
+                )
+        venue = resolve_venue(ticker, *claims)
+        if venue.conflict:
+            issues.append("listing_calendar_unavailable")
+            continue
+        if venue.calendar:
+            names.add(venue.calendar)
+        elif upcoming:
+            issues.append("listing_calendar_unavailable")
         if not upcoming and not data[NEWS_KEY].get(ticker, {}).get("as_of"):
             issues.append("security_news_unavailable")
         if not upcoming and data[NEWS_KEY].get(ticker, {}).get("error"):
@@ -552,19 +579,6 @@ def event_data(deps, args, *, upcoming):
                 issues,
             )
         )
-        technical = _indexed(read.read(TECHNICAL))
-        funds = _indexed(read.read(FUND_PRICES))
-        keys.extend([TECHNICAL, FUND_PRICES])
-        names = set()
-        for ticker in symbols:
-            row = technical.get(ticker) or funds.get(ticker, {})
-            calendar = (
-                listing_calendar(ticker, row.get("exchange"), row.get("timezone")) if row else None
-            )
-            if calendar:
-                names.add(calendar)
-            else:
-                issues.append("listing_calendar_unavailable")
         entries.extend(
             _market_days(names, start - timedelta(days=1), end + timedelta(days=1), issues)
         )
