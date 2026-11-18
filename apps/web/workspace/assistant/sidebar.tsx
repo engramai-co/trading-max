@@ -12,6 +12,7 @@ import { useCopy } from "../foundation";
 import { errorLabel } from "./status-label";
 import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
+import { focusAssistantControl } from "./focus";
 import { verifiedLines } from "./chat-reply";
 import { chatContext, displayTurns, sourceLabel } from "./evidence";
 
@@ -78,7 +79,7 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
   useEffect(() => () => { void stop(); }, [stop]);
   useEffect(() => { if (!ready) void stop(); }, [ready, stop]);
   useEffect(() => {
-    if (open && wasHistory.current && !history) historyButton.current?.focus({ preventScroll: true });
+    if (open && wasHistory.current && !history) focusAssistantControl(historyButton.current);
     wasHistory.current = history;
   }, [open, history]);
   useEffect(() => {
@@ -114,7 +115,7 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
     <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><div>
       <button disabled={busy} onClick={onNew} aria-label={t("新对话", "New conversation")}><Plus /></button>
       <button ref={historyButton} disabled={busy} onClick={onHistory} aria-label={t("历史对话", "Conversation history")}><ClockCounterClockwise /></button>
-      <button onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button>
+      <button data-assistant-dismiss onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button>
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
       {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} /><ReadingLines card={card} />
@@ -142,7 +143,7 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
   const t = useCopy();
   const client = useQueryClient();
   const backButton = useRef<HTMLButtonElement>(null);
-  useEffect(() => { backButton.current?.focus(); }, []);
+  useEffect(() => { focusAssistantControl(backButton.current); }, []);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const { ready } = useAssistant();
@@ -161,7 +162,7 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
       else { const data = await api<{ messages: UIMessage[] }>(path, {signal}); select(id, data.messages); }
     } catch { if (!signal.aborted) setError(true); } finally { action.current = null; setBusy(false); }
   }
-  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
+  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button data-assistant-dismiss ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
     <div className="mx-assistant-transcript">{conversations.data?.map(c => <div className="mx-assistant-history" key={c.id}>
       <button disabled={busy} onClick={() => void act(c.id, false)}>{c.title || t("对话", "Conversation")}</button>
       <button disabled={busy} onClick={() => void act(c.id, true)} aria-label={t("删除对话", "Delete conversation") + " · " + (c.title || "")}><Trash /></button>

@@ -995,3 +995,23 @@ test("a passive status failure preserves the draft until readiness recovers", as
   await page.keyboard.press("Enter");
   await expect.poll(() => posts).toEqual(["Continues through recovery"]);
 });
+test("narrowing restores Message when the remembered Send button is disabled", async ({page}) => {
+  await page.setViewportSize({width:1440, height:900});
+  const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
+  await send.focus();
+  await expect(send).toBeFocused();
+  const skip = page.getByRole("link", {name:"Skip to content"});
+  await skip.focus();
+  await expect(skip).toBeFocused();
+
+  const release = await holdPassiveStatus(page);
+  try {
+    await expect(send).toBeDisabled();
+    await expect(skip).toBeFocused();
+    await page.setViewportSize({width:1100, height:900});
+    await expect(panel).toHaveRole("dialog");
+    await expect(draft).toBeFocused();
+    await page.keyboard.type(" typing");
+    await expect(draft).toHaveValue("Continue typing");
+  } finally { release(200); }
+});
