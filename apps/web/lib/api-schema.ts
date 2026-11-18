@@ -10181,6 +10181,8 @@ export interface components {
             date: string;
             /** Earningsindex */
             earningsIndex: number | null;
+            /** Notmeaningful */
+            notMeaningful?: ("aboveCap" | "belowFloor" | "segmentJump") | null;
             /** Pe */
             pe: number | null;
         };

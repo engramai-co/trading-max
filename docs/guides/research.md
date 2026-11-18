@@ -122,8 +122,9 @@ an incomplete month is excluded and a short history can change the result.
 The ratings section puts individual firms’ dated targets on the 12-month price
 chart. The range at its right shows the current target snapshot. The page
 continues with earnings estimates, the earnings calendar and institutional
-actions. Use the section index beside the page or the strip at the top on a
-narrow screen to jump directly to a heading.
+actions. Earnings times use your display time zone, with the date added when
+your clock is already on another day. Use the section index beside the page or
+the strip at the top on a narrow screen to jump directly to a heading.
 
 ## Work through a valuation
 
@@ -164,6 +165,24 @@ available; otherwise it adds four consecutive quarters. An unreported fourth
 quarter is inferred from annual EPS minus the first three quarters. Later
 restatements apply from their own acceptance times. Missing closes, incomplete
 earnings windows, and nonpositive EPS leave gaps.
+
+A multiple above 400× has an earnings yield under 0.25%, which means earnings
+near zero rather than a valuation; growth phases of large listings have stayed
+below it. A multiple below 1× has an earnings yield over 100%, which in practice
+means EPS at the wrong scale, such as a quarter filed in thousands and never
+corrected. Such multiples are marked **Not meaningful** and left as gaps. So is
+every close of a new EPS reading that opens more than five times higher or
+lower than the previous close's multiple. None of these enters the band or the
+rank, while exactly 400× and exactly 1× still count; readings above 400× and
+after a jump name the reason. A filing whose repeated earlier periods are
+all 100 or more times their filed per-share values, by the same power of ten,
+is treated as a unit error and not used. Its quarter stays unknown until a
+later filing repeats it correctly. An inferred fourth quarter keeps the
+quarters it was inferred from: a later restatement leaves it unchanged unless a
+filing scales every period it repeats back down by such a factor, or the annual
+EPS is filed again. If that correction reaches a quarter restated since the
+annual filing, the inferred quarter is left unknown and the closes that need it
+are gaps until the annual EPS is filed again.
 
 The shaded band shows the 25th to 75th percentiles with the median dashed.
 Switch to **Mean ±1σ** for the mean and one population standard deviation.

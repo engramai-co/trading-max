@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.65.1] - 2026-11-18
+
+### Fixed
+- Trailing P/E no longer charts multiples that measure earnings near zero or at the wrong scale. A multiple above 400× or below 1×, or a new EPS reading that opens more than five times away from the previous close's multiple, is a gap marked Not meaningful and stays out of the band and rank. Readings above 400× or after a jump name their reason, which the chart's help explains. A filing that tagged its per-share values in thousands is ignored, so it no longer distorts the following year's trailing EPS.
+- Valuation at disclosure shows one line instead of empty axes and a range of dashes when no filing has a multiple.
+- The scenario model shows where its assumptions come from, such as the sector template, beside Adjust assumptions.
+- Price history through is highlighted only when the history misses more than one of the exchange's trading sessions.
+- Earnings times show in your display time zone, London by default, instead of a GMT offset. Expectations & events and Valuation write dates the same way, and the NTM P/E axis names the month and, where needed, the year.
+
 ## [1.65.0] - 2026-11-18
 
 ### Added

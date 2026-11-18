@@ -10,7 +10,7 @@ import type { ChartReadout, Reading } from "./chart-readout";
 import { compact, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Panel, TextLink, useCopy } from "./foundation";
+import { Facts, Panel, TextLink, useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 import { factIndex } from "./research-facts";
 import { quoteValue } from "./financial-values";
@@ -207,13 +207,15 @@ export function FilingMultiples({
             )
       }
     >
-      {!rows.length ? (
-        <Empty
-          title={t(
-            "暂无可核对的历史估值记录",
-            "No verifiable historical multiples",
-          )}
-        />
+      {!samples.length ? (
+        // One line in place of empty axes and a range of dashes.
+        <p className="mx-multiple-empty">
+          {!rows.length
+            ? t("暂无可核对的历史估值记录", "No verifiable historical multiples")
+            : mode === "pe" && rows.every((r) => r.state === "notMeaningful")
+              ? t("各次披露的年度 EPS 均不为正，P/E 不适用", "Annual EPS was nonpositive at every filing; P/E is not meaningful")
+              : t("各次披露均无法计算倍数", "No filing has a calculable multiple")}
+        </p>
       ) : (
         <>
           <Facts
@@ -298,17 +300,17 @@ export function FilingMultiples({
             label={t("历史估值证据", "Historical valuation evidence")}
             rows={rows}
             columns={[
-              { label: t("披露日期", "Filed"), value: (r) => str(r.publishedAt) },
+              { label: t("披露日期", "Filed"), value: (r) => formatCalendarDate(str(r.publishedAt), locale) },
               {
                 label: t("收盘日", "Price date"),
-                value: (r) => str(r.priceDate),
+                value: (r) => formatCalendarDate(str(r.priceDate), locale),
               },
               {
                 label:
                   mode === "ps"
                     ? t("TTM 截至", "TTM ending")
                     : t("年度截至", "FY ending"),
-                value: (r) => str(r.periodEnd),
+                value: (r) => formatCalendarDate(str(r.periodEnd), locale),
               },
               {
                 label:
@@ -343,7 +345,7 @@ export function FilingMultiples({
                       href={safeUrl(str(r.url))}
                       target="_blank"
                       rel="noreferrer"
-                      aria-label={`${t("原始披露", "Original filing")} · ${str(r.publishedAt)}`}
+                      aria-label={`${t("原始披露", "Original filing")} · ${formatCalendarDate(str(r.publishedAt), locale)}`}
                     >
                       {t("查看", "Open")} ↗
                     </a>
@@ -364,14 +366,14 @@ export function FilingMultiples({
                           </p>
                           {objects(r.components).map((o, i) => (
                             <p key={i}>
-                              {str(o.periodStart)} → {str(o.periodEnd)} ·{" "}
+                              {formatDateSpan(str(o.periodStart), str(o.periodEnd), locale)} ·{" "}
                               {compact(o.value, locale)} {code}{" "}
                               {safeUrl(str(o.url)) && (
                                 <a
                                   href={safeUrl(str(o.url))}
                                   target="_blank"
                                   rel="noreferrer"
-                                  aria-label={`${t("原始披露", "Original filing")} · ${str(o.periodStart)} → ${str(o.periodEnd)}`}
+                                  aria-label={`${t("原始披露", "Original filing")} · ${formatDateSpan(str(o.periodStart), str(o.periodEnd), locale)}`}
                                 >
                                   ↗ {t("原始披露", "Original filing")}
                                 </a>

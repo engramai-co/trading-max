@@ -1,7 +1,7 @@
 "use client";
 import { quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
-import { formatCalendarDate } from "@/ui/formatters";
+import { formatCalendarDate, formatEventTime } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Group, Select, TextInput } from "@mantine/core";
@@ -537,7 +537,7 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
 }
 
 export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
-  const { locale } = useLocale();
+  const { locale, timeZone } = useLocale();
   const t = useCopy(),
     { params, update } = useRouteState("push");
   const a = object(data.analyst);
@@ -585,12 +585,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
               label: t("时间", "Time"),
               value: (r) =>
                 r.instant
-                  ? new Intl.DateTimeFormat(t("zh-CN", "en-GB"), {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                      timeZone: str(r.timezone) || "UTC",
-                      timeZoneName: "short",
-                    }).format(new Date(str(r.instant)))
+                  ? formatEventTime(str(r.instant), str(r.date), locale, timeZone)
                   : t("待定", "TBD"),
             },
             {

@@ -116,6 +116,35 @@ diluted SEC EPS known at that close. The line breaks at EPS vintages; missing
 or nonpositive EPS is not plotted. Annual P/E and TTM P/S at filing dates remain
 available as separate evidence.
 
+The trailing P/E model screens every series it validates, so a stored series
+is served with the same rules as a new one. Each multiple is recomputed from
+its close and EPS. A multiple above `MEANINGFUL_PE_CAP` (400×, an earnings
+yield under 0.25%) is withheld as `aboveCap`, and one below
+`MEANINGFUL_PE_FLOOR` (1×, an earnings yield over 100%, in practice EPS at the
+wrong scale) as `belowFloor`; exactly 400× and exactly 1× are kept. An EPS
+reading whose first multiple differs from the previous close's by more than
+`SEGMENT_JUMP` (five times) is withheld in full as `segmentJump`; earnings
+crossing zero already break the line and are not compared. Withheld points
+keep their close and EPS and carry the reason in `notMeaningful`; the web
+names `aboveCap` and `segmentJump`, and shows `belowFloor` as Not meaningful
+alone. The distribution and the latest rank use only the remaining multiples.
+
+The EPS replay compares each filing with the values already recorded for the
+periods it repeats. If every one of them moves up by the same power of ten, at
+least 100 times, the filing tagged its per-share values in thousands and is
+ignored. A value missing on either side is no evidence and zero against zero
+fits any scale, but zero against a nonzero value rules a rescaling out. The
+ignored filing's report period still becomes the latest one, so the series
+shows a gap rather than the previous trailing EPS. An implied fourth quarter
+keeps the first three quarters as filed at its annual filing's vintage, so
+later restatements do not offset into it. Only a filing that moves every period
+it repeats down by one such power corrects those quarters there, and only when
+the value it rescales is the one the fourth quarter was implied from. If such a
+quarter was restated in between, its scale at the annual's vintage is unknown:
+the implied quarter becomes unknown too, and the closes that need it are gaps.
+A new filing of the annual EPS implies the quarter again from the current
+quarters.
+
 NTM uses the last PE-0 observation of each exchange-local archive date, for the
 same listing and quote currency, bounded by the snapshot publication time. The
 remaining fraction of the fiscal year is the days from observation to the
