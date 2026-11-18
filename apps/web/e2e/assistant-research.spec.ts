@@ -133,3 +133,23 @@ test("disabled research makes no assistant reading or candidate requests",async 
   await expect(page.locator(".mx-digest")).toHaveCount(0);
   expect(reads).toEqual([]); expect(candidates).toEqual([]);
 });
+
+test("a priced fund opens position and moment readings and omits company earnings", async ({ page, isMobile }) => {
+  const reads = await fixtures(page);
+  await page.route("**/api/backend/research/shell", route => {
+    const shell = backendFixture(new URL(route.request().url())) as { instruments: object[] };
+    return route.fulfill({ json: { ...shell, instruments: shell.instruments.map(row => ({ ...row, isFund: true })) } });
+  });
+  await page.goto("/research?ticker=SYNT");
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator(".mx-assistant-opening .mx-reading-line")).toHaveCount(2);
+  expect(reads).toContain("your-position");
+  await page.goto("/research?ticker=SYNT&view=technical");
+  await page.locator(".mx-track-moment").click();
+  await expect(page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading")).toBeVisible();
+  expect(reads).toContain("key-moment");
+  await page.goto("/research?ticker=SYNT&view=fundamentals");
+  await expect(page.getByRole("tablist", { name: /研究视角|Research perspectives/ }).getByRole("tab", { selected:true })).toBeVisible();
+  await expect(page.locator(".mx-earnings-brief")).toHaveCount(0);
+  expect(reads).not.toContain("earnings-brief");
+});
