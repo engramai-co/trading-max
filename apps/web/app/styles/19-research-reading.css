@@ -120,7 +120,10 @@
 .mx-model-fields {
   display: contents;
 }
-.mx-model-workbench[data-switching] :is(.mx-model-output, .mx-model-reference-grid, .mx-model-fields > *) {
+.mx-model-workbench[data-switching] :is(
+  .mx-model-output, .mx-model-reference-grid, .mx-model-fields > *,
+  .mx-model-inputs .mx-info, .mx-model-inputs .mx-model-jump
+) {
   visibility: hidden;
 }
 .mx-reading-sections .mx-model-output {

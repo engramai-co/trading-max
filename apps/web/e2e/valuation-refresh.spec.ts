@@ -602,6 +602,9 @@ for (const locale of ["en", "zh"] as const) {
           await expect.poll(() => residualGets).toBe(1);
           await expect(select).toBeFocused();
           await expect(select).toBeInViewport();
+          const heading = page.locator("#valuation-assumptions .mx-panel-heading");
+          await expect.soft(heading.locator(".mx-info")).toBeHidden({ timeout: 500 });
+          await expect.soft(heading.locator('a[href="#valuation-results"]')).toBeHidden({ timeout: 500 });
           if (scheme === "dark") {
             readerScroll = await page.evaluate(() => new Promise<number>(resolve => {
               window.addEventListener("scroll", () => resolve(window.scrollY), { once: true });
