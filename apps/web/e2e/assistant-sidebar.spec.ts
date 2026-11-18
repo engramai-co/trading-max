@@ -1,3 +1,4 @@
+import historicalEvents from "../tests/fixtures/historical-events.json";
 import historicalDividend from "../tests/fixtures/historical-dividend.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
@@ -890,4 +891,50 @@ test("a historical dividend in chat reopens its published amount and basis", asy
   await expect(target).toContainText("Provider-adjusted per share");
   await expect(target).toContainText(row.date);
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
+});
+
+test("mixed historical event replies retain their published dates and citations", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const items = historicalEvents.data.items;
+  // The verified answer format allows four observations per reply; both turns use the full tool result.
+  const turns = [["news", "earnings", "ex_dividend", "dividend"], ["dividend_pay", "rating_change", "filing", "own_trade"]];
+  let next = 0;
+  await page.route("**/api/backend/assistant/chat*", route => {
+    const id = "historical-" + next;
+    const text = turns[next++].map(kind =>
+      `{{/data/items/${items.findIndex(row => row.kind === kind)}/date}} [${historicalEvents.evidence_id}]`).join("\n");
+    const chunks = [{type:"start",messageId:id},{type:"start-step"},
+      {type:"tool-input-available",toolCallId:id,toolName:"news_and_events",input:{args:{scope:"invest",start:historicalEvents.data.start,end:historicalEvents.data.end}}},
+      {type:"tool-output-available",toolCallId:id,output:historicalEvents},
+      {type:"text-start",id},{type:"text-delta",id,delta:text},{type:"text-end",id},
+      {type:"finish-step"},{type:"finish",finishReason:"stop"}];
+    return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+      body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n"});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.getByRole("textbox",{name:"Message"});
+  for (const [index,kinds] of turns.entries()) {
+    await input.fill(kinds.join(", "));
+    await input.press("Enter");
+    const reply = page.locator(".mx-turn-assistant").nth(index);
+    for (const [i,kind] of kinds.entries()) {
+      const row = items.find(item => item.kind === kind)!;
+      const line = reply.locator(".mx-reading-line").nth(i);
+      await expect(line).toContainText(row.title_en);
+      await expect(line).toContainText(row.date);
+      const link = line.getByRole("link");
+      if (kind === "news" || kind === "filing" || kind === "rating_change") {
+        await expect(link).toHaveAttribute("href", row.source_url!);
+      } else if (kind === "own_trade") {
+        await expect(link).toHaveAttribute("href", /\/review\?account=A/);
+      } else {
+        const args = new URL((await link.getAttribute("href"))!, page.url()).searchParams;
+        expect(Object.fromEntries(args)).toMatchObject({snapshotId:historicalEvents.snapshot_id,
+          calendarEventId:row.evidence_id, event:kind === "ex_dividend" ? "exDividend" : kind, ticker:row.ticker});
+      }
+    }
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dates-"+index+".png")});
+  }
 });

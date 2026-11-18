@@ -28,9 +28,19 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
-  if (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.event === "dividend")) {
+  if (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.eventId && ref.arguments.snapshotId)) {
     const args = ref.arguments ?? {};
     if (args.url) return safeUrl(args.url) ?? null;
+    if (ref.tool === "news_and_events" && args.event === "own_trade") {
+      const query = new URLSearchParams();
+      const account = {invest:"A", isa:"B", cfd:"C"}[args.scope];
+      if (account) query.set("account", account);
+      if ((account === "A" || account === "B") && ["buy", "sell"].includes(args.side) && args.date && args.ticker) {
+        query.set("decision", [args.date, args.side, args.ticker].join("."));
+      }
+      query.set("snapshotId", args.snapshotId);
+      return "/review?" + query;
+    }
     if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
       return evidenceHref({...ref, tool:"read_research_lens", arguments:{
         ticker:args.holdingTicker, lens:args.researchEventId ? "analyst" : "overview", event:args.event,
