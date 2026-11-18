@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import type { ECharts } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { Preview } from "./research-facts";
 import { DeferredPlot } from "./research-reading";
+import { useRetainedResult } from "./retained-result";
 import { currency, percent, tone } from "@/workspace/data";
 import { useCopy } from "./foundation";
 import { minus } from "./reading-figures";
@@ -18,13 +19,20 @@ const SCENARIO_NAMES: Record<ScenarioKey, (t: Copy) => string> = {
   bull: (t) => t("乐观", "Bull"),
 };
 
-export function ValuationScenarioComparison({ preview, selected, onSelect }: {
+export function ValuationScenarioComparison({ preview, selected, onSelect, beforeDraft, stagedScenarios = [], pendingScenarios = [] }: {
   preview: Preview;
+  beforeDraft?: Preview;
+  stagedScenarios?: string[];
+  pendingScenarios?: string[];
   selected: string;
   onSelect: (scenario: string) => void;
 }) {
   const t = useCopy();
   const keys = KEYS;
+  const plotted = useMemo(() => KEYS.filter(key => !pendingScenarios.includes(key)), [pendingScenarios]);
+  const seriesName = useCallback((key: ScenarioKey) =>
+    SCENARIO_NAMES[key](t) + (pendingScenarios.includes(key) ? t(" · 待计算", " · Pending")
+      : stagedScenarios.includes(key) ? t(" · 草稿", " · Draft") : ""), [pendingScenarios, stagedScenarios, t]);
   const name = (key: ScenarioKey) => SCENARIO_NAMES[key](t);
   // The cards above already carry each value and gap, so the chart has no tooltip:
   // a line under the pointer lights its card, and a card under the pointer or focus lights its line.
@@ -36,7 +44,11 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
     if (!instance || bound.current.has(instance)) return;
     bound.current.add(instance);
     instance.on("mouseover", (event) => {
-      if (event.componentType === "series") setHovered(KEYS[event.seriesIndex ?? -1] ?? null);
+      if (event.componentType !== "series") return;
+      // A line body reports its index. Hidden pending lines change the active series order.
+      const series = event.seriesId ? undefined : instance.getOption().series;
+      const id = event.seriesId ?? (Array.isArray(series) ? series[event.seriesIndex ?? -1]?.id : null);
+      setHovered(KEYS.find(key => key === id) ?? null);
     });
     instance.on("mouseout", () => setHovered(null));
     instance.on("globalout", () => setHovered(null));
@@ -44,11 +56,12 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
   const light = (key: ScenarioKey | null) => {
     setHovered(key);
     chart.current?.dispatchAction({ type: "downplay" });
-    if (key) chart.current?.dispatchAction({ type: "highlight", seriesIndex: KEYS.indexOf(key) });
+    if (key) chart.current?.dispatchAction({ type: "highlight", seriesId: key });
   };
-  // Symmetric percentage bounds keep spot at the same physical position even
-  // when a different scenario or horizon requires a larger comparison range.
-  const extent = Math.max(0.25, Math.ceil(Math.max(...keys.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
+  const visibleExtent = Math.max(0.25, Math.ceil(Math.max(0, ...plotted.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
+  // Keep the scale during recalculation unless a newly settled line needs more room.
+  const extent = useRetainedResult(visibleExtent, Object.is,
+    (next, previous) => pendingScenarios.length === 0 || next >= previous) ?? visibleExtent;
   // Unlevered equity cannot lose more than 100%, so the downside scale never extends below -100%.
   const minBound = -Math.min(1, extent);
   const maxBound = extent;
@@ -56,7 +69,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
   // since a new option resets the chart and would drop the line's highlight.
   const option = useCallback((c: ChartColours) => ({
     animation: false,
-    grid: { left: 54, right: 38, top: 32, bottom: 28 },
+    grid: { left: stagedScenarios.length ? 94 : 54, right: 38, top: 32, bottom: 28 },
     xAxis: {
       type: "value" as const, min: minBound, max: maxBound, splitNumber: 4,
       axisLabel: { formatter: (v: number) => minus(percent(v, true, 0)) },
@@ -64,15 +77,15 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
       splitLine: { show: false },
     },
     yAxis: {
-      type: "category" as const, inverse: true, data: KEYS.map((key) => SCENARIO_NAMES[key](t)),
+      type: "category" as const, inverse: true, data: KEYS.map(seriesName),
       axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false },
     },
     tooltip: { show: false },
-    series: KEYS.map((key, i) => ({
-      name: SCENARIO_NAMES[key](t), type: "line" as const, symbol: "circle", symbolSize: selected === key ? 10 : 7,
+    series: plotted.map((key, i) => ({
+      id: key, name: seriesName(key), type: "line" as const, symbol: "circle", symbolSize: selected === key ? 10 : 7,
       // The whole line answers the pointer, not only its two dots.
       triggerLineEvent: true,
-      data: [[0, i], [preview.scenarios[key].upside, i]],
+      data: [[0, KEYS.indexOf(key)], [preview.scenarios[key].upside, KEYS.indexOf(key)]],
       lineStyle: { color: c.brand, width: selected === key ? 3 : 2, opacity: selected === key ? 0.85 : 0.25 },
       itemStyle: { color: selected === key ? c.brand : c.axis },
       emphasis: { lineStyle: { opacity: 0.85 } },
@@ -82,7 +95,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
         label: { formatter: t("现价", "Current price"), position: "start" as const, color: c.text },
       } : undefined,
     })),
-  }), [maxBound, minBound, preview, selected, t]);
+  }), [maxBound, minBound, plotted, preview, selected, seriesName, stagedScenarios.length, t]);
   return (
     <div className="mx-scenario-comparison" onPointerEnter={bind}>
       <div className="mx-scenario-spot">
@@ -92,19 +105,24 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
       <div className="mx-scenario-cards" role="group" aria-label={t("选择估值情景", "Select a valuation scenario")}>
         {keys.map((key) => {
           const scenario = preview.scenarios[key];
+          const staged = beforeDraft && stagedScenarios.includes(key);
+          const displayed = staged ? beforeDraft.scenarios[key] : scenario;
+          const floor = " · " + t("按零计", "Zero floor");
           return <button type="button" key={key} aria-pressed={selected === key} data-hover={hovered === key || undefined}
             onClick={() => onSelect(key)}
             onPointerEnter={() => light(key)} onPointerLeave={() => light(null)}
             onFocus={() => light(key)} onBlur={() => light(null)}>
-            <span>{name(key)}{scenario.equityFloorAdjustment > 0 && " · " + t("按零计", "Zero floor")}</span>
-            <strong>{currency(scenario.value, preview.basis.currency, 2)}</strong>
-            <span className={`mx-${tone(scenario.upside)}`}>{percent(scenario.upside, true, 2)}</span>
+            <span>{name(key)}{displayed.equityFloorAdjustment > 0 && floor}</span>
+            <strong>{currency(displayed.value, preview.basis.currency, 2)}</strong>
+            <span className={`mx-${tone(displayed.upside)}`}>{percent(displayed.upside, true, 2)}</span>
+            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {pendingScenarios.includes(key) ? "…" : `${currency(scenario.value, preview.basis.currency, 2)} (${percent(scenario.upside, true, 2)})${scenario.equityFloorAdjustment > 0 ? floor : ""}`}</span>}
           </button>;
         })}
       </div>
       <DeferredPlot
         research
-        label={t("情景估值与现价的百分比差距", "Scenario valuations relative to current price")}
+        updateWhileReading
+        label={[t("情景估值与现价的百分比差距", "Scenario valuations relative to current price"), ...keys.filter(key => stagedScenarios.includes(key)).map(seriesName)].join(" · ")}
         height={180}
         controller={chart}
         option={option}

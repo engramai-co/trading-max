@@ -72,6 +72,7 @@ export function useECharts(
   onZoom?: (chart: ECharts) => void,
   onClick?: (event: ECElementEvent) => void,
   pinned = false,
+  updateWhileReading = false,
 ) {
   const callbacks = useRef({ onZoom, onClick });
   useLayoutEffect(() => { callbacks.current = { onZoom, onClick }; }, [onZoom, onClick]);
@@ -172,14 +173,14 @@ export function useECharts(
   }, [hasOption, profile, controller, status]);
 
   useLayoutEffect(() => {
-    if (!locked && themedOption && chartRef.current && lastApplied.current !== themedOption) {
+    if ((!locked || updateWhileReading) && themedOption && chartRef.current && lastApplied.current !== themedOption) {
       // Replace the option on the existing canvas. ECharts treats notMerge as a
       // new model, so animationDurationUpdate alone wouldn't prevent replay.
       chartRef.current.setOption({ ...themedOption, animation: false }, { notMerge: true });
       lastApplied.current = themedOption;
       if (canvasRef.current) canvasRef.current.dataset.tmChartAppliedAt = String(performance.now());
     }
-  }, [locked, themedOption]);
+  }, [locked, themedOption, updateWhileReading]);
 
   return { ref: canvasRef, status, retry, applied: lastApplied };
 }

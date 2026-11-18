@@ -119,6 +119,24 @@ def test_latest_manifest_cache_tracks_cross_process_publication(tmp_path: Path) 
     ]
 
 
+def test_concurrent_publisher_cannot_assign_its_manifest_to_a_newer_pointer(tmp_path, monkeypatch):
+    first, second = ArtifactStore(tmp_path), ArtifactStore(tmp_path)
+    item = first.immutable_artifacts.put_json(key="fixture.json", payload={"n": 7})
+    convert = first._api_manifest
+    newest = None
+
+    def interleave(manifest):
+        nonlocal newest
+        if newest is None:
+            newest = second.publish_typed(scope="research", source="second", artifacts=[item])
+        return convert(manifest)
+
+    monkeypatch.setattr(first, "_api_manifest", interleave)
+    previous = first.publish_typed(scope="research", source="first", artifacts=[item])
+    assert first.load_manifest(previous.run_id).source == "first"
+    assert first.latest_manifest().run_id == newest.run_id
+
+
 def test_manifest_reads_do_not_expand_unrelated_payloads(tmp_path, monkeypatch):
     writer = ArtifactStore(tmp_path / "state")
     item = writer.immutable_artifacts.put_json(key="fixture.json", payload={"n": 7})

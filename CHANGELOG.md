@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.59.0] - 2026-11-18
+
+### Added
+- With MaxAI enabled, choose Draft under Adjust assumptions to see suggested changes for the selected valuation model. Review each change and its sources, accept or reject it, and see how the scenario value changes. Choose Save model version to keep the result. If the price, exchange rate, share count, statements or parent model change, the desk asks you to review the draft again.
+
 ## [1.58.0] - 2026-11-18
 
 ### Added

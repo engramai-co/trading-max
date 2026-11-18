@@ -736,6 +736,24 @@ def test_frozen_byte_limit_is_independent_of_the_row_limit(tmp_path):
         FrozenValuationEvidence.model_validate(raw | {"rows": [long_row] * 96})
 
 
+@pytest.mark.parametrize("stamp", ["2025-12-20", "2025-12-20T10:30:00Z"])
+def test_revenue_consensus_retains_its_source_as_of(tmp_path, stamp):
+    def inject(batches):
+        analyst = batches["research/analyst.json"]["rows"][0]["analyst"]
+        analyst["revenueEstimate"][0]["asOf"] = stamp
+
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, MATURE, inject=inject)
+    evidence = freeze_valuation_evidence(binding, snapshots=store)
+    row = next(
+        r
+        for r in evidence.rows
+        if r.metric == Metric.CONSENSUS_REVENUE_GROWTH and r.value is not None
+    )
+    assert row.model_dump(mode="json")["publishedAt"] == stamp
+    assert row.observed_at == AS_OF
+
+
 def test_date_only_filing_and_mismatched_fx_version(tmp_path):
     def inject(batches):
         row = batches["research/financials.json"]["rows"][0]
