@@ -888,7 +888,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await accept.focus();
     await accept.press("Enter");
     await expect(accept).toHaveAttribute("aria-pressed","true");
-    await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
     expect(saved).toBeNull();
     await expect(editor.getByRole("link", {name: en ? "Analysts" : "分析师", exact:true})).toHaveAttribute("href", "#draft-evidence-estimate");
     await expect(accept.locator("xpath=ancestor::div[contains(@class,'mx-draft-row')]")).toContainText(en ? "As of" : "截至");
@@ -1035,7 +1035,7 @@ test.describe("frozen draft review", () => {
     const {editor, entry, calls} = await reviewDraft(page);
     await entry.click();
     await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
-    await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
     await editor.getByRole("button",{name:"Discard draft",exact:true}).click({timeout:1800});
     await expect(editor.getByLabel("Revenue growth · years 1–5")).toHaveValue("10%");
     expect(calls()).toBe(1);
@@ -1059,6 +1059,23 @@ test.describe("frozen draft review", () => {
     await editor.getByRole("button",{name:"Reload for review"}).click();
     await expect(editor.getByRole("textbox", {name:"Revenue growth · years 1–5", exact:true})).toHaveValue("14%");
     await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+  });
+
+  test("each scenario moves from its offered reading to its reviewed inputs independently", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await entry.click();
+    const base = page.locator(".mx-scenario-cards button[aria-pressed=true]");
+    const bear = page.locator(".mx-scenario-cards button").first();
+    await expect(base.locator(".mx-draft-reading")).toContainText("183.00");
+    await editor.getByRole("button",{name:"Reject Target FCF margin",exact:true}).click();
+    await expect(base.locator(".mx-draft-reading")).toContainText("150.00");
+    await expect(bear.locator(".mx-draft-reading")).toContainText("141.00");
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+    await expect(base.locator(".mx-draft-reading")).toContainText("195.00");
+    await editor.getByRole("button",{name:"Reject Revenue growth · years 1–5",exact:true}).click();
+    await expect(base.locator(".mx-draft-reading")).toHaveCount(0);
+    await expect(base.locator("strong")).toContainText("150.00");
+    await expect(bear.locator(".mx-draft-reading")).toContainText("141.00");
   });
 
   test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
@@ -1124,7 +1141,7 @@ test.describe("frozen draft review", () => {
     }
 
     await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
-    await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
     expect((await editor.boundingBox())!.width).toBe(width);
     await expect(page.locator(".mx-scenario-cards button[aria-pressed=true]")).toContainText("+95.00%");
     await expect(page.getByLabel(/Scenario valuations relative to current price.*Base.*Draft/i)).toBeAttached();
@@ -1166,7 +1183,7 @@ test("loading and retaining a draft requires workspace consent", async ({page}) 
   await entry.click();
   expect(await hasDraftCode()).toBe(true);
   await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
-  await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+  await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
   await consent(false);
   await expect(growth).toHaveValue("14%");
   await expect(entry).toHaveCount(0);
