@@ -19,6 +19,15 @@ def listing_mic(exchange: str, mic: str) -> str | None:
     return resolve_venue(None, provider_claim(exchange), VenueClaim("mic", mic)).mic
 
 
+def shared_venue(*mics: str | None) -> str | None:
+    """The one venue every MIC can describe, such as Nasdaq and one of its listing tiers."""
+    from trading_max.research.venues import VenueClaim, resolve_venue
+
+    if not mics or not all(mics):
+        return None
+    return resolve_venue(None, *(VenueClaim("mic", mic) for mic in mics)).mic
+
+
 def local_venue_symbol(ticker: str, mic: str | None) -> str:
     """Remove only a quote-provider suffix that belongs to this venue."""
     from trading_max.research.venues import YAHOO_SUFFIX_BY_MIC
