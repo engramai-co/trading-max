@@ -496,6 +496,39 @@ def test_reopen_exact_hardware_template(desk):
     assert view["scenarios"]["base"]["inputs"]["exitFcfMultiple"] == 16
 
 
+def test_new_consensus_after_delivery_requires_review_before_save(desk):
+    client, state, _, _ = desk
+    view, body = inputs(client)
+    draft = post(client, body)[-1]["result"]
+    original_snapshot = state.store.latest_manifest().run_id
+    assert draft["snapshotId"] == original_snapshot
+
+    def new_estimate(batches):
+        batches["research/analyst.json"]["rows"][0]["analyst"]["revenueEstimate"][0]["growth"] = (
+            0.31
+        )
+
+    _publish(state.store, MATURE, inject=new_estimate)
+    assert inputs(client)[0]["id"] == view["id"]
+    values = body["scenarios"]
+    decisions = {key: {} for key in values}
+    for p in draft["proposals"]:
+        decisions[p["scenario"]][p["field"]] = "unreviewed"
+    values["base"]["revenueCagr"] = 0.15
+    decisions["base"]["revenue_cagr"] = "accepted"
+    saved = client.post(
+        PATH + "/models",
+        json={
+            "family": "cash-flow",
+            "formulaVersion": view["formulaVersion"],
+            "scenarios": values,
+            "draftReview": {"id": draft["id"], "decisions": decisions},
+        },
+    )
+    assert saved.status_code == 409 and saved.json()["detail"] == "valuation-draft-review-required"
+    assert client.get(PATH + "/journal").json()["models"] == []
+
+
 def test_new_publication_discards_the_draft_even_if_the_desk_basis_is_unchanged(desk):
     client, state, _, _ = desk
     _, body = inputs(client)

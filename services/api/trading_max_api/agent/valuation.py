@@ -359,6 +359,7 @@ class DraftAgent:
             if isinstance(origin, TemplateOrigin):
                 cited.update(origin.evidence_ids)
         return DraftResult(
+            snapshot_id=self.frozen.binding.snapshot_run_id,
             family=self.frozen.family,
             family_selection=self.family_selection,
             origins=origins,

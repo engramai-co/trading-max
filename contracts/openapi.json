@@ -6491,9 +6491,14 @@
             },
             "title": "Proposals",
             "type": "array"
+          },
+          "snapshotId": {
+            "title": "Snapshotid",
+            "type": "string"
           }
         },
         "required": [
+          "snapshotId",
           "family",
           "familySelection",
           "id",

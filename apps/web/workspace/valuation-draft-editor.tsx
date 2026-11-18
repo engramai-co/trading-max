@@ -87,7 +87,7 @@ export function useValuationDraft(initial: Preview, requestedFamily: Preview["ba
     setFailure(null);
   }
   return { enabled, draft, error, phase: run?.key === runKey ? run.phase : null,
-    stale: Boolean(draft && draft.basis !== basis) || error === "valuation-draft-review-required",
+    stale: Boolean(draft && (draft.basis !== basis || draft.result.snapshotId !== publication)) || error === "valuation-draft-review-required",
     start, cancel, reset, decide };
 }
 

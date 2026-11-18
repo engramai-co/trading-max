@@ -115,6 +115,7 @@ class Proposal(DomainModel):
 
 
 class DraftResult(DomainModel):
+    snapshot_id: str
     family: Family
     family_selection: Literal["automatic", "override"]
     id: UUID

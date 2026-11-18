@@ -305,7 +305,7 @@ function ModelEditor({
       : 5
     : initial.horizon;
   const [inputs, setInputs] = useState<Scenarios>(() => initialValues(initial, recovered).inputs);
-  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs, revision ?? data.runId, prefs, currentBasis);
+  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs, data.runId, prefs, currentBasis);
   const { draft } = drafting;
   const [editingProposal, setEditingProposal] = useState<string | null>(null);
   const focusField = useRef<string | null>(null);

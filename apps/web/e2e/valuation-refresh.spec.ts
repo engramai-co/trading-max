@@ -826,7 +826,7 @@ const draftProposals = [
   { scenario: "base", field: "target_fcf_margin", value: 0.12, category: "derived", source: "statement-margin", evidenceIds: ["statement", "revenue"] },
   { scenario: "bear", field: "discount_rate", value: 0.12, category: "template", source: "sector-template", originId: "template", evidenceIds: [] },
 ];
-const draftResponse = { phase: "complete", result: { id: "synthetic-draft", family:"cash-flow", familySelection:"automatic", proposals: draftProposals,
+const draftResponse = { phase: "complete", result: { id: "synthetic-draft", snapshotId:"synthetic-run", family:"cash-flow", familySelection:"automatic", proposals: draftProposals,
   origins: { template: { source: "sector-template", inputs: { profile:"hardware", effectiveDiscountRate:.1, annualRevenueGrowth:.1,
     growthCap:.3, marginCap:.18, shareCagr:.01, exitMultiple:16, basis:{startMargin:.12} },
     scenarios:{bear:{discountRate:.12}}, evidenceIds:["statement"] } },
@@ -937,7 +937,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
         equity: {...draftResponse.result.evidence.revenue, metric:"commonEquity"},
       };
       return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({phase:"complete", result:{
-        id:"bank-draft", family:"residual-income", familySelection:"automatic", origins:{}, evidence,
+        id:"bank-draft", snapshotId:"synthetic-run", family:"residual-income", familySelection:"automatic", origins:{}, evidence,
         proposals:[{scenario:"base", field:"initial_roe", category:"derived", source:"common-roe",
           value:0.2, evidenceIds:["earnings","equity"]}],
       }})+"\n"});

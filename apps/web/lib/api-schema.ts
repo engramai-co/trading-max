@@ -3588,6 +3588,8 @@ export interface components {
             };
             /** Proposals */
             proposals: components["schemas"]["Proposal"][];
+            /** Snapshotid */
+            snapshotId: string;
         };
         /** DraftReview */
         DraftReview: {

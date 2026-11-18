@@ -176,6 +176,7 @@ class ResearchJournalStore:
         body: ResearchModelSaveRequest,
         drafts: ValuationDraftStore,
         calculate: Callable[[ValuationPreviewRequest], ValuationPreview],
+        current_publication: Callable[[], str],
     ) -> ResearchJournal:
         with self.lock:
             review = body.draft_review
@@ -192,6 +193,7 @@ class ResearchJournalStore:
             parent = state.models[0].id if state.models else None
             if (
                 draft.evidence.binding.ticker != ticker.upper()
+                or draft.evidence.binding.snapshot_run_id != current_publication()
                 or draft.parent_model_id != parent
                 or draft.horizon != body.horizon
                 or draft.formula_version != body.formula_version
