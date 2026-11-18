@@ -12,6 +12,7 @@ All notable public Trading Max releases are recorded here.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
+- Holdings citations keep the dated benchmark weight. Money, Returns and Risk reopen the cited publication and interval. When updated data loses an endpoint, the phone reading stays open and announces the missing interval.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
 - A missing price chart stays unavailable when a similar ticker trades on a different known venue. Distributions on the chart can qualify as key moments. Frankfurt and Xetra headlines follow their own trading hours.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.

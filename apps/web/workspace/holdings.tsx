@@ -109,7 +109,8 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
-  const accountStamp = (holding: Holding) => positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf;
+  const accountStamp = (holding: Holding) => positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf
+    ?? (holding.account === "A" || holding.account === "B" ? positionData?.positionAsOf?.[holding.account] : undefined);
   const snapshotBasis = (holding: Holding) => {
     const at = accountStamp(holding);
     return <small className="mx-holding-quote-basis">{t("券商快照", "Broker snapshot")} · {at
@@ -123,9 +124,9 @@ function Positions() {
   }
   // Totals come from the broker's account summaries, matching Overview; positions are the fallback.
   const summary = account === "all" ? null : query.data?.accounts?.find((item) => item.code === account);
-  const invested = (account === "all" ? query.data?.totalInvestedGbp : summary?.investedGbp)
+  const invested = ((cited || account === "all") ? query.data?.totalInvestedGbp : summary?.investedGbp)
     ?? scoped.reduce((sum, h) => sum + h.currentValueGbp, 0);
-  const pnl = (account === "all" ? query.data?.totalUnrealizedPnlGbp : summary?.unrealizedPnlGbp)
+  const pnl = ((cited || account === "all") ? query.data?.totalUnrealizedPnlGbp : summary?.unrealizedPnlGbp)
     ?? scoped.reduce((sum, h) => sum + h.pnlGbp, 0);
   // Weight bars compare positions with each other: the largest fills the track.
   const largestAllocation = Math.max(0, ...scoped.map((h) => h.allocationPct));

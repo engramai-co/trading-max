@@ -252,6 +252,7 @@ def test_retained_risk_and_holdings_use_only_page_records(
         live = client.get("/v1/dashboard/lens/analytics?scope=isa&detail=summary").json()
         run = live["runId"]
         current_holdings = client.get("/v1/dashboard/lens/holdings-lookthrough").json()
+        live_positions = client.get("/v1/dashboard/lens/holdings-positions").json()
         typed_fixture(research_root, store)
         monkeypatch.setattr(
             app.state, "cached_dashboard", lambda *a, **kw: pytest.fail("loaded full dashboard")
@@ -272,3 +273,14 @@ def test_retained_risk_and_holdings_use_only_page_records(
         assert holdings.status_code == 200
         assert holdings.json().get("lookthrough") == current_holdings.get("lookthrough")
         assert not {"accounts", "risk", "nav", "benchmarkSeries"} & holdings.json().keys()
+        positions = client.get(
+            "/v1/dashboard/lens/holdings-positions", params={**base, "account": "B"}
+        ).json()
+        isa = next(row for row in live_positions["accounts"] if row["code"] == "B")
+        assert positions.get("positionAsOf") == {"B": isa["asOf"]}
+        assert positions["totalInvestedGbp"] == isa["investedGbp"]
+        assert positions["totalUnrealizedPnlGbp"] == isa["unrealizedPnlGbp"]
+        assert positions.get("holdings", []) == [
+            row for row in live_positions.get("holdings", []) if row["account"] == "B"
+        ]
+        assert not {"accounts", "risk", "nav", "benchmarkSeries", "lookthrough"} & positions.keys()

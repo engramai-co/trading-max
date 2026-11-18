@@ -5632,6 +5632,19 @@
               }
             ]
           },
+          "positionAsOf": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "enum": [
+                "A",
+                "B"
+              ]
+            },
+            "title": "Positionasof",
+            "type": "object"
+          },
           "researchAsOf": {
             "title": "Researchasof",
             "type": "string"

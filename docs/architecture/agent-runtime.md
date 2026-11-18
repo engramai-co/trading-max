@@ -294,10 +294,19 @@ The Holdings tool returns the selected category or group and searches retained
 observations at least thirty days old for a matching classification and invested-value
 denominator. Company selections carry the published entity ID. Legacy rows need a
 unique match. An absent category has zero historical weight only when the complete
-classified table reconciles to invested assets. Returns binds the account, requested range, benchmark and both chart
+classified table reconciles to invested assets. A benchmark weight citation carries
+its fund, observation date and a fingerprint of the selected weight. The source can
+correct a figure for the same date. Reopening that citation requires the same
+observation or reports its expiry.
+
+Holdings and Risk use dedicated retained projections. Positions include the selected
+broker accounts' timestamps and totals. Risk includes the selected scope's drawdown
+and risk metrics. Money requests the pinned portfolio history directly.
+Returns binds the account, requested range, benchmark and both chart
 endpoints to the publication plotted by the chart. Daily returns report observed and
 total interval counts, the lowest day and the largest absolute daily move. Ties at
-published precision select the earliest interval. The FX comparison requires matching
+published precision select the earliest interval. Portfolio TWR and ranks report
+portfolio interval coverage. Each benchmark return uses its two observed endpoint prices. The FX comparison requires matching
 valuations for every account included in the selected total. A date-only daily NAV cannot establish an intraday FX valuation instant.
 The market map projects each market from the opening board in one reading request.
 A sector headline uses the selected board's leading constituent and the exchange's local session date.

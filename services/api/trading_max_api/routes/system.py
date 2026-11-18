@@ -265,6 +265,11 @@ def _retained_holdings(store, manifest, view, account):
     return DashboardLensSnapshot(
         **base,
         broker_as_of=broker.get("generated_at_utc") or "",
+        position_as_of={
+            code: stamp
+            for code in selected
+            if (stamp := accounts[code].get("fetched_at") or accounts[code].get("fetched_at_utc"))
+        },
         holdings=published_positions(store, run, broker, selected, total, lookthrough),
         total_invested_gbp=sum(accounts[c].get("investments_value_gbp") or 0 for c in selected),
         total_unrealized_pnl_gbp=sum(

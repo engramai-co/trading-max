@@ -3388,6 +3388,10 @@ export interface components {
             /** Nav */
             nav?: components["schemas"]["NavPoint"][];
             policy?: components["schemas"]["PolicySummary"] | null;
+            /** Positionasof */
+            positionAsOf?: {
+                [key: string]: string;
+            };
             /** Researchasof */
             researchAsOf: string;
             /** Reviewasof */

@@ -1498,6 +1498,7 @@ class DashboardLensSnapshot(ApiModel):
     cfd: CfdSummary | None = None
     cfd_review: CfdAccountReview | None = None
     review_summaries: list[OverviewReviewSummary] = Field(default_factory=list)
+    position_as_of: dict[InvestableAccountCode, str] = Field(default_factory=dict)
     holdings: list[Holding] = Field(default_factory=list)
     nav: list[NavPoint] = Field(default_factory=list)
     intraday_nav: list[NavPoint] = Field(default_factory=list)
