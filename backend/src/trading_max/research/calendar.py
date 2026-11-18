@@ -16,7 +16,7 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 
-from .venues import provider_claim, resolve_venue, watchlist_claim
+from .venues import provider_claim, resolve_venue, row_claims, watchlist_claim
 
 # A schedule covers the recent sessions a quote or broker price can belong to
 # and the coming ones a page can stay open into.
@@ -149,7 +149,16 @@ def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
     )
 
 
-def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFrame:
+def _frame_calendar(attrs, ticker=None, exchange=None):
+    requested = ticker or attrs.get("ticker") or (attrs.get("provider_venue") or {}).get("symbol")
+    return resolve_venue(
+        requested, *row_claims(requested, attrs), provider_claim(exchange)
+    ).calendar
+
+
+def completed_daily_bars(
+    frame: pd.DataFrame, *, now: pd.Timestamp, ticker: str | None = None
+) -> pd.DataFrame:
     """Keep daily indicators off a still-forming bar, including early-close sessions."""
     if frame.empty:
         return frame
@@ -158,7 +167,7 @@ def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFr
     today = pd.Timestamp(local.date())
     days = frame.index.tz_localize(None).normalize()
     complete = days < today
-    name = calendar_name(frame.attrs.get("exchange"))
+    name = _frame_calendar(frame.attrs, ticker)
     if name:
         cal = market_calendar(name, today.year, today.year)
         if cal.is_session(today) and cal.session_close(today) <= now:
@@ -174,7 +183,7 @@ def completed_months(close: pd.Series, *, exchange: str | None, now: pd.Timestam
     timestamps = close.index.tz_localize(None).normalize()
     daily = pd.Series(close.to_numpy(), index=timestamps)
     monthly = daily.resample("ME").last()
-    name = calendar_name(exchange)
+    name = _frame_calendar(close.attrs, exchange=exchange)
     if not name:
         # Legacy data with unknown exchange: final observed month stays pending.
         cutoff = min(
