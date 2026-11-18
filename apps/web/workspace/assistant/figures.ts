@@ -29,11 +29,30 @@ const labels: Record<string, Words> = {
   amount_gbp: ["Amount", "金额"], effect_horizon_gbp: ["Effect at the review horizon", "复盘窗口影响"],
   effect_to_date_gbp: ["Effect to date", "至今影响"], amount: ["Amount", "金额"], gross_result: ["Gross result", "毛收益"],
   fx_fee: ["FX fee", "汇兑费用"], result_after_fx_fee: ["Result after FX fees", "扣除汇兑费用后收益"],
-  date: ["Event date", "事件日期"], state: ["Data state", "数据状态"],
+  date: ["Event date", "事件日期"],
 };
 const statusWords: Record<string, Words> = {
   ok: ["Data available", "数据可用"], partial: ["Limited coverage", "覆盖不完整"],
   unavailable: ["Data unavailable", "数据不可用"], not_applicable: ["Not applicable", "不适用"],
+};
+// Dataset and state identifiers published by the data_freshness tool.
+const freshnessDatasets: Record<string, Words> = {
+  market: ["Market data", "行情"], technical: ["Technical data", "技术指标"],
+  fundamentals: ["Fundamentals", "基本面"], financials: ["Financial statements", "财务报表"],
+  analyst: ["Analyst data", "分析师数据"], valuation: ["Valuation", "估值"],
+  options: ["Options", "期权"], earnings: ["Earnings data", "业绩数据"],
+  broker: ["Broker balances", "券商余额"], intraday_broker: ["Intraday broker balances", "盘中券商余额"],
+  lookthrough: ["Look-through exposure", "穿透敞口"], cfd_cash_equity_proxy: ["CFD cash-equity proxy", "CFD 现金权益代理值"],
+  invest_daily_nav: ["Invest daily NAV", "投资账户每日净值"], isa_daily_nav: ["ISA daily NAV", "ISA 每日净值"],
+  cfd_daily_nav: ["CFD daily NAV", "CFD 每日净值"], intraday_nav: ["Intraday NAV", "盘中净值"],
+  invest_decisions: ["Invest decisions", "投资账户交易记录"], isa_decisions: ["ISA decisions", "ISA 交易记录"],
+  imported_cfd_events: ["Imported CFD events", "导入的 CFD 事件"],
+};
+const freshnessStates: Record<string, Words> = {
+  fresh: ["Up to date", "最新"], aging: ["Ageing", "接近过期"], stale: ["Stale", "已过时"],
+  missing: ["Missing", "缺失"], failed: ["Failed", "失败"], unknown: ["Unknown", "未知"],
+  unsupported: ["Unsupported", "不支持"], not_applicable: ["Not applicable", "不适用"],
+  ticker_status_not_published: ["Ticker status unpublished", "尚未公布此证券的数据状态"],
 };
 const caveats: Record<string, Words> = {
   "other-drivers": ["Other factors may also have contributed.", "其他因素也可能有影响。"],
@@ -86,7 +105,12 @@ function formatField(tool: string, row: NonNullable<ReturnType<typeof resolveFie
   const { field, parent, group, value } = row;
   if (tool === "read_research_lens" && field === "value") return researchField(row, locale);
   if (field === "date" && dateText(value)) return [word(labels.date, locale), dateText(value)];
-  if (field === "state" && tool === "data_freshness" && /^[a-z_]{2,40}$/.test(str(value))) return [word(labels.state, locale), str(value).replaceAll("_", " ")];
+  if (tool === "data_freshness" && group === "items" && field === "state") {
+    const dataset = str(parent.dataset);
+    const state = str(value);
+    if (!Object.hasOwn(freshnessDatasets, dataset) || !Object.hasOwn(freshnessStates, state)) return null;
+    return [word(freshnessDatasets[dataset], locale), word(freshnessStates[state], locale)];
+  }
   const n = numeric(value);
   if (n === null) return null;
   if (tool === "read_valuation_evidence" && field === "value" && parent.state === "available" && str(parent.metric)) {
@@ -133,13 +157,15 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
     || dateText(field.includes("pnl") ? parent.pnl_as_of : parent.values_as_of) || dateText(data.broker_as_of);
   const start = dateText(object(parent.period).start) || dateText(parent.start) || dateText(data.window_start) || dateText(data.start);
   const end = dateText(object(parent.period).end) || dateText(parent.end) || dateText(data.window_end) || dateText(data.end);
-  const sourceDates = objects(output.sources).map(source => dateText(source.as_of)).filter(Boolean);
+  // A freshness result can cite several datasets. Only this row dates its state.
+  const freshness = tool === "data_freshness";
+  const sourceDates = freshness ? [] : objects(output.sources).map(source => dateText(source.as_of)).filter(Boolean);
   const localDate = (value: string) => value.includes("T") ? formatDateTime(value, locale, timeZone) : value;
   const period = start && end ? localDate(start) + " – " + localDate(end) : localDate(end || date) || [...new Set(sourceDates)].map(localDate).join(" / ");
   const accounts: Record<string, Words> = {invest:["Invest", "投资账户"], isa:["ISA", "ISA"], cfd:["CFD", "CFD"],
     broker_total:["All investment accounts", "全部投资账户"], household:["Household", "家庭账户"]};
   const scope = str(parent.scope) || str(output.scope);
-  const subject = [str(parent.ticker) || str(parent.name) || str(data.ticker) || str(parent.dataset), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
+  const subject = [str(parent.ticker) || str(parent.name) || str(data.ticker) || (freshness ? "" : str(parent.dataset)), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
     .filter(Boolean).join(" · ");
-  return [subject, formatted.join(" "), period === formatted[1] ? "" : period, limited || parent.status === "partial" ? limitedText : ""].filter(Boolean).join(" · ");
+  return [subject, formatted.join(freshness ? " · " : " "), period === formatted[1] ? "" : period, limited || parent.status === "partial" ? limitedText : ""].filter(Boolean).join(" · ");
 }

@@ -10319,7 +10319,10 @@ export interface operations {
     };
     assistant_chat_v1_assistant_chat_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Return prose or field references for the workspace sidebar. */
+                format?: "prose" | "references";
+            };
             header?: {
                 authorization?: string | null;
             };

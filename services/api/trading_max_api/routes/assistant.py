@@ -7,13 +7,13 @@ from dataclasses import replace
 from datetime import datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import Field, ValidationError
 from starlette.responses import StreamingResponse
 
 from ..agent.readings import ReadingEvent, ReadingService
 from ..agent.roles import role_registry
-from ..agent.service import AssistantService
+from ..agent.service import AssistantService, ChatFormat
 from ..models import ApiModel
 from .dependencies import require_write_auth
 
@@ -52,8 +52,17 @@ def _service(request: Request) -> AssistantService:
     response_class=Response,
     responses={200: {"description": "Vercel AI SDK UI message stream (SSE)."}},
 )
-async def assistant_chat(request: Request) -> Response:
-    return await _service(request).chat(request)
+async def assistant_chat(
+    request: Request,
+    response_format: Annotated[
+        ChatFormat,
+        Query(
+            alias="format",
+            description="Return prose or field references for the workspace sidebar.",
+        ),
+    ] = "prose",
+) -> Response:
+    return await _service(request).chat(request, response_format)
 
 
 @router.get("/v1/assistant/status", response_model=AssistantStatus)

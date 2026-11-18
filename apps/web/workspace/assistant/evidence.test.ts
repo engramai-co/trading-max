@@ -130,3 +130,19 @@ it("keeps the selected research lens, object and evidence destination", () => {
   expect(evidenceHref(story)).toBe(story.arguments.url);
   expect(evidenceHref({...story, arguments:{...story.arguments,url:"javascript:alert(1)"}})).not.toMatch(/^javascript:/);
 });
+
+it.each([
+  ["en", "Technical data", "Stale", "Earnings data", "Missing"],
+  ["zh", "技术指标", "已过时", "业绩数据", "缺失"],
+] as const)("identifies each freshness dataset and its state in %s", (locale, technical, stale, earnings, missing) => {
+  const output = {scope:"invest", sources:[{as_of:"2026-11-01"}], data:{ticker:"SYNT", items:[
+    {dataset:"technical", state:"stale", as_of:"2026-11-01"},
+    {dataset:"earnings", state:"missing", as_of:null},
+  ]}};
+  const reply = fieldReply("data_freshness", output, "/data/items/0/state");
+  reply.parts[1] = {type:"text", text:"{{/data/items/0/state}} [ev_local]\n{{/data/items/1/state}} [ev_local]"};
+  const [first, second] = verifiedLines(reply, locale);
+  for (const text of ["SYNT", technical, stale, "2026-11-01"]) expect(first.text).toContain(text);
+  for (const text of ["SYNT", earnings, missing]) expect(second.text).toContain(text);
+  expect(second.text).not.toContain("2026-11-01");
+});
