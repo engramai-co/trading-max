@@ -29,7 +29,7 @@ const lensWords: Record<string, Evidence["source"]> = { technical: "technical", 
 export function evidenceHref(ref: Evidence): string | null {
   if (ref.tool === "upcoming_events") {
     const args = ref.arguments ?? {};
-    if (ref.source === "calendar" && args.url) return safeUrl(args.url) ?? null;
+    if (args.url) return safeUrl(args.url) ?? null;
     if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
       return evidenceHref({...ref, tool:"read_research_lens", arguments:{
         ticker:args.holdingTicker, lens:args.researchEventId ? "analyst" : "overview", event:args.event,
@@ -37,6 +37,7 @@ export function evidenceHref(ref: Evidence): string | null {
         snapshotId:args.snapshotId, calendarEventId:args.eventId,
       }});
     }
+    return null;
   }
   const entry = destinations[ref.tool];
   if (!entry) return null;

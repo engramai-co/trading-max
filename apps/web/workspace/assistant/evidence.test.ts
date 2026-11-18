@@ -181,3 +181,19 @@ it("carries both the calendar row and publication into the earnings target", () 
     snapshotId:"old",calendarEventId:"ev_calendar_row",eventId:"earn-1",ticker:"TEST",date:"2026-02-04"
   });
 });
+
+it("reads the selected calendar row's title, Tokyo day and exact source", () => {
+  const output = {snapshot_id:"saved",data:{items:[
+    {kind:"macro",evidence_id:"ev_prices",title_en:"Consumer prices",title_zh:"消费者价格",date:"2026-02-03",instant:"2026-02-03T23:30:00Z",source_url:"https://example.org/prices"},
+    {kind:"earnings",ticker:"SYNT",evidence_id:"ev_report",research_event_id:"report",title_en:"Earnings",date:"2026-02-05"},
+  ]}};
+  const [macro] = verifiedLines(fieldReply("upcoming_events",output,"/data/items/0/date"),"en","Asia/Tokyo");
+  expect(macro.text).toMatch(/Consumer prices.*4 Feb 2026.*08:30/);
+  expect(evidenceHref(macro.evidence!)).toBe("https://example.org/prices");
+  const [earnings] = verifiedLines(fieldReply("upcoming_events",output,"/data/items/1/date"),"en","Asia/Tokyo");
+  expect(earnings.text).toBe("SYNT · Earnings · 2026-02-05");
+  expect(earnings.evidence?.source).toBe("financials");
+  expect(Object.fromEntries(new URL(evidenceHref(earnings.evidence!)!, "http://localhost").searchParams)).toMatchObject({
+    snapshotId:"saved",calendarEventId:"ev_report",eventId:"report",date:"2026-02-05",ticker:"SYNT"
+  });
+});

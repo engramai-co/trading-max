@@ -4,7 +4,7 @@ import { Button } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
-import { formatDateTime } from "@/ui/formatters";
+import { formatDateTimeInTimeZone } from "@/ui/formatters";
 import { readApi } from "./data";
 import { Empty, LoadingStatus, Page, Panel, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
@@ -51,7 +51,7 @@ export function CitedResearchEvent() {
   return <Page title={t("研究", "Research")}><section data-reading-event=""><Panel title={ticker + " · " + title}>
     {result.isFetching ? <LoadingStatus label={t("正在读取引用…","Loading citation…")} /> :
       row ? <><h3>{locale === "zh" ? row.title_zh : row.title_en}</h3>
-        <p>{row.instant ? formatDateTime(row.instant, locale, timeZone) : [...new Set([row.date, row.end_date].filter(Boolean))].join(" – ")}</p>
+        <p>{row.instant ? formatDateTimeInTimeZone(row.instant, locale, timeZone) : [...new Set([row.date, row.end_date].filter(Boolean))].join(" – ")}</p>
         <p>{row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
     <Button variant="subtle" onClick={() => update({evidence:null,snapshotId:null,event:null,date:null,end:null,eventId:null,calendarEventId:null})}>
       {t("打开证券研究", "Open security research")}

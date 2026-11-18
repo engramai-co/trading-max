@@ -360,6 +360,7 @@ test("earnings citations reopen the exact retained row and disclose expiry", asy
       {kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture"},
     ]}}}));
   await page.goto("/");
+  await page.locator(".mx-digest [aria-expanded]").click();
   const link = page.locator(".mx-digest").getByRole("link",{name:"Financials",exact:true}).first();
   await expect(link).toHaveAttribute("href", /snapshotId=saved/);
   await link.click();
