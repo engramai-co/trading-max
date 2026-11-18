@@ -239,12 +239,26 @@ def build_decision_review(
     )
     fills["AmountGBP"] = pd.to_numeric(fills.get("TotalGBP"), errors="coerce").abs()
     fills["SharesN"] = pd.to_numeric(fills.get("Shares"), errors="coerce").abs()
-    # Each normalised export order is counted separately, before netting same-day sides.
-    order_sizes = fills.groupby(["SecurityIdentity", "BusinessDate"])["AmountGBP"].agg(
-        ["sum", "count", "size"]
+    # Count separate purchase orders before netting round trips. Sales carry the
+    # purchase basis forward without changing it, including on sale-only dates.
+    purchases = fills["AmountGBP"].where(fills["Side"] == "buy")
+    order_sizes = (
+        fills.assign(
+            purchase_value=purchases.fillna(0),
+            purchases=(fills["Side"] == "buy").astype(int),
+            missing_purchase=(
+                (fills["Side"] == "buy") & (purchases.isna() | (purchases <= 0))
+            ).astype(int),
+        )
+        .groupby(["SecurityIdentity", "BusinessDate"])[
+            ["purchase_value", "purchases", "missing_purchase"]
+        ]
+        .sum()
     )
     running = order_sizes.groupby(level=0).cumsum()
-    means = (running["sum"] / running["count"]).where(running["count"] == running["size"])
+    means = (running["purchase_value"] / running["purchases"]).where(
+        running["missing_purchase"] == 0
+    )
     decisions: list[dict[str, Any]] = []
     round_trips: list[dict[str, Any]] = []
     unscored = 0

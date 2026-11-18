@@ -73,7 +73,7 @@ class AccountDecisionStage:
     """Publish decision outcomes and reconciled allocation evidence."""
 
     name = "accounts.decisions"
-    version = "decision-review-stage-v8"
+    version = "decision-review-stage-v9"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 

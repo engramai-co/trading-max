@@ -1130,6 +1130,26 @@ def test_hindsight_includes_dividends_and_stops_at_the_selected_close():
     assert buy["hindsight_to_date"]["best_date"] == closes.index[-1].date().isoformat()
     assert buy["hindsight_to_date"]["average_order_gbp"] == 200
     assert buy["hindsight_to_date"]["missed_gbp"] == 80
-    # Average includes the sale and both distinct orders, not the day's net leg.
-    assert sell["hindsight_horizon"]["average_order_gbp"] == 165
-    assert sell["hindsight_horizon"]["missed_gbp"] == round(165 * (104 / 95 - 1), 2)
+    # Both distinct purchases size this sale; its proceeds do not enter the basis.
+    assert sell["hindsight_horizon"]["average_order_gbp"] == 200
+    assert sell["hindsight_horizon"]["missed_gbp"] == round(200 * (104 / 95 - 1), 2)
+
+
+@pytest.mark.parametrize("earlier_buy", [False, True])
+def test_sell_hindsight_requires_a_known_purchase_size(earlier_buy):
+    closes = _closes("2026-01-05", [100, 95, 110, 120])
+    orders = [
+        _fill("2026-01-06T12:00:00Z", "Market sell", 1, 95),
+        _fill("2026-01-07T12:00:00Z", "Market buy", 1, 110),
+    ]
+    if earlier_buy:
+        orders.insert(0, _fill("2026-01-05T12:00:00Z", "Market buy", 1, 100))
+    trades = _trade_columns(pd.DataFrame(orders))
+    if earlier_buy:
+        trades.loc[trades["BusinessDate"] == closes.index[0], "TotalGBP"] = float("nan")
+    key = trades["SecurityIdentity"].iloc[0]
+    security = SecurityPrices(key, "NVDA", "Synthetic", "NVDA", closes)
+    result = build_decision_review(trades, {key: security}, as_of=closes.index[-1])
+    sell = next(row for row in result["decisions"] if row["side"] == "sell")
+    assert sell["effect_to_date_gbp"] is not None
+    assert sell["hindsight_to_date"] is None
