@@ -101,7 +101,7 @@ class SecurityPrices:
     market_frame: pd.DataFrame | None = field(default=None, compare=False, repr=False)
 
     # Genuine provider closes with a verified GBP conversion; accounting series can carry values.
-    observed_closes_gbp: pd.Series | None = field(default=None, compare=False, repr=False)
+    observed_closes_gbp: pd.Series = field(default_factory=_empty, compare=False, repr=False)
 
     @property
     def quoted(self) -> pd.DatetimeIndex:

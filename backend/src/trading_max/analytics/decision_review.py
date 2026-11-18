@@ -411,8 +411,6 @@ def build_decision_review(
                     ending = _market_close(market, sessions, horizon_day)
                     market_horizon = None if ending is None else ending / opening - 1.0
         observed_closes = security.observed_closes_gbp
-        if observed_closes is None:
-            observed_closes = security.closes.reindex(final).dropna()
         prior_index = observed_closes.index.searchsorted(stamp, side="left") - 1
         prior_day = observed_closes.index[prior_index] if prior_index >= 0 else None
         prior_close = float(observed_closes.iloc[prior_index]) if prior_day is not None else None

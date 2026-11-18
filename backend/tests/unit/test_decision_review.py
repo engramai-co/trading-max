@@ -1170,7 +1170,7 @@ def test_untraded_fall_uses_only_prior_purchases_and_final_matching_windows():
         )
     )
     key = trades["SecurityIdentity"].iloc[0]
-    security = SecurityPrices(key, "NVDA", "Synthetic", "NVDA", closes)
+    security = SecurityPrices(key, "NVDA", "Synthetic", "NVDA", closes, observed_closes_gbp=closes)
     drop = HoldingMove(date=date(2026, 1, 7), ticker="NVDA", quote_currency="GBP", change=-0.15)
     pending = drop.model_copy(update={"date": closes.index[-1].date()})
     review = build_decision_review(
