@@ -230,6 +230,18 @@ test.describe("valuation refresh", () => {
     await expect(page.getByRole("link", { name: "Scenario model" })).toHaveAttribute("aria-current", "location");
   });
 
+  test("a delayed successful scenario bookmark focuses the valuation results", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async route => { await gate; await route.fallback(); });
+    await page.goto("/research?ticker=SYNT&view=valuation&valuationView=scenario");
+    await expect(page.getByRole("heading", { name: "Scenario model", exact: true })).toBeFocused();
+    release();
+    await expect(page.getByRole("heading", { name: "Scenario valuation", exact: true })).toBeFocused();
+  });
+
   test("a model response never replays a completed scenario bookmark after the reader moves to History", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await synthetic(page, false);
