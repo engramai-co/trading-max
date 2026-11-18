@@ -165,3 +165,13 @@ it("keeps the technical score in the same column for stocks and funds on desktop
     ["Today", "Today"], ["Unrealised P&L", "Unrealised"], ["Technical score", "Technical score"], ["Tracking diff.", "Tracking diff."],
   ]);
 });
+
+it("reads a London equity baseline by its research listing", () => {
+  const london = holding("SYN", 100, { researchTicker: "SYN.L" });
+  const valuations = [{ ticker: "SYN", ev5Upside: -0.4 }, { ticker: "SYN.L", ev5Upside: 0.25, baselineModelId: "saved" }] as never;
+  expect(holdingSignals({ holdings: [london], valuations })).toEqual([]);
+  expect(holdingsLedger({ holdings: [london], valuations, signals: [] }).rows[0]).toMatchObject({
+    upside: 0.25, baselineId: "saved", href: "/research?ticker=SYN.L",
+  });
+  expect(holdingsLedger({ holdings: [london, holding("SYN", 60, { researchTicker:"SYN" })], valuations, signals: [] }).rows[0].upside).toBeNull();
+});

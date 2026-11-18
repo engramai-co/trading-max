@@ -9,10 +9,54 @@ decides. A listing either side cannot place is unknown and matches nothing.
 
 from __future__ import annotations
 
-from .calendar import listing_calendar
+from typing import NamedTuple
+
+from trading_max.reference.venues import local_venue_symbol, venue_mic
+
+from .calendar import calendar_name, listing_calendar
 
 US = "US"
 LONDON = "LSE"
+
+
+class ReceiptTerms(NamedTuple):
+    mic: str
+    ordinary_per_receipt: int
+    source: str
+
+
+# US broker bindings use a country-level ID. Receipt terms apply only on the
+# reviewed venue, so disambiguate it before issuing that ID.
+BP_LISTING_SOURCE = (
+    "https://www.bp.com/investors/shareholder-and-dividend-information/share-listing-information"
+)
+REVIEWED_RECEIPTS = {
+    "US:BP": ReceiptTerms("XNYS", 6, BP_LISTING_SOURCE),
+    "US:SHEL": ReceiptTerms(
+        "XNYS",
+        2,
+        "https://www.shell.com/investors/information-for-shareholders/shareholder-faqs.html",
+    ),
+    "US:TSM": ReceiptTerms(
+        "XNYS", 5, "https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf"
+    ),
+    "US:BABA": ReceiptTerms(
+        "XNYS",
+        8,
+        "https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm",
+    ),
+    "US:NOK": ReceiptTerms(
+        "XNYS", 1, "https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf"
+    ),
+    "US:ARM": ReceiptTerms("XNAS", 1, "https://investors.arm.com/node/8281/html"),
+}
+REVIEWED_ORDINARY_SOURCES = {
+    "LSE:BP": BP_LISTING_SOURCE,
+    "XCSE:NOVO-B.CO": "https://annualreport.novonordisk.com/2025/strategic-aspirations/financial-performance.html",
+    "XSTO:VOLV-B.ST": "https://www.volvogroup.com/en/investors/the-volvo-share.html",
+    "XSTO:VOLV-A.ST": "https://www.volvogroup.com/en/investors/the-volvo-share.html",
+}
+EQUAL_DISTRIBUTION_CLASSES = frozenset({"XCSE:NOVO-B.CO", "XSTO:VOLV-A.ST", "XSTO:VOLV-B.ST"})
 
 
 def broker_listing(instrument: str | None) -> str | None:
@@ -32,7 +76,20 @@ def quote_listing(symbol: str | None, exchange: str | None, timezone: str | None
     code = str(symbol or "").strip().upper()
     calendar = listing_calendar(code, exchange, timezone)
     if code.endswith(".L") and len(code) > 2 and calendar == "XLON":
-        return f"{LONDON}:{code.removesuffix('.L')}"
-    if code and "." not in code and calendar == "XNYS":
-        return f"{US}:{code}"
+        listing = f"{LONDON}:{code.removesuffix('.L')}"
+        if listing in REVIEWED_ORDINARY_SOURCES and calendar_name(exchange) != "XLON":
+            return None
+        return listing
+    if code and "." not in code and calendar_name(exchange) == "XNYS":
+        listing = f"{US}:{code}"
+        receipt = REVIEWED_RECEIPTS.get(listing)
+        if receipt and venue_mic(exchange) != receipt.mic:
+            return None
+        return listing
+    # KOSDAQ shares the Korean trading calendar but has its own listing MIC.
+    mic = venue_mic(exchange)
+    if not mic and calendar == "XKRX" and code.endswith(".KQ"):
+        mic = "XKOS"
+    if local_venue_symbol(code, mic or calendar) != code:
+        return f"{calendar}:{code}"
     return None

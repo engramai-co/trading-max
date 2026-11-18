@@ -11,29 +11,9 @@ from exchange_calendars.errors import CalendarError
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.reference.venues import venue_mic
 
-EXCHANGES = {
-    "NMS": "XNYS",
-    "NGM": "XNYS",
-    "NCM": "XNYS",
-    "NYQ": "XNYS",
-    "ASE": "XNYS",
-    "PCX": "XNYS",
-    "NASDAQ": "XNYS",
-    "NYSE": "XNYS",
-    "LSE": "XLON",
-    "LONDON": "XLON",
-    "HKG": "XHKG",
-    "JPX": "XTKS",
-    "TOR": "XTSE",
-    "ASX": "XASX",
-    "GER": "XFRA",
-    "PAR": "XPAR",
-    "AMS": "XAMS",
-}
-
-# Exchanges by the time zone the provider reports, for exchange names it does
-# not give as a code above (for example NasdaqGS or XETRA).
+# Session scheduling can fall back to a time zone when the venue is absent.
 ZONES = {
     "America/New_York": "XNYS",
     "America/Toronto": "XTSE",
@@ -83,7 +63,10 @@ class SessionSchedule(DomainModel):
 
 
 def calendar_name(exchange: str | None) -> str | None:
-    return EXCHANGES.get(str(exchange or "").upper())
+    mic = venue_mic(exchange)
+    if mic == "XKOS":
+        return "XKRX"
+    return "XNYS" if mic in {"XNAS", "XASE", "ARCX"} else mic
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:

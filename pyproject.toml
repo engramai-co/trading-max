@@ -1,6 +1,6 @@
 [project]
 name = "trading-max"
-version = "1.56.0"
+version = "1.57.0"
 description = "Local-first portfolio dashboard, research orchestration API, and artifact store"
 license = "Apache-2.0"
 requires-python = ">=3.12,<3.13"
@@ -19,6 +19,7 @@ Repository = "https://github.com/engramai-co/trading-max"
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.25,<5",
     "pydantic-evals==2.68.0",
     "pytest>=9.1,<10",
     "ruff>=0.16,<1",

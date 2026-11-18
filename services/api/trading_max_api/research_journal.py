@@ -9,9 +9,15 @@ from pathlib import Path
 
 from pydantic import AnyHttpUrl, Field, field_validator
 from trading_max.domain import DomainModel
+from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.facts import fingerprint
-from trading_max.research.valuation_preview import ValuationPreview, ValuationPreviewRequest
+from trading_max.research.valuation_preview import (
+    ValuationPreview,
+    ValuationPreviewRequest,
+    project,
+)
 
+from .dashboard_models import ValuationRow
 from .valuation_assumptions import _atomic_write
 
 
@@ -56,7 +62,12 @@ class ResearchModelSaveRequest(ValuationPreviewRequest):
     reason: str = Field(default="", max_length=4000)
 
 
+class BaselineSelection(DomainModel):
+    model_id: str | None
+
+
 class ResearchJournal(DomainModel):
+    baseline_model_id: str | None = None
     schema_version: int = 1
     ticker: str
     notes: list[ResearchNote] = Field(default_factory=list)
@@ -67,6 +78,7 @@ class ResearchJournalStore:
     def __init__(self, state_root: Path) -> None:
         self.root = state_root / "research-journal"
         self.lock = threading.RLock()
+        self.baselines = SingleFlightCache(capacity=128)
 
     def _path(self, ticker: str) -> Path:
         return self.root / (fingerprint(ticker.upper()) + ".json")
@@ -80,6 +92,52 @@ class ResearchJournalStore:
 
     def _save(self, state: ResearchJournal) -> None:
         _atomic_write(self._path(state.ticker), state.model_dump(mode="json"))
+
+    def set_baseline(self, ticker: str, model_id: str | None) -> ResearchJournal:
+        with self.lock:
+            state = self.load(ticker)
+            if model_id is not None and not any(
+                m.id == model_id and m.preview.scenarios for m in state.models
+            ):
+                raise KeyError("research-model-not-found")
+            if state.baseline_model_id != model_id:
+                state.baseline_model_id = model_id
+                self._save(state)
+            return state
+
+    def overview_valuation(self, row: ValuationRow) -> ValuationRow:
+        """Overlay only the overview reading; preserve the immutable batch projection."""
+        try:
+            stat = self._path(row.ticker).stat()
+        except FileNotFoundError:
+            return row
+
+        def baseline():
+            journal = self.load(row.ticker)
+            saved = next((m for m in journal.models if m.id == journal.baseline_model_id), None)
+            if saved is None:
+                return None
+            model = saved.preview
+            value = project(
+                model.basis, model.scenarios["base"].inputs, 5, model.formula_version
+            ).value
+            return saved.id, model.basis.currency, value
+
+        result = self.baselines.get_or_compute(
+            (row.ticker, stat.st_ino, stat.st_mtime_ns), baseline
+        )
+        if result is None:
+            return row
+        model_id, currency, value = result
+        if currency != row.currency or row.spot <= 0:
+            value = None
+        return row.model_copy(
+            update={
+                "ev5": value,
+                "ev5_upside": value / row.spot - 1 if value is not None else None,
+                "baseline_model_id": model_id,
+            }
+        )
 
     def save_note(
         self, ticker: str, content: ResearchNoteInput, note_id: str | None = None

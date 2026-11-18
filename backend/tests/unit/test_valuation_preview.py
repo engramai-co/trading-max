@@ -69,7 +69,7 @@ def test_preview_does_not_accept_a_changed_basis_or_enterprise_cashflow():
 
 def test_negative_cashflows_do_not_create_a_false_unique_implied_growth():
     basis, request = fixture()
-    basis = basis.model_copy(update={"start_margin": -0.5})
+    basis = basis.model_copy(update={"start_margin": -0.5, "opening_cash": 100})
     negative = request.scenarios["base"].model_copy(update={"target_fcf_margin": -0.2})
     request = request.model_copy(
         update={"scenarios": dict.fromkeys(("bear", "base", "bull"), negative)}
@@ -77,7 +77,8 @@ def test_negative_cashflows_do_not_create_a_false_unique_implied_growth():
     result = preview(basis, request)
     assert result.implied_growth is None
     assert result.implied_growth_bound is None
-    assert result.implied_growth_reason
+    assert result.reverse_metric == "target-margin"
+    assert result.reverse_value is not None
     projection = result.scenarios["base"]
     assert projection.value == 0
     assert (
@@ -86,3 +87,129 @@ def test_negative_cashflows_do_not_create_a_false_unique_implied_growth():
         + projection.equity_floor_adjustment
         == pytest.approx(projection.value)
     )
+
+
+@pytest.mark.parametrize("years", [5, 10])
+def test_residual_income_equals_dividends_plus_terminal_price(years):
+    basis, _ = fixture()
+    basis = basis.model_copy(update={"family": "residual-income", "book_per_share": 100})
+    assumptions = ScenarioInputs(initial_roe=0.20, payout=0.5, terminal_pb=1.2, discount_rate=0.10)
+    request = ValuationPreviewRequest(
+        horizon=years, scenarios=dict.fromkeys(("bear", "base", "bull"), assumptions)
+    )
+    result = preview(basis, request)
+    book = 100
+    discounted_dividends = 0
+    for i in range(years):
+        earnings = book * (0.20 - i * 0.10 / (years - 1))
+        discounted_dividends += earnings * 0.5 / 1.10 ** (i + 1)
+        book += earnings * 0.5
+    expected = discounted_dividends + 1.2 * book / 1.10**years
+    assert result.scenarios["base"].value == pytest.approx(expected)
+    assert result.scenarios["base"].years[-1].roe == pytest.approx(0.1)
+    assert result.sensitivity[12].value == pytest.approx(expected)
+    recovered = preview(basis.model_copy(update={"spot": expected}), request)
+    assert recovered.reverse_metric == "initial-roe"
+    assert recovered.reverse_value == pytest.approx(0.2)
+
+
+@pytest.mark.parametrize("family", ["cash-flow", "net-income"])
+def test_flat_operating_model_golden(family):
+    basis, _ = fixture()
+    basis = basis.model_copy(update={"family": family, "start_margin": 0.1})
+    params = ScenarioInputs(
+        discount_rate=0.1, target_fcf_margin=0.1, share_cagr=0, revenue_cagr=0, exit_fcf_multiple=10
+    )
+    reading = preview(
+        basis, ValuationPreviewRequest(scenarios=dict.fromkeys(("bear", "base", "bull"), params))
+    )
+    # Five payments of ten per share followed by a terminal hundred.
+    assert reading.scenarios["base"].value == pytest.approx(100)
+    assert reading.sensitivity[12].value == pytest.approx(100)
+
+
+def test_cash_deficit_issues_shares_once_and_legacy_replays_the_original_path():
+    basis, _ = fixture()
+    basis = basis.model_copy(
+        update={"revenue": 100, "shares": 10, "spot": 10, "opening_cash": 5, "start_margin": -0.4}
+    )
+    params = ScenarioInputs(
+        discount_rate=0.1,
+        target_fcf_margin=0.2,
+        share_cagr=0,
+        revenue_cagr=0,
+        exit_fcf_multiple=10,
+        ramp_years=4,
+    )
+    request = ValuationPreviewRequest(scenarios=dict.fromkeys(("bear", "base", "bull"), params))
+    reading = preview(basis, request)
+    y = reading.scenarios["base"].years
+    assert [r.free_cashflow for r in y] == pytest.approx([-25, -10, 5, 20, 20])
+    assert [r.financing or 0 for r in y] == pytest.approx([20, 10, 0, 0, 0])
+    assert [r.shares for r in y] == pytest.approx([12, 13, 13, 13, 13])
+    expected = -5 / 12 / 1.1 + 5 / 13 / 1.1**3 + 20 / 13 / 1.1**4 + 220 / 13 / 1.1**5
+    assert reading.scenarios["base"].value == pytest.approx(expected)
+    assert reading.reverse_metric == "target-margin"
+    from trading_max.research.valuation_preview import LEGACY_VERSION
+
+    old = preview(basis, request.model_copy(update={"formula_version": LEGACY_VERSION}))
+    assert old.scenarios["base"].years[0].free_cashflow == pytest.approx(-20)
+    assert old.scenarios["base"].years[0].shares == 10
+    assert old.implied_growth_reason == "non-monotonic-or-flat-cashflows"
+
+
+def test_reverse_only_zero_revenue_has_no_scenario_range():
+    basis, request = fixture()
+    result = preview(basis.model_copy(update={"revenue": 0}), request)
+    assert result.scenarios == {} and result.sensitivity == []
+    assert result.reverse_metric == "year-five-revenue"
+    assert result.reverse_value == pytest.approx(20 * 100 * (0.99 * 1.1) ** 5 / (0.2 * 15))
+
+
+def test_financing_can_make_three_target_margins_fit_the_same_price():
+    from trading_max.research.valuation_preview import project
+
+    basis, _ = fixture()
+    basis = basis.model_copy(
+        update={
+            "revenue": 1,
+            "shares": 1,
+            "spot": 0.0008,
+            "opening_cash": 0.16,
+            "start_margin": -0.31,
+        }
+    )
+    params = ScenarioInputs(
+        revenue_cagr=-0.056,
+        share_cagr=-0.05,
+        ramp_years=5,
+        discount_rate=0.175,
+        exit_fcf_multiple=12,
+        target_fcf_margin=0.2,
+    )
+    for low, high in [(0.142, 0.143), (0.386, 0.387), (0.417, 0.418)]:
+
+        def gap(x):
+            return (
+                project(basis, params.model_copy(update={"target_fcf_margin": x}), 5).value
+                - basis.spot
+            )
+
+        assert gap(low) * gap(high) < 0
+    result = preview(
+        basis, ValuationPreviewRequest(scenarios=dict.fromkeys(("bear", "base", "bull"), params))
+    )
+    assert result.reverse_value is None and result.reverse_bound is None
+    assert result.reverse_reason == "target-margin-not-unique"
+
+
+def test_terminal_dependence_is_the_full_discounted_sale_even_at_book():
+    from trading_max.research.valuation_preview import project
+
+    basis, _ = fixture()
+    basis = basis.model_copy(update={"family": "residual-income", "book_per_share": 100})
+    inputs = ScenarioInputs(initial_roe=0.2, payout=0, terminal_pb=1, discount_rate=0.1)
+    p = project(basis, inputs, 5)
+    assert p.terminal_contribution == pytest.approx(1)
+    assert p.terminal_premium_present_value == 0
+    assert p.terminal_present_value == pytest.approx(p.years[-1].closing_book / 1.1**5)

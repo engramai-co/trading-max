@@ -105,7 +105,7 @@ function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
     upside: (
       <>
         <Flag facts={row.facts} kinds={["upside"]} />
-        {percent(row.upside, true, 0)}
+        <span title={row.baselineId ? t("已保存基准 · 五年中性估值","Saved baseline · five-year base value") : undefined}>{percent(row.upside, true, 0)}</span>
       </>
     ),
   };

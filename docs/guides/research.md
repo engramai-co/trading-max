@@ -123,29 +123,34 @@ narrow screen to jump directly to a heading.
 
 ## Work through a valuation
 
-1. **Read the starting figures and historical valuation.** Compare trailing
-   P/E and its rank, the growth implied by the price and the base scenario.
-   Switch the history between trailing P/E, NTM P/E and filing-date P/S.
-2. **Compare the scenarios.** Bear, base, and bull are sets of
-   assumptions. Their gap to the current price is a model comparison, not a
-   forecast of your investment return.
-3. **Choose five or ten years.** This changes the explicit forecast horizon,
-   and recalculates through the same model.
-4. **Change one assumption.** Select a scenario and then growth, cash-flow
-   margin, cost of equity, terminal multiple, or share-count change. Enter
-   percentages as displayed—for example, 5 means 5%, not 0.05%.
-5. **Inspect sensitivity and the worksheet.** Sensitivity shows how the value
-   changes when assumptions change together. The annual projection shows what
-   revenue, cash flow, and shares the assumptions produce.
-6. **Save a version and a reason.** A saved model preserves its inputs and
-   evidence. Editing a model creates a new saveable state; it does not rewrite
-   an older version. Find them under Journal → Model versions.
+1. **Read the starting figures.** The top row shows trailing P/E and its
+   historical rank, the operating assumption implied by the price, and the
+   base scenario. The implied input can be revenue growth, target margin or
+   year-one ROE. A bound shows where the price falls outside the tested range.
+   A dash and “No unique estimate” mean the model could not isolate one input.
+   Companies reporting zero revenue show the year-five revenue required under
+   the stated margin and exit multiple.
+2. **Inspect historical valuation.** Switch between trailing P/E, NTM P/E
+   and filing-date P/S. The section index leads to the scenario model,
+   sensitivity and worksheet when projections are available.
+3. **Compare the scenarios.** Bear, base and bull use different assumptions
+   over five or ten years. Compare their per-share values with the current
+   price, and check the statement period and share basis under Operating reference.
+4. **Adjust assumptions.** The desk selects equity cash flow for operating
+   companies, net income for brokers and trading platforms, and residual income
+   for banks and insurers. Choose a different model in **Adjust assumptions**.
+   For residual income, edit year-one ROE, payout, cost of equity and terminal
+   P/B. Enter percentages as displayed, such as 5 for 5%.
+5. **Inspect sensitivity and the worksheet.** The grid varies growth or ROE
+   against cost of equity. The worksheet shows annual projected amounts and
+   the contribution of terminal value.
+6. **Save a version and a reason.** Each version preserves its inputs and
+   evidence. Under **Journal → Model versions**, set a saved version as the
+   baseline to compare its five-year base value with the latest batch price
+   in Overview. Clearing the baseline restores the automatic valuation.
 
-The current method discounts an equity cash-flow proxy. It is not a verified
-enterprise-value model, and it does not simply subtract debt from its output.
-Banks and other unsupported businesses can be unavailable. Analyst price
-targets do not fill missing scenario values. See the
-[model contract](../architecture/valuation-model.md) for the exact method.
+The model contract describes the formulas, period selection, currency
+conversion and share-unit checks. [Model contract](../architecture/valuation-model.md)
 
 For covered US listings, **Trailing P/E** pairs the Yahoo daily close (adjusted
 for splits, excluding dividends) with SEC Companyfacts diluted EPS on the same
