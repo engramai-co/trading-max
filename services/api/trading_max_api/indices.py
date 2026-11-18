@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import statistics
@@ -386,6 +387,7 @@ class IndexService:
         self._ndx_closes: tuple[str, bool, dict[str, SparkSeries]] | None = None
         self.eodhd = eodhd
         self.eodhd_configuration = eodhd_configuration
+        self._reading_histories: dict[str, IndexHistory] = {}
         self._histories: dict[tuple[str, str, bool, int], tuple[datetime, IndexHistory]] = {}
 
     def catalog(self) -> list[IndexIdentity]:
@@ -677,6 +679,12 @@ class IndexService:
         self._markets[scope] = (now, result)
         return result
 
+    def reading_history(self, index_id: str, series_id: str) -> IndexHistory | None:
+        """Resolve only the exact locally observed series. Never fetch from a provider."""
+        with self._lock:
+            result = self._reading_histories.get(series_id)
+            return result if result and result.index.id == index_id else None
+
     def history(self, spec: IndexSpec, period: IndexRange, gbp: bool) -> IndexHistory:
         configuration = (
             self.eodhd_configuration() if spec.eodhd and self.eodhd_configuration else None
@@ -702,6 +710,12 @@ class IndexService:
                 return IndexHistory(index=index_identity(spec), range=period, currency=currency)
             if not result.points and cached and cached[1].points:
                 result = cached[1].model_copy(update={"state": "stale"})
+            if result.points and not gbp and not result.published_series_id:
+                digest = hashlib.sha256(result.model_dump_json().encode()).hexdigest()[:20]
+                result.published_series_id = digest
+                self._reading_histories[digest] = result
+                if len(self._reading_histories) > 64:
+                    del self._reading_histories[next(iter(self._reading_histories))]
             self._histories[key] = (now, result)
             return result
 

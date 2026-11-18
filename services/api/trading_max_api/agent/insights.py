@@ -13,6 +13,7 @@ from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
+from trading_max.research.news import NEWS_KEY, web_url
 
 from ..dashboard import _benchmark_series
 from ..projections.day_change import measures_broker_observation, within_trading_days
@@ -96,6 +97,7 @@ class ReviewArgs(Scoped, Paged):
 
 
 class MomentsArgs(Scoped):
+    index_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")] | None = None
     ticker: Ticker
     start: CalendarDay
     end: CalendarDay
@@ -524,9 +526,59 @@ def dated_events(
     return events, keys, issues
 
 
+def moment_headlines(read: _Read, ticker: str) -> list[dict]:
+    stored = _mapped(_mapped((read.read(NEWS_KEY) or {}).get("securities")).get(ticker))
+    return [
+        row
+        for row in _rows(stored.get("items"))
+        if row.get("publisher")
+        and row.get("title")
+        and web_url(row.get("url"))
+        and _iso(row.get("date"))
+    ]
+
+
+def news_events(read: _Read, ticker: str) -> list[dict]:
+    return [
+        {"date": row["date"][:10], "kind": "news", "reference": str(row.get("id") or row["url"])}
+        for row in moment_headlines(read, ticker)
+    ]
+
+
 def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     read = _Read(deps, "price_key_moments", args, args.scope)
     codes = read.account_codes(args.scope)
+    if args.index_id:
+        history = (
+            deps.index_history(args.index_id, args.published_series_id)
+            if deps.index_history and args.published_series_id
+            else None
+        )
+        if (
+            not history
+            or history.display_interval != "1d"
+            or (history.index.symbol or "INDEX") != args.ticker
+        ):
+            return read.missing("displayed_index_series_unavailable")
+        bars = [{"date": p.at.date().isoformat(), "close": p.value} for p in history.points]
+        events = news_events(read, args.ticker) if history.index.symbol else []
+        if history.index.kind == "etf-price":
+            security_events, keys, _ = dated_events(read, args, codes)
+            events.extend(security_events)
+        else:
+            keys = []
+        return read.result(
+            data={
+                "ticker": args.ticker,
+                "start": args.start,
+                "end": args.end,
+                "interval": "1d",
+                "basis": "observed_index_series",
+                "published_series_id": args.published_series_id,
+                "items": key_moments(bars, events, args.start, args.end),
+            },
+            keys=[NEWS_KEY, *keys],
+        )
     if deps.price_series is None or deps.manifest is None:
         return read.missing("published_daily_bars_unavailable")
     try:
@@ -551,6 +603,8 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     events, keys, issues = dated_events(
         read, args.model_copy(update={"ticker": series.ticker}), codes
     )
+    events.extend(news_events(read, series.ticker))
+    keys.append(NEWS_KEY)
     moments = key_moments(bars, events, args.start, args.end)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)
     if not has_bars:

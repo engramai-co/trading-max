@@ -1372,6 +1372,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         holding_fx_split,
         price_key_moments,
     )
+    from .research_tools import research_earnings, research_headline, research_position
 
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
@@ -1390,6 +1391,9 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (dated_exposure, 5),
         (decision_timing_and_habits, 8),
         (price_key_moments, 8),
+        (research_earnings, 8),
+        (research_position, 8),
+        (research_headline, 8),
         (news_and_events, 8),
         (upcoming_events, 8),
     ):

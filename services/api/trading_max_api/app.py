@@ -179,7 +179,9 @@ def create_app(
         bind_model=bind_assistant_model,
         bind_background_model=partial(bind_assistant_model, background=True),
         deps_for_run=AssistantDepsFactory(
-            store=store, bind_price_series=research.bind_price_series
+            store=store,
+            bind_price_series=research.bind_price_series,
+            index_history=lambda index, series: app.state.indices.reading_history(index, series),
         ).for_run,
         check_ready=assistant_ready,
     )

@@ -10,6 +10,7 @@ from typing import Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from ..dashboard_models import ResearchPriceSeries
+from ..index_models import IndexHistory
 from ..models import SnapshotManifest
 
 AccountScope = Literal["invest", "isa", "broker_total", "household", "cfd"]
@@ -46,6 +47,7 @@ class AssistantDeps:
     page_hint: str | None = None
     captured_at: datetime | None = None
     price_series: PublishedPriceReader | None = None
+    index_history: Callable[[str, str], IndexHistory | None] | None = None
 
     @property
     def snapshot_id(self) -> str | None:
@@ -59,6 +61,7 @@ class AssistantDepsFactory:
     store: AssistantSnapshotSource
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
+    index_history: Callable[[str, str], IndexHistory | None] | None = None
     bind_price_series: Callable[[], PublishedPriceReader] | None = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
@@ -68,6 +71,7 @@ class AssistantDepsFactory:
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
         return AssistantDeps(
+            index_history=self.index_history,
             price_series=self.bind_price_series() if self.bind_price_series else None,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),

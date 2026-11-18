@@ -112,6 +112,7 @@ class GlobalMarketContribution(ApiModel):
 
 
 class IndexHistory(ApiModel):
+    published_series_id: str | None = None
     index: IndexIdentity
     range: IndexRange
     points: list[IndexPoint] = Field(default_factory=list)

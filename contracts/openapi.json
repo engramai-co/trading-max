@@ -11631,6 +11631,17 @@
             "title": "Points",
             "type": "array"
           },
+          "publishedSeriesId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedseriesid"
+          },
           "range": {
             "enum": [
               "1D",
@@ -31661,6 +31672,23 @@
               ],
               "title": "Scope",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "index_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[a-z0-9-]{1,64}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Index Id"
             }
           },
           {

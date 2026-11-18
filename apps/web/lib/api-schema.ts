@@ -5172,6 +5172,8 @@ export interface components {
             maxDrawdown?: number | null;
             /** Points */
             points?: components["schemas"]["IndexPoint"][];
+            /** Publishedseriesid */
+            publishedSeriesId?: string | null;
             /**
              * Range
              * @enum {string}
@@ -13369,6 +13371,7 @@ export interface operations {
             query: {
                 /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
                 scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                index_id?: string | null;
                 ticker: components["schemas"]["Ticker"];
                 start: components["schemas"]["CalendarDay"];
                 end: components["schemas"]["CalendarDay"];
