@@ -208,8 +208,14 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   const subject = [str(parent.ticker) || str(parent.name) || (tool==="global_map" ? str(parent.market).toUpperCase() : "") || str(data.name) || str(data.ticker) || (freshness ? "" : str(parent.dataset)), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
     .filter(Boolean).join(" · ");
   const {observed_intervals: observed, total_intervals: total} = data;
-  const intervalCoverage = (tool === "daily_returns" || tool === "selected_daily") &&
-    typeof observed === "number" && typeof total === "number" && observed < total
-      ? locale === "zh" ? `已观测 ${observed}/${total} 个区间` : `${observed} of ${total} intervals observed` : "";
-  return [subject, formatted.join(freshness ? " · " : " "), period === formatted[1] ? "" : period, intervalCoverage || (limited || parent.status === "partial" ? limitedText : "")].filter(Boolean).join(" · ");
+  const daily = tool === "daily_returns" || tool === "selected_daily";
+  let coverageText = limited || parent.status === "partial" ? limitedText : "";
+  if (daily && row.group === "window_benchmarks" && start && end) {
+    // The tool publishes a window benchmark only when both selected closes are priced.
+    coverageText = word(["both endpoint prices observed", "已观测到两个端点价格"], locale);
+  } else if (daily && (field === "window_twr_fraction" || datedItem) && typeof observed === "number" && typeof total === "number") {
+    coverageText = observed < total
+      ? word([`${observed} of ${total} intervals observed`, `已观测 ${observed}/${total} 个区间`], locale) : "";
+  }
+  return [subject, formatted.join(freshness ? " · " : " "), period === formatted[1] ? "" : period, coverageText].filter(Boolean).join(" · ");
 }

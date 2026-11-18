@@ -257,6 +257,19 @@ it("reads the selected calendar row's title, Tokyo day and exact source", () => 
   });
 });
 
+it("reports coverage for the cited metric on a partially observed portfolio",()=>{
+  const data={window_start:"2026-01-02",window_end:"2026-01-08",window_twr_fraction:0.155,
+    window_benchmarks:{VOO:0.08},benchmark_currency:"USD",benchmark_basis:"auto_adjusted_close",observed_intervals:2,total_intervals:4};
+  for(const tool of ["selected_daily","daily_returns"]){
+    const output={data,status:"partial",quality:{issues:["daily_twr_missing"]}};
+    const benchmark=verifiedLines(fieldReply(tool,output,"/data/window_benchmarks/VOO"),"en")[0].text;
+    expect(benchmark).toContain("+8.00%");
+    expect(benchmark).toContain("both endpoint prices observed");
+    expect(benchmark).not.toMatch(/2 of 4|limited coverage/);
+    expect(verifiedLines(fieldReply(tool,output,"/data/window_twr_fraction"),"en")[0].text).toContain("2 of 4 intervals");
+  }
+});
+
 it("carries the fund observation in both reading and chat weight citations",()=>{
   const args={dimension:"sector",category:"Information Technology",snapshotId:"older",benchmarkSource:"SWDA",benchmarkAsOf:"2026-02-02",benchmarkObservation:"bw_0123456789abcdef"};
   const reading={tool:"exposure_benchmark",source:"exposure" as const,evidenceId:"ev_weight",arguments:args};
