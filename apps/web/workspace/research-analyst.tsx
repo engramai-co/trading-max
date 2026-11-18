@@ -4,25 +4,23 @@ import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Group, Select, TextInput } from "@mantine/core";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
-  analystVerdict,
   nextEarningsDate,
   normalizeRatingRow,
   ratingKeys,
   recommendationChange,
 } from "./analyst-data";
-import { Plot } from "./charts";
+import { analystSections, DeferredPlot, ResearchReading } from "./research-reading";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { readingText, type Reading, type ReadingItem } from "./chart-readout";
 import { fixed, readingTone, signedNumber, signedPercent, telling } from "./reading-format";
 import { DataBasis } from "./reading-card";
-import { currency, number, object, objects, percent, safeUrl, str, tone } from "@/workspace/data";
+import { currency, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Metric, Panel, Segments, TextLink, useCopy } from "./foundation";
+import { Empty, Panel, TextLink, useCopy } from "./foundation";
 import { ratingLabel } from "./market-terms";
-import { exchangeDate } from "./research-clock";
 import { filingTitle } from "./research-filings";
 import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
@@ -33,105 +31,29 @@ export function AnalystView({
   data,
   revision,
   price,
+  earningsBrief,
 }: {
   data: ResearchLensSnapshot;
   revision?: string | null;
   price?: ResearchPrice;
+  earningsBrief?: ReactNode;
 }) {
-  const t = useCopy(),
-    { params, update } = useRouteState("push");
-  const section = params.get("analystView") ?? "forecast";
-  return (
-    <>
-      {data.analyst && <AnalystVerdict data={data} price={price} />}
-      <Segments
-        label={t("预期与事件内容", "Estimates & events content")}
-        value={section}
-        onChange={(v) => update({ analystView: v })}
-        options={[
-          { value: "forecast", label: t("业绩预期", "Earnings estimates") },
-          { value: "ratings", label: t("评级与目标价", "Ratings & targets") },
-          { value: "events", label: t("财报事件", "Earnings events") },
-        ]}
-      />
-      {section === "events" ? (
-        <EarningsEvents data={data} />
-      ) : !data.analyst ? (
-        <Panel>
-          <Empty title={t("暂无分析师覆盖", "No analyst coverage")} />
-        </Panel>
-      ) : section === "ratings" ? (
-        <>
-          <AnalystExpectations data={data} revision={revision} price={price} />
-          <RatingsAndActions data={data} />
-        </>
-      ) : (
-        <>
-          <AnalystEstimates data={data} />
-          <EpsTimeline data={data} />
-          <EstimateRevisions data={data} />
-        </>
-      )}
-    </>
-  );
-}
-
-const consensusLabels: Record<string, [string, string]> = {
-  strongbuy: ["强烈买入", "Strong buy"],
-  buy: ["买入", "Buy"],
-  hold: ["持有", "Hold"],
-  sell: ["卖出", "Sell"],
-  strongsell: ["强烈卖出", "Strong sell"],
-  underperform: ["跑输", "Underperform"],
-};
-
-/** One line of conclusions before the evidence below it. */
-function AnalystVerdict({ data, price }: { data: ResearchLensSnapshot; price?: ResearchPrice }) {
   const t = useCopy();
-  const { locale } = useLocale();
-  const code = price?.currency ?? data.context?.quote.currency ?? "";
-  const now = new Date();
-  const verdict = analystVerdict(
-    object(data.analyst),
-    price?.price ?? data.context?.quote.price ?? object(data.market).spot,
-    exchangeDate(now, data.context?.quote.timezone),
-  );
-  const nextReport = nextEarningsDate(data, now);
-  const label = verdict.consensus ? consensusLabels[verdict.consensus] : null;
-  const up = verdict.revisionsUp30;
-  const down = verdict.revisionsDown30;
-  return (
-    <Panel className="mx-analyst-verdict">
-      <div className="mx-metric-grid">
-        <Metric
-          label={t("分析师共识", "Analyst consensus")}
-          value={label ? t(label[0], label[1]) : "—"}
-          note={verdict.analysts ? (locale === "zh" ? `${verdict.analysts} 位分析师` : `${verdict.analysts} ${verdict.analysts === 1 ? "analyst" : "analysts"}`) : undefined}
-        />
-        <Metric
-          label={t("中位目标价", "Median target")}
-          value={percent(verdict.targetChange, true, 1)}
-          note={verdict.targetMedian != null ? currency(verdict.targetMedian, code || "USD", 2) : undefined}
-        />
-        <Metric
-          label={t("本季 EPS 预期 · 90 天", "Quarter EPS estimate · 90 days")}
-          value={percent(verdict.estimateChange90, true, 1)}
-          tone={tone(verdict.estimateChange90)}
-          note={up != null && down != null
-            ? (locale === "zh" ? `近 30 天上修 ${up} · 下修 ${down}` : `30 days: ${up} up · ${down} down`)
-            : undefined}
-        />
-        <Metric
-          label={t("下次财报", "Next earnings")}
-          value={nextReport ? formatCalendarDate(nextReport, locale) : "—"}
-          note={verdict.lastSurprise != null
-            ? (verdict.lastSurprise >= 0 ? t("上季超预期 ", "Last quarter beat by ") : t("上季低于预期 ", "Last quarter missed by "))
-              + percent(Math.abs(verdict.lastSurprise), false, 1)
-            : undefined}
-        />
-      </div>
-    </Panel>
-  );
+  return <ResearchReading sections={analystSections} parameter="analystView" before={earningsBrief}>
+    <section id="research-ratings">
+      <h2>{t("评级与目标价", "Ratings & targets")}</h2>
+      {data.analyst ? <AnalystExpectations data={data} revision={revision} price={price} />
+        : <Panel><Empty title={t("暂无分析师覆盖", "No analyst coverage")} /></Panel>}
+      <RatingHistory data={data} />
+    </section>
+    <div id="research-forecast">
+      <AnalystEstimates data={data} />
+      <EpsTimeline data={data} />
+      <EstimateRevisions data={data} />
+    </div>
+    <div id="research-events"><EarningsEvents data={data} /></div>
+    <div id="research-actions"><InstitutionalActions data={data} /></div>
+  </ResearchReading>;
 }
 
 /** Quarter ends read as month and year; estimates keep their marker. */
@@ -216,7 +138,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
         )}</DataBasis>
       </>}
     >
-      {rows.length > 1 ? <Plot
+      {rows.length > 1 ? <DeferredPlot
         research
         height={220}
         label={t("季度 EPS 实际与预期", "Reported and estimated quarterly EPS")}
@@ -392,7 +314,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
         />
       }
     >
-      <Plot
+      <DeferredPlot
         height={200}
         label={t(
           "同一财期的 EPS 预期修订",
@@ -458,24 +380,11 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
   );
 }
 
-function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
+function RatingHistory({ data }: { data: ResearchLensSnapshot }) {
   const t = useCopy();
   const { locale } = useLocale();
   const colours = useChartColours();
-  const [firm, setFirm] = useState(""),
-    [action, setAction] = useState("all");
-  const a = object(data.analyst),
-    recommendations = objects(a.recommendations)
-      .map(normalizeRatingRow)
-      .reverse();
-  const changes = objects(a.upgradesDowngrades)
-    .map(recommendationChange)
-    .sort((a, b) => b.date.localeCompare(a.date));
-  const rows = changes.filter(
-    (r) =>
-      r.firm.toLowerCase().includes(firm.toLowerCase()) &&
-      (action === "all" || r.action === action),
-  );
+  const recommendations = objects(object(data.analyst).recommendations).map(normalizeRatingRow).reverse();
   const labels = [
     t("强烈买入", "Strong buy"),
     t("买入", "Buy"),
@@ -512,11 +421,10 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
       spoken: [ratingRows(index)],
     };
   };
-  return (
-    <>
-      {recommendations.length > 0 && (
-        <Panel title={t("评级分布历史", "Historical rating distribution")}>
-          <Plot
+  if (!recommendations.length) return null;
+  return <details className="mx-chart-data mx-reading-detail">
+          <summary>{t("评级分布历史", "Historical rating distribution")}</summary>
+          <DeferredPlot
             height={260}
             label={t(
               "各类评级的分析师数量",
@@ -570,10 +478,25 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
               ]}
             />
           </details>
-        </Panel>
-      )}
+        </details>;
+}
+
+function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const [firm, setFirm] = useState(""),
+    [action, setAction] = useState("all");
+  const changes = objects(object(data.analyst).upgradesDowngrades)
+    .map(recommendationChange)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const rows = changes.filter(
+    (r) =>
+      r.firm.toLowerCase().includes(firm.toLowerCase()) &&
+      (action === "all" || r.action === action),
+  );
+  return (
       <Panel
-        title={t("机构行动", "Analyst actions")}
+        title={t("机构行动", "Institutional actions")}
         action={
           <Group gap="xs">
             <TextInput
@@ -608,6 +531,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
         }
       >
         <EvidenceTable
+          compactRecords
           label={t("机构行动记录", "Analyst action records")}
           rows={rows}
           columns={[
@@ -632,7 +556,6 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
           {rows.length} {rows.length === 1 ? t("条记录", "record") : t("条记录", "records")}
         </span>
       </Panel>
-    </>
   );
 }
 
@@ -662,6 +585,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
         />
       ) : (
         <EvidenceTable
+          compactRecords
           label={t("财报日历", "Earnings calendar")}
           rows={selected ? [selected] : rows}
           columns={[

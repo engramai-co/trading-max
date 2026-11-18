@@ -113,10 +113,19 @@ buy or sell instruction.
 the history window, mean or median, and years to compare. Check sample counts:
 an incomplete month is excluded and a short history can change the result.
 
+## Read expectations and events
+
+The ratings section puts individual firms’ dated targets on the 12-month price
+chart. The range at its right shows the current target snapshot. The page
+continues with earnings estimates, the earnings calendar and institutional
+actions. Use the section index beside the page or the strip at the top on a
+narrow screen to jump directly to a heading.
+
 ## Work through a valuation
 
-1. **Check the operating reference.** Review revenue, cash flow, shares,
-   currency, and source period. If the model is unavailable, read its reason.
+1. **Read the starting figures and historical valuation.** Compare trailing
+   P/E and its rank, the growth implied by the price and the base scenario.
+   Switch the history between trailing P/E, NTM P/E and filing-date P/S.
 2. **Compare the scenarios.** Bear, base, and bull are sets of
    assumptions. Their gap to the current price is a model comparison, not a
    forecast of your investment return.
@@ -152,7 +161,7 @@ Switch to **Mean ±1σ** for the mean and one population standard deviation.
 The rank beside the latest close counts valid daily observations at or below
 that multiple. Both references require 60 valid closes. Hover, tap, or use the
 arrow keys on the chart to read its dated inputs. The annual P/E filing points
-remain available under the historical valuation reference.
+remain available under **Valuation at disclosure** in historical valuation.
 
 ## Read options without confusing observations and estimates
 

@@ -174,7 +174,7 @@ export function CompanyOverview({
           title={
             <LensTitle
               label={t("近期披露与预期", "Disclosures & expectations")}
-              onOpen={() => update({ view: "analyst" })}
+              onOpen={() => update({ view: "analyst", analystView: "forecast" })}
             />
           }
         >

@@ -462,12 +462,12 @@ button.mx-text-link {
   padding-right: 26px;
 }
 .mx-consensus-verdict {
-  margin-top: 22px;
-  text-align: center;
+  margin-top: 12px;
+  text-align: start;
 }
 .mx-consensus-verdict strong {
   display: block;
-  color: var(--mx-muted);
+  color: var(--mx-ink);
   font-size: 26px;
   font-weight: 550;
   letter-spacing: -0.6px;
@@ -523,7 +523,7 @@ button.mx-text-link {
   display: flex;
   gap: 12px;
   align-items: flex-end;
-  justify-content: space-between;
+  justify-content: flex-start;
   margin-bottom: 22px;
 }
 .mx-target-summary strong {
@@ -546,7 +546,7 @@ button.mx-text-link {
 }
 .mx-target-chart-heading {
   display: grid;
-  grid-template-columns: 65% 35%;
+  grid-template-columns: minmax(0, 1fr) auto;
   font-size: 12px;
   color: var(--mx-muted);
 }
@@ -561,7 +561,7 @@ button.mx-text-link {
   position: absolute;
   top: 16px;
   bottom: 28px;
-  left: 65%;
+  right: 80px;
   border-left: 1px solid var(--mx-border);
   pointer-events: none;
 }
@@ -569,7 +569,7 @@ button.mx-text-link {
   position: absolute;
   z-index: 1;
   left: 42px;
-  width: calc(61% - 42px);
+  width: calc(100% - 130px);
   top: 80px;
   padding: 12px 4px;
   font-size: 12px;

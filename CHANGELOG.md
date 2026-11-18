@@ -4,6 +4,10 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
+- Estimates & events opens with ratings and targets on the 12-month price chart. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
+
 ## [1.54.0] - 2026-11-18
 
 ### Added
