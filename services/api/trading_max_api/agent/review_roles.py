@@ -306,7 +306,7 @@ def targets(job: JobRecord, read: RoleTools):
 class DecisionRole(PageRole):
     @property
     def cache_id(self):
-        return "observed-prices:" + super().cache_id
+        return "verified-quote-units:" + super().cache_id
 
 
 REVIEW_ROLES = (

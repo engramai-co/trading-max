@@ -40,7 +40,7 @@ from trading_max.analytics.decision_prices import SecurityPrices
 from trading_max.analytics.review_evidence import HoldingMove
 from trading_max.research.calendar import market_calendar
 
-CALCULATION_VERSION = "decisions-v7"
+CALCULATION_VERSION = "decisions-v8"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
 MAX_ROUND_TRIPS = 500

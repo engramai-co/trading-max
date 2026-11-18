@@ -86,6 +86,7 @@ def _review_from_quotes(
         )
         if dividends and symbol in dividends:
             frame["Dividends"] = dividends[symbol].reindex(frame.index, fill_value=0.0)
+        frame.attrs.update(quotes.attrs)
         if symbol in _EXCHANGES:
             frame.attrs["exchange"] = _EXCHANGES[symbol]
         return frame
@@ -998,7 +999,9 @@ def test_cache_reads_the_exchange_from_the_history_request_itself(tmp_path, monk
         def history(self, *, start: str, end: str, **_: object) -> pd.DataFrame:
             requests.append("history " + self.symbol)
             # yfinance keeps the chart response's metadata from this request.
-            self._price_history = SimpleNamespace(_history_metadata={"exchangeName": "NMS"})
+            self._price_history = SimpleNamespace(
+                _history_metadata={"exchangeName": "NMS", "currency": "USD"}
+            )
             last = pd.Timestamp(end) - pd.Timedelta(days=1)
             index = pd.bdate_range(start, last, tz="America/New_York")
             return pd.DataFrame({"Close": 125.0, "Stock Splits": 0.0}, index=index)
@@ -1017,6 +1020,8 @@ def test_cache_reads_the_exchange_from_the_history_request_itself(tmp_path, monk
     # A warm cache in a new process asks for nothing more.
     warm = CachedDailyHistory(tmp_path, now=lambda: clock["now"])
     assert [warm(symbol, *window).attrs["exchange"] for symbol in ("NVDA", "AMD")] == ["NMS"] * 2
+    assert warm.read_cached("NVDA", *window).attrs["currency"] == "USD"
+    assert warm("NVDA", *window).attrs["currency"] == "USD"
     assert len(requests) == 2
     # The next close is one history request again.
     clock["now"] = datetime.fromisoformat("2026-11-05T21:30:00+00:00")
@@ -1272,3 +1277,35 @@ def test_hindsight_uses_only_observed_trade_prices(gap):
         assert sell["best_close_gbp"] == 102 and sell["missed_gbp"] == 0
     else:
         assert sell is None
+
+
+@pytest.mark.parametrize("bad_rate", [0, -1.25, float("inf")])
+def test_verified_usd_listing_on_invalid_fill_day_keeps_sterling_prior_close(bad_rate):
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    quotes = pd.Series(127.5, index=dates)
+    quotes.attrs["currency"] = "USD"
+    rates = pd.Series(1.25, index=dates)
+    rates.loc["2026-02-05"] = bad_rate
+    review = _review_from_quotes(
+        [_usd_fill("2026-02-05T14:00:00Z", "Market buy", 1, 102)],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+        rates=rates,
+    )
+    (row,) = review["decisions"]
+    assert (row["prior_close_date"], row["prior_close_gbp"]) == ("2026-02-04", 102)
+    assert row["hindsight_to_date"] is None
+
+
+def test_verified_quote_unit_wins_even_if_the_fill_is_closer_to_another_unit():
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    quotes = pd.Series(127.5, index=dates)
+    quotes.attrs["currency"] = "USD"
+    review = _review_from_quotes(
+        [_usd_fill("2026-02-05T14:00:00Z", "Market buy", 1, 127.5)],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+    )
+    (row,) = review["decisions"]
+    assert row["prior_close_gbp"] == 102
+    assert row["settled_per_share_gbp"] == 127.5
