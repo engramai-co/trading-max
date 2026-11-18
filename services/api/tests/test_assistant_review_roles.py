@@ -262,11 +262,12 @@ def test_habit_cache_reprices_running_outcome_and_waits_for_material_changes(tmp
     assert asyncio.run(run(publish(), cached_only=True))[-1].type == "empty"
 
 
-def test_pre_trade_leads_respect_the_earliest_fill_in_utc(tmp_path):
+@pytest.mark.parametrize("fill", ["02:00", "14:00"])
+def test_pre_trade_leads_respect_the_earliest_fill_in_utc(tmp_path, fill):
     from zoneinfo import ZoneInfo
 
     _, publish, row, _ = setup_review(tmp_path)
-    row["first_fill_at"] = "2026-02-03T14:00:00Z"
+    row["first_fill_at"] = f"2026-02-03T{fill}:00Z"
     deps = publish()
     items = [
         {"date": "2026-02-02", "title": "Date only, order uncertain"},
@@ -349,7 +350,8 @@ def test_earnings_and_ratings_each_cite_their_research_section(tmp_path):
     assert by_section["headline"].evidence.source == "publisher"
 
 
-def test_legacy_decision_withholds_unverified_prior_close_and_hindsight(tmp_path):
+@pytest.mark.parametrize("version", ["decisions-v6", "decisions-v7"])
+def test_legacy_decision_withholds_unverified_prior_close_and_hindsight(tmp_path, version):
     _, publish, row, _ = setup_review(tmp_path)
     deps = publish()
     legacy = {**row, "prior_close_date": "2026-02-02", "prior_close_gbp": 102}
@@ -357,7 +359,7 @@ def test_legacy_decision_withholds_unverified_prior_close_and_hindsight(tmp_path
         "accounts": {
             "A": {
                 "status": "available",
-                "calculation_version": "decisions-v6",
+                "calculation_version": version,
                 "as_of": "2026-03-06",
                 "decisions": [legacy],
             }

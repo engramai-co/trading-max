@@ -194,7 +194,11 @@ the body. A saved API key must match the integration's recorded fingerprint.
 Clients granting consent to a local model must send the endpoint shown to the
 user in `expectedConsentDestination`. A changed endpoint returns a conflict.
 Turning the assistant off retains consent. Both actions keep conversations
-available for separate deletion.
+available for separate deletion. A settings change in another window immediately
+hides cached readings and stops assistant requests. The window rechecks the
+workspace profile before requesting provider status. A confirmed withdrawal
+removes the Habits card, including when the dashboard was published before
+withdrawal. An ordinary readiness check preserves the open conversation draft.
 Background writing and sharing saved valuation assumptions each have a
 default-on preference. Both require enablement and current consent.
 
@@ -357,8 +361,12 @@ the decision.
 An exact publication instant must precede that fill in UTC. For an unzoned
 archive date, even its latest possible publication must precede the fill.
 Older records with date-only fills use the start of the UTC business day.
-Headlines dated on the recorded trade day are always excluded.
-The pre-trade close uses a provider observation and a verified GBP conversion. The matched S&P 500 return is
+Timed headlines use the UTC calendar date of the instant for trade-day exclusion.
+Date-only headlines use the recorded source date.
+The pre-trade close uses a provider observation and a verified GBP conversion.
+The daily cache carries the provider’s quote denomination alongside the exchange.
+A provider-declared foreign quote requires its own conversion. An invalid daily
+rate cannot make that session an observed GBP endpoint. The matched S&P 500 return is
 in GBP. The hindsight window requires observed GBP closes at its start and
 end. Only sessions with an observed quote and a finite, positive GBP conversion
 qualify for the best close. The comparison uses the account’s mean purchase
@@ -368,7 +376,9 @@ A completed review can pre-write a habits brief for each investment account and
 their combined scope. A new recorded decision, untraded fall or completed
 outcome changes the brief’s revision. The stored ordering covers both horizons.
 A later publication can update running to-date figures and their evidence from
-its pinned records without another model call.
+its pinned records without another model call. Older calculations retain their
+published habit membership and measured outcomes. A legacy publication without
+habit records cannot trigger a background habits brief.
 
 - Pre-earnings buys fall in the seven calendar days before a recorded result.
   A same-day report is excluded because the sequence may be unknown.

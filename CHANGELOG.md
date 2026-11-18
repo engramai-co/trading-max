@@ -13,7 +13,8 @@ All notable public Trading Max releases are recorded here.
 
 ### Fixed
 - Saved Review citations keep the selected horizon and habit with MaxAI off. Earnings and analyst citations reopen the recorded event or show that it is unavailable. Opening a habit citation on a phone closes the sheet. Clearing the filter returns keyboard focus to the timeline.
-- Review measures hindsight timing against observed GBP closes and excludes trade-day headlines from pre-trade evidence. Basket counts include net buys with missing settlement. Habits follow-ups can compare results at both horizons.
+- Review keeps the provider’s quote currency when FX is missing, measures hindsight against observed GBP closes and excludes headlines on the UTC trade day. Basket counts include net buys with missing settlement. Habits follow-ups can compare results at both horizons for retained publications.
+- A settings change in another window immediately hides cached readings and pauses assistant requests until fresh consent is confirmed. When a consented provider is unavailable, Review links directly to MaxAI settings.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
 - A missing price chart stays unavailable when a similar ticker trades on a different known venue. Distributions on the chart can qualify as key moments. Timed headlines follow the published closing auction for their listing. A headline published while the auction can still close at random is marked on that session.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.
