@@ -1,5 +1,7 @@
 from itertools import combinations_with_replacement, product
 
+import pytest
+
 from trading_max.research.venues import VenueClaim, resolve_venue
 
 
@@ -36,7 +38,7 @@ def test_market_defaults_are_local_to_the_claimed_symbol_and_namespaces_are_disj
         ("openfigi", "LN"),
         ("name", "London"),
     ):
-        for owner in ("SYN", "SYN.L"):
+        for owner in ("SYN", "ALIAS"):
             claim = VenueClaim(source, value, owner)
             default = VenueClaim("market", "US", "SYN")
             result = resolve_venue("SYN", claim, default)
@@ -54,3 +56,23 @@ def test_unknown_provider_codes_withhold_timing_on_a_qualified_listing():
     for source in ("yahoo", "mic", "fundamentals"):
         assert resolve_venue("SYN.L", VenueClaim(source, "UNVERIFIED")).calendar is None
     assert resolve_venue("SYN.L", VenueClaim("market", "US")).calendar == "XLON"
+
+
+@pytest.mark.parametrize(
+    ("source", "ny", "london"),
+    [
+        ("mic", "XNYS", "XLON"),
+        ("yahoo", "NYQ", "LSE"),
+        ("fundamentals", "NYSE", "LSE"),
+        ("openfigi", "UN", "LN"),
+        ("name", "ARCA", "London"),
+    ],
+)
+def test_qualified_claim_owner_retains_its_suffix(source, ny, london):
+    assert resolve_venue("SYN", VenueClaim(source, ny, "SYN.L")).conflict
+    assert resolve_venue("SYN", VenueClaim(source, london, "SYN.L")).venues == {"XLON"}
+    assert resolve_venue("SYN", VenueClaim(source, None, "SYN.L")).venues == {"XLON"}
+
+
+def test_unknown_region_does_not_enter_a_provider_namespace():
+    assert not resolve_venue("SYN", VenueClaim("region", "LSE")).venues

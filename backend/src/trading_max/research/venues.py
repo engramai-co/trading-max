@@ -356,13 +356,18 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
     defaults = defaultdict(list)
     unknown = False
     specific = False
-    for source, value, listing in (VenueClaim("symbol", requested), *claims):
+    symbols = {requested, *(claim.listing for claim in claims if claim.listing)}
+    suffixes = [VenueClaim("symbol", symbol, symbol) for symbol in symbols]
+    for source, value, listing in (*suffixes, *claims):
         code = _code(value)
         if not code:
             continue
         owner = _code(listing or requested)
-        if source == "region" and code in _MARKETS:
-            explicit[owner].append(_MARKETS[code])
+        if source == "region":
+            if code in _MARKETS:
+                explicit[owner].append(_MARKETS[code])
+            else:
+                unknown = True
             continue
         if source == "market":
             if code in _MARKETS:
