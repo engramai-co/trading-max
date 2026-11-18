@@ -473,6 +473,7 @@ test("keyboard range survives a failed reading, stop and retry", async ({
     const chart = page
       .locator('[aria-roledescription="Interactive chart"]')
       .first();
+    await expect(chart).toHaveAccessibleDescription(/Drag to select an attribution range/);
     await chart.focus();
     await chart.press("End");
     await page.keyboard.down("Shift");
@@ -556,6 +557,7 @@ test("an archived Money brush pins its plotted publication through handoff", asy
   });
   await page.goto("/analytics?view=money&range=1M&moneyFrom=2026-01-02&moneyTo=2026-01-30&snapshotId=older&evidence=period_performance");
   const chart = page.locator('[aria-roledescription="Interactive chart"]').first();
+  await expect(chart).toHaveAccessibleDescription(/Drag to select an attribution range/);
   await chart.focus();
   await chart.press("End");
   await chart.press("Shift+ArrowLeft");
@@ -717,6 +719,7 @@ test("same-page Returns citations take precedence over a brush and follow browse
   const chart=page.locator('[aria-roledescription="Interactive chart"]').first();
   const card=page.locator(".mx-inline-reading").last();
   await expect(card).toContainText("2026-01-06");
+  await expect(chart).toHaveAccessibleDescription(/Drag to select an attribution range/);
   await chart.focus();
   await chart.press("End");
   await chart.press("Shift+ArrowLeft");
