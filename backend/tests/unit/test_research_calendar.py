@@ -6,6 +6,7 @@ from trading_max.research.calendar import (
     completed_daily_bars,
     completed_months,
     listing_calendar,
+    listing_venues,
     session_schedule,
 )
 from trading_max.research.technical import _rsi, price_series
@@ -153,3 +154,15 @@ def test_frankfurt_equity_hours_include_evenings_and_holiday_early_closes():
     assert session("2026-05-13").close == "2026-05-13T20:00:00Z"
     assert session("2026-05-14").close == "2026-05-14T18:00:00Z"
     assert session("2026-12-30").close == "2026-12-30T13:00:00Z"
+
+
+def test_venue_identity_distinguishes_exchanges_with_shared_closes_and_market_composites():
+    nyse = listing_venues("SYN", "UN")
+    assert nyse == listing_venues("SYN", "NYQ") == {"XNYS"}
+    assert listing_venues("SYN", "UW") == listing_venues("SYN", "NasdaqGS") == {"XNAS"}
+    assert nyse.isdisjoint(listing_venues("SYN", "UW"))
+    assert listing_venues("SYN", "US") & nyse
+    assert listing_venues("SYN.L", "LN").isdisjoint(listing_venues("SYN", "US"))
+    assert listing_venues("SYN", "GF") == {"XFRA"}
+    assert listing_venues("SYN", "GR") & listing_venues("SYN", "GY")
+    assert not listing_venues("SYN", "unverified")

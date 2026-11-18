@@ -16,7 +16,7 @@ from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFReading
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.reference.quote_units import major_quote_unit
-from trading_max.research.calendar import listing_calendar, session_schedule
+from trading_max.research.calendar import listing_calendar, listing_venues, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
     ResearchCapability,
@@ -2451,15 +2451,15 @@ class ResearchLedger:
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
         ticker = ticker.strip().upper()
-        requested_venue = listing_calendar(ticker, exchanges.get(ticker), None)
+        requested_venues = listing_venues(ticker, exchanges.get(ticker))
         listing = self.held_fund(ticker, manifest, exchanges)
         resolved = listing.ticker if listing else self._route_ticker(ticker, exchanges)
         series = self.published_price_series(resolved, manifest, limit=limit)
         published = series.published_bar_ticker
-        published_venue = series.exchange_calendar or listing_calendar(
-            published, exchanges.get(published or ""), None
+        published_venues = listing_venues(
+            published, series.published_bar_exchange or exchanges.get(published or "")
         )
-        if requested_venue and published_venue and requested_venue != published_venue:
+        if requested_venues and published_venues and requested_venues.isdisjoint(published_venues):
             raise FileNotFoundError(f"published bars belong to another venue for {ticker}")
         return series
 
@@ -2564,13 +2564,14 @@ class ResearchLedger:
             else market.get("currency") or source.get("currency") or ""
         )
         all_markers, unresolved = self.trade_markers(manifest, bar_ticker, currency)
+        exchange = str(source.get("mic") or source.get("exchange") or "").strip() or None
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
-            published_bar_exchange=str(source.get("exchange") or "").strip() or None,
-            exchange_calendar=listing_calendar(
-                bar_ticker, source.get("exchange"), source.get("timezone")
-            ),
+            published_bar_asset_type=str(source.get("asset_type") or ("ETF" if fund_price else ""))
+            or None,
+            published_bar_exchange=exchange,
+            exchange_calendar=listing_calendar(bar_ticker, exchange, source.get("timezone")),
             published_series_id=published_price_series_id(artifact.sha256, ticker)
             if artifact
             else None,
