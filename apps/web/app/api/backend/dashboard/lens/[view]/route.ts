@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { dashboardLensLatestKey, type DashboardSelection } from "@/lib/dashboard-query";
+import { dashboardLensLatestKey, dashboardLensSnapshotKey, type DashboardSelection } from "@/lib/dashboard-query";
 import { rememberDesktopSnapshotResponse } from "@/lib/snapshot-cache-server";
 import type { AccountCode, DashboardLensName } from "@/lib/types";
 import { proxyToBackend } from "@/lib/backend-proxy";
@@ -42,8 +42,14 @@ export async function GET(
     if (value) forwarded.set(key, value);
   }
   const selection = Object.fromEntries([...forwarded].filter(([key]) => key !== "account")) as DashboardSelection;
-  const key = dashboardLensLatestKey(view as DashboardLensName, (account || undefined) as AccountCode | undefined,
-    Object.keys(selection).length ? selection : undefined);
+  const runId = params.get("runId");
+  if (runId !== null && !/^[A-Za-z0-9_-]{1,100}$/.test(runId)) {
+    return NextResponse.json({detail:"invalid snapshot"}, {status:400});
+  }
+  if (runId) forwarded.set("run_id", runId);
+  const keyArgs = [view as DashboardLensName, (account || undefined) as AccountCode | undefined,
+    Object.keys(selection).length ? selection : undefined] as const;
+  const key = runId ? dashboardLensSnapshotKey(runId, ...keyArgs) : dashboardLensLatestKey(...keyArgs);
   const query = forwarded.size ? `?${forwarded}` : "";
   return proxyToBackend(
     `/v1/dashboard/lens/${view}${query}`,

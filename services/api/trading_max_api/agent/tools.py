@@ -9,7 +9,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from math import isfinite
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, cast, get_type_hints
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic_ai import ModelRetry, RunContext
@@ -186,6 +186,9 @@ class FreshnessArgs(Scoped, Paged):
 
 
 class DecisionsArgs(Scoped, Paged):
+    range: PageRange | None = Field(
+        default=None, description="Limit decisions to the published portfolio money window."
+    )
     ticker: Ticker | None = Field(default=None, description="Optional exact ticker or CFD symbol.")
     since: Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$")] | None = Field(
         default=None, description="Inclusive starting date (YYYY-MM-DD)."
@@ -212,6 +215,8 @@ class _BoundedValidator:
     inner: Any
     bound: dict[str, Any] | None = None
 
+    schema: type[BaseModel] | None = None
+
     def _bind(self, value: Any) -> dict:
         if not isinstance(value, dict):
             raise ModelRetry("Tool arguments must be a JSON object.")
@@ -219,7 +224,7 @@ class _BoundedValidator:
             if set(value) != {"args"} or not isinstance(value["args"], dict):
                 raise ModelRetry("Use a single tool argument object.")
             value = value["args"]
-        return bind_arguments(value, self.bound or {})
+        return bind_arguments(value, self.bound or {}, self.schema)
 
     def validate_json(self, value: str, **kwargs: Any) -> Any:
         if len(value) > MAX_ARGUMENT_BYTES or len(value.encode()) > MAX_ARGUMENT_BYTES:
@@ -277,10 +282,21 @@ class RoleToolset(WrapperToolset):
                 definition = replace(definition, parameters_json_schema=schema)
             validator = tool.args_validator
             if bound:
+                registry = tool.toolset
+                args_type = (
+                    get_type_hints(registry.tools[tool.original_name or name].function).get("args")
+                    if isinstance(registry, FunctionToolset)
+                    else None
+                )
+                model = (
+                    args_type
+                    if isinstance(args_type, type) and issubclass(args_type, BaseModel)
+                    else None
+                )
                 validator = (
-                    replace(validator, bound=bound)
+                    replace(validator, bound=bound, schema=model)
                     if isinstance(validator, _BoundedValidator)
-                    else _BoundedValidator(validator, bound)
+                    else _BoundedValidator(validator, bound, model)
                 )
             result[name] = replace(tool, tool_def=definition, args_validator=validator)
         return result
@@ -1339,6 +1355,20 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
     """
     read = _Read(ctx.deps, "recent_decisions", args, args.scope)
     codes = read.account_codes(args.scope)
+    start, end = args.since, None
+    window_keys = []
+    if args.range:
+        loaded = _history_input(read, args.scope, args.range)
+        if loaded is None:
+            return read.missing("history_unavailable")
+        source, window_keys = loaded
+        history = prepare_history(source, {"range": args.range, "scope": _math_scope(args.scope)})[
+            "history"
+        ]
+        end = history.get("endDay")
+        if not end or not history["points"]:
+            return read.missing("period_observations_missing", keys=window_keys)
+        start = max(args.since or "", history.get("startDay") or end)
     if args.since and _iso(args.since) is None:
         raise ModelRetry("The starting date must be a valid YYYY-MM-DD calendar date.")
     rows = []
@@ -1385,11 +1415,18 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
         row
         for row in rows
         if row["date"] is not None
-        and (args.since is None or row["date"][:10] >= args.since)
+        and (start is None or row["date"][:10] >= start)
+        and (end is None or row["date"][:10] <= end)
         and (args.ticker is None or (row["ticker"] or "").upper() == args.ticker)
     ]
     rows.sort(key=lambda row: (row["date"], row["scope"], row["ticker"] or ""), reverse=True)
-    return read.page(rows, args, {"coverage": coverage}, keys=keys, issues=issues)
+    return read.page(
+        rows,
+        args,
+        {"coverage": coverage, **({"start": start, "end": end} if args.range else {})},
+        keys=[*window_keys, *keys],
+        issues=issues,
+    )
 
 
 def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:

@@ -40,6 +40,7 @@ export function evidenceHref(ref: Evidence) {
       params.set("snapshotId", a.snapshotId);
     }
     if (a.benchmark) params.set("benchmark", a.benchmark);
+    if (ref.tool === "compare_benchmarks" && a.snapshotId) params.set("snapshotId", a.snapshotId);
     if (ref.tool === "compare_benchmarks" && a.start && a.end) {
       params.set("returnFrom", a.start);
       params.set("returnTo", a.end);

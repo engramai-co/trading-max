@@ -259,12 +259,12 @@ def overview_facts(
     facts.append(market)
     decisions = read.read(
         tools.recent_decisions,
-        tools.DecisionsArgs(scope="broker_total", since=start or end, limit=4),
+        tools.DecisionsArgs(scope="broker_total", range=period, limit=4),
     )
     rows = [
         r
         for r in (decisions.get("data") or {}).get("items", [])
-        if r.get("ticker") and r.get("side") and r.get("date", "")[:10] <= end
+        if r.get("ticker") and r.get("side") and r.get("date")
     ]
     if rows:
         for row in rows:
@@ -325,7 +325,7 @@ def overview_bindings(
         "period_performance": window,
         "compare_benchmarks": {**window, "benchmark": selection.benchmark},
         "list_holdings": account,
-        "recent_decisions": account,
+        "recent_decisions": {**window, "since": None},
         "read_research_lens": {},
     }
 

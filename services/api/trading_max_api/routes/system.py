@@ -304,6 +304,7 @@ def dashboard_history(
 def dashboard_lens(
     view: DashboardLensName,
     request: Request,
+    run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
     account: AccountCode | None = None,
     range: HistoryRange | None = None,
     scope: HistoryScope | None = None,
@@ -318,7 +319,14 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
-    manifest = latest_or_503(request)
+    try:
+        manifest = (
+            app_service(request, "store").load_manifest(run_id)
+            if run_id
+            else latest_or_503(request)
+        )
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="snapshot not found") from None
     dashboard_data = request.app.state.cached_dashboard(
         manifest, include_history=detail != "summary"
     )

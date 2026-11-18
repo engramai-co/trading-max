@@ -148,3 +148,11 @@ it("keeps the selected benchmark window in the link when observations cover fewe
   expect(line.text).toContain("2026-10-02 – 2026-10-30");
   expect(line.evidence?.arguments).toMatchObject({scope:"isa",start:"2026-10-01",end:"2026-11-01"});
 });
+
+it.each([{}, {snapshotId:"previous"}])("reopens benchmark evidence on its published snapshot", (bound) => {
+  const reply = fieldReply("compare_benchmarks", {snapshot_id:"previous",bound_arguments:{...bound, scope:"isa",benchmark:"VOO"},
+    data:{start:"2026-02-02",end:"2026-02-03",portfolio_twr_fraction:0.02}}, "/data/portfolio_twr_fraction");
+  const [line] = verifiedLines(reply);
+  const params = new URL(evidenceHref(line.evidence!)!, "http://localhost").searchParams;
+  expect(Object.fromEntries(params)).toMatchObject({view:"returns",scope:"isa",benchmark:"VOO",returnFrom:"2026-02-02",returnTo:"2026-02-03",snapshotId:"previous"});
+});

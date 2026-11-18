@@ -298,3 +298,44 @@ for (const locale of ["zh", "en"] as const) {
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name+"-"+locale+"-freshness.png")});
   });
 }
+
+test("a saved benchmark citation reopens its portfolio and prices and discloses expiry", async ({page}, info) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await fixtures(page);
+  const dates = ["2026-02-02", "2026-02-03"];
+  let expired = false;
+  await page.route("**/api/backend/dashboard/lens/analytics?**", route => {
+    const historical = new URL(route.request().url()).searchParams.get("runId") === "old-brief";
+    if (historical && expired) return route.fulfill({status:404,json:{detail:"snapshot not found"}});
+    const nav = dates.map((date, i) => ({date,isa:100,isaTwr:i * (historical ? 0.02 : 0.09)}));
+    const prices = dates.map((date, i) => ({date,close:100 + i * (historical ? 1 : 3)}));
+    return route.fulfill({json:{runId: historical ? "old-brief" : "new-brief", nav, benchmarkSeries:{VOO:prices}}});
+  });
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[{id:"old",title:"Saved benchmark"}]}));
+  await page.route("**/api/backend/assistant/conversations/old", route => route.fulfill({json:{id:"old",messages:[
+    {id:"user",role:"user",parts:[{type:"text",text:"Compare this period"}]},
+    {id:"saved",role:"assistant",parts:[
+      {type:"dynamic-tool",toolName:"compare_benchmarks",toolCallId:"c",state:"output-available",input:{},
+       output:{status:"ok",scope:"isa",snapshot_id:"old-brief",evidence_id:"ev_old",
+          bound_arguments:{scope:"isa",benchmark:"VOO",range:"1W",snapshotId:"old-brief"},
+          data:{start:dates[0],end:dates[1],portfolio_twr_fraction:0.02}}},
+      {type:"text",text:"{{/data/portfolio_twr_fraction}} [ev_old]\n{{other-drivers}} [inference]"}]},
+  ]}}));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.getByRole("button",{name:"Conversation history"}).click();
+  await page.getByRole("button",{name:"Saved benchmark",exact:true}).click();
+  await expect(page.locator(".mx-turn-assistant")).toContainText("2.00%");
+  await page.locator(".mx-turn-assistant").getByRole("link",{name:"Market"}).click();
+  const result = page.locator(".mx-return-reading");
+  await expect(result).toContainText("+2.00%");
+  await expect(result).toContainText("+1.00%");
+  await result.scrollIntoViewIfNeeded();
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-reopened-benchmark.png")});
+  expired = true;
+  await page.reload();
+  await expect(page.getByText("Cited publication unavailable", {exact:true})).toBeVisible();
+  await expect(result).toHaveCount(0);
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-benchmark.png")});
+});

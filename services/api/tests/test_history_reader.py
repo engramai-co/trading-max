@@ -146,6 +146,14 @@ def test_api_matches_legacy_and_summary_avoids_history(
         assert result.json().get("intradayNav", []) == legacy.get("intradayNav", [])
         assert client.get("/v1/dashboard/history?run_id=missing-snapshot").status_code == 404
         assert client.get("/v1/dashboard/history?run_id=..%2Fsecrets").status_code == 422
+        typed_fixture(research_root, store)
+        lens = "/v1/dashboard/lens/analytics?detail=summary&scope=total"
+        assert client.get(lens).json()["runId"] != run
+        cited = client.get(f"{lens}&run_id={run}").json()
+        assert cited["runId"] == run
+        assert cited.get("nav", []) == legacy.get("nav", [])
+        assert cited.get("benchmarkSeries", {}) == legacy.get("benchmarkSeries", {})
+        assert client.get(f"{lens}&run_id=missing-snapshot").status_code == 404
         original = app.state.store.read_json
 
         def no_history(run, key):

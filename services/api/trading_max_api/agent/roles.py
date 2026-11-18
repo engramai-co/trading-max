@@ -110,7 +110,7 @@ class RoleTools:
                 args if isinstance(args, dict) else args.model_dump(mode="json", exclude_unset=True)
             )
             schema = get_type_hints(tool)["args"]
-            effective = bind_arguments(supplied, bindings[name] if bindings else {})
+            effective = bind_arguments(supplied, bindings[name] if bindings else {}, schema)
             args = schema.model_validate_json(json.dumps(effective))
         result = tool(RunContext(deps=self.deps, model=None, usage=RunUsage()), args)
         if bindings is not None:
