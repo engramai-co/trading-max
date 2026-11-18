@@ -134,7 +134,8 @@ account through the decision date. A missing purchase basis withholds the sizing
 the timing comparison. Unobserved decisions contribute to the count of
 decisions and stay outside the scored denominator.
 
-Key moments use daily bars and the previous visible close. Volume z-scores
+Key moments measure each visible day from the previous observed daily close,
+including a close before the selected range. Volume z-scores
 compare with the preceding 20 published sessions using population standard
 deviation. A missing or constant reference window has no volume score.
 Absolute moves and absolute volume z-scores rank separately across all
