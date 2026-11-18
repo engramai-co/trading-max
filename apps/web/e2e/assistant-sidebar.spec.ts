@@ -1,3 +1,4 @@
+import historicalEvents from "../tests/fixtures/historical-events.json";
 import historicalDividend from "../tests/fixtures/historical-dividend.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
@@ -414,6 +415,7 @@ test("disabled Overview matches main's cold request and script counts", async ({
   const baseline = await cold(main!, false);
   const actual = await cold(process.env.PLAYWRIGHT_BASE_URL!, true);
   await info.attach("cold-load-counts",{body:JSON.stringify({baseline,actual}),contentType:"application/json"});
+  expect(actual.requests.filter(path => path.startsWith("/api/backend/assistant/"))).toEqual([]);
   expect.soft(actual.requests).toEqual(baseline.requests);
   expect(actual.scripts).toBeLessThanOrEqual(baseline.scripts);
 });
@@ -644,7 +646,29 @@ for (const recovery of ["automatic retry", "focus after retry exhaustion"] as co
   }
 });
 
-for (const transition of ["reopening", "delayed overlay activation", "readiness revalidation"] as const) {
+test("narrowing the workspace moves outside focus into the assistant dialog", async ({page}, info) => {
+  await page.setViewportSize({width:1440, height:900});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel.getByRole("textbox", {name:"Message"})).toBeFocused();
+  const skip = page.getByRole("link", {name:"Skip to content"});
+  await skip.focus();
+  await expect(skip).toBeFocused();
+
+  await page.setViewportSize({width:1100, height:900});
+  await expect(panel).toHaveRole("dialog");
+  await expect(panel).toHaveAttribute("aria-modal", "true");
+  await expect(panel.locator(":focus")).toHaveCount(1);
+  await expect(page.locator(".mx-skip")).toHaveJSProperty("inert", true);
+  await page.keyboard.press("Tab");
+  await expect(panel.locator(":focus")).toHaveCount(1);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-focus-after-narrowing.png")});
+});
+
+for (const transition of ["reopening", "delayed overlay activation"] as const) {
   test("typing continues in the draft after " + transition, async ({page}, info) => {
     await fixtures(page);
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
@@ -663,23 +687,10 @@ for (const transition of ["reopening", "delayed overlay activation", "readiness 
       await expect(page.locator("[data-assistant-trigger]")).toBeFocused();
       await page.keyboard.press("Control+j");
       await expect(draft).toBeVisible();
-    } else if (transition === "delayed overlay activation") {
+    } else {
       // Activate the modal keyboard boundary after the composer has received real keystrokes.
       await page.setViewportSize(info.project.name === "mobile" ? {width:390,height:844} : {width:1100,height:900});
       await expect(panel).toHaveRole("dialog");
-    } else {
-      let release!: () => void;
-      const response = new Promise<void>(resolve => { release = resolve; });
-      await page.route("**/api/backend/assistant/status", async route => {
-        await response;
-        await route.fulfill({json:{ready:true, code:null}});
-      });
-      await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
-      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
-      try {
-        await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
-      } finally { release(); }
-      await expect(draft).toBeVisible();
     }
     await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0))));
     await page.keyboard.type(" and second");
@@ -697,6 +708,78 @@ for (const transition of ["reopening", "delayed overlay activation", "readiness 
   });
 }
 
+test("a passive readiness response preserves every keystroke during typing", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const draft = panel.getByRole("textbox", {name:"Message"});
+  const send = panel.getByRole("button", {name:"Send"});
+  await expect(draft).toBeFocused();
+  await page.keyboard.type("Continue");
+  await expect(draft).toHaveValue("Continue");
+
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/backend/assistant/status", async route => {
+    await held;
+    await route.fulfill({json:{ready:true, code:null}});
+  });
+  const sends: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.endsWith("/assistant/chat")) sends.push(request.url());
+  });
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  try {
+    await expect(panel.getByText("Checking connection…")).toBeVisible();
+    await page.exposeFunction("releaseReadiness", release);
+    await page.evaluate(() => document.addEventListener("keydown", () => {
+      void (window as typeof window & {releaseReadiness: () => Promise<void>}).releaseReadiness();
+    }, {once:true}));
+    await page.keyboard.type("s");
+    await expect(panel.getByText("Checking connection…")).toBeHidden();
+    await page.keyboard.type(" the check");
+    await expect(draft).toHaveValue("Continues the check");
+    await expect(send).toBeEnabled();
+    await expect(draft).toBeFocused();
+    expect(sends).toEqual([]);
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-typing-through-readiness.png")});
+  } finally { release(); }
+});
+
+test("a passive readiness check leaves focus on the wide workspace", async ({page}) => {
+  await page.setViewportSize({width:1440, height:900});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel.getByRole("textbox", {name:"Message"})).toBeFocused();
+  const skip = page.getByRole("link", {name:"Skip to content"});
+  await skip.focus();
+  await expect(skip).toBeFocused();
+
+  let release!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/backend/assistant/status", async route => {
+    await held;
+    await route.fulfill({json:{ready:true, code:null}});
+  });
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  const checking = panel.getByText("Checking connection…");
+  try {
+    await expect(checking).toBeVisible();
+    await expect(skip).toBeFocused();
+  } finally { release(); }
+  await expect(checking).toBeHidden();
+  await expect(skip).toBeFocused();
+});
+
 for (const outcome of ["draft", "history button", "reopened draft", "Control+j", "Meta+j", "changed settings", "withdrawn"] as const) {
   test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
@@ -713,6 +796,10 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
     const control = outcome === "history button" ? panel.getByRole("button", {name:"Conversation history"}) : draft;
     await control.focus();
     await expect(control).toBeFocused();
+    const sends: string[] = [];
+    page.on("request", request => {
+      if (new URL(request.url()).pathname.endsWith("/assistant/chat")) sends.push(request.url());
+    });
     const shortcut = outcome === "Control+j" || outcome === "Meta+j";
     if (shortcut || outcome === "reopened draft") {
       await page.keyboard.press("Escape");
@@ -743,16 +830,27 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
       if (shortcut) await expect.soft(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused({timeout:1000});
       await expect.soft(panel.locator(":focus"), "focus during the check").toHaveCount(1, {timeout:1000});
       if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-checking-focus.png")});
-      for (const key of ["Tab", "Shift+Tab"]) {
-        await page.keyboard.press(key);
-        await expect.soft(panel.locator(":focus"), key + " during the check").toHaveCount(1, {timeout:1000});
+      if (shortcut || outcome === "reopened draft" || outcome === "changed settings") {
+        for (const key of ["Tab", "Shift+Tab"]) {
+          await page.keyboard.press(key);
+          await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+        }
+      } else {
+        await expect(control).toBeFocused();
+        if (outcome === "draft") {
+          await expect(panel.getByRole("button", {name:"Send"})).toBeDisabled();
+          await panel.locator("form").evaluate(form => (form as HTMLFormElement).requestSubmit());
+          await page.keyboard.press("Enter");
+          await expect(draft).toHaveValue("Keep this draft");
+        }
       }
     } finally {
       release();
     }
+    expect(sends).toEqual([]);
     if (outcome === "withdrawn") {
       await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
-      await expect(panel.locator("a:focus,button:focus")).toHaveCount(1);
+      await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
       await expect(draft).toHaveCount(0);
       if (shots) await page.screenshot({path:join(shots,info.project.name + "-withdrawn-focus.png")});
     } else {
@@ -794,4 +892,54 @@ test("a historical dividend in chat reopens its published amount and basis", asy
   await expect(target).toContainText("Provider-adjusted per share");
   await expect(target).toContainText(row.date);
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
+});
+
+test("mixed historical event replies retain their published dates and citations", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const items = historicalEvents.data.items;
+  // Each turn selects up to four observations from the same eight-row tool result.
+  const turns = [
+    ["news", "earnings", "ex_dividend", "dividend"],
+    ["earnings", "dividend", "ex_dividend", "dividend_pay"],
+    ["news", "rating_change", "filing", "own_trade"],
+  ];
+  let next = 0;
+  await page.route("**/api/backend/assistant/chat*", route => {
+    const id = "historical-" + next;
+    const text = turns[next++].map(kind =>
+      `{{/data/items/${items.findIndex(row => row.kind === kind)}/date}} [${historicalEvents.evidence_id}]`).join("\n");
+    const chunks = [{type:"start",messageId:id},{type:"start-step"},
+      {type:"tool-input-available",toolCallId:id,toolName:"news_and_events",input:{args:{scope:"invest",start:historicalEvents.data.start,end:historicalEvents.data.end}}},
+      {type:"tool-output-available",toolCallId:id,output:historicalEvents},
+      {type:"text-start",id},{type:"text-delta",id,delta:text},{type:"text-end",id},
+      {type:"finish-step"},{type:"finish",finishReason:"stop"}];
+    return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+      body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n"});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.getByRole("textbox",{name:"Message"});
+  for (const [index,kinds] of turns.entries()) {
+    await input.fill(kinds.join(", "));
+    await input.press("Enter");
+    const reply = page.locator(".mx-turn-assistant").nth(index);
+    for (const [i,kind] of kinds.entries()) {
+      const row = items.find(item => item.kind === kind)!;
+      const line = reply.locator(".mx-reading-line").nth(i);
+      await expect(line).toContainText(row.title_en);
+      await expect(line).toContainText(row.date);
+      const link = line.getByRole("link");
+      if (kind === "news" || kind === "filing" || kind === "rating_change") {
+        await expect(link).toHaveAttribute("href", row.source_url!);
+      } else if (kind === "own_trade") {
+        await expect(link).toHaveAttribute("href", /\/review\?account=A/);
+      } else {
+        const args = new URL((await link.getAttribute("href"))!, page.url()).searchParams;
+        expect(Object.fromEntries(args)).toMatchObject({snapshotId:historicalEvents.snapshot_id,
+          calendarEventId:row.evidence_id, event:kind === "ex_dividend" ? "exDividend" : kind, ticker:row.ticker});
+      }
+    }
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dates-"+index+".png")});
+  }
 });

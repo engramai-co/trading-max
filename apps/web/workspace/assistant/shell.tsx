@@ -1,6 +1,5 @@
 "use client";
 
-import { useMediaQuery } from "@mantine/hooks";
 import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { X } from "@phosphor-icons/react";
@@ -29,12 +28,15 @@ export function AssistantEntry() {
     <span aria-hidden="true">✦</span> {ASSISTANT_NAME} <kbd>⌘J</kbd>
   </button>;
 }
-export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
+export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }: { overlay: boolean; page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
   const { open, close, ready, pending, suspended, code } = useAssistant();
   const t = useCopy();
-  const [visited, setVisited] = useState(false);
-  if (open && ready && !pending && !visited) setVisited(true);
-  const overlay = useMediaQuery("(max-width: 1199px)");
+  // A new opening requires confirmation. An already visible thread can keep its
+  // draft editable while readiness refreshes. A consent signal immediately clears ready.
+  const [thread, setThread] = useState<"unvisited" | "hidden" | "visible">("unvisited");
+  if (open && ready && !pending && thread !== "visible") setThread("visible");
+  else if ((!open || !ready) && thread === "visible") setThread("hidden");
+  const showThread = thread === "visible";
   useEffect(() => {
     if (!open || searchOpen) return;
     function escape(e: KeyboardEvent) { if (e.key === "Escape" && !e.defaultPrevented && !e.isComposing) { e.preventDefault(); close(); } }
@@ -59,21 +61,21 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
     if (!ready && !pending && !suspended) lastControl.current = null;
     if (!open || searchOpen) return;
     const active = document.activeElement;
-    // An explicit open can precede the lazy composer. After that, respect focus outside the panel.
-    if (!needsOpeningFocus.current && active && active !== document.body && !panel.current?.contains(active)) return;
-    const target = pending || !ready ? gateClose.current : lastControl.current?.isConnected ? lastControl.current : composer;
+    // An explicit open can precede the lazy composer. A non-modal panel leaves background focus alone.
+    if (!needsOpeningFocus.current && !overlay && active && active !== document.body && !panel.current?.contains(active)) return;
+    const target = !showThread ? gateClose.current : lastControl.current?.isConnected ? lastControl.current : composer;
     if (target?.isConnected) {
       needsOpeningFocus.current = false;
       if (target !== active) target.focus({preventScroll:true});
     }
-  }, [open, pending, ready, suspended, searchOpen, composer]);
-  if (!visited && !open) return null;
+  }, [open, overlay, pending, ready, suspended, searchOpen, composer, showThread]);
+  if (thread === "unvisited" && !open) return null;
   return <div ref={panel} id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     onKeyDown={overlay && !searchOpen ? cyclePanelTab : undefined}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
-    {(ready || pending || suspended) && visited && <div className="mx-assistant-thread" hidden={pending || !ready}
-      onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, search, scopeLabel }} composerRef={setComposer} /></div>}
-    {(!ready || pending) && <>
+    {(ready || pending || suspended) && thread !== "unvisited" && <div className="mx-assistant-thread" hidden={!showThread}
+      onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, search, scopeLabel }} checking={showThread && pending} composerRef={setComposer} /></div>}
+    {!showThread && <>
       <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button ref={gateClose} onClick={close}
         onKeyDown={event => { if (pending && event.key === "Tab") event.preventDefault(); }}
         aria-label={t("关闭侧栏","Close sidebar")}><X /></button></div>
