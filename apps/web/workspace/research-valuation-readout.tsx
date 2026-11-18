@@ -2,7 +2,7 @@
 
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { formatCalendarDate } from "@/ui/formatters";
+import { formatCalendarDate, formatCompactCurrency } from "@/ui/formatters";
 import { currency, number, percent, tone } from "@/workspace/data";
 import { Metric, Panel, useCopy } from "./foundation";
 import type { Preview } from "./research-facts";
@@ -16,15 +16,28 @@ export type ModelReading = {
   busy: boolean;
 };
 
-function ReverseReading({ result }: { result?: Preview }) {
+function ReverseReading({ result, retry, refreshing }: {
+  result?: Preview;
+  retry?: () => void;
+  refreshing?: boolean;
+}) {
   const t = useCopy();
+  const { locale } = useLocale();
   const metric = result?.reverseMetric ?? "revenue-growth";
   const inputs = result?.scenarios.base?.inputs;
   if (metric === "year-five-revenue" && result) {
     return <Metric label={t("现价隐含的第五年营收", "Year-five revenue implied by price")}
-      value={currency(result.reverseValue, result.basis.currency, 0)}
-      note={t("目标利润率", "Target margin") + " " + percent(result.reverseInputs?.targetFcfMargin)
-        + " · " + t("退出倍数", "Exit multiple") + " " + number(result.reverseInputs?.exitFcfMultiple, 1) + "×"}
+      value={formatCompactCurrency(result.reverseValue, locale, result.basis.currency)}
+      note={<>
+        {t("目标利润率", "Target margin")} {percent(result.reverseInputs?.targetFcfMargin)}
+        {" · "}{t("退出倍数", "Exit multiple")} {number(result.reverseInputs?.exitFcfMultiple, 1)}×
+        {result.reverseReason === "positive-target-and-multiple-required" &&
+          <span className="mx-reverse-status">{t("利润率与倍数须为正", "Margin and multiple must be positive")}</span>}
+        {retry && !refreshing ? <span className="mx-reverse-status" role="alert">
+          {t("未能按最新价格重算", "Not revalued at the latest price")}{" "}
+          <button type="button" className="mx-text-link" onClick={retry}>{t("重试", "Retry")}</button>
+        </span> : refreshing && <span className="mx-reverse-status" role="status">{t("计算中…", "Calculating…")}</span>}
+      </>}
       help={t("报告期营收为零。按前五年无中期分配和给定退出倍数计算所需营收。",
         "Reported revenue was zero. The required revenue assumes no interim distributions and applies the exit multiple to year-five earnings.")} />;
   }
@@ -49,7 +62,13 @@ function ReverseReading({ result }: { result?: Preview }) {
     helpBasis={limits && t("求解区间", "Search range") + " " + percent(limits[0]) + " – " + percent(limits[1])} />;
 }
 
-export function ValuationReadout({ data, preview, reading }: { data: ResearchLensSnapshot; preview?: Preview; reading?: ModelReading }) {
+export function ValuationReadout({ data, preview, reading, retry, refreshing }: {
+  data: ResearchLensSnapshot;
+  preview?: Preview;
+  reading?: ModelReading;
+  retry?: () => void;
+  refreshing?: boolean;
+}) {
   const t = useCopy();
   const { locale } = useLocale();
   const history = data.trailingPeHistory;
@@ -63,7 +82,7 @@ export function ValuationReadout({ data, preview, reading }: { data: ResearchLen
   return <Panel className="mx-valuation-readout">
     <Metric label={t("滚动 P/E", "Trailing P/E")} value={latest?.pe == null ? "—" : number(latest.pe, 1) + "×"}
       note={[percentile, latest && formatCalendarDate(latest.date, locale)].filter(Boolean).join(" · ")} />
-    <ReverseReading result={result} />
+    <ReverseReading result={result} retry={retry} refreshing={refreshing} />
     <Metric label={t("中性情景", "Base scenario")} value={base && result ? <>
       {currency(base.value, result.basis.currency, 2)}
       {base.upside != null && <small className={"mx-metric-change mx-" + tone(base.upside)}>{percent(base.upside, true)}</small>}

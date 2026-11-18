@@ -35,6 +35,7 @@ import {
   percent,
   str,
 } from "@/workspace/data";
+import { formatCurrency } from "@/ui/formatters";
 import { numeric } from "@/lib/numeric";
 import {
   Empty,
@@ -90,6 +91,19 @@ function modelMethodology(initial: Preview, t: ReturnType<typeof useCopy>) {
         );
 }
 
+function statementPeriod(result: Preview, data: ResearchLensSnapshot, t: ReturnType<typeof useCopy>) {
+  const referencePeriod = data.financialFacts?.periods.find(
+    (p) => p.id === (result.basis.periodId ?? data.financialFacts?.latestTtm),
+  );
+  const choice = result.basis.periodChoice;
+  const label = choice === "previous-four-quarters" ? t("上个完整四季", "Earlier complete four quarters")
+    : choice === "latest-fiscal-year" ? t("上一财年", "Last fiscal year")
+      : choice === "previous-fiscal-year" ? t("较早完整财年", "Earlier complete fiscal year")
+        : referencePeriod?.label;
+  const end = referencePeriod?.actualEnd ?? referencePeriod?.providerEnd ?? result.basis.periodId?.split(":")[1];
+  return [label, end, result.basis.currency].filter(Boolean).join(" · ");
+}
+
 export function ValuationWorkbench({
   data,
   revision,
@@ -100,6 +114,7 @@ export function ValuationWorkbench({
   price?: ResearchPrice;
 }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const [family, setFamily] = useState<Preview["basis"]["family"]>();
   const query = useQuery(valuationDefaultsQuery(data, price, family));
   // Once this research has a preview, a failed refresh keeps it and its editor.
@@ -167,7 +182,8 @@ export function ValuationWorkbench({
             );
 
   return <ResearchReading parameter="valuationView" sections={editor ? valuationSections : valuationSections.slice(0, 2)}>
-    <ValuationReadout data={data} preview={preview} reading={currentReading} />
+    <ValuationReadout data={data} preview={preview} reading={currentReading}
+      retry={query.isError ? () => void query.refetch() : undefined} refreshing={query.isFetching} />
     <div id="research-history">
       <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}
         sales={<FilingMultiples data={data} price={price} mode="ps" />}
@@ -187,9 +203,8 @@ export function ValuationWorkbench({
             methodology={methodology} refreshing={query.isFetching}
             onRetry={query.isError ? () => void query.refetch() : undefined} />
         </div> : reverseOnly && preview ? <Facts rows={[
-          [t("期间", "Period"), preview.basis.periodId ?? "—"],
-          [t("目标利润率", "Target margin"), percent(preview.reverseInputs?.targetFcfMargin)],
-          [t("退出倍数", "Exit multiple"), number(preview.reverseInputs?.exitFcfMultiple, 1)],
+          [t("期间", "Period"), statementPeriod(preview, data, t)],
+          [t("第五年隐含营收", "Implied year-five revenue"), formatCurrency(preview.reverseValue, locale, preview.basis.currency)],
           [t("股权成本", "Cost of equity"), percent(preview.reverseInputs?.discountRate)],
           [t("股数变化", "Share change"), percent(preview.reverseInputs?.shareCagr)],
         ]} /> : state.view === "error" ? (
@@ -404,9 +419,6 @@ function ModelEditor({
         : initial.defaultSource === "configured-scenarios"
           ? t("已配置的假设", "Configured assumptions")
           : t("模型初始假设", "Initial assumptions");
-  const referencePeriod = data.financialFacts?.periods.find(
-    (p) => p.id === (result.basis.periodId ?? data.financialFacts?.latestTtm),
-  );
   const latestFact = (metric: string) =>
     data.financialFacts?.observations.find(
       (o) =>
@@ -695,17 +707,7 @@ function ModelEditor({
           title={t("经营参考", "Operating reference")}
           action={
             <span className="mx-unit">
-              {[
-                result.basis.periodChoice === "previous-four-quarters"
-                  ? t("上个完整四季", "Earlier complete four quarters")
-                  : result.basis.periodChoice === "latest-fiscal-year"
-                    ? t("上一财年", "Last fiscal year")
-                    : result.basis.periodChoice === "previous-fiscal-year" ? t("较早完整财年", "Earlier complete fiscal year") : referencePeriod?.label,
-                referencePeriod?.actualEnd ?? referencePeriod?.providerEnd ?? result.basis.periodId?.split(":")[1],
-                result.basis.currency,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
+              {statementPeriod(result, data, t)}
             </span>
           }
           help={methodology}

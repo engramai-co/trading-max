@@ -40,6 +40,18 @@ function preview(ticker: string, spot: number, asOf: string, held: boolean, inpu
   };
 }
 
+function zeroRevenue(ticker: string, spot: number, asOf: string, value: number | null) {
+  const p = preview(ticker, spot, asOf, true, {});
+  return {
+    ...p, formulaVersion: "statement-equity-v2",
+    basis: { ...p.basis, family: "cash-flow", revenue: 0, startMargin: 0,
+      periodChoice: "latest-fiscal-year", periodId: "annual:2025-12-31" },
+    scenarios: {}, sensitivity: [], reverseMetric: "year-five-revenue",
+    reverseValue: value, reverseReason: value === null ? "positive-target-and-multiple-required" : null,
+    reverseInputs: { ...defaults, exitFcfMultiple: value === null ? 0 : defaults.exitFcfMultiple },
+  };
+}
+
 function instrument(ticker: string, order: number, held: boolean, broker: { price: number; asOf: string }) {
   return {
     ticker, name: `${ticker} Synthetic`, exchange: "NYSE", website: "", bloombergTicker: "", figi: "",
@@ -317,6 +329,28 @@ test.describe("valuation refresh", () => {
     state.releaseOther();
     await expect(spot).toContainText("55.00");
     await expect(spot).not.toContainText("120.00");
+  });
+
+  test("a failed quote refresh labels the retained year-five revenue and retries inline", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page);
+    await page.route("**/SYNT/valuation-preview*", route => {
+      if (state.defaultsDown) return route.fulfill({ status: 503, json: { detail: "synthetic outage" } });
+      return route.fulfill({ json: zeroRevenue("SYNT", state.broker.price, state.broker.asOf, state.broker.price * 1000) });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const reverse = page.locator(".mx-valuation-readout .mx-metric").filter({ hasText: "Year-five revenue" });
+    await expect(reverse).toContainText("US$100k");
+    state.defaultsDown = true;
+    state.broker = { price: 120, asOf: "2026-11-04T15:50:00Z" };
+    await expect(page.locator(".mx-security-price")).toContainText("120.00");
+    const failure = reverse.getByRole("alert");
+    await expect(failure).toContainText("Not revalued at the latest price");
+    await expect(reverse).toContainText("US$100k");
+    state.defaultsDown = false;
+    await failure.getByRole("button", { name: "Retry" }).click();
+    await expect(reverse).toContainText("US$120k");
+    await expect(failure).toHaveCount(0);
   });
 
   test("new research defaults do not rebase dirty assumptions", async ({ page }) => {
@@ -609,14 +643,13 @@ for (const locale of ["en", "zh"] as const) {
   }
 }
 
-for (const example of ["bounded-margin", "ambiguous-margin", "zero-revenue"] as const) {
+for (const example of ["bounded-margin", "ambiguous-margin"] as const) {
   test(`the valuation readout uses the published ${example} result`, async ({ page, isMobile }, info) => {
     test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
     if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
-    const zero = example === "zero-revenue";
-    const ticker = zero ? "ZERO" : "CASH";
+    const ticker = "CASH";
     const state = await synthetic(page, false);
     await page.route("**/api/backend/research/shell", route => route.fulfill({ json: {
       status: { runId: state.publication, overall: "fresh", artifacts: [] }, watchlistCategories: [],
@@ -624,37 +657,78 @@ for (const example of ["bounded-margin", "ambiguous-margin", "zero-revenue"] as 
     } }));
     await page.route(`**/research/${ticker}/lens/*`, route => {
       const view = new URL(route.request().url()).pathname.split("/").at(-1)!;
-      return route.fulfill({ json: { ...lens(ticker, view, 55), trailingPeHistory: zero ? null : peHistory() } });
+      return route.fulfill({ json: { ...lens(ticker, view, 55), trailingPeHistory: peHistory() } });
     });
     await page.route(`**/research/${ticker}/valuation-preview*`, route => {
       const p = preview(ticker, 55, "2026-11-03T21:00:03Z", false, {});
       return route.fulfill({ json: {
         ...p, formulaVersion: "statement-equity-v2",
-        basis: { ...p.basis, family: "cash-flow", revenue: zero ? 0 : 1000, startMargin: zero ? 0 : -0.05 },
-        ...(zero ? {
-          scenarios: {}, sensitivity: [], reverseMetric: "year-five-revenue", reverseInputs: defaults, reverseValue: 132000,
-        } : {
-          reverseMetric: "target-margin", reverseLimits: [-1, 1], reverseValue: null,
-          reverseReason: example === "ambiguous-margin" ? "target-margin-not-unique" : null,
-          reverseBound: example === "bounded-margin" ? "above" : null,
-        }),
+        basis: { ...p.basis, family: "cash-flow", revenue: 1000, startMargin: -0.05 },
+        reverseMetric: "target-margin", reverseLimits: [-1, 1], reverseValue: null,
+        reverseReason: example === "ambiguous-margin" ? "target-margin-not-unique" : null,
+        reverseBound: example === "bounded-margin" ? "above" : null,
       } });
     });
     await page.goto(`/research?ticker=${ticker}&view=valuation`);
     const row = page.locator(".mx-valuation-readout");
-    const reverse = row.locator(".mx-metric").filter({ hasText: zero ? "Year-five revenue implied by price" : "Target margin implied by price" });
-    const expected = zero ? "US$132,000" : example === "bounded-margin" ? ">100.0%" : "—";
+    const reverse = row.locator(".mx-metric").filter({ hasText: "Target margin implied by price" });
+    const expected = example === "bounded-margin" ? ">100.0%" : "—";
     await expect(reverse.locator(".mx-number-value")).toHaveText(expected);
     await expect(reverse).toContainText("15.0%");
     if (example === "ambiguous-margin") await expect(reverse).toContainText("No unique estimate");
-    if (zero) {
-      await expect(row.locator(".mx-metric").filter({ hasText: "Base scenario" }).locator(".mx-number-value")).toHaveText("—");
-      await expect(page.locator("#research-sensitivity, #research-worksheet")).toHaveCount(0);
-    }
     await expect(page.locator("#valuation-assumptions").getByRole("combobox", { name: "Valuation model" })).toBeVisible();
     const dir = process.env.VALUATION_QA_SCREENSHOTS_DIR;
-    if (dir) await page.screenshot({ path: join(dir, `${example}-${info.project.name}.png`) });
+    if (dir) await page.screenshot({ scale: "css", path: join(dir, `${example}-${info.project.name}.png`) });
   });
+}
+
+for (const locale of ["en", "zh"] as const) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`delayed zero-revenue reading reserves space · ${locale} · ${scheme}`, async ({ page, isMobile }, info) => {
+      test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+      if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+      await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+      await synthetic(page, false);
+      let release!: () => void;
+      const gate = new Promise<void>(resolve => { release = resolve; });
+      let value: number | null = 132_000_123.45;
+      await page.route("**/SYNT/valuation-preview*", async route => {
+        await gate;
+        await route.fulfill({ json: zeroRevenue("SYNT", 100, "2026-11-04T15:40:00Z", value) });
+      });
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      const history = page.locator("#research-history");
+      await expect(history).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      const top = (await history.boundingBox())!.y;
+      release();
+      const label = locale === "en" ? "Year-five revenue implied by price" : "现价隐含的第五年营收";
+      const row = page.locator(".mx-valuation-readout");
+      const reverse = row.locator(".mx-metric").filter({ hasText: label });
+      await expect(reverse.locator(".mx-number-value")).toHaveText(/132m/);
+      await expect(reverse).toContainText("15.0%");
+      await expect(reverse).toContainText("15×");
+      await expect(row.locator(".mx-metric").last().locator(".mx-number-value")).toHaveText("—");
+      expect(Math.abs((await history.boundingBox())!.y - top)).toBeLessThan(1);
+      const detail = page.locator("#valuation-assumptions");
+      await expect(detail).toContainText("132,000,123.45");
+      await expect(detail).toContainText(locale === "en" ? "Last fiscal year · 2025-12-31" : "上一财年 · 2025-12-31");
+      await expect(detail).not.toContainText("annual:");
+      await expect(detail).not.toContainText(locale === "en" ? "Target margin" : "目标利润率");
+      await expect(detail).not.toContainText(locale === "en" ? "Exit multiple" : "退出倍数");
+      await expect(page.locator("#research-sensitivity, #research-worksheet")).toHaveCount(0);
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      const dir = process.env.VALUATION_QA_SCREENSHOTS_DIR;
+      if (dir) await page.screenshot({ scale: "css", path: join(dir, `zero-revenue-${info.project.name}-${locale}-${scheme}.png`) });
+
+      value = null;
+      await page.reload();
+      await expect(reverse.locator(".mx-number-value")).toHaveText("—");
+      await expect(reverse).toContainText(locale === "en" ? "Margin and multiple must be positive" : "利润率与倍数须为正");
+    });
+  }
 }
 
 test("set and clear a saved valuation baseline from its journal", async ({ page }) => {

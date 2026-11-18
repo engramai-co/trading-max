@@ -81,6 +81,9 @@
 .mx-valuation-readout .mx-metric-note {
   min-height: 1lh;
 }
+.mx-reverse-status {
+  display: block;
+}
 .mx-valuation-readout .mx-metric-change {
   white-space: nowrap;
 }
@@ -210,6 +213,14 @@
     padding: 8px 0;
     border: 0;
     border-block-start: 1px solid var(--mx-border);
+  }
+  /* Reserve the wrapped reverse label and its help control before the model arrives. */
+  .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
+    min-height: 2lh;
+    flex-wrap: nowrap;
+  }
+  .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-note {
+    min-height: 2lh;
   }
   .mx-valuation-readout .mx-metric-note {
     grid-column: 1 / -1;
