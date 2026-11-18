@@ -481,12 +481,17 @@ def test_fill_sharing_isin_with_a_different_listing_keeps_its_source_ticker(tmp_
                 "TotalN": 10,
                 "Currency (Total)": "GBP",
             }
-            for ticker in ("ABCEU", "ABCl_EQ")
+            for ticker in ("ABCEU", "ABCl_EQ", "ABC_US_EQ")
         ]
     )
     markers = transaction_marker_rows(
         {"isa": tx}, [{"ticker": "ABC", "broker_ticker": "ABCl_EQ", "isin": isin}]
     )
+    assert sorted([f["broker_ticker"] for f in m["fills"]] for m in markers) == [
+        ["ABCEU"],
+        ["ABC_US_EQ"],
+        ["ABCl_EQ"],
+    ]
     store = ArtifactStore(tmp_path)
     publish(store, markers=markers)
     deps = AssistantDepsFactory(store).for_run()
@@ -498,7 +503,9 @@ def test_fill_sharing_isin_with_a_different_listing_keeps_its_source_ticker(tmp_
         (r["ticker"], r["listing_verified"])
         for r in account["data"]["items"]
         if r["kind"] == "own_trade"
-    ) == [("ABC.L", True), ("ABCEU", False)]
+    ) == [("ABC", True), ("ABC.L", True), ("ABCEU", False)]
+    us = events.event_data(deps, args("isa", ticker="ABC"), upcoming=False)
+    assert [r["ticker"] for r in us["data"]["items"] if r["kind"] == "own_trade"] == ["ABC"]
 
 
 @pytest.mark.parametrize("order", ["active-first", "cancelled-first"])
