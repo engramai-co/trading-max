@@ -28,6 +28,7 @@ from .broker_stages import BrokerSyncStage
 from .cfd_stages import CfdAccountStage
 from .decision_stages import AccountDecisionStage
 from .etf_depth_stage import ETFDepthStage
+from .event_stages import MacroCalendarStage, SecurityNewsStage
 from .lookthrough_stages import PortfolioLookthroughStage
 from .nav_stages import AccountDayAttributionStage, AccountIntradayNavStage, AccountNavStage
 from .performance_stages import AccountPerformanceStage
@@ -74,7 +75,8 @@ class TypedWorkerRuntime:
         self.market_service = market_service or MarketResearchService()
         self.research_service = research_service or YFinanceResearchService(
             evidence_loader=ResearchEvidenceProvider(
-                self.state_root / "research-cache" / "disclosures"
+                self.state_root / "research-cache" / "disclosures",
+                news_request=self.market_service.prices.yahoo_request,
             )
         )
         self.lookthrough_service = lookthrough_service
@@ -143,6 +145,8 @@ class TypedWorkerRuntime:
                     assumptions_store=self.valuation_assumptions,
                 ),
                 EarningsArtifactStage(self.artifacts, self.research_service),
+                MacroCalendarStage(self.artifacts, self.snapshots),
+                SecurityNewsStage(self.artifacts, self.snapshots, self.market_service),
                 ETFDepthStage(self.state_root, self.artifacts, self.snapshots),
                 TypedPublishSnapshotStage(
                     self.artifacts,

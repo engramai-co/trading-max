@@ -10,7 +10,9 @@ from zoneinfo import ZoneInfo
 from .facts import fingerprint, number
 
 
-def earnings_events(rows: list[dict[str, Any]], *, timezone: str | None) -> list[dict[str, Any]]:
+def earnings_events(
+    rows: list[dict[str, Any]], *, timezone: str | None, observed_at: str | None = None
+) -> list[dict[str, Any]]:
     result = []
     for row in rows:
         raw = str(row.get("index") or row.get("Earnings Date") or "")
@@ -25,6 +27,10 @@ def earnings_events(rows: list[dict[str, Any]], *, timezone: str | None) -> list
             with suppress(ValueError, KeyError):
                 local = instant.astimezone(ZoneInfo(timezone))
         actual = number(row.get("Reported EPS"))
+        estimate = number(row.get("EPS Estimate"))
+        currency = row.get("EPS Currency") or row.get("earningsCurrency") or row.get("currency")
+        if not isinstance(currency, str) or len(currency) != 3 or not currency.isalpha():
+            currency = None
         minute = local.hour * 60 + local.minute
         result.append(
             {
@@ -38,8 +44,15 @@ def earnings_events(rows: list[dict[str, Any]], *, timezone: str | None) -> list
                 if exact and timezone == "America/New_York"
                 else "unknown",
                 "status": "reported" if actual is not None else "provider-estimate",
+                # Currency and period belong to the specific EPS observation.
+                # Company reporting and market quote currencies can both differ.
+                "currency": currency,
+                "epsCurrencyMissing": currency is None
+                and (estimate is not None or actual is not None),
+                "fiscalPeriod": row.get("Fiscal Quarter Ending") or row.get("fiscalPeriod"),
+                "asOf": row.get("asOf") or observed_at,
                 "actualEps": actual,
-                "estimatedEps": number(row.get("EPS Estimate")),
+                "estimatedEps": estimate,
                 "surprisePct": (number(row.get("Surprise(%)")) / 100)
                 if number(row.get("Surprise(%)")) is not None
                 else None,

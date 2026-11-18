@@ -273,3 +273,71 @@ publishes results to the scheduled cache. A visible overview polls this cache
 every thirty seconds without calling a provider. One brief
 includes bilingual text and all supported benchmark comparisons, so changing
 language or benchmark needs no further model call.
+## News and scheduled events
+
+The read-only `news_and_events` tool returns dated headlines, earnings estimates
+and reports, rating changes, filings, dividends and the permitted accounts'
+broker trades. A shared provider ID or canonical URL links copies of a headline
+across security feeds. Exact-ticker results use the instrument recorded on each
+fill. The account chronology also retains fills whose listing is unknown.
+The events tool shows EPS amounts when the observation identifies its currency.
+The Analyst lens retains the provider's original estimates and results.
+Each row identifies its evidence in the pinned publication.
+A publisher's headline is a lead. It cannot establish the cause of a price move.
+
+`upcoming_events` and `GET /v1/snapshots/{run_id}/events/upcoming` share the
+same projection. Pass `scope`, inclusive ISO dates `start` and `end`, and an
+optional exact listing ticker. The API accepts an IANA `timezone` (default
+`Europe/London`), `cursor` and `limit`. The household calendar includes the
+last scheduled research universe as well as holdings. Exchange calendars supply
+holidays and early closes for identifiable listings. All-day dates stay on their
+publisher's calendar day. Timed rows include the source instant and local time.
+An earnings window retains both ends when the provider has not set a single day.
+
+Scheduled research records Yahoo-compatible headline metadata with the shared
+Yahoo request budget. The news and disclosure loaders verify the HTTP status and ticker-stream envelope before accepting an empty result. The rolling
+news history retains up to 500 headlines per listing for up to a year. Account
+activity stays in the published local ledger. Official-calendar requests contain
+no tickers or portfolio data. An unsuccessful refresh preserves the last
+successful rows and their original observation time. Data status shows their
+freshness, the failed publishers and their last attempt. Headline content retains its immutable reference across metadata-only refreshes.
+
+### Official macro calendars
+
+The local worker checks the following keyless release schedules at most once
+per 20 hours for a 180-day window. Calendar rows carry the publisher, original
+link, translated label, source credit and scheduling status. ONS provisional months retain month precision (for example, `2026-12`) in the API and assistant evidence. Coverage follows
+the publisher's announced horizon. Individual announcements can change.
+
+| Market | Sources |
+| --- | --- |
+| United States | BEA release iCalendar, Census indicator tables, Federal Reserve meeting and monthly announcements, BLS release schedules on the public FRED calendar (Central time) |
+| United Kingdom | Office for National Statistics release calendar under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/), Bank of England MPC dates for personal and internal non-commercial use |
+| Euro area | European Commission, Eurostat Euro indicators iCalendar (category 2, date only), European Central Bank Governing Council and statistical schedules |
+| Japan | Statistics Bureau and METI via e-Stat, Cabinet Office GDP, Bank of Japan monetary policy meetings |
+| Hong Kong | Census and Statistics Department, © Government of the Hong Kong SAR. Visible dates from its English press release index |
+| South Korea | Ministry of Data and Statistics statistical timetable, Bank of Korea policy-setting meetings and its announced 2027 schedule until the HTML table rolls over |
+
+Trading Max translates or abridges display labels. The publisher's original
+schedule is authoritative. Eurostat bears no responsibility for translations.
+Only calendar metadata and Yahoo-compatible headline metadata are stored.
+
+To check the Hong Kong TLS path, run the following from the source checkout.
+It uses the scheduled worker's verified HTTP client, reads public calendar
+metadata and prints the count of parsed events. The C&SD hostname resolves to
+rotating CDN addresses. A hostname mismatch causes one new connection to the
+same hostname. A second mismatch fails the source and preserves its last
+verified calendar.
+
+```bash
+uv run python - <<'PY'
+from datetime import date
+from trading_max.research.calendars.catalog import sources
+from trading_max.research.calendars.refresh import official_reader, parse
+
+today = date.today()
+source = next(s for s in sources(today) if s.key == "hk")
+with official_reader() as read:
+    print(len(parse(source, read(source.url), today)))
+PY
+```

@@ -200,7 +200,21 @@ class JobRecord(ApiModel):
     stages: list[JobStageRecord] = Field(default_factory=list)
 
 
+class EventRefreshFailure(ApiModel):
+    source: str
+    checked_at: datetime | None = None
+
+
+class EventRefreshHealth(ApiModel):
+    kind: Literal["news", "macro"]
+    checked_at: datetime | None
+    as_of: str | None
+    failed_sources: int
+    failures: list[EventRefreshFailure] = Field(default_factory=list)
+
+
 class HealthResponse(ApiModel):
+    event_refreshes: list[EventRefreshHealth] = Field(default_factory=list)
     status: Literal["ok", "degraded"]
     service: str = "trading_max-api"
     latest_run_id: str | None = None

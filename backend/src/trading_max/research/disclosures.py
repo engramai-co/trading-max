@@ -14,7 +14,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from datetime import UTC, date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -396,7 +396,8 @@ def match_periods(raw: dict[str, Any], periods: list[dict[str, Any]]) -> list[di
 
 
 class ResearchEvidenceProvider:
-    def __init__(self, cache_root: Path) -> None:
+    def __init__(self, cache_root: Path, *, news_request=nullcontext) -> None:
+        self.news_request = news_request
         self.root = cache_root
         self.sec = SecCompanyFacts(cache_root)
         self.documents: SingleFlightCache[str, str] = SingleFlightCache(4)
@@ -477,7 +478,7 @@ class ResearchEvidenceProvider:
             return list(pool.map(read, selected))
 
     def __call__(self, ticker: str, financials: dict[str, Any]) -> dict[str, Any]:
-        cache = self.root / (fingerprint([ticker, "evidence-v9"]) + ".json")
+        cache = self.root / (fingerprint([ticker, "evidence-v10"]) + ".json")
         if cache.is_file() and time.time() - cache.stat().st_mtime < 6 * 3600:
             return json.loads(self._read_cache(cache))
         proxy = yf.Ticker(ticker)
@@ -669,14 +670,17 @@ class ResearchEvidenceProvider:
         except Exception as exc:
             result["status"]["dividends"] = {"state": "missing", "reason": type(exc).__name__}
         try:
+            from .news import headline, verified_news
+
             seen = set()
-            for row in proxy.news or []:
-                news = row.get("content") or {}
-                url = (news.get("canonicalUrl") or {}).get("url")
-                identity = (
-                    re.sub(r"\W+", "", str(news.get("title") or "").casefold()),
-                    str(news.get("pubDate") or "")[:10],
-                )
+            with self.news_request():
+                news_rows = verified_news(proxy)
+            for row in news_rows:
+                news = headline(row)
+                if not news:
+                    continue
+                url = news["url"]
+                identity = news["id"]
                 if (
                     not url
                     or url in seen
@@ -688,14 +692,15 @@ class ResearchEvidenceProvider:
                 seen.add(identity)
                 result["news"].append(
                     {
-                        "id": row.get("id"),
-                        "title": news.get("title"),
+                        "id": identity,
+                        "title": news["title"],
                         "url": url,
-                        "publishedAt": news.get("pubDate"),
-                        "source": (news.get("provider") or {}).get("displayName"),
+                        "publishedAt": news["instant"] or news["date"],
+                        "source": news["publisher"],
                         "entityAssociation": "provider-security-feed",
                     }
                 )
+            result["status"]["news"] = {"state": "verified"}
         except Exception as exc:
             result["status"]["news"] = {"state": "missing", "reason": type(exc).__name__}
         self.root.mkdir(parents=True, exist_ok=True)

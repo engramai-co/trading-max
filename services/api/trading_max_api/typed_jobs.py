@@ -295,6 +295,13 @@ def stage_plan(
                 ("accounts.decisions", "Score buys and sells against what followed"),
             ]
         )
+    if scope in {"all", "research"} and trigger in SCHEDULED_RESEARCH_TRIGGERS:
+        stages.extend(
+            [
+                ("research.security_news", "Refresh security news"),
+                ("research.macro_calendar", "Refresh official macro calendars"),
+            ]
+        )
     stages.append(("research.etf_depth", "Update ETF research evidence"))
     stages.append(("snapshot.publish", "Publish immutable snapshot"))
     return stages

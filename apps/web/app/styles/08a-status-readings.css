@@ -53,3 +53,16 @@
     display: none;
   }
 }
+
+.mx-health-source-failure {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin-block: 6px;
+  overflow-wrap: anywhere;
+}
+.mx-health-source-failure small {
+  color: var(--mx-muted);
+  font-variant-numeric: tabular-nums;
+}
