@@ -644,7 +644,14 @@ def test_published_consensus_delta_keeps_both_dates_and_fiscal_identity(tmp_path
     assert not bind_estimate_changes(previous, current, ("TEST",))["rows"][0]["estimateChanges"]
 
 
-def test_gics_sector_comparison_uses_the_published_world_sector_for_financials(tmp_path):
+@pytest.mark.parametrize(
+    "sector,industry,gics",
+    [
+        ("Financial Services", "Banks - Diversified", "40"),
+        ("Energy", "Oil & Gas Integrated", "10"),
+    ],
+)
+def test_gics_sector_comparison_uses_the_published_world_sector(tmp_path, sector, industry, gics):
     import pandas as pd
     from trading_max.reference.msci_world_sectors import WORLD_INDUSTRY_INDICES
     from trading_max.research.technical import _relative_stats
@@ -653,12 +660,13 @@ def test_gics_sector_comparison_uses_the_published_world_sector_for_financials(t
     deps = factory.for_run()
     tech = deps.store.read_json(deps.snapshot_id, tools.TECHNICAL)
     tech["rows"][0]["as_of"] = DATES[-1]
-    symbol = next(s.symbol for s in WORLD_INDUSTRY_INDICES if s.gics == "40")
+    spec = next(s for s in WORLD_INDUSTRY_INDICES if s.gics == gics)
+    symbol = spec.symbol
     dates = pd.bdate_range(end=DATES[-1], periods=64)
     prices = pd.Series(range(100, 164), index=dates)
     tech["rows"][0]["relative_strength"] = {symbol: _relative_stats(prices, prices, 63)}
     fundamentals = deps.store.read_json(deps.snapshot_id, tools.FUNDAMENTALS)
-    fundamentals["rows"][0].update(sector="Financial Services", industry="Banks - Diversified")
+    fundamentals["rows"][0].update(sector=sector, industry=industry)
     publication(
         factory.store, extra_artifacts={tools.TECHNICAL: tech, tools.FUNDAMENTALS: fundamentals}
     )
@@ -669,7 +677,7 @@ def test_gics_sector_comparison_uses_the_published_world_sector_for_financials(t
     reader = role.reader(deps, selected)
     result = reader.read(research.research_position, {})["data"]
     assert result["benchmarks"][0]["symbol"] == symbol
-    assert any("MSCI World Financials" in f.en for f in role.facts(reader, selected))
+    assert any(f"MSCI World {spec.name}" in fact.en for fact in role.facts(reader, selected))
 
 
 def test_reopened_research_citation_rechecks_retention_and_event_identity(tmp_path):
