@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { newReview, readDraft, type DraftResult } from "./valuation-draft";
 
-const result: DraftResult = { id: "draft", evidence: {}, proposals: [{ scenario: "base", field: "revenue_cagr",
-  value: 0.2, source: "sector-template", category: "template", evidenceIds: [] }] };
+const result: DraftResult = { id: "draft", origins: {}, evidence: {}, proposals: [{ scenario: "base", field: "revenue_cagr",
+  value: 0.2, source: "consensus-growth", category: "consensus", evidenceIds: ["growth"] }] };
 const encode = (chunks: string[]) => new Response(new ReadableStream({ start(c) {
   for (const chunk of chunks) c.enqueue(new TextEncoder().encode(chunk));
   c.close();

@@ -62,6 +62,11 @@ record of the changes. The provider sees the listing’s frozen public evidence,
 template candidates and, when enabled in Settings, numeric saved assumptions.
 Broker prices, positions, notes and unsaved edits stay local.
 
+Each template candidate points to a frozen record of the sector parameters,
+dated public inputs and scenario values. Shared saved candidates point to
+their numeric configuration or saved model version. Reported and derived
+candidates cite the public rows used for their value.
+
 The model selects candidates for individual scenario fields. The server
 validates each selection against the candidates returned in that run and runs
 the public evaluator. The sixth tool can only defer the evaluated proposal to
@@ -75,5 +80,7 @@ use the desk’s local broker mark. Only Save model version writes a journal
 version. Saving checks the actual desk basis and latest parent under the same
 lock as a manual save. The immutable version retains the reviewed decisions,
 original values, frozen evidence, formula, prompt version and computed result.
-An identical retry returns the saved version. Drafts never select an overview
+A successful write frees the pending slot. An identical retry returns the saved
+version from the journal. Discarding a draft restores the values it replaced.
+When a newer basis arrives, re-review carries manual edits onto the new inputs. Drafts never select an overview
 baseline.

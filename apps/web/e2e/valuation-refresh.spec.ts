@@ -824,9 +824,12 @@ test("set and clear a saved valuation baseline from its journal", async ({ page 
 const draftProposals = [
   { scenario: "base", field: "revenue_cagr", value: 0.19, category: "consensus", source: "consensus-growth", evidenceIds: ["estimate"] },
   { scenario: "base", field: "target_fcf_margin", value: 0.12, category: "derived", source: "statement-margin", evidenceIds: ["statement"] },
-  { scenario: "bear", field: "discount_rate", value: 0.12, category: "template", source: "sector-template", evidenceIds: [] },
+  { scenario: "bear", field: "discount_rate", value: 0.12, category: "template", source: "sector-template", originId: "template", evidenceIds: [] },
 ];
 const draftResponse = { phase: "complete", result: { id: "synthetic-draft", proposals: draftProposals,
+  origins: { template: { source: "sector-template", inputs: { profile:"hardware", effectiveDiscountRate:.1, annualRevenueGrowth:.1,
+    growthCap:.3, marginCap:.18, shareCagr:.01, exitMultiple:16, basis:{startMargin:.12} },
+    scenarios:{bear:{discountRate:.12}}, evidenceIds:["statement"] } },
   evidence: { estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {end:"2026-12-31"}, value: 0.19, unit: "ratio" },
     statement: { locator: { dataset: "financials" }, metric: "freeCashflow", period: {end:"2025-12-31"}, value: 120, unit: "currency", currency: "USD" } } } };
 
@@ -905,4 +908,96 @@ test("cancel a valuation draft and discard a late proposal", async ({ page }) =>
   await expect(editor.getByRole("button",{name:"✦ Draft",exact:true})).toBeVisible();
   await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
   await expect(editor.getByLabel("Revenue growth · years 1–5")).toHaveValue("10%");
+});
+
+async function reviewDraft(page: Page) {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const state = await synthetic(page, false);
+  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
+    enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
+  }}));
+  let calls = 0;
+  await page.route("**/SYNT/valuation-draft", route => { calls++; return route.fulfill({
+    contentType:"application/x-ndjson", body:JSON.stringify(draftResponse)+"\n",
+  }); });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const entry = editor.getByRole("button", {name:"✦ Draft",exact:true});
+  await expect(entry).toBeVisible();
+  return {state, editor, entry, calls:() => calls};
+}
+
+test.describe("frozen draft review", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  test("discard explicitly before redrafting accepted values", async ({page}) => {
+    const {editor, entry, calls} = await reviewDraft(page);
+    await entry.click();
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+    await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+    await editor.getByRole("button",{name:"Discard draft",exact:true}).click({timeout:1800});
+    await expect(editor.getByLabel("Revenue growth · years 1–5")).toHaveValue("10%");
+    expect(calls()).toBe(1);
+    await entry.click();
+    await expect(editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true})).toHaveAttribute("aria-pressed","false");
+  });
+
+  test("a new publication suspends review and preserves manual edits on reload", async ({page}) => {
+    await page.clock.install();
+    const {state, editor, entry} = await reviewDraft(page);
+    await editor.getByLabel("Revenue growth · years 1–5").fill("14");
+    await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(.14);
+    await entry.click();
+    const accept = editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true});
+    await expect(accept).toBeVisible();
+    state.newResearch = true;
+    state.publication = "synthetic-reviewed-two";
+    const fresh = page.waitForResponse(response => response.url().includes("/SYNT/valuation-preview") &&
+      response.request().method() === "GET" && response.ok());
+    await page.clock.fastForward(60_000);
+    await fresh;
+    await expect(accept).toBeDisabled({timeout:1500});
+    await editor.getByRole("button",{name:"Reload for review"}).click();
+    await expect(editor.getByRole("textbox", {name:"Revenue growth · years 1–5", exact:true})).toHaveValue("14%");
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+  });
+
+  test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await entry.click();
+    await editor.getByRole("button", {name:"Bear", exact:true}).click();
+    await editor.getByRole("link", {name:"Template source", exact:true}).click();
+    const origin = page.locator("#draft-origin-template");
+    await expect(origin).toContainText("hardware");
+    await expect(origin).toContainText("Exit multiple 16×");
+    await expect(origin).toContainText("Bear · Cost of equity 12%");
+    await origin.getByRole("link").click();
+    await expect(page.locator("#draft-evidence-statement")).toContainText("120 USD");
+  });
+
+  test("reject and edit retain keyboard focus and name both values", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await entry.click();
+    const reject = editor.getByRole("button",{name:"Reject Target FCF margin",exact:true});
+    await reject.focus();
+    await reject.press("Enter");
+    await expect(editor.getByRole("button",{name:/^Target FCF margin/})).toBeFocused({timeout:1000});
+    const edit = editor.getByRole("button",{name:"Edit Revenue growth · years 1–5",exact:true});
+    const row = edit.locator("xpath=ancestor::div[contains(@class,'mx-draft-row')]");
+    await expect(row.getByText("Previous value",{exact:true})).toBeAttached();
+    await expect(row.getByText("Proposed value",{exact:true})).toBeAttached();
+    await edit.focus();
+    await edit.press("Enter");
+    await expect(editor.getByLabel("Revenue growth · years 1–5",{exact:true})).toBeFocused();
+  });
+
+  test("proposal rows keep the grid stable and name the staged chart series", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    const width = (await editor.boundingBox())!.width;
+    await entry.click();
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+    await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+    expect((await editor.boundingBox())!.width).toBe(width);
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true]")).toContainText("+95.00%");
+    await expect(page.getByLabel(/Scenario valuations relative to current price.*Base.*Draft/i)).toBeAttached();
+  });
 });

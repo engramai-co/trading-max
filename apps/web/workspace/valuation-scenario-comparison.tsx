@@ -28,6 +28,8 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
 }) {
   const t = useCopy();
   const keys = KEYS;
+  const seriesName = useCallback((key: ScenarioKey) =>
+    SCENARIO_NAMES[key](t) + (stagedScenarios.includes(key) ? t(" · 草稿", " · Draft") : ""), [stagedScenarios, t]);
   const name = (key: ScenarioKey) => SCENARIO_NAMES[key](t);
   // The cards above already carry each value and gap, so the chart has no tooltip:
   // a line under the pointer lights its card, and a card under the pointer or focus lights its line.
@@ -59,7 +61,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
   // since a new option resets the chart and would drop the line's highlight.
   const option = useCallback((c: ChartColours) => ({
     animation: false,
-    grid: { left: 54, right: 38, top: 32, bottom: 28 },
+    grid: { left: stagedScenarios.length ? 94 : 54, right: 38, top: 32, bottom: 28 },
     xAxis: {
       type: "value" as const, min: minBound, max: maxBound, splitNumber: 4,
       axisLabel: { formatter: (v: number) => minus(percent(v, true, 0)) },
@@ -67,12 +69,12 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
       splitLine: { show: false },
     },
     yAxis: {
-      type: "category" as const, inverse: true, data: KEYS.map((key) => SCENARIO_NAMES[key](t)),
+      type: "category" as const, inverse: true, data: KEYS.map(seriesName),
       axisLine: { show: false }, axisTick: { show: false }, splitLine: { show: false },
     },
     tooltip: { show: false },
     series: KEYS.map((key, i) => ({
-      name: SCENARIO_NAMES[key](t), type: "line" as const, symbol: "circle", symbolSize: selected === key ? 10 : 7,
+      name: seriesName(key), type: "line" as const, symbol: "circle", symbolSize: selected === key ? 10 : 7,
       // The whole line answers the pointer, not only its two dots.
       triggerLineEvent: true,
       data: [[0, i], [preview.scenarios[key].upside, i]],
@@ -85,7 +87,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
         label: { formatter: t("现价", "Current price"), position: "start" as const, color: c.text },
       } : undefined,
     })),
-  }), [maxBound, minBound, preview, selected, t]);
+  }), [maxBound, minBound, preview, selected, seriesName, stagedScenarios.length, t]);
   return (
     <div className="mx-scenario-comparison" onPointerEnter={bind}>
       <div className="mx-scenario-spot">
@@ -103,14 +105,14 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
             onFocus={() => light(key)} onBlur={() => light(null)}>
             <span>{name(key)}</span>
             <strong>{currency(staged ? beforeDraft.scenarios[key].value : scenario.value, preview.basis.currency, 2)}</strong>
-            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {calculatingDraft ? "…" : currency(scenario.value, preview.basis.currency, 2)}</span>}
             <span className={`mx-${tone(mainUpside)}`}>{percent(mainUpside, true, 2)}</span>
+            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {calculatingDraft ? "…" : `${currency(scenario.value, preview.basis.currency, 2)} (${percent(scenario.upside, true, 2)})`}</span>}
           </button>;
         })}
       </div>
       <DeferredPlot
         research
-        label={t("情景估值与现价的百分比差距", "Scenario valuations relative to current price")}
+        label={[t("情景估值与现价的百分比差距", "Scenario valuations relative to current price"), ...keys.filter(key => stagedScenarios.includes(key)).map(seriesName)].join(" · ")}
         height={180}
         controller={chart}
         option={option}

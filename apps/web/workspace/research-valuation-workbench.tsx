@@ -73,6 +73,14 @@ import {
 
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
+type EditorValues = { inputs: Scenarios; references: NonNullable<Preview["references"]> };
+type ManualChanges = { fields: Record<string, Partial<ScenarioInput>>; references: EditorValues["references"] };
+
+function initialValues(preview: Preview, changes?: ManualChanges): EditorValues {
+  const inputs = Object.fromEntries(keys.map(key => [key, { ...preview.scenarios[key].inputs, ...changes?.fields[key] }]));
+  const references = (preview.references ?? []).filter(r => changes?.fields[r.scenario]?.revenueCagr === undefined);
+  return { inputs, references: [...references, ...(changes?.references ?? [])] };
+}
 
 function modelMethodology(initial: Preview, t: ReturnType<typeof useCopy>) {
   return initial.formulaVersion === "equity-proxy-projection-v1"
@@ -124,6 +132,7 @@ export function ValuationWorkbench({
   const state = workbenchState(query, loaded.data);
   const [dirty, setDirty] = useState(false);
   const [reload, setReload] = useState(0);
+  const [recovered, setRecovered] = useState<{ id: string; changes: ManualChanges }>();
   const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
     (next, previous) => !dirty || next.basis.ticker !== previous.basis.ticker || editorIdentity(next) === editorIdentity(previous));
   const preview = retained?.basis.ticker === data.ticker && (!family || retained.basis.family === family)
@@ -180,6 +189,7 @@ export function ValuationWorkbench({
       onChange={(value) => {
         position.current = selector.current ? { selectorTop: selector.current.getBoundingClientRect().top } : null;
         setDirty(false);
+        setRecovered(undefined);
         setFamily(value as Preview["basis"]["family"]);
       }}
     />
@@ -217,7 +227,21 @@ export function ValuationWorkbench({
           variant="subtle" size="compact-xs">{t("查看结果", "View results")}</Button>}>
         {chooser}
         {editor ? <div className="mx-model-fields" inert={switching}>
-          <ModelEditor key={editorIdentity(editor)} initial={editor} output={output} referencePanel={reference}
+          <ModelEditor key={reload + editorIdentity(editor)}
+        requestedFamily={family}
+        currentBasis={state.view === "editor" ? state.editor.id : null}
+        recovered={recovered?.id === editor.id ? recovered.changes : undefined}
+        reloadBasis={async changes => {
+          const result = await query.refetch();
+          if (result.isSuccess) {
+            const next = result.data;
+            setRecovered(next.basis.ticker === editor.basis.ticker && next.basis.family === editor.basis.family
+              ? { id: next.id, changes } : undefined);
+            setDirty(false);
+            setReload(n => n + 1);
+          }
+        }}
+ initial={editor} output={output} referencePanel={reference}
             onDirty={setDirty} onReading={setReading} data={data} revision={revision}
             methodology={methodology} refreshing={query.isFetching}
             onRetry={query.isError ? () => void query.refetch() : undefined} />
@@ -244,6 +268,8 @@ function ModelEditor({
   initial,
   onReading,
   requestedFamily,
+  currentBasis,
+  recovered,
   reloadBasis,
   onDirty,
   data,
@@ -257,7 +283,9 @@ function ModelEditor({
   initial: Preview;
   onReading: (reading: ModelReading) => void;
   requestedFamily?: Preview["basis"]["family"];
-  reloadBasis: () => Promise<void>;
+  currentBasis: string | null;
+  recovered?: ManualChanges;
+  reloadBasis: (changes: ManualChanges) => Promise<void>;
   onDirty: (dirty: boolean) => void;
   data: ResearchLensSnapshot;
   revision?: string | null;
@@ -275,12 +303,16 @@ function ModelEditor({
       ? 10
       : 5
     : initial.horizon;
-  const [inputs, setInputs] = useState<Scenarios>(() =>
-    Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
-  );
+  const [inputs, setInputs] = useState<Scenarios>(() => initialValues(initial, recovered).inputs);
   const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs, revision ?? data.runId);
   const { draft } = drafting;
   const [editingProposal, setEditingProposal] = useState<string | null>(null);
+  const focusField = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!focusField.current) return;
+    document.getElementById("assumption-" + focusField.current)?.focus();
+    focusField.current = null;
+  });
   const residual = initial.basis.family === "residual-income";
   const earnings = initial.basis.family === "net-income";
   const marginLabel = earnings || residual ? t("净利率", "Net margin") : t("现金流率","FCF margin");
@@ -293,7 +325,7 @@ function ModelEditor({
   const [reason, setReason] = useState("");
   const [references, setReferences] = useState<
     NonNullable<Preview["references"]>
-  >(initial.references ?? []);
+  >(() => initialValues(initial, recovered).references);
   const reference = useQuery({
     ...researchLensQuery(initial.basis.ticker, "analyst", revision ?? data.runId),
   });
@@ -367,17 +399,49 @@ function ModelEditor({
       });
     },
   });
-  const staleDraft = drafting.stale || Boolean(draft && save.error instanceof ApiError && [409, 422].includes(save.error.status));
+  const basisChanged = currentBasis !== initial.id;
+  const staleDraft = drafting.stale || Boolean((draft || dirty) && currentBasis && basisChanged) ||
+    Boolean(draft && (!currentBasis || [query.error, save.error].some(e => e instanceof ApiError && [409, 422].includes(e.status))));
+  function unstageAccepted(): EditorValues {
+    const manual = Object.fromEntries(keys.map(k => [k, { ...inputs[k] }]));
+    let refs = references;
+    if (draft) for (const p of draft.result.proposals) {
+      if (draft.review.decisions[p.scenario][p.field] !== "accepted") continue;
+      const key = inputKey[p.field];
+      Object.assign(manual[p.scenario], { [key]: draft.before.scenarios[p.scenario].inputs[key] });
+      if (key === "revenueCagr") refs = [...refs.filter(r => r.scenario !== p.scenario),
+        ...(draft.before.references ?? []).filter(r => r.scenario === p.scenario)];
+    }
+    return { inputs: manual, references: refs };
+  }
+  function discardDraft() {
+    const manual = unstageAccepted();
+    setInputs(manual.inputs);
+    setReferences(manual.references);
+    setDraftValue(null);
+    setInvalidInput(false);
+    setEditingProposal(null);
+    drafting.reset();
+    save.reset();
+  }
+  function reloadForReview() {
+    const manual = unstageAccepted();
+    const fields = Object.fromEntries(keys.map(k => [k, Object.fromEntries(
+      Object.entries(manual.inputs[k]).filter(([field, value]) =>
+        value !== initial.scenarios[k].inputs[field as keyof ScenarioInput])
+    )]));
+    void reloadBasis({ fields, references: manual.references.filter(r => "revenueCagr" in fields[r.scenario]) });
+  }
   const reReview = staleDraft && <div className="mx-draft-status" role="alert">
     {t("估值口径或父模型已改变。", "The valuation basis or parent model changed.")}{" "}
-    <button type="button" className="mx-text-link" onClick={() => void reloadBasis()}>
+    <button type="button" className="mx-text-link" onClick={reloadForReview}>
       {t("重新载入并重审", "Reload for review")}
     </button>
   </div>;
   const changes = draft?.result.proposals.filter(p => p.value !== draft.before.scenarios[p.scenario].inputs[inputKey[p.field]]) ?? [];
   const accepted = changes.filter(p => draft?.review.decisions[p.scenario][p.field] === "accepted").length;
-  const stagedScenarios = draft ? Object.keys(draft.review.decisions).filter(key =>
-    Object.values(draft.review.decisions[key]).some(d => d === "accepted" || d === "edited")) : [];
+  const stagedScenarios = useMemo(() => draft ? Object.keys(draft.review.decisions).filter(key =>
+    Object.values(draft.review.decisions[key]).some(d => d === "accepted" || d === "edited")) : [], [draft]);
   const scenarioNames: Record<string, string> = {
     bear: t("保守", "Bear"),
     base: t("中性", "Base"),
@@ -664,8 +728,9 @@ function ModelEditor({
               if (draft && p && p.value !== old && decision !== "rejected" && decision !== "edited" &&
                 editingProposal !== selected + field.key) {
                 return <ProposalRow key={field.key} draft={draft} proposal={p} label={field.label} scale={field.scale} suffix={field.suffix} disabled={staleDraft}
-                  edit={() => { setActiveField(field.key); setEditingProposal(selected + field.key); setDraftValue(null); setInvalidInput(false); }}
+                  edit={() => { focusField.current = field.key; setActiveField(field.key); setEditingProposal(selected + field.key); setDraftValue(null); setInvalidInput(false); }}
                   decide={next => {
+                    if (next === "rejected") focusField.current = field.key;
                     drafting.decide(p, next);
                     setDraftValue(null);
                     setInvalidInput(false);
@@ -719,6 +784,7 @@ function ModelEditor({
               ) : (
                 <button
                   key={field.key}
+                  id={"assumption-" + field.key}
                   type="button"
                   onClick={() => {
                     setActiveField(field.key);

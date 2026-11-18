@@ -881,8 +881,3 @@
 .mx-draft-evidence span, .mx-draft-evidence a {
   color: var(--mx-muted);
 }
-@media (min-width: 1200px) {
-  .mx-model-workbench:has(.mx-draft-row) {
-    grid-template-columns: minmax(0, 1fr) minmax(340px, 31%);
-  }
-}

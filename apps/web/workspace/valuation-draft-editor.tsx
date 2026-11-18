@@ -33,7 +33,7 @@ export function useValuationDraft(initial: Preview, requestedFamily: Preview["ba
     setRun(null);
   };
   async function start(before: Preview) {
-    if (!enabled || controller.current && !controller.current.signal.aborted) return;
+    if (draft || !enabled || controller.current && !controller.current.signal.aborted) return;
     const request = new AbortController();
     controller.current = request;
     setError(null);
@@ -125,25 +125,28 @@ export function ProposalRow({ draft, proposal, label, scale, suffix, decide, edi
   const [zh,en] = reasons[p.source], [cz,ce] = categories[p.category];
   return <div className="mx-draft-row" data-decision={decision}>
     <div className="mx-draft-values">
-      <button type="button" onClick={edit} className="mx-draft-field" aria-label={t("编辑", "Edit") + " " + label}>{label}</button>
-      <del>{format(old)}</del>
-      <span className="mx-draft-candidate"><strong>{format(p.value)}</strong><small>{t(cz,ce)}</small></span>
+      <button type="button" disabled={disabled} onClick={edit} className="mx-draft-field" aria-label={t("编辑", "Edit") + " " + label}>{label}</button>
+      <del><span className="sr-only">{t("原值","Previous value")}</span> {format(old)}</del>
+      <span className="mx-draft-candidate"><strong><span className="sr-only">{t("建议值","Proposed value")}</span> {format(p.value)}</strong><small>{t(cz,ce)}</small></span>
       <div className="mx-draft-actions">
         <button type="button" disabled={disabled} aria-label={t("接受", "Accept") + " " + label} aria-pressed={decision === "accepted"} onClick={() => decide("accepted")}><Check aria-hidden /></button>
         <button type="button" disabled={disabled} aria-label={t("拒绝", "Reject") + " " + label} onClick={() => decide("rejected")}><X aria-hidden /></button>
       </div>
     </div>
     <div className="mx-draft-reason">{t(zh,en)}{" "}
+      {p.originId && <a href={`#draft-origin-${p.originId}`} onClick={openSources}>{p.source === "sector-template" ? t("模板来源", "Template source") : t("保存的假设", "Saved assumption")}</a>}
       {[...new Set(p.evidenceIds.map(id => draft.result.evidence[id]?.locator.dataset))].map(dataset => {
         const id = p.evidenceIds.find(id => draft.result.evidence[id]?.locator.dataset === dataset);
         return <a key={String(dataset)} href={`#draft-evidence-${id}`}
-          onClick={() => {
-            const details = document.getElementById("valuation-assumption-sources");
-            if (details instanceof HTMLDetailsElement) details.open = true;
-          }}>{sourceWord(dataset, t)}</a>;
+          onClick={openSources}>{sourceWord(dataset, t)}</a>;
       })}
     </div>
   </div>;
+}
+
+function openSources() {
+  const details = document.getElementById("valuation-assumption-sources");
+  if (details instanceof HTMLDetailsElement) details.open = true;
 }
 
 function sourceWord(dataset: unknown, t: (zh: string, en: string) => string) {
@@ -153,19 +156,54 @@ function sourceWord(dataset: unknown, t: (zh: string, en: string) => string) {
 
 const draftMetricNames: Record<string, [string,string]> = {
   consensusRevenueGrowth: ["营收增长一致预期","Consensus revenue growth"], commonEquity:["普通股净资产","Common equity"],
-  costOfEquity:["股权成本","Cost of equity"], priceToBook:["市净率","Price to book"], shareCount:["期末股数","Period-end shares"],
+  costOfEquity:["股权成本","Cost of equity"], priceToBook:["市净率","Price to book"],
+  spot:["公开报价","Public quote"], sharesOutstanding:["上市股数","Listing shares"],
+  reportingToQuoteFx:["报表至报价币种汇率","Reporting-to-quote exchange rate"],
 };
+
+const scenarioLabels = { bear: ["保守", "Bear"], base: ["中性", "Base"], bull: ["乐观", "Bull"] };
+const assumptionLabels = {
+  revenue_cagr: ["营收增长","Revenue growth"], target_fcf_margin: ["目标利润率","Target margin"],
+  discount_rate: ["股权成本","Cost of equity"], exit_fcf_multiple: ["退出倍数","Exit multiple"],
+  share_cagr: ["股数变化","Share change"], ramp_years: ["达到目标的年数","Years to target"],
+  initial_roe: ["期初 ROE","Initial ROE"], payout: ["派息率","Payout ratio"], terminal_pb: ["终值市净率","Terminal P/B"],
+};
+const rate = (v: number | null | undefined) => v == null ? "—" : number(v * 100, 3) + "%";
 
 export function DraftEvidence({ draft }: { draft: DraftState }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  return <div className="mx-draft-evidence">{Object.entries(draft.result.evidence).map(([id, row]) => {
+  const metricLabel = (metric: string) => (metricNames[metric] ?? draftMetricNames[metric] ?? [metric, metric])[locale === "en" ? 1 : 0];
+  return <div className="mx-draft-evidence">
+    {Object.entries(draft.result.origins).map(([id, origin]) =>
+      <div id={`draft-origin-${id}`} key={id} tabIndex={-1}>
+        {origin.source === "sector-template" ? <>
+          <strong>{t("板块模板", "Sector template")} · {origin.inputs.profile}</strong>
+          <span>{t("历史营收增长", "Historical revenue growth")} {rate(origin.inputs.annualRevenueGrowth)}
+            {" · "}{t("增长上限", "Growth cap")} {rate(origin.inputs.growthCap)}</span>
+          <span>{t("期初利润率", "Starting margin")} {rate(origin.inputs.basis.startMargin)}
+            {" · "}{t("利润率上限", "Margin cap")} {rate(origin.inputs.marginCap)}</span>
+          <span>{t("股权成本", "Cost of equity")} {rate(origin.inputs.effectiveDiscountRate)}
+            {" · "}{t("退出倍数", "Exit multiple")} {number(origin.inputs.exitMultiple)}×
+            {" · "}{t("股数变化", "Share change")} {rate(origin.inputs.shareCagr)}</span>
+          <span>{origin.evidenceIds.map((key, i) => <span key={key}>{i > 0 && " · "}<a href={`#draft-evidence-${key}`}>
+            {metricLabel(draft.result.evidence[key].metric)}</a></span>)}</span>
+        </> : <strong>{origin.modelId ? t("保存的模型", "Saved model") + " · " + origin.modelId : t("已配置的假设", "Configured assumptions")}</strong>}
+        {draft.result.proposals.filter(p => p.originId === id).map(p => <span key={p.scenario + p.field}>
+          {scenarioLabels[p.scenario][locale === "en" ? 1 : 0]} · {assumptionLabels[p.field][locale === "en" ? 1 : 0]}
+          {" "}{p.field === "ramp_years" ? number(p.value) : p.field === "terminal_pb" || p.field === "exit_fcf_multiple"
+            ? number(p.value) + "×" : rate(p.value)}
+        </span>)}
+      </div>)}
+    {Object.entries(draft.result.evidence).map(([id, row]) => {
     const view = row.locator.dataset === "analyst" || row.locator.dataset === "pe-archive" ? "analyst" :
       row.locator.dataset === "financials" ? "fundamentals" : "valuation";
     const value = typeof row.value !== "number" ? "—" : row.unit === "ratio" ? number(row.value * 100, 3) + "%" :
+      row.unit === "fx" ? number(row.value, 5) + " " + row.counterCurrency + "/" + row.currency :
+      row.unit === "shares" ? number(row.value) + " " + t("股", "shares") :
       number(row.value, 3) + (row.unit === "multiple" ? "×" : row.currency ? " " + row.currency : " " + (row.unit ?? ""));
     return <div id={`draft-evidence-${id}`} key={id} tabIndex={-1}>
-      <strong>{(metricNames[row.metric] ?? draftMetricNames[row.metric] ?? [row.metric,row.metric])[locale === "en" ? 1 : 0]} · {value}</strong>
+      <strong>{metricLabel(row.metric)} · {value}</strong>
       {row.period.end && <span>{t("期间截至", "Period ending")} {formatCalendarDate(row.period.end, locale)}</span>}
       {row.observedAt && <span>{t("采集于", "Observed")} {formatDateTime(row.observedAt, locale, timeZone)}</span>}
       <a href={`/research?ticker=${encodeURIComponent(draft.before.basis.ticker)}&view=${view}`} target="_blank" rel="noreferrer">{sourceWord(row.locator.dataset, t)} ↗</a>
