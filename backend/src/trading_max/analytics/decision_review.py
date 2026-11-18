@@ -329,7 +329,8 @@ def build_decision_review(
             if basket_buy:
                 amount, shares = legs["buy"]
                 bought = day_rows[day_rows["Side"] == "buy"]
-                if shares > 0 and bought["AmountGBP"].notna().all():
+                if shares > 0:
+                    unit = amount / shares if np.isfinite(bought["AmountGBP"]).all() else None
                     net = float(basket_members.loc[(identity, day)])
                     ticker = str(bought["Ticker"].iloc[0])
                     unpriced_basket_buys.append(
@@ -340,8 +341,8 @@ def build_decision_review(
                             "side": "buy",
                             "kind": "T" if len(legs) > 1 else "B",
                             "quantity": _round(net, 6),
-                            "amount_gbp": _round(net * amount / shares),
-                            "settled_per_share_gbp": _round(amount / shares, 4),
+                            "amount_gbp": _round(net * unit) if unit is not None else None,
+                            "settled_per_share_gbp": _round(unit, 4),
                             "first_fill_at": day_rows["Time"].min().isoformat(),
                             "basket_buy": True,
                             "unpriced": True,

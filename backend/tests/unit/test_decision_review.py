@@ -1219,7 +1219,8 @@ def test_pre_trade_close_requires_an_observed_bar_and_its_published_fx(missing):
     assert pd.Timestamp(row["first_fill_at"]) == pd.Timestamp("2026-02-06T02:00:00Z")
 
 
-def test_basket_counts_net_ledger_purchases_with_an_unpriced_member():
+@pytest.mark.parametrize("settlement", [True, False])
+def test_basket_counts_net_ledger_purchases_with_an_unpriced_member(settlement):
     trades = _trade_columns(
         pd.DataFrame(
             [
@@ -1229,6 +1230,8 @@ def test_basket_counts_net_ledger_purchases_with_an_unpriced_member():
             ]
         )
     )
+    if not settlement:
+        trades.loc[trades["Ticker"] == "AMD", "TotalGBP"] = float("nan")
     key = trades["SecurityIdentity"].iloc[0]
     prices = _closes("2026-02-02", [100, 102, 110])
     review = build_decision_review(
@@ -1239,7 +1242,8 @@ def test_basket_counts_net_ledger_purchases_with_an_unpriced_member():
     ]
     assert {r["ticker"] for r in basket} == {"AMD", "NVDA"}
     missing = next(r for r in basket if r["ticker"] == "AMD")
-    assert missing["quantity"] == 1 and missing["amount_gbp"] == 100
+    assert missing["quantity"] == 1 and missing["amount_gbp"] == (100 if settlement else None)
+    assert missing["settled_per_share_gbp"] == (100 if settlement else None)
     assert missing.get("effect_to_date_gbp") is None and missing.get("unpriced")
     assert review["coverage"]["scored"] == 1
 

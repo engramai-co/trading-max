@@ -1381,7 +1381,7 @@ class TradeDecision(ApiModel):
     side: Literal["buy", "sell"]
     kind: Literal["B", "S", "T"]
     quantity: float | None = None
-    amount_gbp: float
+    amount_gbp: float | None = None
     return_horizon: float | None = None
     effect_horizon_gbp: float | None = None
     return_to_date: float | None = None

@@ -23697,8 +23697,15 @@
         "description": "One security, one side, one trading day; effects are GBP against not trading.\n\nEffects include dividends with an ex-date after the decision; the dividend\nfields show that part. On a T day only the shares beyond the round trip are\na decision.",
         "properties": {
           "amountGbp": {
-            "title": "Amountgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amountgbp"
           },
           "basketBuy": {
             "anyOf": [
@@ -23903,8 +23910,7 @@
           "ticker",
           "name",
           "side",
-          "kind",
-          "amountGbp"
+          "kind"
         ],
         "title": "TradeDecision",
         "type": "object"

@@ -173,7 +173,7 @@ export function latestDecisions(reviews: DashboardLens["decisionReviews"], limit
   const accounts = (["A", "B"] as const).map((code) => [code, reviews?.[code]] as const);
   const rows = accounts
     .flatMap(([code, review]) => (review?.decisions ?? []).map((row) => ({ ...row, account: code })))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.amountGbp - a.amountGbp);
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.amountGbp ?? 0) - (a.amountGbp ?? 0));
   const kept = rows.filter(observing);
   // Payloads from before the count fall back to the rows they carry.
   const count = accounts.reduce(
@@ -540,11 +540,11 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
   // drop a tooltip the keyboard just opened.
   const chart = useRef<ECharts | null>(null);
   const { sides, marks } = useMemo(() => timelinePoints(rows, focus), [rows, focus]);
-  const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp)), [rows]);
+  const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp ?? 0)), [rows]);
   const point = useCallback((row: TradeDecision, colours: Record<string, string>) => {
     const effect = decisionEffect(row, horizon);
     const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
-    const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp) / largest);
+    const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp ?? 0) / largest);
     const ring = row === focus ? { borderColor: colours.text, borderWidth: 2 } : null;
     return {
       value: [Date.parse(row.date), effect ?? 0],

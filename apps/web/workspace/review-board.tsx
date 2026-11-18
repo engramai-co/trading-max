@@ -195,7 +195,7 @@ export function journalEntries(
     }
   }
   for (const { fills, ...entry } of trades.values()) {
-    entries.push({ ...entry, rows: entry.rows.sort((a, b) => b.amountGbp - a.amountGbp), shifts: shareShifts(fills) });
+    entries.push({ ...entry, rows: entry.rows.sort((a, b) => (b.amountGbp ?? 0) - (a.amountGbp ?? 0)), shifts: shareShifts(fills) });
   }
   return entries.sort((a, b) =>
     b.date.localeCompare(a.date) || ORDER[a.kind] - ORDER[b.kind] || a.account.localeCompare(b.account) || a.key.localeCompare(b.key));

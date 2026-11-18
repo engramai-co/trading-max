@@ -9256,7 +9256,7 @@ export interface components {
          */
         TradeDecision: {
             /** Amountgbp */
-            amountGbp: number;
+            amountGbp?: number | null;
             /** Basketbuy */
             basketBuy?: boolean | null;
             /** Beforeearnings */
