@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.62.0] - 2026-11-18
+
 ### Added
 - With MaxAI enabled, select a look-through allocation, performance range or market sector for a sourced reading. Citations reopen the selected object and publication while available. Daily attribution identifies its observed intervals and largest move. Global map cards explain the selected market, and Data status can explain a failed update or stale snapshot.
 
