@@ -241,3 +241,15 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-content main {
     margin-left: 0;
   }
 }
+
+/* Native chrome reserves the first 28px for dragging. */
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar:has(.mx-assistant-trigger) {
+  height: 66px;
+  padding-top: 28px;
+}
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mantine-Group-root:has(.mx-assistant-trigger) {
+  display: flex;
+}
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar .mantine-Group-root > :not(.mx-assistant-trigger) {
+  display: none;
+}

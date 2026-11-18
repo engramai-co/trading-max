@@ -1,0 +1,303 @@
+.mx-assistant-panel button,
+.mx-inline-reading button,
+.mx-digest button,
+.mx-reading-close {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.mx-assistant-thread[hidden] {
+  display: none;
+}
+.mx-assistant-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.mx-assistant-heading > div,
+.mx-digest-head,
+.mx-reading-title,
+.mx-assistant-history,
+.mx-assistant-composer > div {
+  display: flex;
+  align-items: center;
+}
+.mx-assistant-history button:last-child,
+.mx-reading-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--mx-muted);
+}
+.mx-assistant-transcript {
+  flex: 1;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  scrollbar-width: thin;
+  overflow-wrap: anywhere;
+}
+.mx-assistant-transcript .mx-assistant-opening {
+  padding: 0;
+}
+.mx-assistant-questions,
+.mx-assistant-turn {
+  margin-top: 18px;
+}
+.mx-assistant-questions {
+  display: grid;
+  gap: 8px;
+}
+.mx-assistant-questions button {
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: start;
+  border-radius: 8px;
+  background: var(--mx-soft);
+}
+.mx-turn-user {
+  width: fit-content;
+  max-width: 92%;
+  margin-left: auto;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: var(--mx-soft);
+  white-space: pre-wrap;
+}
+.mx-assistant-note,
+.mx-reading-source,
+.mx-assistant-scope {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-reading-source {
+  margin-inline-start: 4px;
+  text-decoration: underline;
+  text-decoration-color: var(--mx-border);
+  white-space: nowrap;
+}
+.mx-assistant-composer {
+  margin: 10px;
+  padding: 9px 10px;
+  border: 1px solid var(--mx-border);
+  border-radius: 10px;
+}
+.mx-assistant-composer:focus-within {
+  border-color: var(--mx-brand);
+}
+.mx-assistant-composer textarea {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  resize: none;
+  font: inherit;
+  background: transparent;
+  color: var(--mx-ink);
+}
+.mx-assistant-composer textarea::placeholder {
+  color: var(--mx-muted);
+}
+.mx-assistant-composer button {
+  border-radius: 50%;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  color: var(--mx-nav-active-ink);
+  background: var(--mx-nav-active);
+}
+.mx-assistant-composer button:disabled {
+  background: var(--mx-soft);
+  color: var(--mx-muted);
+}
+.mx-assistant-scope {
+  display: inline-block;
+  padding: 2px 7px;
+  margin-bottom: 6px;
+  border-radius: 5px;
+  background: var(--mx-brand-soft);
+}
+.mx-assistant-history {
+  border-bottom: 1px solid var(--mx-border);
+  justify-content: space-between;
+}
+.mx-assistant-history button:first-child {
+  padding: 12px 0;
+  text-align: start;
+}
+.mx-inline-reading,
+.mx-digest {
+  padding: 14px 18px;
+  border: 1px solid var(--mx-border);
+  border-radius: 12px;
+  background: var(--mx-surface);
+}
+.mx-reading-title,
+.mx-digest-head {
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+.mx-reading-title > span,
+.mx-digest-head > span {
+  color: var(--mx-muted);
+}
+.mx-reading-observation {
+  display: block;
+}
+.mx-reading-line {
+  padding: 9px 0;
+  line-height: 1.55;
+  font-size: 14px;
+  color: var(--mx-ink);
+}
+.mx-reading-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-reading-actions button {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--mx-soft);
+  font-size: 13px;
+}
+.mx-reading-actions .mx-reading-continue {
+  margin-inline-start: auto;
+  color: var(--mx-brand);
+  background: none;
+}
+.mx-anchored-reading {
+  position: absolute;
+  z-index: 3;
+  width: min(360px, 100%);
+  inset-inline-end: 0;
+}
+.mx-reading-close {
+  position: absolute;
+  inset: 4px 4px auto auto;
+}
+.mx-reading-sheet {
+  max-height: 60dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.mx-digest-head > button {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: start;
+  min-height: 36px;
+}
+.mx-digest-label {
+  display: grid;
+  align-items: baseline;
+  gap: 2px 12px;
+  min-width: 0;
+}
+.mx-digest-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
+}
+@media (min-width: 768px) {
+  .mx-digest-label {
+    grid-auto-flow: column;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+}
+.mx-digest-head > button[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.mx-digest-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  padding: 15px 0;
+  margin-top: 8px;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-digest-grid h4 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mx-digest-grid > div + div {
+  border-inline-start: 1px solid var(--mx-border);
+  padding-inline-start: 14px;
+}
+@media (max-width: 767px) {
+  .mx-assistant-panel button,
+  .mx-reading-sheet button,
+  .mx-digest button {
+    min-height: 44px;
+  }
+  .mx-assistant-composer button {
+    min-width: 44px;
+  }
+  .mx-digest-grid {
+    grid-template-columns: 1fr;
+  }
+  .mx-digest-grid > div + div {
+    border: 0;
+    padding: 0;
+  }
+}
+@media (hover: hover) {
+  .mx-assistant-history button:hover,
+  .mx-reading-actions button:hover,
+  .mx-assistant-questions button:hover {
+    background: var(--mx-brand-soft);
+  }
+}
+.mx-brief-period {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--mx-soft);
+}
+.mx-brief-period button {
+  min-height: 30px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  color: var(--mx-muted);
+}
+.mx-brief-period button[aria-pressed="true"] {
+  background: var(--mx-surface);
+  color: var(--mx-ink);
+  box-shadow: var(--mx-shadow);
+}
+.mx-brief-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 0;
+  color: var(--mx-muted);
+  font-size: 14px;
+}
+.mx-brief-empty button {
+  color: var(--mx-brand);
+}
+
+.mx-reading-sheet-inner {
+  padding-bottom: calc(68px + env(safe-area-inset-bottom));
+}
+.mx-reading-sheet .mantine-Drawer-close {
+  min-width: 44px;
+  min-height: 44px;
+}

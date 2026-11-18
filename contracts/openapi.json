@@ -4888,6 +4888,276 @@
         "title": "CfdUnmatchedOrder",
         "type": "object"
       },
+      "CitedHoldingEvent": {
+        "properties": {
+          "actual_eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Eps"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "estimated_eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Eps"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Period"
+          },
+          "instant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instant"
+          },
+          "kind": {
+            "enum": [
+              "earnings",
+              "ex_dividend",
+              "dividend_pay",
+              "dividend"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Url"
+          },
+          "local_date": {
+            "title": "Local Date",
+            "type": "string"
+          },
+          "local_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Time"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "research_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Event Id"
+          },
+          "source_as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source As Of"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
+          "time_source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Source Url"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "title_en": {
+            "title": "Title En",
+            "type": "string"
+          },
+          "title_zh": {
+            "title": "Title Zh",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "kind",
+          "evidence_id",
+          "date",
+          "local_date",
+          "local_time",
+          "publisher",
+          "title_en",
+          "title_zh"
+        ],
+        "title": "CitedHoldingEvent",
+        "type": "object"
+      },
       "ClosedTradeReview": {
         "properties": {
           "actualGbp": {
@@ -13040,6 +13310,28 @@
         "title": "LLMRoutePolicyUpdate",
         "type": "object"
       },
+      "LinkedObservation": {
+        "properties": {
+          "en": {
+            "title": "En",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ReadingEvidence"
+          },
+          "zh": {
+            "title": "Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zh",
+          "en",
+          "evidence"
+        ],
+        "title": "LinkedObservation",
+        "type": "object"
+      },
       "LocalWorkspaceStatus": {
         "properties": {
           "activeJobId": {
@@ -16314,6 +16606,195 @@
           "status"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ReadingEvent": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReadingLine"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": [
+              "reading",
+              "lines",
+              "result",
+              "error",
+              "empty"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ReadingEvent",
+        "type": "object"
+      },
+      "ReadingEvidence": {
+        "properties": {
+          "arguments": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Arguments",
+            "type": "object"
+          },
+          "evidenceId": {
+            "title": "Evidenceid",
+            "type": "string"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher"
+          },
+          "source": {
+            "enum": [
+              "account",
+              "broker",
+              "holdings",
+              "exposure",
+              "market",
+              "technical",
+              "financials",
+              "analysts",
+              "disclosure",
+              "review",
+              "health",
+              "calendar",
+              "inference",
+              "publisher"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "tool",
+          "evidenceId"
+        ],
+        "title": "ReadingEvidence",
+        "type": "object"
+      },
+      "ReadingLine": {
+        "properties": {
+          "en": {
+            "title": "En",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ReadingEvidence"
+          },
+          "related": {
+            "items": {
+              "$ref": "#/components/schemas/LinkedObservation"
+            },
+            "title": "Related",
+            "type": "array"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
+            "type": "string"
+          },
+          "variants": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LinkedObservation"
+            },
+            "title": "Variants",
+            "type": "object"
+          },
+          "zh": {
+            "title": "Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zh",
+          "en",
+          "evidence"
+        ],
+        "title": "ReadingLine",
+        "type": "object"
+      },
+      "ReadingRequest": {
+        "properties": {
+          "cachedOnly": {
+            "default": false,
+            "title": "Cachedonly",
+            "type": "boolean"
+          },
+          "context": {
+            "additionalProperties": true,
+            "maxProperties": 20,
+            "title": "Context",
+            "type": "object"
+          },
+          "latest": {
+            "default": false,
+            "title": "Latest",
+            "type": "boolean"
+          },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
+          }
+        },
+        "title": "ReadingRequest",
         "type": "object"
       },
       "RefreshAttention": {
@@ -20325,6 +20806,49 @@
         "title": "RiskMetrics",
         "type": "object"
       },
+      "RoleReading": {
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "title": "Asof",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "version",
+          "asOf",
+          "lines"
+        ],
+        "title": "RoleReading",
+        "type": "object"
+      },
       "RoundTripReview": {
         "description": "Shares bought and sold on the same day: realised result against the day's range.",
         "properties": {
@@ -23283,6 +23807,17 @@
             "title": "Publisher",
             "type": "string"
           },
+          "research_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Event Id"
+          },
           "source_as_of": {
             "anyOf": [
               {
@@ -23494,6 +24029,11 @@
             },
             "title": "Accountlabels",
             "type": "object"
+          },
+          "assistantEnabled": {
+            "default": false,
+            "title": "Assistantenabled",
+            "type": "boolean"
           },
           "avatarColor": {
             "title": "Avatarcolor",
@@ -25256,7 +25796,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.57.2"
+    "version": "1.58.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -25740,6 +26280,22 @@
         "operationId": "assistant_chat_v1_assistant_chat_post",
         "parameters": [
           {
+            "description": "Return prose or field references for the workspace sidebar.",
+            "in": "query",
+            "name": "format",
+            "required": false,
+            "schema": {
+              "default": "prose",
+              "description": "Return prose or field references for the workspace sidebar.",
+              "enum": [
+                "prose",
+                "references"
+              ],
+              "title": "Format",
+              "type": "string"
+            }
+          },
+          {
             "in": "header",
             "name": "authorization",
             "required": false,
@@ -25934,6 +26490,75 @@
           }
         },
         "summary": "Assistant Conversation",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
+    "/v1/assistant/roles/{role_id}/reading": {
+      "post": {
+        "operationId": "role_reading_v1_assistant_roles__role_id__reading_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadingEvent",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Newline-delimited reading progress and final evidence-linked result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Role Reading",
         "tags": [
           "assistant"
         ]
@@ -26170,6 +26795,23 @@
               ],
               "title": "View",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,100}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
             }
           },
           {
@@ -30370,6 +31012,106 @@
           }
         },
         "summary": "Snapshot Artifact"
+      }
+    },
+    "/v1/snapshots/{run_id}/events/cited": {
+      "get": {
+        "operationId": "cited_event_v1_snapshots__run_id__events_cited_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Ticker"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "earnings",
+                "ex_dividend",
+                "dividend_pay",
+                "dividend"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^ev_[A-Za-z0-9_-]{1,96}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "research_event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CitedHoldingEvent"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cited Event",
+        "tags": [
+          "events"
+        ]
       }
     },
     "/v1/snapshots/{run_id}/events/upcoming": {

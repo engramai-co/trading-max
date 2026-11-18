@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.58.0] - 2026-11-18
+
+### Added
+- Open MaxAI from the workspace bar or press ⌘J. Conversations follow you between pages, and follow-up questions keep the original account, period and security. The sidebar sits beside the page on wide screens and fills the screen on phones. Opening it while MaxAI is off shows where to enable it in Settings.
+- Replies cite the records behind figures, dates and data freshness. You can reopen the original Returns comparison, Broker decision, earnings or dividend record while its publication is retained. Expired records show an unavailable message. Screen readers announce sources, and keyboard users can move through saved conversations.
+- Closing the sidebar or losing the model connection temporarily preserves your unsent message. You can keep typing during a background connection check and send once MaxAI is ready again.
+- Overview has collapsible daily and weekly portfolio briefs covering performance, trades and upcoming events. Scheduled briefs include dated official releases in your display time zone. With background writing enabled, daily briefs are prepared after full updates and the weekly brief after 02:00 on Saturday in London.
+
 ## [1.57.2] - 2026-11-18
 
 ### Fixed

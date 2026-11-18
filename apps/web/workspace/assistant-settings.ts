@@ -1,6 +1,9 @@
 import type { AssistantSettings } from "@/lib/types";
 
 export const ASSISTANT_NAME = "MaxAI";
+export const conversationsErasedEvent = "assistant-conversations-erased";
+export const assistantSettingsChange = "trading_max-assistant-settings-revision";
+export const assistantStatusKey = ["assistant-status"] as const;
 export const assistantSettingsKey = ["workspace-assistant-settings"] as const;
 // This UI can only grant consent to the disclosure it actually displays.
 export const DISCLOSURE_REVISION = 2;

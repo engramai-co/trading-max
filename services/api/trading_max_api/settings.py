@@ -83,6 +83,7 @@ class SettingsRepository:
     def __init__(self, data_root: Path) -> None:
         self.database = SqliteDatabase(data_root / "trading_max.db", migrations_dir=MIGRATIONS)
         self._assistant_access = CancellationToken()
+        self._background_access = CancellationToken()
         # Dispatch reads one row without waiting for a writer or sharing its transaction.
         self._dispatch_reader = sqlite3.connect(
             self.database.path.as_uri() + "?mode=ro",
@@ -101,6 +102,7 @@ class SettingsRepository:
     @staticmethod
     def _profile(row: Any) -> UserProfile:
         return UserProfile(
+            assistant_enabled=bool(row["assistant_enabled"]),
             profile_id=row["profile_id"],
             display_name=row["display_name"],
             initials=row["initials"],
@@ -116,7 +118,10 @@ class SettingsRepository:
     def get_profile(self) -> UserProfile:
         with self.database.read() as connection:
             row = connection.execute(
-                "SELECT * FROM user_profile WHERE profile_id = 'local'"
+                """SELECT p.*, a.enabled AND a.accepted_consent_revision = ? AS assistant_enabled
+                   FROM user_profile p LEFT JOIN assistant_preferences a
+                   ON a.preference_id = p.profile_id WHERE p.profile_id = 'local'""",
+                (ASSISTANT_CONSENT_REVISION,),
             ).fetchone()
         if row is None:
             raise RuntimeError("local profile was not initialized")
@@ -387,26 +392,37 @@ class SettingsRepository:
 
     def assistant_connection_snapshot(
         self,
+        *,
+        background: bool = False,
     ) -> tuple[AssistantPreferences, IntegrationSummary | None, CancellationToken]:
         with self.database.transaction():
             current = self.get_assistant_preferences()
             provider = (current.route or "").partition("/")[0]
             integration = self.get_integration(provider) if provider else None
-            return current, integration, self._assistant_access
+            return (
+                current,
+                integration,
+                self._background_access if background else self._assistant_access,
+            )
 
     def assistant_dispatch_state(
         self, integration_id: str
-    ) -> tuple[int, int | None, int, int | None]:
+    ) -> tuple[int, int | None, int, int | None, int]:
         with self._dispatch_lock:
             return self._dispatch_reader.execute(
-                """SELECT p.enabled, p.accepted_consent_revision, p.revision, i.revision
+                """SELECT p.enabled, p.accepted_consent_revision, p.revision, i.revision, p.background_briefs_enabled
                    FROM assistant_preferences p LEFT JOIN integration_settings i ON i.integration_id = ?
                    WHERE p.preference_id = 'local'""",
                 (integration_id,),
             ).fetchone()
 
+    def _cancel_background_access(self) -> None:
+        previous, self._background_access = self._background_access, CancellationToken()
+        previous.cancel()
+
     def _cancel_assistant_access(self) -> None:
         # Called under the same writer lock as the preferences and integration changes.
+        self._cancel_background_access()
         previous, self._assistant_access = self._assistant_access, CancellationToken()
         previous.cancel()
 
@@ -546,6 +562,8 @@ class SettingsRepository:
             )
             if access_changed:
                 self._cancel_assistant_access()
+            else:
+                self._cancel_background_access()
             return self._assistant_preferences(row)
 
     def get_route_policy(self) -> LLMRoutePolicy:

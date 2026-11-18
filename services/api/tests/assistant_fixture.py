@@ -18,6 +18,7 @@ def publication(
     with_cfd=True,
     research_note=None,
     created_at=None,
+    extra_artifacts=None,
 ):
     def account(code, total, ticker):
         return {
@@ -233,6 +234,7 @@ def publication(
         # synthetic publication cutoff, independently of the wall clock.
         for key in (tools.FUNDAMENTALS, tools.VALUATION):
             payloads[key]["generated_at"] = AS_OF
+    payloads.update(extra_artifacts or {})
     backing = store.immutable_artifacts
     refs = [
         backing.put_json(key=key, payload=payload, as_of=AS_OF) for key, payload in payloads.items()

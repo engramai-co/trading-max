@@ -12,6 +12,7 @@ import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
+from functools import partial
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import FastAPI
@@ -33,13 +34,16 @@ from trading_max.research.facts import fingerprint
 from trading_max.research.forward_pe import ForwardPeHistory, forward_pe_history
 from trading_max.research.market import MarketResearchService
 
+from .agent.background import BriefWriter, completed_publications
 from .agent.deps import AssistantDepsFactory
+from .agent.readings import ReadingService
 from .agent.runtime import build_assistant_agent, run_settings
 from .agent.service import AssistantService, AssistantUnavailable, BoundModel
 from .agent.store import SqliteConversationStore
 from .agent.tools import build_assistant_toolset
 from .alert_monitor import AlertMonitor, LiveAlertStore
 from .artifacts import ArtifactStore
+from .assistant_settings import ASSISTANT_CONSENT_REVISION
 from .broker_runtime import broker_profiles_loader
 from .config import Settings
 from .credentials import (
@@ -134,10 +138,14 @@ def create_app(
         credentials,
     )
 
-    async def bind_assistant_model() -> BoundModel:
+    async def bind_assistant_model(*, background: bool = False) -> BoundModel:
         try:
             connection = await asyncio.to_thread(
-                resolve_assistant_connection, settings, preferences, credentials
+                resolve_assistant_connection,
+                settings,
+                preferences,
+                credentials,
+                background=background,
             )
             model = build_model(connection.to_model_connection())
         except ProviderRuntimeError as exc:
@@ -168,6 +176,7 @@ def create_app(
         agent=build_assistant_agent([build_assistant_toolset()]),
         store=SqliteConversationStore(assistant_database),
         bind_model=bind_assistant_model,
+        bind_background_model=partial(bind_assistant_model, background=True),
         deps_for_run=AssistantDepsFactory(store=store).for_run,
         check_ready=assistant_ready,
     )
@@ -182,6 +191,9 @@ def create_app(
     # the same run. Keep both, plus the previous run while a new one warms, so
     # moving between pages never rebuilds the projection the last page evicted.
     dashboard_cache: SingleFlightCache[tuple[str, bool], DashboardResponse] = SingleFlightCache(4)
+    retained_dashboard_cache: SingleFlightCache[tuple[str, bool], DashboardResponse] = (
+        SingleFlightCache(2)
+    )
     research_cache_lock = threading.Lock()
     research_cache_run_id: str | None = None
     research_cache: dict[
@@ -194,9 +206,10 @@ def create_app(
     history_reader = HistoryReader(store)
 
     def cached_dashboard(
-        manifest: SnapshotManifest, *, include_history: bool = True
+        manifest: SnapshotManifest, *, include_history: bool = True, retained: bool = False
     ) -> DashboardResponse:
-        return dashboard_cache.get_or_compute(
+        cache = retained_dashboard_cache if retained else dashboard_cache
+        return cache.get_or_compute(
             (manifest.run_id, include_history),
             lambda: DashboardResponse.model_validate(
                 build_dashboard_data(store, manifest, include_history=include_history),
@@ -519,7 +532,27 @@ def create_app(
         performance_scheduler.start()
         alert_monitor.start()
         sector_monitor.start()
-        yield
+
+        def background_permitted() -> bool:
+            current = preferences.get_assistant_preferences()
+            return bool(
+                current.enabled
+                and current.accepted_consent_revision == ASSISTANT_CONSENT_REVISION
+                and current.background_briefs_enabled
+            )
+
+        brief_writer = BriefWriter(
+            lifespan_app.state.assistant_readings,
+            background_permitted,
+            lambda: completed_publications(assistant_database),
+        )
+        brief_task = asyncio.create_task(brief_writer.run())
+        try:
+            yield
+        finally:
+            brief_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await brief_task
         logger.info("service stopping")
         dashboard_prewarm_stop.set()
         scheduler.close()
@@ -609,7 +642,9 @@ def create_app(
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
     app.state.assistant = assistant
+    app.state.assistant_readings = ReadingService(assistant, assistant_database)
     app.state.validation_secret = validation_secret
+    app.state.retained_returns = SingleFlightCache(4)
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research
     app.state.cached_research_shell = cached_research_shell
