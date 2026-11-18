@@ -30,6 +30,11 @@ from tools.assistant_eval_checks import (
 )
 
 _ANSWERS = {
+    "daily-rank": "Invest returned −7.27% on February 3, the worst daily return in the range, while VOO gained 1.89% {cite}.",
+    "holding-fx": "The open position had an FX effect of £0 as of February 3 {cite}.",
+    "exposure-before-history": "Country exposure on January 31 is unavailable. Recorded history begins on February 3 {cite}.",
+    "decision-habits": "No Invest buys have a scored outcome by February 3. Hindsight timing is unavailable {cite}.",
+    "price-moments": "An earnings report coincided with a −9.09% move on February 3 {cite}.",
     "invest-overview": "As of February 3, the Invest total was £1,005.66 {cite}. "
     "The live positions were not reconciled.",
     "household-overview": "The household value on February 3 was £1,445.66 {cite}. "
@@ -142,7 +147,7 @@ def test_complete_dataset(tmp_path):
     assert not report.failures
     summary = runner._report(report, False)
     assert summary["passed"] == len(SCENARIOS), summary
-    assert len(SCENARIOS) == 20
+    assert len(SCENARIOS) == 25
     assert summary["evaluator_passes"] == {
         type(check).__name__: len(SCENARIOS) for check in DETERMINISTIC
     }

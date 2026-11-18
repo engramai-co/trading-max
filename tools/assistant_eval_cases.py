@@ -220,6 +220,59 @@ SCENARIOS = (
         language="zh",
         page="health",
     ),
+    Scenario(
+        "daily-rank",
+        "Compare Invest with VOO on the last daily close in the three-month chart. Where does Invest rank from worst?",
+        (tool("daily_returns", scope="invest", range="3M", benchmark="VOO"),),
+        (r"worst|lowest",),
+        ("−7.27%", "1.89%"),
+        page="analytics",
+    ),
+    Scenario(
+        "holding-fx",
+        "What part of the unrealised P&L on my open Invest position is the FX effect in pounds?",
+        (tool("holding_fx_split", scope="invest", period="open_position"),),
+        (r"FX|exchange",),
+        ("£0",),
+        page="holdings",
+    ),
+    Scenario(
+        "exposure-before-history",
+        "What was the recorded country exposure at the end of January?",
+        (
+            tool(
+                "dated_exposure",
+                scope="broker_total",
+                dimension="country",
+                on_or_before="2026-01-31",
+            ),
+        ),
+        (MISSING,),
+        page="holdings",
+    ),
+    Scenario(
+        "decision-habits",
+        "How many of my Invest buys have a scored outcome? Include the hindsight timing if available.",
+        (tool("decision_timing_and_habits", scope="invest"),),
+        (MISSING,),
+        page="review",
+    ),
+    Scenario(
+        "price-moments",
+        "Which dated event coincided with the largest daily move for TEST between January 28 and February 3 in my Invest view?",
+        (
+            tool(
+                "price_key_moments",
+                scope="invest",
+                ticker="TEST",
+                start="2026-01-28",
+                end="2026-02-03",
+            ),
+        ),
+        (r"earnings|report",),
+        ("−9.09%",),
+        page="research",
+    ),
 )
 
 

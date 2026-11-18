@@ -1,6 +1,6 @@
 # Agent runtime
 
-Status: foundation for the read-only assistant. Not released.
+The read-only assistant runtime shipped in 1.50.0.
 
 ## Decision
 
@@ -42,7 +42,9 @@ fallback to another provider.
 
 - One run answers one user turn: at most 8 model requests, 12 tool calls and
   400,000 tokens, 8,192 output tokens per request, a 20-second limit per tool
-  call and 300 seconds overall.
+  call and 300 seconds overall. A follow-up or regenerated turn starts with
+  fresh limits. The conversation record keeps lifetime usage and the run log
+  counts only the completed turn.
 - A run reads one pinned snapshot. Tools refuse account scopes outside the run's
   allowed scopes; the model cannot widen them.
 - History is held on the server. The client sends only its new turn; a
@@ -83,6 +85,70 @@ questions from `trading_max.portfolio_math`, a Python port of
 `apps/web/lib/portfolio`. Fixtures generated from the TypeScript keep the two in
 agreement; the web test suite fails when they drift.
 
+The following GET readings are independent of the model connection. Each uses
+the published snapshot named in `/v1/snapshots/{run_id}/insights/` and returns
+the same evidence ID and figures as its assistant tool. Paginated readings
+return up to 20 rows per call.
+
+| Reading | Tool | Calculation |
+| --- | --- | --- |
+| `daily-returns` | `daily_returns` | Published daily TWR, or the change between consecutive wealth observations for legacy exports, ranked lowest first within the Returns chart’s calendar cut. Undefined intervals stay outside the sample. Returns equal at the twelve-decimal publication precision share a rank. The selected benchmark defaults to VOO. The interval endpoints are observations of the selected account scope. Benchmark changes require both closes. A custom range takes inclusive start and end dates. CFD and household have no TWR. |
+| `holding-fx` | `holding_fx_split` | Invest and Stocks ISA position and account amounts in GBP. The 1D and 5D readings use the Holdings contribution windows. Open-position FX matches the holdings table and drawer. |
+| `dated-exposure` | `dated_exposure` | Combined broker country, sector, GICS sub-industry or top-40 company exposure on or before the requested date. The response gives the actual observation date and earliest retained date. |
+| `decision-timing` | `decision_timing_and_habits` | Rule-based buy and sell counts, scored effects, and hindsight timing for each published decision. Habits use the selected horizon for the whole group and open at 20 sessions. A focused account, ticker, decision date and side opens to date if its 20-session window is incomplete. |
+| `key-moments` | `price_key_moments` | At most three unusual days with reported earnings, a rating action, a filing or an in-scope trade in the visible range. Events identify records for inspection. They do not establish causation. |
+
+The FX split uses the shares held at both ends of each measured segment. The
+local price effect converts the change in the native quote at the closing GBP
+rate. The FX effect is the remaining held-share contribution, including the
+revaluation of the opening exposure. The 5D reading sums the rounded daily
+segments for each broker listing. Executed buys and sells reconcile changes in
+quantity. Paired split transactions translate the opening quantity and price into
+closing units. An unchanged sterling cost and reciprocal change in native purchase
+price and share count can also reconcile them. Unreconciled units withhold that
+listing and its account subtotal. Daily attribution must match the current broker
+observation. Cash, trading within a segment and changes
+in share count stay outside the split. Since acquisition, the broker's own FX
+figure takes precedence. When it is absent, the native average price paid and
+closing value give the local price effect and the rest of unrealised P&L is
+FX. Sterling and pence positions have zero currency effect. A missing FX
+input withholds the split and the corresponding account subtotal.
+
+Exposure history begins with the first complete publication containing a
+dated look-through after installation of this feature. Each London date
+pins its first available broker composition to the original immutable look-through
+artifact. Later refreshes that day reuse the pin. The latest snapshot carries 35
+calendar days plus the last observed date in each of the past 60 months.
+Historical snapshots and backups keep their own pins. Dated keys reuse the
+published bytes, preserving the invested-asset denominator, eligible-equity and
+portfolio GICS coverage and each row's classification status. Current and dated
+readings use the same classification coverage.
+A month without a refresh has no invented month-end observation.
+
+Hindsight compares the decision's close with other completed closes in the
+same window, on the review's split-adjusted GBP basis. A delayed buy holds
+cash until entry and earns dividends after entry. A delayed sale receives
+dividends while it still holds the shares. The missed amount scales the
+difference in outcomes by that security's mean GBP purchase order size in the same
+account through the decision date. A missing purchase basis withholds the sizing. A pending price or dividend withholds
+the timing comparison. Unobserved decisions contribute to the count of
+decisions and stay outside the scored denominator.
+
+Key moments use daily bars and the previous visible close. Volume z-scores
+compare with the preceding 20 published sessions using population standard
+deviation. A missing or constant reference window has no volume score.
+Absolute moves and absolute volume z-scores rank separately across all
+visible days. Among dates with evidence, the better rank wins, with the
+earlier date breaking a tie. The chart and reading resolve the same requested
+listing, including exchange-qualified watchlist aliases. A run captures its
+aliases at the start and reads prices and events from its pinned snapshot.
+Events must match the ticker on the published bar row. If the aliases cannot
+be read, key moments return an unavailable reading. Their evidence IDs include
+the resolved `publishedSeriesId`, which identifies the price artifact and ticker.
+A chart caller passes it as `published_series_id` so a newer publication cannot be
+mistaken for the chart on screen. Live or differently sampled charts
+have no matching published daily series identifier.
+
 ## Privacy
 
 The assistant is off until the user enables it and accepts the current consent
@@ -110,8 +176,8 @@ their copy. Pydantic AI instrumentation stays off and no vendor tracing is used.
 
 [The evaluation runner](../../tools/evaluate_assistant.py) exercises the same
 assistant, toolset, and usage limits over a temporary synthetic snapshot. It
-does not use your portfolio or conversation history. The 20 cases cover all
-ten tools, English and Chinese, fixed earlier turns, missing and partial
+does not use your portfolio or conversation history. The 25 cases cover all
+fifteen tools, English and Chinese, fixed earlier turns, missing and partial
 data, requests for personal trades, stored prompt injection, and account scope
 restrictions.
 

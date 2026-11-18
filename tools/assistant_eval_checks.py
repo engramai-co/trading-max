@@ -243,6 +243,11 @@ def _source_figures(data: Any, currency: str | None = None) -> set[tuple[str, De
     currency = data.get("currency") or data.get("value_currency") or currency
     result: set[tuple[str, Decimal]] = set()
     for name, item in data.items():
+        if name == "benchmark_return_fractions" and isinstance(item, dict):
+            result.update(
+                ("%", value * 100) for raw in item.values() if (value := _decimal(raw)) is not None
+            )
+            continue
         if isinstance(item, dict | list):
             result.update(_source_figures(item, currency))
             continue
