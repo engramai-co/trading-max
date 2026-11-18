@@ -3,11 +3,12 @@
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from itertools import chain
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from exchange_calendars.errors import CalendarError
-from pydantic import AfterValidator, StringConstraints, model_validator
+from pydantic import AfterValidator, Field, StringConstraints, model_validator
 from trading_max.research.calendar import listing_calendar, market_calendar
 from trading_max.research.calendars.events import window_bounds
 from trading_max.research.calendars.refresh import MACRO_KEY
@@ -46,7 +47,20 @@ def _day(value):
 Day = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$"), AfterValidator(_day)]
 
 
+MARKET_ZONES = {
+    "US": "America/New_York",
+    "GB": "Europe/London",
+    "EA": "Europe/Paris",
+    "HK": "Asia/Hong_Kong",
+    "JP": "Asia/Tokyo",
+    "KR": "Asia/Seoul",
+}
+
+
 class EventArgs(Scoped, Paged):
+    market: Literal["US", "GB", "EA", "JP", "HK", "KR"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     start: Day
     end: Day
     ticker: Ticker | None = None
@@ -626,12 +640,16 @@ def event_data(deps, args, *, upcoming):
     entries = [r for r in entries if r and r["kind"] != "news"] + headlines
     rows = {}
     for row in entries:
+        if args.market and row["kind"] == "macro" and row.get("market") != args.market:
+            continue
         local = (
             datetime.fromisoformat(row["instant"]).astimezone(deps.timezone)
             if row.get("instant")
             else None
         )
         day = local.date().isoformat() if local else row["date"]
+        if local and args.market:
+            day = local.astimezone(ZoneInfo(MARKET_ZONES[args.market])).date().isoformat()
         first, last = window_bounds(day, row.get("end_date"))
         if args.start > last or first > args.end:
             continue

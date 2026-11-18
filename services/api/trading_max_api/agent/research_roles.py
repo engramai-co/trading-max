@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import Annotated
 
 from pydantic import StringConstraints, model_validator
@@ -388,6 +389,72 @@ class PublishedResearchRole(PageRole):
         return "research-publication-v2:" + super().cache_id
 
 
+class MomentRole(PublishedResearchRole):
+    def bind(self, deps, context):
+        pinned = super().bind(deps, context)
+        calendar = None
+        ticker = context.ticker
+        if context.index_id and deps.index_history:
+            history = deps.index_history(context.index_id, context.published_series_id)
+            if history and history.index.symbol == ticker:
+                calendar = history.index.calendar
+        elif deps.manifest:
+            series = (
+                deps.observed_prices(deps.snapshot_id, ticker, context.published_series_id)
+                if deps.observed_prices
+                else None
+            )
+            if not series and deps.price_series:
+                try:
+                    published = deps.price_series(ticker, deps.manifest, limit=2)
+                    if published.published_series_id == context.published_series_id:
+                        series = published
+                except (FileNotFoundError, ValueError):
+                    pass
+            if series:
+                calendar = series.exchange_calendar
+                ticker = series.published_bar_ticker or series.ticker
+        markets = {
+            "XNYS": "US",
+            "XLON": "GB",
+            "XHKG": "HK",
+            "XTKS": "JP",
+            "XKRX": "KR",
+            **dict.fromkeys(
+                (
+                    "XETR",
+                    "XFRA",
+                    "XAMS",
+                    "XBRU",
+                    "XPAR",
+                    "XMAD",
+                    "XMIL",
+                    "XDUB",
+                    "XLIS",
+                    "XHEL",
+                    "XWBO",
+                ),
+                "EA",
+            ),
+        }
+        market = markets.get(calendar)
+        if not market:
+            return pinned
+        return replace(
+            pinned,
+            role_bindings={
+                **pinned.role_bindings,
+                "upcoming_events": {
+                    "scope": "broker_total",
+                    "ticker": ticker,
+                    "market": market,
+                    "start": context.date,
+                    "end": context.date,
+                },
+            },
+        )
+
+
 RESEARCH_ROLES = (
     PublishedResearchRole(
         "your-position",
@@ -398,10 +465,10 @@ RESEARCH_ROLES = (
         price_facts,
         tool_bindings=position_bindings,
     ),
-    PublishedResearchRole(
+    MomentRole(
         "key-moment",
         "research",
-        frozenset({"price_key_moments", "research_headline"}),
+        frozenset({"price_key_moments", "research_headline", "upcoming_events"}),
         MomentContext,
         PROMPT,
         moment_facts,

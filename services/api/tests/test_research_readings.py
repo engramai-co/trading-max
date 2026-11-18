@@ -803,3 +803,64 @@ def test_background_writer_publishes_a_lone_revised_estimate(tmp_path):
         and line.evidence.arguments["observation"]
         for line in reading.lines
     )
+
+
+def test_selected_moment_binds_official_calendar_to_its_listing_and_day(tmp_path):
+    from services.api.trading_max_api.agent.events import MACRO_KEY, upcoming_events
+
+    _, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    batch = deps.store.read_json(deps.snapshot_id, tools.TECHNICAL)
+    batch["rows"][0]["exchange"] = "LSE"
+    day = DATES[2]
+    releases = [
+        {
+            "id": ident,
+            "market": market,
+            "date": stamp,
+            "kind": "macro",
+            "title_en": ident,
+            "title_zh": ident,
+            "status": "scheduled",
+            "publisher": "Statistics office",
+            "instant": None,
+            "source_url": "https://example.invalid/event",
+        }
+        for ident, market, stamp in [
+            ("selected", "GB", day),
+            ("other-market", "US", day),
+            ("old", "GB", DATES[0]),
+        ]
+    ]
+    publication(
+        factory.store,
+        extra_artifacts={
+            tools.TECHNICAL: batch,
+            MACRO_KEY: {"sources": {"official": {"events": releases}}},
+        },
+    )
+    deps = factory.for_run()
+    series = deps.price_series("TEST", deps.manifest)
+    selection = MomentContext(
+        ticker="TEST",
+        published_series_id=series.published_series_id,
+        start=DATES[0],
+        end=DATES[-1],
+        date=day,
+    )
+    reader = role_registry()["key-moment"].reader(deps, selection)
+    result = reader.read(upcoming_events, {})
+    assert result["bound_arguments"] == {
+        "snapshotId": deps.snapshot_id,
+        "ticker": "TEST",
+        "scope": "broker_total",
+        "start": day,
+        "end": day,
+        "market": "GB",
+    }
+    assert [item["title_en"] for item in result["data"]["items"] if item["kind"] == "macro"] == [
+        "selected"
+    ]
+    for args in ({"market": "US"}, {"start": DATES[0]}, {"ticker": "OTHER"}):
+        with pytest.raises((ModelRetry, ValueError)):
+            reader.read(upcoming_events, args)

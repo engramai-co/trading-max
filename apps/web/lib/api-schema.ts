@@ -13670,6 +13670,7 @@ export interface operations {
                 cursor?: number;
                 /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
                 scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                market?: ("US" | "GB" | "EA" | "JP" | "HK" | "KR") | null;
                 start: string;
                 end: string;
                 ticker?: components["schemas"]["Ticker"] | null;

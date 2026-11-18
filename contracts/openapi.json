@@ -32704,6 +32704,30 @@
           },
           {
             "in": "query",
+            "name": "market",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "US",
+                    "GB",
+                    "EA",
+                    "JP",
+                    "HK",
+                    "KR"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Market"
+            }
+          },
+          {
+            "in": "query",
             "name": "start",
             "required": true,
             "schema": {
