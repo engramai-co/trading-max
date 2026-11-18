@@ -95,6 +95,9 @@ def path_violations() -> list[str]:
             continue
         if path.startswith(ALLOWED_DATA_PREFIXES):
             continue
+        # This Next.js API route handler is source code, not runtime data.
+        if path == "apps/web/app/api/backend/snapshots/[runId]/events/upcoming/route.ts":
+            continue
         if any(component in BLOCKED_COMPONENTS for component in PurePosixPath(path).parts):
             failures.append(f"{path}: runtime or generated material exists in history")
             continue
