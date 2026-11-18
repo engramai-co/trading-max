@@ -594,17 +594,29 @@ for (const locale of ["en", "zh"] as const) {
         await page.keyboard.press("Enter");
       }
       for (const cached of [false, true]) {
+        // The dark cases exercise the reader scrolling away with the selector still focused.
+        let readerScroll: number | undefined;
         await choose("ArrowUp");
         await expect(select).toHaveValue(name);
         if (!cached) {
           await expect.poll(() => residualGets).toBe(1);
           await expect(select).toBeFocused();
           await expect(select).toBeInViewport();
+          if (scheme === "dark") {
+            readerScroll = await page.evaluate(() => new Promise<number>(resolve => {
+              window.addEventListener("scroll", () => resolve(window.scrollY), { once: true });
+              window.scrollBy({ top: -420, behavior: "instant" });
+            }));
+          }
           release();
         }
         await expect(roe).toBeVisible();
         await expect(select).toBeFocused();
-        await expect(select).toBeInViewport();
+        if (readerScroll !== undefined) {
+          expect(Math.abs(await page.evaluate(() => window.scrollY) - readerScroll)).toBeLessThan(1);
+        } else {
+          await expect(select).toBeInViewport();
+        }
         await page.keyboard.press("Tab");
         // WebKit on iOS tabs directly to the next editable field.
         await expect(info.project.name === "mobile" ? roe : firstScenario).toBeFocused();

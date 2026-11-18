@@ -134,14 +134,30 @@ export function ValuationWorkbench({
   const editor = model?.reverseMetric === "year-five-revenue" ? undefined : model;
   const methodology = editor && modelMethodology(editor, t);
   const selector = useRef<HTMLInputElement>(null);
-  const selectedTop = useRef<number | null>(null);
+  const position = useRef<{ selectorTop: number } | { scrollY: number } | null>(null);
   useLayoutEffect(() => {
     const input = selector.current;
-    if (selectedTop.current === null || !input) return;
+    const saved = position.current;
+    if (!saved || !input) return;
     if (document.activeElement === input) {
-      window.scrollBy({ top: input.getBoundingClientRect().top - selectedTop.current, behavior: "instant" });
+      if ("selectorTop" in saved) {
+        window.scrollBy({ top: input.getBoundingClientRect().top - saved.selectorTop, behavior: "instant" });
+      } else {
+        // WebKit can clamp the reader's scroll position while replacing the results.
+        window.scrollTo({ top: saved.scrollY, behavior: "instant" });
+      }
     }
-    if (!switching || document.activeElement !== input) selectedTop.current = null;
+    if (!switching || document.activeElement !== input) {
+      position.current = null;
+      return;
+    }
+    const alignedY = window.scrollY;
+    const recordScroll = () => {
+      if (window.scrollY !== alignedY || (position.current && "scrollY" in position.current))
+        position.current = { scrollY: window.scrollY };
+    };
+    window.addEventListener("scroll", recordScroll, { passive: true });
+    return () => window.removeEventListener("scroll", recordScroll);
   }, [family, model, switching]);
   const [output, setOutput] = useState<HTMLDivElement | null>(null);
   const [reference, setReference] = useState<HTMLDivElement | null>(null);
@@ -159,7 +175,7 @@ export function ValuationWorkbench({
         { value: "residual-income", label: t("剩余收益", "Residual income") },
       ]}
       onChange={(value) => {
-        selectedTop.current = selector.current?.getBoundingClientRect().top ?? null;
+        position.current = selector.current ? { selectorTop: selector.current.getBoundingClientRect().top } : null;
         setDirty(false);
         setFamily(value as Preview["basis"]["family"]);
       }}
