@@ -181,6 +181,7 @@ def create_app(
         deps_for_run=AssistantDepsFactory(
             store=store,
             bind_price_series=research.bind_price_series,
+            observed_prices=research.observed_prices,
             index_history=lambda index, series: app.state.indices.reading_history(index, series),
         ).for_run,
         check_ready=assistant_ready,

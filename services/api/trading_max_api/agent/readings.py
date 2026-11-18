@@ -107,12 +107,20 @@ class ReadingService:
             return
         tools = RoleTools.pinned(deps, role.allowed_tools)
         version = deps.snapshot_id
-        if not latest and version and role.data_version:
+        # A material-data digest belongs to the displayed statements or estimates.
+        # A scheduled digest for a previous revision cannot describe a new result.
+        material = bool(role.data_version and version)
+        if material:
             version = await asyncio.to_thread(role.data_version, tools, context)
-        if not latest and not version:
+        if (not latest or material) and not version:
             yield ReadingEvent(type="empty")
             return
-        saved = self.cached(role, context, None if latest else version, scheduled=scheduled)
+        saved = self.cached(
+            role,
+            context,
+            None if latest and not material else version,
+            scheduled=scheduled or latest,
+        )
         if saved:
             yield ReadingEvent(type="result", reading=saved)
             return

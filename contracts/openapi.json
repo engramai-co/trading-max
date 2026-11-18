@@ -16116,6 +16116,17 @@
             "title": "End",
             "type": "string"
           },
+          "index_range": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Range"
+          },
           "interval": {
             "title": "Interval",
             "type": "string"
@@ -16126,6 +16137,17 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing"
           },
           "published_series_id": {
             "title": "Published Series Id",
@@ -18798,6 +18820,17 @@
             ],
             "title": "Fetchedat"
           },
+          "observedSeriesId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observedseriesid"
+          },
           "points": {
             "items": {
               "$ref": "#/components/schemas/PriceSeriesPoint"
@@ -18825,6 +18858,17 @@
             "default": "regular",
             "title": "Session",
             "type": "string"
+          },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
           },
           "source": {
             "default": "Yahoo Finance",

@@ -500,12 +500,16 @@ def research_prices(
 ) -> ResearchPriceSeries:
     import re
 
-    from ..research_prices import price_window
+    from ..research_prices import price_window as project_window
 
     if not re.fullmatch(r"[A-Za-z0-9^=._-]{1,32}", ticker):
         raise HTTPException(status_code=422, detail="invalid-security-symbol")
     manifest = latest_or_503(request)
     research = app_service(request, "research")
+
+    def price_window(series, selected_window):
+        return project_window(research.observe_prices(series, manifest.run_id), selected_window)
+
     listing = research.held_fund(ticker, manifest)
     if listing:
         ticker = listing.ticker

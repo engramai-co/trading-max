@@ -7,6 +7,7 @@ from typing import Annotated
 from pydantic import StringConstraints
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.research.held_funds import FUND_PRICES_KEY
+from trading_max.research.listing import broker_listing
 from trading_max.research.news import NEWS_KEY
 
 from .events import _listing_symbol
@@ -64,19 +65,33 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
                 "end": latest.at.date().isoformat(),
                 "close": latest.value,
                 "currency": history.currency,
+                "range": history.range,
                 "unit": "price" if history.index.kind == "etf-price" else "points",
                 "change": latest.value / opening.value - 1 if opening.value > 0 else None,
             }
         )
-    if not deps.price_series or not deps.manifest:
-        return read.missing()
-    try:
-        series = deps.price_series(args.ticker, deps.manifest, limit=2000)
-    except (FileNotFoundError, ValueError, SnapshotIntegrityError):
-        return read.missing("published_daily_bars_unavailable")
-    if series.published_series_id != args.published_series_id or not series.points:
-        return read.missing("displayed_price_series_mismatch")
-    ticker = series.ticker
+    observed = (
+        deps.observed_prices(deps.snapshot_id, args.ticker, args.published_series_id)
+        if (deps.observed_prices and deps.snapshot_id)
+        else None
+    )
+    if observed:
+        series = observed
+        ticker = series.ticker
+    else:
+        if not deps.price_series or not deps.manifest:
+            return read.missing()
+        try:
+            series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+        except (FileNotFoundError, ValueError, SnapshotIntegrityError):
+            return read.missing("published_daily_bars_unavailable")
+        if (
+            series.published_series_id != args.published_series_id
+            or not series.points
+            or not series.published_bar_ticker
+        ):
+            return read.missing("displayed_price_series_mismatch")
+        ticker = series.published_bar_ticker
     latest = series.points[-1]
     markers = read.read(TRADE_MARKERS)
     trades = sorted(
@@ -86,7 +101,7 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
         for fill in _rows(row.get("fills"))
         if fill.get("account") in {"invest", "isa"}
         and fill.get("side") in {"buy", "sell"}
-        and _listing_symbol(fill.get("listing")) == ticker
+        and _listing_symbol(broker_listing(fill.get("broker_ticker"))) == ticker
     )
     previous = series.points[-2] if len(series.points) >= 2 else None
     last_trade = trades[-1] if trades else None
@@ -95,6 +110,23 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
         if last_trade
         else previous
     )
+    benchmarks = []
+    technical = _ticker_row(read.read(TECHNICAL), ticker) or {}
+    if not observed and series.currency == "USD" and technical.get("as_of") == latest.date:
+        industry = (_ticker_row(read.read(FUNDAMENTALS), ticker) or {}).get("industry")
+        comparisons = [("spy_63d", "SPY")]
+        if industry == "Semiconductors":
+            comparisons.append(("soxx_63d", "SOXX"))
+        for key, symbol in comparisons:
+            stats = _mapped(_mapped(technical.get("relative_strength")).get(key))
+            asset, other = (
+                _number(stats.get("asset_return")),
+                _number(stats.get("benchmark_return")),
+            )
+            if asset is not None and other is not None:
+                benchmarks.append(
+                    {"symbol": symbol, "sessions": 63, "asset": asset, "benchmark": other}
+                )
     return read.result(
         data={
             "ticker": ticker,
@@ -102,6 +134,7 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             "close": latest.close,
             "currency": series.currency,
             "adjustment": series.adjustment,
+            "benchmarks": benchmarks,
             "trade_date": last_trade[0] if last_trade else None,
             "side": last_trade[2] if last_trade else None,
             "start": base.date if base else None,

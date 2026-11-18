@@ -549,6 +549,7 @@ class ResearchLedger:
         self._facts_cache: SingleFlightCache[tuple, Any] = SingleFlightCache(128)
         self._row_cache: SingleFlightCache[tuple, list[JsonObject]] = SingleFlightCache(256)
         self._raw_price_cache: SingleFlightCache[str, JsonObject] = SingleFlightCache(2)
+        self._observed_prices: dict[tuple[str, str, str], ResearchPriceSeries] = {}
         self._price_series_cache: dict[
             tuple[str, str, str],
             tuple[str, str, str, list[PriceSeriesPoint], list[ResearchTradeMarker]],
@@ -2424,6 +2425,30 @@ class ResearchLedger:
             models=self.models(selected_ticker, limit=limit),
             alerts=self.alerts(selected_ticker, manifest),
         )
+
+    def observe_prices(self, series: ResearchPriceSeries, run_id: str) -> ResearchPriceSeries:
+        """Keep exact external daily chart observations for subsequent local, read-only inspection."""
+        if series.published_series_id or series.actual_interval != "1d" or not series.points:
+            return series.model_copy(update={"snapshot_id": run_id})
+        public = series.model_copy(update={"trade_markers": [], "snapshot_id": run_id})
+        identity = fingerprint(
+            [
+                series.ticker,
+                series.source,
+                series.adjustment,
+                series.currency,
+                [[p.date, p.open, p.high, p.low, p.close, p.volume] for p in series.points],
+            ]
+        )
+        with self._history_lock:
+            self._observed_prices[(run_id, series.ticker, identity)] = public
+            if len(self._observed_prices) > 64:
+                del self._observed_prices[next(iter(self._observed_prices))]
+        return series.model_copy(update={"observed_series_id": identity, "snapshot_id": run_id})
+
+    def observed_prices(self, run_id: str, ticker: str, identity: str):
+        with self._history_lock:
+            return self._observed_prices.get((run_id, ticker, identity))
 
     def bind_price_series(self):
         """Freeze the chart's routing aliases before a snapshot-bound assistant run."""

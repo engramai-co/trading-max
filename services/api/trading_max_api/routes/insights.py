@@ -163,6 +163,8 @@ class Moment(BaseModel):
 
 
 class PriceMoments(BaseModel):
+    listing: str | None = None
+    index_range: str | None = None
     ticker: str
     start: str
     end: str

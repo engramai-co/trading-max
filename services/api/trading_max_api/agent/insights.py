@@ -576,54 +576,63 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
                 "end": args.end,
                 "interval": "1d",
                 "basis": "observed_index_series",
+                "index_range": history.range,
                 "published_series_id": args.published_series_id,
                 "items": key_moments(bars, events, args.start, args.end),
             },
             keys=[NEWS_KEY, *keys],
         )
-    if deps.price_series is None or deps.manifest is None:
-        return read.missing("published_daily_bars_unavailable")
-    try:
-        series = deps.price_series(args.ticker, deps.manifest, limit=2000)
-    except (FileNotFoundError, SnapshotIntegrityError, ValueError):
-        return read.missing("published_daily_bars_unavailable")
-    series_id = series.published_series_id
-    key = next(
-        (
+    observed = (
+        deps.observed_prices(deps.snapshot_id, args.ticker, args.published_series_id)
+        if (deps.observed_prices and deps.snapshot_id and args.published_series_id)
+        else None
+    )
+    if observed:
+        series = observed
+        series_id = args.published_series_id
+        listing = series.ticker
+        price_keys = []
+    else:
+        if deps.price_series is None or deps.manifest is None:
+            return read.missing("published_daily_bars_unavailable")
+        try:
+            series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+        except (FileNotFoundError, SnapshotIntegrityError, ValueError):
+            return read.missing("published_daily_bars_unavailable")
+        series_id = series.published_series_id
+        price_keys = [
             key
             for key in (FUND_PRICES_KEY, TECHNICAL)
             if (ref := read.ref(key))
             and published_price_series_id(ref.sha256, series.ticker) == series_id
-        ),
-        None,
-    )
-    if not key or not series.points or not series.published_bar_ticker:
-        return read.missing("published_daily_bars_unavailable")
+        ]
+        listing = series.published_bar_ticker
+        if not price_keys or not series.points or not listing:
+            return read.missing("published_daily_bars_unavailable")
     read = replace(read, evidence_context=series_id)
     if args.published_series_id and args.published_series_id != series_id:
-        return read.missing("displayed_price_series_mismatch", keys=[key])
+        return read.missing("displayed_price_series_mismatch", keys=price_keys)
     bars = [p.model_dump(mode="json") for p in series.points]
-    events, keys, issues = dated_events(
-        read, args.model_copy(update={"ticker": series.published_bar_ticker}), codes
-    )
-    events.extend(news_events(read, series.ticker))
+    events, keys, issues = dated_events(read, args.model_copy(update={"ticker": listing}), codes)
+    events.extend(news_events(read, listing))
     keys.append(NEWS_KEY)
     moments = key_moments(bars, events, args.start, args.end)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)
     if not has_bars:
-        return read.missing("no_visible_daily_bars", keys=[key])
+        return read.missing("no_visible_daily_bars", keys=price_keys)
     return read.result(
         "partial" if issues else "ok",
         data={
             "ticker": series.ticker,
+            "listing": listing,
             "start": args.start,
             "end": args.end,
             "interval": "1d",
-            "basis": "published_daily_closes",
+            "basis": "observed_daily_closes" if observed else "published_daily_closes",
             "published_series_id": series_id,
             "items": moments,
         },
-        keys=[key, *keys],
+        keys=[*price_keys, *keys],
         issues=issues,
     )
 

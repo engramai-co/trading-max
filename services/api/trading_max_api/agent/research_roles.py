@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from datetime import date as calendar_date
+from datetime import timedelta
 from typing import Annotated
 
 from pydantic import StringConstraints, model_validator
 
 from ..models import JobRecord
-from . import insights
+from . import events, insights
 from . import research_tools as research
 from .overview_roles import line
 from .roles import BriefTarget, PageRole, ReadingLine, RoleContext, RoleTools
@@ -48,9 +50,10 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
     args = {"ticker": data["ticker"], "lens": "technical", "date": data["end"]}
     if context.index_id:
         args["index"] = context.index_id
+        args["indexRange"] = data["range"]
 
-    def observation(zh, en, source="market"):
-        return line("", zh, en, result, source, "research_position", **args)
+    def observation(zh, en, source="market", **target):
+        return line("", zh, en, result, source, "research_position", **(args | target))
 
     facts = []
     day, close, currency = data["end"], data["close"], data.get("currency")
@@ -70,6 +73,7 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
                 f"最近一笔已核实成交：{trade} {action}。",
                 f"Latest verified trade: {data['side']} on {trade}.",
                 "broker",
+                date=trade,
             )
         )
     if data.get("change") is not None:
@@ -81,6 +85,53 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
                 f"{basis} · {'index change' if context.index_id else 'close-to-close change'} {figure}",
             )
         )
+    for item in data.get("benchmarks", []):
+        name = "S&P 500 ETF (SPY)" if item["symbol"] == "SPY" else "SOXX"
+        sessions, asset, other = item["sessions"], item["asset"], item["benchmark"]
+        facts.append(
+            observation(
+                f"截至 {day} 的 {sessions} 个共同交易日，{data['ticker']} {asset:+.2%}，{name} {other:+.2%}。",
+                f"Through {day}, over {sessions} matched USD sessions, {data['ticker']} returned {asset:+.2%} and {name} {other:+.2%}.",
+                "technical",
+            )
+        )
+    if trade and not context.index_id:
+        start = max(trade, (calendar_date.fromisoformat(day) - timedelta(days=365)).isoformat())
+        event_result = read.read(
+            events.news_and_events,
+            events.EventArgs(
+                ticker=data["ticker"], scope="broker_total", start=start, end=day, limit=12
+            ),
+        )
+        for event in (event_result.get("data") or {}).get("items", []):
+            kind, stamp = event.get("kind"), event.get("date")
+            if (
+                kind not in {"filing", "rating_change", "earnings"}
+                or not stamp
+                or stamp <= trade
+                or stamp > day
+            ):
+                continue
+            if kind == "earnings" and event.get("status") != "reported":
+                continue
+            zh, en, source, lens = EVENTS[kind]
+            detail = event.get("form") or event.get("firm")
+            text = " · " + detail if detail else ""
+            facts.append(
+                line(
+                    "",
+                    f"{stamp} · {zh}{text}",
+                    f"{stamp} · {en}{text}",
+                    event_result,
+                    source,
+                    "news_and_events",
+                    ticker=data["ticker"],
+                    lens=lens,
+                    date=stamp,
+                    event=kind,
+                )
+            )
+            break
     return facts
 
 
@@ -100,9 +151,15 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
     if not moment:
         return []
     date = context.date
-    target = {"ticker": data["ticker"], "date": date, "start": context.start, "end": context.end}
+    target = {
+        "ticker": data.get("listing") or data["ticker"],
+        "date": date,
+        "start": context.start,
+        "end": context.end,
+    }
     if context.index_id:
         target["index"] = context.index_id
+        target["indexRange"] = data["index_range"]
 
     def observation(section, zh, en, source, lens, **extra):
         return line(
@@ -135,7 +192,9 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
         if kind == "news":
             news = read.read(
                 research.research_headline,
-                research.HeadlineArgs(ticker=data["ticker"], date=date, reference=ref),
+                research.HeadlineArgs(
+                    ticker=data.get("listing") or data["ticker"], date=date, reference=ref
+                ),
             )
             story = news.get("data")
             if story:
@@ -270,7 +329,7 @@ RESEARCH_ROLES = (
     PageRole(
         "your-position",
         "research",
-        frozenset({"research_position"}),
+        frozenset({"research_position", "news_and_events"}),
         PriceContext,
         PROMPT,
         price_facts,

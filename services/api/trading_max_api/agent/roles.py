@@ -123,7 +123,6 @@ class PageRole:
 
 def role_registry() -> dict[str, PageRole]:
     from .overview_roles import OVERVIEW_ROLES
-
     from .research_roles import RESEARCH_ROLES
 
     return {role.id: role for role in (*OVERVIEW_ROLES, *RESEARCH_ROLES)}

@@ -155,6 +155,18 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
             context.object = role.context_schema.model_validate(context.object or {}).model_dump(
                 mode="json"
             )
+            research_lenses = {
+                "your-position": {"overview"},
+                "key-moment": {"technical"},
+                "earnings-brief": {"analyst", "fundamentals"},
+            }
+            if role.id in research_lenses and (
+                context.lens not in research_lenses[role.id]
+                or context.ticker != context.object["ticker"]
+                or not context.snapshot_id
+                or (role.id != "earnings-brief" and context.scope != "broker_total")
+            ):
+                raise ValueError("Research reading must keep the same listing, lens and snapshot")
         elif context.object or context.snapshot_id:
             raise ValueError("object requires a role")
         return context

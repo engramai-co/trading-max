@@ -6630,10 +6630,14 @@ export interface components {
             basis: string;
             /** End */
             end: string;
+            /** Index Range */
+            index_range?: string | null;
             /** Interval */
             interval: string;
             /** Items */
             items: components["schemas"]["Moment"][];
+            /** Listing */
+            listing?: string | null;
             /** Published Series Id */
             published_series_id: string;
             /** Start */
@@ -7557,6 +7561,8 @@ export interface components {
             exchangeCalendar?: string | null;
             /** Fetchedat */
             fetchedAt?: string | null;
+            /** Observedseriesid */
+            observedSeriesId?: string | null;
             /** Points */
             points: components["schemas"]["PriceSeriesPoint"][];
             /** Publishedseriesid */
@@ -7571,6 +7577,8 @@ export interface components {
              * @default regular
              */
             session: string;
+            /** Snapshotid */
+            snapshotId?: string | null;
             /**
              * Source
              * @default Yahoo Finance
