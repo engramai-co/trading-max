@@ -5,9 +5,9 @@ import { backendFixture } from "../tests/loading/fixtures";
 
 const snapshot = "synthetic-loading", series = "a".repeat(20), day = "2026-01-22";
 const base = "/api/backend/research/SYNT";
-const fixtures = async (page: Page, ready = true) => {
+const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>) => {
   const readings: string[] = [];
-  await page.route("**/api/backend/**", route => {
+  await page.route("**/api/backend/**", async route => {
     const url = new URL(route.request().url()), path = url.pathname;
     if (path.endsWith("/assistant/status")) return route.fulfill({json: {ready}});
     if (path.includes("/assistant/key-moments/")) {
@@ -19,6 +19,7 @@ const fixtures = async (page: Page, ready = true) => {
       const role = path.split("/").at(-2)!;
       const body = route.request().postDataJSON();
       readings.push(role);
+      if (role === "earnings-brief") await earningsGate;
       if (role === "earnings-brief") expect(body).toMatchObject({cachedOnly:true, latest:true});
       else expect(body).toMatchObject({snapshotId:snapshot, context:{ticker:"SYNT", published_series_id:series}});
       if (role === "key-moment") expect(body.context.date).toBe(day);
@@ -34,7 +35,7 @@ const fixtures = async (page: Page, ready = true) => {
       ];
       return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({type:"result",reading:{
         role, snapshotId:snapshot,version:snapshot,asOf:"2026-01-30T20:00:00Z",
-        lines:labels.map(([zh,en,source,tool])=>({zh,en,evidence:{source,tool,evidenceId:"ev_fixture",arguments:{ticker:"SYNT",lens:source==="financials"?"analyst":"technical",date:day}}})),
+        lines:labels.map(([zh,en,source,tool])=>({zh,en,evidence:{source,tool,evidenceId:"ev_fixture",arguments:{ticker:"SYNT",fiscalPeriod:"FY2025 Q4", reportDate:"2026-01-20",lens:source==="financials"?"analyst":"technical",date:day}}})),
       }})+"\n"});
     }
     if (path.endsWith("/prices")) {
@@ -106,10 +107,16 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     expect(handoff).toMatchObject({page:"research", role:"key-moment", scope:"broker_total", ticker:"SYNT", lens:"technical",
       snapshotId:snapshot, object:{ticker:"SYNT", published_series_id:series, date:day}});
     expect(handoff.object.start <= day && day <= handoff.object.end).toBe(true);
+    await composer.fill("Which sessions followed?");
+    const next = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    expect((await next).postDataJSON().context).toEqual(handoff);
     await page.goto("/research?ticker=SYNT&view=analyst");
     const digest=page.locator(".mx-earnings-brief");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
     expect(await digest.evaluate(el=>!!el.parentElement?.querySelector("#research-ratings") && el===el.parentElement.firstElementChild)).toBe(true);
+    await expect(digest.locator("time")).toHaveAttribute("datetime","2026-01-20");
+    await expect(digest).toContainText("FY2025 Q4");
     await shot("earnings-collapsed");
     await digest.locator("[aria-expanded]").click();
     await expect(digest.locator(".mx-reading-line a")).toHaveCount(2);
@@ -122,6 +129,10 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
   });
 }
 test("disabled research makes no assistant reading or candidate requests",async ({page})=>{
+  const assets: Promise<string>[] = [];
+  page.on("response", r => {
+    if (/\.(js|css)(?:\?|$)/.test(r.url()) && r.ok()) assets.push(r.text().catch(() => ""));
+  });
   const reads=await fixtures(page,false);
   const candidates:string[]=[];
   page.on("request",r=>{if(r.url().includes("/assistant/key-moments/")) candidates.push(r.url());});
@@ -132,6 +143,8 @@ test("disabled research makes no assistant reading or candidate requests",async 
   await expect(page.locator("#research-ratings")).toBeVisible();
   await expect(page.locator(".mx-digest")).toHaveCount(0);
   expect(reads).toEqual([]); expect(candidates).toEqual([]);
+  const downloaded = (await Promise.all(assets)).join("");
+  for (const marker of ["Which events were verified that day?", "How did the price change?", ".mx-earnings-brief time"]) expect(downloaded.includes(marker), marker).toBe(false);
 });
 
 test("a priced fund opens position and moment readings and omits company earnings", async ({ page, isMobile }) => {
@@ -152,4 +165,18 @@ test("a priced fund opens position and moment readings and omits company earning
   await expect(page.getByRole("tablist", { name: /研究视角|Research perspectives/ }).getByRole("tab", { selected:true })).toBeVisible();
   await expect(page.locator(".mx-earnings-brief")).toHaveCount(0);
   expect(reads).not.toContain("earnings-brief");
+});
+
+test("delayed earnings cache settles before the first ratings layout", async ({page}) => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const reads = await fixtures(page,true,gate);
+  await page.goto("/research?ticker=SYNT&view=analyst");
+  await expect.poll(() => reads.includes("earnings-brief")).toBe(true);
+  const ratings = page.locator("#research-ratings");
+  try { await expect(ratings).toHaveCount(0, {timeout:500}); } finally { release(); }
+  await expect(ratings).toBeVisible();
+  const before = await ratings.boundingBox();
+  await expect(page.locator(".mx-earnings-brief")).toBeVisible();
+  expect((await ratings.boundingBox())?.y).toBe(before?.y);
 });
