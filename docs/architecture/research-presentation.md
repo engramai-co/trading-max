@@ -135,8 +135,12 @@ ignored filing's report period still becomes the latest one, so the series
 shows a gap rather than the previous trailing EPS. An implied fourth quarter
 keeps the first three quarters as filed at its annual filing's vintage, so
 later restatements do not offset into it. Only a filing that moves every period
-it repeats down by one such power corrects those quarters there, and a new
-filing of the annual EPS implies the quarter again from the current quarters.
+it repeats down by one such power corrects those quarters there, and only when
+the value it rescales is the one the fourth quarter was implied from. If such a
+quarter was restated in between, its scale at the annual's vintage is unknown:
+the implied quarter becomes unknown too, and the closes that need it are gaps.
+A new filing of the annual EPS implies the quarter again from the current
+quarters.
 
 NTM uses the last PE-0 observation of each exchange-local archive date, for the
 same listing and quote currency, bounded by the snapshot publication time. The

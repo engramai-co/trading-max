@@ -173,7 +173,9 @@ is treated as a unit error and not used. Its quarter stays unknown until a
 later filing repeats it correctly. An inferred fourth quarter keeps the
 quarters it was inferred from: a later restatement leaves it unchanged unless a
 filing scales every period it repeats back down by such a factor, or the annual
-EPS is filed again.
+EPS is filed again. If that correction reaches a quarter restated since the
+annual filing, the inferred quarter is left unknown and the closes that need it
+are gaps until the annual EPS is filed again.
 
 The shaded band shows the 25th to 75th percentiles with the median dashed.
 Switch to **Mean ±1σ** for the mean and one population standard deviation.

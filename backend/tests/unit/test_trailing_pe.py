@@ -346,6 +346,117 @@ def test_a_scale_correction_changes_only_that_quarter_until_the_annual_is_refile
     assert _at(history, "2026-11-06")[1].eps == pytest.approx(1.0)
 
 
+def test_a_correction_after_an_intervening_restatement_withholds_the_implied_quarter():
+    filings = [
+        _filing("2025-04-30T22:00:00Z", "2025-03-31", ("2025-01-01", "2025-03-31", -0.1)),
+        _filing("2025-07-31T22:00:00Z", "2025-06-30", ("2025-04-01", "2025-06-30", -0.1)),
+        # Q3 in thousands, with nothing earlier to show it.
+        _filing(
+            "2025-10-28T22:00:00Z",
+            "2025-09-30",
+            ("2025-07-01", "2025-09-30", -100),
+            ("2025-01-01", "2025-09-30", -300),
+        ),
+        # Q4 2025 is implied as -0.3 - (-0.1 - 0.1 - 100) = +99.9.
+        _filing(
+            "2026-02-09T22:00:00Z", "2025-12-31", ("2025-01-01", "2025-12-31", -0.3), annual=True
+        ),
+        # An ordinary restatement, still in thousands.
+        _filing(
+            "2026-04-29T22:00:00Z",
+            "2026-03-31",
+            ("2025-07-01", "2025-09-30", -110),
+            ("2025-01-01", "2025-09-30", -310),
+            ("2026-01-01", "2026-03-31", 0.2),
+        ),
+        # Every repeated period a thousand times smaller, but the -110 corrected
+        # here is not the -100 that Q4 2025 was implied from. Filed twice.
+        *[
+            _filing(
+                accepted,
+                "2026-09-30",
+                ("2025-07-01", "2025-09-30", -0.11),
+                ("2025-01-01", "2025-09-30", -0.31),
+                ("2026-04-01", "2026-06-30", 0.3),
+                ("2026-07-01", "2026-09-30", 0.4),
+            )
+            for accepted in ("2026-10-22T22:00:00Z", "2026-10-29T22:00:00Z")
+        ],
+        # An amended annual filing implies Q4 2025 again, from the current quarters.
+        _filing(
+            "2026-11-05T22:00:00Z", "2025-12-31", ("2025-01-01", "2025-12-31", -0.3), annual=True
+        ),
+    ]
+    history = trailing_pe_history(
+        filings, _bars("2025-04-30", "2026-11-10"), now=datetime(2026, 11, 10, 22, tzinfo=UTC)
+    )
+    # Q4 2025 is unknown, never 99.9: trailing EPS of 100.8 would be a P/E of 0.40x.
+    for day in ("2026-10-23", "2026-10-30", "2026-11-05"):
+        point, evidence = _at(history, day)
+        assert point.pe is None and evidence is None
+    assert _readings(history) == [
+        ("2026-02-10", -0.3, "annual"),
+        # Nothing shows yet that Q3 is in thousands.
+        ("2026-04-30", pytest.approx(-10.0), "derivedFourthQuarter"),
+        # Q4 2025 = -0.3 - (-0.1 - 0.1 - 0.11) = 0.01.
+        ("2026-11-06", pytest.approx(0.91), "derivedFourthQuarter"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("restated", "eps"),
+    [
+        # Both quarters corrected in the values Q4 was implied from:
+        # Q4 2025 = -0.3 - 3 x -0.1 = 0.
+        ((), 0.9),
+        # Q3 restated, then back to the value Q4 was implied from.
+        ((-110, -100), 0.9),
+        # Q2 is corrected in the value Q4 was implied from, Q3 in another.
+        ((-110,), None),
+        ((-110, -120), None),
+    ],
+)
+def test_an_implied_quarter_is_corrected_only_in_the_values_it_was_implied_from(restated, eps):
+    filings = [
+        _filing("2025-04-30T22:00:00Z", "2025-03-31", ("2025-01-01", "2025-03-31", -0.1)),
+        # Q2 and Q3 in thousands, with nothing earlier to show it.
+        _filing("2025-07-31T22:00:00Z", "2025-06-30", ("2025-04-01", "2025-06-30", -100)),
+        _filing("2025-10-28T22:00:00Z", "2025-09-30", ("2025-07-01", "2025-09-30", -100)),
+        # Q4 2025 is implied as -0.3 - (-0.1 - 100 - 100) = +199.9.
+        _filing(
+            "2026-02-09T22:00:00Z", "2025-12-31", ("2025-01-01", "2025-12-31", -0.3), annual=True
+        ),
+        # Amendments of Q3, still in thousands.
+        *[
+            _filing(f"2026-03-1{i}T22:00:00Z", "2025-09-30", ("2025-07-01", "2025-09-30", value))
+            for i, value in enumerate(restated)
+        ],
+        _filing("2026-04-29T22:00:00Z", "2026-03-31", ("2026-01-01", "2026-03-31", 0.2)),
+        # A year on, each quarter is filed again a thousand times smaller.
+        _filing(
+            "2026-07-28T22:00:00Z",
+            "2026-06-30",
+            ("2025-04-01", "2025-06-30", -0.1),
+            ("2026-04-01", "2026-06-30", 0.3),
+        ),
+        _filing(
+            "2026-10-22T22:00:00Z",
+            "2026-09-30",
+            ("2025-07-01", "2025-09-30", (restated or (-100,))[-1] / 1000),
+            ("2026-07-01", "2026-09-30", 0.4),
+        ),
+    ]
+    history = trailing_pe_history(
+        filings, _bars("2025-04-30", "2026-10-30"), now=datetime(2026, 10, 30, 22, tzinfo=UTC)
+    )
+    point, evidence = _at(history, "2026-10-23")
+    if eps is None:
+        # Not 0.4 + 0.3 + 0.2 + 99.9 with Q3 left in thousands.
+        assert point.pe is None and evidence is None
+    else:
+        assert evidence.eps == pytest.approx(eps)
+
+
 def test_a_hundredfold_restatement_beside_an_unchanged_one_is_ordinary():
     filings = [
         _filing(
@@ -398,18 +509,22 @@ def _restated_beside_q1(before, after):
     ]
 
 
-@pytest.mark.parametrize(("before", "after", "eps"), [(0.2, 0, 3.5), (0, 0.2, 3.7)])
-def test_zero_against_a_nonzero_value_rules_out_a_unit_error(before, after, eps):
-    # A filing at the wrong scale can't turn zero into a nonzero value or back,
-    # so Q1 alone a hundred times larger is an ordinary restatement here.
+@pytest.mark.parametrize(
+    ("before", "after"),
+    [(0.2, 0), (0, 0.2), (0.2, -20), (-0.2, 20), (2, 2), (2, 20), (2, 2000)],
+)
+def test_contradicting_comparatives_rule_out_a_unit_error(before, after):
+    # Q1 is a hundred times larger, but a filing at the wrong scale can't turn
+    # zero into a nonzero value or back, change a sign, or leave Q2 unchanged
+    # or scaled by another power, so these are ordinary restatements.
     history = trailing_pe_history(
         _restated_beside_q1(before, after),
         _bars("2025-07-30", "2025-11-05"),
         now=datetime(2025, 11, 5, 22, tzinfo=UTC),
     )
-    # Q4 2024 + Q1, Q2 and Q3 2025 as restated.
+    # Q4 2024 (0.5) + Q1, Q2 and Q3 2025 as restated (1, after and 2).
     _, evidence = _at(history, "2025-10-31")
-    assert (evidence.eps, evidence.method) == (pytest.approx(eps), "fourQuarters")
+    assert (evidence.eps, evidence.method) == (pytest.approx(3.5 + after), "fourQuarters")
 
 
 @pytest.mark.parametrize(("before", "after"), [(0, 0), (0.2, None)])

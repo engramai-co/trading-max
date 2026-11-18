@@ -196,10 +196,14 @@ class _ImpliedQuarter:
 
     period: Period
     annual: float
-    quarters: dict[Period, float]
+    # None once a scale correction reaches one of them in a value other than
+    # the one used here: the scale Q4 was implied at is then unknown.
+    quarters: dict[Period, float] | None
 
     @property
-    def eps(self) -> float:
+    def eps(self) -> float | None:
+        if self.quarters is None:
+            return None
         return round(math.fsum([self.annual, *(-value for value in self.quarters.values())]), 12)
 
 
@@ -273,20 +277,24 @@ class _EarningsReplay:
             self.recorded[period] = value
 
         # An implied Q4 keeps Q1–Q3 as filed at its annual's vintage, so a later
-        # restatement of one of them doesn't rewrite Q4 to offset it. Only a
-        # value since shown to be tagged at the wrong scale is corrected there;
-        # a new vintage of the annual implies Q4 again below.
+        # restatement of one of them doesn't rewrite Q4 to offset it. A quarter
+        # since shown to be tagged at the wrong scale is corrected there when
+        # the correction rescales the very value Q4 was implied from. If that
+        # quarter was restated in between, its scale at the vintage is unknown,
+        # and so is Q4 until a new vintage of the annual implies it again below.
         for year, implied in self.derived_years.items():
-            if year in updated_annuals:
+            if year in updated_annuals or implied.quarters is None:
                 continue
-            corrected = {
-                period: value / misscaled[period][1]
-                for period, value in implied.quarters.items()
-                if period in misscaled and misscaled[period][0] == value
-            }
-            if corrected:
-                implied.quarters |= corrected
-                self.derived[implied.period] = implied.eps
+            reached = implied.quarters.keys() & misscaled.keys()
+            if not reached:
+                continue
+            if all(implied.quarters[period] == misscaled[period][0] for period in reached):
+                implied.quarters |= {
+                    period: implied.quarters[period] / misscaled[period][1] for period in reached
+                }
+            else:
+                implied.quarters = None
+            self.derived[implied.period] = implied.eps
 
         # If a prerequisite was missing at the annual filing, a newly
         # disclosed comparative can complete the calculation prospectively.
