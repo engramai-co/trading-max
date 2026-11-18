@@ -18,7 +18,8 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
@@ -70,6 +71,25 @@ import {
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
 
+function modelMethodology(initial: Preview, t: ReturnType<typeof useCopy>) {
+  return initial.formulaVersion === "equity-proxy-projection-v1"
+    ? t("保存的公式按三年调整利润率，股数按年度股数变化调整。", "The saved formula moves margin to its target over three years and applies the assumed annual share-count change.")
+    : initial.basis.family === "residual-income"
+    ? t(
+        "期初普通股每股净资产加上剩余收益现值。ROE 逐年回归股权成本，期末按市净率结算。",
+        "Starting common book value plus discounted residual earnings. ROE fades to the cost of equity and the terminal price uses P/B.",
+      )
+    : initial.basis.family === "net-income"
+      ? t(
+          "以普通股净利润作为收益代理。客户资金进出不计入估值。",
+          "Common earnings proxy the amount available to shareholders. Client cash movements are excluded.",
+        )
+      : t(
+          "经营现金流减资本开支，按股权成本折现。现金不足时按起始股价发行新股，后续收益由更多股份分摊。",
+          "Operating cash flow less capital expenditure is discounted at the cost of equity. Burn beyond opening cash is financed by shares issued at the starting price.",
+        );
+}
+
 export function ValuationWorkbench({
   data,
   revision,
@@ -92,8 +112,28 @@ export function ValuationWorkbench({
     ? retained : undefined;
   const [reading, setReading] = useState<ModelReading>();
   const reverseOnly = preview?.reverseMetric === "year-five-revenue";
+  // Keep the previous layout while a new family loads, so its selector stays in view.
+  // Only the requested family's values and controls are available to the reader.
+  const switching = !preview && state.view === "pending" && retained?.basis.ticker === data.ticker;
+  const model = preview ?? (switching ? retained : undefined);
+  const editor = model?.reverseMetric === "year-five-revenue" ? undefined : model;
+  const methodology = editor && modelMethodology(editor, t);
+  const selector = useRef<HTMLInputElement>(null);
+  const selectedTop = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    const input = selector.current;
+    if (selectedTop.current === null || !input) return;
+    if (document.activeElement === input) {
+      window.scrollBy({ top: input.getBoundingClientRect().top - selectedTop.current, behavior: "instant" });
+    }
+    if (!switching || document.activeElement !== input) selectedTop.current = null;
+  }, [family, model, switching]);
+  const [output, setOutput] = useState<HTMLDivElement | null>(null);
+  const [reference, setReference] = useState<HTMLDivElement | null>(null);
+  const currentReading = reading?.initial === preview ? reading : undefined;
   const chooser = (
     <Select
+      ref={selector}
       label={t("估值模型", "Valuation model")}
       value={family ?? preview?.basis.family ?? null}
       placeholder={t("自动选择", "Automatic")}
@@ -104,6 +144,7 @@ export function ValuationWorkbench({
         { value: "residual-income", label: t("剩余收益", "Residual income") },
       ]}
       onChange={(value) => {
+        selectedTop.current = selector.current?.getBoundingClientRect().top ?? null;
         setDirty(false);
         setFamily(value as Preview["basis"]["family"]);
       }}
@@ -125,27 +166,27 @@ export function ValuationWorkbench({
               "Matching statements, a quote and verified listing shares are required",
             );
 
-  return <ResearchReading parameter="valuationView" sections={preview && !reverseOnly ? valuationSections : valuationSections.slice(0, 2)}>
-    <ValuationReadout data={data} preview={preview} reading={reading?.initial === preview ? reading : undefined} />
+  return <ResearchReading parameter="valuationView" sections={editor ? valuationSections : valuationSections.slice(0, 2)}>
+    <ValuationReadout data={data} preview={preview} reading={currentReading} />
     <div id="research-history">
       <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}
         sales={<FilingMultiples data={data} price={price} mode="ps" />}
         disclosure={<FilingMultiples data={data} price={price} mode="pe" />} />
     </div>
-    {preview && !reverseOnly ? <ModelEditor
-      chooser={chooser}
-      key={editorIdentity(preview)}
-      initial={preview}
-      onDirty={setDirty}
-      data={data}
-      revision={revision}
-      onReading={setReading}
-      refreshing={query.isFetching}
-      onRetry={query.isError ? () => void query.refetch() : undefined}
-    /> : <div id="research-scenario">
-      <Panel title={t("情景模型", "Scenario model")} id="valuation-assumptions">
+    <div id="research-scenario" className={editor ? "mx-model-workbench" : undefined}
+      aria-busy={switching || currentReading?.busy} data-switching={switching || undefined}>
+      {editor && <div className="mx-model-output" ref={setOutput} inert={switching} />}
+      <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
+        id="valuation-assumptions" className="mx-model-inputs" help={methodology}
+        action={editor && <Button className="mx-model-jump" component="a" href="#valuation-results"
+          variant="subtle" size="compact-xs">{t("查看结果", "View results")}</Button>}>
         {chooser}
-        {reverseOnly && preview ? <Facts rows={[
+        {editor ? <div className="mx-model-fields" inert={switching}>
+          <ModelEditor key={editorIdentity(editor)} initial={editor} output={output} referencePanel={reference}
+            onDirty={setDirty} onReading={setReading} data={data} revision={revision}
+            methodology={methodology} refreshing={query.isFetching}
+            onRetry={query.isError ? () => void query.refetch() : undefined} />
+        </div> : reverseOnly && preview ? <Facts rows={[
           [t("期间", "Period"), preview.basis.periodId ?? "—"],
           [t("目标利润率", "Target margin"), percent(preview.reverseInputs?.targetFcfMargin)],
           [t("退出倍数", "Exit multiple"), number(preview.reverseInputs?.exitFcfMultiple, 1)],
@@ -155,13 +196,17 @@ export function ValuationWorkbench({
           reason ? <Empty title={missing} /> : <QueryError error={query.error} retry={query.refetch} />
         ) : <Pending />}
       </Panel>
+      {editor && <div className="mx-model-reference-grid" ref={setReference} inert={switching} />}
       {!preview && state.view === "error" && <ModelAlternatives data={data} financial={family === "residual-income"} />}
-    </div>}
+    </div>
+    {editor && !switching && <ModelDetails key={editorIdentity(editor)} result={currentReading?.result ?? editor} />}
   </ResearchReading>;
 }
 
 function ModelEditor({
-  chooser,
+  output,
+  referencePanel,
+  methodology,
   initial,
   onReading,
   onDirty,
@@ -170,7 +215,9 @@ function ModelEditor({
   refreshing,
   onRetry,
 }: {
-  chooser: React.ReactNode;
+  output: HTMLDivElement | null;
+  referencePanel: HTMLDivElement | null;
+  methodology?: string;
   initial: Preview;
   onReading: (reading: ModelReading) => void;
   onDirty: (dirty: boolean) => void;
@@ -203,7 +250,6 @@ function ModelEditor({
   const [draftValue, setDraftValue] = useState<number | string | null>(null);
   const [invalidInput, setInvalidInput] = useState(false);
   const [reason, setReason] = useState("");
-  const [worksheet, setWorksheet] = useState<string>("base");
   const [references, setReferences] = useState<
     NonNullable<Preview["references"]>
   >(initial.references ?? []);
@@ -347,22 +393,7 @@ function ModelEditor({
       suffix: "",
     });
   const base = result.scenarios.base;
-  const methodology = initial.formulaVersion === "equity-proxy-projection-v1"
-    ? t("保存的公式按三年调整利润率，股数按年度股数变化调整。", "The saved formula moves margin to its target over three years and applies the assumed annual share-count change.")
-    : residual
-    ? t(
-        "期初普通股每股净资产加上剩余收益现值。ROE 逐年回归股权成本，期末按市净率结算。",
-        "Starting common book value plus discounted residual earnings. ROE fades to the cost of equity and the terminal price uses P/B.",
-      )
-    : earnings
-      ? t(
-          "以普通股净利润作为收益代理。客户资金进出不计入估值。",
-          "Common earnings proxy the amount available to shareholders. Client cash movements are excluded.",
-        )
-      : t(
-          "经营现金流减资本开支，按股权成本折现。现金不足时按起始股价发行新股，后续收益由更多股份分摊。",
-          "Operating cash flow less capital expenditure is discounted at the cost of equity. Burn beyond opening cash is financed by shares issued at the starting price.",
-        );
+
 
   const current = result.scenarios[selected] ?? base;
   const sourceLabel =
@@ -381,7 +412,6 @@ function ModelEditor({
       (o) =>
         o.periodId === (result.basis.periodId ?? data.financialFacts?.latestTtm) && o.metric === metric,
     )?.value;
-  const projection = result.scenarios[worksheet] ?? base;
   const editedBase = JSON.stringify(base.inputs) !== JSON.stringify(initial.scenarios.base.inputs);
   const stale = Boolean(onRetry) || query.isError;
   useLayoutEffect(() => {
@@ -389,8 +419,7 @@ function ModelEditor({
   }, [initial, result, editedBase, sourceLabel, stale, busy, onReading]);
   return (
     <>
-      <div id="research-scenario" className="mx-model-workbench" aria-busy={busy}>
-        <div className="mx-model-output">
+      {output && createPortal(
           <Panel
             title={t("情景估值", "Scenario valuation")}
             id="valuation-results"
@@ -510,26 +539,7 @@ function ModelEditor({
                 </table>
               </div>
             </details>
-          </Panel>
-        </div>
-        <Panel
-          title={t("调整假设", "Adjust assumptions")}
-          id="valuation-assumptions"
-          action={
-            <Button
-              className="mx-model-jump"
-              component="a"
-              href="#valuation-results"
-              variant="subtle"
-              size="compact-xs"
-            >
-              {t("查看结果", "View results")}
-            </Button>
-          }
-          className="mx-model-inputs"
-          help={methodology}
-        >
-          {chooser}
+          </Panel>, output)}
           <Segments
             label={t("编辑情景", "Edit scenario")}
             value={selected}
@@ -680,8 +690,7 @@ function ModelEditor({
             {saved ? t("已保存", "Saved") : t("保存模型版本", "Save model version")}
           </Button>
           {save.isError && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
-        </Panel>
-      <div className="mx-model-reference-grid">
+      {referencePanel && createPortal(<>
         <Panel
           title={t("经营参考", "Operating reference")}
           action={
@@ -749,16 +758,7 @@ function ModelEditor({
           </details>
         </Panel>
         {!residual && <GrowthContext data={data} analyst={analyst} />}
-      </div>
-      </div>
-      <div id="research-sensitivity"><ValuationSensitivity result={result} /></div>
-      <div id="research-worksheet"><ValuationWorksheet
-        result={result}
-        projection={projection}
-        worksheet={worksheet}
-        onWorksheet={setWorksheet}
-        scenarioNames={scenarioNames}
-      /></div>
+      </>, referencePanel)}
       <Modal
         opened={saveOpen}
         onClose={() => setSaveOpen(false)}
@@ -797,4 +797,16 @@ function ModelEditor({
       </Modal>
     </>
   );
+}
+
+function ModelDetails({ result }: { result: Preview }) {
+  const t = useCopy();
+  const [worksheet, setWorksheet] = useState("base");
+  return <>
+    <div id="research-sensitivity"><ValuationSensitivity result={result} /></div>
+    <div id="research-worksheet"><ValuationWorksheet result={result}
+      projection={result.scenarios[worksheet] ?? result.scenarios.base}
+      worksheet={worksheet} onWorksheet={setWorksheet}
+      scenarioNames={{ bear: t("保守", "Bear"), base: t("中性", "Base"), bull: t("乐观", "Bull") }} /></div>
+  </>;
 }

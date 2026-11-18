@@ -498,12 +498,19 @@ for (const locale of ["en", "zh"] as const) {
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
       await synthetic(page, false);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      let residualGets = 0;
       await page.route(/\/SYNT\/valuation-preview/, async (route) => {
         const req = route.request();
         const family =
           new URL(req.url()).searchParams.get("family") ??
           (req.method() === "POST" ? req.postDataJSON().family : undefined) ??
           "cash-flow";
+        if (family === "residual-income" && req.method() === "GET") {
+          residualGets++;
+          await gate;
+        }
         const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", false, {});
         const projections = Object.fromEntries(
           Object.entries(p.scenarios).map(([key, value]) => [
@@ -539,13 +546,41 @@ for (const locale of ["en", "zh"] as const) {
         name: locale === "en" ? "Valuation model" : "估值模型",
         exact: true,
       });
-      await select.click();
+      const cash = locale === "en" ? "Equity cash flow" : "股权现金流";
       const name = locale === "en" ? "Residual income" : "剩余收益";
-      await page.getByRole("option", { name, exact: true }).click();
-      await expect(select).toHaveValue(name);
-      await expect(
-        page.getByLabel(locale === "en" ? "Year-one ROE" : "第一年 ROE", { exact: true }),
-      ).toBeVisible();
+      const roe = page.getByLabel(locale === "en" ? "Year-one ROE" : "第一年 ROE", { exact: true });
+      const firstScenario = page.getByRole("group", { name: locale === "en" ? "Edit scenario" : "编辑情景" })
+        .getByRole("button", { name: locale === "en" ? "Bear" : "保守", exact: true });
+      await expect(select).toHaveValue(cash);
+      async function choose(direction: "ArrowUp" | "ArrowDown") {
+        await select.focus();
+        await page.keyboard.press(direction);
+        await expect(select).toHaveAttribute("aria-expanded", "true");
+        await page.keyboard.press(direction);
+        await page.keyboard.press("Enter");
+      }
+      for (const cached of [false, true]) {
+        await choose("ArrowUp");
+        await expect(select).toHaveValue(name);
+        if (!cached) {
+          await expect.poll(() => residualGets).toBe(1);
+          await expect(select).toBeFocused();
+          await expect(select).toBeInViewport();
+          release();
+        }
+        await expect(roe).toBeVisible();
+        await expect(select).toBeFocused();
+        await expect(select).toBeInViewport();
+        await page.keyboard.press("Tab");
+        // WebKit on iOS tabs directly to the next editable field.
+        await expect(info.project.name === "mobile" ? roe : firstScenario).toBeFocused();
+        if (!cached) {
+          await choose("ArrowDown");
+          await expect(select).toHaveValue(cash);
+          await expect(page.getByLabel(locale === "en" ? "Revenue growth · years 1–5" : "前五年营收增长", { exact: true })).toBeVisible();
+        }
+      }
+      expect(residualGets).toBe(1);
       const readout = page.locator(".mx-valuation-readout");
       await expect(readout.getByText(locale === "en" ? "Year-one ROE implied by price" : "现价隐含的第一年 ROE", { exact: true })).toBeVisible();
       await expect(readout).toContainText("18.0%");
@@ -556,6 +591,12 @@ for (const locale of ["en", "zh"] as const) {
       await expect(page.getByRole("heading", {
         name: locale === "en" ? "Revenue-growth reference" : "营收增长参考",
       })).toHaveCount(0);
+      const dir = process.env.VALUATION_QA_SCREENSHOTS_DIR;
+      if (dir) {
+        await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+        await expect(readout).toBeInViewport();
+        await page.screenshot({ scale: "css", path: join(dir, `residual-income-${info.project.name}-${locale}-${scheme}.png`) });
+      }
       await page.getByRole("link", { name: locale === "en" ? "Worksheet" : "计算底稿", exact: true }).click();
       await expect(page.getByText(locale === "en" ? "Discounted terminal premium" : "期末溢价现值", { exact: true })).toBeVisible();
       await expect(page.getByRole("row", {
@@ -564,11 +605,6 @@ for (const locale of ["en", "zh"] as const) {
       await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
 
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-      const dir = process.env.VALUATION_QA_SCREENSHOTS_DIR;
-      if (dir) {
-        await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
-        await page.screenshot({ path: join(dir, `residual-income-${info.project.name}-${locale}-${scheme}.png`) });
-      }
     });
   }
 }

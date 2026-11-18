@@ -114,6 +114,12 @@
 .mx-reading-sections > .mx-model-workbench {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
+.mx-model-fields {
+  display: contents;
+}
+.mx-model-workbench[data-switching] :is(.mx-model-output, .mx-model-reference-grid, .mx-model-fields > *) {
+  visibility: hidden;
+}
 .mx-reading-sections .mx-model-output {
   grid-column: 1 / -1;
 }
