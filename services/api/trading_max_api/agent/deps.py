@@ -71,12 +71,18 @@ class AssistantDepsFactory:
             with suppress(ValueError, ZoneInfoNotFoundError):
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
+        price_series = None
+        if self.bind_price_series is not None:
+            # An unreadable watchlist prevents safe chart routing for this run.
+            # The other tools read their own immutable snapshot artifacts.
+            with suppress(OSError, ValueError):
+                price_series = self.bind_price_series()
         return AssistantDeps(
             page_sources=self.bind_page_sources()
             if self.bind_page_sources
             and page_hint in {"holdings", "analytics", "sectors", "health"}
             else None,
-            price_series=self.bind_price_series() if self.bind_price_series else None,
+            price_series=price_series,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

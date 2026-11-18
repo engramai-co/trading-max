@@ -551,7 +551,7 @@ class ResearchLedger:
         self._raw_price_cache: SingleFlightCache[str, JsonObject] = SingleFlightCache(2)
         self._price_series_cache: dict[
             tuple[str, str, str],
-            tuple[str, str, list[PriceSeriesPoint], list[ResearchTradeMarker]],
+            tuple[str, str, str, list[PriceSeriesPoint], list[ResearchTradeMarker]],
         ] = {}
         self._history_lock = threading.RLock()
         self._history_signature: tuple[str | None, ...] | None = None
@@ -2464,10 +2464,11 @@ class ResearchLedger:
         )
         cached = self._price_series_cache.get(cache_key)
         if cached is not None:
-            as_of, currency, all_points, all_markers = cached
+            bar_ticker, as_of, currency, all_points, all_markers = cached
             points = all_points[-limit:]
             visible_dates = {point.date for point in points}
             return ResearchPriceSeries(
+                published_bar_ticker=bar_ticker,
                 published_series_id=published_price_series_id(artifact.sha256, ticker)
                 if artifact
                 else None,
@@ -2497,6 +2498,7 @@ class ResearchLedger:
         )
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")
+        bar_ticker = str(source["ticker"]).strip().upper()
         raw_points = source.get("price_series")
         all_points = [
             PriceSeriesPoint.model_validate(point)
@@ -2520,11 +2522,12 @@ class ResearchLedger:
             ResearchTradeMarker.model_validate(marker)
             for marker in (marker_rows if isinstance(marker_rows, list) else [])
             if isinstance(marker, dict)
-            and _canonical_ticker(str(marker.get("ticker") or "")) == _canonical_ticker(ticker)
+            and str(marker.get("ticker") or "").strip().upper() == bar_ticker
         ]
         if len(self._price_series_cache) >= 128:
             self._price_series_cache.clear()
         self._price_series_cache[cache_key] = (
+            bar_ticker,
             as_of,
             currency,
             all_points,
@@ -2533,6 +2536,7 @@ class ResearchLedger:
         points = all_points[-limit:]
         visible_dates = {point.date for point in points}
         return ResearchPriceSeries(
+            published_bar_ticker=bar_ticker,
             published_series_id=published_price_series_id(artifact.sha256, ticker)
             if artifact
             else None,
