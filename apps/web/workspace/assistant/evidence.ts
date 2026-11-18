@@ -32,6 +32,7 @@ export function evidenceHref(ref: Evidence) {
   if (path === "/review") {
     if (a.scope === "invest" || a.scope === "isa") params.set("account", a.scope === "invest" ? "A" : "B");
     if (a.ticker && a.side && a.decision_date) params.set("decision",[a.decision_date,a.side,a.ticker].join("."));
+    if (a.ordinal && /^\d+$/.test(a.ordinal)) params.set("reviewOrdinal",a.ordinal);
     if (a.horizon === "20_sessions" || a.horizon === "to_date") params.set("reviewWindow",a.horizon);
     if (a.habit) params.set("habit",a.habit);
   }
@@ -114,7 +115,7 @@ export function chatContext(page: string, search: string, timezone: string) {
   const lens = params.get("view");
   return {
     page: ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page) ? page : "overview", timezone,
-    ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics"].includes(page) ? { scope: "broker_total" } : {}),
+    ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics","review"].includes(page) ? { scope: "broker_total" } : {}),
     ...(page === "research" && ticker && /^[a-z0-9^=._-]{1,32}$/i.test(ticker) ? { ticker: ticker.toUpperCase() } : {}),
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),

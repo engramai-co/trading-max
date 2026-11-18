@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from bisect import bisect_right
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from datetime import UTC, date, datetime, timedelta
@@ -250,16 +251,24 @@ def attach_decision_events(
         row["events"] = sorted(kept[:MAX_EVENTS], key=lambda event: event["date"])
     # Mark every recorded purchase we can match to an already-loaded earnings
     # history, including purchases outside the short lists. Unknown stays unknown.
+    earnings_by_listing = {
+        listing: sorted(
+            event["date"]
+            for event in history
+            if event.get("kind") == "earnings" and event.get("date")
+        )
+        for listing, history in loaded.items()
+    }
     for row in decisions:
-        history = loaded.get(row.get("listing"))
-        if row.get("side") != "buy" or history is None:
+        earnings = earnings_by_listing.get(row.get("listing"))
+        if row.get("side") != "buy" or not earnings:
             continue
         end = (date.fromisoformat(row["date"]) + timedelta(days=7)).isoformat()
-        if any(
-            event.get("kind") == "earnings" and row["date"] < str(event.get("date")) <= end
-            for event in history
-        ):
+        next_result = bisect_right(earnings, row["date"])
+        if next_result < len(earnings) and earnings[next_result] <= end:
             row["before_earnings"] = True
+        elif earnings[0] <= row["date"] and earnings[-1] >= end:
+            row["before_earnings"] = False
     return len(loaded)
 
 

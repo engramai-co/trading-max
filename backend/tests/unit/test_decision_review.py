@@ -1153,3 +1153,31 @@ def test_sell_hindsight_requires_a_known_purchase_size(earlier_buy):
     sell = next(row for row in result["decisions"] if row["side"] == "sell")
     assert sell["effect_to_date_gbp"] is not None
     assert sell["hindsight_to_date"] is None
+
+
+def test_untraded_fall_uses_only_prior_purchases_and_final_matching_windows():
+    from trading_max.analytics.review_evidence import HoldingMove
+
+    closes = _closes("2026-01-05", [100, 95, 80] + [90] * 19 + [100, 64])
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-01-05T10:00:00Z", "Market buy", 1, 100),
+                _fill("2026-01-05T14:00:00Z", "Market buy", 3, 300),
+                _fill("2026-01-06T12:00:00Z", "Market sell", 1, 95),
+                _fill("2026-01-08T12:00:00Z", "Market buy", 10, 900),
+            ]
+        )
+    )
+    key = trades["SecurityIdentity"].iloc[0]
+    security = SecurityPrices(key, "NVDA", "Synthetic", "NVDA", closes)
+    drop = HoldingMove(date=date(2026, 1, 7), ticker="NVDA", quote_currency="GBP", change=-0.15)
+    pending = drop.model_copy(update={"date": closes.index[-1].date()})
+    review = build_decision_review(
+        trades, {key: security}, as_of=closes.index[-1], holding_moves=[drop, pending]
+    )
+    assert len(review["decisions"]) == 3
+    assert drop.average_purchase_gbp == 200
+    assert drop.hypothetical_horizon_gbp == 50
+    assert drop.hypothetical_to_date_gbp == -40
+    assert pending.hypothetical_to_date_gbp is None

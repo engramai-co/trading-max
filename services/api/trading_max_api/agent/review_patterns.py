@@ -29,6 +29,7 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
     evidence = _mapped((read.read(EVIDENCE) or {}).get("accounts"))
     groups = {k: [] for k in ("before_earnings", "untraded_fall", "basket_buy")}
     revision = []
+    as_of = {}
     issues = []
     suffix = "horizon" if args.horizon == "20_sessions" else "to_date"
     for code in scopes:
@@ -39,6 +40,7 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
         ):
             issues.append(f"{CODE_SCOPE[code]}_decisions_unavailable")
             continue
+        as_of[CODE_SCOPE[code]] = account.get("as_of")
         journal = _mapped(evidence.get(code))
         if journal.get("coverage") != "complete":
             issues.append("partial_journal")
@@ -65,6 +67,8 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
                 )
             )
             if row.get("side") == "buy":
+                if row.get("before_earnings") is None:
+                    issues.append("partial_earnings_history")
                 for key in ("before_earnings", "basket_buy"):
                     if row.get(key):
                         groups[key].append(
@@ -107,7 +111,13 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
     version = sha256(json.dumps(revision, separators=(",", ":")).encode()).hexdigest()[:24]
     return read.result(
         "partial" if issues else "ok",
-        {"groups": summaries, "revision": version, "currency": "GBP", "horizon": args.horizon},
+        {
+            "groups": summaries,
+            "revision": version,
+            "currency": "GBP",
+            "horizon": args.horizon,
+            "as_of": as_of,
+        },
         keys=[DECISIONS, EVIDENCE],
         issues=issues,
     )

@@ -5,6 +5,7 @@ All notable public Trading Max releases are recorded here.
 ## [Unreleased]
 
 ### Added
+- Review can expand each recorded buy or sell into its dated evidence, subsequent return and hindsight timing gap. A trading habits brief filters the timeline and journal by pre-earnings buys, same-day basket purchases or large falls without a trade. Both horizons use the selected account’s records.
 - Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Replies show figures and coverage directly from the cited records. The sidebar reflows wide screens and fills the screen on phones.
 - Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves.

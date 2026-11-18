@@ -220,6 +220,14 @@ def habit_line(key, result, horizon, scope):
         en += (
             f", mean return {mean:+.1%}" if mean is not None else ""
         ) + f", total effect {money(effect)}."
+    issues = result["quality"]["issues"]
+    if (
+        any(issue.endswith("_decisions_unavailable") for issue in issues)
+        or (key == "untraded_fall" and "partial_journal" in issues)
+        or (key == "before_earnings" and "partial_earnings_history" in issues)
+    ):
+        zh += "（记录不全）"
+        en += " (partial records)"
     if scored < count:
         zh += f"（已计 {scored}/{count}）"
         en += f" ({scored}/{count} measured)"

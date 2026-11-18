@@ -47,7 +47,7 @@ export function useRoleReading(request: ReadingRequest, enabled: boolean) {
   return useQuery({
     queryKey: ["assistant-reading", request],
     queryFn: ({ signal }) => fetchReading(request, signal),
-    enabled: assistant.ready && enabled, refetchInterval: request.latest && request.cachedOnly ? 30_000 : false,
+    enabled: assistant.ready && enabled, refetchInterval: query => request.cachedOnly && (request.latest || request.role === "habits" && !query.state.data) ? 30_000 : false,
     refetchIntervalInBackground: false, staleTime: request.latest ? 60_000 : Infinity, retry: false,
   });
 }

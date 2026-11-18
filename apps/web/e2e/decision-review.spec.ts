@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { components } from "../lib/api-schema";
 
@@ -45,7 +47,7 @@ function decisions(context: Context) {
       effectHorizonGbp: -40, effectToDateGbp: -55, returnHorizon: 0.08, returnToDate: 0.11, events: [],
     },
     {
-      ...scored, date: "2026-09-02", ticker: "SYNB", name: "Synthetic Beta", side: "buy", kind: "B", amountGbp: 800,
+      ...scored, beforeEarnings:true, basketBuy:true, date: "2026-09-02", ticker: "SYNB", name: "Synthetic Beta", side: "buy", kind: "B", amountGbp: 800,
       effectHorizonGbp: 60, effectToDateGbp: 70, returnHorizon: 0.09, returnToDate: 0.1,
       events: events ? [
         { date: "2026-09-05", kind: "news", title: "Synthetic Beta opens a second plant in a long-named industrial district" },
@@ -82,7 +84,7 @@ function observations(account?: string): components["schemas"]["InvestmentReview
   const after = { largestHolding: 0.26, cash: 0.21, usdExposure: 0.34 };
   const invest: components["schemas"]["AccountReviewEvidence"] = {
     coverage: "complete", asOf,
-    holdingMoves: [{ date: "2026-10-16", ticker: "SYNB", quoteCurrency: "USD", change: -0.068, basis: "short_history", priorReturns: 19, threshold: 0.05 }],
+    holdingMoves: [{ date: "2026-10-16", ticker: "SYNB", quoteCurrency: "USD", change: -0.068, hypotheticalHorizonGbp:14, hypotheticalToDateGbp:-9, basis: "short_history", priorReturns: 19, threshold: 0.05 }],
     cashSpans: [{ start: "2026-09-30", end: "2026-10-16", sessions: 13, peakShare: 0.24, averageShare: 0.19 }],
     weightDrifts: [{ start: "2026-09-30", end: "2026-10-16", ticker: "SYNB", before: 0.2, after: 0.26 }],
     fillEffects: [
@@ -795,4 +797,83 @@ test("CFD without history offers prerequisites and the import screen", async ({ 
   await expect(page).toHaveURL(/reviewView=imports/);
   await expect(page.getByRole("tab", { name: "导入记录" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "CFD 历史账本", level: 2 })).toBeVisible();
+});
+
+test.describe("review assistant", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL?.startsWith("http://127.0.0.1:"), "Requires an isolated local build.");
+  for (const locale of ["zh","en"]) for (const theme of ["light","dark"] as const) {
+    test("habit filters and decision handoff " + locale + " " + theme, async ({page},info) => {
+      const mobile = info.project.name === "mobile";
+      const zh = locale === "zh";
+      if (mobile) await page.setViewportSize({width:390,height:844});
+      await page.emulateMedia({colorScheme:theme,reducedMotion:"reduce"});
+      await page.addInitScript(lang=>localStorage.setItem("trading_max-locale",lang),locale);
+      await serve(page,()=>({benchmark:.03,events:true,isa:true,observations:true}));
+      await page.route("**/api/backend/assistant/status",route=>route.fulfill({json:{ready:true}}));
+      await page.route("**/api/backend/assistant/roles/*/reading",route=>{
+        const body=route.request().postDataJSON();
+        const digest=route.request().url().includes("/habits/");
+        const tool=digest ? "review_patterns" : "decision_timing_and_habits";
+        const lines=(digest ? [
+          ["before_earnings","财报前一周买入 1 次，合计 £60。","One buy before earnings gained £60."],
+          ["untraded_fall","持仓大跌当天没加仓 1 次，错过约 £14。","One untraded fall, about £14 in missed gains."],
+          ["basket_buy","同一天买入多只 2 次，合计 £80。","Two same-day basket buys gained £80."],
+        ] : [
+          ["outcome","每股成交 £40。至今回报 +10.0%，同期标普 500 +3.0%。","The trade averaged £40 per share. Return to date was +10.0%, versus +3.0% for the S&P 500."],
+          ["hindsight","事后看，最佳买入收盘日为 9 月 3 日。按平均买单，差额约 £12。","In hindsight, the best closing buy was on 3 September. At the average purchase size, the gap was about £12."],
+        ]).map(([section,zh,en])=>{ const evidence={source:"review",tool,evidenceId:"ev_synthetic",arguments:{scope:"invest",horizon:"to_date",ticker:"SYNB",side:"buy",decision_date:"2026-09-02"}};
+          return {section,zh,en,evidence,variants:digest?{to_date:{zh:zh.replace("£60","£70"),en:en.replace("£60","£70"),evidence}}:{}}; });
+        expect(body.snapshotId).toBe("synthetic-decision-context");
+        if (!digest) { expect(body.context).toMatchObject({page_scope:"broker_total",scope:"invest",habit:"before_earnings",horizon:"to_date",ticker:"SYNB"}); }
+        const event=!digest && body.cachedOnly ? {type:"empty"} : {type:"result",reading:{role:digest?"habits":"decision",version:"synthetic",snapshotId:body.snapshotId,asOf,lines}};
+        return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify(event)+"\n"});
+      });
+      await page.route("**/api/logos/**",route=>route.abort());
+      await page.goto("/review");
+      const openHabits = () => (mobile ? page.locator(".mx-phone-habits") : page.locator(".mx-digest-head > button")).click();
+      await openHabits();
+      const chooseHabit = page.locator(".mx-habit-line > button").first();
+      await expect(chooseHabit).toContainText("£60");
+      const shots = process.env.REVIEW_SCREENSHOTS;
+      async function capture(name:string) { if(shots) await page.screenshot({path:join(shots,[info.project.name,locale,theme,name].join("-")+".png")}); }
+      await capture("habits");
+      await chooseHabit.click();
+      const filtered=page.locator(".mx-review-filter");
+      await expect(filtered).toBeVisible();
+      await expect(page.locator(".mx-review-expand-head > button")).toHaveCount(1);
+      await expect(page.locator(".mx-journal-item")).toHaveCount(1);
+      await page.getByRole("button",{name: zh ? "至今" : "To date",exact:true}).click();
+      if (mobile) await openHabits();
+      await expect(chooseHabit).toContainText("£70");
+      if (mobile) await page.getByRole("button",{name:zh?"关闭解读":"Close reading"}).click();
+      const row = page.locator(".mx-review-expand-head > button").first();
+      await row.focus(); await row.press("Enter");
+      const reading=mobile ? page.getByRole("dialog") : page.locator(".mx-inline-reading");
+      await expect(reading.locator(".mx-reading-line")).toHaveCount(2);
+      await expect(reading.locator(".mx-reading-source").last()).toHaveAttribute("href",/decision=2026-09-02.buy.SYNB/);
+      if(!mobile) await reading.evaluate(el=>el.scrollIntoView({block:"center",behavior:"instant"}));
+      await capture("decision");
+      expect(await page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth+1)).toBe(true);
+      expect((await new AxeBuilder({page}).include(mobile ? '[role="dialog"]' : '.mx-inline-reading').analyze()).violations).toEqual([]);
+      const question=reading.locator(".mx-reading-actions button").first();
+      const wording=await question.innerText();
+      await question.click();
+      const composer=page.locator("#mx-assistant-panel textarea");
+      await expect(composer).toHaveValue(wording);
+      const sent=page.waitForRequest(r=>r.url().endsWith("/assistant/chat"));
+      await composer.press("Enter");
+      expect((await sent).postDataJSON().context).toMatchObject({page:"review",scope:"invest",role:"decision",snapshotId:"synthetic-decision-context",
+        object:{ticker:"SYNB",decision_date:"2026-09-02",horizon:"to_date",habit:"before_earnings",page_scope:"broker_total"}});
+    });
+  }
+  test("off preserves decision links and sends no role requests",async({page})=>{
+    await serve(page,()=>({benchmark:.02,events:true,isa:true,observations:true}));
+    const requests:string[]=[];
+    page.on("request",r=>{if(r.url().includes("/assistant/roles/"))requests.push(r.url());});
+    await page.goto("/review?habit=before_earnings");
+    await expect(page.locator(".mx-review-line").first()).toBeVisible();
+    await expect(page.locator(".mx-review-line").first()).toHaveAttribute("href",/decision=/);
+    await expect(page.locator(".mx-review-filter,.mx-digest,.mx-habit-list")).toHaveCount(0);
+    expect(requests).toEqual([]);
+  });
 });

@@ -49,6 +49,7 @@ import {
   decisionParam,
   linkedDecision,
   parseDecisionParam,
+  sameDecision,
   roundTripVerdict,
   useDecisionHorizon,
 } from "./review-decisions";
@@ -110,9 +111,13 @@ export function ReviewWorkspace() {
     () => !data || shown === "C" ? [] : shown === "all" ? allDecisions(data.decisionReviews) : scopedDecisions(shown, data.selectedAccountDecisions),
     [data, shown],
   );
-  const focus = shown === "all" || shown === "C" ? undefined : linkedDecision(rows, parseDecisionParam(params.get("decision")));
-  const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
   const {ready} = useAssistant();
+  const reference = parseDecisionParam(params.get("decision"));
+  const ordinal = params.get("reviewOrdinal");
+  // A cited decision can disambiguate two listings with the same ticker on one day.
+  const focus = shown === "all" || shown === "C" ? undefined : ready && ordinal && /^\d{1,4}$/.test(ordinal) && reference
+    ? rows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(rows,reference);
+  const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
   const requestedHorizon = ready ? params.get("reviewWindow") : null;
   const horizon = requestedHorizon === "to_date" ? "date" : requestedHorizon === "20_sessions" ? "horizon" : localHorizon;
   const rawHabit = params.get("habit");
@@ -196,7 +201,7 @@ export function ReviewWorkspace() {
                       release();
                       update({ decision: null });
                     }}
-                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row) })}
+                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row), reviewOrdinal:null })}
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}
                     unpriced={[...new Set(reviews.flatMap((review) => review?.coverage?.unpricedTickers ?? []))]}
                   />}
