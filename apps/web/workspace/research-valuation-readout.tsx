@@ -116,8 +116,8 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing, wi
       {base.upside != null && <small className={"mx-metric-change mx-" + tone(base.upside)}>{percent(base.upside, true)}</small>}
     </> : "—"}
       note={<>
-        <span>{[status, modelSource, base && result && result.horizon + t(" 年", "Y"), withheldReason].filter(Boolean).join(" · ")}</span>
-        <ValuationFloorNote adjustment={base?.equityFloorAdjustment} />
+        <span className="mx-valuation-source">{[status, modelSource, base && result && result.horizon + t(" 年", "Y"), withheldReason].filter(Boolean).join(" · ")}</span>
+        <ValuationFloorNote adjustment={base?.equityFloorAdjustment} pending={!result && Boolean(refreshing)} />
       </>} />
   </Panel>;
 }

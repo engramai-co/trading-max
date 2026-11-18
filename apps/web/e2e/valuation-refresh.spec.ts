@@ -273,6 +273,51 @@ test.describe("valuation refresh", () => {
     await expect(page.getByRole("link", { name: "Worksheet" })).toHaveAttribute("aria-current", "location");
   });
 
+  for (const { width, height } of [{ width: 800, height: 900 }, { width: 768, height: 1024 }]) {
+    for (const locale of ["en", "zh"] as const) {
+      test(`a delayed floor keeps Historical valuation in place at ${width}×${height} · ${locale}`, async ({ page }) => {
+        await page.setViewportSize({ width, height });
+        await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+        await synthetic(page, false);
+        const history = page.locator("#research-history");
+        const readout = page.locator(".mx-valuation-readout");
+        const note = readout.getByText(locale === "en" ? "Negative equity value floored at zero" : "股权估值为负，按零计");
+        const endpoint = "**/SYNT/valuation-preview*";
+        let standardTop: number | undefined;
+        for (const example of ["floored", "exact-zero", "larger-text"]) {
+          let release!: () => void;
+          const gate = new Promise<void>(resolve => { release = resolve; });
+          const model = preview("SYNT", 100, "2026-11-04", true, {});
+          const adjustment = example === "exact-zero" ? 0 : 3;
+          Object.assign(model.scenarios.base, {
+            operatingValue: -adjustment - 1, terminalPresentValue: 1, equityFloorAdjustment: adjustment, value: 0, upside: -1,
+          });
+          await page.route(endpoint, async route => { await gate; await route.fulfill({ json: model }); });
+          await page.goto("/research?ticker=SYNT&view=valuation");
+          if (example === "larger-text") {
+            await page.addStyleTag({ content: ".mx-valuation-readout .mx-valuation-floor { font-size: 32px; }" });
+          }
+          await expect(history).toBeVisible();
+          await expect(note).toBeHidden();
+          await page.evaluate(() => document.fonts.ready);
+          const top = (await history.boundingBox())!.y;
+          if (example === "floored") standardTop = top;
+          if (example === "exact-zero") expect(top).toBe(standardTop);
+          release();
+          await expect(readout).toContainText("US$0.00");
+          if (adjustment) await expect(note).toBeVisible();
+          else await expect(note).toBeHidden();
+          if (example === "larger-text") {
+            const lines = await note.evaluate(element => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight));
+            expect(lines).toBeGreaterThan(1.5);
+          }
+          expect((await history.boundingBox())!.y).toBe(top);
+          await page.unroute(endpoint);
+        }
+      });
+    }
+  }
+
   for (const example of ["large", "floored"] as const) {
     test(`the readout keeps its space and shows the signed gap for a ${example} base value`, async ({ page, isMobile }) => {
       if (isMobile) await page.setViewportSize({ width: example === "large" ? 320 : 390, height: 844 });
