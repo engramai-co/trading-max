@@ -217,8 +217,8 @@ export function AnalystExpectations({
               <h2>{t("分析师共识", "Analyst consensus")}</h2>
               <Help label={t("分析师共识", "Analyst consensus")}>
                 {t(
-                  "评级由强烈买入到卖出按 1–5 分加权，指针表示平均分，文字取最接近的评级。人数只统计评级记录，不代表目标价样本数。任何档位缺失时，不推算共识。",
-                  "Ratings are weighted from 1 (strong buy) to 5 (sell). The pointer shows the average; the label uses the nearest rating. Counts describe recommendation records, not price-target coverage. Missing categories leave consensus unavailable.",
+                  "评级由强烈买入到卖出按 1–5 分加权，指针表示平均分，文字取最接近的评级。评级数只统计评级记录，不代表目标价样本数。任何档位缺失时，不推算共识。",
+                  "Ratings are weighted from 1 (strong buy) to 5 (sell). The pointer shows the average; the label uses the nearest rating. The rating count describes recommendation records, not price-target coverage. Missing categories leave consensus unavailable.",
                 )}
               </Help>
             </div>

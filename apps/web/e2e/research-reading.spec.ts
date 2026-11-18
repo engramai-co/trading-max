@@ -122,20 +122,118 @@ test.describe("research section navigation", () => {
     await expect(page.locator("#research-ratings h2").first()).not.toBeFocused();
   });
 
-  test("arrowing through Estimates keeps keyboard focus in the research lens tabs", async ({ page }) => {
+  test("arrow keys move focus along the research lenses, and Enter or Space opens one with one history entry", async ({ page }) => {
     await page.goto("/research?ticker=AAPL&view=technical");
     const tabs = page.getByRole("tablist", { name: "Research perspectives" });
+    const price = tabs.getByRole("tab", { name: "Price & technicals" });
     const estimates = tabs.getByRole("tab", { name: /Estimates/ });
-    await tabs.getByRole("tab", { name: "Price & technicals" }).press("ArrowRight");
-    await expect(page.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
+    const valuation = tabs.getByRole("tab", { name: "Valuation" });
+    const panel = page.getByRole("tabpanel");
+    await expect(panel).toHaveAttribute("aria-labelledby", (await price.getAttribute("id"))!);
+    const lenses: string[] = [];
+    page.on("request", (request) => {
+      const lens = /\/research\/AAPL\/lens\/(\w+)/.exec(request.url())?.[1];
+      if (lens && lens !== "technical") lenses.push(lens);
+    });
+    const entries = await page.evaluate(() => history.length);
+    // Arrows, Home and End only move focus: no other lens loads and the address stays.
+    await price.press("ArrowRight");
     await expect(estimates).toBeFocused();
     await page.keyboard.press("ArrowRight");
-    await expect(tabs.getByRole("tab", { name: "Valuation" })).toBeFocused();
-    await expect(page.locator("#research-history")).toBeAttached();
-    await page.keyboard.press("ArrowLeft");
+    await expect(valuation).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(tabs.getByRole("tab").last()).toBeFocused();
+    await page.keyboard.press("Home");
+    await expect(tabs.getByRole("tab").first()).toBeFocused();
+    await expect(price).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/view=technical/);
+    expect(lenses).toEqual([]);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    // Enter opens the focused lens, once; the tab and its panel name each other.
+    await estimates.focus();
+    await page.keyboard.press("Enter");
+    await expect(estimates).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
     await expect(estimates).toBeFocused();
+    await expect(estimates).toHaveAttribute("aria-controls", (await panel.getAttribute("id"))!);
+    await expect(panel).toHaveAttribute("aria-labelledby", (await estimates.getAttribute("id"))!);
+    expect(await page.evaluate(() => history.length)).toBe(entries + 1);
+    // Space does the same, and Back returns to the lens before.
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press(" ");
+    await expect(valuation).toHaveAttribute("aria-selected", "true");
+    await expect(page.locator("#research-history")).toBeAttached();
+    expect(await page.evaluate(() => history.length)).toBe(entries + 2);
+    expect(lenses.filter((lens) => !["analyst", "valuation"].includes(lens))).toEqual([]);
+    await page.goBack();
+    await expect(estimates).toHaveAttribute("aria-selected", "true");
     await page.getByRole("link", { name: "Ratings & targets" }).press("Enter");
     await expect(page.locator("#research-ratings h2").first()).toBeFocused();
+  });
+
+  test("Tab and Shift+Tab leave the lenses from the tab the arrows reached, and come back to the open one", async ({ page }) => {
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const tabs = page.getByRole("tablist", { name: "Research perspectives" });
+    const estimates = tabs.getByRole("tab", { name: /Estimates/ });
+    const onTab = () => page.evaluate(() => document.activeElement?.getAttribute("role") === "tab");
+    // The reading has rendered, so the elements around the list stay put while focus moves.
+    await expect(page.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
+    // Charts mount as the reader approaches them. Mount the first one, so focus leaving the list
+    // cannot bring a new focusable chart in between.
+    await page.locator(".mx-target-chart").scrollIntoViewIfNeeded();
+    const chart = page.getByRole("group", { name: /^Historical prices and analyst target range/ });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    await estimates.focus();
+    // Before the open lens: the tab stop follows focus, so Tab leaves the list forwards.
+    await page.keyboard.press("Home");
+    await expect(tabs.getByRole("tab").first()).toBeFocused();
+    await expect(tabs.getByRole("tab").first()).toHaveAttribute("tabindex", "0");
+    await expect(estimates).toHaveAttribute("tabindex", "-1");
+    await page.keyboard.press("Tab");
+    expect(await onTab()).toBe(false);
+    // Coming back lands on the open lens.
+    await page.keyboard.press("Shift+Tab");
+    await expect(estimates).toBeFocused();
+    // After it: Shift+Tab leaves the list backwards, and Tab comes back to the open lens.
+    await page.keyboard.press("End");
+    await expect(tabs.getByRole("tab").last()).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await onTab()).toBe(false);
+    await page.keyboard.press("Tab");
+    await expect(estimates).toBeFocused();
+    // Nothing opened on the way.
+    await expect(estimates).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/view=analyst/);
+  });
+
+  test("estimates read each figure one way: surprises in their colour, amounts with their currency", async ({ page }) => {
+    await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...await response.json(), analyst: {
+        ...lens.analyst,
+        earningsHistory: [
+          { quarter: "2026-06-27T00:00:00", epsActual: 1.9, epsEstimate: 1.8, surprisePercent: 0.0556 },
+          { quarter: "2026-09-26T00:00:00", epsActual: 1.7, epsEstimate: 1.75, surprisePercent: -0.0286 },
+        ],
+        revenueEstimate: [{ period: "0q", avg: 120e9, low: 115e9, high: 125e9, yearAgoRevenue: 110e9, growth: 0.091, numberOfAnalysts: 20, currency: "USD" }],
+        epsTrend: [{ period: "0q", current: 2.003, "7daysAgo": 2.002, "30daysAgo": 2.001, "60daysAgo": 2, "90daysAgo": 1.989 }],
+      } } });
+    });
+    await page.goto("/research?ticker=AAPL&view=analyst&analystView=forecast");
+    const estimates = page.locator(".mx-panel").filter({ has: page.getByRole("heading", { name: "Earnings & revenue estimates" }) });
+    // Every amount carries its currency, so no code stands alone in the panel. Phones read the same
+    // figures as records, and browsers differ only in the suffix.
+    await expect(estimates).toContainText(/US\$120(bn|B)/);
+    await expect(estimates.getByText("USD", { exact: true })).toHaveCount(0);
+    // The table writes a beat or miss as the chart's reading does: signed, and green or red.
+    await page.locator("summary").filter({ hasText: "Quarterly readings" }).click();
+    const readings = page.getByRole("region", { name: "Quarterly EPS details" });
+    await expect(readings.locator(".mx-up")).toHaveText(["+0.10", "+5.56%"]);
+    await expect(readings.locator(".mx-down")).toHaveText(["\u22120.05", "\u22122.86%"]);
+    // The 90-day revision is coloured the same way.
+    await page.locator("summary").filter({ hasText: "Readings and basis" }).click();
+    await expect(page.getByText("90-day EPS estimate change").locator(".mx-up")).toHaveText("+0.7%");
   });
 
   test("changing forecast frequency keeps focus on the filter, and its bookmark focuses Estimates", async ({ page }) => {
@@ -516,10 +614,20 @@ test.describe("research section index", () => {
     await expect.poll(() => index.evaluate((element) => getComputedStyle(element).opacity)).toBe("0.55");
     await index.getByRole("link", { name: "Seasonality" }).click();
     await expect(page.locator("#research-seasonality h2").first()).toBeFocused();
+    await expect(index.getByRole("link", { name: "Seasonality" })).toHaveAttribute("aria-current", "location");
+    // The floating index works from the keyboard too, and marks one place at a time.
+    await index.getByRole("link", { name: "Technical diagnosis" }).press("Enter");
+    await expect(page.locator("#research-data h2").first()).toBeFocused();
+    await expect(index.getByRole("link", { name: "Technical diagnosis" })).toHaveAttribute("aria-current", "location");
+    await expect(index.locator('[aria-current="location"]')).toHaveCount(1);
     // Pinned: the index takes its own column and the reading narrows.
     await pin.click();
     await expect(pin).toHaveAttribute("aria-pressed", "true");
     await expect.poll(async () => (await reading.boundingBox())!.width).toBeLessThan(width);
+    await index.getByRole("link", { name: "Price" }).click();
+    await expect(page.locator("#research-price h2").first()).toBeFocused();
+    await expect(index.getByRole("link", { name: "Price" })).toHaveAttribute("aria-current", "location");
+    await expect(index.locator('[aria-current="location"]')).toHaveCount(1);
     await page.reload();
     await expect(pin).toHaveAttribute("aria-pressed", "true");
     await expect(index.getByRole("link", { name: "Seasonality" })).toBeVisible();

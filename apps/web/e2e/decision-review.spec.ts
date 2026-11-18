@@ -559,6 +559,27 @@ test.describe("a link to one decision", () => {
     await expect(page.getByRole("table", { name: "少赚最多的已结束交易" })).toContainText("SYNA");
   });
 
+  test("the review's angles still open as the arrows reach them, and Tab leaves from the open one", async ({ page }) => {
+    await page.goto("/review?account=A");
+    const angles = page.getByRole("tablist", { name: "复盘角度" });
+    const outcomes = angles.getByRole("tab", { name: "投资结果" });
+    const attribution = angles.getByRole("tab", { name: "盈亏归因" });
+    await expect(outcomes).toHaveAttribute("aria-selected", "true");
+    await outcomes.focus();
+    // These tabs keep automatic activation: an arrow opens the angle it reaches.
+    await page.keyboard.press("ArrowRight");
+    await expect(attribution).toBeFocused();
+    await expect(attribution).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/reviewView=attribution/);
+    await expect(attribution).toHaveAttribute("tabindex", "0");
+    await expect(outcomes).toHaveAttribute("tabindex", "-1");
+    // The open angle is the tab stop: Tab leaves the list and Shift+Tab returns to it.
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("role"))).not.toBe("tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(attribution).toBeFocused();
+  });
+
   test("a decision the data no longer has leaves the normal review", async ({ page }) => {
     await page.goto("/review?account=A&decision=2026-10-15.buy.GONE");
     await expect(panel(page, "代价最大").locator("a.mx-review-line").filter({ hasText: "SYNA" })).toBeVisible();

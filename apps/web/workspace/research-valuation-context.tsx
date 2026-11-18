@@ -239,7 +239,7 @@ export function FilingMultiples({
                         "当前值在样本中的分位",
                         "Current value percentile in sample",
                       ),
-                      percent(rank),
+                      rank == null ? "—" : "P" + number(rank * 100, 0),
                     ],
                   ] as [ReactNode, ReactNode][])
                 : []),

@@ -1,10 +1,10 @@
 "use client";
 
 import { useAssistant } from "./assistant/context";
-import { ActionIcon, Button, Drawer, Menu, Select, Tooltip } from "@mantine/core";
-import { CaretDown, DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
+import { ActionIcon, Button, Drawer, Menu, Select } from "@mantine/core";
+import { CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type CSSProperties } from "react";
+import { useId, useState, type CSSProperties } from "react";
 import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -13,7 +13,7 @@ import { formatCalendarDate, formatCurrency, formatDateTime, formatDeltaPercent,
 import { api, readApi, safeUrl } from "./data";
 import { useDemonstration } from "./demonstration";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, useCopy } from "./foundation";
+import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, tabId, useCopy } from "./foundation";
 import Link from "./link";
 import {
   indexHref, researchIndexHref, useIndexCatalog,
@@ -21,7 +21,7 @@ import {
 } from "./market-indices-data";
 import { useListedIndices } from "./listed-indices";
 import { ResearchIndexChart } from "./research-index-chart";
-import { SecurityFinder } from "./research-finder";
+import { SecurityFinder, useSearchHandover } from "./research-finder";
 import { TechnicalScoreCard } from "./research-technical";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { useRouteState } from "./route-state";
@@ -47,7 +47,14 @@ export function IndexResearchWorkspace() {
   const assistant = useAssistant();
   const { params, update } = useRouteState("push");
   const [finder, setFinder] = useState(false);
+  const [finderQuery, setFinderQuery] = useState("");
+  // Search hands over a security that is not in the research list; the index stays open beneath.
+  const handover = useSearchHandover((text) => {
+    setFinderQuery(text);
+    setFinder(true);
+  });
   const [listOpen, setListOpen] = useState(false);
+  const lensPanel = useId();
   const catalog = useIndexCatalog();
   const catalogue = catalog.data ?? [];
   const id = params.get("index") ?? "";
@@ -94,11 +101,6 @@ export function IndexResearchWorkspace() {
           aria-expanded={listOpen} onClick={() => setListOpen(true)}>
           {t("研究清单", "Research list")}
         </Button>}
-        <Tooltip label={t("搜索", "Search")}>
-          <ActionIcon variant="default" aria-label={t("搜索", "Search")} onClick={() => setFinder(true)}>
-            <MagnifyingGlass size={17} />
-          </ActionIcon>
-        </Tooltip>
         {index && <IndexListActions id={index.id} />}
       </>
     }>
@@ -133,9 +135,10 @@ export function IndexResearchWorkspace() {
               </div> : !overview.isPending || demonstration ? <span>{t("无报价", "No quote")}</span> : null}
             </section>
             <Tabs label={t("研究视角", "Research perspectives")} value={view}
+              activation="manual" panel={lensPanel}
               options={views.map((value) => ({ value, ...tabLabels[value] }))}
               onChange={(next) => update({ view: next === "overview" ? null : next })} />
-            <div className="mx-index-research-body">
+            <div className="mx-index-research-body" role="tabpanel" id={lensPanel} aria-labelledby={tabId(lensPanel, view)}>
               {view === "price" ? <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} demonstration={demonstration} />
                 : view === "overview" ? <>
                   <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} preview demonstration={demonstration} />
@@ -150,7 +153,11 @@ export function IndexResearchWorkspace() {
               {t("在市场页查看", "Open in Markets")}
             </Link>
           </>}
-      <SecurityFinder opened={finder} onClose={() => setFinder(false)} initial="" onSelect={(security) => {
+      <SecurityFinder opened={finder} key={finderQuery} initial={finderQuery} onClose={() => {
+        setFinder(false);
+        handover.closed();
+      }} onSelect={(security) => {
+        handover.chosen();
         update({ type: null, index: null, view: null, ticker: security.ticker });
         setFinder(false);
       }} />
@@ -158,7 +165,7 @@ export function IndexResearchWorkspace() {
         opened={listOpen}
         onClose={() => setListOpen(false)}
         title={<UniverseHeading wide={false} pinned={false} onPin={() => undefined}
-          onSearch={() => { setListOpen(false); setFinder(true); }} />}
+          onSearch={() => { setListOpen(false); setFinderQuery(""); setFinder(true); }} />}
         styles={{ title: { flex: 1 }, header: { gap: 8 } }}
         size={360}
       >

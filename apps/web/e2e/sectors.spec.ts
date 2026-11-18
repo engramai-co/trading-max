@@ -978,9 +978,10 @@ test.describe("market index layer", () => {
     await page.goto("/research");
     // The toolbar is server-rendered; a press before hydration opens nothing. The header is client-only.
     await expect(page.locator(".mx-research-page .mx-security-header")).toBeVisible();
-    await page.locator(".mx-page-actions").getByRole("button", { name: /^(搜索|Search)$/ }).click();
-    await page.getByRole("dialog").getByRole("textbox", { name: /^(搜索|Search)$/ }).fill("^GSPC");
-    await page.getByRole("link", { name: /标普 500|S&P 500/ }).click();
+    // Research shares the workspace search, which knows an index by its provider ticker.
+    await page.getByRole("banner").getByRole("button", { name: /^(搜索|Search)$/ }).click();
+    await page.getByRole("combobox", { name: /^(搜索|Search)$/ }).fill("^GSPC");
+    await page.getByRole("option", { name: /标普 500|S&P 500/ }).first().click();
     await expect(page).toHaveURL(/research\?type=index&index=sp-500/);
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
   });

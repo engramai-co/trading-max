@@ -1,14 +1,27 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Group } from "@mantine/core";
-import { useLocale } from "@/components/locale-provider";
+import { Button } from "@mantine/core";
+import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { compact, currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
 import { estimateGroups, shortForecastPeriod } from "./research-display";
 import { useRouteState } from "./route-state";
+
+/** A compact amount with its currency's symbol, as the EPS cells carry theirs: US$1564亿, US$156.4bn. */
+function compactMoney(value: unknown, code: string, locale: Locale) {
+  const n = numeric(value);
+  if (n == null) return "—";
+  try {
+    const symbol = new Intl.NumberFormat("en-GB", { style: "currency", currency: code })
+      .formatToParts(0).find((part) => part.type === "currency")?.value ?? code;
+    return (n < 0 ? "-" : "") + symbol + compact(Math.abs(n), locale);
+  } catch {
+    return compact(n, locale) + " " + code;
+  }
+}
 
 /** Fiscal periods always carry their year, so neighbouring columns read alike. */
 export function forecastPeriodLabel(
@@ -59,14 +72,6 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
     },
   ];
   const label = (value: unknown) => forecastPeriodLabel(analyst, value, t);
-  // One currency per panel: revenue cells are compact numbers, EPS cells carry their symbol.
-  const codes = [
-    ...new Set(
-      [...objects(analyst.earningsEstimate), ...objects(analyst.revenueEstimate)]
-        .map((row) => str(row.currency))
-        .filter(Boolean),
-    ),
-  ];
   return (
     <Panel
       title={t("盈利与营收预期", "Earnings & revenue estimates")}
@@ -75,18 +80,15 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
         "Quarterly and fiscal-year estimates are compared separately. Ranges show the lowest and highest analyst estimates. Growth uses the provider's matching year-over-year comparison; estimates change as analysts revise them.",
       )}
       action={
-        <Group gap="sm" wrap="nowrap">
-          {codes.length === 1 && <span className="mx-unit">{codes[0]}</span>}
-          <Segments
-            label={t("预期报告周期", "Estimate reporting period")}
-            value={period}
-            onChange={(v) => update({ estimateFrequency: v }, { focusResearchSection: false })}
-            options={[
-              { value: "quarter", label: t("季度", "Quarterly") },
-              { value: "year", label: t("年度", "Annual") },
-            ]}
-          />
-        </Group>
+        <Segments
+          label={t("预期报告周期", "Estimate reporting period")}
+          value={period}
+          onChange={(v) => update({ estimateFrequency: v }, { focusResearchSection: false })}
+          options={[
+            { value: "quarter", label: t("季度", "Quarterly") },
+            { value: "year", label: t("年度", "Annual") },
+          ]}
+        />
       }
     >
       <div className="mx-grid mx-forecast-grid">
@@ -94,14 +96,15 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
           const rows =
             estimateGroups(measure.rows).find((group) => group.key === period)
               ?.rows ?? [];
+          // Every amount carries its currency; a row without one says so in its heading.
           const format = (value: unknown, code: string) =>
             numeric(value) == null
               ? "—"
-              : measure.revenue
-                ? compact(value, locale)
-                : code
-                  ? currency(value, code, 2)
-                  : number(value, 2);
+              : !code
+                ? measure.revenue ? compact(value, locale) : number(value, 2)
+                : measure.revenue
+                  ? compactMoney(value, code, locale)
+                  : currency(value, code, 2);
           type Row = (typeof rows)[number];
           const fields = [
             { label: t("平均预期", "Average"), read: (r: Row) => format(r.avg, str(r.currency)) },
@@ -114,7 +117,7 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
                 onClick={() => update({ view: "valuation", valuationView: "scenario", estimateRef: str(r.period ?? r.index) })}>
                 {t("带入模型参考", "Use as model reference")}</Button> }] : []),
           ];
-          const unit = (row: Row) => codes.length !== 1 && <small>{str(row.currency) || t("币种未提供", "Currency unavailable")}</small>;
+          const unit = (row: Row) => !str(row.currency) && <small>{t("币种未提供", "Currency unavailable")}</small>;
           return (
             <section key={measure.title}>
               <h3>{measure.title}</h3>

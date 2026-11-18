@@ -4,7 +4,7 @@ import type { ResearchShell } from "../lib/types";
 
 const searchName = /^(搜索|Search)$/;
 async function openSearch(page: Page) {
-  // The research page has its own search; the workspace search lives in the top bar.
+  // The workspace search lives in the top bar, also on Research.
   await page.getByRole("banner").getByRole("button", { name: searchName }).click();
   const input = page.getByRole("combobox", { name: searchName });
   await expect(input).toBeFocused();
@@ -70,6 +70,67 @@ test.describe("workspace navigation refinements", () => {
     await expect(page.getByRole("option")).toContainText(/在持仓中搜索|Search holdings/);
     await input.fill("估值");
     await expect(page.getByRole("status").filter({ hasText: /加上代码|Add a ticker/ })).toBeVisible();
+  });
+
+  test("search hands a security outside the research list to the finder over the current view and its filters", async ({ page }) => {
+    const searches: string[] = [];
+    await page.route("**/api/backend/securities/search?**", (route) => {
+      searches.push(new URL(route.request().url()).searchParams.get("q") ?? "");
+      return route.fulfill({ json: { query: "Synthetic Example", source: "openfigi", results: [{
+        ticker: "SYNX", name: "Synthetic Example Holdings", exchange: "NasdaqGS", bloombergTicker: "SYNX US",
+        figi: "BBG000SYNX01", securityType: "Common Stock", alreadyWatched: false,
+      }] } });
+    });
+    const findOption = page.getByRole("option", { name: /在全部证券中查找|Find in all securities/ });
+    const finder = page.getByRole("dialog");
+    // A lens other than the overview, with a filter, a reading opened and the page scrolled.
+    const address = "/research?ticker=AAPL&view=analyst&estimateFrequency=year";
+    await page.goto(address);
+    // Research keeps one search: the workspace's.
+    await expect(page.getByRole("button", { name: searchName })).toHaveCount(1);
+    const readings = page.locator("details").filter({ has: page.locator("summary", { hasText: /^(季度读数|Quarterly readings)$/ }) });
+    await readings.locator("summary").click();
+    await expect(readings).toHaveAttribute("open", "");
+    // The page scrolls smoothly; an instant scroll gives a position to compare.
+    await page.evaluate(() => window.scrollBy({ top: 300, behavior: "instant" }));
+    const scrolled = await page.evaluate(() => window.scrollY);
+    expect(scrolled).toBeGreaterThan(0);
+    const entries = await page.evaluate(() => history.length);
+    const input = await openSearch(page);
+    await input.fill("Synthetic Example");
+    await expect(findOption).toContainText("Synthetic Example");
+    await findOption.click();
+    await expect(finder.getByText("Synthetic Example Holdings")).toBeVisible();
+    expect(searches).toEqual(["Synthetic Example"]);
+    await expect(page).toHaveURL((url) => url.pathname + url.search === address);
+    // Closing the finder leaves the page as it was, without a history entry, and returns to Search.
+    await page.keyboard.press("Escape");
+    await expect(finder).toHaveCount(0);
+    await expect(page).toHaveURL((url) => url.pathname + url.search === address);
+    await expect(page.getByRole("tab", { name: /预期与事件|Estimates/ })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("button", { name: /^(年度|Annual)$/ })).toHaveAttribute("aria-pressed", "true");
+    await expect(readings).toHaveAttribute("open", "");
+    expect(Math.abs(await page.evaluate(() => window.scrollY) - scrolled)).toBeLessThanOrEqual(2);
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    await expect(page.getByRole("banner").getByRole("button", { name: searchName })).toBeFocused();
+    // An index keeps its view the same way.
+    const indexAddress = "/research?type=index&index=sp-500&view=price";
+    await page.goto(indexAddress);
+    await expect(page.getByRole("tab", { name: /价格与走势|Price & trend/ })).toHaveAttribute("aria-selected", "true");
+    const fromIndex = await openSearch(page);
+    await fromIndex.fill("Synthetic Example");
+    await findOption.click();
+    await expect(finder.getByText("Synthetic Example Holdings")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(finder).toHaveCount(0);
+    await expect(page).toHaveURL((url) => url.pathname + url.search === indexAddress);
+    await expect(page.getByRole("tab", { name: /价格与走势|Price & trend/ })).toHaveAttribute("aria-selected", "true");
+    // A listed ticker and a lens query stay within the research list.
+    const again = await openSearch(page);
+    await again.fill("ARM");
+    await expect(findOption).toHaveCount(0);
+    await again.fill("Synthetic 估值");
+    await expect(findOption).toHaveCount(0);
   });
 
   test("static deep links remain available when the directory fails", async ({ page }) => {

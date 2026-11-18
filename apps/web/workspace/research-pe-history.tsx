@@ -147,7 +147,6 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
             color: c.text,
             fontSize: 13,
             fontWeight: 600,
-            fontFamily: "monospace",
             formatter: endNote ? `${latestValue}\n{note|${endNote}}` : latestValue,
             rich: { note: { color: c.axis, fontWeight: 400, fontSize: 12, lineHeight: 17 } },
           },
@@ -172,7 +171,6 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
         axisLabel: {
           showMinLabel: false,
           showMaxLabel: false,
-          fontFamily: "monospace",
           formatter: (value: number) => displayMultiple(value, 1),
         },
       },

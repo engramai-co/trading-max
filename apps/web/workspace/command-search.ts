@@ -131,6 +131,15 @@ export function needsSecurity(query: string, currentTicker?: string | null) {
   return Boolean(target && !target.security && !currentTicker);
 }
 
+/**
+ * Whether the research finder should be offered for a query: text that could name a listing
+ * outside the research list. A lens query moves within the list, and a listed ticker is already there.
+ */
+export function findsSecurity(query: string, instruments: readonly Instrument[]) {
+  const match = normalise(query);
+  return match.length >= 2 && !lensQuery(match) && !instruments.some((item) => normalise(item.ticker) === match);
+}
+
 // Allowlisted navigation only: no search text, balances, tokens, or arbitrary
 // query parameters are retained. Recent visits live in the mounted shell only.
 export function recentVisit(

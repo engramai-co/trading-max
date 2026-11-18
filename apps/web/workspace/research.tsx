@@ -27,7 +27,7 @@ import {
   MagnifyingGlass,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
 import {
   Empty,
@@ -38,6 +38,7 @@ import {
   Pending,
   QueryError,
   Tabs,
+  tabId,
   useCopy,
 } from "./foundation";
 import {
@@ -48,7 +49,7 @@ import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { IndexResearchWorkspace } from "./research-index";
-import { SecurityFinder } from "./research-finder";
+import { SecurityFinder, useSearchHandover } from "./research-finder";
 import { FundJournal, FundPending, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
@@ -125,6 +126,12 @@ function SecurityResearchWorkspace() {
   });
   const [finder, setFinder] = useState(false);
   const [finderQuery, setFinderQuery] = useState("");
+  // Search hands over a security that is not in the research list.
+  const handover = useSearchHandover((text) => {
+    setFinderQuery(text);
+    setFinder(true);
+  });
+  const lensPanel = useId();
   const [universeOpen, setUniverseOpen] = useState(false);
   const [manage, setManage] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState(false);
@@ -332,7 +339,10 @@ function SecurityResearchWorkspace() {
         setPinned(!pinned);
         setUniverseOpen(pinned);
       }}
-      onSearch={() => setFinder(true)}
+      onSearch={() => {
+        setFinderQuery("");
+        setFinder(true);
+      }}
     />
   );
   const universe = (
@@ -415,15 +425,6 @@ function SecurityResearchWorkspace() {
               {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
             </>
           )}
-          <Tooltip label={t("搜索", "Search")}>
-            <ActionIcon
-              variant="default"
-              aria-label={t("搜索", "Search")}
-              onClick={() => setFinder(true)}
-            >
-              <MagnifyingGlass size={17} />
-            </ActionIcon>
-          </Tooltip>
           {selected && (
             <SecurityActions
               held={selected.held}
@@ -565,6 +566,8 @@ function SecurityResearchWorkspace() {
                 <Tabs
                   label={t("研究视角", "Research perspectives")}
                   value={tab === "financials" ? "fundamentals" : tab}
+                  activation="manual"
+                  panel={lensPanel}
                   onChange={(v) => update({
                     view: v === "overview" ? null : v,
                     fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null,
@@ -583,6 +586,8 @@ function SecurityResearchWorkspace() {
                       : shortTitles[value],
                   }))}
                 />
+                <div className="mx-research-lens" role="tabpanel" id={lensPanel}
+                  aria-labelledby={tabId(lensPanel, tab === "financials" ? "fundamentals" : tab)}>
                 {failure && shown && isReadTimeout(failure.error) && <Notice tone="warn">
                   {t("研究请求超时，仍显示上一次资料。", "Research request timed out. Showing the previous reading.")}
                 </Notice>}
@@ -719,6 +724,7 @@ function SecurityResearchWorkspace() {
                 )}
                 </div>
                 )}
+                </div>
               </>
             )}
           </div>
@@ -735,10 +741,14 @@ function SecurityResearchWorkspace() {
       </Drawer>
       <SecurityFinder
         opened={finder}
-        onClose={() => setFinder(false)}
+        onClose={() => {
+          setFinder(false);
+          handover.closed();
+        }}
         key={finderQuery}
         initial={finderQuery || (selected ? "" : ticker)}
         onSelect={(result) => {
+          handover.chosen();
           client.setQueryData(previewKey(result.ticker), result);
           update({ ticker: result.ticker, view: null, fromFund: isFund ? ticker : null });
           setFinder(false);
