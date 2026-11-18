@@ -475,6 +475,22 @@ test("an already-open sidebar receives focus when a chart hands off", async ({pa
   await expect(draft).toBeFocused({timeout:1200});
 });
 
+test("an explicit handoff leaves conversation history and focuses the new draft", async ({page,isMobile}) => {
+  test.skip(isMobile, "Side-by-side workspace");
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.goto("/research?ticker=SYNT&view=technical");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await panel.getByRole("button",{name:"Conversation history"}).click();
+  await expect(panel.getByRole("button",{name:"Back to conversation"})).toBeFocused();
+  await page.locator(".mx-track-moment").click();
+  await page.locator(".mx-anchored-reading .mx-reading-actions button").first().press("Enter");
+  const composer = panel.getByRole("textbox",{name:"Message"});
+  await expect(composer).toHaveValue("Which events were verified that day?",{timeout:2000});
+  await expect(composer).toBeFocused();
+});
+
 test("phone resize with an open research card has one modal and sends focus to MaxAI", async ({page},info) => {
   await page.setViewportSize({width:1440,height:900});
   await fixtures(page);

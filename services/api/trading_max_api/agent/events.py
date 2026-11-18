@@ -62,9 +62,7 @@ ReleaseMarket = Literal["US", "GB", "EA", "JP", "HK", "KR"]
 
 
 class EventArgs(Scoped, Paged):
-    market: ReleaseMarket | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
+    market: ReleaseMarket | None = Field(default=None, exclude_if=lambda value: value is None)
     start: Day
     end: Day
     ticker: Ticker | None = None

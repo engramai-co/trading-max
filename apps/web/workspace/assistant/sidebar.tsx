@@ -61,7 +61,7 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
   const [sentScope, setSentScope] = useState<string | null>(null);
   const routeScope = page + search;
   const historyButton = useRef<HTMLButtonElement>(null);
-  const wasHistory = useRef(history);
+  const wasHistory = useRef({history, sequence:handoff?.sequence});
   const submitted = useRef<{text:string; card:RoleCard | null}>({text:"",card:null});
   const [announcement, setAnnouncement] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -84,9 +84,11 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
   useEffect(() => () => { void stop(); }, [stop]);
   useEffect(() => { if (!ready) void stop(); }, [ready, stop]);
   useEffect(() => {
-    if (open && wasHistory.current && !history) focusAssistantControl(historyButton.current);
-    wasHistory.current = history;
-  }, [open, history]);
+    if (open && wasHistory.current.history && !history && wasHistory.current.sequence === handoff?.sequence) {
+      focusAssistantControl(historyButton.current);
+    }
+    wasHistory.current = {history, sequence:handoff?.sequence};
+  }, [open, history, handoff?.sequence]);
   useEffect(() => {
     const el = scroller.current;
     if (el && open && el.scrollHeight - el.scrollTop - el.clientHeight < 320) el.scrollTop = el.scrollHeight;
@@ -185,19 +187,21 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
 export default function AssistantSidebar(props: SidebarProps) {
   const { handoff } = useAssistant();
   const [initial, setInitial] = useState(() => ({ id: makeConversationId(), messages: [] as UIMessage[], sequence: 0 }));
-  const [history, setHistory] = useState(false);
+  const [historyAt, setHistoryAt] = useState<number | null>(null);
+  const sequence = handoff?.sequence ?? 0;
+  const history = historyAt === sequence;
   const fresh = () => setInitial({ id: makeConversationId(), messages: [], sequence: handoff?.sequence ?? 0 });
   useEffect(() => {
     const erased = () => {
       setInitial({id:makeConversationId(), messages:[], sequence:handoff?.sequence ?? 0});
-      setHistory(false);
+      setHistoryAt(null);
     };
     window.addEventListener(conversationsErasedEvent, erased);
     return () => window.removeEventListener(conversationsErasedEvent, erased);
   }, [handoff?.sequence]);
   return <>
-    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...props} initial={initial} history={history} onNew={fresh} onHistory={() => setHistory(true)} /></div>
-    {history && <History back={() => setHistory(false)} select={(id, messages) => { setInitial({ id, messages, sequence: handoff?.sequence ?? 0 }); setHistory(false); }}
+    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...props} initial={initial} history={history} onNew={fresh} onHistory={() => setHistoryAt(sequence)} /></div>
+    {history && <History back={() => setHistoryAt(null)} select={(id, messages) => { setInitial({ id, messages, sequence: handoff?.sequence ?? 0 }); setHistoryAt(null); }}
       removed={id => { if (id === initial.id) fresh(); }} />}
   </>;
 }
