@@ -202,13 +202,13 @@ def _retained_analytics(
         for key in NavPoint.model_fields
         if key not in {"date", "flow_status", "intraday", scope, metric}
     }
-    base = dict(
-        view="analytics",
-        run_id=run,
-        generated_at=manifest.created_at.isoformat(),
-        broker_as_of=str(broker.get("generated_at_utc") or ""),
-        nav=[p.model_copy(update=omit) for p in nav],
-    )
+    base = {
+        "view": "analytics",
+        "run_id": run,
+        "generated_at": manifest.created_at.isoformat(),
+        "broker_as_of": str(broker.get("generated_at_utc") or ""),
+        "nav": [p.model_copy(update=omit) for p in nav],
+    }
     if risk:
         try:
             metrics = store.read_json(run, "account/synthetic_nav_metrics.json")
@@ -241,9 +241,12 @@ def _retained_analytics(
 
 def _retained_holdings(store, manifest, view, account):
     run = manifest.run_id
-    base = dict(
-        view=view, run_id=run, generated_at=manifest.created_at.isoformat(), research_as_of=""
-    )
+    base = {
+        "view": view,
+        "run_id": run,
+        "generated_at": manifest.created_at.isoformat(),
+        "research_as_of": "",
+    }
     try:
         lookthrough = published_lookthrough(store, run)
     except FileNotFoundError:
@@ -467,7 +470,7 @@ def dashboard_lens(
         holdings = view in {"holdings-positions", "holdings-lookthrough"}
         valid_holdings = (
             holdings
-            and (account is None or view == "holdings-positions" and account in {"A", "B"})
+            and (account is None or (view == "holdings-positions" and account in {"A", "B"}))
             and scope is None
             and projection == "returns"
         )

@@ -601,6 +601,11 @@ def page_figure_outputs(tmp_path):
             {"dimension": "country", "category": "United States"},
         ),
         (
+            "exposure",
+            exposure_role.exposure_benchmark,
+            {"dimension": "country", "category": "United States"},
+        ),
+        (
             "market-sector",
             market_roles.sector_headline,
             {"market": "us", "grouping": "gics", "sector": "45", "observed": STAMP},

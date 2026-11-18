@@ -27,14 +27,15 @@ class ExposureContext(RoleContext):
 
     @model_validator(mode="after")
     def grouped_category(self):
-        if any((self.citedBenchmark, self.citedBenchmarkAsOf, self.citedBenchmarkObservation)):
-            if not (
-                self.citedBenchmark
-                and self.citedBenchmarkAsOf
-                and self.citedBenchmarkObservation
-                and self.citedBenchmark == {"country": "SSAC", "sector": "SWDA"}.get(self.dimension)
-            ):
-                raise ValueError("Invalid benchmark observation")
+        if any(
+            (self.citedBenchmark, self.citedBenchmarkAsOf, self.citedBenchmarkObservation)
+        ) and not (
+            self.citedBenchmark
+            and self.citedBenchmarkAsOf
+            and self.citedBenchmarkObservation
+            and self.citedBenchmark == {"country": "SSAC", "sector": "SWDA"}.get(self.dimension)
+        ):
+            raise ValueError("Invalid benchmark observation")
         if self.entityId and (self.dimension != "company" or self.group):
             raise ValueError("An entity identifies one company")
         if (self.group and self.category != self.group) or (

@@ -173,7 +173,14 @@ def published_lookthrough(store: ArtifactStore, run_id: str) -> JsonObject:
     return lookthrough
 
 
-def published_positions(store, run_id, broker, account_codes, total_value, lookthrough):
+def published_positions(
+    store: ArtifactStore,
+    run_id: str,
+    broker: JsonObject,
+    account_codes,
+    total_value: float,
+    lookthrough: JsonObject,
+) -> list[JsonObject]:
     fund_identities = _fund_identities(lookthrough)
     catalog = CatalogSecurityMaster.default()
     if fund_identities:

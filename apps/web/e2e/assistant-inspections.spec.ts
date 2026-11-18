@@ -215,7 +215,9 @@ async function setup(
           })() : notes[role as keyof typeof notes].map(([zh, en, word, tool]) => ({
               zh,
               en,
-              evidence: evidence(word, tool),
+              evidence: evidence(word, tool, tool === "exposure_benchmark" ? {
+                benchmarkSource: "SWDA", benchmarkAsOf: "2026-01-29", benchmarkObservation: "bw_1234567890abcdef",
+              } : {}),
             }));
       return route.fulfill({
         contentType: "application/x-ndjson",
@@ -593,6 +595,19 @@ test("cited Returns and Holdings reopen their selection and disclose expiry",asy
     await page.reload();
     await expect(page.getByText("Cited publication unavailable",{exact:true})).toBeVisible();
   }
+});
+
+test("a Holdings benchmark citation reopens the dated fund observation", async ({page}) => {
+  const calls = await setup(page, "en", false);
+  await page.goto("/holdings?view=lookthrough&dimension=sector&category=Information%20Technology");
+  const reading = page.locator(".mx-inline-reading:visible, .mx-reading-sheet:visible");
+  const citation = reading.locator('a[href*="evidence=exposure_benchmark"]');
+  await citation.click();
+  await expect.poll(() => calls.at(-1)).toMatchObject({
+    role: "exposure", snapshotId: runId,
+    context: {dimension: "sector", category: "Information Technology", citedBenchmark: "SWDA",
+      citedBenchmarkAsOf: "2026-01-29", citedBenchmarkObservation: "bw_1234567890abcdef"},
+  });
 });
 
 test("a sector citation reopens the selected sector in its publication", async ({page}) => {
