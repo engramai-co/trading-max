@@ -34,6 +34,7 @@ from trading_max.research.forward_pe import ForwardPeHistory, forward_pe_history
 from trading_max.research.market import MarketResearchService
 
 from .agent.deps import AssistantDepsFactory
+from .agent.readings import ReadingService
 from .agent.runtime import build_assistant_agent, run_settings
 from .agent.service import AssistantService, AssistantUnavailable, BoundModel
 from .agent.store import SqliteConversationStore
@@ -607,6 +608,7 @@ def create_app(
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
     app.state.assistant = assistant
+    app.state.assistant_readings = ReadingService(assistant, assistant_database)
     app.state.validation_secret = validation_secret
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research

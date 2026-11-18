@@ -38,7 +38,7 @@ async function boundedBody(
  * Pass the assistant's event stream through untouched: no buffering, no
  * compression. Closing the browser request aborts the backend run.
  */
-export async function proxyAssistantChat(request: Request): Promise<Response> {
+export async function proxyAssistantChat(request: Request, path = "/v1/assistant/chat"): Promise<Response> {
   if (!backendUrl()) return backendUnavailable();
   const body = await boundedBody(request, ASSISTANT_MAX_REQUEST_BYTES);
   if (body === null) {
@@ -56,7 +56,7 @@ export async function proxyAssistantChat(request: Request): Promise<Response> {
   const suffix = query.size ? `?${query}` : "";
   let upstream: Response;
   try {
-    upstream = await backendFetch(`/v1/assistant/chat${suffix}`, {
+    upstream = await backendFetch(path + suffix, {
       method: "POST",
       body,
       headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
