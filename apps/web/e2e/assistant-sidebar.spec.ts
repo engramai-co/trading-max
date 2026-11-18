@@ -19,9 +19,10 @@ async function fixtures(page: Page, ready = true) {
         line("next","financials","read_research_lens","2 月 4 日 · SYNT 财报","4 February · SYNT earnings")],
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
+      const {scope, range, snapshotId} = route.request().postDataJSON().context;
       const chunks = [{type:"start", messageId:"a1"}, {type:"start-step"},
-        {type:"tool-input-available",toolCallId:"p",toolName:"period_performance",input:{args:{scope:"broker_total",range:"1W"}}},
-        {type:"tool-output-available",toolCallId:"p",output:{evidence_id:"ev_period",status:"partial",data:{period_pnl_gbp:21.5,window_start:"2026-11-09",window_end:"2026-11-13",coverage:"partial"}}},
+        {type:"tool-input-available",toolCallId:"p",toolName:"period_performance",input:{}},
+        {type:"tool-output-available",toolCallId:"p",output:{evidence_id:"ev_period",status:"partial",scope,snapshot_id:snapshotId,bound_arguments:{scope,range,snapshotId},data:{period_pnl_gbp:21.5,window_start:"2026-11-12",window_end:"2026-11-13",coverage:"partial"}}},
         {type:"text-start",id:"t1"},
         {type:"text-delta",id:"t1",delta:"{{/data/period_pnl_gbp}} [ev_period]\n{{cash-flows}} [inference]"},{type:"text-end",id:"t1"}, {type:"finish-step"}, {type:"finish",finishReason:"stop"}];
       return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"});
@@ -64,7 +65,9 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   const liveReply = page.locator("#mx-assistant-panel [aria-live=polite]");
   await expect(liveReply).toHaveCount(1);
   await expect(liveReply).toContainText("本期净盈亏 £21.50");
-  await expect(liveReply).toContainText("2026-11-09 – 2026-11-13");
+  await expect(liveReply).toContainText("2026-11-12 – 2026-11-13");
+  const moneyLink = page.locator(".mx-turn-assistant").getByRole("link", {name:"账户"});
+  await expect(moneyLink).toHaveAttribute("href", "/analytics?view=money&range=1D&moneyFrom=2026-11-12&moneyTo=2026-11-13&snapshotId=synthetic&evidence=period_performance");
   await expect(liveReply).toContainText("覆盖不完整");
   const visible = await page.locator(".mx-turn-assistant .mx-reading-line").allInnerTexts();
   await expect(liveReply).toHaveText(visible.join(" "));
