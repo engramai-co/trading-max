@@ -25,6 +25,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { DraftActions, DraftView } from "./valuation-draft-editor";
 import { useAssistant } from "./assistant/context";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
+import { evidenceNoticesQuery, noticeKinds, useEvidenceNotice, useEvidenceSeen } from "./evidence-notices";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import type { InputField } from "./valuation-maintenance";
 import { quoteValue } from "./financial-values";
@@ -342,6 +343,7 @@ function ModelEditor({
   const { locale } = useLocale();
   const client = useQueryClient();
   const { params, update } = useRouteState("push");
+  const { update: replaceRoute } = useRouteState();
   const horizon = params.has("horizon")
     ? params.get("horizon") === "10"
       ? 10
@@ -357,14 +359,26 @@ function ModelEditor({
   // A version saved here becomes the one new evidence is compared with, without reloading the editor.
   const [savedHere, setSavedHere] = useState<NonNullable<Preview["savedModel"]>>();
   const savedModel = savedHere ?? initial.savedModel;
-  const [reviewOpen, setReviewOpen] = useState(false);
-  const focusReview = useRef(false);
+  // A link to a saved version's new evidence opens the review once, without a history entry.
+  const [reviewOpen, setReviewOpen] = useState(() => Boolean(initial.savedModel) && params.get("evidence") === "open");
+  const focusReview = useRef(reviewOpen);
+  useEffect(() => {
+    if (params.get("evidence")) replaceRoute({ evidence: null });
+  }, [params, replaceRoute]);
   const evidenceToggle = useRef<HTMLButtonElement>(null);
+  // A notice belongs to the version the editor opened from; opening its evidence settles it.
+  const notice = useEvidenceNotice(initial.basis.ticker);
+  const unopened = notice && savedModel && notice.modelId === savedModel.id ? notice : undefined;
+  const settle = useEvidenceSeen();
+  const settled = useRef("");
   // The review loads on first use, so it adds nothing to the research page's first paint.
   const [evidence, setEvidence] = useState<EvidenceModule | null>(null);
   const loadEvidence = () => {
     if (!evidence) void import("./valuation-maintenance").then((module) => setEvidence(() => module));
   };
+  useEffect(() => {
+    if (reviewOpen && !evidence) void import("./valuation-maintenance").then((module) => setEvidence(() => module));
+  }, [reviewOpen, evidence]);
   const actions = useRef<DraftActions>(null);
   const [drafting, setDrafting] = useState(emptyReview);
   const { draft } = drafting;
@@ -441,6 +455,13 @@ function ModelEditor({
   }, [dirty, onDirty]);
   const review = useQuery(valuationMaintenanceQuery(initial, savedModel?.id, debounced, locked,
     reviewOpen && !invalidInput));
+  useEffect(() => {
+    if (!reviewOpen || !review.data || !unopened) return;
+    const key = unopened.modelId + "\u0000" + unopened.items.map((item) => item.key).join("\u0000");
+    if (settled.current === key) return;
+    settled.current = key;
+    settle.mutate(unopened);
+  }, [reviewOpen, review.data, unopened, settle]);
   useLayoutEffect(() => {
     const section = document.getElementById("valuation-evidence");
     if (!reviewOpen || !focusReview.current || !section) return;
@@ -480,6 +501,7 @@ function ModelEditor({
       await client.invalidateQueries({
         queryKey: ["research-journal", initial.basis.ticker],
       });
+      await client.invalidateQueries({ queryKey: evidenceNoticesQuery.queryKey });
     },
   });
   const failedBlock = drafting.error && draftBlockMessage(drafting.error, t) ? drafting.error : null;
@@ -659,12 +681,19 @@ function ModelEditor({
       {draftModule && <draftModule.DraftController initial={initial} requestedFamily={requestedFamily} horizon={horizon}
         inputs={inputs} locked={locked} publication={publication} currentBasis={currentBasis} actions={actions}
         onChange={setDrafting} />}
-      {evidenceAction && savedModel && createPortal(<Button ref={evidenceToggle} variant="default" size="compact-xs"
-        aria-expanded={reviewOpen} aria-controls="valuation-evidence"
-        onPointerEnter={loadEvidence} onFocus={loadEvidence}
-        onClick={() => { loadEvidence(); focusReview.current = !reviewOpen; setReviewOpen(!reviewOpen); }}>
-        {t("看新证据", "See new evidence")}
-      </Button>, evidenceAction)}
+      {evidenceAction && savedModel && createPortal(<>
+        <Button ref={evidenceToggle} variant="default" size="compact-xs"
+          aria-expanded={reviewOpen} aria-controls="valuation-evidence"
+          aria-describedby={unopened ? "valuation-evidence-notice" : undefined}
+          onPointerEnter={loadEvidence} onFocus={loadEvidence}
+          onClick={() => { loadEvidence(); focusReview.current = !reviewOpen; setReviewOpen(!reviewOpen); }}>
+          {t("看新证据", "See new evidence")}
+          {unopened && <span className="mx-evidence-dot" aria-hidden="true" />}
+        </Button>
+        {unopened && <span id="valuation-evidence-notice" className="sr-only">
+          {t("有新证据：", "New evidence: ") + noticeKinds(unopened, t)}
+        </span>}
+      </>, evidenceAction)}
       {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
         {t("放弃草稿", "Discard draft")}
       </Button> : <Button variant="default" size="compact-xs"

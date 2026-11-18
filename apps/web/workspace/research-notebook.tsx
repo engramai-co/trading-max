@@ -29,6 +29,8 @@ import {
 } from "./foundation";
 import { ResearchDocuments } from "./research-evidence";
 import { useRouteState } from "./route-state";
+import { noticeKinds, useEvidenceNotice } from "./evidence-notices";
+import Link from "./link";
 
 type Journal = components["schemas"]["ResearchJournal"];
 type Note = components["schemas"]["ResearchNote"];
@@ -369,6 +371,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
   const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const models = journal.models ?? [];
+  const notice = useEvidenceNotice(journal.ticker);
   const client = useQueryClient();
   const baseline = useMutation({
     mutationFn: (modelId: string | null) =>
@@ -451,6 +454,17 @@ function ModelVersions({ journal }: { journal: Journal }) {
                       <Button display="block" variant="subtle" size="compact-xs" onClick={() => setOpened(m.id)}>
                         {t("查看底稿", "Open worksheet")}
                       </Button>
+                      {notice?.modelId === m.id && <>
+                        <Button display="block" w="fit-content" variant="subtle" size="compact-xs" component={Link}
+                          href={`/research?ticker=${encodeURIComponent(journal.ticker)}&view=valuation&valuationView=scenario&evidence=open`}
+                          aria-describedby="model-evidence-notice">
+                          {t("看新证据", "See new evidence")}
+                          <span className="mx-evidence-dot" aria-hidden="true" />
+                        </Button>
+                        <span id="model-evidence-notice" className="sr-only">
+                          {t("有新证据：", "New evidence: ") + noticeKinds(notice, t)}
+                        </span>
+                      </>}
                     </th>
                   ))}
                 </tr>

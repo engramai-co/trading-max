@@ -5,6 +5,7 @@ import type { components } from "@/lib/api-schema";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatReadingTime, localeTag } from "@/ui/formatters";
 import { ApiError, compact, number } from "./data";
+import { periodText } from "./evidence-notices";
 import { Facts, Help, Pending, QueryError, Tag, useCopy } from "./foundation";
 import { quoteValue } from "./financial-values";
 import { MINUS, readingTone } from "./reading-format";
@@ -24,17 +25,6 @@ export function signedValue(value: number | null | undefined, currency: string) 
   const tone = readingTone(value, 2);
   const amount = quoteValue(tone ? Math.abs(value) : 0, currency);
   return tone === "up" ? "+" + amount : tone === "down" ? MINUS + amount : amount;
-}
-
-const periodKinds = { ttm: ["过去十二个月", "TTM"], annual: ["财年", "FY"], quarterly: ["季度", "Quarter"] } as const;
-
-/** A statement period from its identity, such as "ttm:2026-03-31". */
-export function periodText(id: string | null | undefined, locale: Locale) {
-  if (!id) return "—";
-  const [kind, end] = id.split(":");
-  const [zh, en] = periodKinds[kind as keyof typeof periodKinds] ?? [kind, kind];
-  const day = formatCalendarDate(end, locale);
-  return locale === "zh" ? `${zh} 截至 ${day}` : `${en} to ${day}`;
 }
 
 function figureName(metric: string, family: Maintenance["family"], t: Copy) {

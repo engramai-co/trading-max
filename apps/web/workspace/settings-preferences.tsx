@@ -21,6 +21,7 @@ import type {
   UserProfile,
 } from "@/lib/types";
 import { api, jsonRequest, number } from "@/workspace/data";
+import { evidenceNoticesQuery } from "./evidence-notices";
 import { accountName } from "./profile";
 import {
   Empty,
@@ -43,17 +44,26 @@ export function AutomationPreferences() {
     queryFn: () => api<AutomationSettings>("/settings/automation"),
     retry: 1,
   });
+  const save = (change: Record<string, boolean>) =>
+    api<AutomationSettings>(
+      "/settings/automation",
+      jsonRequest("PUT", {
+        ...change,
+        expectedRevision: query.data?.revision,
+      }),
+    );
   const mutation = useMutation({
-    mutationFn: (change: Record<string, boolean>) =>
-      api<AutomationSettings>(
-        "/settings/automation",
-        jsonRequest("PUT", {
-          ...change,
-          expectedRevision: query.data?.revision,
-        }),
-      ),
+    mutationFn: save,
     onSuccess: (settings) =>
       client.setQueryData(["workspace-automation"], settings),
+  });
+  // Notices of new evidence are local: they compare saved models with new data and never call a model.
+  const notices = useMutation({
+    mutationFn: (enabled: boolean) => save({ evidenceNoticesEnabled: enabled }),
+    onSuccess: (settings) => {
+      client.setQueryData(["workspace-automation"], settings);
+      void client.invalidateQueries({ queryKey: evidenceNoticesQuery.queryKey });
+    },
   });
   const s = query.data;
   const rows = s
@@ -76,6 +86,7 @@ export function AutomationPreferences() {
       ]
     : [];
   return (
+    <>
     <Panel
       title={t("自动更新", "Automatic updates")}
     >
@@ -108,7 +119,8 @@ export function AutomationPreferences() {
                     ? mutation.variables[row.key]
                     : row.enabled
                 }
-                disabled={mutation.isPending}
+                // Both panels save revisions of the same settings, one at a time.
+                disabled={mutation.isPending || notices.isPending}
                 onChange={(event) =>
                   mutation.mutate({ [row.key]: event.currentTarget.checked })
                 }
@@ -122,6 +134,44 @@ export function AutomationPreferences() {
         </>
       )}
     </Panel>
+    {s && (
+      <Panel
+        title={t("提醒", "Notices")}
+        help={<>
+          <p>{t(
+            "已存估值模型之后出现新报表、所用那一期被重述，或一致预期比保存时变动一档（EPS 5%，营收增长 2 个百分点）时，研究清单和「看新证据」旁会出现一个点。同一证据只提示一次。",
+            "A dot appears in the research list and beside See new evidence when a saved valuation model has new statements, a restatement of its period, or a consensus move of a full step since it was saved (5% for EPS, two percentage points for revenue growth). Each piece of evidence is announced once.",
+          )}</p>
+          <p>{t("只在本机比较：不调用模型，不起草，也不保存模型。",
+            "Compared on this machine: no model is contacted, and nothing is drafted or saved.")}</p>
+        </>}
+        helpBasis={t(
+          "报表和一致预期来自研究数据，EPS 一致预期的变化来自本地预期记录。公司指引没有单独的数据源，它体现在新报表和一致预期的变化里。",
+          "Statements and consensus come from the research data; EPS consensus changes come from the local estimate record. Company guidance has no separate source: it shows through new statements and consensus revisions.",
+        )}
+      >
+        {notices.isError && (
+          <Notice tone="bad">
+            {t("未能保存提醒设置。请重新加载后重试。", "Could not save the notice setting. Reload and retry.")}
+          </Notice>
+        )}
+        <div className="mx-setting-row">
+          <div>
+            <h3>{t("已存估值模型的新证据", "New evidence for saved valuation models")}</h3>
+          </div>
+          <Switch
+            aria-label={t("已存估值模型的新证据", "New evidence for saved valuation models")}
+            checked={notices.isPending ? notices.variables : s.evidenceNoticesEnabled}
+            disabled={notices.isPending || mutation.isPending}
+            onChange={(event) => notices.mutate(event.currentTarget.checked)}
+          />
+        </div>
+        <div className="mx-form-help" role="status">
+          {notices.isPending ? t("正在保存…", "Saving…") : notices.isSuccess ? t("提醒设置已保存", "Notice setting saved") : null}
+        </div>
+      </Panel>
+    )}
+    </>
   );
 }
 
