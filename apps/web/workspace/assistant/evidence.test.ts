@@ -312,6 +312,21 @@ it("resolves each published historical event date to its source in mixed replies
   }
 });
 
+it.each([
+  ["America/New_York", "2026-11-24T19:30:00-05:00", "2026-11-24", "2026-11-25"],
+  ["Europe/London", "2026-11-25T00:30:00Z", "2026-11-25", "2026-11-25"],
+  ["Asia/Tokyo", "2026-11-25T23:30:00Z", "2026-11-26", "2026-11-25"],
+  ["Asia/Tokyo", "2026-11-28T12:00:00Z", "2026-11-28", "2026-11-27"],
+])("keeps the Broker decision identifier on its UTC ledger weekday in %s at %s", (zone, instant, localDay, ledgerDay) => {
+  const fill = historicalEvents.data.items.find(row => row.kind === "own_trade")!;
+  const output = {...historicalEvents, data:{items:[{...fill, date:instant.slice(0, 10), instant, local_date:localDay}]}};
+  const [line] = verifiedLines(fieldReply("news_and_events", output, "/data/items/0/local_date"), "en", zone);
+  expect(line.text).toContain(localDay);
+  const href = new URL(evidenceHref(line.evidence!)!, "http://localhost");
+  expect(href.searchParams.get("decision")).toBe(ledgerDay + ".buy.ALFA");
+  expect(href.searchParams.get("snapshotId")).toBe(historicalEvents.snapshot_id);
+});
+
 it("withholds Broker links without an investing account and a decision identity", () => {
   const args = {scope:"invest", side:"buy", date:"2026-11-25", ticker:"ALFA", event:"own_trade", eventId:"ev_trade", snapshotId:"original"};
   for (const missing of [{scope:"broker_total"}, {scope:"cfd"}, {side:""}, {date:""}, {ticker:""}, {eventId:""}, {snapshotId:""}]) {

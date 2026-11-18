@@ -3,6 +3,7 @@ import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { Locale } from "@/components/locale-provider";
 import type { Evidence } from "./evidence";
 import { formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
+import { tradingDay } from "@/lib/portfolio/history";
 import { numeric } from "@/lib/numeric";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
 import { renderReviewField } from "./review-figures";
@@ -141,6 +142,8 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
     source = historicalSources[args.event];
     if (row.source_url) args.url = str(row.source_url);
     if (args.event === "own_trade") {
+      // Review groups fills by the UTC ledger weekday, even when the reader sees another date.
+      args.date = tradingDay(str(row.instant) || dateText(day), "UTC") ?? "";
       args.scope = str(row.account) || str(output.scope);
       args.ticker = ticker;
       args.side = str(row.side);
