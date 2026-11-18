@@ -37,6 +37,7 @@ from pydantic_ai.toolsets import AbstractToolset
 from trading_max.llm import ProviderError
 
 from ..provider_runtime import ProviderRuntimeError
+from .tools import RoleToolset
 
 # Pydantic AI prints a banner when it detects a terminal or a coding agent.
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
@@ -101,7 +102,7 @@ def build_assistant_agent(toolsets: Sequence[AbstractToolset]) -> Agent:
     return Agent(
         output_type=[str, DeferredToolRequests],
         instructions=INSTRUCTIONS,
-        toolsets=list(toolsets),
+        toolsets=[RoleToolset(toolset) for toolset in toolsets],
         retries=1,
         tool_timeout=TOOL_TIMEOUT_SECONDS,
         defer_model_check=True,

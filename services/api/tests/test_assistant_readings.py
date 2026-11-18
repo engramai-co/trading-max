@@ -71,7 +71,13 @@ def test_role_endpoint_pins_versions_links_and_refuses_scope_expansion(tmp_path)
     assert money["start"] <= money["end"]
     assert result["lines"][0]["section"] == "market"
     assert "VOO" in result["lines"][0]["en"]
-    assert "QQQ" in result["lines"][0]["variants"]["QQQ"]["en"]
+    variant = result["lines"][0]["variants"]["QQQ"]
+    assert "QQQ" in variant["en"]
+    assert variant["evidence"]["arguments"]["benchmark"] == "QQQ"
+    assert result["lines"][0]["evidence"]["arguments"]["benchmark"] == "VOO"
+    assert all(
+        row["evidence"]["arguments"]["snapshotId"] == deps.snapshot_id for row in result["lines"]
+    )
     assert all(row["evidence"]["evidenceId"].startswith("ev_") for row in result["lines"])
     assert events({"cachedOnly": True, "latest": True}) == [{"type": "empty"}]
     assert events({"cachedOnly": True, "snapshotId": deps.snapshot_id}) == [first[-1]]
@@ -299,14 +305,16 @@ def test_follow_up_tools_read_the_original_snapshot_after_a_new_publication(tmp_
     assert original.run_id != newer.run_id
     observations = []
 
-    def snapshot(ctx: RunContext[AssistantDeps]) -> dict:
+    from services.api.trading_max_api.agent.tools import PeriodArgs
+
+    def period_performance(ctx: RunContext[AssistantDeps], args: PeriodArgs) -> dict:
         """Read the current turn's publication."""
         observations.append(ctx.deps.snapshot_id)
         return {"evidence_id": "ev_test", "data": {}}
 
-    stream, _ = answer_after_tool("snapshot")
+    stream, _ = answer_after_tool("period_performance")
     app, service = make_app(tmp_path, stream)
-    service.agent = build_assistant_agent([FunctionToolset([snapshot])])
+    service.agent = build_assistant_agent([FunctionToolset([period_performance])])
     service.deps_for_run = AssistantDepsFactory(store).for_run
     body = user_turn("old-brief", "u", "Continue this weekly reading")
     body["context"] = {
