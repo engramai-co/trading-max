@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocalStorage } from "@mantine/hooks";
-import { SidebarSimple } from "@phosphor-icons/react";
+import { PushPin } from "@phosphor-icons/react";
 import { useCallback, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useCopy } from "./foundation";
 import { Plot } from "./plot";
@@ -40,6 +40,14 @@ export const financialSections = [
 
 type Section = readonly [id: string, zh: string, en: string];
 
+function OutlineIcon() {
+  return <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" aria-hidden="true">
+    <circle cx="4" cy="4.5" r="2" />
+    <circle cx="4" cy="11.5" r="2" />
+    <path d="M8.5 4.5h5.5M8.5 11.5h5.5" />
+  </svg>;
+}
+
 export function ResearchReading({ sections, parameter, children, before, initial }: {
   sections: readonly Section[];
   parameter: "analystView" | "valuationView" | "technicalView" | "financialMode";
@@ -65,8 +73,11 @@ export function ResearchReading({ sections, parameter, children, before, initial
   const pending = useRef<string | null>(null);
   const pinned = useRef<string | null>(null);
   const focusedHeading = useRef<HTMLElement | null>(null);
-  // Wide layouts give the reading the full width until the reader opens the index.
+  // Wide layouts give the reading the full width: the index is hidden or floats over the page
+  // unless the reader pins it to its own column.
   const [indexOpen, setIndexOpen] = useLocalStorage({ key: "mx-research-index-open", defaultValue: false });
+  const [indexPinned, setIndexPinned] = useLocalStorage({ key: "mx-research-index-pinned", defaultValue: false });
+  const indexMode = !indexOpen ? "closed" : indexPinned ? "pin" : "float";
   const indexId = useId();
   const visitSection = useCallback((id: string) => {
     const section = document.getElementById("research-" + id);
@@ -198,13 +209,21 @@ export function ResearchReading({ sections, parameter, children, before, initial
   }, [active]);
 
   return <div className="mx-reading-container">
-    <div className="mx-reading-layout" data-index-open={indexOpen || undefined}>
+    <div className="mx-reading-layout" data-index={indexMode}>
       <div className="mx-section-rail">
+      <div className="mx-section-panel">
+        <div className="mx-section-tools">
+          {indexOpen && <button type="button" className="mx-section-pin" aria-pressed={indexPinned}
+            aria-label={t("固定本页分节", "Pin sections")} title={indexPinned ? t("取消固定", "Unpin") : t("固定", "Pin")}
+            onClick={() => setIndexPinned((pinned) => !pinned)}>
+            <PushPin size={15} weight={indexPinned ? "fill" : "regular"} aria-hidden="true" />
+          </button>}
         <button type="button" className="mx-section-toggle" aria-expanded={indexOpen} aria-controls={indexId}
           aria-label={t("本页分节", "Sections on this page")} title={indexOpen ? t("收起分节", "Hide sections") : t("展开分节", "Show sections")}
           onClick={() => setIndexOpen((open) => !open)}>
-          <SidebarSimple size={16} mirrored aria-hidden="true" />
+          <OutlineIcon />
         </button>
+        </div>
       <nav id={indexId} ref={nav} className="mx-section-index" aria-label={t("本页分节", "On this page")}>
         {sections.map(([id, zh, en]) => {
           const next = new URLSearchParams(params.toString());
@@ -218,6 +237,7 @@ export function ResearchReading({ sections, parameter, children, before, initial
             }}>{t(zh, en)}</a>;
         })}
       </nav>
+      </div>
       </div>
       <div ref={content} className="mx-reading-sections">{before}{children}</div>
     </div>

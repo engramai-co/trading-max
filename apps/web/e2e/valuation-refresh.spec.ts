@@ -2,9 +2,12 @@ import { expect, test, type Locator, type Page, type Route } from "@playwright/t
 import { join } from "node:path";
 import type { ResearchLensSnapshot } from "../lib/types";
 
-// These cases read with the wide section index open; it starts closed for a new reader.
+// These cases read with the wide section index pinned; it starts closed for a new reader.
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => localStorage.setItem("mx-research-index-open", "true"));
+  await page.addInitScript(() => {
+    localStorage.setItem("mx-research-index-open", "true");
+    localStorage.setItem("mx-research-index-pinned", "true");
+  });
 });
 
 // Synthetic research desk: a held security whose broker price moves from 100 to
