@@ -561,11 +561,15 @@ def research_prices(
     def price_window(series, selected_window):
         return project_window(research.observe_prices(series, manifest.run_id), selected_window)
 
-    selected = research.price_listing(ticker, manifest)
-    listing = selected.fund
+    ticker = ticker.upper()
+    exchanges = research.watchlist.listing_exchanges()
+    pinned = research.pin_listing(ticker, manifest, exchanges=exchanges)
+    if pinned.venue().conflict:
+        raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE)
+    listing = pinned.held
     # Comparison ETFs and confirmed held US ETF listings use Alpaca's price
     # chart. The typed snapshot remains the source for broker events and research.
-    symbol = selected.ticker
+    symbol = pinned.ticker
     reference = us_fund(symbol) if listing is None else None
     market_etf = is_alpaca_listing(symbol) and (
         reference is not None
@@ -576,8 +580,8 @@ def research_prices(
 
     def live_window(series: ResearchPriceSeries) -> ResearchPriceSeries:
         try:
-            verified_provider_claims(symbol, series)
-            venue = research.price_venue(selected, series, manifest)
+            series.venue_claims = verified_provider_claims(symbol, series)
+            venue = research.price_venue(pinned, series)
         except VenueConflict as exc:
             raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         series.exchange_calendar = venue.calendar
@@ -597,7 +601,7 @@ def research_prices(
         # Prefer the listing's published technical history when it was researched
         # directly. Otherwise use the shared close-only chart and budget.
         try:
-            published = research.listing_prices(selected, manifest, limit=limit)
+            published = research.price_series(ticker, manifest, limit=limit, pinned=pinned)
         except VenueConflict as exc:
             raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
         except FileNotFoundError:
@@ -694,7 +698,7 @@ def research_prices(
         except Exception:
             fallback_reason = "requested-interval-unavailable-daily-history-retained"
     try:
-        result = research.listing_prices(selected, manifest, limit=limit)
+        result = research.price_series(ticker, manifest, limit=limit, pinned=pinned)
         result.requested_interval = interval
         result.coverage_reason = fallback_reason
         result.coverage_start = result.points[0].date if result.points else None

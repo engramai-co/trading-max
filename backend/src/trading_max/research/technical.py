@@ -285,6 +285,7 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     quote_currency = str(metadata.get("currency") or "")
     # Provider GBp/GBX prices are pence. Normalize every OHLC column together.
     currency, divisor = major_quote_unit(quote_currency)
+    frame.attrs["ticker"] = ticker
     frame.attrs["provider_venue"] = yahoo_venue_metadata(metadata)
     frame.attrs["market_segment"] = metadata.get("marketSegment")
     frame.attrs["exchange"] = str(
@@ -507,8 +508,13 @@ def analyze_ticker(
 ) -> TechnicalResearchArtifact:
     """Calculate all deterministic technical indicators for one security."""
 
+    if resolve_venue(
+        yf_ticker, *row_claims(yf_ticker, frame.attrs), *frame.attrs.get("venue_claims", ())
+    ).conflict:
+        raise MarketDataError(f"{label}: conflicting history listing")
     asset_type = str(frame.attrs.get("asset_type") or "").upper()
-    frame = completed_daily_bars(frame, now=pd.Timestamp.now(tz="UTC"))
+    frame = completed_daily_bars(frame, now=pd.Timestamp.now(tz="UTC"), ticker=yf_ticker)
+    frame.attrs["ticker"] = yf_ticker
     if frame.empty:
         raise MarketDataError(f"no completed daily bars for {label}")
     close = frame["Close"].astype(float)

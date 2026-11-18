@@ -6,7 +6,6 @@ import threading
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -87,6 +86,7 @@ from .projections.broker import overlay_live_broker_snapshot
 from .projections.research import option_rows, valuation_rows
 from .projections.research import technical_rows as project_technical_rows
 from .projections.trade_markers import broker_symbol, chart_trade_markers
+from .research_listing import PinnedListing, exact_row
 from .watchlist import WatchlistStore
 
 if TYPE_CHECKING:
@@ -242,7 +242,7 @@ def _freshness(artifact: ArtifactInfo, now: datetime) -> tuple[float | None, str
     return age, "stale"
 
 
-def _market_rows(raw: JsonObject) -> list[JsonObject]:
+def _market_rows(raw: JsonObject, *, with_claims=False) -> list[JsonObject]:
     typed_technical = raw.get("technical")
     if isinstance(typed_technical, dict):
         return [
@@ -250,6 +250,7 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
                 "ticker": str(row.get("ticker") or ""),
                 "currency": str(row.get("currency") or ""),
                 "spot": row.get("price"),
+                **({"_venue_claims": row_claims(row.get("ticker"), row)} if with_claims else {}),
                 "held": False,
                 "asOf": row.get("as_of") or raw.get("as_of"),
             }
@@ -259,6 +260,7 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
     return [
         {
             "ticker": str(row.get("t")),
+            **({"_venue_claims": row_claims(row.get("t"), row)} if with_claims else {}),
             "currency": str(row.get("ccy") or ""),
             "spot": row.get("spot"),
             "enterpriseValue": row.get("ev"),
@@ -272,6 +274,9 @@ def _market_rows(raw: JsonObject) -> list[JsonObject]:
         }
         for row in raw.get("rows", [])
     ]
+
+
+_market_rows_with_claims = partial(_market_rows, with_claims=True)
 
 
 def _fundamentals_rows(raw: JsonObject) -> list[JsonObject]:
@@ -557,7 +562,8 @@ def _enrich_fundamentals(
     fundamentals: list[JsonObject],
     earnings_raw: JsonObject,
     technical_raw: JsonObject,
-    analyst_raw: JsonObject | None = None,
+    analyst_raw: JsonObject | None,
+    pin_listing: Callable[[str], PinnedListing],
 ) -> list[JsonObject]:
     earnings_rows = [dict(row) for row in earnings_raw.get("rows", []) if isinstance(row, dict)]
     technical_rows = project_technical_rows(technical_raw)
@@ -565,13 +571,17 @@ def _enrich_fundamentals(
     enriched: list[JsonObject] = []
     for row in fundamentals:
         ticker = str(row.get("ticker") or "")
+        pinned = pin_listing(ticker)
+        if pinned.ticker != ticker or pinned.venue().conflict:
+            continue
         item = dict(row)
         calendar = _normalized_earnings_calendar(
-            _find(earnings_rows, ticker), _exchange_today(row.get("metrics"))
+            pinned.event_row(exact_row(earnings_rows, ticker))[0],
+            _exchange_today(row.get("metrics")),
         )
         if calendar is not None:
             item["earningsCalendar"] = calendar
-        technical = _find(technical_rows, ticker)
+        technical = exact_row(technical_rows, ticker)
         if technical is not None:
             item["seasonality"] = list(technical.get("seasonality") or [])
             item["seasonalityCoverage"] = dict(technical.get("seasonalityCoverage") or {})
@@ -580,7 +590,7 @@ def _enrich_fundamentals(
             # Reported-versus-estimate history lives in the analyst artifact; the
             # earnings calendar only carries the upcoming event, which left the
             # fundamentals earnings card with a date and nothing else.
-        analyst_row = _find(analyst_rows, ticker)
+        analyst_row = pinned.event_row(exact_row(analyst_rows, ticker))[0]
         if analyst_row is not None:
             analyst = analyst_row.get("analyst")
             if isinstance(analyst, dict):
@@ -602,14 +612,6 @@ def _enrich_fundamentals(
                     ]
         enriched.append(item)
     return enriched
-
-
-@dataclass(frozen=True)
-class PriceListing:
-    requested: str
-    ticker: str
-    fund: FundListingIdentity | None
-    exchanges: dict[str, tuple[VenueClaim, ...]]
 
 
 class ResearchLedger:
@@ -645,6 +647,10 @@ class ResearchLedger:
         if latest is None:
             return []
         keys = (
+            FUND_PRICE_DIRECTORY_KEY,
+            FUND_PRICES_KEY,
+            SECURITY_MASTER_KEY,
+            "research/fundamentals.json",
             "research/daily_market.json",
             "research/market_snapshot.json",
             "research/technical.json",
@@ -718,7 +724,7 @@ class ResearchLedger:
         rows = self._cached_rows(
             manifest,
             CURRENT_MARKET_KEY,
-            _market_rows,
+            _market_rows_with_claims,
             fallback_key=LEGACY_MARKET_KEY,
         )
         # Compact quote metadata lives in fundamentals. Older technical batches
@@ -735,7 +741,7 @@ class ResearchLedger:
             quote_currency, quote_divisor = major_quote_unit(quote_currency)
             enriched.append(
                 {
-                    **row,
+                    **{key: value for key, value in row.items() if key != "_venue_claims"},
                     "currency": quote_currency or row.get("currency") or "",
                     **{
                         target: (
@@ -913,7 +919,10 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> list[ResearchEvent]:
-        ticker = ticker.strip().upper()
+        pinned = self.pin_listing(ticker, manifest)
+        ticker = pinned.ticker
+        if pinned.venue().conflict:
+            return []
         raw = self._read_optional(manifest, "research/earnings.json")
         companies = raw.get("companies", {})
         if not companies and isinstance(raw.get("rows"), list):
@@ -925,7 +934,8 @@ class ResearchLedger:
                 ),
                 None,
             )
-            if company is not None:
+            company, _ = pinned.event_row(company)
+            if company:
                 return [
                     ResearchEvent(
                         ticker=ticker,
@@ -938,7 +948,8 @@ class ResearchLedger:
                     )
                 ]
         company = companies.get(ticker) if isinstance(companies, dict) else None
-        if not isinstance(company, dict):
+        company, _ = pinned.event_row(company) if isinstance(company, dict) else ({}, False)
+        if not company:
             return []
         source_map = raw.get("sources", {})
         terms = SOURCE_TERMS.get(ticker, (ticker.lower(),))
@@ -1028,18 +1039,17 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> ResearchTickerSnapshot:
-        ticker = ticker.strip().upper()
-        exchanges = self.watchlist.listing_exchanges()
-        if listing := self.held_fund(ticker, manifest, exchanges):
-            lens = self._fund_lens(
-                ticker,
-                listing.ticker,
-                "technical",
-                manifest,
-                exchanges,
-                detail="full",
-                listing=listing,
+        pinned = self.pin_listing(ticker, manifest)
+        ticker = pinned.ticker
+        if pinned.venue().conflict:
+            return ResearchTickerSnapshot(
+                ticker=ticker,
+                run_id=manifest.run_id,
+                generated_at=manifest.created_at,
+                portfolio_impact=self.portfolio_impact(ticker, manifest),
             )
+        if listing := pinned.held:
+            lens = self._fund_lens(pinned, "technical", manifest, detail="full")
             return ResearchTickerSnapshot(
                 ticker=listing.ticker,
                 run_id=manifest.run_id,
@@ -1049,17 +1059,16 @@ class ResearchLedger:
                 fundamentals={"metrics": {"quoteType": lens.context.asset_type}},
                 portfolio_impact=self.portfolio_impact(listing.ticker, manifest),
             )
-        ticker = self._route_ticker(ticker)
-        market = _find(self._market_rows(manifest), ticker)
-        technical = _find(
+        market = exact_row(self._market_rows(manifest), ticker)
+        technical = exact_row(
             self._cached_rows(manifest, "research/technical.json", project_technical_rows),
             ticker,
         )
-        valuation = _find(
+        valuation = exact_row(
             self._cached_rows(manifest, "research/valuation.json", valuation_rows),
             ticker,
         )
-        options = _find(
+        options = exact_row(
             self._cached_rows(
                 manifest,
                 "research/options.json",
@@ -1068,30 +1077,12 @@ class ResearchLedger:
             ),
             ticker,
         )
-        fundamentals = _find(
-            _enrich_fundamentals(
-                _fundamentals_rows(
-                    self._read_optional(
-                        manifest,
-                        "research/fundamentals.json",
-                    )
-                ),
-                self._read_optional(manifest, "research/earnings.json"),
-                self._read_optional(manifest, "research/technical.json"),
-                self._read_optional(manifest, "research/analyst.json"),
-            ),
-            ticker,
-        )
-        analyst_row = _find(
-            self._cached_rows(manifest, "research/analyst.json", _analyst_rows),
-            ticker,
-        )
-        analyst = analyst_row.get("analyst") if analyst_row else None
-        financials_row = _find(
-            self._cached_rows(manifest, "research/financials.json", _financials_rows),
-            ticker,
-        )
-        financials = financials_row.get("financials") if financials_row else None
+        lens = self.lens_snapshot(ticker, "fundamentals", manifest)
+        fundamentals = lens.fundamentals
+        analyst = pinned.event_row(
+            exact_row(self._cached_rows(manifest, "research/analyst.json", _analyst_rows), ticker)
+        )[0].get("analyst")
+        financials = lens.financials
         events = self.events(ticker, manifest)
         return ResearchTickerSnapshot(
             ticker=ticker,
@@ -1303,6 +1294,7 @@ class ResearchLedger:
                 *row_claims(listing.ticker, {"mic": listing.mic}),
                 watchlist_claim(listing.ticker, listing.exchange),
                 *exchanges.get(listing.ticker, ()),
+                aliases=(listing.ticker,),
             ).conflict
         ]
         return matches[0] if len(matches) == 1 else None
@@ -1373,11 +1365,14 @@ class ResearchLedger:
             LEGACY_MARKET_KEY,
             "research/fundamentals.json",
             "research/coverage.json",
+            "research/technical.json",
+            FUND_PRICES_KEY,
+            FUND_PRICE_DIRECTORY_KEY,
         }
         listing = self.held_fund(ticker, manifest) if ticker else None
         reference = us_fund(ticker)
         if listing or reference:
-            fund_keys = {ETF_SUMMARY_KEY, FUND_PRICE_DIRECTORY_KEY}
+            fund_keys = common | {ETF_SUMMARY_KEY}
             if view in {"overview", "technical"}:
                 fund_keys.update({"research/technical.json", "research/coverage.json"})
             if view == "options":
@@ -1386,6 +1381,7 @@ class ResearchLedger:
             return fingerprint(
                 [
                     listing.key if listing else reference.ticker,
+                    self.watchlist.revision(),
                     view,
                     detail,
                     sorted((a.key, a.sha256) for a in manifest.artifacts if a.key in fund_keys),
@@ -1432,7 +1428,9 @@ class ResearchLedger:
             if view in {"overview", "ledger"} or a.key in keys
         ]
         return (
-            fingerprint([sorted(refs), detail, self._calendar_days(manifest)])
+            fingerprint(
+                [sorted(refs), detail, self._calendar_days(manifest), self.watchlist.revision()]
+            )
             if refs
             else manifest.run_id
         )
@@ -1501,15 +1499,13 @@ class ResearchLedger:
 
     def _fund_lens(
         self,
-        requested: str,
-        ticker: str,
+        pinned: PinnedListing,
         view: ResearchLensName,
         manifest: SnapshotManifest,
-        exchanges: dict[str, tuple[VenueClaim, ...]],
         *,
         detail: str,
-        listing: FundListingIdentity | None = None,
     ) -> ResearchLensSnapshot:
+        ticker, listing = pinned.ticker, pinned.held
         price = self._fund_price(manifest, ticker, listing)
         reference = us_fund(ticker) if not listing or us_fund_listing(listing) else None
         market = (
@@ -1580,28 +1576,11 @@ class ResearchLedger:
         }
         fundamental = {"metrics": metrics, "currency": "USD" if reference else None}
         if view == "overview":
-            calendar = _normalized_earnings_calendar(
-                _find(
-                    self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
-                    ticker,
-                )
-            )
+            rows = self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows)
+            calendar = _normalized_earnings_calendar(pinned.event_row(exact_row(rows, ticker))[0])
             if calendar is not None:
                 fundamental["earningsCalendar"] = calendar
-        claims = [
-            *exchanges.get(requested, ()),
-            *exchanges.get(ticker, ()),
-            *row_claims(ticker, price or {}, exact_metrics),
-        ]
-        if listing:
-            claims.extend(
-                (VenueClaim("mic", listing.mic), watchlist_claim(ticker, listing.exchange))
-            )
-        if reference:
-            claims.append(provider_claim(reference.exchange, ticker))
-        venue = resolve_venue(requested, *claims)
-        if venue.conflict:
-            market = price = None
+        venue = pinned.venue()
         quote = make_quote(ticker, market or {}, fundamental, venue=venue)
         previous = number(price.get("previous_close")) if price else None
         if (
@@ -1705,28 +1684,26 @@ class ResearchLedger:
         history into the response.
         """
 
-        requested = ticker.upper()
-        exchanges = self.watchlist.listing_exchanges()
-        listing = self.held_fund(ticker, manifest, exchanges)
-        if listing:
-            return self._fund_lens(
-                requested, listing.ticker, view, manifest, exchanges, listing=listing, detail=detail
+        pinned = self.pin_listing(ticker, manifest)
+        ticker = pinned.ticker
+        venue = pinned.venue()
+        if venue.conflict:
+            return ResearchLensSnapshot(
+                ticker=ticker,
+                view=view,
+                run_id=manifest.run_id,
+                generated_at=manifest.created_at.isoformat(),
+                context=ResearchContext(
+                    quote=make_quote(ticker, {}, {}, venue=venue),
+                    asset_type="UNKNOWN",
+                    capabilities=[
+                        ResearchCapability(task=view, state="missing", reason="listing-conflict")
+                    ],
+                ),
             )
-        ticker = self._route_ticker(ticker, exchanges)
-        if us_fund(ticker):
-            return self._fund_lens(requested, ticker, view, manifest, exchanges, detail=detail)
-
-        def find_listing(rows, symbol):
-            row = _find(rows, symbol)
-            if (
-                view == "valuation"
-                and row
-                and str(row.get("ticker") or "").upper() != symbol.upper()
-            ):
-                return None
-            return row
-
-        market = find_listing(self._market_rows(manifest), ticker)
+        if pinned.held or us_fund(ticker):
+            return self._fund_lens(pinned, view, manifest, detail=detail)
+        market = exact_row(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
             ticker=ticker,
             view=view,
@@ -1734,14 +1711,13 @@ class ResearchLedger:
             generated_at=manifest.created_at.isoformat(),
             market=market,
         )
-        fundamental = (
-            find_listing(
-                self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows),
-                ticker,
-            )
-            or {}
-        )
-        metrics = fundamental.get("metrics") or {}
+
+        def event_row(name, parser):
+            rows = self._cached_rows(manifest, f"research/{name}.json", parser)
+            return pinned.event_row(exact_row(rows, ticker))[0]
+
+        fundamental = event_row("fundamentals", _fundamentals_rows)
+        metrics = fundamental.get("metrics") or fundamental.get("info") or {}
         # Report dates are compared with the exchange's calendar date.
         today = _exchange_today(metrics)
         asset_type = str(metrics.get("quoteType") or "UNKNOWN").upper()
@@ -1762,13 +1738,6 @@ class ResearchLedger:
                 asset_type = "UNKNOWN"
         peers = fund_peers(metrics.get("isin") or (fund_price or {}).get("isin"))
         peer = peers[0] if peers else None
-        venue = resolve_venue(
-            requested,
-            *exchanges.get(requested, ()),
-            *exchanges.get(ticker, ()),
-            *row_claims(ticker, fund_price or {}, metrics),
-            *row_claims((market or {}).get("ticker") or ticker, market or {}),
-        )
         fund_options_ticker = (
             ticker
             if asset_type == "ETF" and venue.us_listing
@@ -1776,7 +1745,7 @@ class ResearchLedger:
             if peer
             else None
         )
-        coverage_row = _find(
+        coverage_row = exact_row(
             self._cached_rows(manifest, "research/coverage.json", _fundamentals_rows), ticker
         )
         dataset_coverage = coverage_row.get("datasets", {}) if coverage_row else None
@@ -1822,7 +1791,9 @@ class ResearchLedger:
                 "options": option_rows,
                 "earnings": _fundamentals_rows,
             }[name]
-            if not _find(self._cached_rows(manifest, "research/" + name + ".json", parser), ticker):
+            if not exact_row(
+                self._cached_rows(manifest, "research/" + name + ".json", parser), ticker
+            ):
                 datasets.append(DatasetClock(dataset=name, reason="security-not-covered"))
                 continue
             _, freshness = _freshness(ref, datetime.now(UTC))
@@ -1881,13 +1852,7 @@ class ResearchLedger:
         if view in {"overview", "valuation", "fundamentals", "analyst", "ledger"} and not (
             view == "ledger" and detail in {"summary", "documents"}
         ):
-            financial_row = (
-                find_listing(
-                    self._cached_rows(manifest, "research/financials.json", _financials_rows),
-                    ticker,
-                )
-                or {}
-            )
+            financial_row = event_row("financials", _financials_rows) or {}
             raw = financial_row.get("financials") or {}
             # A different company joining the same artifact must not invalidate this
             # issuer's model inputs. Dataset clocks retain the container's SHA.
@@ -1913,7 +1878,7 @@ class ResearchLedger:
                     payload.trailing_pe_history = TrailingPeHistory.model_validate(trailing_pe)
 
         if view == "technical" or (view == "overview" and detail != "summary"):
-            payload.technical = _find(
+            payload.technical = exact_row(
                 self._cached_rows(
                     manifest,
                     "research/technical.json",
@@ -1922,7 +1887,7 @@ class ResearchLedger:
                 ticker,
             )
         if not is_fund and (view == "valuation" or (view == "overview" and detail != "summary")):
-            valuation = find_listing(
+            valuation = exact_row(
                 self._cached_rows(
                     manifest,
                     "research/valuation.json",
@@ -1974,16 +1939,13 @@ class ResearchLedger:
             # every statement and every technical history again.
             payload.fundamentals = dict(fundamental)
             calendar = _normalized_earnings_calendar(
-                _find(
-                    self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
-                    ticker,
-                ),
+                event_row("earnings", _fundamentals_rows),
                 today,
             )
             if calendar is not None:
                 payload.fundamentals["earningsCalendar"] = calendar
             technical = (
-                _find(
+                exact_row(
                     self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                     ticker,
                 )
@@ -1992,10 +1954,7 @@ class ResearchLedger:
             for key in ("seasonality", "seasonalityCoverage", "seasonalityMatrix", "yearPaths"):
                 if key in technical:
                     payload.fundamentals[key] = technical[key]
-            analyst = (
-                _find(self._cached_rows(manifest, "research/analyst.json", _analyst_rows), ticker)
-                or {}
-            )
+            analyst = event_row("analyst", _analyst_rows) or {}
             history = (analyst.get("analyst") or {}).get("earningsHistory") or []
             payload.fundamentals["earningsHistory"] = [
                 {
@@ -2009,26 +1968,12 @@ class ResearchLedger:
                 for h in history
                 if isinstance(h, dict)
             ]
-            financials_row = _find(
-                self._cached_rows(
-                    manifest,
-                    "research/financials.json",
-                    _financials_rows,
-                ),
-                ticker,
-            )
+            financials_row = event_row("financials", _financials_rows)
             payload.financials = financials_row.get("financials") if financials_row else None
         if view in {"analyst", "fundamentals", "ledger"} and not (
             view == "ledger" and detail in {"summary", "documents"}
         ):
-            analyst_row = _find(
-                self._cached_rows(
-                    manifest,
-                    "research/analyst.json",
-                    _analyst_rows,
-                ),
-                ticker,
-            )
+            analyst_row = event_row("analyst", _analyst_rows)
             payload.analyst = analyst_row.get("analyst") if analyst_row else None
             # Reserve the reading row from this publication, including on the
             # lightweight Financials response that drops the full analyst data.
@@ -2076,13 +2021,7 @@ class ResearchLedger:
         if payload.technical and market:
             payload.technical = {**payload.technical, "currency": market.get("currency") or ""}
         if view == "ledger" and detail == "documents":
-            financial_row = (
-                _find(
-                    self._cached_rows(manifest, "research/financials.json", _financials_rows),
-                    ticker,
-                )
-                or {}
-            )
+            financial_row = event_row("financials", _financials_rows) or {}
             evidence = (financial_row.get("financials") or {}).get("evidence") or {}
             payload.research_evidence = {
                 key: evidence.get(key)
@@ -2102,7 +2041,7 @@ class ResearchLedger:
                 payload.fundamentals.pop(key, None)
         if view == "overview" and detail == "summary":
             # A shared score entry, not another full-lens request or price history.
-            summary_row = _find(
+            summary_row = exact_row(
                 self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                 ticker,
             )
@@ -2111,10 +2050,7 @@ class ResearchLedger:
             payload.valuation = None
             payload.fundamentals = dict(fundamental)
             payload.fundamentals["earningsCalendar"] = _normalized_earnings_calendar(
-                _find(
-                    self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
-                    ticker,
-                ),
+                event_row("earnings", _fundamentals_rows),
                 today,
             )
             payload.research_evidence = {
@@ -2155,25 +2091,17 @@ class ResearchLedger:
             payload.fundamentals = {
                 **(payload.fundamentals or {}),
                 "earningsCalendar": _normalized_earnings_calendar(
-                    _find(
-                        self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
-                        ticker,
-                    ),
+                    event_row("earnings", _fundamentals_rows),
                     today,
                 ),
             }
         if view in {"overview", "technical", "fundamentals", "analyst"}:
             # Every lens that names the next report reads this one date.
-            analyst_row = _find(
-                self._cached_rows(manifest, "research/analyst.json", _analyst_rows), ticker
-            )
+            analyst_row = event_row("analyst", _analyst_rows)
             payload.next_earnings_date = _next_earnings_date(
                 (analyst_row or {}).get("analyst"),
                 _normalized_earnings_calendar(
-                    _find(
-                        self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
-                        ticker,
-                    ),
+                    event_row("earnings", _fundamentals_rows),
                     today,
                 ),
                 today,
@@ -2186,9 +2114,8 @@ class ResearchLedger:
         *,
         limit: int = 30,
     ) -> list[ResearchTimelinePoint]:
-        latest = self.store.latest_manifest()
-        listing = self.held_fund(ticker, latest) if latest else None
-        ticker = listing.ticker if listing else self._route_ticker(ticker)
+        exchanges = self.watchlist.listing_exchanges()
+        requested = ticker.upper()
         points: list[ResearchTimelinePoint] = []
         seen: set[tuple[str | None, ...]] = set()
         for manifest in self._history_manifests():
@@ -2201,16 +2128,20 @@ class ResearchLedger:
                     "research/options.json",
                     "research/valuation.json",
                     "research/earnings.json",
-                    *((FUND_PRICE_DIRECTORY_KEY,) if listing else ()),
+                    FUND_PRICE_DIRECTORY_KEY,
+                    FUND_PRICES_KEY,
+                    SECURITY_MASTER_KEY,
+                    "research/fundamentals.json",
                 )
             )
-            if artifact_hashes in seen:
+            pinned = self.pin_listing(requested, manifest, exchanges=exchanges)
+            ticker, listing = pinned.ticker, pinned.held
+            if pinned.venue().conflict:
                 continue
-            seen.add(artifact_hashes)
-            # The timeline only renders technical, valuation and options
-            # points. Building a full ticker snapshot here would also read
-            # fundamentals, earnings, broker and look-through artifacts for
-            # every historical run, which dominated the research page latency.
+            signature = (*artifact_hashes, ticker, listing.key if listing else None)
+            if signature in seen:
+                continue
+            seen.add(signature)
             if listing:
                 market = None
                 technical = (
@@ -2219,15 +2150,15 @@ class ResearchLedger:
                     else None
                 )
             else:
-                market = _find(self._market_rows(manifest), ticker)
-                technical = _find(
+                market = exact_row(self._market_rows(manifest), ticker)
+                technical = exact_row(
                     self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                     ticker,
                 )
             valuation = (
                 None
                 if listing
-                else _find(
+                else exact_row(
                     self._cached_rows(manifest, "research/valuation.json", valuation_rows),
                     ticker,
                 )
@@ -2235,7 +2166,7 @@ class ResearchLedger:
             options = (
                 None
                 if listing
-                else _find(
+                else exact_row(
                     self._cached_rows(
                         manifest,
                         "research/options.json",
@@ -2577,6 +2508,9 @@ class ResearchLedger:
             self._read_optional(manifest, "research/earnings.json"),
             self._read_optional(manifest, "research/technical.json"),
             self._read_optional(manifest, "research/analyst.json"),
+            partial(
+                self.pin_listing, manifest=manifest, exchanges=self.watchlist.listing_exchanges()
+            ),
         )
         requested_ticker = self._route_ticker(ticker) if ticker else None
         selected_ticker = (
@@ -2651,98 +2585,117 @@ class ResearchLedger:
                 )
             ):
                 continue
-            series = self.listing_prices(
-                PriceListing(ticker, symbol, None, {}), manifest, limit=limit
-            )
+            pinned = self.pin_listing(symbol, manifest, exchanges={})
+            series = self.price_series(symbol, manifest, limit=limit, pinned=pinned)
             if series.published_series_id == identity:
                 return series
         raise FileNotFoundError("cited chart unavailable")
 
-    def bind_price_series(self):
-        """Freeze the chart's routing aliases before a snapshot-bound assistant run."""
-        exchanges = self.watchlist.listing_exchanges()
-        return partial(self.price_series, exchanges=exchanges), exchanges
-
-    def price_series(
-        self,
-        ticker: str,
-        manifest: SnapshotManifest,
-        *,
-        limit: int = 504,
-        exchanges: dict[str, tuple[VenueClaim, ...]] | None = None,
-    ) -> ResearchPriceSeries:
-        selected = self.price_listing(ticker, manifest, exchanges)
-        return self.listing_prices(selected, manifest, limit=limit)
-
-    def listing_prices(self, selected, manifest, *, limit):
-        series = self._published_price_series(selected.ticker, manifest, limit=limit)
-        venue = self.price_venue(selected, series, manifest)
-        series.exchange_calendar = venue.calendar
-        return series
-
-    def price_listing(self, ticker, manifest, exchanges=None) -> PriceListing:
+    def pin_listing(self, ticker, manifest, *, exchanges=None) -> PinnedListing:
+        """Select the chart row once, retaining its original symbol and all venue claims."""
+        requested = ticker.strip().upper()
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
-        ticker = ticker.strip().upper()
-        fund = self.held_fund(ticker, manifest, exchanges)
-        resolved = fund.ticker if fund else self._route_ticker(ticker, exchanges)
-        return PriceListing(ticker, resolved, fund, exchanges)
-
-    def price_venue(self, selected: PriceListing, series, manifest):
-        """Validate the original request against the observed row, including exact fundamentals."""
-        requested, listing = selected.requested, selected.fund
-        reference = us_fund(selected.ticker) if not listing else None
-        published = series.published_bar_ticker or series.ticker
-        if _canonical_ticker(published) != _canonical_ticker(selected.ticker):
-            raise VenueConflict(f"unexpected price symbol for {requested}")
-        # A request echo cannot establish a provider observation. Older live charts
-        # may carry only the exchange or session, independently of the routed ticker.
-        observed_symbol = series.published_bar_ticker
-        claims = [
-            *series.venue_claims,
-            *row_claims(
-                observed_symbol,
-                {
-                    "mic": series.published_bar_mic,
-                    "exchange": series.published_bar_exchange or series.quote_exchange,
-                },
+        listing = self.held_fund(requested, manifest, exchanges)
+        route = listing.ticker if listing else self._route_ticker(requested, exchanges)
+        reference = us_fund(route)
+        technicals = self._published_technicals(manifest)
+        technical = _find(technicals.get("rows") or [], route)
+        fund_price = self._fund_price(manifest, route, listing, with_points=True)
+        source = fund_price or (None if listing or reference else technical)
+        published = str((source or {}).get("ticker") or route).upper()
+        aliases = {route} if route != requested else set()
+        if published != route and _canonical_ticker(published) == _canonical_ticker(route):
+            # The historic BASE / BASE.L spelling is safe only with independent
+            # London evidence on the observed row or its own watchlist entry.
+            evidence = resolve_venue(
+                published, *exchanges.get(published, ()), *row_claims(published, source)
+            )
+            if evidence.venues == {"XLON"}:
+                aliases.add(published)
+            else:
+                # An unrelated bare-symbol row cannot select or veto the requested listing.
+                published, source = route, None
+        claims = []
+        for symbol in dict.fromkeys((requested, route, published)):
+            claims.extend(exchanges.get(symbol, ()))
+            claims.append(VenueClaim("symbol", symbol, symbol))
+        for row in (
+            source,
+            exact_row(technicals.get("rows") or [], published),
+            self._fund_price(manifest, published, listing),
+            exact_row(
+                self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows),
+                published,
             ),
-        ]
-        if series.source == ALPACA_SIP:
-            claims.append(VenueClaim("region", "US", published))
-        observed = resolve_venue(
-            observed_symbol, *(c._replace(listing=observed_symbol) for c in claims)
+        ):
+            if row:
+                claims.extend(row_claims(published, row))
+        market = exact_row(
+            self._cached_rows(
+                manifest,
+                CURRENT_MARKET_KEY,
+                _market_rows_with_claims,
+                fallback_key=LEGACY_MARKET_KEY,
+            ),
+            published,
         )
-        expected = resolve_venue(requested, *selected.exchanges.get(requested, ()))
-        if expected.venues and not observed.venues:
-            raise VenueConflict(f"unverified price listing for {requested}")
-        for ticker in {requested, published, series.ticker}:
-            claims.append(VenueClaim("symbol", ticker, ticker))
-            claims.extend(selected.exchanges.get(ticker, ()))
-            for key in ("research/fundamentals.json", FUND_PRICE_DIRECTORY_KEY):
-                for row in self._cached_rows(manifest, key, _fundamentals_rows):
-                    if str(row.get("ticker") or "").upper() == ticker.upper():
-                        claims.extend(
-                            row_claims(ticker, row, row.get("metrics") or row.get("info"))
-                        )
-            if not series.published_series_id:
-                technical = self._published_technicals(manifest)
-                for row in technical.get("rows", []):
-                    if row.get("ticker") == ticker:
-                        claims.extend(row_claims(ticker, row))
+        if market:
+            claims.extend(market["_venue_claims"])
         if listing:
             claims.extend(row_claims(listing.ticker, {"mic": listing.mic}))
             claims.append(watchlist_claim(listing.ticker, listing.exchange))
         if reference:
-            claims.append(provider_claim(reference.exchange, published))
-        venue = resolve_venue(requested, *claims)
+            claims.append(provider_claim(reference.exchange, route))
+        return PinnedListing(
+            requested,
+            route,
+            published,
+            tuple(claims),
+            tuple(sorted(aliases)),
+            listing,
+            source,
+            bool(fund_price),
+        )
+
+    def bind_price_series(self):
+        """Freeze the chart and event routing together before a snapshot-bound run."""
+        exchanges = self.watchlist.listing_exchanges()
+        return partial(self.price_series, exchanges=exchanges), partial(
+            self.pin_listing, exchanges=exchanges
+        )
+
+    def price_series(self, ticker, manifest, *, limit=504, exchanges=None, pinned=None):
+        pinned = pinned or self.pin_listing(ticker, manifest, exchanges=exchanges)
+        if pinned.venue().conflict:
+            raise VenueConflict(f"incompatible venue claims for {ticker}")
+        series = self._published_price_series(pinned, manifest, limit=limit)
+        venue = self.price_venue(pinned, series)
+        series.exchange_calendar = venue.calendar
+        return series
+
+    @staticmethod
+    def price_venue(pinned, series):
+        """Live provider claims refine the same raw price evidence as the published chart."""
+        observed = series.published_bar_ticker or series.ticker
+        claims = [
+            *series.venue_claims,
+            VenueClaim("identity", observed, pinned.ticker),
+            *row_claims(
+                observed,
+                {"mic": series.published_bar_mic, "exchange": series.published_bar_exchange},
+            ),
+        ]
+        if series.source == ALPACA_SIP:
+            claims.append(VenueClaim("region", "US", observed))
+        venue = pinned.venue(*claims)
         if venue.conflict or (
             series.exchange_calendar
             and venue.calendar
             and series.exchange_calendar != venue.calendar
         ):
-            raise VenueConflict(f"incompatible venue claims for {requested}")
-        series.venue_claims = tuple(claims)
+            raise VenueConflict(f"incompatible venue claims for {pinned.requested}")
+        series.venue_claims = (*pinned.claims, *claims)
         return venue
 
     def _published_technicals(self, manifest: SnapshotManifest) -> JsonObject:
@@ -2809,26 +2762,19 @@ class ResearchLedger:
         )
 
     def _published_price_series(
-        self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
+        self, pinned: PinnedListing, manifest: SnapshotManifest, *, limit: int = 504
     ) -> ResearchPriceSeries:
-        """Read a chart's resolved ticker entirely from the pinned publication."""
-        exact = [listing for listing in self._held_funds(manifest) if listing.ticker == ticker]
-        if len(exact) > 1:
+        """Read the price row selected with the rest of this listing's evidence."""
+        ticker = pinned.route
+        if sum(listing.ticker == ticker for listing in self._held_funds(manifest)) > 1:
             raise FileNotFoundError(f"ambiguous published fund listing for {ticker}")
-        listing = exact[0] if exact else None
-        fund_price = self._fund_price(manifest, ticker, listing, with_points=True)
+        fund_price = pinned.fund_bars
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
         cache_key = (manifest.run_id, ticker)
         if cached := self._price_series_cache.get(cache_key):
             return _visible_price_sessions(cached, limit)
         raw = {} if fund_price else self._published_technicals(manifest)
-        raw_rows = raw.get("rows")
-        rows = raw_rows if isinstance(raw_rows, list) else []
-        source = fund_price or (
-            None
-            if listing or us_fund(ticker)
-            else _find([row for row in rows if isinstance(row, dict)], ticker)
-        )
+        source = pinned.price_row
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")
         bar_ticker = str(source["ticker"]).strip().upper()

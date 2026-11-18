@@ -12,6 +12,7 @@ from trading_max.reference.taxonomy import classification_for_profile
 from trading_max.research.earnings_changes import consensus_estimates
 from trading_max.research.held_funds import FUND_PRICES_KEY
 
+from ..research_listing import PinnedListing
 from .insights import (
     TRADE_MARKERS,
     CalendarDay,
@@ -137,7 +138,6 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
     )
     if observed:
         series = observed
-        ticker = series.ticker
     else:
         if not deps.price_series or not deps.manifest:
             return read.missing()
@@ -151,7 +151,8 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             or not series.published_bar_ticker
         ):
             return read.missing("displayed_price_series_mismatch")
-        ticker = series.published_bar_ticker
+    pinned = PinnedListing.from_price_series(args.ticker, series)
+    ticker = pinned.ticker
     latest = series.points[-1]
     last_trade = last_listing_trade(
         read, ticker, latest.date, series.currency, series.trade_markers
@@ -163,7 +164,7 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
         else previous
     )
     benchmarks = []
-    fund = _ticker_row(read.read(FUNDAMENTALS), ticker) or {}
+    fund, _ = pinned.event_row(_ticker_row(read.read(FUNDAMENTALS), ticker))
     profile = classification_for_profile(
         sector=fund.get("sector"),
         industry=fund.get("industry"),
@@ -180,7 +181,7 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
     )
     sector = next((spec for spec in WORLD_INDUSTRY_INDICES if spec.gics == code), None)
     sector_status = "unmapped" if not sector else "unavailable"
-    technical = _ticker_row(read.read(TECHNICAL), ticker) or {}
+    technical, _ = pinned.event_row(_ticker_row(read.read(TECHNICAL), ticker))
     if not observed and series.currency == "USD" and technical.get("as_of") == latest.date:
         comparisons = [("spy_63d", "SPY")]
         if sector and sector.symbol:
@@ -277,15 +278,19 @@ def earnings_observations(analyst: dict, today: str) -> dict:
 def research_earnings(ctx: Context, args: SecurityArgs) -> dict:
     """Read the latest reported earnings and consensus EPS or sales for dated fiscal periods."""
     read = _Read(ctx.deps, "research_earnings", args, "public_research")
-    fund = _ticker_row(read.read(FUNDAMENTALS), args.ticker) or {}
+    pinned = ctx.deps.selected_listing(args.ticker)
+    if pinned.venue().conflict:
+        return read.missing("listing_calendar_unavailable")
+    ticker = pinned.ticker
+    fund, _ = pinned.event_row(_ticker_row(read.read(FUNDAMENTALS), ticker))
     kind = str(_mapped(fund.get("metrics")).get("quoteType") or "").upper()
     if kind in {"ETF", "ETP", "MUTUALFUND", "INDEX"}:
         return read.result("not_applicable")
     batch = read.read(ANALYST) or {}
-    clock = _mapped(_mapped(batch.get("rowClocks")).get(args.ticker))
+    clock = _mapped(_mapped(batch.get("rowClocks")).get(ticker))
     if clock and clock.get("state") != "available":
         return read.missing("fresh_estimates_unavailable", keys=[ANALYST])
-    row = _ticker_row(batch, args.ticker) or {}
+    row, _ = pinned.event_row(_ticker_row(batch, ticker))
     analyst = _mapped(row.get("analyst"))
     if not analyst or not ctx.deps.manifest:
         return read.missing("analyst_data_unavailable", keys=[ANALYST])
@@ -296,7 +301,7 @@ def research_earnings(ctx: Context, args: SecurityArgs) -> dict:
         data={
             **observations,
             "changes": row.get("estimateChanges", []),
-            "ticker": args.ticker,
+            "ticker": ticker,
             "version": _digest(["earnings-v2", observations, row.get("estimateChanges", [])]),
             "as_of": _iso(analyst.get("asOf")) or _iso(batch.get("generated_at")),
         },
@@ -371,8 +376,13 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
             return read.missing("headline_outside_selected_moment")
         ticker = selected.get("listing") or selected["ticker"]
         published = event.get("publication_date", args.date)
-    financials = _mapped((_ticker_row(read.read(FINANCIALS), ticker) or {}).get("financials"))
-    stories, keys, _ = moment_stories(read, ticker, _mapped(financials.get("evidence")))
+    if args.published_series_id:
+        # The retained chart already verified this symbol before returning the selected headline.
+        pinned = PinnedListing(ticker, ticker, ticker, ())
+    else:
+        pinned = ctx.deps.selected_listing(ticker)
+    ticker = pinned.ticker
+    stories, keys, _ = moment_stories(read, pinned, _ticker_row(read.read(FINANCIALS), ticker))
     row = next(
         (
             row

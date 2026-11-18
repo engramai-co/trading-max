@@ -109,7 +109,9 @@ class AccountDecisionStage:
 
         try:
             frame = completed_daily_bars(
-                self.history_loader(BENCHMARK_SYMBOL, start.date(), end.date()), now=now
+                self.history_loader(BENCHMARK_SYMBOL, start.date(), end.date()),
+                now=now,
+                ticker=BENCHMARK_SYMBOL,
             )
             usd = final_rates(self.history_loader, "GBPUSD=X", start, end, now)
         except Exception:

@@ -231,3 +231,12 @@ def test_fund_producer_scores_listing_and_preserves_raw_indicators():
     assert result.momentum["rsi14"] is not None
     assert result.moving_averages["sma200"] is not None
     assert result.price_series
+
+
+def test_technical_publisher_checks_injected_history_identity_before_scoring():
+    from trading_max.research.technical import MarketDataError
+
+    frame = synthetic_bars(80)
+    frame.attrs.update(exchange="LSE", provider_venue={"symbol": "OTHER.L", "exchangeName": "LSE"})
+    with pytest.raises(MarketDataError, match="listing"):
+        analyze_ticker("SYN.L", "SYN.L", frame, {})

@@ -214,7 +214,7 @@ class MarketResearchService:
         for symbol in ("SPY", "QQQ", "SOXX", *sectors):
             try:
                 benchmark_closes[symbol] = completed_daily_bars(
-                    histories[symbol].result(), now=now
+                    histories[symbol].result(), now=now, ticker=symbol
                 )["Close"]
             except Exception as exc:
                 benchmark_closes[symbol] = pd.Series(dtype=float, index=pd.DatetimeIndex([]))

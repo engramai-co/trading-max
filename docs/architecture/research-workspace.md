@@ -104,7 +104,9 @@ Use `trading_max.research.venues.resolve_venue(requested, *claims)` wherever
 published or live evidence is matched to a listing. Pass the original requested
 symbol, including its suffix. Each `VenueClaim(source, value, listing)` names
 the namespace and the symbol to which the evidence belongs. `row_claims` builds
-claims for a price row and its exact fundamentals. `watchlist_claims` handles
+claims for a price row and its exact fundamentals. A provider symbol owns its
+own exchange evidence. Joining separately owned rows requires an exact symbol
+or an alias verified by the routing evidence. A common MIC alone does not identify a security. `watchlist_claims` handles
 stored provider codes, legacy display names and the generated market default.
 
 The result contains the compatible MICs in `venues`, a `conflict` flag and the
@@ -130,3 +132,40 @@ The namespace references are the [OpenFIGI exchange code list](https://www.openf
 the [ISO 10383 MIC register](https://www.iso20022.org/market-identifier-codes)
 and [Yahoo’s listing suffixes](https://uk.help.yahoo.com/kb/SLN2310.html).
 Yahoo chart metadata supplies its exchange codes and display names.
+
+
+### Every path that consults the resolver
+
+`ResearchLedger.pin_listing` binds the requested ticker, routed ticker, exact
+price-row ticker, held listing and venue claims to one snapshot. It checks the
+raw technical and fund bars, the fund directory, the compact market quote and
+the exact fundamentals. A held alias must identify one listing. The legacy
+bare/London price-row fallback requires London evidence on the observed row
+or its own watchlist entry. Assistant runs freeze the routing inputs at startup.
+
+| Entry point | Evidence checked and resulting behaviour |
+| --- | --- |
+| Published daily price history | The selected technical or fund row supplies the series identifier, bar prices and quote currency. The original request and provider symbol must agree with the pin. Trade markers follow that same series and retain their account scope. |
+| Live charts | Yahoo OHLC, the close-only fallback and Alpaca SIP add their observed identities to the same published claims. Alpaca adds the consolidated US region. A conflict with legacy fund bars also withholds live prices. |
+| Technical and overview lenses | The exact compact market and fundamentals rows supply the quote. The selected technical row supplies the score. The resolver supplies the schedule. Exact, validated earnings and analyst rows supply the next report date. A conflicting price pin withholds all four. Public previews check the search result against the live history before scoring. |
+| Key moments | The dated-event join starts with the chart’s series and validates earnings, analyst and financial parents, calendar data, news and diagnostics. Each nested event inherits its parent’s claims and adds its own. |
+| News, dividends and filings | Security news, dated financial evidence and the research journal use the pinned symbol. Both the earnings parent and its nested calendar must agree before an ex-dividend date is used. Bar distributions retain the identity of their source series. |
+| Analyst and earnings rows | Ratings, reported and projected earnings, the legacy events endpoint and the assistant’s stored lens validate parent rows before reading nested events. The overview, per-ticker snapshot and historical technical timeline use the same listing selection. |
+| Daily and month-end completion | Technical research, benchmark and decision-price frames pass the requested symbol and observed provider evidence into calendar resolution. An unverified venue leaves the current close or final observed month pending. Verified early closes use the actual session close. |
+| Fundamentals and technical publishers | Yahoo symbols, MICs, short exchange codes, full exchange names and supplied market segments survive publication. Fundamentals retain conflicting claims with a warning. The technical publisher rejects incompatible history before computing scores. |
+
+An untyped legacy fund can use the cash-session close when supported equity
+and ETF cutoffs agree. An affirmative mutual-fund type or conflicting types
+withhold timed leads. Vienna Global Market uses its segment-specific closing
+auction when the publisher supplies the segment. The existing keyless Yahoo
+data can omit it. On a documented normal session the resolver still dates
+headlines before all candidate cutoffs and after all candidate cutoffs. It
+withholds a date during the interval when applicable outcomes disagree.
+[Vienna Stock Exchange trading hours](https://www.wienerborse.at/en/trading/trading-information/trading-hours/).
+
+OTCQB and OTCQX retain separate MICs. London’s International Order Book spans
+XLON and XLOM. OpenFIGI’s bare Taiwan composite covers both exchanges while the
+qualified exchange names distinguish them. A supported venue identity can exist
+without a verified timing rule.
+[London Stock Exchange Stock Connect](https://www.londonstockexchange.com/en/our-regions/china/london-stock-connect)
+and [OpenFIGI allocation rules](https://www.openfigi.com/about/allocation-rules).

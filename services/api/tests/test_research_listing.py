@@ -229,3 +229,46 @@ def test_shared_close_history_requires_independent_venue_and_currency(
         chart = response.json()
         assert chart["currency"] == "GBP"
         assert chart["points"][0]["close"] == 85.0
+
+
+def test_research_readings_reject_foreign_analyst_and_headline_rows(bound):
+    from trading_max.research.news import NEWS_KEY
+
+    from services.api.tests.test_pinned_listing import FRIDAY, base_row, feed, publish
+    from services.api.trading_max_api.agent import research_tools
+
+    app, manifest, _ = bound
+    ticker = "SYN.L"
+    publish(
+        app,
+        {
+            tools.TECHNICAL: {"rows": [base_row(app, manifest, ticker, exchange="LSE")]},
+            tools.ANALYST: {
+                "rows": [
+                    {
+                        "ticker": ticker,
+                        "mic": "XNYS",
+                        "analyst": {
+                            "earningsEvents": [
+                                {"date": FRIDAY, "status": "reported", "id": "foreign"}
+                            ],
+                        },
+                    }
+                ]
+            },
+            NEWS_KEY: feed(ticker, mic="XNYS"),
+        },
+    )
+    deps = app.state.assistant.deps_for_run("research", None)
+    earnings = _call(
+        deps, research_tools.research_earnings, research_tools.SecurityArgs(ticker=ticker)
+    )
+    news = _call(
+        deps,
+        research_tools.research_headline,
+        research_tools.HeadlineArgs(ticker=ticker, date=FRIDAY, reference="lead"),
+    )
+    assert not earnings.get("data") and not news.get("data"), (
+        earnings.get("data"),
+        news.get("data"),
+    )

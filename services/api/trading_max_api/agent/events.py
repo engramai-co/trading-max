@@ -14,8 +14,8 @@ from trading_max.research.calendars.events import window_bounds
 from trading_max.research.calendars.refresh import MACRO_KEY
 from trading_max.research.listing import LONDON, broker_listing
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY, web_url
-from trading_max.research.venues import resolve_venue, row_claims
 
+from ..research_listing import PinnedListing
 from .tools import (
     ANALYST,
     CFD_LEDGER,
@@ -599,26 +599,28 @@ def event_data(deps, args, *, upcoming):
     keys.extend([TECHNICAL, FUND_PRICES])
     names = set()
     entries = []
-    for ticker in sorted(symbols):
-        fundamental = data[FUNDAMENTALS].get(ticker, {})
-        claims = list(deps.listing_exchanges.get(ticker, ()))
-        for observed in (
-            technical.get(ticker),
-            funds.get(ticker),
-            fundamental,
+    selected_tickers = set()
+    trade_args = args
+    for requested in sorted(symbols):
+        if deps.pin_listing:
+            pinned = deps.pin_listing(requested, deps.manifest)
+        else:
+            pinned = PinnedListing(requested, requested, requested, ()).with_event_claims(
+                technical.get(requested),
+                funds.get(requested),
+            )
+        ticker = pinned.ticker
+        if args.ticker:
+            trade_args = args.model_copy(update={"ticker": ticker})
+        if ticker in selected_tickers:
+            continue
+        selected_tickers.add(ticker)
+        pinned = pinned.with_event_claims(
             news_rows.get(ticker),
             status_rows.get(ticker),
-            data[ANALYST].get(ticker),
-            data[EARNINGS].get(ticker, {}).get("calendar"),
-            data.get(FINANCIALS, {}).get(ticker, {}).get("financials", {}).get("evidence"),
-            data[EARNINGS].get(ticker),
-            data.get(FINANCIALS, {}).get(ticker),
-        ):
-            if observed:
-                claims.extend(
-                    row_claims(ticker, observed, observed.get("metrics") or observed.get("info"))
-                )
-        venue = resolve_venue(ticker, *claims)
+            *(rows.get(ticker) for key, rows in data.items() if key != NEWS_KEY),
+        )
+        venue = pinned.venue()
         if venue.conflict:
             issues.append("listing_calendar_unavailable")
             continue
@@ -634,7 +636,13 @@ def event_data(deps, args, *, upcoming):
             issues.append("analyst_events_unavailable")
         if not data[EARNINGS].get(ticker, {}).get("calendar"):
             issues.append("security_calendar_unavailable")
-        for entry in _public(ticker, data, upcoming):
+        selected = {}
+        for key, rows in data.items():
+            row, rejected = pinned.event_row(rows.get(ticker))
+            if rejected:
+                issues.append("listing_calendar_unavailable")
+            selected[key] = {ticker: row}
+        for entry in _public(ticker, selected, upcoming):
             if entry and entry["kind"] == "earnings" and entry.pop("currency_missing", False):
                 issues.append("earnings_currency_unavailable")
             entries.append(entry)
@@ -660,7 +668,7 @@ def event_data(deps, args, *, upcoming):
             _market_days(names, start - timedelta(days=1), end + timedelta(days=1), issues)
         )
     else:
-        entries.extend(_trades(read, args, codes, issues, keys))
+        entries.extend(_trades(read, trade_args, codes, issues, keys))
     # A single syndicated article can appear in several held security feeds.
     # Retain those associations while citing the article once.
     articles = [row for row in entries if row and row["kind"] == "news"]

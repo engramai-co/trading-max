@@ -50,6 +50,7 @@ from trading_max.analytics.historical_nav import (
     _observed_trade_gbp,
 )
 from trading_max.research.calendar import calendar_name, completed_daily_bars, market_calendar
+from trading_max.research.venues import yahoo_venue_metadata
 
 TRADE_ACTIONS = r"buy|sell"
 #: Same acceptance limit as the NAV: a listing whose quotes sit more than 35%
@@ -136,6 +137,7 @@ def _listing_history(symbol: str, start: date, end: date) -> pd.DataFrame:
         actions=True,
     )
     metadata = getattr(getattr(ticker, "_price_history", None), "_history_metadata", None)
+    frame.attrs["provider_venue"] = yahoo_venue_metadata(metadata or {})
     frame.attrs["exchange"] = str((metadata or {}).get("exchangeName") or "")
     return frame
 
@@ -264,7 +266,7 @@ class CachedDailyHistory:
         frame = self.fetch(symbol, start, end)
         exchange = str(frame.attrs.get("exchange") or exchange)
         frame.attrs["exchange"] = exchange
-        return self._rows(completed_daily_bars(frame, now=_utc(now))), exchange
+        return self._rows(completed_daily_bars(frame, now=_utc(now), ticker=symbol)), exchange
 
     def read_cached(self, symbol: str, start: date, end: date) -> pd.DataFrame:
         """Read only completed bars already stored locally, with no fetch path."""
@@ -477,7 +479,9 @@ def final_rates(
     """
 
     return _nominal_close(
-        completed_daily_bars(history_loader(symbol, start.date(), end.date()), now=now)
+        completed_daily_bars(
+            history_loader(symbol, start.date(), end.date()), now=now, ticker=symbol
+        )
     )
 
 
@@ -584,7 +588,7 @@ def resolve_decision_prices(
                 break
             try:
                 listing = history_loader(symbol, listing_start.date(), end_day.date())
-                frame = completed_daily_bars(listing, now=now)
+                frame = completed_daily_bars(listing, now=now, ticker=symbol)
             except Exception:  # noqa: S112 - an unavailable listing is just a rejected candidate
                 continue
             exchange = str(listing.attrs.get("exchange") or "")
