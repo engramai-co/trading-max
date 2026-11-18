@@ -19,7 +19,7 @@ from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.reference.security_master import SecurityDescriptor
 from trading_max.reference.venues import venue_mic
-from trading_max.research.calendar import listing_calendar, session_schedule
+from trading_max.research.calendar import listing_calendar, listing_venues, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
     QuoteSnapshot,
@@ -597,7 +597,7 @@ def _enrich_fundamentals(
 @dataclass(frozen=True)
 class PriceListing:
     ticker: str
-    venue: str | None
+    venues: frozenset[str]
     fund: FundListingIdentity | None
 
     def verify(self, series: ResearchPriceSeries, *, live=False) -> ResearchPriceSeries:
@@ -605,9 +605,9 @@ class PriceListing:
         reported = (
             series.quote_exchange or series.published_bar_exchange or series.exchange_calendar
         )
-        observed = venue_mic(reported) or listing_calendar(None if live else symbol, reported, None)
+        observed = listing_venues(None if live else symbol, reported)
         if _canonical_ticker(symbol) != _canonical_ticker(self.ticker) or (
-            self.venue and self.venue != observed
+            self.venues and self.venues.isdisjoint(observed)
         ):
             raise FileNotFoundError(f"unverified price listing for {self.ticker}")
         return series
@@ -2606,13 +2606,13 @@ class ResearchLedger:
             exchanges = self.watchlist.listing_exchanges()
         ticker = ticker.strip().upper()
         fund = self.held_fund(ticker, manifest, exchanges)
-        requested = listing_calendar(ticker, None, None)
+        requested = listing_venues(ticker, None)
         resolved = (
             fund.ticker if fund else ticker if requested else self._route_ticker(ticker, exchanges)
         )
         exchange = fund.mic if fund else exchanges.get(resolved)
-        venue = requested or venue_mic(exchange) or listing_calendar(resolved, exchange, None)
-        return PriceListing(resolved, venue, fund)
+        venues = requested or listing_venues(resolved, exchange)
+        return PriceListing(resolved, venues, fund)
 
     def _published_technicals(self, manifest: SnapshotManifest) -> JsonObject:
         key = "research/technical.json"
@@ -2715,14 +2715,15 @@ class ResearchLedger:
             else market.get("currency") or source.get("currency") or ""
         )
         all_markers, unresolved = self.trade_markers(manifest, bar_ticker, currency)
+        exchange = str(source.get("mic") or source.get("exchange") or "").strip() or None
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
             timezone=source.get("timezone") or None,
-            published_bar_exchange=str(source.get("exchange") or "").strip() or None,
-            exchange_calendar=listing_calendar(
-                bar_ticker, source.get("exchange"), source.get("timezone")
-            ),
+            published_bar_asset_type=str(source.get("asset_type") or ("ETF" if fund_price else ""))
+            or None,
+            published_bar_exchange=exchange,
+            exchange_calendar=listing_calendar(bar_ticker, exchange, source.get("timezone")),
             published_series_id=published_price_series_id(artifact.sha256, ticker)
             if artifact
             else None,

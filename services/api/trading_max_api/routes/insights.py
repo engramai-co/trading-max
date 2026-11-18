@@ -152,6 +152,7 @@ class MomentEvent(BaseModel):
     kind: str
     reference: str
     publication_date: str | None = None
+    timing: Literal["closing_auction_window"] | None = None
     role: Literal["lead"] | None = None
 
 

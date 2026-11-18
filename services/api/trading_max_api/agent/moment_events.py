@@ -2,27 +2,12 @@
 
 from datetime import datetime
 
-from exchange_calendars.errors import CalendarError
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import listing_calendar
+from trading_max.research.closing_auctions import headline_session
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
 from .events import headline_stories, listed_dividends, listed_headlines
 from .tools import EARNINGS, FINANCIALS, FUNDAMENTALS, _mapped, _Read, _rows
-
-
-def _news_session(calendar, instant):
-    if calendar:
-        stamp = datetime.fromisoformat(instant)
-        try:
-            exchange = market_calendar(calendar, stamp.year, stamp.year)
-            local_day = stamp.astimezone(exchange.tz).date().isoformat()
-            session = exchange.date_to_session(local_day, direction="next")
-            if stamp > exchange.session_close(session):
-                session = exchange.next_session(session)
-            return session.date().isoformat()
-        except (CalendarError, OverflowError, ValueError):
-            pass
-    return None
 
 
 def listing_moment_events(
@@ -74,11 +59,16 @@ def listing_moment_events(
                 distribution_days.add(day)
 
     exchange = exchange_calendar
-    if not exchange and not (series and series.published_bar_exchange):
+    if not (series and (series.published_bar_exchange or series.quote_exchange)) and metrics.get(
+        "fullExchangeName"
+    ):
         exchange = listing_calendar(
             ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
         )
-    headlines, news_keys, news_issues = headline_events(read, args, exchange, evidence)
+    asset_type = series.published_bar_asset_type if series else None
+    if not asset_type or asset_type.upper() == "UNKNOWN":
+        asset_type = metrics.get("quoteType")
+    headlines, news_keys, news_issues = headline_events(read, args, exchange, evidence, asset_type)
     return [*events, *headlines], [*keys, *news_keys], [*issues, *news_issues]
 
 
@@ -106,16 +96,22 @@ def moment_stories(read, ticker, evidence):
     return headline_stories(rows, raw_rows), keys, issues
 
 
-def headline_events(read, args, exchange, evidence):
+def headline_events(read, args, exchange, evidence, asset_type=None):
     stories, keys, issues = moment_stories(read, args.ticker, evidence)
     events = []
     for row in stories:
         published = row["date"]
-        day = _news_session(exchange, row["instant"]) if row["instant"] else published
+        day, timing = (
+            headline_session(exchange, datetime.fromisoformat(row["instant"]), asset_type)
+            if row["instant"]
+            else (published, None)
+        )
         if day is None:
             issues.append("listing_calendar_unavailable")
         elif args.start <= day <= args.end:
             event = {"date": day, "kind": "news", "reference": row["reference"], "role": "lead"}
+            if timing:
+                event["timing"] = timing
             if day != published:
                 event["publication_date"] = published
             events.append(event)
