@@ -376,18 +376,33 @@
   transform: translate(-50%, -50%);
   pointer-events: auto;
 }
-.mx-key-marker::after { content: ""; position: absolute; inset: -5px; }
+.mx-key-marker::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
 .mx-key-marker[aria-expanded="true"], .mx-track-moment[aria-expanded="true"] .mx-moment-number {
   color: var(--mx-nav-active-ink);
   background: var(--mx-brand);
 }
-.mx-event-track .mx-moment-number { justify-self: center; }
+.mx-event-track .mx-moment-number {
+  justify-self: center;
+}
 .mx-key-anchor {
   position: absolute;
   width: min(360px, 100%);
   z-index: 5;
   pointer-events: auto;
 }
-.mx-plot:has(.mx-key-anchor) { overflow: visible; z-index: 6; }
-.mx-key-anchor .mx-anchored-reading { width: 100%; }
-@media (max-width: 767px) { .mx-key-marker { display: none; } }
+.mx-plot:has(.mx-key-anchor) {
+  overflow: visible;
+  z-index: 6;
+}
+.mx-key-anchor .mx-anchored-reading {
+  width: 100%;
+}
+@media (max-width: 767px) {
+  .mx-key-marker {
+    display: none;
+  }
+}

@@ -17,7 +17,8 @@ export function useResearchOrigin(ticker: string, lens: string, snapshotId?: str
   const search = params.toString();
   return useMemo(() => {
     const query = new URLSearchParams(search);
-    if (query.get("type") !== "index") query.set("ticker", ticker);
+    query.set("ticker", ticker);
+    if (lens === "technical" || lens === "overview" || lens === "price") query.set("scope","broker_total");
     query.set("view", lens);
     return { page: "research", search: "?" + query, snapshotId };
   }, [ticker, lens, snapshotId, search]);
@@ -28,24 +29,26 @@ export function PositionReading({ security, snapshotId, name }: { security: Pric
   const { open, ready } = useAssistant();
   const result = useRoleReading({ role: "your-position", context: security, snapshotId }, open && !!snapshotId);
   const origin = useResearchOrigin(security.ticker, "overview", snapshotId);
-  const contextKey = JSON.stringify(security);
+  const { ticker, published_series_id, index_id } = security;
+  const context = useMemo(() => ({ticker, published_series_id, ...(index_id ? {index_id} : {})}), [ticker, published_series_id, index_id]);
   const card = useMemo(() => ready && (result.data || result.isFetching) ? {
     role: "your-position", title: t("与我相关", "Your position"), object: name || security.ticker,
     questions: [t("这段时间价格如何变化？", "How did the price change?"),
       t("有哪些已核实的事件？", "Which dated events can be verified?"),
       t("与同期市场相比呢？", "How does it compare with the market?")],
-    context: JSON.parse(contextKey), origin, reading: result.data,
+    context, origin, reading: result.data,
     status: result.isFetching ? t("正在读取行情与成交记录…", "Reading prices and trade records…") : undefined,
-  } : null, [ready, result.data, result.isFetching, t, name, security.ticker, contextKey, origin]);
+  } : null, [ready, result.data, result.isFetching, t, name, security.ticker, context, origin]);
   usePageRole(card);
   return null;
 }
 
-export function EarningsBrief({ ticker, lens }: { ticker: string; lens: string }) {
+export function EarningsBrief({ ticker, lens, snapshotId }: { ticker: string; lens: string; snapshotId: string }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const result = useRoleReading({ role: "earnings-brief", context: { ticker }, cachedOnly: true, latest: true }, true);
-  const reading = result.data;
+  const { ready } = useAssistant();
+  const result = useRoleReading({ role: "earnings-brief", context: { ticker }, snapshotId, cachedOnly: true, latest: true }, true);
+  const reading = ready ? result.data : null;
   const origin = useResearchOrigin(ticker, lens, reading?.snapshotId ?? undefined);
   const card = useMemo(() => reading ? {
     role: "earnings-brief", title: t("财报速读", "Earnings brief"), object: ticker, reading, origin, context: { ticker },

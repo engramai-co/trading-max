@@ -178,9 +178,10 @@ export function PriceHistory({
   const visibleZoom = chartZoom?.key === zoomKey ? chartZoom : savedZoom();
   const span = Math.max(0, slotDates.length - 1);
   const low = Math.round(span * visibleZoom.start / 100), high = Math.round(span * visibleZoom.end / 100);
-  const published = current && actualInterval === "1d" && priceData?.publishedSeriesId && eventTrack !== false;
-  const moments = useKeyMoments(published ? {ticker: priceData.ticker, published_series_id: priceData.publishedSeriesId!} : null,
-    slotDates[low]?.slice(0, 10), slotDates[high]?.slice(0, 10), snapshotId);
+  const seriesId = priceData?.publishedSeriesId || priceData?.observedSeriesId;
+  const published = current && actualInterval === "1d" && seriesId && eventTrack !== false;
+  const moments = useKeyMoments(published ? {ticker: priceData!.ticker, published_series_id: seriesId} : null,
+    slotDates[low]?.slice(0, 10), slotDates[high]?.slice(0, 10), priceData?.snapshotId ?? snapshotId);
   const showEvents = eventTrack ?? (full || markers.length > 0 || moments.items.length > 0);
   const momentPoints = moments.items.flatMap(m => {
     const index = slotDates.indexOf(m.date);

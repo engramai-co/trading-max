@@ -598,8 +598,8 @@ function SecurityResearchWorkspace() {
                     : <Panel className="mx-research-wait"><Pending shape="chart" height={338} quiet /></Panel>
                 ) : (
                 <div className="mx-data-body mx-research-read" aria-busy={switching || undefined}>
-                {tab === "overview" && displayTab === tab && !prices.isPlaceholderData && prices.data?.publishedSeriesId && <PositionReading
-                  security={{ticker: prices.data.ticker, published_series_id: prices.data.publishedSeriesId}} snapshotId={shell.data?.status.runId ?? undefined} />}
+                {tab === "overview" && displayTab === tab && !prices.isPlaceholderData && (prices.data?.publishedSeriesId || prices.data?.observedSeriesId) && <PositionReading
+                  security={{ticker: prices.data.ticker, published_series_id: (prices.data.publishedSeriesId || prices.data.observedSeriesId)!}} snapshotId={prices.data.snapshotId ?? shell.data?.status.runId ?? undefined} />}
                 {displayTab === "overview" && shown && (!isFund || selected.status !== "pending") && (runtime.status === "failed"
                   ? <QueryError retry={runtime.retry} />
                   : <PricePreview ticker={ticker} query={prices} summary={displayData?.technicalSummary} />
@@ -689,7 +689,7 @@ function SecurityResearchWorkspace() {
                       {displayTab === "valuation" && !isFund && (
                         <ValuationWorkbench key={ticker} data={displayData} revision={revision} price={price} />
                       )}
-                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && <EarningsBrief ticker={ticker} lens="fundamentals" />}
+                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && <EarningsBrief ticker={ticker} snapshotId={displayData.runId} lens="fundamentals" />}
                       {displayTab === "fundamentals" &&
                         (isFund ? (
                           <FundWorkbench
@@ -722,7 +722,7 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView earningsBrief={tab === "analyst" ? <EarningsBrief ticker={ticker} lens="analyst" /> : null} key={ticker} data={displayData} revision={revision} price={price} />
+                        <AnalystView earningsBrief={tab === "analyst" ? <EarningsBrief ticker={ticker} snapshotId={displayData.runId} lens="analyst" /> : null} key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
                       {displayTab === "ledger" && (

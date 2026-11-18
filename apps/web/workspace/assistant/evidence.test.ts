@@ -42,3 +42,15 @@ it("accepts two to four lines only with a turn-local source or a non-numeric inf
     expect(verifiedLines(reply(invalid))).toEqual([]);
   }
 });
+
+it("keeps the selected research lens, object and evidence destination", () => {
+  const evidence = { evidenceId: "ev_reading", source: "market" as const, tool: "price_key_moments",
+    arguments: { ticker: "SYNT.L", date: "2026-02-03", lens: "technical" } };
+  const link = new URL(evidenceHref(evidence)!, "https://example.invalid");
+  expect(Object.fromEntries(link.searchParams)).toMatchObject({ ticker: "SYNT.L", view: "technical", eventDate: "2026-02-03", interval: "1d" });
+  expect(chatContext("research","type=index&index=sample&ticker=%5ETEST&view=price&scope=broker_total","Europe/London"))
+    .toMatchObject({ page: "research", ticker: "^TEST", lens: "technical", scope: "broker_total" });
+  const story = { ...evidence, tool: "research_headline", source: "publisher" as const, arguments: {ticker:"SYNT",url:"https://example.invalid/news"} };
+  expect(evidenceHref(story)).toBe(story.arguments.url);
+  expect(evidenceHref({...story, arguments:{...story.arguments,url:"javascript:alert(1)"}})).not.toMatch(/^javascript:/);
+});

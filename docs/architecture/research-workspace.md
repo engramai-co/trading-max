@@ -76,3 +76,24 @@ currency conversion, sparse data and model reproducibility. API and UI checks
 cover partial failures, research state, charts, keyboard and narrow viewports.
 Repository checks run before the final local deployment. An issue is not closed
 because a component exists: its stated data and interaction acceptance must pass.
+
+## Research readings
+
+With MaxAI enabled and consented, opening the sidebar on Overview reads the
+selected listing. A verified Invest or ISA fill establishes the baseline at
+that session’s close. The comparison measures a price change, independently of
+the fill price and the position’s profit or loss.
+
+The price chart requests up to three rule-ranked, event-backed sessions in its
+visible daily range. The chart and event track open the same reading by date.
+On phones the numbers appear in the track. A dated news item links directly to
+its publisher and is a lead about the session. A reading is generated only on
+selection. Published charts are pinned to their research artifact. External
+daily charts and index charts use bounded local caches of the exact series
+already served. An expired or mismatched identity yields no reading.
+
+Financials and Estimates & events share a collapsed earnings brief when a
+held or research-list company has a published reading matching the reported
+results and dated consensus estimates on the page. The background writer
+excludes intraday updates and deduplicates material revisions. Prices,
+event dates, EPS units, currencies and estimates come from deterministic tools.

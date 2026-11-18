@@ -17,7 +17,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
   research_position: ["/research", "market"], price_key_moments: ["/research", "technical"],
-  research_earnings: ["/research", "financials"], research_headline: ["/research", "publisher"],
+  news_and_events: ["/research","disclosure"], research_earnings: ["/research", "financials"], research_headline: ["/research", "publisher"],
   data_freshness: ["/health", "health"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
@@ -51,6 +51,7 @@ export function evidenceHref(ref: Evidence) {
     if (ref.tool === "research_headline" && a.url && safeUrl(a.url)) return safeUrl(a.url);
     if (a.index || a.index_id) {
       params.set("type","index"); params.set("index",a.index || a.index_id); params.set("view","price");
+      if (a.indexRange) params.set("indexRange",a.indexRange);
       return path + "?" + params;
     }
     if (a.analystView) params.set("analystView",a.analystView);
@@ -92,6 +93,12 @@ export function messageEvidence(message: UIMessage) {
     if (!id) continue;
     const raw = object(object(part.input).args ?? part.input);
     const args = Object.fromEntries(Object.entries(raw).filter((p): p is [string, string] => typeof p[1] === "string"));
+    if (tool === "research_headline") {
+      const story = object(object(part.output).data);
+      const url = safeUrl(str(story.url));
+      if (url && str(story.publisher)) refs.set(id, {evidenceId:id,tool,source:"publisher",publisher:str(story.publisher),arguments:{...args,url}});
+      continue;
+    }
     refs.set(id, { evidenceId: id, tool, arguments: args, source: tool === "read_research_lens" && lensWords[args.lens] || destinations[tool][1] });
   }
   return refs;
@@ -101,11 +108,11 @@ export function chatContext(page: string, search: string, timezone: string) {
   const account = params.get("account");
   const scope = params.get("scope") || (account === "A" ? "invest" : account === "B" ? "isa" : account === "C" ? "cfd" : account);
   const ticker = params.get("ticker");
-  const range = params.get("range");
-  const lens = params.get("view");
+  const range = params.get("range") || (page === "research" ? params.get("priceRange") : null);
+  const lens = params.get("type") === "index" && params.get("view") === "price" ? "technical" : params.get("view");
   return {
     page: ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page) ? page : "overview", timezone,
-    ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics"].includes(page) ? { scope: "broker_total" } : {}),
+    ...(["invest", "isa", "cfd", "household", "broker_total"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics"].includes(page) ? { scope: "broker_total" } : {}),
     ...(page === "research" && ticker && /^[a-z0-9^=._-]{1,32}$/i.test(ticker) ? { ticker: ticker.toUpperCase() } : {}),
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),

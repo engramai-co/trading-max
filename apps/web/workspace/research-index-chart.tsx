@@ -8,6 +8,7 @@ import type { LineSeriesOption } from "echarts";
 import type { ECharts } from "echarts";
 import { MomentOverlay, useKeyMoments } from "./assistant/key-moments";
 import { PositionReading } from "./assistant/research";
+import { useRouteState } from "./route-state";
 import { PriceEventTrack } from "./research-price-events";
 import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -94,7 +95,9 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
   const { locale, timeZone } = useLocale();
   const colours = useChartColours();
   const phone = useMediaQuery("(max-width: 48em)");
-  const [range, setRange] = useState<IndexRange>(index.ranges.includes("1Y") ? "1Y" : index.ranges.at(-1) ?? "3M");
+  const { params } = useRouteState();
+  const requestedRange = params.get("indexRange");
+  const [range, setRange] = useState<IndexRange>(index.ranges.find(r => r === requestedRange) ?? (index.ranges.includes("1Y") ? "1Y" : index.ranges.at(-1) ?? "3M"));
   const [log, setLog] = useState(false);
   const [compare, setCompare] = useState<string[]>([]);
   const period = preview ? "3M" : range;
