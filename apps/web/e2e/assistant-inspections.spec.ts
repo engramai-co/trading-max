@@ -779,6 +779,7 @@ test(`a missing endpoint in the updated phone ${view} reading restores ${singleP
 for (const view of ["holdings","money","returns","risk"] as const) {
   test(`opens the cited ${view} using the retained dashboard API`, async ({page,request,isMobile})=>{
     const calls=await setup(page,"en",false);
+    if (isMobile) await page.setViewportSize({width:390,height:844});
     // The assistant is synthetic; both dashboard routes go through the actual Next and API servers.
     await page.route("**/api/backend/dashboard/**",route=>route.continue());
     const publication = await request.get("/api/backend/dashboard/lens/analytics?scope=isa&detail=summary&range=ALL");
@@ -841,7 +842,9 @@ for (const view of ["holdings","money","returns","risk"] as const) {
     await expect.poll(()=>calls.at(-1)).toMatchObject({role:view==="holdings"?"exposure":"attribution",snapshotId:id});
     if (process.env.TM_INSPECTION_SHOTS) {
       const reading = page.locator(isMobile ? ".mx-reading-sheet:visible" : ".mx-inline-reading:visible").last();
-      await reading.locator(".mx-reading-line").first().scrollIntoViewIfNeeded();
+      const firstLine = reading.locator(".mx-reading-line").first();
+      await expect(firstLine).toBeVisible();
+      if (!isMobile) await firstLine.scrollIntoViewIfNeeded();
       await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS, (isMobile ? "phone" : "desktop") + "-retained-" + view + ".png"), animations:"disabled"});
     }
     if (view === "money") {
