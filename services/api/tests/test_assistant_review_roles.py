@@ -378,6 +378,11 @@ def test_legacy_decision_withholds_unverified_prior_close_and_hindsight(tmp_path
     assert selected["prior_close_date"] is None and selected["prior_close_gbp"] is None
     assert selected["hindsight"] is None
     assert selected["settled_per_share_gbp"] == 40
+    habits = role_registry()["habits"].reader(
+        deps, HabitsContext(scope="invest", habit="basket_buy")
+    )
+    basket = habits.read(review_patterns, {})["data"]["groups"]["basket_buy"]
+    assert (basket["count"], basket["evaluated"], basket["effect_gbp"]) == (1, 1, 18)
 
 
 def test_decision_and_habit_followups_can_only_read_the_selected_object(tmp_path):

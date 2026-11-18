@@ -4,8 +4,6 @@ import json
 from hashlib import sha256
 from typing import Literal
 
-from trading_max.analytics.decision_review import CALCULATION_VERSION
-
 from .tools import CODE_SCOPE, DECISIONS, Args, Context, _mapped, _number, _Read, _rows
 
 EVIDENCE = "account/review_evidence.json"
@@ -50,10 +48,7 @@ def _summarise(read, scopes, accounts, evidence, args):
     suffix = "horizon" if args.horizon == "20_sessions" else "to_date"
     for code in scopes:
         account = _mapped(accounts.get(code))
-        if (
-            account.get("status") != "available"
-            or account.get("calculation_version") != CALCULATION_VERSION
-        ):
+        if account.get("status") != "available":
             issues.append(f"{CODE_SCOPE[code]}_decisions_unavailable")
             continue
         as_of[CODE_SCOPE[code]] = account.get("as_of")
