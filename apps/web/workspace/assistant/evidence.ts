@@ -26,8 +26,13 @@ export function evidenceHref(ref: Evidence) {
   const params = new URLSearchParams();
   const a = ref.arguments ?? {};
   if (path === "/analytics") {
-    params.set("view", ref.tool === "period_performance" && a.range === "1D" ? "money" : "returns");
+    params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
     if (a.range) params.set("range", a.range);
+    if (a.metric === "period_pnl_gbp" && a.start && a.end && a.snapshotId) {
+      params.set("moneyFrom", a.start);
+      params.set("moneyTo", a.end);
+      params.set("snapshotId", a.snapshotId);
+    }
     if (a.benchmark) params.set("benchmark", a.benchmark);
     if (ref.tool === "compare_benchmarks" && a.start && a.end) {
       params.set("returnFrom", a.start);
@@ -42,6 +47,12 @@ export function evidenceHref(ref: Evidence) {
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
     if (a.ticker) params.set("ticker", a.ticker);
+    if (["earnings", "earningsWindow", "exDividend"].includes(a.event)) {
+      params.set("event", a.event);
+      if (a.date) params.set("date", a.date);
+      if (a.end) params.set("end", a.end);
+      if (a.eventId) { params.set("analystView", "events"); params.set("eventId", a.eventId); }
+    }
     params.set("view", ref.tool === "read_valuation_evidence" ? "valuation" : a.lens || "overview");
   }
   params.set("evidence", ref.tool);
@@ -88,4 +99,21 @@ export function chatContext(page: string, search: string, timezone: string) {
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),
   };
+}
+
+/** A reply is visible only with two to four lines whose trailing references belong to this turn. */
+export function verifiedLines(message: UIMessage) {
+  const references = messageEvidence(message);
+  const raw = message.parts.filter(p => p.type === "text").map(p => p.text).join("").trim();
+  const lines = raw.split(/\n+/).map(s => s.trim()).filter(Boolean);
+  if (lines.length < 2 || lines.length > 4) return [];
+  const result: { text: string; evidence: Evidence | null }[] = [];
+  for (const line of lines) {
+    const match = /^(.+?)\s*\[(inference|ev_[a-zA-Z0-9_-]+)\]$/.exec(line);
+    if (!match || /\[(?:ev_|inference\])/.test(match[1])) return [];
+    const evidence = references.get(match[2]);
+    if (!evidence && (match[2] !== "inference" || /\p{N}/u.test(match[1]))) return [];
+    result.push({text:match[1].trim(), evidence:evidence ?? null});
+  }
+  return result;
 }

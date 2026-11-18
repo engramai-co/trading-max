@@ -7873,6 +7873,8 @@ export interface components {
             lines: components["schemas"]["ReadingLine"][];
             /** Role */
             role: string;
+            /** Snapshotid */
+            snapshotId?: string | null;
             /** Version */
             version: string;
         };

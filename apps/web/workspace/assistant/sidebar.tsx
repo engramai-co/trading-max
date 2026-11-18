@@ -6,13 +6,13 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, ClockCounterClockwise, Plus, Square, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
-import { ASSISTANT_NAME } from "../assistant-settings";
+import { ASSISTANT_NAME, conversationsErasedEvent } from "../assistant-settings";
 import { api } from "../data";
 import { useCopy } from "../foundation";
 import Link from "../link";
 import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
-import { chatContext, displayTurns, messageEvidence } from "./evidence";
+import { chatContext, displayTurns, verifiedLines } from "./evidence";
 
 // getRandomValues is available on loopback and existing HTTP workspaces.
 function makeConversationId() {
@@ -24,17 +24,12 @@ const transport = new DefaultChatTransport({
     body: { ...body, id, trigger: "submit-message", messages: messages.slice(-1) },
   }),
 });
-function ChatAnswer({ message }: { message: UIMessage }) {
+function ChatAnswer({ message, pending }: { message: UIMessage; pending: boolean }) {
   const t = useCopy();
-  const refs = messageEvidence(message);
-  const text = message.parts.filter(p => p.type === "text").map(p => p.text).join("");
-  return text.split(/\n+/).filter(Boolean).map((line, i) => <p className="mx-reading-line" key={i}>
-    {line.split(/(\[(?:ev_[a-zA-Z0-9_-]+|inference)\])/).map((part, j) => {
-      if (part === "[inference]") return <span key={j} className="mx-reading-source">{t("推断", "Inference")}</span>;
-      if (!part.startsWith("[ev_")) return part;
-      const evidence = refs.get(part.slice(1, -1));
-      return evidence ? <EvidenceLink key={j} evidence={evidence} /> : null;
-    })}
+  const lines = verifiedLines(message);
+  if (!lines.length) return pending ? null : <p className="mx-assistant-note">{t("无法核实这次回复。", "This reply could not be verified.")}</p>;
+  return lines.map((line, i) => <p className="mx-reading-line" key={i}>{line.text}{" "}
+    {line.evidence ? <EvidenceLink evidence={line.evidence}/> : <span className="mx-reading-source">{t("推断", "Inference")}</span>}
   </p>);
 }
 function errorLabel(code: string, t: ReturnType<typeof useCopy>) {
@@ -59,13 +54,20 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
-  const submittedQuestion = useRef("");
+  const submitted = useRef<{text:string; card:RoleCard | null}>({text:"",card:null});
+  const [announcement, setAnnouncement] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const [seen, setSeen] = useState(initial.sequence);
   const client = useQueryClient();
   const { messages, sendMessage, stop, status, error, clearError } = useChat({
     id: initial.id, messages: initial.messages, transport,
-    onFinish: () => { void client.invalidateQueries({ queryKey: ["assistant-conversations"] }); },
+    onFinish: ({messages: completed, isAbort, isError, isDisconnect}) => {
+      void client.invalidateQueries({ queryKey: ["assistant-conversations"] });
+      const reply = displayTurns(completed).at(-1);
+      if (!isAbort && !isError && !isDisconnect && reply?.role === "assistant") {
+        setAnnouncement(verifiedLines(reply).map(line => line.text).join(" "));
+      }
+    },
   });
   const busy = status === "submitted" || status === "streaming";
   useEffect(() => () => { void stop(); }, [stop]);
@@ -84,7 +86,7 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
     setContextCard(handoff.card);
   }
   const context = chatContext(page, search, timeZone);
-  const card = contextCard ?? pageCard ?? {
+  const card: RoleCard = contextCard ?? pageCard ?? {
     role: "", title: t("工作区解读", "Workspace reading"), object: scopeLabel,
     questions: [t("最近有哪些变化？", "What has changed recently?"), t("哪些数据还不完整？", "Which data is incomplete?"), t("本期的主要变动是什么？", "What moved most this period?")],
   };
@@ -92,9 +94,12 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
     const text = value.trim();
     if (!text || busy) return;
     clearError();
-    submittedQuestion.current = text;
+    const origin = card.origin ?? {page, search, snapshotId:card.reading?.snapshotId ?? undefined};
+    const turn = card.role ? {...chatContext(origin.page, origin.search, timeZone), role:card.role, object:card.context ?? {}, snapshotId:origin.snapshotId} : context;
+    submitted.current = {text, card:card.role ? {...card, origin} : null};
+    setAnnouncement("");
     setDraft("");
-    void sendMessage({ text }, { body: { context: { ...context, ...(card.role ? { role: card.role, object: card.context ?? {} } : {}) } } });
+    void sendMessage({ text }, { body: { context:turn } });
     setContextCard(null);
   }
   return <>
@@ -108,17 +113,18 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
         <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} onClick={() => send(q)}>{q}<span aria-hidden="true">→</span></button>)}</div>
       </div>}
       {displayTurns(messages).map(m => <div key={m.id} className={"mx-assistant-turn mx-turn-" + m.role}>
-        {m.role === "user" ? m.parts.map((p, i) => p.type === "text" ? <p key={i}>{p.text}</p> : null) : <ChatAnswer message={m} />}
+        {m.role === "user" ? m.parts.map((p, i) => p.type === "text" ? <p key={i}>{p.text}</p> : null) : <ChatAnswer message={m} pending={busy && m.id === messages.at(-1)?.id} />}
       </div>)}
       {busy && <p className="mx-assistant-note" role="status">{t("正在读取", "Reading ")}{scopeLabel}…</p>}
       {error && <p role="alert">{errorLabel(failureCode(error.message), t)}</p>}
     </div>
+    <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
     <form className="mx-assistant-composer" onSubmit={e => { e.preventDefault(); send(draft); }}>
       <span className="mx-assistant-scope">{contextCard?.object || [context.ticker, scopeLabel].filter(Boolean).join(" · ")}</span>
       <div><textarea ref={input} rows={2} value={draft} onChange={e => setDraft(e.target.value)} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(draft); } }} />
-        {busy ? <button type="button" onClick={event => { event.preventDefault(); void stop(); setDraft(submittedQuestion.current); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
+        {busy ? <button type="button" onClick={event => { event.preventDefault(); void stop(); setDraft(submitted.current.text); setContextCard(submitted.current.card); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
           : <button type="submit" disabled={!draft.trim()} aria-label={t("发送", "Send")}><ArrowUp weight="bold" /></button>}
       </div>
     </form>
@@ -127,6 +133,8 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
 function History({ select, back, removed }: { select: (id: string, messages: UIMessage[]) => void; back: () => void; removed: (id: string) => void }) {
   const t = useCopy();
   const client = useQueryClient();
+  const backButton = useRef<HTMLButtonElement>(null);
+  useEffect(() => { backButton.current?.focus(); }, []);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const conversations = useQuery({ queryKey: ["assistant-conversations"], queryFn: ({ signal }) => api<{ id: string; title: string | null }[]>("/assistant/conversations", { signal }), retry: false });
@@ -138,7 +146,7 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
       else { const data = await api<{ messages: UIMessage[] }>(path); select(id, data.messages); }
     } catch { setError(true); } finally { setBusy(false); }
   }
-  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
+  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
     <div className="mx-assistant-transcript">{conversations.data?.map(c => <div className="mx-assistant-history" key={c.id}>
       <button disabled={busy} onClick={() => void act(c.id, false)}>{c.title || t("对话", "Conversation")}</button>
       <button disabled={busy} onClick={() => void act(c.id, true)} aria-label={t("删除对话", "Delete conversation") + " · " + (c.title || "")}><Trash /></button>
@@ -151,6 +159,14 @@ export default function AssistantSidebar({ page, search, scopeLabel }: { page: s
   const [initial, setInitial] = useState(() => ({ id: makeConversationId(), messages: [] as UIMessage[], sequence: 0 }));
   const [history, setHistory] = useState(false);
   const fresh = () => setInitial({ id: makeConversationId(), messages: [], sequence: handoff?.sequence ?? 0 });
+  useEffect(() => {
+    const erased = () => {
+      setInitial({id:makeConversationId(), messages:[], sequence:handoff?.sequence ?? 0});
+      setHistory(false);
+    };
+    window.addEventListener(conversationsErasedEvent, erased);
+    return () => window.removeEventListener(conversationsErasedEvent, erased);
+  }, [handoff?.sequence]);
   if (!ready) return <>
     <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button></div>
     <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…", "Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>

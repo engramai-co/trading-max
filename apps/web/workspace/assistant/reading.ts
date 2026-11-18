@@ -11,7 +11,14 @@ export async function fetchReading(request: ReadingRequest, signal: AbortSignal,
   const response = await fetch("/api/backend/assistant/roles/" + encodeURIComponent(role) + "/reading", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal, cache: "no-store",
   });
-  if (!response.ok || !response.body) throw new Error("assistant_unavailable");
+  if (!response.ok) {
+    const code = (await response.json().catch(() => null))?.detail?.code;
+    const known = ["assistant_role_unknown", "assistant_context_invalid", "assistant_snapshot_missing",
+      "assistant_busy", "assistant_disabled", "assistant_consent_required", "assistant_settings_changed", "assistant_unavailable",
+      "request_too_large", "provider_not_configured", "provider_auth_failed", "provider_rate_limited"];
+    throw new Error(known.includes(code) ? code : "assistant_unavailable");
+  }
+  if (!response.body) throw new Error("assistant_unavailable");
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
   try {
@@ -40,6 +47,7 @@ export function useRoleReading(request: ReadingRequest, enabled: boolean) {
   return useQuery({
     queryKey: ["assistant-reading", request],
     queryFn: ({ signal }) => fetchReading(request, signal),
-    enabled: assistant.ready && enabled, staleTime: request.latest ? 60_000 : Infinity, retry: false,
+    enabled: assistant.ready && enabled, refetchInterval: request.latest && request.cachedOnly ? 30_000 : false,
+    refetchIntervalInBackground: false, staleTime: request.latest ? 60_000 : Infinity, retry: false,
   });
 }

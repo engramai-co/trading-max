@@ -11,8 +11,10 @@ const targets: Record<string, string> = {
 };
 export function useEvidenceHighlight(pathname: string, search: string) {
   useEffect(() => {
-    const tool = new URLSearchParams(search).get("evidence");
-    const selector = tool && targets[tool];
+    const params = new URLSearchParams(search);
+    const tool = params.get("evidence");
+    const selector = tool === "read_research_lens" && ["earnings","earningsWindow","exDividend"].includes(params.get("event") ?? "")
+      ? "[data-reading-event]" : tool === "period_performance" && params.has("moneyFrom") ? "[data-period-net-pnl]" : tool && targets[tool];
     const main = document.getElementById("main-content");
     if (!selector || !main) return;
     let target: HTMLElement | null = null;
