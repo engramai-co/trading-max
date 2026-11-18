@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { prepareHistory } from "../lib/portfolio/prepared";
 import type { Holding } from "../lib/types";
@@ -11,12 +11,12 @@ const us: Holding = {
   isFund: false, quantity: 2, currentPrice: 25, priceCurrency: "USD",
   currentValueGbp: 40, costGbp: 35, pnlGbp: 5, pnlPct: 1 / 7, allocationPct: 0.5,
   dilutedCostGbp: null, dilutedCostPerShareGbp: null, dilutedCostPerShareNative: null,
-  dilutedCostCurrency: "USD", snapshotFxRateNativePerGbp: null, fxImpactGbp: null,
+  dilutedCostCurrency: "USD", snapshotFxRateNativePerGbp: 1.25, fxImpactGbp: -3.25,
   dayChangeClosedOn: day, dayChangeGbp: null, dayChangePct: null,
 };
 const uk: Holding = {
   ...us, ticker: "SYNUK", name: "Synthetic London fund", isFund: true, listingMarket: "LSE",
-  priceCurrency: "GBP", dayChangeClosedOn: undefined, dayChangeDate: day, dayChangeGbp: 0, dayChangePct: 0,
+  priceCurrency: "GBP", fxImpactGbp: 0, dayChangeClosedOn: undefined, dayChangeDate: day, dayChangeGbp: 0, dayChangePct: 0,
 };
 const lens = {
   runId: "synthetic-closed-market", dataRevision: "synthetic", brokerAsOf, holdings: [us, uk],
@@ -26,9 +26,7 @@ const lens = {
 const history = prepareHistory(lens, { range: "1D", scope: "total" }).chart;
 const accessible = "该上市交易所休市";
 
-test("a closed listing replaces the day figure on each position surface", async ({ page }, info) => {
-  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
-  const phone = info.project.name === "mobile";
+async function syntheticHoldings(page: Page) {
   await page.clock.setFixedTime(new Date(brokerAsOf));
   await page.route("**/api/backend/**", (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -39,6 +37,12 @@ test("a closed listing replaces the day figure on each position surface", async 
             : path.endsWith("/refresh/attention") ? { checkedAt: brokerAsOf, issues: [] } : {};
     return route.fulfill({ json });
   });
+}
+
+test("a closed listing replaces the day figure on each position surface", async ({ page }, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
+  const phone = info.project.name === "mobile";
+  await syntheticHoldings(page);
   await page.goto("/?range=1D");
   const overview = page.locator(".mx-overview-holdings");
   const usRow = phone ? overview.getByRole("link", { name: new RegExp("SYNUS.*" + accessible) })
@@ -74,3 +78,32 @@ test("a closed listing replaces the day figure on each position surface", async 
   await expect(drawer.getByText(accessible, { exact: true })).toBeAttached();
   if (evidence) await drawer.screenshot({ path: `${evidence}/closed-drawer-${info.project.name}.png` });
 });
+
+for (const locale of ["zh", "en"] as const) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`the holding's FX impact is consistent in ${locale} and ${scheme}`, async ({ page, isMobile }, info) => {
+      test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
+      if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+      await syntheticHoldings(page);
+      await page.goto("/holdings");
+      const row = isMobile ? page.getByRole("button", { name: /SYNUS/ })
+        : page.getByRole("row").filter({ hasText: "SYNUS" });
+      if (!isMobile) await expect(row.getByRole("cell", { name: /3\.25/ })).toBeVisible();
+      const target = isMobile ? row : row.getByRole("button", { name: /SYNUS/ }).first();
+      await target.focus();
+      await target.press("Enter");
+      const dialog = page.getByRole("dialog");
+      await dialog.locator("summary").filter({ hasText: /报价与计算|Quote and calculation/ }).press("Enter");
+      const fx = dialog.getByText(/^(汇率影响|FX impact)$/);
+      await expect(fx).toBeVisible();
+      await expect(dialog.getByText(/[-−]£3\.25/)).toBeVisible();
+      const folder = process.env.HOLDINGS_QA_EVIDENCE;
+      if (folder) {
+        await mkdir(folder, { recursive: true });
+        await page.screenshot({ path: `${folder}/holding-fx-${info.project.name}-${locale}-${scheme}.png` });
+      }
+    });
+  }
+}

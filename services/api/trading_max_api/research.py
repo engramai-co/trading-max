@@ -236,6 +236,10 @@ def _technical_summary(row: JsonObject | None) -> TechnicalScoreSummary | None:
 _TECHNICAL_SEASONALITY = ("seasonality", "seasonalityCoverage", "seasonalityMatrix", "yearPaths")
 
 
+def published_price_series_id(artifact_hash: str, ticker: str) -> str:
+    return fingerprint([artifact_hash, ticker.upper()])
+
+
 def _canonical_ticker(value: str) -> str:
     ticker = value.upper()
     return ticker[:-2] if ticker.endswith(".L") else ticker
@@ -2438,6 +2442,9 @@ class ResearchLedger:
             points = all_points[-limit:]
             visible_dates = {point.date for point in points}
             return ResearchPriceSeries(
+                published_series_id=published_price_series_id(artifact.sha256, ticker)
+                if artifact
+                else None,
                 ticker=ticker,
                 as_of=as_of,
                 currency=currency,
@@ -2500,6 +2507,9 @@ class ResearchLedger:
         points = all_points[-limit:]
         visible_dates = {point.date for point in points}
         return ResearchPriceSeries(
+            published_series_id=published_price_series_id(artifact.sha256, ticker)
+            if artifact
+            else None,
             ticker=ticker,
             as_of=as_of,
             currency=currency,

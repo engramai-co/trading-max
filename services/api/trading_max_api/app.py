@@ -76,6 +76,7 @@ from .routes.analysis import router as analysis_router
 from .routes.assistant import router as assistant_router
 from .routes.imports import router as imports_router
 from .routes.indices import router as indices_router
+from .routes.insights import router as insights_router
 from .routes.local_workspace import router as local_workspace_router
 from .routes.operations import router as operations_router
 from .routes.research import router as research_router
@@ -632,6 +633,7 @@ def create_app(
     app.include_router(sectors_router)
     app.include_router(indices_router)
     app.include_router(assistant_router)
+    app.include_router(insights_router)
     return app
 
 

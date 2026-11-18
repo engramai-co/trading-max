@@ -829,6 +829,7 @@ class BenchmarkPricePoint(ApiModel):
 
 
 class ResearchPriceSeries(ApiModel):
+    published_series_id: str | None = None
     ticker: str
     requested_interval: str = "1d"
     actual_interval: str = "1d"
