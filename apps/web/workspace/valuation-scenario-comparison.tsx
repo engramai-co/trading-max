@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from "react";
 import type { ECharts } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { Preview } from "./research-facts";
-import { Plot } from "./charts";
+import { DeferredPlot } from "./research-reading";
 import { currency, percent, tone } from "@/workspace/data";
 import { useCopy } from "./foundation";
 import { minus } from "./reading-figures";
@@ -102,7 +102,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
           </button>;
         })}
       </div>
-      <Plot
+      <DeferredPlot
         research
         label={t("情景估值与现价的百分比差距", "Scenario valuations relative to current price")}
         height={180}

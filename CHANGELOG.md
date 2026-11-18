@@ -12,6 +12,19 @@ All notable public Trading Max releases are recorded here.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
 
+## [1.56.0] - 2026-11-18
+
+### Changed
+- Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
+- Estimates & events opens with ratings and targets on the 12-month price chart. Targets use the chart currency and account for share splits. Targets beyond the split history stay available by date at their announced amounts. The chart plots targets on the share basis of its latest close, and the upside uses the verified basis of the target and quote. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
+
+## [1.55.0] - 2026-11-18
+
+### Added
+- The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
+- The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
+- Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
+
 ## [1.54.0] - 2026-11-18
 
 ### Added

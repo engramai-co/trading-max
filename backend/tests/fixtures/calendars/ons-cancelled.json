@@ -1,0 +1,24 @@
+{
+  "releases": [
+    {
+      "uri": "/releases/businessregisterandemploymentsurveybresprovisionalresults2025revisedresults2024",
+      "description": {
+        "release_date": "2026-11-18T09:30:00.000Z",
+        "title": "Business Register and Employment Survey (BRES): provisional results 2025 and revised results 2024 for Great Britain",
+        "finalised": true,
+        "postponed": false,
+        "cancelled": true
+      }
+    },
+    {
+      "uri": "/releases/adminbasedincomestatisticsenglandandwalestaxyearending2024",
+      "description": {
+        "release_date": "2026-12-17T09:30:00.000Z",
+        "title": "Admin-based income statistics, England and Wales: tax year ending 2024",
+        "finalised": true,
+        "postponed": false,
+        "cancelled": true
+      }
+    }
+  ]
+}

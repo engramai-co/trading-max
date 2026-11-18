@@ -169,6 +169,26 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           ),
         ])}
       />
+      {Boolean(data.health?.eventRefreshes?.length) && (
+        <details className="mx-chart-data" open={data.health?.eventRefreshes?.some((source) => source.failedSources > 0)}>
+          <summary>{t("新闻与日历数据时间", "News and calendar freshness")}</summary>
+          <Facts rows={(data.health?.eventRefreshes ?? []).map((source) => [
+            source.kind === "news" ? t("证券新闻", "Security news") : t("宏观日历", "Macro calendar"),
+            <Group key={source.kind} gap="xs">
+              {source.asOf ? formatDateTime(source.asOf, locale, timeZone) : t("暂无数据", "No observations")}
+              {source.failedSources > 0 && <Tag tone="warn">{source.failedSources === 1
+                ? t("1 个来源更新失败", "1 source refresh failed")
+                : t("{count} 个来源更新失败", "{count} source refreshes failed").replace("{count}", String(source.failedSources))}</Tag>}
+            </Group>,
+          ])} />
+          {(data.health?.eventRefreshes ?? []).flatMap((source) => (source.failures ?? []).map((failure) => (
+            <div key={source.kind + failure.source} className="mx-health-source-failure">
+              <span>{failure.source}</span>
+              {failure.checkedAt && <small><span>{t("上次尝试", "Last attempt")}</span> {formatDateTime(failure.checkedAt, locale, timeZone)}</small>}
+            </div>
+          )))}
+        </details>
+      )}
       <details className="mx-chart-data">
         <summary>{t("更新范围说明", "What each schedule updates")}</summary>
         <ul className="mx-review-prerequisites">
@@ -667,6 +687,8 @@ function stageText(
     "research.financials": t("更新财务报表", "Update financial statements"),
     "research.analyst": t("更新分析师共识", "Update analyst consensus"),
     "research.valuation": t("更新估值模型", "Update valuation models"),
+    "research.security_news": t("更新证券新闻", "Refresh security news"),
+    "research.macro_calendar": t("更新宏观日历", "Refresh official macro calendars"),
     "research.earnings": t("更新盈利研究", "Update earnings research"),
     "snapshot.publish": t("发布完整数据快照", "Publish the completed snapshot"),
   };

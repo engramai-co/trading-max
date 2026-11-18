@@ -43,6 +43,8 @@ import {
 import { GrowthContext, ValuationSensitivity, ValuationWorksheet } from "./research-valuation-detail";
 import { researchLensQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
+import { ResearchReading, valuationSections } from "./research-reading";
+import { ValuationReadout, type ModelReading } from "./research-valuation-readout";
 import { PeHistoryChart } from "./research-pe-history";
 import {
   editorIdentity,
@@ -79,56 +81,39 @@ export function ValuationWorkbench({
   const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
     (next, previous) => !dirty || next.basis.ticker !== previous.basis.ticker || editorIdentity(next) === editorIdentity(previous));
   const preview = retained?.basis.ticker === data.ticker ? retained : undefined;
-  const peHistory = <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory} />;
-  if (financial && !dirty)
-    return (
-      <>
-        <ModelAlternatives data={data} financial />
-        {peHistory}
-        <FilingMultiples data={data} price={price} />
-      </>
-    );
-  if (!preview && state.view !== "error")
-    return <><Pending />{peHistory}</>;
-  if (!preview)
-    return (
-      <>
-        <ModelAlternatives data={data} financial={false} />
-        <Panel title={t("估值模型", "Valuation model")}>
-          <Empty
-            title={t(
-              "当前数据不足以建立现金流模型",
-              "Cash-flow model inputs are incomplete",
-            )}
-          />
-          <QueryError retry={query.refetch} />
-        </Panel>
-        {peHistory}
-        <FilingMultiples data={data} price={price} />
-      </>
-    );
-  return (
-    <>
-      <ModelEditor
-        key={editorIdentity(preview)}
-        initial={preview}
-        onDirty={setDirty}
-        data={data}
-        revision={revision}
-        refreshing={query.isFetching}
-        onRetry={query.isError ? () => void query.refetch() : undefined}
-      />
-      {peHistory}
-      <details className="mx-model-detail">
-        <summary>{t("历史估值参考", "Historical valuation reference")}</summary>
-        <FilingMultiples data={data} price={price} />
-      </details>
-    </>
-  );
+  const [reading, setReading] = useState<ModelReading>();
+  const modelAvailable = preview && (!financial || dirty);
+  return <ResearchReading parameter="valuationView" sections={modelAvailable ? valuationSections : valuationSections.slice(0, 2)}>
+    <ValuationReadout data={data} reading={modelAvailable && reading?.initial === preview ? reading : undefined} />
+    <div id="research-history">
+      <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}
+        sales={<FilingMultiples data={data} price={price} mode="ps" />}
+        disclosure={<FilingMultiples data={data} price={price} mode="pe" />} />
+    </div>
+    {modelAvailable ? <ModelEditor
+      key={editorIdentity(preview)}
+      initial={preview}
+      onDirty={setDirty}
+      data={data}
+      revision={revision}
+      onReading={setReading}
+      refreshing={query.isFetching}
+      onRetry={query.isError ? () => void query.refetch() : undefined}
+    /> : <div id="research-scenario">
+        {!financial && <Panel title={t("情景模型", "Scenario model")}>
+          {state.view === "error" ? <>
+            <Empty title={t("当前数据不足以建立现金流模型", "Cash-flow model inputs are incomplete")} />
+            <QueryError retry={query.refetch} />
+          </> : <Pending />}
+        </Panel>}
+        {(financial || state.view === "error") && <ModelAlternatives data={data} financial={financial} />}
+    </div>}
+  </ResearchReading>;
 }
 
 function ModelEditor({
   initial,
+  onReading,
   onDirty,
   data,
   revision,
@@ -136,6 +121,7 @@ function ModelEditor({
   onRetry,
 }: {
   initial: Preview;
+  onReading: (reading: ModelReading) => void;
   onDirty: (dirty: boolean) => void;
   data: ResearchLensSnapshot;
   revision?: string | null;
@@ -307,66 +293,14 @@ function ModelEditor({
         o.periodId === data.financialFacts?.latestTtm && o.metric === metric,
     )?.value;
   const projection = result.scenarios[worksheet] ?? base;
+  const editedBase = JSON.stringify(base.inputs) !== JSON.stringify(initial.scenarios.base.inputs);
+  const stale = Boolean(onRetry) || query.isError;
+  useLayoutEffect(() => {
+    onReading({ initial, result, edited: editedBase, source: sourceLabel, stale, busy });
+  }, [initial, result, editedBase, sourceLabel, stale, busy, onReading]);
   return (
     <>
-      <div className="mx-model-reference-grid">
-        <Panel
-          title={t("经营参考", "Operating reference")}
-          action={
-            <span className="mx-unit">
-              {referencePeriod?.label} · {result.basis.currency}
-            </span>
-          }
-          help={t(
-            "模型从最近四个完整季度的经营现金流减资本开支出发，使用股权资本成本。它是股权现金流代理，没有完整建模借款、偿债和回购融资；现金、债务不在结果上直接加减。目标现金流率在三年内逐渐达到；十年模式第六年起增长逐渐收敛至 3%。",
-            "The model starts with operating cash flow less capital expenditure over four complete quarters and discounts at cost of equity. It is an equity cash-flow proxy, without a complete borrowing, repayment or buyback financing model. Cash and debt are not directly added or subtracted. Margins converge over three years; ten-year growth fades toward 3% from year six.",
-          )}
-        >
-          <div className="mx-metric-grid">
-            <Metric
-              label={t("营收", "Revenue")}
-              value={compact(result.basis.revenue, locale)}
-            />
-            <Metric
-              label={t("自由现金流率", "FCF margin")}
-              value={percent(result.basis.startMargin, false, 2)}
-            />
-          </div>
-          <details className="mx-chart-data">
-            <summary>
-              {t("基数与资本结构", "Basis & capital structure")}
-            </summary>
-            <Facts
-              rows={[
-                [
-                  t("模型股数", "Model share count"),
-                  number(result.basis.shares, 0),
-                ],
-                [
-                  t("现金及短期投资", "Cash & short-term investments"),
-                  compact(latestFact("cash"), locale) +
-                    " " +
-                    (data.financialFacts?.currency ?? ""),
-                ],
-                [
-                  t("总债务", "Total debt"),
-                  compact(latestFact("debt"), locale) +
-                    " " +
-                    (data.financialFacts?.currency ?? ""),
-                ],
-              ]}
-            />
-            <a
-              className="mx-text-link"
-              href={`/research?ticker=${encodeURIComponent(data.ticker)}&view=fundamentals&financialMode=cash&frequency=ttm`}
-            >
-              {t("查看现金流与披露", "View cash flow & disclosures")} ↗
-            </a>
-          </details>
-        </Panel>
-        <GrowthContext data={data} analyst={analyst} />
-      </div>
-      <div className="mx-model-workbench" aria-busy={busy}>
+      <div id="research-scenario" className="mx-model-workbench" aria-busy={busy}>
         <div className="mx-model-output">
           <Panel
             title={t("情景估值", "Scenario valuation")}
@@ -497,31 +431,6 @@ function ModelEditor({
               </table>
             </div>
             </details>
-          </Panel>
-          <Panel
-            title={t("价格隐含的增长", "Growth implied by price")}
-            help={t(
-              "固定中性情景的现金流率、股数、终值倍数和折现率，仅求解让模型价值等于现价的前五年增长率。",
-              "Only initial growth changes; the other base assumptions stay fixed while solving for the current price.",
-            )}
-          >
-            <div className="mx-model-growth">
-              <Metric
-                label={t("模型假设", "Assumed growth")}
-                value={percent(base.inputs.revenueCagr)}
-              />
-              <span aria-hidden>→</span>
-              <Metric
-                label={t("价格隐含增长", "Price-implied growth")}
-                value={
-                  result.impliedGrowthBound === "above"
-                    ? ">80%"
-                    : result.impliedGrowthBound === "below"
-                      ? "<−30%"
-                      : percent(result.impliedGrowth)
-                }
-              />
-            </div>
           </Panel>
         </div>
         <Panel
@@ -736,15 +645,72 @@ function ModelEditor({
             </p>
           )}
         </Panel>
+        <div className="mx-model-reference-grid">
+        <Panel
+          title={t("经营参考", "Operating reference")}
+          action={
+            <span className="mx-unit">
+              {referencePeriod?.label} · {result.basis.currency}
+            </span>
+          }
+          help={t(
+            "模型从最近四个完整季度的经营现金流减资本开支出发，使用股权资本成本。它是股权现金流代理，没有完整建模借款、偿债和回购融资；现金、债务不在结果上直接加减。目标现金流率在三年内逐渐达到；十年模式第六年起增长逐渐收敛至 3%。",
+            "The model starts with operating cash flow less capital expenditure over four complete quarters and discounts at cost of equity. It is an equity cash-flow proxy, without a complete borrowing, repayment or buyback financing model. Cash and debt are not directly added or subtracted. Margins converge over three years; ten-year growth fades toward 3% from year six.",
+          )}
+        >
+          <div className="mx-metric-grid">
+            <Metric
+              label={t("营收", "Revenue")}
+              value={compact(result.basis.revenue, locale)}
+            />
+            <Metric
+              label={t("自由现金流率", "FCF margin")}
+              value={percent(result.basis.startMargin, false, 2)}
+            />
+          </div>
+          <details className="mx-chart-data">
+            <summary>
+              {t("基数与资本结构", "Basis & capital structure")}
+            </summary>
+            <Facts
+              rows={[
+                [
+                  t("模型股数", "Model share count"),
+                  number(result.basis.shares, 0),
+                ],
+                [
+                  t("现金及短期投资", "Cash & short-term investments"),
+                  compact(latestFact("cash"), locale) +
+                    " " +
+                    (data.financialFacts?.currency ?? ""),
+                ],
+                [
+                  t("总债务", "Total debt"),
+                  compact(latestFact("debt"), locale) +
+                    " " +
+                    (data.financialFacts?.currency ?? ""),
+                ],
+              ]}
+            />
+            <a
+              className="mx-text-link"
+              href={`/research?ticker=${encodeURIComponent(data.ticker)}&view=fundamentals&financialMode=cash&frequency=ttm`}
+            >
+              {t("查看现金流与披露", "View cash flow & disclosures")} ↗
+            </a>
+          </details>
+        </Panel>
+        <GrowthContext data={data} analyst={analyst} />
       </div>
-      <ValuationSensitivity result={result} />
-      <ValuationWorksheet
+      </div>
+      <div id="research-sensitivity"><ValuationSensitivity result={result} /></div>
+      <div id="research-worksheet"><ValuationWorksheet
         result={result}
         projection={projection}
         worksheet={worksheet}
         onWorksheet={setWorksheet}
         scenarioNames={scenarioNames}
-      />
+      /></div>
       <Modal
         opened={saveOpen}
         onClose={() => setSaveOpen(false)}
