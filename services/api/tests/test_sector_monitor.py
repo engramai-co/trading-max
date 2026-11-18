@@ -229,6 +229,8 @@ def window(day: str, opened: str, closed: str, **breaks: str) -> SectorSessionWi
         # code (often a generic "<ticker> US Equity") stand in.
         ("SYN", "Toronto Stock Exchange", "SYN US Equity", ("ca", "SYN.TO")),
         ("SYN", "NYSE", "SYN CN Equity", ("us", "SYN")),
+        ("SYN.BO", "BO", "", None),
+        ("SYN.BO", "IB", "", ("in", "SYN.BO")),
         ("SYN", "Unknown", "SYN US Equity", ("us", "SYN")),
         ("SYN", "N/A", "SYN CN Equity", ("ca", "SYN.TO")),
         # An exchange name these lists do not know never blocks a listing suffix.

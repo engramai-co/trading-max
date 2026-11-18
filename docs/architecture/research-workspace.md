@@ -76,3 +76,27 @@ currency conversion, sparse data and model reproducibility. API and UI checks
 cover partial failures, research state, charts, keyboard and narrow viewports.
 Repository checks run before the final local deployment. An issue is not closed
 because a component exists: its stated data and interaction acceptance must pass.
+
+## Listing venue resolution
+
+Use `trading_max.research.venues.resolve_venue(requested, *claims)` wherever
+published or live evidence is matched to a listing. Pass the original requested
+symbol, including its suffix. Each `VenueClaim(source, value, listing)` names
+the namespace and the symbol to which the evidence belongs. `row_claims` builds
+claims for a price row and its exact fundamentals. `watchlist_claims` handles
+stored provider codes, legacy display names and the generated market default.
+
+The result contains the compatible MICs in `venues`, a `conflict` flag and the
+verified session `calendar` when available. Intersect explicit evidence,
+including qualified symbols. Apply a market default only when its own symbol
+has no explicit venue. A bare US request can therefore reject a different
+London listing, while a stored default on a qualified London symbol yields
+to that symbol. Nasdaq listing tiers have distinct MICs and share a schedule.
+An unknown provider code leaves timed evidence without a calendar. Conflicting
+verified claims make the price unavailable and withhold venue-dependent events.
+
+Yahoo suffixes, Yahoo codes and names, OpenFIGI exchange codes and ISO MICs
+have their own mappings. For example, OpenFIGI `BO` identifies B3 Soma, while
+the Yahoo suffix `.BO` identifies Bombay. Issuer domicile, quote currency and
+time zone do not identify the venue. Exchange provenance on new watchlist
+entries is optional for compatibility with older snapshots.

@@ -12,11 +12,10 @@ from typing import Any
 from trading_max.analytics.etf_details import etf_holdings_key
 from trading_max.domain.etf import FundShareClass
 from trading_max.reference import SecurityMasterCatalog
-from trading_max.research.listing import LONDON, US, broker_listing
+from trading_max.research.listing import LONDON, broker_listing
+from trading_max.research.venues import VenueClaim, provider_claim, resolve_venue
 
 from .values import JsonObject
-
-_BROKER_CALENDARS = {LONDON: "XLON", US: "XNYS"}
 
 
 class HoldingListingCalendars:
@@ -56,21 +55,27 @@ class HoldingListingCalendars:
         return self._fund_calendars[isin].get(ticker, set())
 
     def name(self, position: Mapping[str, Any]) -> str | None:
-        if mic := str(position.get("mic") or "").strip().upper():
-            return mic
-        listing = broker_listing(position.get("broker_ticker"))
-        if listing:
-            return _BROKER_CALENDARS.get(listing.partition(":")[0])
         ticker = str(position.get("ticker") or "").strip().upper()
-        if ticker.endswith(".L"):
-            return "XLON"
-
-        # An issuer or share class can trade on several exchanges. Never
-        # infer its venue from the ISIN alone or from its trading currency.
+        claims = [VenueClaim("mic", position.get("mic")), provider_claim(position.get("exchange"))]
+        instrument = broker_listing(position.get("broker_ticker"))
+        if instrument:
+            market = instrument.partition(":")[0]
+            claims.append(
+                VenueClaim("mic", "XLON") if market == LONDON else VenueClaim("region", "US")
+            )
         isin = str(position.get("isin") or "").strip().upper()
-        if not ticker or not re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", isin):
-            return None
-        mics = self._fund_mics(isin, ticker) if isin in self.fund_isins else set()
-        if not mics:
+        if ticker and re.fullmatch(r"[A-Z]{2}[A-Z0-9]{9}[0-9]", isin):
             mics = self._master_calendars.get((isin, ticker), set())
-        return next(iter(mics)) if len(mics) == 1 else None
+            if isin in self.fund_isins:
+                mics = mics | self._fund_mics(isin, ticker)
+            claims.extend(VenueClaim("mic", mic) for mic in mics)
+        resolved = resolve_venue(ticker, *claims)
+        if (
+            resolved.calendar is None
+            and instrument
+            and resolved.us_listing
+            and not position.get("mic")
+        ):
+            # The broker's US share line follows the consolidated US session.
+            return "XNYS"
+        return resolved.calendar

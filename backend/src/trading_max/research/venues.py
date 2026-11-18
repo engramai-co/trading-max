@@ -57,6 +57,7 @@ def _codes(rows):
 _YAHOO = _codes(
     {
         "XNYS": "NYQ NYSE",
+        "XNAS": "NASDAQ",
         "XNGS": "NMS NASDAQGS",
         "XNMS": "NGM NASDAQGM",
         "XNCM": "NCM NASDAQCM",
@@ -96,7 +97,7 @@ _YAHOO = _codes(
         "XJSE": "JNB JOHANNESBURG",
         "BVMF": "SAO SÃOPAULO",
         "XMEX": "MEX MEXICO",
-        "XCNQ": "CNQ CANADIANSECURITIESEXCHANGE",
+        "XCNQ": "CNQ CANADIANSEC",
         "NEOE": "NEO CBOECA",
         "XTSX": "VAN TSXV",
     }
@@ -190,16 +191,94 @@ _NAMES = _codes(
         "XTSE": "TSX",
     }
 )
+# Published ISO names retained in legacy watchlists and provider descriptions.
+_NAMES.update(
+    {
+        "ASX-ALLMARKETS": "XASX",
+        "B3S.A.-BRASILBOLSABALCAO": "BVMF",
+        "BOLSADEMADRID": "XMAD",
+        "BOLSADEVALORESDESAOPAULO-SOMA": "XSOM",
+        "BOLSAMEXICANADEVALORES(MEXICANSTOCKEXCHANGE)": "XMEX",
+        "BORSAITALIANAS.P.A.": "XMIL",
+        "BSELTD": "XBOM",
+        "CANADIANSECURITIESEXCHANGE": "XCNQ",
+        "CBOEBYXU.S.EQUITIESEXCHANGE": "BATY",
+        "CBOEBZXU.S.EQUITIESEXCHANGE": "BATS",
+        "CBOECANADA-NEO-L(MARKETBYORDER)": "NEOE",
+        "DEUTSCHEBOERSEAG": "XFRA",
+        "EURONEXT-EURONEXTAMSTERDAM": "XAMS",
+        "EURONEXT-EURONEXTBRUSSELS": "XBRU",
+        "EURONEXT-EURONEXTLISBON": "XLIS",
+        "EURONEXT-EURONEXTPARIS": "XPAR",
+        "HONGKONGEXCHANGESANDCLEARINGLTD": "XHKG",
+        "IRISHSTOCKEXCHANGE-ALLMARKET": "XDUB",
+        "JOHANNESBURGSTOCKEXCHANGE": "XJSE",
+        "KOREAEXCHANGE(KOSDAQ)": "XKOS",
+        "KOREAEXCHANGE(STOCKMARKET)": "XKRX",
+        "LONDONSTOCKEXCHANGE": "XLON",
+        "MERCADOCONTINUOESPANOL-CONTINUOUSMARKET": "XMCE",
+        "NASDAQ-ALLMARKETS": "XNAS",
+        "NASDAQCAPITALMARKET": "XNCM",
+        "NASDAQCOPENHAGENA/S": "XCSE",
+        "NASDAQGLOBALMARKET": "XNMS",
+        "NASDAQGLOBALSELECTMARKET": "XNGS",
+        "NASDAQHELSINKILTD": "XHEL",
+        "NASDAQSTOCKHOLMAB": "XSTO",
+        "NATIONALSTOCKEXCHANGEOFINDIA": "XNSE",
+        "NEWYORKSTOCKEXCHANGE,INC.": "XNYS",
+        "NYSEAMERICANLLC": "XASE",
+        "NYSEARCA": "ARCX",
+        "OSAKAEXCHANGE": "XOSE",
+        "OSLOBORS": "XOSL",
+        "OTCLINKATS-OTCMARKETS": "OTCM",
+        "SHANGHAISTOCKEXCHANGE": "XSHG",
+        "SHENZHENSTOCKEXCHANGE": "XSHE",
+        "SINGAPOREEXCHANGE": "XSES",
+        "SIXSWISSEXCHANGE": "XSWX",
+        "TAIPEIEXCHANGE": "ROCO",
+        "TAIWANSTOCKEXCHANGE": "XTAI",
+        "TOKYOSTOCKEXCHANGE": "XTKS",
+        "TORONTOSTOCKEXCHANGE": "XTSE",
+        "TSXVENTUREEXCHANGE": "XTSX",
+        "WIENERBOERSEAG": "XWBO",
+        "XETRA": "XETR",
+    }
+)
 _CALENDARS = {
     name: name
-    for name in "XLON XAMS XETR XFRA XBRU XMAD XSTO XHKG XTKS XASX XTSE XPAR XMIL XSWX XDUB XKRX XTAI XCSE XHEL XLIS XOSL XWBO".split()
+    for name in [
+        "XLON",
+        "XAMS",
+        "XETR",
+        "XFRA",
+        "XBRU",
+        "XMAD",
+        "XSTO",
+        "XHKG",
+        "XTKS",
+        "XASX",
+        "XTSE",
+        "XPAR",
+        "XMIL",
+        "XSWX",
+        "XDUB",
+        "XKRX",
+        "XTAI",
+        "XCSE",
+        "XHEL",
+        "XLIS",
+        "XOSL",
+        "XWBO",
+    ]
 }
 _CALENDARS.update(dict.fromkeys(["XNYS", *_NASDAQ, "XASE", "ARCX", "BATS"], "XNYS"))
 _CALENDARS["XMCE"] = "XMAD"
 
 
 class VenueClaim(NamedTuple):
-    source: Literal["symbol", "mic", "yahoo", "fundamentals", "openfigi", "market", "name"]
+    source: Literal[
+        "symbol", "mic", "yahoo", "fundamentals", "openfigi", "region", "market", "name"
+    ]
     value: str | None
     listing: str | None = None
 
@@ -209,6 +288,10 @@ class VenueResolution:
     venues: frozenset[str]
     conflict: bool = False
     calendar: str | None = None
+
+    @property
+    def us_listing(self) -> bool:
+        return bool(self.venues) and self.venues <= _MARKETS["US"]
 
 
 class VenueConflict(FileNotFoundError):
@@ -233,6 +316,17 @@ def watchlist_claim(listing, value):
     return VenueClaim(source, value, listing)
 
 
+def watchlist_claims(listing, exchange, bloomberg_ticker="", source=None):
+    """Bloomberg tickers can carry another claim. The generated US suffix is a default."""
+    words = str(bloomberg_ticker or "").upper().split()
+    named = None if _code(exchange) in {"UNKNOWN", "N/A", "-"} else exchange
+    claims = [VenueClaim(source, named, listing) if source else watchlist_claim(listing, named)]
+    if len(words) >= 3 and words[-1] == "EQUITY":
+        code = words[-2]
+        claims.append(VenueClaim("market" if code in _MARKETS else "openfigi", code, listing))
+    return tuple(claims)
+
+
 def provider_claim(value, listing=None):
     """Older published exchange columns can contain a normalised MIC or reference name."""
     code = _code(value)
@@ -244,6 +338,10 @@ def row_claims(listing, row, metrics=None):
     metrics = metrics or {}
     return (
         VenueClaim("symbol", listing, listing),
+        VenueClaim("symbol", row.get("yf_ticker"), listing),
+        VenueClaim("symbol", metrics.get("symbol"), listing),
+        VenueClaim("mic", metrics.get("mic"), listing),
+        VenueClaim("yahoo", row.get("exchangeName"), listing),
         VenueClaim("mic", row.get("mic"), listing),
         provider_claim(row.get("exchange"), listing),
         VenueClaim("yahoo", row.get("fullExchangeName"), listing),
@@ -257,11 +355,15 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
     explicit = defaultdict(list)
     defaults = defaultdict(list)
     unknown = False
+    specific = False
     for source, value, listing in (VenueClaim("symbol", requested), *claims):
         code = _code(value)
         if not code:
             continue
         owner = _code(listing or requested)
+        if source == "region" and code in _MARKETS:
+            explicit[owner].append(_MARKETS[code])
+            continue
         if source == "market":
             if code in _MARKETS:
                 defaults[owner].append(_MARKETS[code])
@@ -271,10 +373,13 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
             if not mic:
                 continue
         elif source == "openfigi":
-            if code in _MARKETS:
+            if code in _FIGI:
+                mic = _FIGI[code]
+            elif code in _MARKETS:
                 explicit[owner].append(_MARKETS[code])
                 continue
-            mic = _FIGI.get(code)
+            else:
+                mic = None
         elif source == "mic":
             mic = code
         elif source == "name":
@@ -282,6 +387,7 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
         else:
             mic = _YAHOO.get(code)
         if mic in _MICS:
+            specific = True
             explicit[owner].append(_MICS[mic])
         else:
             unknown = True
@@ -292,5 +398,5 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
     ]
     venues = frozenset.intersection(*groups) if groups else frozenset()
     calendars = {_CALENDARS.get(mic) for mic in venues}
-    calendar = calendars.pop() if explicit and not unknown and len(calendars) == 1 else None
+    calendar = calendars.pop() if specific and not unknown and len(calendars) == 1 else None
     return VenueResolution(venues, bool(groups and not venues), calendar)

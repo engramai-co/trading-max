@@ -8749,6 +8749,8 @@ export interface components {
             entityId: string;
             /** Exchange */
             exchange: string;
+            /** Exchangesource */
+            exchangeSource?: ("openfigi" | "yahoo" | "mic" | "market" | "name") | null;
             /** Figi */
             figi: string;
             gics?: components["schemas"]["GicsClassification"] | null;
@@ -9730,6 +9732,8 @@ export interface components {
             compositeFigi: string;
             /** Exchange */
             exchange: string;
+            /** Exchangesource */
+            exchangeSource?: ("openfigi" | "yahoo" | "mic" | "market" | "name") | null;
             /** Figi */
             figi: string;
             gics?: components["schemas"]["GicsClassification"] | null;

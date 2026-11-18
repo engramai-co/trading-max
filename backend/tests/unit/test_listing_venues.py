@@ -48,3 +48,9 @@ def test_market_defaults_are_local_to_the_claimed_symbol_and_namespaces_are_disj
     for source in ("mic", "yahoo", "fundamentals"):
         assert not resolve_venue("SYN", VenueClaim(source, "BO")).venues
     assert not resolve_venue("SYN", VenueClaim("openfigi", "LSE")).venues
+
+
+def test_unknown_provider_codes_withhold_timing_on_a_qualified_listing():
+    for source in ("yahoo", "mic", "fundamentals"):
+        assert resolve_venue("SYN.L", VenueClaim(source, "UNVERIFIED")).calendar is None
+    assert resolve_venue("SYN.L", VenueClaim("market", "US")).calendar == "XLON"

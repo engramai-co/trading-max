@@ -31,7 +31,7 @@ from trading_max.research.estimate_history import (
     EstimateHistory,
     estimate_observations,
 )
-from trading_max.research.fund_references import US_MARKETS, fund_peers, us_fund, us_fund_listing
+from trading_max.research.fund_references import fund_peers, us_fund, us_fund_listing
 from trading_max.research.fundamentals import (
     AnalystBatch,
     EarningsBatch,
@@ -233,7 +233,7 @@ class FundPriceStage:
     """Project listing prices from the same completed bars as technical research."""
 
     name = "research.fund_prices"
-    version = "fund-prices-v3"
+    version = "fund-prices-v4"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -258,6 +258,12 @@ class FundPriceStage:
                     **listings[ticker],
                     "as_of": as_of,
                     "spot": row["price"],
+                    "asset_type": row.get("asset_type") or None,
+                    **(
+                        {"market_segment": row["market_segment"]}
+                        if row.get("market_segment")
+                        else {}
+                    ),
                     "currency": row["currency"],
                     "exchange": row["exchange"],
                     "timezone": row["timezone"],
@@ -305,7 +311,7 @@ class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v12"
+    version = "market-snapshot-v13"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 
@@ -363,8 +369,7 @@ class MarketSnapshotStage:
             and any(
                 record.security_type == "ETF"
                 and any(
-                    listing.ticker == ticker
-                    and (listing.mic in US_MARKETS or listing.exchange.upper() in US_MARKETS)
+                    listing.ticker == ticker and us_fund_listing(listing)
                     for listing in record.listings
                 )
                 for record in catalog.catalog.records
