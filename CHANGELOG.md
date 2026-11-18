@@ -6,20 +6,44 @@ All notable public Trading Max releases are recorded here.
 
 ### Added
 - Review can expand each recorded buy or sell into its dated evidence, subsequent return and hindsight timing gap. A trading habits brief filters the timeline and journal by pre-earnings buys, same-day basket purchases or large falls without a trade. Both horizons use the selected account’s records.
-- Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Follow-ups use the reading’s selected account, period and security. Replies show figures and coverage directly from the cited records, and name the dataset when reporting its freshness. Screen readers announce each source and any verification notice. The sidebar reflows wide screens and fills the screen on phones. Keyboard focus follows the panel when it becomes a dialog. Tabbing through saved conversations scrolls the focused control into view. Unsent messages stay editable during background connection checks. Unsent drafts also survive temporary readiness failures. Historical event replies show their published dates and link to their sources. Broker decision links reopen the cited publication and disclose when it has expired.
-- Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. The daily brief also lists dated official macro releases in your display time zone. Benchmark citations reopen the portfolio and prices from the cited publication. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves. Key moments include dated dividend records and headlines for the chart’s listing. A headline published after the exchange closes goes with the next session.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
 - Saved Review citations keep the selected horizon and habit with MaxAI off. Earnings and analyst citations reopen the recorded event or show that it is unavailable. Opening a habit citation on a phone closes the sheet. Clearing the filter returns keyboard focus to the timeline.
 - Review keeps the provider’s quote currency when FX is missing, measures hindsight against observed GBP closes and excludes headlines on the UTC trade day. Basket counts include net buys with missing settlement. Habits follow-ups can compare both horizons. Briefs from older publications show only the habits those records cover.
-- A settings change in another window immediately hides cached readings and pauses assistant requests until fresh consent is confirmed. When a consented provider is unavailable, Review links directly to MaxAI settings.
+- When a consented provider is unavailable, Review links directly to MaxAI settings.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
 - A missing price chart stays unavailable when a similar ticker trades on a different known venue. Distributions on the chart can qualify as key moments. Timed headlines follow the published closing auction for their listing. A headline published while the auction can still close at random is marked on that session.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.
 - The first day of a chart range can qualify as a key moment when the previous session’s close is available.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
+## [1.58.0] - 2026-11-18
+
+### Added
+- Open MaxAI from the workspace bar or press ⌘J. Conversations follow you between pages, and follow-up questions keep the original account, period and security. The sidebar sits beside the page on wide screens and fills the screen on phones. Opening it while MaxAI is off shows where to enable it in Settings.
+- Replies cite the records behind figures, dates and data freshness. You can reopen the original Returns comparison, Broker decision, earnings or dividend record while its publication is retained. Expired records show an unavailable message. Screen readers announce sources, and keyboard users can move through saved conversations.
+- Closing the sidebar or losing the model connection temporarily preserves your unsent message. You can keep typing during a background connection check and send once MaxAI is ready again.
+- Overview has collapsible daily and weekly portfolio briefs covering performance, trades and upcoming events. Scheduled briefs include dated official releases in your display time zone. With background writing enabled, daily briefs are prepared after full updates and the weekly brief after 02:00 on Saturday in London.
+
+## [1.57.2] - 2026-11-18
+
+### Fixed
+- The public release check recognises the upcoming-events API route as source code.
+
+## [1.57.1] - 2026-11-18
+
+### Changed
+- Live and saved valuation readings explain when negative equity value reaches the zero floor. When a listing lacks a verified share unit or depositary receipt ratio, the Research Desk identifies the missing input.
+
+## [1.57.0] - 2026-11-18
+
+### Changed
+- The Research Desk values banks and insurers from common book value and residual income, trading platforms from earnings, and other companies from equity cash flow. Choose the model in the desk and inspect its period, currency and share basis. A missing quarter falls back to an earlier complete year of statements. Cash-flow and earnings models with reported zero revenue show the year-five revenue implied by price.
+- Valuations fall for the eleven cash-burning companies previously modelled from a zero starting margin. Their actual losses now enter the forecast and financing beyond available cash dilutes later returns.
+- Per-share valuations check the quoted symbol and exchange before using a catalog share type. Shell’s New York valuation uses two ordinary shares per ADS, and its London valuation uses one ordinary share.
+- A saved model can serve as the overview baseline. Model upside uses its five-year base value and the batch price. Clearing the baseline restores the automatic reading.
 
 ## [1.56.0] - 2026-11-18
 

@@ -1024,6 +1024,10 @@ class OptionSnapshot(ApiModel):
 
 
 class ValuationScenario(ApiModel):
+    ramp_years: int | None = Field(default=None, ge=1, le=10)
+    initial_roe: float | None = Field(default=None, ge=-0.8, le=2)
+    payout: float | None = Field(default=None, ge=0, le=1)
+    terminal_pb: float | None = Field(default=None, ge=0, le=15)
     value: float | None = None
     value10: float | None = None
     revenue_cagr: float | None = None
@@ -1052,6 +1056,7 @@ class ValuationSensitivity(ApiModel):
 
 
 class ValuationRow(ApiModel):
+    baseline_model_id: str | None = None
     ticker: str
     assumptions: dict[str, Any] = Field(default_factory=dict)
     as_of: str

@@ -135,6 +135,8 @@ def test_listing_calendar_reads_observed_venues_and_qualified_symbols():
         ("PAR", "PA", "XPAR"),
         ("MIL", "MI", "XMIL"),
         ("EBS", "SW", "XSWX"),
+        ("KOREA EXCHANGE (KOSDAQ)", "KQ", "XKRX"),
+        ("WARSAW", "WA", "XWAR"),
     ],
 )
 def test_yahoo_venues_and_qualified_fund_symbols(code, suffix, expected):

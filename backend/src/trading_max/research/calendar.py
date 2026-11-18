@@ -15,6 +15,7 @@ from pandas.tseries.holiday import Holiday
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.reference.venues import venue_mic
 
 YAHOO_SUFFIX_BY_MIC = {
     "XLON": ".L",
@@ -33,6 +34,8 @@ YAHOO_SUFFIX_BY_MIC = {
     "XSWX": ".SW",
     "XDUB": ".IR",
     "XKRX": ".KS",
+    "XKOS": ".KQ",
+    "XWAR": ".WA",
     "XTAI": ".TW",
     "XCSE": ".CO",
     "XHEL": ".HE",
@@ -114,6 +117,7 @@ _COMPOSITES = {
 _VENUE_SETS = {code: frozenset([mic]) for code, mic in EXCHANGES.items()}
 _VENUE_SETS.update({code: frozenset(mics.split()) for code, mics in _COMPOSITES.items()})
 _CALENDARS = {mic: mic for mic in YAHOO_SUFFIX_BY_MIC}
+_CALENDARS["XKOS"] = "XKRX"
 _CALENDARS.update(dict.fromkeys(("XNYS", "XNAS", "XASE", "ARCX", "BATS"), "XNYS"))
 
 # A schedule covers the recent sessions a quote or broker price can belong to
@@ -146,6 +150,9 @@ class SessionSchedule(DomainModel):
 
 
 def calendar_name(exchange: str | None) -> str | None:
+    mic = venue_mic(exchange)
+    if mic:
+        return _CALENDARS.get(mic, mic)
     return _CALENDARS.get(EXCHANGES.get("".join(str(exchange or "").upper().split())))
 
 
@@ -153,7 +160,8 @@ def listing_venues(symbol: str | None, exchange: str | None) -> frozenset[str]:
     """Known venues for an exact listing or market composite, independent of schedules."""
     code = "".join(str(exchange or "").upper().split())
     if code:
-        return _VENUE_SETS.get(code, frozenset())
+        mic = venue_mic(exchange)
+        return frozenset([mic]) if mic else _VENUE_SETS.get(code, frozenset())
     _, dot, suffix = str(symbol or "").strip().upper().rpartition(".")
     mic = YAHOO_MIC_BY_SUFFIX.get(dot + suffix)
     return frozenset([mic]) if mic else frozenset()
@@ -164,7 +172,7 @@ def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | N
     if str(exchange or "").strip():
         return calendar_name(exchange)
     _, dot, suffix = str(symbol or "").strip().upper().rpartition(".")
-    return YAHOO_MIC_BY_SUFFIX.get(dot + suffix)
+    return _CALENDARS.get(YAHOO_MIC_BY_SUFFIX.get(dot + suffix))
 
 
 class _FrankfurtEquitiesCalendar(XFRAExchangeCalendar):

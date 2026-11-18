@@ -129,7 +129,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  if (kind) {
+  if (kind && kind !== "rating_change") {
     source = kind === "earnings" ? "financials" : "disclosure";
     args.holdingTicker = ticker;
     args.event = kind === "ex_dividend" ? "exDividend" : kind;

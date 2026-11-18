@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 from datetime import UTC, date, datetime
 from enum import StrEnum
 from hashlib import sha256
@@ -21,9 +22,12 @@ from pydantic import (
 from trading_max.domain import DomainModel
 
 from .facts import fingerprint
+from .valuation_basis import Family, PeriodChoice
 from .valuation_preview import (
+    LEGACY_VERSION,
     REVERSE_GROWTH_BOUNDS,
     VALUATION_FORMULA_VERSION,
+    FormulaVersion,
     FrozenValuationBasis,
     ScenarioInputs,
     ScenarioProjection,
@@ -48,10 +52,21 @@ LocatorField = Annotated[str, StringConstraints(pattern=r"^[A-Za-z0-9_.+() -]{1,
 State = Literal["available", "missing", "unsupported"]
 Scenario = Literal["bear", "base", "bull"]
 Assumption = Literal[
-    "revenue_cagr", "target_fcf_margin", "discount_rate", "exit_fcf_multiple", "share_cagr"
+    "revenue_cagr",
+    "target_fcf_margin",
+    "discount_rate",
+    "exit_fcf_multiple",
+    "share_cagr",
+    "initial_roe",
+    "payout",
+    "ramp_years",
+    "terminal_pb",
 ]
 Reason = Literal[
     "no-evidence",
+    "opening-cash-required-for-burn",
+    "positive-common-equity-required",
+    "incomplete-family-assumptions",
     "listing-identity-unavailable",
     "fields-not-permitted",
     "cashflow-model-not-applicable",
@@ -76,6 +91,9 @@ class _FrozenModel(DomainModel):
 
 
 class Metric(StrEnum):
+    CASH = "cash"
+    EARNINGS = "netIncome"
+    BOOK = "commonEquity"
     SPOT = "spot"
     SHARES = "sharesOutstanding"
     FX = "reportingToQuoteFx"
@@ -110,7 +128,16 @@ class EvidenceGroup(StrEnum):
 
 
 BASIS_METRICS = frozenset(
-    {Metric.SPOT, Metric.SHARES, Metric.FX, Metric.REVENUE, Metric.FREE_CASHFLOW}
+    {
+        Metric.SPOT,
+        Metric.SHARES,
+        Metric.FX,
+        Metric.REVENUE,
+        Metric.FREE_CASHFLOW,
+        Metric.CASH,
+        Metric.EARNINGS,
+        Metric.BOOK,
+    }
 )
 
 
@@ -223,7 +250,14 @@ class FrozenValuationEvidence(_FrozenModel):
     """Self-contained replay input; validate again on deserialization."""
 
     binding: EvidenceBinding
-    formula_version: Literal[VALUATION_FORMULA_VERSION] = VALUATION_FORMULA_VERSION
+    formula_version: FormulaVersion = VALUATION_FORMULA_VERSION
+    family: Family = "cash-flow"
+    period_choice: PeriodChoice | None = None
+    period_id: (
+        Annotated[str, StringConstraints(pattern=r"^(ttm|annual):[0-9]{4}-[0-9]{2}-[0-9]{2}$")]
+        | None
+    ) = None
+    ordinary_per_receipt: float | None = Field(default=None, gt=0)
     eligibility: Literal["equity", "fund", "financial", "unknown"]
     facts_version: Version | None = None
     quote_id: Version | None = None
@@ -303,16 +337,20 @@ class EvaluateValuationRequest(_FrozenModel):
 
 
 class ReverseDCF(_FrozenModel):
+    metric: Literal["revenue-growth", "target-margin", "initial-roe", "year-five-revenue"] = (
+        "revenue-growth"
+    )
+    value: float | None = None
     implied_growth: float | None
     bound: Literal["below", "above"] | None
-    reason: Literal["non-monotonic-or-flat-cashflows"] | None
-    search_bounds: tuple[float, float] = REVERSE_GROWTH_BOUNDS
+    reason: str | None
+    search_bounds: tuple[float, float] | None = REVERSE_GROWTH_BOUNDS
 
 
 class ValuationEvaluation(_FrozenModel):
     state: State
     reason: Reason | None = None
-    formula_version: Literal[VALUATION_FORMULA_VERSION] = VALUATION_FORMULA_VERSION
+    formula_version: FormulaVersion = VALUATION_FORMULA_VERSION
     preview_id: PreviewId | None = None
     horizon: Literal[5, 10]
     projections: dict[Scenario, ScenarioProjection] | None = None
@@ -321,6 +359,8 @@ class ValuationEvaluation(_FrozenModel):
     warnings: tuple[
         Literal[
             "equity-cash-flow-proxy",
+            "net-income-proxy",
+            "residual-income",
             "reverse-dcf-withheld",
             "reverse-dcf-outside-bounds",
             "cross-currency-stored-share-basis",
@@ -332,6 +372,10 @@ class ValuationEvaluation(_FrozenModel):
 
 
 CITABLE_METRICS: dict[Assumption, frozenset[Metric]] = {
+    "initial_roe": frozenset({Metric.EARNINGS, Metric.BOOK}),
+    "payout": frozenset(),
+    "ramp_years": frozenset(),
+    "terminal_pb": frozenset({Metric.PRICE_TO_BOOK}),
     "revenue_cagr": frozenset(
         {
             Metric.REVENUE,
@@ -346,6 +390,7 @@ CITABLE_METRICS: dict[Assumption, frozenset[Metric]] = {
             Metric.REVENUE,
             Metric.FREE_CASHFLOW,
             Metric.FCF_MARGIN,
+            Metric.EARNINGS,
             Metric.CASH_FROM_OPERATIONS,
             Metric.CAPEX,
         }
@@ -402,7 +447,16 @@ class ValuationEvidenceTools:
     def _basis(self) -> BasisResult:
         items = self._group(EvidenceGroup.BASIS)
         fields = {item.metric: item for item in items if item.state == "available"}
-        if not self._frozen.binding.permitted_fields >= BASIS_METRICS:
+        family = self._frozen.family
+        income_metric = Metric.FREE_CASHFLOW if family == "cash-flow" else Metric.EARNINGS
+        required = {Metric.SPOT, Metric.SHARES, Metric.FX}
+        if family == "residual-income":
+            required.update((Metric.BOOK, Metric.EARNINGS))
+        else:
+            required.add(Metric.REVENUE)
+            if Metric.REVENUE not in fields or fields[Metric.REVENUE].value != 0:
+                required.add(income_metric)
+        if not self._frozen.binding.permitted_fields >= required:
             return BasisResult(state="missing", reason="fields-not-permitted", items=items)
         if self._frozen.eligibility in {"fund", "financial"}:
             return BasisResult(
@@ -410,7 +464,7 @@ class ValuationEvidenceTools:
             )
         if self._frozen.eligibility == "unknown":
             return BasisResult(state="missing", reason="listing-identity-unavailable", items=items)
-        if not (BASIS_METRICS - {Metric.FX}) <= fields.keys():
+        if not (required - {Metric.FX}) <= fields.keys():
             return BasisResult(
                 state="missing",
                 reason="complete-ttm-currency-and-share-count-required",
@@ -420,45 +474,56 @@ class ValuationEvidenceTools:
             return BasisResult(
                 state="missing", reason="currency-conversion-unavailable", items=items
             )
-        spot, shares, fx, revenue, fcf = (
-            fields[m]
-            for m in (Metric.SPOT, Metric.SHARES, Metric.FX, Metric.REVENUE, Metric.FREE_CASHFLOW)
+        spot, shares, fx = (fields[m] for m in (Metric.SPOT, Metric.SHARES, Metric.FX))
+        revenue = fields.get(Metric.REVENUE)
+        flow, book, cash = (
+            fields.get(income_metric),
+            fields.get(Metric.BOOK),
+            fields.get(Metric.CASH),
         )
+        statement = book if family == "residual-income" else revenue
         if (
-            spot.currency is None
-            or revenue.currency is None
-            or fcf.currency != revenue.currency
-            or fx.currency != revenue.currency
+            not spot.currency
+            or not statement
+            or not statement.currency
+            or fx.currency != statement.currency
             or fx.counter_currency != spot.currency
-            or revenue.period != fcf.period
-            or revenue.period.kind != "ttm"
-            or len(revenue.period.component_ends) != 4
+            or statement.period.kind not in {"ttm", "annual"}
+            or (statement.period.kind == "ttm" and len(statement.period.component_ends) != 4)
             or not self._frozen.facts_version
             or not self._frozen.quote_id
+            or any(
+                row and (row.currency != statement.currency or row.period != statement.period)
+                for row in (flow, cash, book, revenue)
+            )
         ):
             raise EvidenceScopeError("inconsistent valuation basis")
-        if any(item.value is None for item in (spot, shares, fx, revenue, fcf)):
-            raise EvidenceScopeError("incomplete valuation basis")
-        if spot.value <= 0 or shares.value <= 0 or fx.value <= 0 or revenue.value <= 0:
+        if min(spot.value, shares.value, fx.value) <= 0 or (
+            family != "residual-income" and revenue and revenue.value < 0
+        ):
             raise EvidenceScopeError("invalid valuation basis")
-        if fcf.value <= 0:
+        if book and book.value <= 0:
             return BasisResult(
-                state="unsupported",
-                reason="non-positive-starting-free-cash-flow",
-                items=items,
+                state="unsupported", reason="positive-common-equity-required", items=items
             )
-        margin = fcf.value / revenue.value
-        if margin > 1:
+        margin = (
+            flow.value / revenue.value
+            if family != "residual-income" and flow and revenue and revenue.value
+            else 0
+        )
+        converted = revenue.value * fx.value if revenue else None
+        if converted is not None and not math.isfinite(converted):
             return BasisResult(
-                state="unsupported",
-                reason="starting-margin-outside-formula-bounds",
-                items=items,
+                state="unsupported", reason="projection-outside-numeric-range", items=items
             )
-        converted = revenue.value * fx.value
-        if not 0 < converted < float("inf"):
+        if self._frozen.formula_version == LEGACY_VERSION and (
+            not flow or flow.value <= 0 or margin > 1
+        ):
             return BasisResult(
                 state="unsupported",
-                reason="projection-outside-numeric-range",
+                reason="non-positive-starting-free-cash-flow"
+                if margin <= 0
+                else "starting-margin-outside-formula-bounds",
                 items=items,
             )
         basis = FrozenValuationBasis(
@@ -472,7 +537,21 @@ class ValuationEvidenceTools:
             else spot.period.end.isoformat()
             if spot.period.end
             else None,
-            revenue=converted,
+            family=family,
+            period_id=self._frozen.period_id or f"{statement.period.kind}:{statement.period.end}",
+            period_choice=self._frozen.period_choice,
+            reporting_currency=statement.currency,
+            common_earnings=flow.value * fx.value if family == "residual-income" and flow else None,
+            fx_rate=fx.value,
+            cash_flow_type={
+                "cash-flow": "operating-cash-flow-less-capex-equity-proxy",
+                "net-income": "net-income-proxy",
+                "residual-income": "residual-income",
+            }[family],
+            opening_cash=cash.value * fx.value if cash and cash.value >= 0 else None,
+            book_per_share=book.value * fx.value / shares.value if book else None,
+            ordinary_per_receipt=self._frozen.ordinary_per_receipt,
+            revenue=converted if converted is not None and converted >= 0 else None,
             shares=shares.value,
             start_margin=margin,
         )
@@ -498,13 +577,37 @@ class ValuationEvidenceTools:
     def evaluate_valuation(self, request: EvaluateValuationRequest) -> ValuationEvaluation:
         """Run the existing DCF with proposed scenarios; do not save anything."""
         request = EvaluateValuationRequest.model_validate(request.model_dump(mode="json"))
+        family = self._frozen.family
+        allowed_fields = (
+            {"discount_rate", "initial_roe", "payout", "terminal_pb"}
+            if family == "residual-income"
+            else {
+                "discount_rate",
+                "revenue_cagr",
+                "target_fcf_margin",
+                "share_cagr",
+                "ramp_years",
+                "exit_fcf_multiple",
+            }
+        )
         cited = set()
         for citation in request.citations:
             key = (citation.scenario, citation.assumption, citation.evidence_id)
             row = self._frozen.resolve(citation.evidence_id)
             if (
                 key in cited
+                or citation.assumption not in allowed_fields
                 or row.state != "available"
+                or (
+                    citation.assumption == "target_fcf_margin"
+                    and self._frozen.family == "net-income"
+                    and row.metric not in {Metric.EARNINGS, Metric.REVENUE}
+                )
+                or (
+                    citation.assumption == "target_fcf_margin"
+                    and self._frozen.family == "cash-flow"
+                    and row.metric == Metric.EARNINGS
+                )
                 or row.metric not in CITABLE_METRICS[citation.assumption]
             ):
                 raise EvidenceScopeError("unknown, unavailable, duplicate or mismatched citation")
@@ -518,12 +621,13 @@ class ValuationEvidenceTools:
                 ),
                 rows=0,
             )
-        basis_ids = tuple(sorted(row.id for row in frozen_basis.items))
+        basis_ids = tuple(sorted(row.id for row in frozen_basis.items if row.state == "available"))
         citations = tuple(
             sorted(request.citations, key=lambda c: (c.scenario, c.assumption, c.evidence_id))
         )
         inputs = ValuationPreviewRequest(
             horizon=request.horizon,
+            formula_version=self._frozen.formula_version,
             scenarios={
                 "bear": request.scenarios.bear,
                 "base": request.scenarios.base,
@@ -545,36 +649,55 @@ class ValuationEvidenceTools:
                     result.model_dump(mode="python"),
                 ]
             )
-        except (ValueError, ArithmeticError):
+        except (ValueError, ArithmeticError) as exc:
             return self._deliver(
                 ValuationEvaluation(
                     state="unsupported",
-                    reason="projection-outside-numeric-range",
+                    reason=str(exc)
+                    if str(exc) == "opening-cash-required-for-burn"
+                    else "incomplete-family-assumptions"
+                    if str(exc)
+                    in {
+                        "complete-cash-flow-assumptions-required",
+                        "book-roe-payout-and-terminal-pb-required",
+                        "target-margin-multiple-and-share-change-required",
+                    }
+                    else "projection-outside-numeric-range",
                     horizon=request.horizon,
                 ),
                 rows=0,
             )
-        warnings = ["equity-cash-flow-proxy"]
+        warnings = [
+            {
+                "cash-flow": "equity-cash-flow-proxy",
+                "net-income": "net-income-proxy",
+                "residual-income": "residual-income",
+            }[basis.family]
+        ]
         if any(
             row.metric == Metric.FX and row.basis == "stored-valuation-fx"
             for row in frozen_basis.items
         ):
             warnings.append("cross-currency-stored-share-basis")
-        if result.implied_growth_reason:
+        if result.reverse_reason:
             warnings.append("reverse-dcf-withheld")
-        if result.implied_growth_bound:
+        if result.reverse_bound:
             warnings.append("reverse-dcf-outside-bounds")
         return self._deliver(
             ValuationEvaluation(
                 state="available",
                 preview_id=preview_id,
+                formula_version=result.formula_version,
                 horizon=result.horizon,
                 projections=result.scenarios,
                 sensitivity=tuple(result.sensitivity),
                 reverse_dcf=ReverseDCF(
                     implied_growth=result.implied_growth,
-                    bound=result.implied_growth_bound,
-                    reason=result.implied_growth_reason,
+                    metric=result.reverse_metric,
+                    value=result.reverse_value,
+                    bound=result.reverse_bound,
+                    reason=result.reverse_reason,
+                    search_bounds=result.reverse_limits,
                 ),
                 warnings=tuple(warnings),
                 basis_evidence_ids=basis_ids,
