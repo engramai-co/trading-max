@@ -13,6 +13,7 @@ import yfinance as yf
 from trading_max.infrastructure.alpaca_http import AlpacaDataError
 from trading_max.infrastructure.alpaca_market_prices import ALPACA_SIP, NY, AlpacaMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.facts import fingerprint
 from trading_max.research.technical import price_series
 from trading_max.research.venues import VenueClaim, VenueConflict, resolve_venue, row_claims
@@ -21,6 +22,30 @@ from .dashboard_models import ResearchPriceSeries
 from .valuation_assumptions import _atomic_write
 
 PRICE_HISTORY_UNAVAILABLE = "security-price-history-unavailable"
+
+
+def verified_provider_claims(ticker: str, series: ResearchPriceSeries) -> tuple[VenueClaim, ...]:
+    """Resolve the price provider's own observation before adding any routing evidence."""
+    symbol = series.published_bar_ticker
+    claims = (
+        *series.venue_claims,
+        *row_claims(
+            symbol,
+            {
+                "mic": series.published_bar_mic,
+                "exchange": series.published_bar_exchange,
+                "exchangeName": series.quote_exchange,
+            },
+        ),
+    )
+    if series.source == ALPACA_SIP:
+        claims += (VenueClaim("region", "US", series.ticker),)
+    observation = resolve_venue(symbol, *claims)
+    if (symbol and symbol.upper() != ticker.upper()) or series.ticker.upper() != ticker.upper():
+        raise VenueConflict("unexpected provider symbol")
+    if observation.conflict or not observation.venues or not series.currency:
+        raise VenueConflict("price history lacks a verified listing or currency")
+    return claims
 
 
 class SecurityPriceHistory:
@@ -109,7 +134,9 @@ class SecurityPriceHistory:
             return 0 <= age < (300 if interval != "1wk" else 3600)
 
         def load() -> ResearchPriceSeries:
-            path = self.root / (fingerprint(["listing-venue-v2", ticker, cache_interval]) + ".json")
+            path = self.root / (
+                fingerprint(["observed-provider-venue-v3", ticker, cache_interval]) + ".json"
+            )
             with suppress(OSError, ValueError, KeyError):
                 saved = ResearchPriceSeries.model_validate_json(path.read_text())
                 if fresh(saved):
@@ -144,18 +171,17 @@ class SecurityPriceHistory:
         if frame.empty:
             raise ValueError("requested-interval-unavailable")
         metadata = proxy.get_history_metadata() or {}
-        published = str(metadata.get("symbol") or ticker).upper()
+        published = str(metadata.get("symbol") or "").upper() or None
         exchange = metadata.get("exchangeName")
         claims = row_claims(published, metadata)
-        venue = resolve_venue(ticker, *claims)
-        if venue.conflict or published != ticker:
-            raise VenueConflict("public history belongs to a different listing")
-        code = str(metadata.get("currency") or "")
-        if code in {"GBp", "GBX"}:
-            frame[["Open", "High", "Low", "Close"]] *= 0.01
+        venue = resolve_venue(published, *claims)
+        code, divisor = major_quote_unit(str(metadata.get("currency") or ""))
+        if venue.conflict or not venue.venues or (published and published != ticker) or not code:
+            raise VenueConflict("public history lacks a verified listing or currency")
+        if divisor != 1:
+            frame[["Open", "High", "Low", "Close"]] /= divisor
             if "Dividends" in frame:
-                frame["Dividends"] *= 0.01
-            code = "GBP"
+                frame["Dividends"] /= divisor
         frame.attrs["intraday"] = interval.endswith("m")
         averages = {
             "sma" + str(n): frame["Close"].rolling(n, min_periods=n).mean() for n in (20, 50, 200)
@@ -187,13 +213,14 @@ class SecurityPriceHistory:
                         }
                     )
         result = ResearchPriceSeries(
-            ticker=ticker,
+            ticker=published or ticker,
             as_of=points[-1]["date"],
             currency=code,
             available_sessions=len({p["date"][:10] for p in points}),
             points=points,
             requested_interval=interval,
             actual_interval=interval,
+            quote_exchange=metadata.get("exchangeName"),
             timezone=metadata.get("exchangeTimezoneName"),
             venue_claims=claims,
             published_bar_ticker=published,
@@ -208,7 +235,7 @@ class SecurityPriceHistory:
             {
                 **result.model_dump(mode="json"),
                 "venue_claims": claims,
-                "published_bar_ticker": published,
+                "published_bar_ticker": result.published_bar_ticker,
                 "published_bar_exchange": result.published_bar_exchange,
                 "published_bar_mic": result.published_bar_mic,
             },

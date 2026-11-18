@@ -112,6 +112,25 @@ export function scheduleExpired(quote: Quote | undefined, now: Date) {
   return known != null && now.valueOf() >= known.until;
 }
 
+/**
+ * How many of the quote exchange's sessions a daily price history ending on
+ * `lastClose` lacks, up to the session of a price observed at `asOf`, so
+ * weekends and the exchange's holidays never count. Without a schedule,
+ * weekdays stand in: a holiday can then only be counted, never hidden.
+ */
+export function sessionsMissed(quote: Quote | undefined, lastClose: string, asOf: string) {
+  const known = calendar(quote);
+  const observation = quoteObservation(asOf, known);
+  const reference = observation?.kind === "close" ? observation.date
+    : observation && known?.sessions[observation.index]?.date;
+  if (known && reference) return known.sessions.filter((s) => s.date > lastClose && s.date <= reference).length;
+  let missed = 0;
+  const end = Date.parse(asOf.slice(0, 10) + "T00:00:00Z");
+  for (let day = Date.parse(lastClose + "T00:00:00Z") + 86_400_000; day <= end; day += 86_400_000)
+    if (new Date(day).getUTCDay() % 6 !== 0) missed++;
+  return missed;
+}
+
 /** Whether the quote's exchange is in a session at `now`. */
 export function inSession(quote: Quote | undefined, now: Date) {
   const known = calendar(quote);

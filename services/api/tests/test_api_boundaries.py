@@ -445,7 +445,15 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
 
     def prices(ticker):
         assert ticker == "SMH"
-        return SparkSeries(ticker, (int(now.timestamp()),), (101.0,), fetched_at=now)
+        return SparkSeries(
+            ticker,
+            (int(now.timestamp()),),
+            (101.0,),
+            fetched_at=now,
+            provider_symbol=ticker,
+            exchange_name="NMS",
+            currency="USD",
+        )
 
     def unavailable(*_args, **_kwargs):
         raise ValueError("no synthetic OHLC")
@@ -460,6 +468,10 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
     assert chart["adjustment"] == "provider-close"
     assert chart["points"][0]["close"] == 101.0
 
+    foreign = SparkSeries("SMH.L", (int(now.timestamp()),), (85.0,), fetched_at=now)
+    monkeypatch.setattr(boundary_client.app.state.market_prices, "history", lambda ticker: foreign)
+    assert boundary_client.get("/v1/research/SMH/prices?interval=60m").status_code == 404
+
     from trading_max.infrastructure import shared_market_prices
 
     # The close-only request may return a different symbol or a contradictory
@@ -470,7 +482,7 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
         {"symbol": "OTHER", "exchangeName": "NMS"},
     ):
         provider_row = {
-            "meta": observed,
+            "meta": {**observed, "currency": "USD"},
             "timestamp": [int(now.timestamp())],
             "indicators": {"quote": [{"close": [101.0]}]},
         }
@@ -571,6 +583,8 @@ def test_public_peer_lens_scores_bars_without_publishing_research(boundary_clien
     ]
     series = ResearchPriceSeries(
         ticker="QQQ",
+        published_bar_ticker="QQQ",
+        published_bar_exchange="NMS",
         as_of=points[-1]["date"],
         currency="USD",
         timezone="America/New_York",
@@ -584,6 +598,11 @@ def test_public_peer_lens_scores_bars_without_publishing_research(boundary_clien
     data = response.json()
     assert data["context"]["quote"]["price"] == points[-1]["close"]
     assert data["technicalSummary"]["score"] is not None
+    for symbol, exchange in [(None, None), ("QQQ", "LSE"), ("QQQ.L", "NMS")]:
+        series.published_bar_ticker, series.published_bar_exchange = symbol, exchange
+        refused = client.get("/v1/research/QQQ/lens/overview?detail=summary&preview=true").json()
+        assert refused["context"]["quote"]["price"] is None
+        assert refused["technicalSummary"] is None
     assert not client.get("/v1/watchlist").json()["items"]
     assert store.latest_manifest().run_id == immutable.manifest.run_id
 

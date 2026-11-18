@@ -8,6 +8,7 @@ import {
   priceBasis,
   quoteTime,
   scheduleExpired,
+  sessionsMissed,
 } from "./research-price-basis";
 
 /** Weekday sessions as the API schedules them, without the given holidays. */
@@ -426,5 +427,27 @@ describe("research price basis", () => {
     expect(
       priceBasis({ ...held, brokerAsOf: "2026-11-16T14:55:00Z" }, quote, null, expired).time,
     ).toMatchObject({ kind: "time", stale: true });
+  });
+
+  it("counts the exchange's sessions a price history misses before the current price", () => {
+    const quote = { ...close, schedule: nyse };
+    // Tuesday's close against Wednesday's live price: one session, still trading.
+    expect(sessionsMissed(quote, "2026-11-17", "2026-11-18T16:00:00Z")).toBe(1);
+    // A weekend is not missed: Friday's close against Monday.
+    expect(sessionsMissed(quote, "2026-11-13", "2026-11-16T16:00:00Z")).toBe(1);
+    // Nor is Thanksgiving: Wednesday's close against Friday.
+    expect(sessionsMissed(quote, "2026-11-25", "2026-11-27T15:00:00Z")).toBe(1);
+    // Before the open, the latest session is Tuesday's, so Monday's close misses only it.
+    expect(sessionsMissed(quote, "2026-11-16", "2026-11-18T13:00:00Z")).toBe(1);
+    // Two sessions behind: Monday's close against Wednesday, or against Tuesday's close.
+    expect(sessionsMissed(quote, "2026-11-16", "2026-11-18T16:00:00Z")).toBe(2);
+    expect(sessionsMissed(quote, "2026-11-13", "2026-11-17")).toBe(2);
+    // London's summer bank holiday is not a missed session either.
+    expect(sessionsMissed({ ...close, schedule: lse }, "2026-08-28", "2026-09-01T10:00:00Z")).toBe(1);
+  });
+
+  it("counts weekdays when the exchange's calendar is unknown", () => {
+    expect(sessionsMissed({ ...close, schedule: null }, "2026-11-13", "2026-11-16T16:00:00Z")).toBe(1);
+    expect(sessionsMissed({ ...close, schedule: null }, "2026-11-25", "2026-11-27T15:00:00Z")).toBe(2);
   });
 });

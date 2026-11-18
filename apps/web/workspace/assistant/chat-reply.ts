@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import type { Locale } from "@/components/locale-provider";
 import { object, objects, str } from "../data";
 import { completedEvidence, evidenceArguments, type Evidence } from "./evidence";
+import { researchFigure } from "./research-figures";
 import { calendarObservation, inferenceText, renderToolField } from "./figures";
 import { reviewFieldLocation } from "./review-figures";
 
@@ -25,16 +26,14 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       if (!source) return [];
       if (["upcoming_events","news_and_events"].includes(source.ref.tool) && pointer.startsWith("/data/items/")) {
         const observation = calendarObservation(source.ref, source.output, pointer, locale, timeZone);
-        if (observation) {
-          result.push(observation);
-          continue;
-        }
-        // Other historical events can be handled by their page renderer below.
-        if (source.ref.tool === "upcoming_events") return [];
+        if (!observation) return [];
+        result.push(observation);
+        continue;
       }
-      const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone);
+      const research = researchFigure(source.ref, source.output, pointer, locale, timeZone);
+      const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone, research);
       if (!text) return [];
-      let evidence = source.ref;
+      let evidence = research?.evidence ?? source.ref;
       const review = reviewFieldLocation(evidence.tool, source.output, pointer);
       if (review) {
         evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, ...review, snapshotId:str(source.output.snapshot_id) || evidence.arguments?.snapshotId}, source.output)};

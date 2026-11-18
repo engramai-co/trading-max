@@ -23,7 +23,7 @@ from .models import SecuritySearchResult, SnapshotManifest
 from .projections.research import technical_rows
 from .research import ResearchLedger, _technical_summary
 from .research_listing import PinnedListing
-from .research_prices import SecurityPriceHistory
+from .research_prices import SecurityPriceHistory, verified_provider_claims
 
 LOGGER = logging.getLogger(__name__)
 
@@ -59,6 +59,11 @@ def public_lens(
             series = (
                 price_reader.alpaca_etf(ticker, "1d") if reference else None
             ) or price_reader.get(ticker, "1d", market_etf=True)
+            # Verify the provider's own observation before it can refine the listing,
+            # without changing the reader's series for another request.
+            series = series.model_copy(
+                update={"venue_claims": verified_provider_claims(ticker, series)}
+            )
             venue = ResearchLedger.price_venue(pinned, series)
             frame = pd.DataFrame(
                 {

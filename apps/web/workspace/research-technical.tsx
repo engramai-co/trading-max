@@ -96,15 +96,15 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
   </Panel>;
 }
 
-export function TechnicalWorkspace({ ticker, runId, data, pending, error, retry, seasonality }: {
-  ticker: string; runId: string; data?: ResearchLensSnapshot; pending: boolean; error: boolean; retry: () => void;
+export function TechnicalWorkspace({ ticker, runId, snapshotId, data, pending, error, retry, seasonality }: {
+  ticker: string; runId: string; snapshotId?: string; data?: ResearchLensSnapshot; pending: boolean; error: boolean; retry: () => void;
   /** A security's monthly seasonality, read below its diagnosis. */
   seasonality?: ReactNode;
 }) {
   const t = useCopy();
   return <ResearchReading sections={seasonality ? technicalSections : technicalSections.slice(0, 2)} parameter="technicalView">
     <div className="mx-tech-workspace">
-      <div id="research-price" className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} /></div>
+      <div id="research-price" className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} snapshotId={snapshotId} technical compactChart context={data} /></div>
       <Panel bare className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
       <div id="research-data" className="mx-tech-diagnosis-slot">{data ? <TechnicalDiagnosis data={data} />
         : <Panel bare title={t("技术诊断", "Technical diagnosis")}>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}</div>

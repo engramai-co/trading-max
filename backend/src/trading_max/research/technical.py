@@ -415,7 +415,7 @@ def _adx_dmi(
 
 def _relative_stats(
     close: pd.Series, benchmark: pd.Series, sessions: int
-) -> dict[str, float | None]:
+) -> dict[str, float | str | None]:
     # Compare trading dates, including when listings have different time zones.
     def by_session(series: pd.Series, name: str) -> pd.Series:
         return series.rename(name).set_axis(series.index.tz_localize(None).normalize())
@@ -437,6 +437,8 @@ def _relative_stats(
     variance = daily["benchmark"].var()
     beta = daily["asset"].cov(daily["benchmark"]) / variance if variance else np.nan
     return {
+        "start": aligned.index[-sessions - 1].date().isoformat(),
+        "end": aligned.index[-1].date().isoformat(),
         "asset_return": _finite(asset_return, 6),
         "benchmark_return": _finite(benchmark_return, 6),
         "excess_return": _finite(asset_return - benchmark_return, 6),
@@ -642,6 +644,11 @@ def analyze_ticker(
             "spy_63d": _relative_stats(close, benchmarks.get("SPY", unavailable_benchmark), 63),
             "spy_126d": _relative_stats(close, benchmarks.get("SPY", unavailable_benchmark), 126),
             "qqq_63d": _relative_stats(close, benchmarks.get("QQQ", unavailable_benchmark), 63),
+            **{
+                symbol: _relative_stats(close, prices, 63)
+                for symbol, prices in benchmarks.items()
+                if symbol.endswith("-USD-STRD")
+            },
             "soxx_63d": _relative_stats(close, benchmarks.get("SOXX", unavailable_benchmark), 63),
         },
         "seasonality": _monthly_seasonality(close),

@@ -50,6 +50,18 @@ class PinnedListing:
             aliases=(*self.aliases, self.requested, *other.aliases, other.requested),
         ).conflict
 
+    @classmethod
+    def from_price_series(cls, requested, series):
+        """Reuse the identity and claims captured with the displayed chart."""
+        ticker = series.published_bar_ticker or series.ticker
+        claims = (
+            *series.venue_claims,
+            *row_claims(
+                ticker, {"mic": series.published_bar_mic, "exchange": series.published_bar_exchange}
+            ),
+        )
+        return cls(requested, series.ticker, ticker, claims, (series.ticker, ticker))
+
     @cached_property
     def base_venue(self):
         return resolve_venue(self.requested, *self.claims, aliases=self.aliases)

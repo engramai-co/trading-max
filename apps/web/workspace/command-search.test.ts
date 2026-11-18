@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
+  findsSecurity, highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
   type SearchIndex, type SearchPage, type SearchResult,
 } from "./command-search";
 
@@ -57,6 +57,15 @@ describe("workspace command search", () => {
     expect(needsSecurity("DCF")).toBe(true);
     expect(search("UNKNOWN technical").filter((item) => item.group === "research")).toEqual([]);
     expect(search("technical", "UNKNOWN").filter((item) => item.group === "research")).toEqual([]);
+  });
+  it("offers the research finder only for text that could name a listing outside the list", () => {
+    expect(findsSecurity("Tesla", instruments)).toBe(true);
+    expect(findsSecurity("TSLA", instruments)).toBe(true);
+    // A listed ticker is already in the list, a lens query moves within it, and one letter is too short.
+    expect(findsSecurity("arm", instruments)).toBe(false);
+    expect(findsSecurity("UNKNOWN technical", instruments)).toBe(false);
+    expect(findsSecurity("估值", instruments)).toBe(false);
+    expect(findsSecurity("T", instruments)).toBe(false);
   });
   it("uses an explicit current ticker for a bare lens", () => {
     expect(search("估值", "BE")[0]?.href).toBe("/research?ticker=BE&view=valuation");

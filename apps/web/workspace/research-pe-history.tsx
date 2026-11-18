@@ -12,10 +12,12 @@ import { PercentileBand } from "./percentile-band";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
 import { epsFigure } from "./reading-figures";
 import { quoteAmount, quoteUnit, quoteValue } from "./financial-values";
+import { researchTimeAxis } from "./research-chart-format";
 
 type Trailing = NonNullable<ResearchLensSnapshot["trailingPeHistory"]>;
 type Forward = NonNullable<ResearchLensSnapshot["forwardPeHistory"]>;
 type Basis = "trailing" | "forward" | "sales";
+type Withheld = Trailing["points"][number]["notMeaningful"];
 type Point = {
   date: string;
   pe: number | null;
@@ -25,20 +27,36 @@ type Point = {
 };
 type Translator = ReturnType<typeof useCopy>;
 
+/** The API's trailing P/E screen (MEANINGFUL_PE_CAP and SEGMENT_JUMP in trailing_pe.py). */
+const PE_CAP = 400;
+const SEGMENT_JUMP = 5;
+/** Copy with the screen's numbers in place of {cap}, {yield} and {jump}. */
+const screened = (copy: string) => copy.replaceAll("{cap}", String(PE_CAP))
+  .replaceAll("{yield}", String(100 / PE_CAP)).replaceAll("{jump}", String(SEGMENT_JUMP));
+
+/** Why the API withholds a positive trailing multiple. */
+function withheldReason(reason: Withheld | undefined, t: Translator) {
+  return reason === "aboveCap" ? screened(t("超过 {cap}×", "Above {cap}×"))
+    : reason === "segmentJump" ? screened(t("跳变超过 {jump} 倍", "Jumped over {jump}×")) : undefined;
+}
+
 /** One date on the P/E line: the multiple leads, then where it sits in the band and its two inputs.
- * Sources and effective dates are in the panel help; a point flags only a basis unlike its neighbours. */
+ * Sources and effective dates are in the panel help; a point flags only a basis unlike its neighbours
+ * or why its multiple is withheld. */
 function peReading(
   point: Point, trailing: Trailing | null | undefined, forward: Forward | null | undefined,
   t: Translator, locale: Locale, multiple: (value: number) => string, rank: ReadingItem[],
 ): Reading | null {
   const time = formatCalendarDate(point.date, locale);
+  const withheld = point.trailing?.notMeaningful;
   const value = (eps: number | null | undefined) => point.pe != null ? multiple(point.pe)
-    : eps != null && eps <= 0 ? t("不适用", "Not meaningful") : "—";
+    : withheld || (eps != null && eps <= 0) ? t("不适用", "Not meaningful") : "—";
   if (point.trailing && trailing) {
     const eps = point.trailing.earningsIndex === null ? undefined : trailing.earnings[point.trailing.earningsIndex];
+    const flags = [withheldReason(withheld, t), eps?.method === "derivedFourthQuarter" ? t("推算 Q4", "Inferred Q4") : undefined];
     return {
       time,
-      flag: eps?.method === "derivedFourthQuarter" ? t("推算 Q4", "Inferred Q4") : undefined,
+      flag: flags.filter(Boolean).join(" · ") || undefined,
       primary: { value: value(eps?.eps) },
       groups: [[...rank,
         { label: t("收盘价", "Close"), value: quoteValue(point.trailing.close, trailing.currency, { style: "figure" }) },
@@ -131,6 +149,7 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
   }, [isTrailing, points]);
 
   const option = useCallback((c: ChartColours): EChartsOption => {
+    const axis = researchTimeAxis(plot.readings[0]?.[0] ?? 0, plot.readings.at(-1)?.[0] ?? 0, locale);
     const endNote = [
       rank == null ? "" : `P${Math.round(rank * 100)}`,
       latest?.forward?.source === "yahoo-forward-pe" ? "Yahoo" : "",
@@ -147,7 +166,6 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
             color: c.text,
             fontSize: 13,
             fontWeight: 600,
-            fontFamily: "monospace",
             formatter: endNote ? `${latestValue}\n{note|${endNote}}` : latestValue,
             rich: { note: { color: c.axis, fontWeight: 400, fontSize: 12, lineHeight: 17 } },
           },
@@ -161,9 +179,10 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
         type: "time",
         boundaryGap: points.length === 1 ? ["8%", "8%"] : ["0%", "0%"],
         splitNumber: 4,
+        minInterval: axis.minInterval,
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { hideOverlap: true },
+        axisLabel: { hideOverlap: true, formatter: axis.formatter },
       },
       yAxis: {
         type: "value",
@@ -172,7 +191,6 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
         axisLabel: {
           showMinLabel: false,
           showMaxLabel: false,
-          fontFamily: "monospace",
           formatter: (value: number) => displayMultiple(value, 1),
         },
       },
@@ -205,15 +223,23 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
         },
       ],
     };
-  }, [displayMultiple, latest, latestValue, plot, points.length, rank, title]);
+  }, [displayMultiple, latest, latestValue, locale, plot, points.length, rank, title]);
 
   const nonPositive = isTrailing
     ? latest?.trailing?.earningsIndex != null && (trailing?.earnings[latest.trailing.earningsIndex]?.eps ?? Infinity) <= 0
     : latest?.forward?.eps != null && latest.forward.eps <= 0;
+  const withheld = isTrailing ? latest?.trailing?.notMeaningful : undefined;
+  // A multiple below 1× (belowFloor) has no wording of its own and reads Not meaningful.
+  const withheldState = withheld === "aboveCap"
+    ? screened(t("最新 P/E 超过 {cap}×，不适用", "The latest P/E is above {cap}× and not meaningful"))
+    : withheld === "segmentJump"
+      ? screened(t("最新 EPS 跳变超过 {jump} 倍，P/E 不适用", "The latest EPS jumped more than {jump}×; P/E is not meaningful"))
+      : t("不适用", "Not meaningful");
   const supported = isTrailing ? trailing != null : true;
   const emptyReason = !supported ? t("暂不支持滚动 P/E 历史", "Trailing P/E history is unavailable")
     : !points.length ? t("历史存档尚无记录", "History archive is empty")
     : nonPositive ? t("EPS 不为正，无法计算 P/E", "P/E is undefined for nonpositive EPS")
+    : withheld ? withheldState
     : t("有效样本不足", "Not enough valid observations");
   const validDates = points
     .filter((point) => point.pe != null && (isTrailing || !distribution || point.segment === latest?.segment))
@@ -249,10 +275,10 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
         </div>
       }
       help={basis !== "sales" && <>
-        <p>{isTrailing ? t(
-          "每日收盘价除以同一拆股口径的摊薄 EPS。财年末用已披露的全年 EPS，其他日期用最近四个完整季度；缺少第四季度时以全年减前三季推算，读数标「推算 Q4」。每次 EPS 更新开始新的一段，EPS 不为正时留空。",
-          "Daily close divided by diluted EPS on the same share basis. At year end use filed full-year EPS; otherwise use the latest four complete quarters. An unreported Q4 is inferred from full-year EPS minus Q1–Q3 and its readings say Inferred Q4. Each new EPS starts a segment; nonpositive EPS leaves a gap.",
-        ) : t(
+        <p>{isTrailing ? screened(t(
+          "每日收盘价除以同一拆股口径的摊薄 EPS。财年末用已披露的全年 EPS，其他日期用最近四个完整季度；缺少第四季度时以全年减前三季推算，读数标「推算 Q4」。每次 EPS 更新开始新的一段，EPS 不为正时留空。倍数超过 {cap}×（盈利收益率不足 {yield}%，通常是 EPS 接近零），或新一段的倍数较前一收盘跳变超过 {jump} 倍时，标为不适用并留空，不计入分布。",
+          "Daily close divided by diluted EPS on the same share basis. At year end use filed full-year EPS; otherwise use the latest four complete quarters. An unreported Q4 is inferred from full-year EPS minus Q1–Q3 and its readings say Inferred Q4. Each new EPS starts a segment; nonpositive EPS leaves a gap. A multiple above {cap}× (an earnings yield under {yield}%, usually EPS near zero), or a segment that opens more than {jump}× away from the previous close's multiple, is not meaningful: it is left as a gap and kept out of the distribution.",
+        )) : t(
           "NTM 是未来 12 个月。按存档日到本财年末的剩余天数占财年长度的比例，对本财年和下一财年的一致预期 EPS 加权，再用同一存档里的价格相除；加权 EPS 不为正时留空。财年口径对不上时改用备用的远期 P/E，预测期限可能不同，读数标「备用口径」。",
           "NTM means next twelve months. Current- and next-fiscal-year consensus EPS are weighted by the fraction of the fiscal year remaining on the archive date, and the archived price is divided by that EPS; nonpositive weighted EPS leaves a gap. When the fiscal inputs cannot be aligned, a fallback forward P/E is used, whose horizon can differ; its readings say Fallback.",
         )}</p>
@@ -266,8 +292,8 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
       </>}
       helpBasis={<>
         {isTrailing ? t(
-          "Yahoo 每日收盘价（调整拆股，不调整分红）；SEC Companyfacts 摊薄 EPS，从 EDGAR 接收文件后的首个收盘生效。每个交易日更新。",
-          "Yahoo daily close (split adjusted, excluding dividends); SEC Companyfacts diluted EPS, effective from the first close after EDGAR acceptance. Updated each trading day.",
+          "Yahoo 每日收盘价（调整拆股，不调整分红）；SEC Companyfacts 摊薄 EPS，从 EDGAR 接收文件后的首个收盘生效。某份文件重复的各期每股数值若一律是此前披露的 100 倍或以上（10 的整数次幂），视为单位错误，不予采用。每个交易日更新。",
+          "Yahoo daily close (split adjusted, excluding dividends); SEC Companyfacts diluted EPS, effective from the first close after EDGAR acceptance. A filing that repeats earlier periods at 100 or more times their filed per-share values, by a power of ten, is treated as a unit error and not used. Updated each trading day.",
         ) : t(
           "Yahoo 本财年和下一财年一致预期 EPS 与价格的存档，备用口径为存档中的 Yahoo forwardPE。每个交易所当地日期取最后一条存档，从已有记录起画。",
           "Archived Yahoo current- and next-fiscal-year consensus EPS and price; the fallback is archived Yahoo forwardPE. Each exchange-local date uses its last stored observation, starting with the archive.",
@@ -282,7 +308,8 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
         <>
           {!distribution && <p className="mx-price-caveat">{t("有效样本不足，暂无分位带", "Not enough observations for a percentile band")}</p>}
           {latestValue === null && nonPositive && <p className="mx-price-caveat">{t("最新 EPS 不为正，无法计算 P/E", "Latest EPS is nonpositive; P/E is undefined")}</p>}
-          {latestValue === null && !nonPositive && <p>{isTrailing
+          {latestValue === null && withheld && <p className="mx-price-caveat">{withheldState}</p>}
+          {latestValue === null && !nonPositive && !withheld && <p>{isTrailing
             ? t("最新收盘暂无 P/E", "No P/E for the latest close")
             : t("最新存档暂无 P/E", "No P/E for the latest archive date")}</p>}
           <PercentileBand

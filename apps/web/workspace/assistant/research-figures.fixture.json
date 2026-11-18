@@ -1,0 +1,238 @@
+{
+  "research_position": {
+    "status": "ok",
+    "data": {
+      "ticker": "TEST",
+      "end": "2026-02-03",
+      "close": 30.0,
+      "currency": "USD",
+      "adjustment": "split-and-dividend-adjusted",
+      "event": {
+        "date": "2026-01-29",
+        "kind": "earnings",
+        "reference": "report"
+      },
+      "benchmarks": [],
+      "sector_comparison": "unmapped",
+      "trade_date": "2026-01-28",
+      "side": "buy",
+      "start": "2026-01-28",
+      "change": -0.0625
+    },
+    "snapshot_id": "20261118T045617-951450Z-4167465d",
+    "scope": "broker_total",
+    "bound_arguments": {
+      "snapshotId": "20261118T045617-951450Z-4167465d",
+      "ticker": "TEST",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "index_id": null
+    },
+    "sources": [
+      {
+        "source_id": "src_1cca4f6d7fd8b786",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_aaac86348209225e",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_b4ab73d5068b17e6",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2c7a8954c63b3446",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2739d2d3e9799380",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_0caff01f353b9ca1",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_ad7c7036c754dd42"
+  },
+  "price_key_moments": {
+    "status": "partial",
+    "data": {
+      "ticker": "TEST",
+      "listing": "TEST",
+      "start": "2026-01-28",
+      "end": "2026-02-03",
+      "interval": "1d",
+      "basis": "published_daily_closes",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "items": [
+        {
+          "date": "2026-01-30",
+          "move_fraction": 0.0625,
+          "volume_z_score": null,
+          "unusual_rank": 2,
+          "events": [
+            {
+              "date": "2026-01-30",
+              "kind": "news",
+              "reference": "article",
+              "role": "lead"
+            }
+          ],
+          "event_count": 1
+        }
+      ],
+      "adjustment": "split-and-dividend-adjusted",
+      "following": [
+        {
+          "start": "2026-01-30",
+          "date": "2026-02-02",
+          "sessions": 1,
+          "return_fraction": -0.02941176470588236
+        },
+        {
+          "start": "2026-01-30",
+          "date": "2026-02-03",
+          "sessions": 2,
+          "return_fraction": -0.11764705882352944
+        }
+      ]
+    },
+    "snapshot_id": "20261118T045617-951450Z-4167465d",
+    "scope": "broker_total",
+    "bound_arguments": {
+      "snapshotId": "20261118T045617-951450Z-4167465d",
+      "ticker": "TEST",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "index_id": null,
+      "start": "2026-01-28",
+      "end": "2026-02-03",
+      "date": "2026-01-30",
+      "scope": "broker_total"
+    },
+    "sources": [
+      {
+        "source_id": "src_1cca4f6d7fd8b786",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2739d2d3e9799380",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_aaac86348209225e",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_0caff01f353b9ca1",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2c7a8954c63b3446",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
+    "quality": {
+      "issues": [
+        "rating_changes_unavailable",
+        "filings_unavailable",
+        "security_calendar_unavailable",
+        "dividends_unavailable",
+        "security_news_unavailable"
+      ]
+    },
+    "evidence_id": "ev_873c6e154ffc42c2"
+  },
+  "research_headline": {
+    "status": "ok",
+    "data": {
+      "ticker": "TEST",
+      "title": "Issuer publishes outlook",
+      "reference": "article",
+      "publisher": "Example Wire",
+      "url": "https://example.invalid/outlook",
+      "role": "lead",
+      "date": "2026-01-30"
+    },
+    "snapshot_id": "20261118T045617-951450Z-4167465d",
+    "scope": "public_research",
+    "bound_arguments": {
+      "snapshotId": "20261118T045617-951450Z-4167465d",
+      "ticker": "TEST",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "index_id": null,
+      "start": "2026-01-28",
+      "end": "2026-02-03",
+      "date": "2026-01-30",
+      "scope": "broker_total"
+    },
+    "sources": [
+      {
+        "source_id": "src_0caff01f353b9ca1",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_dd2d4c8c891013ef"
+  },
+  "research_earnings": {
+    "status": "ok",
+    "data": {
+      "report": {
+        "date": "2026-01-29",
+        "id": "report",
+        "fiscalPeriod": null,
+        "currency": "USD",
+        "actual": 1.2,
+        "estimate": 1.15,
+        "surprise": 0.04347826086956519
+      },
+      "estimates": [
+        {
+          "metric": "eps",
+          "end": "2026-03-31",
+          "period": "0q",
+          "currency": "USD",
+          "mean": 1.25
+        }
+      ],
+      "changes": [
+        {
+          "change": 0.25,
+          "currency": "USD",
+          "current": 1.25,
+          "current_as_of": "2026-02-03T17:00:00Z",
+          "end": "2026-03-31",
+          "metric": "eps",
+          "period": "0q",
+          "previous": 1.0,
+          "previous_as_of": "2026-01-31T12:00:00Z"
+        }
+      ],
+      "ticker": "TEST",
+      "version": "8d906b0f2fda37444a60e8e4e8a23c546422a330b5c03d06ff1fd9f071bf578c",
+      "as_of": "2026-02-03T17:00:00Z"
+    },
+    "snapshot_id": "20261118T045617-995725Z-ecba176f",
+    "scope": "public_research",
+    "bound_arguments": {
+      "snapshotId": "20261118T045617-995725Z-ecba176f",
+      "ticker": "TEST"
+    },
+    "sources": [
+      {
+        "source_id": "src_a171d447a7fbd53f",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_0ab4e1382b210b60"
+  }
+}

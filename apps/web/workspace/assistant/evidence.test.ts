@@ -1,6 +1,7 @@
 import pageOutputs from "./page-figures.fixture.json";
 import { describe, expect, it } from "vitest";
 import { dividendAmount } from "@/lib/dividend-disclosure";
+import earlyClose from "../../tests/fixtures/market-early-close.json";
 import historicalEvents from "../../tests/fixtures/historical-events.json";
 import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
@@ -136,6 +137,19 @@ it("reads quotation currency from the same research dataset and normalised valua
   expect(valuation.text).toContain("£1.2500/share");
 });
 
+it("keeps the selected research lens, object and evidence destination", () => {
+  const evidence = { evidenceId: "ev_reading", source: "market" as const, tool: "price_key_moments",
+    arguments: { ticker: "SYNT.L", date: "2026-02-03", lens: "technical" } };
+  const link = new URL(evidenceHref(evidence)!, "https://example.invalid");
+  expect(Object.fromEntries(link.searchParams)).toMatchObject({ ticker: "SYNT.L", view: "technical", eventDate: "2026-02-03", interval: "1d", unavailable:"1" });
+  expect(chatContext("research","type=index&index=sample&ticker=%5ETEST&view=price&scope=broker_total","Europe/London"))
+    .toMatchObject({ page: "research", ticker: "^TEST", lens: "technical", scope: "broker_total" });
+  const story = { ...evidence, tool: "research_headline", source: "publisher" as const, arguments: {ticker:"SYNT",url:"https://example.invalid/news"} };
+  expect(evidenceHref(story)).toBe(story.arguments.url);
+  // An unsafe publisher address leaves the source word without a link.
+  expect(evidenceHref({...story, arguments:{...story.arguments,url:"javascript:alert(1)"}}) ?? "").not.toMatch(/^javascript:/);
+});
+
 describe("page readings in the sidebar", () => {
   it.each([
     ["selected_money","/data/pnl",["ISA","80.00","Cash-flow-adjusted net P&L"]],
@@ -186,6 +200,8 @@ it.each(["events", "actions", "ratings"])("opens the selected listing’s %s sec
   const opened = new URL(href!, "https://example.org");
   expect(opened.pathname).toBe("/research");
   expect(opened.searchParams.get("ticker")).toBe("TEST.L");
+  // Research links name the listing before the section.
+  expect(opened.search).toMatch(/ticker=TEST\.L&.*analystView=/);
   expect(Object.fromEntries(opened.searchParams)).toMatchObject({snapshotId:"saved-run", calendarEventId:"ev_0123456789abcdef", date:"2026-08-28"});
   expect(opened.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
 });
@@ -243,6 +259,34 @@ it("projects timed releases into the reader's day and preserves date-only earnin
 
 it("keeps a historical benchmark with no publication ID from opening today's figures", () => {
   expect(evidenceHref({tool:"compare_benchmarks",source:"market",evidenceId:"ev_old",arguments:{scope:"isa",benchmark:"VOO"}})).toBeNull();
+});
+
+it("links an index observation to the retained chart, date and recorded event", () => {
+  const args = {ticker:"^SYNT",index_id:"example",published_series_id:"a".repeat(20),snapshotId:"older",start:"2026-01-01",
+    end:"2026-01-30",date:"2026-01-15",eventId:"report",lens:"technical"};
+  const link = new URL(evidenceHref({source:"market", evidenceId:"ev_test",tool:"price_key_moments",arguments:args})!, "http://localhost");
+  expect(Object.fromEntries(link.searchParams)).toMatchObject({snapshotId:"older",series:args.published_series_id,eventDate:args.date,eventId:"report",index:"example"});
+});
+
+it.each(["earnings","dividend","ex_dividend","dividend_pay","rating_change","macro"])("renders and cites the selected %s event", kind => {
+  const supply = {kind,title_en:"Published record",title_zh:"已发布记录",date:"2026-01-15",ticker:kind === "macro" ? null : "TEST",
+    source_url:"https://example.invalid/release",reference:"specific",evidence_id:"ev_row",publisher:"Source",status:"scheduled"};
+  const reply = fieldReply(kind === "macro" ? "upcoming_events" : "news_and_events",{snapshot_id:"older",data:{items:[supply]}},"/data/items/0/title_en");
+  const [line] = verifiedLines(reply);
+  expect(line?.text).toContain("Published record");
+  expect(line?.text).toContain("2026-01-15");
+  expect(line?.evidence?.arguments).toMatchObject({eventId:"ev_row",snapshotId:"older"});
+});
+
+it("resolves the saved event identity when the same retained result is presented in a different order", async () => {
+  const {researchFigure} = await import("./research-figures");
+  const row = {kind:"earnings",ticker:"TEST",title_zh:"财报",date:"2026-02-01"};
+  const observation = {status:"ok",scope:"isa",snapshot_id:"older",data:{items:[
+    {...row,title_en:"Other earnings",evidence_id:"ev_other"},
+    {...row,title_en:"Selected earnings",evidence_id:"ev_selected"},
+  ]}};
+  const cited = {tool:"news_and_events",source:"financials" as const,evidenceId:"ev_result",arguments:{eventId:"ev_selected"}};
+  expect(researchFigure(cited,observation,"/data/items/0/title_en","en","Europe/London")?.text).toContain("Selected earnings");
 });
 
 it("qualifies partial daily returns with observed intervals and dates the largest move", () => {
@@ -344,6 +388,16 @@ it.each([
   });
 });
 
+it("keeps a saved account event scoped to the original publication", () => {
+  const row = {kind:"own_trade",ticker:"TEST",title_en:"Account trade",date:"2026-01-15",evidence_id:"ev_fill"};
+  const [line] = verifiedLines(fieldReply("news_and_events",{scope:"isa",snapshot_id:"old",data:{
+    items:[row],timezone:"Europe/London",start:row.date,end:row.date}},"/data/items/0/date"));
+  expect(line.evidence?.source).toBe("broker");
+  expect(Object.fromEntries(new URL(evidenceHref(line.evidence!)!,"http://localhost").searchParams)).toMatchObject({
+    snapshotId:"old",eventId:"ev_fill",scope:"isa",event:"own_trade",
+  });
+});
+
 it("renders the published amount and retained disclosure from news_and_events", () => {
   const row = historicalDividend.data.items[0];
   for (const field of ["date", "amount", "basis"]) {
@@ -405,6 +459,16 @@ it("resolves each published historical event date to its source in mixed replies
       }
     });
   }
+});
+
+it("preserves the selected market on an early-close source link", () => {
+  const {output, arguments:args} = earlyClose;
+  const message = fieldReply("upcoming_events", {...output,bound_arguments:args}, "/data/items/0/date");
+  const [line] = verifiedLines(message, "en");
+  const url = new URL(evidenceHref(line.evidence!)!, "http://localhost");
+  expect(Object.fromEntries(url.searchParams)).toMatchObject({
+    market:args.market,eventTicker:args.ticker,eventId:output.data.items[0].evidence_id,snapshotId:output.snapshot_id,
+  });
 });
 
 it.each([

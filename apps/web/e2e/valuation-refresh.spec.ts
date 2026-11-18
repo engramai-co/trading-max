@@ -106,7 +106,7 @@ function peHistory(short = false): ResearchLensSnapshot["trailingPeHistory"] {
     const earningsIndex = i < 132 ? 0 : i < 152 ? 1 : 2;
     const pe = earningsIndex === 1 ? null : i === all.length - 1 ? 28.4
       : 22 + i * 0.02 + Math.sin(i * 0.052) * 4 + Math.sin(i * 0.56) + Math.cos(i * 2.5) * 0.35;
-    return { date, pe, close: pe === null ? 105 : pe * earnings[earningsIndex].eps, earningsIndex };
+    return { date, pe, close: pe === null ? 105 : pe * earnings[earningsIndex].eps, earningsIndex, notMeaningful: null };
   });
   const values = points.flatMap(({ pe }) => pe === null ? [] : [pe]).sort((a, b) => a - b);
   const quantile = (q: number) => {
@@ -171,6 +171,8 @@ async function synthetic(page: Page, running = true) {
     newResearch: false,
     trailingPe: null as ResearchLensSnapshot["trailingPeHistory"],
     forwardPe: null as ResearchLensSnapshot["forwardPeHistory"],
+    evidence: {} as Record<string, unknown>,
+    valuation: null as Record<string, unknown> | null,
     posts: [] as { ticker: string; scenarios: Record<string, Inputs> }[],
     releaseOther: () => {},
   };
@@ -191,6 +193,8 @@ async function synthetic(page: Page, running = true) {
       ...lens(ticker, view, ticker === "SYNT" ? 101 : 55),
       trailingPeHistory: ticker === "SYNT" && view === "valuation" ? state.trailingPe : null,
       forwardPeHistory: ticker === "SYNT" && view === "valuation" ? state.forwardPe : null,
+      ...(ticker === "SYNT" ? { researchEvidence: state.evidence } : {}),
+      ...(ticker === "SYNT" && state.valuation ? { valuation: state.valuation } : {}),
     };
     return route.fulfill({ json: state.newResearch && ticker === "SYNT" ? {
       ...data, runId: state.publication, financialFacts: { ...data.financialFacts, version: "new-facts" },
@@ -705,6 +709,193 @@ test.describe("valuation refresh", () => {
     await expect(section.getByText("暂不支持滚动 P/E 历史")).toBeVisible();
   });
 
+  test("withheld trailing multiples leave a gap and say why", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    // A break and its recovery, a growth-phase climb to about 300×, then EPS near zero (800×).
+    state.trailingPe = withheldHistory([[2, 30], [20, 10, "segmentJump"], [2.1, 10, "segmentJump"], [2.2, 20],
+      [0.5, 10], [0.133, 10], [0.05, 5, "aboveCap"]]);
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    await expect(page.locator(".mx-valuation-readout .mx-metric").first()).toContainText("Not meaningful");
+    const section = page.locator(".mx-pe-history");
+    await expect(section.getByText("The latest P/E is above 400× and not meaningful")).toBeVisible();
+    const chart = section.getByRole("group", { name: /^Trailing P\/E history/ });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await chart.focus();
+    await chart.press("End");
+    const reading = section.locator(".mx-chart-readout-values");
+    await expect(reading).toContainText("Not meaningful");
+    await expect(reading).toContainText("Above 400×");
+    await expect(reading).toContainText("EPS (TTM) 0.05");
+    await chart.press("Home");
+    for (let i = 0; i < 35; i++) await chart.press("ArrowRight");
+    await expect(reading).toContainText("Jumped over 5×");
+    await expect(reading).toContainText("EPS (TTM) 20.00");
+    // About 300× reads as a multiple.
+    for (let i = 0; i < 50; i++) await chart.press("ArrowRight");
+    await expect(reading.locator("span").filter({ hasText: /^(29|30)\d(\.\d{1,2})?×$/ })).toHaveCount(1);
+    await expect(reading).not.toContainText("Not meaningful");
+    await chart.press("Escape");
+    await section.locator(".mx-info").first().click();
+    const help = page.locator(":is(.mx-help-popover, .mx-help-sheet)");
+    await expect(help).toContainText("above 400× (an earnings yield under 0.25%");
+    await expect(help).toContainText("more than 5× away from the previous close");
+  });
+
+  test("a disclosure sample without a multiple is one line, not empty axes", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    state.trailingPe = peHistory();
+    state.evidence = { releaseMultiples: [
+      { publishedAt: "2025-02-27", priceDate: "2025-02-28", periodEnd: "2024-12-31", eps: -0.13, price: 24.02,
+        currency: "USD", pe: null, state: "notMeaningful", url: "https://www.sec.gov/" },
+      { publishedAt: "2026-02-09", priceDate: "2026-02-10", periodEnd: "2025-12-31", eps: -0.37, price: 148.7,
+        currency: "USD", pe: null, state: "notMeaningful", url: "https://www.sec.gov/" },
+    ] };
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const history = page.locator("#research-history");
+    await history.locator("summary").filter({ hasText: "Valuation at disclosure" }).click();
+    const sample = history.locator(".mx-multiple-context");
+    await expect(sample).toContainText("Annual EPS was nonpositive at every filing; P/E is not meaningful");
+    await expect(sample.locator("[data-tm-chart-ready], canvas, .mx-facts, table")).toHaveCount(0);
+    await expect(sample).not.toContainText("×");
+  });
+
+  test("P/E time axes name the month or the year, never a bare day", async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem("trading_max-locale", "en");
+      // ECharts draws axis labels on its canvas; keep what each canvas draws.
+      const drawn: { text: string; canvas: HTMLCanvasElement }[] = [];
+      const fill = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (text: string, x: number, y: number, maxWidth?: number) {
+        drawn.push({ text: String(text), canvas: this.canvas });
+        return maxWidth === undefined ? fill.call(this, text, x, y) : fill.call(this, text, x, y, maxWidth);
+      };
+      Object.assign(window, { drawnText: drawn });
+    });
+    const state = await synthetic(page, false);
+    state.trailingPe = peHistory();
+    state.forwardPe = forwardHistory(true);
+    const timeLabels = () => page.evaluate(() => {
+      const drawn = (window as unknown as { drawnText: { text: string; canvas: HTMLCanvasElement }[] }).drawnText;
+      // Multiples carry ×, the latest point its percentile; the rest are dates.
+      const labels = drawn.filter(({ canvas, text }) => canvas.isConnected && canvas.closest(".mx-pe-history") && !/×|^P\d/.test(text));
+      return [...new Set(labels.map(({ text }) => text))];
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const section = page.locator(".mx-pe-history");
+    await expect(section.getByRole("group", { name: /^Trailing P\/E history/ })).toHaveAttribute("data-tm-chart-ready", "true");
+    // About eighteen months: months, with the year on January and before it.
+    await expect.poll(timeLabels).toContain("2025");
+    // en-GB writes September as "Sept".
+    for (const label of await timeLabels()) expect(label).toMatch(/^([A-Z][a-z]{2,3}( \d{4})?|\d{4})$/);
+    await section.getByRole("group", { name: "Historical valuation basis" }).getByRole("button", { name: /^NTM/ }).click();
+    await expect(section.getByRole("group", { name: /^NTM P\/E history/ })).toHaveAttribute("data-tm-chart-ready", "true");
+    // Five archive days: each label names its day and month.
+    await expect.poll(async () => (await timeLabels()).filter((label) => / Aug/.test(label)).length).toBeGreaterThan(1);
+    const days = (await timeLabels()).filter((label) => !/^([A-Z][a-z]{2,3}( \d{4})?|\d{4})$/.test(label));
+    for (const label of days) expect(label).toMatch(/^\d{1,2} [A-Z][a-z]{2,3}( \d{4})?$/);
+  });
+
+  test("the scenario model names the sector template its assumptions start from", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    state.valuation = { assumptions: { profile: "power-industrial" } };
+    await page.route("**/SYNT/valuation-preview*", (route) => route.request().method() === "GET"
+      ? route.fulfill({ json: { ...preview("SYNT", 100, "2026-11-04T15:40:00Z", true, {}), defaultSource: "sector-template" } })
+      : route.fallback());
+    await page.goto("/research?ticker=SYNT&view=valuation&valuationView=scenario");
+    const source = page.locator("#valuation-assumptions .mx-assumption-source");
+    await expect(source).toHaveText("Sector scenario template · Power & industrials");
+    // In the panel header, never only inside the collapsed sources.
+    await expect(source).toBeVisible();
+    await page.locator("#valuation-assumption-sources summary").click();
+    await expect(page.locator("#valuation-assumption-sources")).toContainText("Sector scenario template");
+  });
+
+});
+
+/** Daily closes near 40, one EPS reading per segment, and the API's reason where it withholds a multiple. */
+function withheldHistory(segments: [eps: number, count: number, reason?: "aboveCap" | "segmentJump"][]): ResearchLensSnapshot["trailingPeHistory"] {
+  const dates = Array.from({ length: 400 }, (_, index) => new Date(Date.UTC(2025, 0, 2 + index)))
+    .filter((date) => date.getUTCDay() % 6 !== 0)
+    .map((date) => date.toISOString().slice(0, 10));
+  const earnings: NonNullable<ResearchLensSnapshot["trailingPeHistory"]>["earnings"] = [];
+  const points: NonNullable<ResearchLensSnapshot["trailingPeHistory"]>["points"] = [];
+  segments.forEach(([eps, count, reason], index) => {
+    earnings.push({ effectiveDate: dates[points.length], periodEnd: "2024-12-31", eps, method: "fourQuarters" });
+    for (const date of dates.slice(points.length, points.length + count)) {
+      const close = 40 + Math.sin(points.length / 6);
+      points.push({ date, close, pe: reason ? null : close / eps, earningsIndex: index, notMeaningful: reason ?? null });
+    }
+  });
+  return { currency: "USD", points, earnings, distribution: null };
+}
+
+/** NYSE sessions in winter (UTC), weekdays only. */
+function nyseSessions(from: string, to: string) {
+  const sessions = [];
+  for (let day = Date.parse(from + "T00:00:00Z"); day <= Date.parse(to + "T00:00:00Z"); day += 86_400_000) {
+    const date = new Date(day).toISOString().slice(0, 10);
+    if (new Date(day).getUTCDay() % 6 !== 0) sessions.push({ date, open: date + "T14:30:00Z", close: date + "T21:00:00Z" });
+  }
+  return sessions;
+}
+
+/** An analyst lens priced on Wednesday 18 November at 16:00 UTC, with daily closes through `lastClose`.
+ * The held line is quoted at its broker price, so the broker reports at that time as well. */
+async function expectations(page: Page, lastClose: string) {
+  const state = await synthetic(page, false);
+  state.broker = { price: 101, asOf: "2026-11-18T16:00:00Z" };
+  const base = lens("SYNT", "analyst", 101);
+  await page.route(/\/api\/backend\/research\/SYNT\/lens\/analyst/, (route) => route.fulfill({ json: {
+    ...base,
+    context: { ...base.context, quote: { ...base.context.quote, asOf: "2026-11-18T16:00:00Z",
+      schedule: { calendar: "XNYS", sessions: nyseSessions("2026-11-02", "2026-11-27"), until: "2026-11-30T14:30:00Z" } } },
+    analyst: {
+      asOf: "2026-11-18", reportingCurrency: "USD", providerRecommendationKey: "buy",
+      priceTargets: { low: 85, median: 112, mean: 114, high: 138 },
+      recommendations: [{ period: "0m", strongBuy: 3, buy: 5, hold: 4, sell: 1, strongSell: 0 }],
+      earningsEvents: [{ id: "event1", date: "2026-07-28", instant: "2026-07-28T16:05:00-04:00", timezone: "America/New_York",
+        precision: "minute", status: "reported", actualEps: 1.9, estimatedEps: 1.8, currency: "USD" }],
+    },
+  } }));
+  const closes = nyseSessions("2025-12-01", lastClose).map(({ date }, index) => ({ date, close: 95 + (index % 7) }));
+  await page.route("**/api/backend/research/SYNT/prices?**", (route) => route.fulfill({ json: {
+    ticker: "SYNT", currency: "USD", actualInterval: "1d", points: closes,
+  } }));
+}
+
+test.describe("expectations timing", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+
+  for (const [zone, time] of [["Europe/London", "21:05"], ["Asia/Shanghai", "29 Jul, 04:05"]] as const) {
+    test(`earnings times read on the reader's clock · ${zone}`, async ({ page }) => {
+      await page.addInitScript((value) => {
+        localStorage.setItem("trading_max-locale", "en");
+        localStorage.setItem("trading_max-time-zone", value);
+      }, zone);
+      await expectations(page, "2026-11-17");
+      await page.goto("/research?ticker=SYNT&view=analyst&analystView=events");
+      const events = page.getByRole("region", { name: "Earnings calendar" }).first();
+      await expect(events).toContainText(time);
+      await expect(events).not.toContainText(/GMT|UTC/);
+    });
+  }
+
+  for (const [lastClose, late] of [["2026-11-17", false], ["2026-11-16", true]] as const) {
+    test(`price history through ${lastClose} is ${late ? "late" : "current"} against Wednesday's price`, async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await expectations(page, lastClose);
+      await page.goto("/research?ticker=SYNT&view=analyst");
+      const note = page.getByText(/^Price history through \d{1,2} Nov/);
+      await expect(note).toHaveText(new RegExp(`^Price history through ${Number(lastClose.slice(8))} Nov`));
+      if (late) await expect(note).not.toHaveAttribute("data-tone", "muted");
+      else await expect(note).toHaveAttribute("data-tone", "muted");
+    });
+  }
 });
 
 for (const locale of ["en", "zh"] as const) {

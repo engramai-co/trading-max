@@ -4,12 +4,50 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.66.0] - 2026-11-18
+
 ### Added
 - A saved valuation model offers See new evidence under Adjust assumptions. It shows how each scenario value moved from the saved version to the current proposal in three parts: the new financial base from the latest statements, the current price and exchange rate, and changed assumptions. A restated figure of the saved period, statements that disagree with each other and revised consensus are listed beside it. The review works without MaxAI and saves nothing.
 - Lock an assumption beside its field to keep it as saved. Locks are saved with the model version, and MaxAI drafts never propose a locked field.
 
 ### Changed
 - With a saved model, MaxAI drafts start from the saved assumptions and propose only the fields that the evidence supports changing.
+
+## [1.65.1] - 2026-11-18
+
+### Fixed
+- Trailing P/E no longer charts multiples that measure earnings near zero or at the wrong scale. A multiple above 400× or below 1×, or a new EPS reading that opens more than five times away from the previous close's multiple, is a gap marked Not meaningful and stays out of the band and rank. Readings above 400× or after a jump name their reason, which the chart's help explains. A filing that tagged its per-share values in thousands is ignored, so it no longer distorts the following year's trailing EPS.
+- Valuation at disclosure shows one line instead of empty axes and a range of dashes when no filing has a multiple.
+- The scenario model shows where its assumptions come from, such as the sector template, beside Adjust assumptions.
+- Price history through is highlighted only when the history misses more than one of the exchange's trading sessions.
+- Earnings times show in your display time zone, London by default, instead of a GMT offset. Expectations & events and Valuation write dates the same way, and the NTM P/E axis names the month and, where needed, the year.
+
+## [1.65.0] - 2026-11-18
+
+### Added
+- With MaxAI enabled, Research Overview can open a reading of your position in the selected security, and Price & technicals numbers up to three event-backed price moves on the chart. Each reading follows the subsequent sessions, and follow-ups keep the selected moment. Position readings identify the return basis and the matched market and sector comparison dates. Citations reopen the recorded publication and disclose expiry.
+- Financials & business and Estimates & events open with a dated earnings brief that names verified consensus changes. Consented workspaces write it in the background when a held or research-list company reports results or its estimates change.
+
+### Changed
+- Per-share valuations tell Nasdaq's listing tiers apart. A catalogue entry under Nasdaq's general market code still applies to the quoted tier. Saved valuations that recorded only the general code are checked again against their own publication, even when the quote names only Nasdaq. They stay unavailable if that publication lists the security on two tiers or in two catalogue entries, or holds no share-class evidence.
+
+### Fixed
+- Research keeps unverified listing prices off the chart and shows the reason in place. Keyboard follow-ups move focus to the composer.
+
+## [1.64.2] - 2026-11-18
+
+### Changed
+- Research has one search: the magnifier at the top of every page. For a name outside the research list, Search offers **Find in all securities**, which opens the research finder.
+- Rating history shows one compact bar per month in the same neutral scale as the consensus gauge. Estimate revision charts span at least 4% of the estimate, so a small revision looks small.
+
+### Fixed
+- On Research, the arrow keys, Home and End move between views without opening them; Enter or Space opens the view in focus. Passing over a view no longer loads it or adds a history entry, and each view names the panel it shows.
+- Research writes each figure one way. Revenue estimates carry their currency instead of a separate currency label, beats and misses in tables are signed and coloured as in the chart readings, the 90-day estimate change is coloured, and percentiles read P0–P100. The P/E chart's labels use the standard font.
+
+## [1.64.1] - 2026-11-18
+
+### Added
+- A “?” beside Review’s 20 trading days / To date switch explains what each buy or sell is compared with, how both windows are measured, why decisions without a result yet sit as hollow points at zero on the timeline, and that amounts under Recently always read to date.
 
 ## [1.64.0] - 2026-11-18
 

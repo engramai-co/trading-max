@@ -8,6 +8,12 @@
 .mx-review-body > * {
   margin: 0;
 }
+/* The horizon switch keeps its "?" beside it when the header wraps. */
+.mx-horizon-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
 
 /* The lead: what buying, selling and round trips did, then where. */
 .mx-review-lead > .mx-review-verdicts .mx-number {

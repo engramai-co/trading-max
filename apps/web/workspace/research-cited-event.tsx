@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
 import { formatDateTimeInTimeZone } from "@/ui/formatters";
-import { readApi } from "./data";
+import { readApi, safeUrl } from "./data";
 import { Empty, LoadingStatus, Page, Panel, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
 
@@ -23,7 +23,9 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
   const snapshot = params.get("snapshotId") ?? "";
   const rating = recorded && ["ratings","actions"].includes(params.get("analystView") ?? "");
   const kind = rating ? "rating_change" : recorded ? "earnings" : citedEventKind(params.get("event"));
-  const rowId = params.get("calendarEventId");
+  // Calendar and news citations name the published row; research-lens citations name the event.
+  const rowId = params.get("calendarEventId") ??
+    (!recorded && params.get("evidence") !== "read_research_lens" ? params.get("eventId") : null);
   const researchId = recorded ? null : params.get("eventId");
   const valid = /^[a-zA-Z0-9_-]{1,100}$/.test(snapshot) && !!kind && !!ticker && !!(rowId || researchId);
   const section = useRef<HTMLElement>(null);
@@ -41,7 +43,7 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
       if (rowId) query.set("eventId", rowId);
       else if (researchId) query.set("researchEventId", researchId);
       const item = await readApi<PublishedEvent>(`/publications/${snapshot}/events/upcoming?${query}`, signal);
-      return item.ticker === ticker && item.kind === kind &&
+      return (item.ticker ?? "MARKET") === ticker && item.kind === kind &&
         (rowId ? item.evidence_id === rowId : item.research_event_id === researchId) ? item : null;
     },
   });
@@ -50,7 +52,7 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
     dividendAmount(row.amount, row.currency, row.unit, locale) ?? t("每股金额暂无数据","Amount per share unavailable"),
     dividendBasis(row.basis, locale),
   ].filter(Boolean).join(" · ") : "";
-  const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : t("股息", "Dividend");
+  const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : kind === "dividend" || kind === "dividend_pay" ? t("股息", "Dividend") : t("引用的事件", "Cited event");
   const heading = recorded ? rating ? t("机构行动", "Institutional actions") : t("财报事件", "Earnings events") : ticker + " · " + title;
   return <Page title={t("研究", "Research")}><section ref={section} id={recorded ? "research-" + (rating ? "actions" : "events") : undefined} data-reading-event=""><Panel title={heading}>
     {result.isFetching ? <LoadingStatus label={t("正在读取引用…","Loading citation…")} /> :
@@ -63,7 +65,7 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
         {row.firm && <p>{[row.firm, [row.from_grade, row.to_grade].filter(Boolean).join(" → ")].filter(Boolean).join(" · ")}</p>}
         <p>{row.instant ? formatDateTimeInTimeZone(row.instant, locale, timeZone) : [...new Set([row.date, row.end_date].filter(Boolean))].join(" – ")}</p>
         {details && <p>{details}</p>}
-        <p>{row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
+        <p>{safeUrl(row.source_url ?? "") ? <a href={safeUrl(row.source_url ?? "")!} target="_blank" rel="noreferrer">{row.publisher}</a> : row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
     <Button variant="subtle" onClick={() => update({evidence:null,snapshotId:null,event:null,date:null,end:null,eventId:null,calendarEventId:null})}>
       {t("打开证券研究", "Open security research")}
     </Button>

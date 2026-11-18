@@ -214,6 +214,7 @@ def role_registry() -> dict[str, PageRole]:
     from .exposure_role import EXPOSURE
     from .market_roles import MARKET_ROLES
     from .overview_roles import OVERVIEW_ROLES
+    from .research_roles import RESEARCH_ROLES
     from .review_roles import REVIEW_ROLES
 
     return {
@@ -225,5 +226,6 @@ def role_registry() -> dict[str, PageRole]:
             DIAGNOSIS,
             *MARKET_ROLES,
             *REVIEW_ROLES,
+            *RESEARCH_ROLES,
         )
     }

@@ -109,7 +109,7 @@ test.describe("option and rating charts read through the reading card", () => {
     await expect(shown).toBeHidden();
   });
 
-  test("the rating card keeps buy, hold and sell in view and the reading speaks all five", async ({ page, isMobile }) => {
+  test("the rating history reads each month as one compact bar with all five ratings", async ({ page }) => {
     await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
       const response = await route.fetch();
       const json = await response.json();
@@ -120,25 +120,21 @@ test.describe("option and rating charts read through the reading card", () => {
     });
     await page.goto("/research?ticker=AAPL&view=analyst&analystView=ratings");
     const history = page.locator("summary").filter({ hasText: "Historical rating distribution" });
-    const chart = page.getByRole("group", { name: "Analyst counts by rating category" });
-    await expect(chart).toHaveCount(0);
+    const months = page.getByRole("list", { name: "Analyst counts by rating category" });
+    await expect(months).toBeHidden();
     await history.press("Enter");
-    await chart.scrollIntoViewIfNeeded();
-    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
-    const { spoken, shown } = reading(page, chart, isMobile);
-    await chart.press("End");
-    await expect(spoken).toContainText("Current");
-    // The live region keeps every rating, zeros included.
-    for (const row of ["Strong buy 6", "Buy 19", "Hold 14", "Sell 0", "Strong sell 2"]) await expect(spoken).toContainText(row);
-    await expect(shown).toBeVisible();
-    // Each side carries its strong rating, so three rows fit the card and the phone strip alike.
-    await expect(shown.locator(".mx-reading-row")).toHaveText([/^Buy\s*25\s*incl\. 6 strong buy$/, /^Hold\s*14$/, /^Sell\s*2\s*incl\. 2 strong sell$/]);
-    await expect(shown.locator(".mx-reading-more")).toHaveCount(0);
-    await chart.press("Home");
-    await expect(spoken).toContainText("1 month ago");
-    await expect(spoken).not.toContainText("1 months");
-    await chart.press("Escape");
-    await expect(shown).toBeHidden();
+    // The current month leads; each bar is read with every rating, zeros included, and ends on its total.
+    const rows = months.getByRole("listitem");
+    await expect(rows).toHaveCount(2);
+    await expect(rows.first()).toContainText("Current");
+    await expect(rows.first().getByRole("img")).toHaveAccessibleName("Strong buy 6, Buy 19, Hold 14, Sell 0, Strong sell 2");
+    await expect(rows.first().locator("strong")).toHaveText("41");
+    await expect(rows.nth(1)).toContainText("1 month ago");
+    await expect(rows.nth(1)).not.toContainText("1 months");
+    await expect(rows.nth(1).getByRole("img")).toHaveAccessibleName("Strong buy 5, Buy 18, Hold 15, Sell 1, Strong sell 2");
+    // Only ratings with analysts take a share of the bar, and no chart is drawn for them.
+    await expect(rows.first().locator(".mx-rating-history-bar > span")).toHaveCount(4);
+    await expect(page.getByRole("group", { name: "Analyst counts by rating category" })).toHaveCount(0);
   });
 
   test("the expiration picker stops at five and says why the rest are unavailable", async ({ page, isMobile }) => {

@@ -3,11 +3,12 @@
 from collections import defaultdict
 from datetime import UTC, date, datetime, time, timedelta
 from itertools import chain
-from typing import Annotated
+from typing import Annotated, Literal
 from urllib.parse import quote
+from zoneinfo import ZoneInfo
 
 from exchange_calendars.errors import CalendarError
-from pydantic import AfterValidator, StringConstraints, model_validator
+from pydantic import AfterValidator, Field, StringConstraints, model_validator
 from trading_max.research.calendar import market_calendar
 from trading_max.research.calendars.events import window_bounds
 from trading_max.research.calendars.refresh import MACRO_KEY
@@ -47,7 +48,21 @@ def _day(value):
 Day = Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$"), AfterValidator(_day)]
 
 
+MARKET_ZONES = {
+    "US": "America/New_York",
+    "GB": "Europe/London",
+    "EA": "Europe/Paris",
+    "HK": "Asia/Hong_Kong",
+    "JP": "Asia/Tokyo",
+    "KR": "Asia/Seoul",
+}
+
+
+ReleaseMarket = Literal["US", "GB", "EA", "JP", "HK", "KR"]
+
+
 class EventArgs(Scoped, Paged):
+    market: ReleaseMarket | None = Field(default=None, exclude_if=lambda value: value is None)
     start: Day
     end: Day
     ticker: Ticker | None = None
@@ -120,6 +135,10 @@ def listed_dividends(ticker, cal, metrics, evidence):
         stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
         if stamp:
             yield _security_entry(ticker, kind, en, zh, stamp[:10])
+    yield from _reported_dividends(ticker, evidence)
+
+
+def _reported_dividends(ticker, evidence):
     for r in _rows(evidence.get("dividends")):
         yield _security_entry(
             ticker,
@@ -299,11 +318,6 @@ def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill
                 ]
             latest[kind] = (stamp, {**fields, "local_date": local_date.isoformat()})
     return [item for _, item in latest.values()]
-
-
-def _reported_dividends(ticker, evidence):
-    """Dividends reported in a publication's financial evidence."""
-    yield from listed_dividends(ticker, {}, {}, evidence)
 
 
 def _headline_rows(data, ticker):
@@ -573,15 +587,19 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     """Resolve a publication's exact security event without reading the account calendar."""
     args = Scoped(scope="broker_total")
     read = _Read(deps, "upcoming_events", args, args.scope)
-    if kind == "dividend":
+    if kind == "macro" and ticker == "MARKET":
+        entries = _macros(read.read(MACRO_KEY) or {}, "0001-01-01", "9999-12-31", [])
+    elif kind == "dividend":
         financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
-        rows = listed_dividends(ticker, {}, {}, financials.get("evidence", {}))
+        entries = _reported_dividends(ticker, financials.get("evidence", {}))
     else:
-        data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-        # Historical earnings and rating changes remain citable after publication.
-        data.update({NEWS_KEY: {}, FINANCIALS: {}})
-        rows = _public(ticker, data, upcoming=kind in {"dividend_pay", "ex_dividend"})
-    for row in rows:
+        # Historical earnings, rating changes and filings remain citable after publication.
+        data = {
+            key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS)
+        }
+        data[NEWS_KEY] = {}
+        entries = _public(ticker, data, upcoming=False)
+    for row in entries:
         if not row or row["kind"] != kind:
             continue
         local = (
@@ -641,7 +659,7 @@ def event_data(deps, args, *, upcoming, session_zone=None):
     # This is the pinned universe of the last scheduled research run. A
     # current editable watchlist cannot describe a historical publication.
     if upcoming and args.scope == "household" and not args.ticker:
-        symbols.update(data[NEWS_KEY])
+        symbols.update((raw or {}).get("research_symbols", data[NEWS_KEY]))
         if raw is None:
             issues.append("research_universe_unavailable")
     technical = _indexed(read.read(TECHNICAL))
@@ -741,15 +759,17 @@ def event_data(deps, args, *, upcoming, session_zone=None):
     entries = [r for r in entries if r and r["kind"] != "news"] + headlines
     rows = {}
     for row in entries:
+        if args.market and row["kind"] == "macro" and row.get("market") != args.market:
+            continue
         local = (
             datetime.fromisoformat(row["instant"]).astimezone(deps.timezone)
             if row.get("instant")
             else None
         )
         day = local.date().isoformat() if local else row["date"]
-        filter_day = (
-            local.astimezone(session_zone).date().isoformat() if local and session_zone else day
-        )
+        # A selected release market filters by its own session date.
+        zone = ZoneInfo(MARKET_ZONES[args.market]) if args.market else session_zone
+        filter_day = local.astimezone(zone).date().isoformat() if local and zone else day
         first, last = window_bounds(filter_day, row.get("end_date"))
         if args.start > last or first > args.end:
             continue

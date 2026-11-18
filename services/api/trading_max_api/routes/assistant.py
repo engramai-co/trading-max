@@ -155,7 +155,14 @@ async def role_reading(request: Request, role_id: str, body: ReadingRequest) -> 
 
     async def stream():
         async with aclosing(
-            service.events(role, context, deps, cached_only=body.cached_only, latest=body.latest)
+            service.events(
+                role,
+                context,
+                deps,
+                cached_only=body.cached_only,
+                latest=body.latest,
+                match_data_version=bool(body.latest and body.snapshot_id),
+            )
         ) as events:
             async for event in events:
                 yield event.encode()

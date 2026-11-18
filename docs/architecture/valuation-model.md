@@ -45,8 +45,10 @@ currencies differ, a missing rate blocks valuation. An ordinary-share quote need
 an identified listing and a positive share-class identification. The existing SEC cover parser joins the trading
 symbol, exchange and security title within one XBRL context. The latest
 parsed filing or an explicit catalog type attached to the quoted symbol and
-venue can establish an ordinary share. Venue matching uses the exchange MIC
-and recognises provider aliases such as NYQ for NYSE. The catalog stores types
+venue can establish an ordinary share. Venue matching goes through the shared
+listing resolver and recognises provider aliases such as NYQ for NYSE. Nasdaq's
+operating MIC (XNAS) and one of its listing tiers (XNGS, XNMS or XNCM) describe
+the same listing; two different tiers do not. The catalog stores types
 at issuer level, so a record covering several listings cannot by itself
 establish which instrument has that type. A receipt flag takes precedence.
 For a verified ordinary line, use period-end ordinary shares from the same
@@ -93,6 +95,10 @@ FX is checked separately against the reporting currency, quote currency and
 financial facts. A new batch records the venue used for the share-unit decision.
 When a retained row lacks that venue or quotes a different venue, the readers
 verify the unit again against the pinned sources and the reviewed listing terms.
+A row that recorded only Nasdaq's operating MIC is always verified again, even
+when the quote names only Nasdaq, because earlier batches recorded every tier
+as XNAS. Two tiers or two catalog records for the quoted symbol leave the unit
+unidentified, as does a snapshot without a catalog listing or filed designation.
 A completed old worksheet and a matching currency provide
 no share-class evidence. An unidentified unit withholds the per-share result.
 

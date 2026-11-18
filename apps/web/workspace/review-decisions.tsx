@@ -25,7 +25,7 @@ import { currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
 import { readingHtml, readingText, type Reading } from "./chart-readout";
 import { EvidenceTable } from "./evidence-table";
-import { Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
+import { Help, Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
 import Link from "./link";
 import { filingLabel, ratingLabel } from "./market-terms";
 import { READING_TOOLTIP } from "./reading-tooltip";
@@ -784,20 +784,41 @@ export function useDecisionHorizon(
   };
 }
 
-/** The horizon a review compares at: after its trading days, or to date. */
+/** The horizon a review compares at, after its trading days or to date, and how each is measured. */
 export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; days: number; onChange: (value: Horizon) => void }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const after = locale === "zh" ? `${days} 个交易日后` : `${days} trading days`;
   return (
-    <Segments
-      label={t("对照时点", "Compare at")}
-      value={horizon}
-      onChange={onChange}
-      options={[
-        { value: "horizon", label: locale === "zh" ? `${days} 个交易日后` : `${days} trading days` },
-        { value: "date", label: t("至今", "To date") },
-      ]}
-    />
+    <span className="mx-horizon-switch">
+      <Segments
+        label={t("对照时点", "Compare at")}
+        value={horizon}
+        onChange={onChange}
+        options={[
+          { value: "horizon", label: after },
+          { value: "date", label: t("至今", "To date") },
+        ]}
+      />
+      <Help label={t("对照时点", "Compare at")}>
+        <p>
+          {t(
+            "每笔买卖都和“不做这笔交易”比，看窗口内按英镑计、含分红的总回报：买入后总回报为正记为赚，为负记为亏；卖出后总回报为正记为少赚，为负记为少亏。",
+            "Each buy or sell is compared with not making that trade, by its total return in GBP over the window, dividends included: after a buy, a positive return is a gain and a negative one a loss; after a sell, a positive return is a gain given up and a negative one a loss avoided.",
+          )}
+        </p>
+        <p>
+          {locale === "zh"
+            ? `“${after}”从决定当天的收盘算到之后第 ${days} 个交易日的收盘，每笔决定的窗口一样长，可以直接相互比较；“至今”算到最近一个收盘。`
+            : `“${after}” runs from the close on the day of the decision to the close ${days} trading days later, so every decision has the same window and they compare directly. “To date” runs to the latest close.`}
+        </p>
+        <p>
+          {locale === "zh"
+            ? `结果还不可得的决定不计入成绩，在时间轴上是零线上的空心点：还不满 ${days} 个交易日（“至今”则是之后还没有收盘），或还在等待价格、汇率或分红的最终值。“最近”里的金额不随切换变化，总是按至今计算。`
+            : `A decision whose result is not available yet is not scored and sits as a hollow point on the timeline’s zero line: one younger than ${days} trading days (for “To date”, one with no close after it yet), or one still waiting for the final value of a price, exchange rate or dividend. Amounts under “Recently” do not follow the switch: they are always to date.`}
+        </p>
+      </Help>
+    </span>
   );
 }
 

@@ -3,6 +3,7 @@
 from datetime import UTC, datetime
 
 from trading_max.domain import ArtifactQuality
+from trading_max.reference.indices import INDEX_REGISTRY
 from trading_max.research.calendars.refresh import (
     MACRO_KEY,
     MACRO_STATUS_KEY,
@@ -57,6 +58,8 @@ class EventSourceStage:
             if self.key == NEWS_KEY
             else payload
         )
+        if "research_symbols" in payload:
+            content["research_symbols"] = payload["research_symbols"]
         warnings = [key for key, row in rows.items() if row.get("error")]
         # Oldest good observation is the coverage clock, even after a failed
         # attempt publishes fresh diagnostics.
@@ -101,12 +104,13 @@ class SecurityNewsStage(EventSourceStage):
     name = "research.security_news"
     key = NEWS_KEY
     status_key = NEWS_STATUS_KEY
-    version = "security-news-v1"
+    version = "security-news-v2"
     collection = "securities"
 
-    def __init__(self, artifacts, snapshots, market_service):
+    def __init__(self, artifacts, snapshots, market_service, assistant_enabled=lambda: False):
         super().__init__(artifacts, snapshots)
         self.market = market_service
+        self.assistant_enabled = assistant_enabled
 
     def refresh(self, previous, context, now):
         financials = _upstream_json(self.artifacts, context, "research/financials.json")
@@ -118,4 +122,13 @@ class SecurityNewsStage(EventSourceStage):
             if financials
             else {}
         )
-        return refresh_news(previous, context.tickers, now, self.market.prices, financials=evidence)
+        indices = (
+            spec.symbol
+            for spec in INDEX_REGISTRY.values()
+            if spec.symbol and spec.rights == "provider-terms"
+        )
+        indices = indices if self.assistant_enabled() else ()
+        payload = refresh_news(
+            previous, [*context.tickers, *indices], now, self.market.prices, financials=evidence
+        )
+        return {**payload, "research_symbols": sorted(set(context.tickers))}

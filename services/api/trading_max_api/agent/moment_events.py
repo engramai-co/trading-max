@@ -8,11 +8,11 @@ from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 from trading_max.research.venues import row_claims
 
 from .events import headline_stories, listed_dividends, listed_headlines
-from .tools import EARNINGS, FINANCIALS, FUNDAMENTALS, _mapped, _Read, _rows
+from .tools import EARNINGS, FINANCIALS, FUNDAMENTALS, _mapped, _rows
 
 
 def listing_moment_events(
-    read: _Read, args, series, calendar, metrics, evidence, pinned, news_rows
+    args, series, exchange_calendar, calendar, metrics, evidence, pinned, news_rows
 ):
     keys = []
     issues = []
@@ -30,10 +30,6 @@ def listing_moment_events(
     if rejected:
         issues.append("listing_calendar_unavailable")
     status = news_rows[NEWS_STATUS_KEY]
-    if news:
-        keys.append(NEWS_KEY)
-    if status:
-        keys.append(NEWS_STATUS_KEY)
     venue = pinned.venue()
     if venue.conflict:
         return [], keys, ["listing_calendar_unavailable"]
@@ -59,9 +55,9 @@ def listing_moment_events(
     # The pinned chart itself can be the only record of a fund distribution.
     # A payment date is distinct from an ex-date, even if both fall on one day.
     distribution_days = {e["date"] for e in events if e["kind"] in {"dividend", "ex_dividend"}}
-    if series.published_bar_ticker == pinned.ticker:
+    if series is not None and (series.published_bar_ticker or series.ticker) == pinned.ticker:
         for bar in series.events:
-            day = bar["date"]
+            day = bar["date"][:10]
             if (
                 bar["kind"] == "dividend"
                 and args.start <= day <= args.end
@@ -72,6 +68,43 @@ def listing_moment_events(
                 )
                 distribution_days.add(day)
 
+    product = observed_product(
+        series.published_bar_asset_type if series else None,
+        metrics.get("quoteType"),
+        fund=bool(series and series.published_fund_row),
+    )
+    segments = {
+        str(v).strip().lower()
+        for v in (series.published_bar_segment if series else None, metrics.get("marketSegment"))
+        if v
+    }
+    segment = next(iter(segments)) if len(segments) == 1 else None
+    exchange = venue.calendar if series else exchange_calendar
+    stories, news_keys, news_issues = _published_stories(
+        ticker, evidence, news, status, pinned, feed_pin
+    )
+    headlines, timing_issues = _timed_headlines(args, stories, exchange, product, segment)
+    return [*events, *headlines], [*keys, *news_keys], [*issues, *news_issues, *timing_issues]
+
+
+def moment_stories(read, pinned, financials=None):
+    def feed(key):
+        securities = _mapped((read.read(key) or {}).get("securities"))
+        return _mapped(pinned.feed_row(securities.get))
+
+    news, status = feed(NEWS_KEY), feed(NEWS_STATUS_KEY)
+    pinned = pinned.with_event_claims(financials, news, status)
+    if pinned.venue().conflict:
+        return [], [], ["listing_calendar_unavailable"]
+    financials, _ = pinned.event_row(financials)
+    evidence = _mapped(_mapped(financials.get("financials")).get("evidence"))
+    news, _ = pinned.event_row(news)
+    return _published_stories(pinned.symbol, evidence, news, status, pinned, pinned)
+
+
+def _published_stories(ticker, evidence, news, status, pinned, feed_pin):
+    keys = [key for key, row in ((NEWS_KEY, news), (NEWS_STATUS_KEY, status)) if row]
+    issues = []
     status = {**news, **status}
     if not isinstance(news.get("items"), list) or not status.get("as_of"):
         issues.append("security_news_unavailable")
@@ -91,20 +124,25 @@ def listing_moment_events(
                 if row:
                     row["calendar"] = parent.venue(*row_claims(ticker, raw)).calendar
                     rows.append(row)
-    asset_type = observed_product(
-        series.published_bar_asset_type, metrics.get("quoteType"), fund=series.published_fund_row
-    )
-    segments = {
-        str(v).strip().lower()
-        for v in (series.published_bar_segment, metrics.get("marketSegment"))
-        if v
-    }
-    segment = next(iter(segments)) if len(segments) == 1 else None
-    for row in headline_stories(rows, raw_rows):
+    return headline_stories(rows, raw_rows), keys, issues
+
+
+def headline_events(read, args, exchange):
+    stories, keys, issues = moment_stories(read, read.deps.selected_listing(args.ticker))
+    events, timing_issues = _timed_headlines(args, stories, exchange)
+    return events, keys, [*issues, *timing_issues]
+
+
+def _timed_headlines(args, stories, exchange, asset_type=None, segment=None):
+    events, issues = [], []
+    for row in stories:
         published = row["date"]
         day, timing = (
             headline_session(
-                row["calendar"], datetime.fromisoformat(row["instant"]), asset_type, segment=segment
+                row.get("calendar") or exchange,
+                datetime.fromisoformat(row["instant"]),
+                asset_type,
+                segment=segment,
             )
             if row["instant"]
             else (published, None)
@@ -118,4 +156,4 @@ def listing_moment_events(
             if day != published:
                 event["publication_date"] = published
             events.append(event)
-    return events, keys, issues
+    return events, issues

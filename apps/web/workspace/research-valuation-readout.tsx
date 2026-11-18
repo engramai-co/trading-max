@@ -107,6 +107,9 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing, wi
   const { locale } = useLocale();
   const history = data.trailingPeHistory;
   const latest = history?.points.at(-1);
+  const latestEps = latest?.earningsIndex == null ? undefined : history?.earnings[latest.earningsIndex]?.eps;
+  // A withheld multiple or nonpositive EPS has no P/E, unlike a missing close.
+  const notMeaningful = Boolean(latest?.notMeaningful) || (latestEps != null && latestEps <= 0);
   const rank = history?.distribution?.latestPercentile;
   const result = reading?.result ?? preview;
   const base = result?.scenarios.base;
@@ -114,7 +117,8 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing, wi
   const status = reading?.busy ? t("计算中…", "Calculating…") : reading?.stale ? t("上次结果", "Previous result") : null;
   const modelSource = reading?.edited ? t("本次调整", "Current edit") : reading?.source;
   return <Panel className="mx-valuation-readout">
-    <Metric label={t("滚动 P/E", "Trailing P/E")} value={latest?.pe == null ? "—" : number(latest.pe, 1) + "×"}
+    <Metric label={t("滚动 P/E", "Trailing P/E")}
+      value={latest?.pe != null ? number(latest.pe, 1) + "×" : notMeaningful ? t("不适用", "Not meaningful") : "—"}
       note={[percentile, latest && formatCalendarDate(latest.date, locale)].filter(Boolean).join(" · ")} />
     <ReverseReading result={result} retry={retry} refreshing={refreshing} />
     <Metric label={t("中性情景", "Base scenario")} value={base && result ? <>

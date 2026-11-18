@@ -24,6 +24,8 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
+  research_position: ["/research", "market"], price_key_moments: ["/research", "technical"],
+  research_earnings: ["/research", "financials"], research_headline: ["/research", "publisher"],
   selected_exposure: ["/holdings","exposure"], selected_daily: ["/analytics","account"],
   selected_fx: ["/analytics","holdings"], sector_headline: ["/sectors","publisher"],
   selected_money: ["/analytics","account"], daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
@@ -35,7 +37,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
-  if (ref.tool === "news_and_events" && ref.arguments?.event === "own_trade") {
+  if (!ref.arguments?.rowCitation && ref.tool === "news_and_events" && ref.arguments?.event === "own_trade") {
     const args = ref.arguments;
     if (!args.snapshotId || !args.eventId || !["invest", "isa"].includes(args.scope) ||
         !["buy", "sell"].includes(args.side) || !args.date || !args.ticker) return null;
@@ -45,10 +47,10 @@ export function evidenceHref(ref: Evidence): string | null {
     });
     return "/review?" + query;
   }
-  if (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.eventId && ref.arguments.snapshotId)) {
+  if (!ref.arguments?.rowCitation && (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.eventId && ref.arguments.snapshotId))) {
     const args = ref.arguments ?? {};
     if (args.url) return safeUrl(args.url) ?? null;
-    if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
+    if (args.holdingTicker && args.eventId) {
       return evidenceHref({...ref, tool:"read_research_lens", arguments:{
         ticker:args.holdingTicker, lens:args.researchEventId ? "analyst" : "overview", event:args.event,
         date:args.date, end:args.endDate, eventId:args.researchEventId,
@@ -61,15 +63,17 @@ export function evidenceHref(ref: Evidence): string | null {
   if (!entry) return null;
   const a = ref.arguments ?? {};
   const decisionEvent = ref.tool === "decision_timing_and_habits" && a.lens === "analyst" && Boolean(a.listing);
-  const path = decisionEvent ? "/research" : entry[0];
+  // A cited calendar or account row reopens from its research publication.
+  const path = decisionEvent || a.rowCitation ? "/research" : entry[0];
   const params = new URLSearchParams();
   if (a.snapshotId && ["/holdings","/sectors"].includes(path)) params.set("snapshotId",a.snapshotId);
   if (ref.source === "inference") return null;
-  if (ref.source === "publisher" && a.url) {
+  // A saved research headline reopens its publication, which links the original article.
+  if (ref.source === "publisher" && a.url && !(ref.tool === "research_headline" && a.snapshotId)) {
     try {const url = new URL(a.url); return ["https:","http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;} catch {return null;}
   }
   const eventSource = decisionEvent || ref.tool === "news_and_events";
-  if (eventSource && a.url && /^https:\/\//i.test(a.url)) {
+  if (eventSource && !a.rowCitation && a.url && /^https:\/\//i.test(a.url)) {
     try { const url = new URL(a.url); if (!url.username && !url.password) return url.href; } catch {}
   }
   if (path === "/review") {
@@ -130,8 +134,38 @@ export function evidenceHref(ref: Evidence): string | null {
   if (ref.tool === "update_issue" && a.job) params.set("job",a.job);
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
+    if (!a.snapshotId && ["research_headline","research_position","research_earnings","price_key_moments"].includes(ref.tool)) {
+      if (ref.tool === "research_headline" && a.url) {
+        const original = safeUrl(a.url);
+        if (original) return original;
+      }
+      params.set("unavailable","1");
+      params.set("evidenceId",ref.evidenceId);
+    }
+    if (a.snapshotId && ["price_key_moments","research_position","research_earnings","research_headline","news_and_events","upcoming_events"].includes(ref.tool)) {
+      params.set("snapshotId",a.snapshotId);
+      params.set("evidence",ref.tool);
+      params.set("evidenceId",ref.evidenceId);
+      if (a.published_series_id) params.set("series",a.published_series_id);
+      for (const key of ["date","start","end","eventId","event","field","timezone","eventTicker","market","limit","cursor","reference","observation","unselected"]) {
+        if (a[key]) params.set(key,a[key]);
+      }
+      if (a.date) params.set("eventDate",a.date);
+      if (ref.tool === "research_headline") params.set("field","/data/title");
+      if (a.ticker) params.set("ticker",a.ticker);
+    }
+    if (a.index || a.index_id) {
+      params.set("type","index"); params.set("index",a.index || a.index_id); params.set("view","price");
+      if (a.indexRange) params.set("indexRange",a.indexRange);
+      return path + "?" + params;
+    }
+    // Research links name the listing before the section.
     const ticker = decisionEvent ? a.listing : a.ticker;
     if (ticker) params.set("ticker", ticker);
+    if (a.analystView) params.set("analystView",a.analystView);
+    if (a.date && a.lens === "technical") { params.set("eventDate",a.date); params.set("priceRange","ALL"); params.set("interval","1d"); }
+    if (a.event === "filing") params.set("notebook","filings");
+    if (a.event === "rating_change") params.set("analystView","actions");
     if (citedEventKind(a.event)) {
       params.set("event", a.event);
       if (a.date) params.set("date", a.date);
@@ -185,7 +219,17 @@ export function completedEvidence(message: UIMessage) {
     if (!id || ambiguous.has(id)) continue;
     const raw = object(object(part.input).args ?? part.input);
     const args = evidenceArguments(raw, output);
+    if (tool === "upcoming_events" || tool === "news_and_events") {
+      for (const key of ["cursor","limit"]) if (typeof raw[key] === "number") args[key] = String(raw[key]);
+    }
     const ref: Evidence = { evidenceId: id, tool, arguments: args, source: tool === "read_research_lens" && lensWords[args.lens] || destinations[tool][1] };
+    if (tool === "research_headline") {
+      const story = object(output.data);
+      const url = safeUrl(str(story.url));
+      if (!url || !str(story.publisher)) continue;
+      ref.publisher = str(story.publisher);
+      ref.arguments = {...args, url};
+    }
     const found = refs.get(id);
     if (found && (JSON.stringify(found.ref) !== JSON.stringify(ref) || JSON.stringify(found.output) !== JSON.stringify(output))) {
       refs.delete(id);
@@ -202,11 +246,11 @@ export function chatContext(page: string, search: string, timezone: string) {
   const account = params.get("account");
   const scope = params.get("scope") || (account === "A" ? "invest" : account === "B" ? "isa" : account === "C" ? "cfd" : account);
   const ticker = params.get("ticker");
-  const range = params.get("range");
-  const lens = params.get("view");
+  const range = params.get("range") || (page === "research" ? params.get("priceRange") : null);
+  const lens = params.get("type") === "index" && params.get("view") === "price" ? "technical" : params.get("view");
   return {
     page: ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page) ? page : "overview", timezone,
-    ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics","review"].includes(page) ? { scope: "broker_total" } : {}),
+    ...(["invest", "isa", "cfd", "household", "broker_total"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics","review"].includes(page) ? { scope: "broker_total" } : {}),
     ...(page === "research" && ticker && /^[a-z0-9^=._-]{1,32}$/i.test(ticker) ? { ticker: ticker.toUpperCase() } : {}),
     ...(page==="analytics" && ["VOO","QQQ","VT","ALL"].includes(params.get("benchmark") ?? "") ? {benchmark:params.get("benchmark")} : {}),
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),

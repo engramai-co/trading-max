@@ -67,9 +67,15 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   await digest.locator("[aria-expanded]").click();
   const question = digest.locator(".mx-reading-actions button").first();
   const wording = await question.innerText();
-  await question.click();
+  if (info.project.name === "desktop") {
+    await page.locator("[data-assistant-trigger]").click();
+    await expect(page.locator(".mx-assistant-composer textarea")).toBeVisible();
+  }
+  await question.focus();
+  await question.press("Enter");
   const input = page.locator(".mx-assistant-composer textarea");
   await expect(input).toHaveValue(wording);
+  await expect(input).toBeFocused();
   const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
   await input.press("Enter");
   const request = await sent;

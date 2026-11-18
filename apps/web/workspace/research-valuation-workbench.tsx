@@ -60,6 +60,7 @@ import {
 } from "./research-valuation-context";
 import { GrowthContext, ValuationSensitivity, ValuationWorksheet } from "./research-valuation-detail";
 import { researchLensQuery } from "./research-queries";
+import { forecastPeriodLabel } from "./research-forecasts";
 import { useRouteState } from "./route-state";
 import { ResearchReading, valuationSections } from "./research-reading";
 import { ValuationReadout, type ModelReading } from "./research-valuation-readout";
@@ -125,6 +126,28 @@ function statementPeriod(result: Preview, data: ResearchLensSnapshot, t: ReturnT
   return [label, end, result.basis.currency].filter(Boolean).join(" · ");
 }
 
+/** The sector templates' published names (the API's profile labels). */
+const sectorTemplates: Record<string, readonly [string, string]> = {
+  semiconductors: ["半导体", "Semiconductors"],
+  software: ["软件", "Software"],
+  hardware: ["硬件", "Hardware"],
+  "power-industrial": ["电力与工业", "Power & industrials"],
+  financial: ["金融", "Financials"],
+  "consumer-internet": ["消费与互联网", "Consumer & internet"],
+  default: ["通用", "General"],
+};
+
+/** Where a model's starting assumptions come from. */
+function assumptionSource(initial: Preview, t: ReturnType<typeof useCopy>) {
+  return initial.defaultSource === "saved-model"
+    ? t("上次保存的模型", "Last saved model")
+    : initial.defaultSource === "sector-template"
+      ? t("板块情景模板", "Sector scenario template")
+      : initial.defaultSource === "configured-scenarios"
+        ? t("已配置的假设", "Configured assumptions")
+        : t("模型初始假设", "Initial assumptions");
+}
+
 export function ValuationWorkbench({
   data,
   revision,
@@ -159,6 +182,10 @@ export function ValuationWorkbench({
   const model = preview ?? (switching ? retained : undefined);
   const editor = model?.reverseMetric === "year-five-revenue" ? undefined : model;
   const methodology = editor && modelMethodology(editor, t);
+  // The source stays in view beside the assumptions; per-field sources remain in their detail.
+  const template = editor?.defaultSource === "sector-template"
+    ? sectorTemplates[str(data.valuation?.assumptions?.profile)] : undefined;
+  const source = editor && [assumptionSource(editor, t), template && t(...template)].filter(Boolean).join(" · ");
   const selector = useRef<HTMLInputElement>(null);
   const position = useRef<{ selectorTop: number } | { scrollY: number } | null>(null);
   useLayoutEffect(() => {
@@ -253,6 +280,7 @@ export function ValuationWorkbench({
       <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
         id="valuation-assumptions" className="mx-model-inputs" help={methodology}
         action={<Group gap="xs">
+          {source && <span className="mx-unit mx-assumption-source">{source}</span>}
           {editor && <span ref={setEvidenceAction} className="mx-slot" />}
           {enabled && <span ref={setDraftAction}>
             {!editor && block && <Button variant="default" size="compact-xs" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
@@ -636,14 +664,7 @@ function ModelEditor({
 
 
   const current = result.scenarios[selected] ?? base;
-  const sourceLabel =
-    initial.defaultSource === "saved-model"
-      ? t("上次保存的模型", "Last saved model")
-      : initial.defaultSource === "sector-template"
-        ? t("板块情景模板", "Sector scenario template")
-        : initial.defaultSource === "configured-scenarios"
-          ? t("已配置的假设", "Configured assumptions")
-          : t("模型初始假设", "Initial assumptions");
+  const sourceLabel = assumptionSource(initial, t);
   const latestFact = (metric: string) =>
     data.financialFacts?.observations.find(
       (o) =>
@@ -824,7 +845,7 @@ function ModelEditor({
             <div className="mx-model-reference">
               <strong>{t("营收增长参考", "Revenue-growth reference")}</strong>
               <p>
-                {str(estimate?.endDate || params.get("estimateRef"))} · {percent(estimateGrowth, true)}
+                {forecastPeriodLabel(analyst, params.get("estimateRef"), t)} · {percent(estimateGrowth, true)}
               </p>
               <Button
                 variant="light"
