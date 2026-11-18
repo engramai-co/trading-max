@@ -48,14 +48,20 @@ def _summarise(read, scopes, accounts, evidence, args):
     suffix = "horizon" if args.horizon == "20_sessions" else "to_date"
     for code in scopes:
         account = _mapped(accounts.get(code))
-        if account.get("status") != "available":
+        decisions = _rows(account.get("decisions"))
+        journal = _mapped(evidence.get(code))
+        has_habit_records = (
+            "unpriced_basket_buys" in account
+            or any("before_earnings" in row or "basket_buy" in row for row in decisions)
+            or bool(journal.get("holdingMoves"))
+        )
+        if account.get("status") != "available" or not has_habit_records:
             issues.append(f"{CODE_SCOPE[code]}_decisions_unavailable")
             continue
         as_of[CODE_SCOPE[code]] = account.get("as_of")
-        journal = _mapped(evidence.get(code))
         if journal.get("coverage") != "complete":
             issues.append("partial_journal")
-        for row in _rows(account.get("decisions")) + _rows(account.get("unpriced_basket_buys")):
+        for row in decisions + _rows(account.get("unpriced_basket_buys")):
             complete = row.get("horizon_complete", row.get("effect_horizon_gbp") is not None)
             observed = row.get("observed_days")
             scored = (
