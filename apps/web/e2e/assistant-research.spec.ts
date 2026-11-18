@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { backendFixture } from "../tests/loading/fixtures";
@@ -84,6 +85,7 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     else { await expect(marker).toHaveCSS("width","18px"); await marker.focus(); await marker.press("Enter"); }
     const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
     await expect(card.locator(".mx-reading-line a")).toHaveCount(2);
+    expect((await new AxeBuilder({page}).include(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading").analyze()).violations).toEqual([]);
     await shot("moment");
     await card.getByRole("button").first().click();
     await expect(card).toHaveCount(0);
@@ -108,6 +110,7 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     expect(await digest.evaluate(el=>!!el.parentElement?.querySelector("#research-ratings") && el===el.parentElement.firstElementChild)).toBe(true);
     await digest.locator("[aria-expanded]").click();
     await expect(digest.locator(".mx-reading-line a")).toHaveCount(2);
+    expect((await new AxeBuilder({page}).include(".mx-earnings-brief").analyze()).violations).toEqual([]);
     await shot("earnings");
     await page.goto("/research?ticker=SYNT&view=fundamentals");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","true");
