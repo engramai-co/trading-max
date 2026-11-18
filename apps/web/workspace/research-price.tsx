@@ -485,7 +485,7 @@ export function PriceHistory({
               }
             }}
             label={`${ticker} · ${t("价格、成交量和技术指标", "Price, volume and indicators")}`}
-            height={baseHeight + headroom}
+            height={baseHeight}
             option={(c) => {
               const panes = [
                 "price",
@@ -651,8 +651,8 @@ export function PriceHistory({
                 grid: positions.map((p) => ({
                   left: 64,
                   right: 24,
-                  top: headroom ? headroom + baseHeight*p.top/100 : p.top + "%",
-                  height: headroom ? baseHeight*p.height/100 : p.height + "%",
+                  top: headroom ? headroom + (baseHeight - headroom) * p.top / 100 : p.top + "%",
+                  height: headroom ? (baseHeight - headroom) * p.height / 100 : p.height + "%",
                 })),
                 axisPointer: { link: [{ xAxisIndex: "all" }] },
                 xAxis: panes.map((_, i) => ({
