@@ -95,3 +95,48 @@ def test_qualified_claim_owner_retains_its_suffix(source, ny, london):
 
 def test_unknown_region_does_not_enter_a_provider_namespace():
     assert not resolve_venue("SYN", VenueClaim("region", "LSE")).venues
+
+
+@pytest.mark.parametrize(
+    ("symbol", "claims", "expected", "conflict", "calendar"),
+    [
+        ("SYN.IL", [("mic", "XNYS")], set(), True, None),
+        ("SYN.IL", [("yahoo", "IOB"), ("mic", "XLOM")], {"XLOM"}, False, None),
+        ("SYN", [("yahoo", "OQB")], {"OTCB"}, False, None),
+        ("SYN", [("yahoo", "OQX")], {"OTCQ"}, False, None),
+        ("SYN", [("yahoo", "OQX"), ("yahoo", "OQB")], set(), True, None),
+        ("SYN.TWO", [("openfigi", "TT (Taiwan Stock Exchange)")], set(), True, None),
+        ("SYN", [("openfigi", "TT (Taipei Exchange)")], {"ROCO"}, False, None),
+        ("SYN", [("openfigi", "TT"), ("mic", "XTAI")], {"XTAI"}, False, "XTAI"),
+        ("SYN", [("region", "US"), ("mic", "XNAS"), ("yahoo", "NMS")], {"XNGS"}, False, "XNYS"),
+        ("SYN", [("region", "US"), ("yahoo", "unknown"), ("yahoo", "NMS")], {"XNGS"}, False, None),
+    ],
+)
+def test_qualified_venues_and_overlapping_markets(symbol, claims, expected, conflict, calendar):
+    from itertools import permutations
+
+    for order in permutations(claims):
+        result = resolve_venue(symbol, *(VenueClaim(*claim, symbol) for claim in order))
+        assert (result.venues, result.conflict, result.calendar) == (expected, conflict, calendar)
+
+
+@pytest.mark.parametrize(
+    ("label", "observed"),
+    [
+        ("SYN.L", "OTHER.L"),
+        ("SYN.L", "SYN"),
+        ("SYN", "SYN.L"),
+        ("SYN.L", "SYN.F"),
+    ],
+)
+def test_provider_symbol_owns_its_exchange_claims(label, observed):
+    from trading_max.research.venues import row_claims
+
+    for row in (
+        {"provider_venue": {"symbol": observed, "exchangeName": "LSE"}},
+        {"metrics": {"symbol": observed, "exchange": "LSE"}},
+        {"yf_ticker": observed, "exchange": "LSE"},
+    ):
+        claims = row_claims(label, row)
+        assert any(c.value == "LSE" and c.listing == observed for c in claims)
+        assert resolve_venue(label, *claims).conflict

@@ -171,3 +171,12 @@ def test_venue_identity_distinguishes_exchanges_with_shared_closes_and_market_co
 def test_openfigi_soma_is_distinct_from_bombay():
     assert listing_venues("SYN", "BO") == {"XSOM"}
     assert listing_venues("SYN.BO", None) == {"XBOM"}
+
+
+def test_month_end_checks_all_exchange_evidence_before_admitting_final_month():
+    close = pd.Series([100, 110], index=pd.to_datetime(["2024-02-29", "2024-03-28"]))
+    close.attrs.update(
+        ticker="SYN.L",
+        provider_venue={"symbol": "SYN.L", "exchangeName": "LSE", "fullExchangeName": "UNVERIFIED"},
+    )
+    assert completed_months(close, exchange="LSE", now=pd.Timestamp("2024-03-29T20:00Z")).empty
