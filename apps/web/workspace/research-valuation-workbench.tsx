@@ -476,6 +476,14 @@ function ModelEditor({
   const accepted = changes.filter(p => draft?.review.decisions[p.scenario][p.field] === "accepted").length;
   const stagedScenarios = [...new Set(changes.filter(p =>
     draft?.review.decisions[p.scenario][p.field] !== "rejected").map(p => p.scenario))];
+  const pendingScenarios = stagedScenarios.filter(key => {
+    if (staleDraft || query.isError) return true;
+    const settled = result.scenarios[key]?.inputs;
+    const hasReview = changes.some(p => p.scenario === key && draft!.review.decisions[key][p.field] !== "unreviewed");
+    return hasReview && (result.horizon !== horizon || !settled ||
+      Object.entries(inputs[key]).some(([field, value]) => value !== settled[field as keyof ScenarioInput]) ||
+      (invalidInput && selected === key));
+  });
   const comparison = draft ? { ...result, scenarios: Object.fromEntries(
     Object.entries(result.scenarios).map(([key, row]) => {
       const started = changes.some(p => p.scenario === key && draft.review.decisions[key][p.field] !== "unreviewed");
@@ -619,7 +627,7 @@ function ModelEditor({
               preview={comparison}
               beforeDraft={draft?.before}
               stagedScenarios={stagedScenarios}
-              calculatingDraft={busy || query.isError || staleDraft}
+              pendingScenarios={pendingScenarios}
               selected={selected}
               onSelect={(key) => {
                 setSelected(key);

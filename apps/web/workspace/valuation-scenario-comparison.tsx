@@ -18,11 +18,11 @@ const SCENARIO_NAMES: Record<ScenarioKey, (t: Copy) => string> = {
   bull: (t) => t("乐观", "Bull"),
 };
 
-export function ValuationScenarioComparison({ preview, selected, onSelect, beforeDraft, stagedScenarios = [], calculatingDraft }: {
+export function ValuationScenarioComparison({ preview, selected, onSelect, beforeDraft, stagedScenarios = [], pendingScenarios = [] }: {
   preview: Preview;
   beforeDraft?: Preview;
   stagedScenarios?: string[];
-  calculatingDraft?: boolean;
+  pendingScenarios?: string[];
   selected: string;
   onSelect: (scenario: string) => void;
 }) {
@@ -106,7 +106,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
             <span>{name(key)}</span>
             <strong>{currency(staged ? beforeDraft.scenarios[key].value : scenario.value, preview.basis.currency, 2)}</strong>
             <span className={`mx-${tone(mainUpside)}`}>{percent(mainUpside, true, 2)}</span>
-            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {calculatingDraft ? "…" : `${currency(scenario.value, preview.basis.currency, 2)} (${percent(scenario.upside, true, 2)})`}</span>}
+            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {pendingScenarios.includes(key) ? "…" : `${currency(scenario.value, preview.basis.currency, 2)} (${percent(scenario.upside, true, 2)})`}</span>}
           </button>;
         })}
       </div>

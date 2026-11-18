@@ -1083,6 +1083,32 @@ test.describe("frozen draft review", () => {
     await expect(bear.locator(".mx-draft-reading")).toContainText("141.00");
   });
 
+  test("a pending base review keeps settled bear and bull readings visible", async ({page}) => {
+    const {editor, entry} = await reviewDraft(page);
+    await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
+      body:JSON.stringify({...draftResponse, result:{...draftResponse.result, proposals:[
+        ...draftProposals, {...draftProposals[0],scenario:"bull"},
+      ], deskReadings:{...draftResponse.result.deskReadings,bull:{value:210,upside:1.1}}}})+"\n"}));
+    let release!: () => void;
+    const hold = new Promise<void>(resolve => {release=resolve;});
+    await page.route("**/SYNT/valuation-preview*", async route => {
+      if (route.request().method() === "POST") await hold;
+      await route.fallback();
+    });
+    await entry.click();
+    const readings = page.locator(".mx-scenario-cards .mx-draft-reading");
+    await expect(readings).toHaveText([/141.00/,/183.00/,/210.00/]);
+    const pending = page.waitForRequest(req => req.method() === "POST" && req.url().includes("/SYNT/valuation-preview"));
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"}).click();
+    try {
+      await pending;
+      await expect(readings).toHaveText([/141.00/,/Draft …/,/210.00/]);
+    } finally {
+      release();
+    }
+    await expect(readings).toHaveText([/141.00/,/195.00/,/210.00/]);
+  });
+
   test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
     const {editor, entry} = await reviewDraft(page);
     await entry.click();
