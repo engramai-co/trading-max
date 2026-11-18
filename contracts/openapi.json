@@ -15583,6 +15583,20 @@
             ],
             "title": "Code"
           },
+          "lines": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ReadingLine"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lines"
+          },
           "reading": {
             "anyOf": [
               {
@@ -15596,6 +15610,7 @@
           "type": {
             "enum": [
               "reading",
+              "lines",
               "result",
               "error",
               "empty"

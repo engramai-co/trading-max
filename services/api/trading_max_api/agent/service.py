@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import anyio
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from pydantic_ai import Agent
+from pydantic_ai import Agent, CancellationToken
 from pydantic_ai.exceptions import RunCancelled, RunTimedOut
 from pydantic_ai.models import Model
 from pydantic_ai.run import AgentRunResult
@@ -62,6 +62,7 @@ class AssistantUnavailable(RuntimeError):
 class BoundModel:
     model: Model
     settings: ModelSettings
+    cancellation_token: CancellationToken | None = None
 
 
 class DepsForRun(Protocol):
@@ -325,9 +326,13 @@ class AssistantService:
 
     async def delete(self, conversation_id: str) -> None:
         _check_conversation_id(conversation_id)
-        if await self.store.read_record(conversation_id) is None:
-            raise HTTPException(status_code=404, detail={"code": "conversation_not_found"})
-        await self.store.delete(conversation_id, scope=CONVERSATION_SCOPE)
+        self.claim(conversation_id)
+        try:
+            if await self.store.read_record(conversation_id) is None:
+                raise HTTPException(status_code=404, detail={"code": "conversation_not_found"})
+            await self.store.delete(conversation_id, scope=CONVERSATION_SCOPE)
+        finally:
+            self.release(conversation_id)
 
 
 __all__ = ["AssistantService", "AssistantUnavailable", "BoundModel", "ChatContext", "DepsForRun"]

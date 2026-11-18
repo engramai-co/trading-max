@@ -1,5 +1,6 @@
 "use client";
 
+import "./readings.css";
 import { Drawer } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
@@ -66,7 +67,7 @@ export function AnchoredReading({ card, onClose, children }: ReadingContainerPro
   return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>
     <ReadingContent card={card}>{children}</ReadingContent></div>;
 }
-export function DigestRow({ storageKey, header, headline, children }: { storageKey: string; header: ReactNode; headline: ReactNode; children: ReactNode }) {
+export function DigestRow({ storageKey, header, headline, summary, children }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; children: ReactNode }) {
   const { ready } = useAssistant();
   const id = useId();
   const [open, setOpen] = useState(() => { try { return localStorage.getItem("tm-reading-" + storageKey) === "open"; } catch { return false; } });
@@ -76,6 +77,6 @@ export function DigestRow({ storageKey, header, headline, children }: { storageK
     try { localStorage.setItem("tm-reading-" + storageKey, open ? "closed" : "open"); } catch {}
   }
   return <section className="mx-digest"><div className="mx-digest-head"><span aria-hidden="true">✦</span>{header}
-    <button aria-expanded={open} aria-controls={id} onClick={toggle}>{headline}<CaretDown size={16} /></button></div>
+    <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><CaretDown size={16} /></button></div>
     <div id={id} hidden={!open}>{children}</div></section>;
 }

@@ -14,7 +14,7 @@ from pydantic_ai import Agent, UsageLimits
 from trading_max.infrastructure import SqliteDatabase
 
 from .deps import AssistantDeps
-from .roles import PageRole, RoleContext, RoleReading, RoleTools
+from .roles import PageRole, ReadingLine, RoleContext, RoleReading, RoleTools
 from .runtime import error_code
 from .service import RUN_TIMEOUT_SECONDS, AssistantService, AssistantUnavailable
 
@@ -28,8 +28,9 @@ class Selection(BaseModel):
 
 
 class ReadingEvent(BaseModel):
-    type: Literal["reading", "result", "error", "empty"]
+    type: Literal["reading", "lines", "result", "error", "empty"]
     reading: RoleReading | None = None
+    lines: list[ReadingLine] | None = None
     code: str | None = None
 
     def encode(self) -> str:
@@ -139,15 +140,33 @@ class ReadingService:
                 ],
                 ensure_ascii=False,
             )
-            async with bound.model:
-                result = await agent.run(
+            async with (
+                bound.model,
+                agent.run_stream(
                     prompt,
                     model=bound.model,
                     model_settings=bound.settings,
+                    cancellation_token=bound.cancellation_token,
                     usage_limits=UsageLimits(request_limit=2),
                     timeout=RUN_TIMEOUT_SECONDS,
-                )
-            indices = result.output.indices
+                ) as stream,
+            ):
+                emitted: list[int] = []
+                async for partial in stream.stream_output():
+                    # The last integer may still be receiving digits. Only send
+                    # complete, valid tool-backed lines to the browser.
+                    complete = partial.indices[:-1]
+                    if (
+                        complete != emitted
+                        and len(set(complete)) == len(complete)
+                        and all(0 <= i < len(facts) for i in complete)
+                    ):
+                        if not permitted():
+                            yield ReadingEvent(type="error", code="assistant_disabled")
+                            return
+                        emitted = complete
+                        yield ReadingEvent(type="lines", lines=[facts[i] for i in complete])
+                indices = (await stream.get_output()).indices
             if len(set(indices)) != len(indices) or any(i < 0 or i >= len(facts) for i in indices):
                 yield ReadingEvent(type="error", code="provider_invalid_output")
                 return

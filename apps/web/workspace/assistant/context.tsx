@@ -32,6 +32,11 @@ export function usePageRole(card: RoleCard | null) {
 }
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  const [painted, setPainted] = useState(false);
+  useEffect(() => {
+    let frame = requestAnimationFrame(() => { frame = requestAnimationFrame(() => setPainted(true)); });
+    return () => cancelAnimationFrame(frame);
+  }, []);
   const [pageCard, setPageCard] = useState<RoleCard | null>(null);
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   // Settings writes through this shared query key. A new revision immediately
@@ -40,8 +45,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     queryKey: assistantSettingsKey, queryFn: ({ signal }) => api("/settings/assistant", { signal }), enabled: false,
   });
   const status = useQuery({ queryKey: ["assistant-status", settings.data?.revision ?? null],
-    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal }),
-    staleTime: 30_000, retry: false,
+    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal, priority: "low" }),
+    enabled: painted || open, staleTime: 30_000, retry: false,
   });
   const ready = !status.isError && Boolean(status.data?.ready) && (!settings.data || settings.data.enabled && settings.data.acceptedConsentRevision === settings.data.consentRevision);
   const close = useCallback(() => {

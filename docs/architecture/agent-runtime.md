@@ -154,8 +154,9 @@ and sources travel together. The browser constructs local evidence links from
 the tool and its checked arguments.
 
 `POST /v1/assistant/roles/{role_id}/reading` accepts a context and optional
-snapshot ID. The newline-delimited stream reports progress and then a complete
-reading, an empty result or a stable error code. Completed readings are kept in
+snapshot ID. The newline-delimited stream delivers verified lines as model
+selection progresses, then the complete reading, an empty result or a stable
+error code. Completed readings are kept in
 workspace SQLite by role, object and snapshot, with the latest sixteen versions
 per object retained. Cached-only requests make no model calls. The workspace
 sidebar uses the chat stream for follow-ups and sends the validated role context
