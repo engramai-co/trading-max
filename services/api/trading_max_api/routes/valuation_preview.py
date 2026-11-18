@@ -162,6 +162,13 @@ def family_valuation_preview(
             )
         result = preview(basis, inputs)
         result.default_source = default_source
+        result.family_selection = (
+            "override"
+            if requested_family
+            or family != auto
+            or (latest and latest.family_selection == "override")
+            else "automatic"
+        )
         return result
     except ValueError as exc:
         raise HTTPException(

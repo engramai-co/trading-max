@@ -140,7 +140,7 @@ def _prepare(request, ticker, body, share_saved, progress):
         prior.id if prior and share_saved else None,
         body.horizon,
         progress,
-        "override" if body.requested_family else "automatic",
+        view.family_selection,
     )
     parent = models[0].id if models else None
     return runner, view, parent

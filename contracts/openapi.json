@@ -25003,6 +25003,21 @@
             ],
             "title": "Defaultsource"
           },
+          "familySelection": {
+            "anyOf": [
+              {
+                "enum": [
+                  "automatic",
+                  "override"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Familyselection"
+          },
           "formulaVersion": {
             "default": "equity-proxy-projection-v1",
             "enum": [

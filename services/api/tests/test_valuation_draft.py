@@ -282,7 +282,21 @@ def test_draft_fields_follow_the_selected_engine(desk, family, override):
         )
 
     _publish(state.store, MATURE, inject=add_family)
-    _, body = inputs(client, family if override else None)
+    view, body = inputs(client, family if override else None)
+    if override:
+        saved = client.post(
+            PATH + "/models",
+            json={
+                "family": family,
+                "scenarios": body["scenarios"],
+                "formulaVersion": view["formulaVersion"],
+            },
+        )
+        assert saved.is_success
+        reopened, inherited = inputs(client)
+        assert inherited["requestedFamily"] is None
+        assert reopened["familySelection"] == "override" and reopened["basis"]["family"] == family
+        body = inherited
     pick = (
         "base.initial_roe.common-roe"
         if family == "residual-income"

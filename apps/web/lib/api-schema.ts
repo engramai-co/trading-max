@@ -9680,6 +9680,8 @@ export interface components {
             basis: components["schemas"]["FrozenValuationBasis"];
             /** Defaultsource */
             defaultSource?: ("saved-model" | "configured-scenarios" | "sector-template" | "user-input") | null;
+            /** Familyselection */
+            familySelection?: ("automatic" | "override") | null;
             /**
              * Formulaversion
              * @default equity-proxy-projection-v1
