@@ -1,3 +1,4 @@
+import json
 import sqlite3
 import zlib
 from concurrent.futures import ThreadPoolExecutor
@@ -146,14 +147,6 @@ def test_api_matches_legacy_and_summary_avoids_history(
         assert result.json().get("intradayNav", []) == legacy.get("intradayNav", [])
         assert client.get("/v1/dashboard/history?run_id=missing-snapshot").status_code == 404
         assert client.get("/v1/dashboard/history?run_id=..%2Fsecrets").status_code == 422
-        typed_fixture(research_root, store)
-        lens = "/v1/dashboard/lens/analytics?detail=summary&scope=total"
-        assert client.get(lens).json()["runId"] != run
-        cited = client.get(f"{lens}&run_id={run}").json()
-        assert cited["runId"] == run
-        assert cited.get("nav", []) == legacy.get("nav", [])
-        assert cited.get("benchmarkSeries", {}) == legacy.get("benchmarkSeries", {})
-        assert client.get(f"{lens}&run_id=missing-snapshot").status_code == 404
         original = app.state.store.read_json
 
         def no_history(run, key):
@@ -167,3 +160,35 @@ def test_api_matches_legacy_and_summary_avoids_history(
         summary = client.get("/v1/dashboard/lens/analytics?detail=summary&scope=total")
         assert summary.status_code == 200
         assert not summary.json().get("intradayNav")
+
+
+def test_analytics_lens_pins_nav_and_prices_and_rechecks_retention(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    store = ArtifactStore(tmp_path / "state")
+    typed_fixture(research_root, store)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    lens = "/v1/dashboard/lens/analytics?detail=summary&scope=isa"
+    with TestClient(app) as client:
+        original = client.get(lens).json()
+        run = original["runId"]
+        nav = next(research_root.rglob("daily_nav_b.csv"))
+        nav.write_text(nav.read_text().replace(",1.02,0", ",1.09,0"))
+        technical = next(research_root.rglob("technical_analysis_*.json"))
+        payload = json.loads(technical.read_text())
+        payload["benchmark_series"]["VOO"][0]["close"] = 110
+        technical.write_text(json.dumps(payload))
+        typed_fixture(research_root, store)
+        newer = client.get(lens).json()
+        assert newer["runId"] != run
+        assert newer["nav"] != original["nav"]
+        assert newer["benchmarkSeries"] != original["benchmarkSeries"]
+        pinned_url = f"{lens}&run_id={run}"
+        cited = client.get(pinned_url).json()
+        assert cited["runId"] == run
+        assert cited["nav"] == original["nav"]
+        assert cited["benchmarkSeries"] == original["benchmarkSeries"]
+        # The retention worker and API have independent, warm manifest caches.
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert run in store.prune_snapshots(keep_recent=1)
+        assert client.get(pinned_url).status_code == 404

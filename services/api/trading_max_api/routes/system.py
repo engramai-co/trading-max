@@ -322,6 +322,16 @@ def dashboard_etf_detail(
         raise HTTPException(status_code=404, detail="ETF evidence not found") from None
 
 
+def _dashboard_manifest(request: Request, run_id: str | None) -> SnapshotManifest:
+    if run_id is None:
+        return latest_or_503(request)
+    try:
+        # Retention can prune a cached publication in the separate worker process.
+        return app_service(request, "store").load_manifest(run_id, require_retained=True)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="snapshot not found") from None
+
+
 @router.get(
     "/v1/dashboard/history",
     response_model=HistorySnapshot,
@@ -334,11 +344,7 @@ def dashboard_history(
     scope: HistoryScope = "total",
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
 ) -> HistorySnapshot:
-    store = app_service(request, "store")
-    try:
-        manifest = store.load_manifest(run_id) if run_id else latest_or_503(request)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="snapshot not found") from None
+    manifest = _dashboard_manifest(request, run_id)
     return app_service(request, "history_reader").read(manifest, range, scope)
 
 
@@ -366,14 +372,7 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
-    try:
-        manifest = (
-            app_service(request, "store").load_manifest(run_id)
-            if run_id
-            else latest_or_503(request)
-        )
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="snapshot not found") from None
+    manifest = _dashboard_manifest(request, run_id)
     dashboard_data = request.app.state.cached_dashboard(
         manifest, include_history=detail != "summary"
     )
