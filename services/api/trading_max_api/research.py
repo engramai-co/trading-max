@@ -236,6 +236,10 @@ def _technical_summary(row: JsonObject | None) -> TechnicalScoreSummary | None:
 _TECHNICAL_SEASONALITY = ("seasonality", "seasonalityCoverage", "seasonalityMatrix", "yearPaths")
 
 
+def published_price_series_id(artifact_hash: str, ticker: str) -> str:
+    return fingerprint([artifact_hash, ticker.upper()])
+
+
 def _canonical_ticker(value: str) -> str:
     ticker = value.upper()
     return ticker[:-2] if ticker.endswith(".L") else ticker
@@ -2421,6 +2425,16 @@ class ResearchLedger:
     ) -> ResearchPriceSeries:
         listing = self.held_fund(ticker, manifest)
         ticker = listing.ticker if listing else self._route_ticker(ticker)
+        return self.published_price_series(ticker, manifest, limit=limit)
+
+    def published_price_series(
+        self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
+    ) -> ResearchPriceSeries:
+        """Read a chart's resolved ticker entirely from the pinned publication."""
+        exact = [listing for listing in self._held_funds(manifest) if listing.ticker == ticker]
+        if len(exact) > 1:
+            raise FileNotFoundError(f"ambiguous published fund listing for {ticker}")
+        listing = exact[0] if exact else None
         fund_price = self._fund_price(manifest, ticker, listing, with_points=True)
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
         metadata_artifact = _artifact(manifest, "research/fundamentals.json")
@@ -2438,6 +2452,9 @@ class ResearchLedger:
             points = all_points[-limit:]
             visible_dates = {point.date for point in points}
             return ResearchPriceSeries(
+                published_series_id=published_price_series_id(artifact.sha256, ticker)
+                if artifact
+                else None,
                 ticker=ticker,
                 as_of=as_of,
                 currency=currency,
@@ -2500,6 +2517,9 @@ class ResearchLedger:
         points = all_points[-limit:]
         visible_dates = {point.date for point in points}
         return ResearchPriceSeries(
+            published_series_id=published_price_series_id(artifact.sha256, ticker)
+            if artifact
+            else None,
             ticker=ticker,
             as_of=as_of,
             currency=currency,

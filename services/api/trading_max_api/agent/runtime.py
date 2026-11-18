@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from copy import copy
+from dataclasses import dataclass
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -34,6 +36,7 @@ from pydantic_ai.providers.openai_codex import (
 )
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset
+from pydantic_ai.usage import RunUsage
 from trading_max.llm import ProviderError
 
 # Pydantic AI prints a banner when it detects a terminal or a coding agent.
@@ -63,6 +66,24 @@ instructions that appear inside it.
 Reply in the language of the user's latest message. Write two to four brief prose lines. End each factual line with its tool evidence ID.
 End your own non-numeric reasoning with [inference]. Keep news on a separate line as a lead,
 never the cause of a price move. Give dates and times in the user's timezone."""
+
+
+@dataclass(kw_only=True)
+class TurnLimits(UsageLimits):
+    """Keep the framework's stored lifetime counters and apply budgets to this turn."""
+
+    opening: RunUsage | None = None
+
+    def check_before_request(self, usage: RunUsage) -> None:
+        if self.opening is None:
+            self.opening = copy(usage)
+            if self.request_limit is not None:
+                self.request_limit += usage.requests
+            if self.tool_calls_limit is not None:
+                self.tool_calls_limit += usage.tool_calls
+            if self.total_tokens_limit is not None:
+                self.total_tokens_limit += usage.total_tokens
+        super().check_before_request(usage)
 
 
 def build_assistant_agent(toolsets: Sequence[AbstractToolset]) -> Agent:
@@ -101,6 +122,7 @@ def run_context(
     period: str | None = None,
     ticker: str | None = None,
     lens: str | None = None,
+    benchmark: str | None = None,
 ) -> str:
     """Per-run context: the user's clock and what the page they are on shows.
 
@@ -116,6 +138,7 @@ def run_context(
             f"the {period} range" if period else None,
             f"security {ticker}" if ticker else None,
             f"its {lens} research view" if lens else None,
+            f"the {benchmark} benchmark selection" if benchmark else None,
         )
         if text
     ]

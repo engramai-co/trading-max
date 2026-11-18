@@ -33,6 +33,7 @@ class AccountPositionMetrics(DomainModel):
     total_cost_gbp: Decimal
     unrealized_profit_loss_gbp: Decimal
     fx_impact_gbp: Decimal | None = None
+    average_price_paid: Decimal | None = None
 
 
 class AccountSnapshotMetrics(DomainModel):
@@ -86,6 +87,23 @@ def display_ticker(ticker: str) -> str:
 
 
 def _position_metrics(position: BrokerPosition) -> AccountPositionMetrics:
+    fx_impact = position.fx_impact_gbp
+    if fx_impact is None and position.price_currency in {"GBP", "GBp", "GBX"}:
+        fx_impact = Decimal(0)
+    elif (
+        fx_impact is None
+        and position.price_currency
+        and position.average_price_paid is not None
+        and position.average_price_paid > 0
+        and position.current_price > 0
+        and position.quantity > 0
+        and position.current_value_gbp > 0
+    ):
+        # Price effect at today's rate; the remainder is the revaluation of the cost basis.
+        local_effect = position.current_value_gbp * (
+            1 - position.average_price_paid / position.current_price
+        )
+        fx_impact = (position.unrealized_profit_loss_gbp - local_effect).quantize(Decimal("0.01"))
     return AccountPositionMetrics(
         ticker=display_ticker(position.broker_ticker or position.ticker),
         broker_ticker=position.broker_ticker,
@@ -97,7 +115,8 @@ def _position_metrics(position: BrokerPosition) -> AccountPositionMetrics:
         current_value_gbp=position.current_value_gbp,
         total_cost_gbp=position.total_cost_gbp,
         unrealized_profit_loss_gbp=position.unrealized_profit_loss_gbp,
-        fx_impact_gbp=position.fx_impact_gbp,
+        fx_impact_gbp=fx_impact,
+        average_price_paid=position.average_price_paid,
     )
 
 

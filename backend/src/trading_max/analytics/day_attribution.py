@@ -21,6 +21,7 @@ day stay unattributed.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from itertools import pairwise
@@ -36,12 +37,28 @@ CENT = Decimal("0.01")
 WINDOW_DAYS = 5
 
 
+@dataclass(frozen=True)
+class SplitLeg:
+    observed_at: datetime
+    isin: str
+    opening: bool
+    quantity: Decimal
+
+
+type SplitLegs = Mapping[str, tuple[SplitLeg, ...]]
+
+
 class BaselinePosition(DomainModel):
     key: str
+    isin: str = ""
     ticker: str
     name: str
     quantity: Decimal
     value_gbp: Decimal
+    local_price: Decimal | None = None
+    price_currency: str | None = None
+    average_price_paid: Decimal | None = None
+    total_cost_gbp: Decimal | None = None
 
 
 class AccountBaseline(DomainModel):
@@ -63,6 +80,8 @@ class PositionContribution(DomainModel):
     # it existed have none.
     instrument: str | None = None
     contribution_gbp: Decimal
+    local_price_effect_gbp: Decimal | None = None
+    fx_effect_gbp: Decimal | None = None
     # Value of the shares held through the window at its opening, so a consumer
     # can state the change as a share of it. Only the 1D attribution carries it;
     # a chained 5D total has no single opening.
@@ -73,6 +92,7 @@ class AccountDayAttribution(DomainModel):
     since: datetime
     as_of: datetime
     contributions: list[PositionContribution] = Field(default_factory=list)
+    unreconciled_instruments: list[str] = Field(default_factory=list)
 
 
 class DayAttribution(DomainModel):
@@ -169,17 +189,110 @@ def _positions(account: Mapping[str, Any]) -> list[BaselinePosition] | None:
         positions.append(
             BaselinePosition(
                 key=str(row.get("broker_ticker") or ticker),
+                isin=str(row.get("isin") or ""),
                 ticker=ticker,
                 name=str(row.get("name") or ticker),
                 quantity=quantity,
                 value_gbp=value,
+                local_price=_decimal(row.get("current_price")),
+                price_currency=row.get("price_currency"),
+                average_price_paid=_decimal(row.get("average_price_paid")),
+                total_cost_gbp=_decimal(row.get("total_cost_gbp")),
             )
         )
     return positions
 
 
+def _restate(start: BaselinePosition, quantity: Decimal) -> BaselinePosition:
+    return start.model_copy(
+        update={
+            "quantity": quantity,
+            "local_price": start.local_price * start.quantity / quantity
+            if start.local_price is not None
+            else None,
+        }
+    )
+
+
+def _opening_units(
+    start: BaselinePosition, end: BaselinePosition, legs: list[SplitLeg]
+) -> BaselinePosition | None:
+    """Translate an unchanged broker cost basis to the closing share units.
+
+    Brokers restate quantity and native average purchase price reciprocally on
+    a split. The unchanged sterling cost independently distinguishes a change
+    of units from an ordinary purchase or disposal.
+    """
+    if legs:
+        # The export records the extinguished shares followed by their replacement.
+        # A trade, unmatched leg or ambiguous listing cannot prove common units.
+        if len(legs) % 2 or not start.isin or start.isin != end.isin:
+            return None
+        quantity = start.quantity
+        for close, opened in zip(legs[::2], legs[1::2], strict=True):
+            if (
+                close.opening
+                or not opened.opening
+                or close.quantity != quantity
+                or opened.quantity <= 0
+                or close.isin != start.isin
+                or opened.isin != start.isin
+            ):
+                return None
+            quantity = opened.quantity
+        return _restate(start, quantity) if quantity == end.quantity else None
+    if start.quantity == end.quantity:
+        return start
+    factor = end.quantity / start.quantity
+    same_cost = (
+        start.total_cost_gbp is not None
+        and start.total_cost_gbp > 0
+        and end.total_cost_gbp is not None
+        and abs(start.total_cost_gbp - end.total_cost_gbp) <= CENT
+    )
+    if same_cost:
+        if (
+            start.price_currency
+            and start.price_currency == end.price_currency
+            and start.average_price_paid
+            and start.average_price_paid > 0
+            and end.average_price_paid
+            and end.average_price_paid > 0
+            and abs(start.average_price_paid / end.average_price_paid / factor - 1)
+            <= Decimal("0.0001")
+        ):
+            return _restate(start, end.quantity)
+        return None
+    if (
+        start.average_price_paid
+        and start.average_price_paid == end.average_price_paid
+        and start.price_currency == end.price_currency
+    ):
+        return start
+    # Without action or cost evidence, do not assign a price loss if the marks
+    # agree more closely in restated units. The quotes can withhold a figure,
+    # but only broker evidence can establish a split factor.
+    opening_mark, closing_mark = start.local_price, end.local_price
+    if (
+        opening_mark
+        and closing_mark
+        and opening_mark > 0
+        and closing_mark > 0
+        and start.price_currency
+        and start.price_currency == end.price_currency
+        and abs(closing_mark * factor - opening_mark) < abs(closing_mark - opening_mark)
+    ):
+        return None
+    return start
+
+
 def _contributions(
-    opening: list[BaselinePosition], current: list[BaselinePosition]
+    opening: list[BaselinePosition],
+    current: list[BaselinePosition],
+    unreconciled: set[str],
+    split_legs: SplitLegs,
+    since: datetime,
+    as_of: datetime,
 ) -> list[PositionContribution]:
     now = {position.key: position for position in current}
     rows = []
@@ -187,15 +300,41 @@ def _contributions(
         end = now.get(start.key)
         if end is None or start.quantity <= 0 or end.quantity <= 0:
             continue
+        legs = [
+            leg
+            for leg in split_legs.get(end.ticker.upper(), ())
+            if since < leg.observed_at <= as_of
+            and (not end.isin or not leg.isin or leg.isin == end.isin)
+        ]
+        start = _opening_units(start, end, legs)
+        if start is None:
+            unreconciled.add(end.key)
+            continue
         held = min(start.quantity, end.quantity)
         opening_price = start.value_gbp / start.quantity
         change = held * (end.value_gbp / end.quantity - opening_price)
+        change = change.quantize(CENT)
+        local = None
+        if start.price_currency and start.price_currency == end.price_currency:
+            if start.price_currency in {"GBP", "GBp", "GBX"}:
+                local = change
+            elif (
+                start.local_price
+                and start.local_price > 0
+                and end.local_price
+                and end.local_price > 0
+                and end.value_gbp > 0
+            ):
+                closing_fx = end.value_gbp / (end.quantity * end.local_price)
+                local = (held * (end.local_price - start.local_price) * closing_fx).quantize(CENT)
         rows.append(
             PositionContribution(
                 ticker=end.ticker,
                 name=end.name,
                 instrument=end.key,
-                contribution_gbp=change.quantize(CENT),
+                contribution_gbp=change,
+                local_price_effect_gbp=local,
+                fx_effect_gbp=change - local if local is not None else None,
                 opening_value_gbp=(held * opening_price).quantize(CENT),
             )
         )
@@ -206,6 +345,8 @@ def _contributions(
 def update_day_attribution(
     previous_baseline: Mapping[str, Any] | None,
     accounts: Mapping[str, Mapping[str, Any]],
+    *,
+    split_legs: Mapping[str, SplitLegs] | None = None,
 ) -> tuple[DayBaseline, DayAttribution]:
     """Carry or reset each account's opening and attribute the change since it."""
 
@@ -234,10 +375,20 @@ def update_day_attribution(
             continue
         if code not in opening:
             opening[code] = AccountBaseline(captured_at=observed[code], positions=current)
+        unreconciled: set[str] = set()
+        rows = _contributions(
+            opening[code].positions,
+            current,
+            unreconciled,
+            (split_legs or {}).get(code, {}),
+            opening[code].captured_at,
+            observed[code],
+        )
         result[code] = AccountDayAttribution(
             since=opening[code].captured_at,
             as_of=observed[code],
-            contributions=_contributions(opening[code].positions, current),
+            contributions=rows,
+            unreconciled_instruments=sorted(unreconciled),
         )
     return DayBaseline(day=day, accounts=opening), DayAttribution(day=day, accounts=result)
 
@@ -248,6 +399,7 @@ def update_window_attribution(
     accounts: Mapping[str, Mapping[str, Any]],
     *,
     history: Callable[[date], DayBaseline | None] | None = None,
+    split_legs: Mapping[str, SplitLegs] | None = None,
 ) -> tuple[WindowBaselines, WindowAttribution]:
     """Chain the daily openings of the 5D window up to the current observation.
 
@@ -288,23 +440,30 @@ def update_window_attribution(
             continue
         points = [*chain, (_timestamp(account["fetched_at"]), current)]
         # One total per broker instrument, so two listings never merge.
-        totals: dict[str, tuple[str, str, Decimal]] = {}
-        for (_, start), (_, end) in pairwise(points):
-            for row in _contributions(start, end):
+        totals: dict[str, PositionContribution] = {}
+        unreconciled: set[str] = set()
+        for (since, start), (as_of, end) in pairwise(points):
+            for row in _contributions(
+                start, end, unreconciled, (split_legs or {}).get(code, {}), since, as_of
+            ):
                 instrument = row.instrument or row.ticker
-                _, _, total = totals.get(instrument, (row.ticker, row.name, Decimal(0)))
-                totals[instrument] = (row.ticker, row.name, total + row.contribution_gbp)
+                prior = totals.get(instrument)
+                if prior is None:
+                    totals[instrument] = row.model_copy(update={"opening_value_gbp": None})
+                    continue
+                prior.contribution_gbp += row.contribution_gbp
+                for field in ("local_price_effect_gbp", "fx_effect_gbp"):
+                    a, b = getattr(prior, field), getattr(row, field)
+                    setattr(prior, field, a + b if a is not None and b is not None else None)
         rows = sorted(
-            (
-                PositionContribution(
-                    ticker=ticker, name=name, instrument=instrument, contribution_gbp=total
-                )
-                for instrument, (ticker, name, total) in totals.items()
-            ),
+            (row for instrument, row in totals.items() if instrument not in unreconciled),
             key=lambda row: (-abs(row.contribution_gbp), row.ticker, row.instrument or ""),
         )
         result[code] = AccountDayAttribution(
-            since=chain[0][0], as_of=points[-1][0], contributions=rows
+            since=chain[0][0],
+            as_of=points[-1][0],
+            contributions=rows,
+            unreconciled_instruments=sorted(unreconciled),
         )
     return (
         WindowBaselines(days=openings),

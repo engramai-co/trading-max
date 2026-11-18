@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
+from ..dashboard_models import ResearchPriceSeries
 from ..models import SnapshotManifest
 
 AccountScope = Literal["invest", "isa", "broker_total", "household", "cfd"]
@@ -29,6 +30,12 @@ class AssistantSnapshotSource(AssistantSnapshotReader, Protocol):
     def latest_manifest(self) -> SnapshotManifest | None: ...
 
 
+class PublishedPriceReader(Protocol):
+    def __call__(
+        self, ticker: str, manifest: SnapshotManifest, *, limit: int
+    ) -> ResearchPriceSeries: ...
+
+
 @dataclass(frozen=True, slots=True)
 class AssistantDeps:
     manifest: SnapshotManifest | None
@@ -37,6 +44,7 @@ class AssistantDeps:
     timezone: ZoneInfo = DEFAULT_TIMEZONE
     page_hint: str | None = None
     captured_at: datetime | None = None
+    price_series: PublishedPriceReader | None = None
 
     @property
     def snapshot_id(self) -> str | None:
@@ -50,6 +58,8 @@ class AssistantDepsFactory:
     store: AssistantSnapshotSource
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
+    price_series: PublishedPriceReader | None = None
+
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
         if timezone and len(timezone) <= 128:
@@ -57,6 +67,7 @@ class AssistantDepsFactory:
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
         return AssistantDeps(
+            price_series=self.price_series,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

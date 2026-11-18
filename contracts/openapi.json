@@ -615,6 +615,74 @@
         "title": "AccountDecisions",
         "type": "object"
       },
+      "AccountEffects": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "contribution_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution Gbp"
+          },
+          "fx_effect_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Effect Gbp"
+          },
+          "local_price_effect_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Price Effect Gbp"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
+          }
+        },
+        "required": [
+          "contribution_gbp",
+          "local_price_effect_gbp",
+          "fx_effect_gbp",
+          "since",
+          "as_of"
+        ],
+        "title": "AccountEffects",
+        "type": "object"
+      },
       "AccountReportData": {
         "properties": {
           "analysis": {
@@ -2641,6 +2709,10 @@
         ],
         "title": "BenchmarkPricePoint",
         "type": "object"
+      },
+      "CalendarDay": {
+        "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+        "type": "string"
       },
       "CashSpan": {
         "additionalProperties": false,
@@ -5008,6 +5080,136 @@
         "title": "ConsensusEstimate",
         "type": "object"
       },
+      "DailyReturn": {
+        "properties": {
+          "benchmark_return_fractions": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Benchmark Return Fractions",
+            "type": "object"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "from_date": {
+            "title": "From Date",
+            "type": "string"
+          },
+          "return_fraction": {
+            "title": "Return Fraction",
+            "type": "number"
+          },
+          "worst_rank": {
+            "title": "Worst Rank",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "from_date",
+          "return_fraction",
+          "worst_rank",
+          "benchmark_return_fractions"
+        ],
+        "title": "DailyReturn",
+        "type": "object"
+      },
+      "DailyReturns": {
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "benchmark": {
+            "title": "Benchmark",
+            "type": "string"
+          },
+          "benchmark_basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Basis"
+          },
+          "benchmark_currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmark Currency"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DailyReturn"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "range": {
+            "title": "Range",
+            "type": "string"
+          },
+          "total_items": {
+            "title": "Total Items",
+            "type": "integer"
+          },
+          "window_end": {
+            "title": "Window End",
+            "type": "string"
+          },
+          "window_start": {
+            "title": "Window Start",
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "total_items",
+          "next_cursor",
+          "currency",
+          "basis",
+          "range",
+          "window_start",
+          "window_end",
+          "benchmark",
+          "benchmark_currency",
+          "benchmark_basis"
+        ],
+        "title": "DailyReturns",
+        "type": "object"
+      },
       "DailyTracking": {
         "additionalProperties": false,
         "properties": {
@@ -5849,6 +6051,146 @@
         "title": "DatasetClock",
         "type": "object"
       },
+      "DatedExposure": {
+        "properties": {
+          "basis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basis"
+          },
+          "broker_as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Broker As Of"
+          },
+          "company_limit": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Company Limit"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "dimension": {
+            "title": "Dimension",
+            "type": "string"
+          },
+          "gics_coverage_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gics Coverage Fraction"
+          },
+          "gics_portfolio_coverage_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gics Portfolio Coverage Fraction"
+          },
+          "history_available_from": {
+            "title": "History Available From",
+            "type": "string"
+          },
+          "invested_value_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invested Value Gbp"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ExposureRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "lookthrough_coverage_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lookthrough Coverage Fraction"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "observation_date": {
+            "title": "Observation Date",
+            "type": "string"
+          },
+          "requested_date": {
+            "title": "Requested Date",
+            "type": "string"
+          },
+          "total_items": {
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "history_available_from",
+          "items",
+          "total_items",
+          "next_cursor",
+          "requested_date",
+          "observation_date",
+          "broker_as_of",
+          "currency",
+          "dimension",
+          "basis",
+          "lookthrough_coverage_fraction",
+          "invested_value_gbp",
+          "company_limit"
+        ],
+        "title": "DatedExposure",
+        "type": "object"
+      },
       "DayAttribution": {
         "description": "Accounts appear only when their position detail reconciled at both ends and\nboth their opening and latest observation fall on this trading day.",
         "properties": {
@@ -6088,6 +6430,74 @@
           }
         },
         "title": "DecisionSide",
+        "type": "object"
+      },
+      "DecisionTiming": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "effect_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect Gbp"
+          },
+          "hindsight": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Timing"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "string"
+          },
+          "observed_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed Days"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "ticker",
+          "date",
+          "side",
+          "horizon",
+          "observed_days",
+          "effect_gbp",
+          "hindsight"
+        ],
+        "title": "DecisionTiming",
         "type": "object"
       },
       "DeepSeekIntegrationCandidate": {
@@ -7159,6 +7569,158 @@
           "version"
         ],
         "title": "EvidenceRef",
+        "type": "object"
+      },
+      "ExposureRow": {
+        "properties": {
+          "classification_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification Status"
+          },
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "isin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Isin"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
+          "value_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Gbp"
+          },
+          "weight_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight Fraction"
+          }
+        },
+        "required": [
+          "name",
+          "value_gbp",
+          "weight_fraction"
+        ],
+        "title": "ExposureRow",
+        "type": "object"
+      },
+      "ExposureStart": {
+        "properties": {
+          "history_available_from": {
+            "title": "History Available From",
+            "type": "string"
+          }
+        },
+        "required": [
+          "history_available_from"
+        ],
+        "title": "ExposureStart",
+        "type": "object"
+      },
+      "FXSplit": {
+        "properties": {
+          "accounts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AccountEffects"
+            },
+            "title": "Accounts",
+            "type": "object"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PositionEffects"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "period": {
+            "title": "Period",
+            "type": "string"
+          },
+          "total_items": {
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_items",
+          "next_cursor",
+          "currency",
+          "period",
+          "accounts"
+        ],
+        "title": "FXSplit",
         "type": "object"
       },
       "FillEffect": {
@@ -9483,6 +10045,68 @@
           }
         },
         "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "Habit": {
+        "properties": {
+          "adverse": {
+            "title": "Adverse",
+            "type": "integer"
+          },
+          "decisions": {
+            "title": "Decisions",
+            "type": "integer"
+          },
+          "effect_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect Gbp"
+          },
+          "evaluated": {
+            "title": "Evaluated",
+            "type": "integer"
+          },
+          "favourable": {
+            "title": "Favourable",
+            "type": "integer"
+          },
+          "favourable_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Favourable Fraction"
+          },
+          "side": {
+            "title": "Side",
+            "type": "string"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "side",
+          "decisions",
+          "evaluated",
+          "favourable",
+          "adverse",
+          "unchanged",
+          "favourable_fraction",
+          "effect_gbp"
+        ],
+        "title": "Habit",
         "type": "object"
       },
       "HealthResponse": {
@@ -13436,6 +14060,84 @@
         "title": "MetricObservation",
         "type": "object"
       },
+      "Moment": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "event_count": {
+            "title": "Event Count",
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "$ref": "#/components/schemas/MomentEvent"
+            },
+            "title": "Events",
+            "type": "array"
+          },
+          "move_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Move Fraction"
+          },
+          "unusual_rank": {
+            "title": "Unusual Rank",
+            "type": "integer"
+          },
+          "volume_z_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Volume Z Score"
+          }
+        },
+        "required": [
+          "date",
+          "move_fraction",
+          "volume_z_score",
+          "unusual_rank",
+          "events",
+          "event_count"
+        ],
+        "title": "Moment",
+        "type": "object"
+      },
+      "MomentEvent": {
+        "properties": {
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "kind",
+          "reference"
+        ],
+        "title": "MomentEvent",
+        "type": "object"
+      },
       "NavPoint": {
         "properties": {
           "cadenceSeconds": {
@@ -14785,6 +15487,20 @@
         "title": "OverviewReviewSummary",
         "type": "object"
       },
+      "PageRange": {
+        "enum": [
+          "1D",
+          "1W",
+          "1M",
+          "3M",
+          "6M",
+          "YTD",
+          "1Y",
+          "2Y",
+          "ALL"
+        ],
+        "type": "string"
+      },
       "PerformanceSchedule": {
         "properties": {
           "consecutiveFailures": {
@@ -15112,6 +15828,125 @@
         "title": "PositionDayContribution",
         "type": "object"
       },
+      "PositionEffects": {
+        "properties": {
+          "contribution_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contribution Gbp"
+          },
+          "fx_effect_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Effect Gbp"
+          },
+          "instrument": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instrument"
+          },
+          "local_price_effect_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Price Effect Gbp"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          }
+        },
+        "required": [
+          "contribution_gbp",
+          "local_price_effect_gbp",
+          "fx_effect_gbp",
+          "ticker",
+          "instrument",
+          "scope"
+        ],
+        "title": "PositionEffects",
+        "type": "object"
+      },
+      "PriceMoments": {
+        "properties": {
+          "basis": {
+            "title": "Basis",
+            "type": "string"
+          },
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "interval": {
+            "title": "Interval",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Moment"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "published_series_id": {
+            "title": "Published Series Id",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "start",
+          "end",
+          "interval",
+          "basis",
+          "published_series_id",
+          "items"
+        ],
+        "title": "PriceMoments",
+        "type": "object"
+      },
       "PriceSeriesPoint": {
         "properties": {
           "close": {
@@ -15332,6 +16167,33 @@
           "presentValue"
         ],
         "title": "ProjectionYear",
+        "type": "object"
+      },
+      "Quality": {
+        "properties": {
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          }
+        },
+        "required": [
+          "issues"
+        ],
+        "title": "Quality",
         "type": "object"
       },
       "QuoteSnapshot": {
@@ -15750,6 +16612,295 @@
           }
         },
         "title": "ReadingRequest",
+        "type": "object"
+      },
+      "Reading_DailyReturns_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DailyReturns"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "snapshot_id",
+          "scope",
+          "sources",
+          "quality",
+          "evidence_id"
+        ],
+        "title": "Reading[DailyReturns]",
+        "type": "object"
+      },
+      "Reading_FXSplit_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FXSplit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "snapshot_id",
+          "scope",
+          "sources",
+          "quality",
+          "evidence_id"
+        ],
+        "title": "Reading[FXSplit]",
+        "type": "object"
+      },
+      "Reading_PriceMoments_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PriceMoments"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "snapshot_id",
+          "scope",
+          "sources",
+          "quality",
+          "evidence_id"
+        ],
+        "title": "Reading[PriceMoments]",
+        "type": "object"
+      },
+      "Reading_ReviewTiming_": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewTiming"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "snapshot_id",
+          "scope",
+          "sources",
+          "quality",
+          "evidence_id"
+        ],
+        "title": "Reading[ReviewTiming]",
+        "type": "object"
+      },
+      "Reading_Union_DatedExposure__ExposureStart__": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DatedExposure"
+              },
+              {
+                "$ref": "#/components/schemas/ExposureStart"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/Quality"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/Source"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "unavailable",
+              "not_applicable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "data",
+          "snapshot_id",
+          "scope",
+          "sources",
+          "quality",
+          "evidence_id"
+        ],
+        "title": "Reading[Union[DatedExposure, ExposureStart]]",
         "type": "object"
       },
       "RefreshAttention": {
@@ -17448,6 +18599,17 @@
             },
             "title": "Points",
             "type": "array"
+          },
+          "publishedSeriesId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publishedseriesid"
           },
           "requestedInterval": {
             "default": "1d",
@@ -19186,6 +20348,77 @@
           "status"
         ],
         "title": "ReviewStructuralDiagnostics",
+        "type": "object"
+      },
+      "ReviewTiming": {
+        "properties": {
+          "as_of": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "As Of",
+            "type": "object"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "habits": {
+            "items": {
+              "$ref": "#/components/schemas/Habit"
+            },
+            "title": "Habits",
+            "type": "array"
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DecisionTiming"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "order_size_basis": {
+            "title": "Order Size Basis",
+            "type": "string"
+          },
+          "total_items": {
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_items",
+          "next_cursor",
+          "currency",
+          "horizon",
+          "as_of",
+          "order_size_basis",
+          "habits"
+        ],
+        "title": "ReviewTiming",
         "type": "object"
       },
       "ReviewTrade": {
@@ -21109,6 +22342,31 @@
         "title": "SnapshotManifest",
         "type": "object"
       },
+      "Source": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "as_of"
+        ],
+        "title": "Source",
+        "type": "object"
+      },
       "StageStatus": {
         "enum": [
           "queued",
@@ -21903,6 +23161,78 @@
           }
         },
         "title": "TerminalCheck",
+        "type": "object"
+      },
+      "Ticker": {
+        "pattern": "^[A-Za-z0-9^=._-]{1,32}$",
+        "type": "string"
+      },
+      "Timing": {
+        "properties": {
+          "average_order_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Average Order Gbp"
+          },
+          "best_close_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Close Gbp"
+          },
+          "best_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Best Date"
+          },
+          "missed_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Missed Gbp"
+          },
+          "window_end": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window End"
+          }
+        },
+        "required": [
+          "best_date",
+          "window_end",
+          "best_close_gbp",
+          "average_order_gbp",
+          "missed_gbp"
+        ],
+        "title": "Timing",
         "type": "object"
       },
       "TradeDecision": {
@@ -29030,6 +30360,643 @@
           }
         },
         "summary": "Snapshot Artifact"
+      }
+    },
+    "/v1/snapshots/{run_id}/insights/daily-returns": {
+      "get": {
+        "operationId": "daily_returns_v1_snapshots__run_id__insights_daily_returns_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Maximum rows to return.",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Use the preceding next_cursor.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Use the preceding next_cursor.",
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+              "enum": [
+                "invest",
+                "isa",
+                "broker_total",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "range",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/PageRange",
+              "default": "3M"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
+            "name": "benchmark",
+            "required": false,
+            "schema": {
+              "default": "VOO",
+              "enum": [
+                "VOO",
+                "QQQ",
+                "VT",
+                "ALL"
+              ],
+              "title": "Benchmark",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reading_DailyReturns_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Daily Returns",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/v1/snapshots/{run_id}/insights/dated-exposure": {
+      "get": {
+        "operationId": "dated_exposure_v1_snapshots__run_id__insights_dated_exposure_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Maximum rows to return.",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Use the preceding next_cursor.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Use the preceding next_cursor.",
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+              "enum": [
+                "invest",
+                "isa",
+                "broker_total",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exposure grouping.",
+            "in": "query",
+            "name": "dimension",
+            "required": true,
+            "schema": {
+              "description": "Exposure grouping.",
+              "enum": [
+                "country",
+                "sector",
+                "gics",
+                "company"
+              ],
+              "title": "Dimension",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "on_or_before",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CalendarDay"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reading_Union_DatedExposure__ExposureStart__"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Dated Exposure",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/v1/snapshots/{run_id}/insights/decision-timing": {
+      "get": {
+        "operationId": "decision_timing_v1_snapshots__run_id__insights_decision_timing_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Maximum rows to return.",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Use the preceding next_cursor.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Use the preceding next_cursor.",
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+              "enum": [
+                "invest",
+                "isa",
+                "broker_total",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "horizon",
+            "required": false,
+            "schema": {
+              "default": "decision_default",
+              "enum": [
+                "20_sessions",
+                "to_date",
+                "decision_default"
+              ],
+              "title": "Horizon",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Ticker"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticker"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "decision_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "side",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "buy",
+                    "sell"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Side"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reading_ReviewTiming_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Decision Timing",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/v1/snapshots/{run_id}/insights/holding-fx": {
+      "get": {
+        "operationId": "holding_fx_v1_snapshots__run_id__insights_holding_fx_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Maximum rows to return.",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Use the preceding next_cursor.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Use the preceding next_cursor.",
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+              "enum": [
+                "invest",
+                "isa",
+                "broker_total",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "period",
+            "required": true,
+            "schema": {
+              "enum": [
+                "1D",
+                "5D",
+                "open_position"
+              ],
+              "title": "Period",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reading_FXSplit_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Holding Fx",
+        "tags": [
+          "insights"
+        ]
+      }
+    },
+    "/v1/snapshots/{run_id}/insights/key-moments": {
+      "get": {
+        "operationId": "key_moments_v1_snapshots__run_id__insights_key_moments_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+              "enum": [
+                "invest",
+                "isa",
+                "broker_total",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Ticker"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CalendarDay"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/CalendarDay"
+            }
+          },
+          {
+            "in": "query",
+            "name": "published_series_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[0-9a-f]{20}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published Series Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Reading_PriceMoments_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Key Moments",
+        "tags": [
+          "insights"
+        ]
       }
     },
     "/v1/valuation/assumptions": {

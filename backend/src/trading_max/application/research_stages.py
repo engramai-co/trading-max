@@ -14,6 +14,7 @@ from trading_max.analytics.etf_journal import (
     update_etf_journal,
 )
 from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFPortfolio
+from trading_max.analytics.exposure_history import record_exposure
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
     ContentAddressedArtifactStore,
@@ -1167,6 +1168,11 @@ class TypedPublishSnapshotStage:
                 if not key.startswith(("account/etfs/", "account/etf_holdings/"))
             }
         refs_by_key.update({ref.key: ref for ref in new_refs})
+        exposure = next(
+            (ref for ref in new_refs if ref.key == "account/lookthrough_metrics.json"), None
+        )
+        if exposure:
+            record_exposure(self.artifacts, refs_by_key, exposure)
         estimate_batches = {}
         estimate_keys = (
             ESTIMATE_KEYS.intersection(ref.key for ref in new_refs)
