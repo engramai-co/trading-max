@@ -208,6 +208,7 @@ def test_analytics_lens_pins_nav_and_prices_and_rechecks_retention(
             "nav",
             "benchmarkSeries",
         }
+        assert all(set(row) <= {"date", "flowStatus", "isa", "isaTwr"} for row in cited["nav"])
         assert cited["runId"] == run
         assert [(p["date"], p.get("isaTwr")) for p in cited["nav"]] == [
             (p["date"], p.get("isaTwr")) for p in original["nav"]
@@ -238,5 +239,4 @@ def test_retained_returns_cannot_evict_the_live_dashboard(research_root, tmp_pat
                 },
             )
             assert result.status_code == 200
-            assert set(result.json()["nav"][0]) <= {"date", "flowStatus", "invest", "investTwr"}
         assert app.state.cached_dashboard(publications[-1], include_history=False) is live
