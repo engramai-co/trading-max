@@ -63,7 +63,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
   // A failed status read leaves the previous approval unconfirmed. Keep the local
   // thread hidden until a fresh answer arrives, just as for a pending consent signal.
-  const suspended = waitingForConsent || (checkStatus && status.isRefetchError && status.data.ready);
+  const suspended = waitingForConsent || (checkStatus && status.isError);
   const confirmConsent = useCallback(async () => {
     const revision = ++nextRevision.current;
     setExternalRevision(revision);

@@ -1000,6 +1000,25 @@ test("a passive status failure preserves the draft until readiness recovers", as
   await page.keyboard.press("Enter");
   await expect.poll(() => posts).toEqual(["Continues through recovery"]);
 });
+
+test("a status failure after profile confirmation retains the hidden draft", async ({page}) => {
+  const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
+  const failed = page.waitForResponse(res => res.url().endsWith("/assistant/status") && res.status() === 503);
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({status:503, json:{detail:"Temporarily unavailable"}}), {times:1});
+  await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", {
+    key:"trading_max-assistant-settings-revision", newValue:"2",
+  })));
+  await failed;
+  await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+  await expect(draft).toBeHidden();
+  const retry = await holdPassiveStatus(page);
+  await expect(draft).toBeHidden();
+  retry(200);
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue("Continue");
+  await expect(send).toBeEnabled();
+});
+
 test("narrowing restores Message when the remembered Send button is disabled", async ({page}) => {
   await page.setViewportSize({width:1440, height:900});
   const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
@@ -1055,4 +1074,25 @@ test("a Broker citation opens the retained decision and reports expiry", async (
     await expect(page.locator(".mx-decision-focus")).toHaveCount(0);
   }
   expect(requests.every(run => run === snapshot)).toBe(true);
+});
+
+test("first approval focuses the lazy composer after the opening consent check", async ({page}, info) => {
+  if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  let approve!: () => void;
+  const held = new Promise<void>(resolve => { approve = resolve; });
+  await page.route("**/api/backend/assistant/status", async route => {
+    await held;
+    await route.fulfill({json:{ready:true,code:null}});
+  });
+  await page.goto("/");
+  await page.keyboard.press("Control+j");
+  const panel = page.locator("#mx-assistant-panel");
+  try { await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused(); }
+  finally { approve(); }
+  const draft = panel.getByRole("textbox", {name:"Message"});
+  await expect(draft).toBeFocused();
+  await page.keyboard.type("First message");
+  await expect(draft).toHaveValue("First message");
 });
