@@ -1,4 +1,5 @@
 "use client";
+import { MomentOverlay, useKeyMoments } from "./assistant/key-moments";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
@@ -45,11 +46,13 @@ const fullSelectStyles = { input: { height: 44, minHeight: 44 } };
 export function PriceHistory({
   ticker,
   runId,
+  snapshotId,
   context,
   compactChart = false,
 }: {
   ticker: string;
   runId: string;
+  snapshotId?: string;
   technical?: boolean;
   context?: ResearchLensSnapshot;
   compactChart?: boolean;
@@ -171,7 +174,20 @@ export function PriceHistory({
   const eventQuery = useQuery({ ...researchLensQuery(ticker, "analyst", runId), enabled: full || eventTrack === true, retry: false });
   const earnings = objects(object(eventQuery.data?.analyst ?? context?.analyst).earningsEvents).filter((e) => visibleDays.has(str(e.date).slice(0, 10)));
   const days = priceEventDays(markers, corporate, earnings);
-  const showEvents = eventTrack ?? (full || markers.length > 0);
+  const [chartZoom, setChartZoom] = useState<{key: string; start: number; end: number}>();
+  const visibleZoom = chartZoom?.key === zoomKey ? chartZoom : savedZoom();
+  const span = Math.max(0, slotDates.length - 1);
+  const low = Math.round(span * visibleZoom.start / 100), high = Math.round(span * visibleZoom.end / 100);
+  const published = current && actualInterval === "1d" && priceData?.publishedSeriesId && eventTrack !== false;
+  const moments = useKeyMoments(published ? {ticker: priceData.ticker, published_series_id: priceData.publishedSeriesId!} : null,
+    slotDates[low]?.slice(0, 10), slotDates[high]?.slice(0, 10), snapshotId);
+  const showEvents = eventTrack ?? (full || markers.length > 0 || moments.items.length > 0);
+  const momentPoints = moments.items.flatMap(m => {
+    const index = slotDates.indexOf(m.date);
+    const point = slots[index]?.bar;
+    const high = point && (candle ? bars[slots[index].index][3] : plottedCloses[index]);
+    return high == null ? [] : [{date: m.date, category: m.date, high}];
+  });
   const labels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   const shownAverages = averages ? (["sma20", "sma50", "sma200"] as const).filter((key) => averagePeriods.includes(key.slice(3))) : [];
   // Each average keeps its stroke: ink solid, grey dashed, ink dotted.
@@ -436,6 +452,7 @@ export function PriceHistory({
               read: (index, context) => readPrice(index, context?.grid),
               marks: readMarks,
             }}
+            overlay={showEvents && moments.items.length > 0 && <MomentOverlay chart={chart} moments={moments} points={momentPoints} />}
             controller={chart}
             onZoom={(instance) => {
               const current = (
@@ -444,6 +461,7 @@ export function PriceHistory({
                   | undefined
               )?.[0];
               if (current?.start != null && current.end != null) {
+                setChartZoom({key: zoomKey, start: current.start, end: current.end});
                 try {
                   sessionStorage.setItem(
                     zoomKey,
@@ -725,7 +743,7 @@ export function PriceHistory({
                 : formatDateSpan(points[0].date, points.at(-1)!.date, locale)}
             </span>
           </div>
-          {showEvents && <PriceEventTrack
+          {showEvents && <PriceEventTrack moments={moments}
             days={full || eventTrack === true ? days : days.filter((day) => day.marker)}
             openEarnings={(event) => update({ view: "analyst", analystView: "events", eventId: event.id, eventDate: event.date, chart: null })}
           />}

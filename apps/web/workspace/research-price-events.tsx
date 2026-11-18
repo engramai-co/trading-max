@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useState } from "react";
+import type { NumberedMoment } from "./assistant/key-moments";
+import { Fragment, useId, useState } from "react";
 import type { ResearchPriceSeries } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
@@ -41,8 +42,9 @@ export function priceEventDays(markers: Marker[], corporate: Record<string, unkn
   return [...days.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export function PriceEventTrack({ days, openEarnings }: {
+export function PriceEventTrack({ days, openEarnings, moments }: {
   days: PriceEventDay[];
+  moments?: { items: NumberedMoment[]; current?: NumberedMoment; open: (date: string, trigger: HTMLButtonElement) => void };
   openEarnings?: (event: Event) => void;
 }) {
   const t = useCopy();
@@ -52,19 +54,27 @@ export function PriceEventTrack({ days, openEarnings }: {
   const day = days.find((event) => event.date === selected);
   const eventLabel = (kind: Event["kind"]) => kind === "split" ? t("拆股", "Split")
     : kind === "dividend" ? t("分红", "Dividend") : t("财报", "Earnings");
-  if (!days.length) return null;
+  const dates = [...new Set([...days.map(d => d.date), ...(moments?.items.map(m => m.date) ?? [])])].sort();
+  const byDay = new Map(days.map(d => [d.date, d]));
+  if (!dates.length) return null;
   return (
     <section className="mx-price-events" aria-label={t("事件时间轴", "Event timeline")}>
       <div className="mx-event-track">
-        {days.map((entry) => {
-          const date = formatCalendarDate(entry.date, locale);
-          const label = entry.marker?.kind ?? eventLabel(entry.company[0].kind);
-          return <button key={entry.date} type="button" aria-controls={id} aria-expanded={entry === day}
+        {dates.map(stamp => {
+          const entry = byDay.get(stamp);
+          const moment = moments?.items.find(m => m.date === stamp);
+          const date = formatCalendarDate(stamp, locale);
+          const label = entry && (entry.marker?.kind ?? eventLabel(entry.company[0].kind));
+          return <Fragment key={stamp}>{entry && <button type="button" aria-controls={id} aria-expanded={entry === day}
             aria-label={`${date} · ${label}${entry.count > 1 ? ` (+${entry.count - 1})` : ""}`}
             onClick={() => setSelected(entry === day ? undefined : entry.date)}>
             <time dateTime={entry.date}>{date}</time>
             <strong>{label}{entry.count > 1 ? ` +${entry.count - 1}` : ""}</strong>
-          </button>;
+          </button>}
+          {moment && <button type="button" className="mx-track-moment" aria-expanded={moments?.current?.date === stamp}
+            aria-label={t("关键时刻", "Key moment") + " " + moment.number + " · " + date}
+            onClick={e => moments?.open(stamp, e.currentTarget)}><time dateTime={stamp}>{date}</time>
+            <span className="mx-moment-number">{moment.number}</span></button>}</Fragment>;
         })}
       </div>
       <div id={id} hidden={!day}>

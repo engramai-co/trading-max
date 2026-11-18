@@ -16,6 +16,7 @@ export function EvidenceLink({ evidence }: { evidence: Evidence }) {
   const [zh, en] = sourceWords[evidence.source];
   const word = evidence.source === "publisher" && evidence.publisher ? evidence.publisher : t(zh, en);
   const href = evidenceHref(evidence);
+  if (href && evidence.source === "publisher" && /^https?:/.test(href)) return <a className="mx-reading-source" href={href} target="_blank" rel="noreferrer">{word}</a>;
   return href ? <Link className="mx-reading-source" href={href} onClick={() => { if (window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
 export function ReadingLines({ card }: { card: RoleCard }) {
@@ -67,7 +68,7 @@ export function AnchoredReading({ card, onClose, children }: ReadingContainerPro
   return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>
     <ReadingContent card={card}>{children}</ReadingContent></div>;
 }
-export function DigestRow({ storageKey, header, headline, summary, children }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; children: ReactNode }) {
+export function DigestRow({ storageKey, header, headline, summary, summarySource, children }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; summarySource?: ReactNode; children: ReactNode }) {
   const { ready } = useAssistant();
   const id = useId();
   const [open, setOpen] = useState(() => { try { return localStorage.getItem("tm-reading-" + storageKey) === "open"; } catch { return false; } });
@@ -77,6 +78,6 @@ export function DigestRow({ storageKey, header, headline, summary, children }: {
     try { localStorage.setItem("tm-reading-" + storageKey, open ? "closed" : "open"); } catch {}
   }
   return <section className="mx-digest"><div className="mx-digest-head"><span aria-hidden="true">✦</span>{header}
-    <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><CaretDown size={16} /></button></div>
+    <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><CaretDown size={16} /></button>{!open && summarySource}</div>
     <div id={id} hidden={!open}>{children}</div></section>;
 }

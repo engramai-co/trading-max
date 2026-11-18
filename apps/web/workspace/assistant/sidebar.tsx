@@ -109,7 +109,7 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
       <button onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button>
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
-      {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} /><ReadingLines card={card} />
+      {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} />{card.status && <p role="status" className="mx-assistant-note">{card.status}</p>}<ReadingLines card={card} />
         <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} onClick={() => send(q)}>{q}<span aria-hidden="true">→</span></button>)}</div>
       </div>}
       {displayTurns(messages).map(m => <div key={m.id} className={"mx-assistant-turn mx-turn-" + m.role}>

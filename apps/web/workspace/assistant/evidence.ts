@@ -1,6 +1,6 @@
 import type { components } from "@/lib/api-schema";
 import type { UIMessage } from "ai";
-import { object, str } from "../data";
+import { object, safeUrl, str } from "../data";
 
 export const sourceWords = {
   account: ["账户", "Account"], broker: ["券商", "Broker"], holdings: ["持仓", "Holdings"],
@@ -16,6 +16,8 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
+  research_position: ["/research", "market"], price_key_moments: ["/research", "technical"],
+  research_earnings: ["/research", "financials"], research_headline: ["/research", "publisher"],
   data_freshness: ["/health", "health"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
@@ -46,6 +48,15 @@ export function evidenceHref(ref: Evidence) {
   if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
+    if (ref.tool === "research_headline" && a.url && safeUrl(a.url)) return safeUrl(a.url);
+    if (a.index || a.index_id) {
+      params.set("type","index"); params.set("index",a.index || a.index_id); params.set("view","price");
+      return path + "?" + params;
+    }
+    if (a.analystView) params.set("analystView",a.analystView);
+    if (a.date && a.lens === "technical") { params.set("eventDate",a.date); params.set("priceRange","ALL"); params.set("interval","1d"); }
+    if (a.event === "filing") params.set("notebook","filings");
+    if (a.event === "rating_change") params.set("analystView","actions");
     if (a.ticker) params.set("ticker", a.ticker);
     if (["earnings", "earningsWindow", "exDividend"].includes(a.event)) {
       params.set("event", a.event);
