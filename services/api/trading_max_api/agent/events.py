@@ -2,19 +2,19 @@
 
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
-from functools import partial
 from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
 
 from exchange_calendars.errors import CalendarError
 from pydantic import AfterValidator, StringConstraints, model_validator
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import market_calendar
 from trading_max.research.calendars.events import window_bounds
 from trading_max.research.calendars.refresh import MACRO_KEY
 from trading_max.research.listing import LONDON, broker_listing
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY, web_url
 
+from ..research_listing import PinnedListing
 from .tools import (
     ANALYST,
     CFD_LEDGER,
@@ -100,16 +100,62 @@ def _entry(kind, title, zh, raw, *, ticker=None, publisher=YAHOO, url=None, end=
 
 
 def _indexed(payload):
-    return {str(r.get("ticker", "")).upper(): r for r in _rows((payload or {}).get("rows"))}
+    payload = payload or {}
+    return {
+        str(r.get("ticker", "")).upper(): r
+        for r in _rows(payload.get("rows", payload.get("fundamentals")))
+    }
 
 
-def _security_entry(ticker):
+def _security_entry(ticker, kind, title, zh, raw, **kw):
     url = "https://finance.yahoo.com/quote/" + quote(ticker, safe="") + "/"
-    return partial(_entry, ticker=ticker, url=url)
+    return _entry(kind, title, zh, raw, ticker=ticker, url=kw.pop("url", url), **kw)
+
+
+def listed_dividends(ticker, cal, metrics, evidence):
+    for key, metric, kind, en, zh in [
+        ("Ex-Dividend Date", "exDividendDate", "ex_dividend", "Ex-dividend date", "除息日"),
+        ("Dividend Date", "dividendDate", "dividend_pay", "Dividend payment date", "派息日"),
+    ]:
+        stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
+        if stamp:
+            yield _security_entry(ticker, kind, en, zh, stamp[:10])
+    for r in _rows(evidence.get("dividends")):
+        yield _security_entry(
+            ticker,
+            "dividend",
+            "Dividend",
+            "股息",
+            r.get("date"),
+            amount=_number(r.get("amount")),
+            currency=r.get("currency"),
+            unit="per_share",
+            basis=r.get("basis"),
+        )
+
+
+def listed_headlines(ticker, rows):
+    for row in rows:
+        url_value = web_url(row.get("url"))
+        if not url_value or not (row.get("publisher") or row.get("source")):
+            continue
+        yield _security_entry(
+            ticker,
+            "news",
+            row.get("title"),
+            row.get("title") or "",
+            row.get("instant") or row.get("publishedAt") or row.get("date"),
+            url=url_value,
+            publisher=row.get("publisher") or row.get("source"),
+            provider_id=row.get("id") if row.get("id") != url_value else None,
+            role="lead",
+        )
 
 
 def _public(ticker, data, upcoming):
-    add = _security_entry(ticker)
+    def add(kind, title, zh, raw, **kw):
+        return _security_entry(ticker, kind, title, zh, raw, **kw)
+
     analyst = data[ANALYST].get(ticker, {}).get("analyst", {})
     recorded = set()
     for e in _rows(analyst.get("earningsEvents")):
@@ -150,14 +196,10 @@ def _public(ticker, data, upcoming):
             end=days[-1] if len(days) > 1 else None,
             status="provider-estimate",
         )
-    metrics = data[FUNDAMENTALS].get(ticker, {}).get("metrics", {})
-    for key, metric, kind, en, zh in [
-        ("Ex-Dividend Date", "exDividendDate", "ex_dividend", "Ex-dividend date", "除息日"),
-        ("Dividend Date", "dividendDate", "dividend_pay", "Dividend payment date", "派息日"),
-    ]:
-        stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
-        if stamp:
-            yield add(kind, en, zh, stamp[:10])
+    fundamental = data[FUNDAMENTALS].get(ticker, {})
+    metrics = fundamental.get("metrics") or fundamental.get("info") or {}
+    evidence = data.get(FINANCIALS, {}).get(ticker, {}).get("financials", {}).get("evidence", {})
+    yield from listed_dividends(ticker, cal, metrics, {} if upcoming else evidence)
     if upcoming:
         return
     for r in _rows(analyst.get("upgradesDowngrades")):
@@ -180,7 +222,6 @@ def _public(ticker, data, upcoming):
             from_grade=r.get("FromGrade") or r.get("fromGrade"),
             to_grade=r.get("ToGrade") or r.get("toGrade"),
         )
-    evidence = data[FINANCIALS].get(ticker, {}).get("financials", {}).get("evidence", {})
     for r in _rows(evidence.get("filings")):
         yield add(
             "filing",
@@ -192,36 +233,12 @@ def _public(ticker, data, upcoming):
             form=r.get("form"),
             reference=r.get("accession") or r.get("id"),
         )
-    yield from _reported_dividends(ticker, evidence)
-    for row in _headline_rows(data, ticker):
-        url_value = web_url(row.get("url"))
-        if not url_value or not (row.get("publisher") or row.get("source")):
-            continue
-        yield add(
-            "news",
-            row.get("title"),
-            row.get("title") or "",
-            row.get("instant") or row.get("publishedAt") or row.get("date"),
-            url=url_value,
-            publisher=row.get("publisher") or row.get("source"),
-            provider_id=row.get("id") if row.get("id") != url_value else None,
-            role="lead",
-        )
+    yield from listed_headlines(ticker, _headline_rows(data, ticker))
 
 
 def _reported_dividends(ticker, evidence):
-    add = _security_entry(ticker)
-    for r in _rows(evidence.get("dividends")):
-        yield add(
-            "dividend",
-            "Dividend",
-            "股息",
-            r.get("date"),
-            amount=_number(r.get("amount")),
-            currency=r.get("currency"),
-            unit="per_share",
-            basis=r.get("basis"),
-        )
+    """Dividends reported in a publication's financial evidence."""
+    yield from listed_dividends(ticker, {}, {}, evidence)
 
 
 def _headline_rows(data, ticker):
@@ -230,19 +247,18 @@ def _headline_rows(data, ticker):
     return chain(headlines, _rows(evidence.get("news")))
 
 
-def _article_references(data):
+def _article_references(raw_rows):
     """Give each article one reference across all scopes in this publication."""
     by_url = {}
     aliases = defaultdict(set)
-    for ticker in data[NEWS_KEY].keys() | data[FINANCIALS].keys():
-        for row in _headline_rows(data, ticker):
-            url, article_id = row.get("url"), row.get("id")
-            if not url or not article_id or article_id == url:
-                continue
-            other = by_url.setdefault(url, article_id)
-            if article_id != other:
-                aliases[article_id].add(other)
-                aliases[other].add(article_id)
+    for row in raw_rows:
+        url, article_id = row.get("url"), row.get("id")
+        if not url or not article_id or article_id == url:
+            continue
+        other = by_url.setdefault(url, article_id)
+        if article_id != other:
+            aliases[article_id].add(other)
+            aliases[other].add(article_id)
 
     # One canonical URL may appear under several IDs, each with its own syndicated links.
     canonical = {}
@@ -258,6 +274,22 @@ def _article_references(data):
                 pending.extend(aliases[item] - group)
         canonical.update(dict.fromkeys(group, min(group)))
     return {url: canonical.get(article_id, article_id) for url, article_id in by_url.items()}
+
+
+def headline_stories(articles, raw_rows):
+    references = _article_references(raw_rows) if articles else {}
+    headlines = {}
+    for row in articles:
+        identity = references.get(row["source_url"], row["source_url"])
+        story = headlines.get(identity)
+        if story is None:
+            story = headlines[identity] = {**row, "reference": identity, "tickers": []}
+        elif row["instant"] and not story["instant"]:
+            # The published instant determines which local day contains this article.
+            story.update(row)
+        if row["ticker"] not in story["tickers"]:
+            story["tickers"].append(row["ticker"])
+    return list(headlines.values())
 
 
 def _market_days(names, start, end, issues):
@@ -506,6 +538,8 @@ def event_data(deps, args, *, upcoming):
     codes = read.account_codes(args.scope)
     if not deps.manifest:
         return read.missing()
+    if deps.listing_error:
+        return read.missing(deps.listing_error)
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     issues = []
     keys = []
@@ -532,9 +566,10 @@ def event_data(deps, args, *, upcoming):
     diagnostics = read.read(NEWS_STATUS_KEY)
     if diagnostics:
         keys.append(NEWS_STATUS_KEY)
+    news_rows = (raw or {}).get("securities", {})
+    status_rows = (diagnostics or {}).get("securities", {})
     data[NEWS_KEY] = {
-        ticker: {**row, **(diagnostics or {}).get("securities", {}).get(ticker, {})}
-        for ticker, row in (raw or {}).get("securities", {}).items()
+        ticker: {**row, **status_rows.get(ticker, {})} for ticker, row in news_rows.items()
     }
     if raw is None and not upcoming:
         issues.append("security_news_unavailable")
@@ -544,17 +579,66 @@ def event_data(deps, args, *, upcoming):
         symbols.update(data[NEWS_KEY])
         if raw is None:
             issues.append("research_universe_unavailable")
+    technical = _indexed(read.read(TECHNICAL))
+    funds = _indexed(read.read(FUND_PRICES))
+    keys.extend([TECHNICAL, FUND_PRICES])
+    names = set()
     entries = []
-    for ticker in sorted(symbols):
-        if not upcoming and not data[NEWS_KEY].get(ticker, {}).get("as_of"):
+    selected_tickers = set()
+    trade_args = args
+    for requested in sorted(symbols):
+        if deps.pin_listing:
+            pinned = deps.pin_listing(requested, deps.manifest)
+        else:
+            pinned = PinnedListing(requested, requested, requested, ()).with_event_claims(
+                technical.get(requested),
+                funds.get(requested),
+            )
+        ticker = pinned.symbol
+        if args.ticker:
+            trade_args = args.model_copy(update={"ticker": ticker})
+        if ticker in selected_tickers:
+            continue
+        selected_tickers.add(ticker)
+        news = pinned.feed_row(news_rows.get)
+        status = pinned.feed_row(status_rows.get)
+        raw_rows = {
+            key: pinned.feed_row(rows.get) or {} for key, rows in data.items() if key != NEWS_KEY
+        }
+        if not pinned.venue().venues:
+            pinned = pinned.with_event_claims(
+                news,
+                status,
+                *raw_rows.values(),
+            )
+        venue = pinned.venue()
+        if venue.conflict:
+            issues.append("listing_calendar_unavailable")
+            continue
+        if venue.calendar:
+            names.add(venue.calendar)
+        elif upcoming:
+            issues.append("listing_calendar_unavailable")
+        selected = {}
+        for key, row in raw_rows.items():
+            row, rejected = pinned.event_row(row)
+            if rejected:
+                issues.append("listing_calendar_unavailable")
+            selected[key] = {ticker: row}
+        feed_pin = pinned.with_event_claims(news, status)
+        feed, rejected = feed_pin.event_row({**(news or {}), **(status or {})})
+        if rejected:
+            issues.append("listing_calendar_unavailable")
+        selected[NEWS_KEY] = {ticker: feed}
+        if not upcoming and not feed.get("as_of"):
             issues.append("security_news_unavailable")
-        if not upcoming and data[NEWS_KEY].get(ticker, {}).get("error"):
+        if not upcoming and feed.get("error"):
             issues.append("security_news_refresh_failed")
-        if ticker not in data[ANALYST]:
+        if not selected[ANALYST][ticker]:
             issues.append("analyst_events_unavailable")
-        if not data[EARNINGS].get(ticker, {}).get("calendar"):
+        if not selected[EARNINGS][ticker].get("calendar"):
             issues.append("security_calendar_unavailable")
-        for entry in _public(ticker, data, upcoming):
+        for entry in _public(ticker, selected, upcoming):
             if entry and entry["kind"] == "earnings" and entry.pop("currency_missing", False):
                 issues.append("earnings_currency_unavailable")
             entries.append(entry)
@@ -576,40 +660,20 @@ def event_data(deps, args, *, upcoming):
                 issues,
             )
         )
-        technical = _indexed(read.read(TECHNICAL))
-        funds = _indexed(read.read(FUND_PRICES))
-        keys.extend([TECHNICAL, FUND_PRICES])
-        names = set()
-        for ticker in symbols:
-            row = technical.get(ticker) or funds.get(ticker, {})
-            calendar = (
-                listing_calendar(ticker, row.get("exchange"), row.get("timezone")) if row else None
-            )
-            if calendar:
-                names.add(calendar)
-            else:
-                issues.append("listing_calendar_unavailable")
         entries.extend(
             _market_days(names, start - timedelta(days=1), end + timedelta(days=1), issues)
         )
     else:
-        entries.extend(_trades(read, args, codes, issues, keys))
+        entries.extend(_trades(read, trade_args, codes, issues, keys))
     # A single syndicated article can appear in several held security feeds.
     # Retain those associations while citing the article once.
     articles = [row for row in entries if row and row["kind"] == "news"]
-    references = _article_references(data) if articles else {}
-    headlines = {}
-    for row in articles:
-        identity = references.get(row["source_url"], row["source_url"])
-        story = headlines.get(identity)
-        if story is None:
-            story = headlines[identity] = {**row, "reference": identity, "tickers": []}
-        elif row["instant"] and not story["instant"]:
-            # The published instant determines which local day contains this article.
-            story.update(row)
-        if row["ticker"] not in story["tickers"]:
-            story["tickers"].append(row["ticker"])
-    entries = [r for r in entries if r and r["kind"] != "news"] + list(headlines.values())
+    raw_headlines = chain.from_iterable(
+        _headline_rows(data, ticker)
+        for ticker in sorted(data[NEWS_KEY].keys() | data.get(FINANCIALS, {}).keys())
+    )
+    headlines = headline_stories(articles, raw_headlines)
+    entries = [r for r in entries if r and r["kind"] != "news"] + headlines
     rows = {}
     for row in entries:
         local = (

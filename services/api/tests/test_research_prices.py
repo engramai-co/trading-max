@@ -117,6 +117,7 @@ def test_short_preview_cannot_poison_full_history_or_indicator_values(tmp_path, 
                 "currency": "USD",
                 "exchangeTimezoneName": "America/New_York",
                 "exchangeName": "NYQ",
+                "mic": "XNYS",
             }
 
     monkeypatch.setattr(research_prices.yf, "Ticker", lambda ticker: Provider())
@@ -129,6 +130,7 @@ def test_short_preview_cannot_poison_full_history_or_indicator_values(tmp_path, 
     assert full.points[-1].sma200 is not None
     assert cache.get("TEST", "1d").points == full.points
     assert periods == ["6mo", "10y"]
+    assert ("mic", "XNYS", "TEST") in full.venue_claims
 
 
 def test_etf_price_chart_uses_sip_and_switch_off_invalidates_its_cache(tmp_path):

@@ -6,7 +6,8 @@ import type { ChartColours } from "@/ui/charts/palette";
 import type { Preview } from "./research-facts";
 import { DeferredPlot } from "./research-reading";
 import { useRetainedResult } from "./retained-result";
-import { currency, percent, tone } from "@/workspace/data";
+import { quoteValue } from "./financial-values";
+import { percent, tone } from "@/workspace/data";
 import { useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 
@@ -100,7 +101,7 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
     <div className="mx-scenario-comparison" onPointerEnter={bind}>
       <div className="mx-scenario-spot">
         <span>{t("现价", "Current price")}</span>
-        <strong>{currency(preview.basis.spot, preview.basis.currency, 2)}</strong>
+        <strong>{quoteValue(preview.basis.spot, preview.basis.currency)}</strong>
       </div>
       <div className="mx-scenario-cards" role="group" aria-label={t("选择估值情景", "Select a valuation scenario")}>
         {keys.map((key) => {
@@ -113,9 +114,9 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
             onPointerEnter={() => light(key)} onPointerLeave={() => light(null)}
             onFocus={() => light(key)} onBlur={() => light(null)}>
             <span>{name(key)}{displayed.equityFloorAdjustment > 0 && floor}</span>
-            <strong>{currency(displayed.value, preview.basis.currency, 2)}</strong>
+            <strong>{quoteValue(displayed.value, preview.basis.currency)}</strong>
             <span className={`mx-${tone(displayed.upside)}`}>{percent(displayed.upside, true, 2)}</span>
-            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {pendingScenarios.includes(key) ? "…" : `${currency(scenario.value, preview.basis.currency, 2)} (${percent(scenario.upside, true, 2)})${scenario.equityFloorAdjustment > 0 ? floor : ""}`}</span>}
+            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {pendingScenarios.includes(key) ? "…" : `${quoteValue(scenario.value, preview.basis.currency)} (${percent(scenario.upside, true, 2)})${scenario.equityFloorAdjustment > 0 ? floor : ""}`}</span>}
           </button>;
         })}
       </div>

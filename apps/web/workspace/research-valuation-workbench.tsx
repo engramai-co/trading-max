@@ -26,11 +26,11 @@ import type { DraftActions, DraftView } from "./valuation-draft-editor";
 import { useAssistant } from "./assistant/context";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
+import { quoteValue } from "./financial-values";
 import {
   ApiError,
   api,
   compact,
-  currency,
   jsonRequest,
   number,
   object,
@@ -675,10 +675,9 @@ function ModelEditor({
                     {scenarioNames[selected]} · {t("相对初始假设", "vs initial assumptions")}
                   </span>
                   <strong>
-                    {currency(
+                    {quoteValue(
                       current.value - initialAtHorizon.scenarios[selected].value,
                       result.basis.currency,
-                      2,
                     )}{" "}
                     / {t("股", "share")}
                   </strong>
@@ -726,7 +725,7 @@ function ModelEditor({
                           )}
                         </td>
                         <td>{percent(result.scenarios[k].inputs.discountRate)}</td>
-                        <td>{currency(result.scenarios[k].value, result.basis.currency, 2)}</td>
+                        <td>{quoteValue(result.scenarios[k].value, result.basis.currency)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -929,13 +928,13 @@ function ModelEditor({
           help={methodology}
         >
           <div className="mx-metric-grid">
-            {residual ? <Metric label={t("普通股净利润", "Common earnings")} value={compact(result.basis.commonEarnings, locale)} /> :
-              <Metric label={t("营收", "Revenue")} value={compact(result.basis.revenue, locale)} />}
+            {residual ? <Metric label={t("普通股净利润", "Common earnings")} value={quoteValue(result.basis.commonEarnings, result.basis.currency, { style: "compact", locale })} /> :
+              <Metric label={t("营收", "Revenue")} value={quoteValue(result.basis.revenue, result.basis.currency, { style: "compact", locale })} />}
             <Metric
               label={residual ? t("每股净资产", "Book value per share") : marginLabel}
               value={
                 residual
-                  ? currency(result.basis.bookPerShare, result.basis.currency, 2)
+                  ? quoteValue(result.basis.bookPerShare, result.basis.currency)
                   : percent(result.basis.startMargin, false, 2)
               }
             />
@@ -985,7 +984,7 @@ function ModelEditor({
         <Facts
           rows={[
             [t("预测年限", "Horizon"), `${horizon}Y`],
-            [scenarioNames[selected], currency(current.value, result.basis.currency, 2)],
+            [scenarioNames[selected], quoteValue(current.value, result.basis.currency)],
           ]}
         />
         <Textarea

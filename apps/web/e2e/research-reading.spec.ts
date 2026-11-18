@@ -35,6 +35,31 @@ test.describe("research section navigation", () => {
     await analystFixture(page);
   });
 
+  test("a London technical close keeps its pence unit and observation date", async ({ page }) => {
+    await page.route("**/api/backend/research/shell*", async (route) => {
+      const response = await route.fetch(), shell = await response.json();
+      await route.fulfill({ response, json: { ...shell, instruments: [...shell.instruments, {
+        ...shell.instruments[0], ticker: "ARCH.L", name: "Archive London", exchange: "LSE",
+        held: false, watchlisted: true, isFund: false, brokerPrice: null,
+      }] } });
+    });
+    await page.route("**/api/backend/research/ARCH.L/lens/technical?**", async (route) => {
+      const response = await route.fetch({ url: route.request().url().replace("/ARCH.L/", "/AAPL/") });
+      const lens = await response.json();
+      await route.fulfill({ response, json: { ...lens, ticker: "ARCH.L", market: null, valuation: null,
+        context: { ...lens.context, quote: { price: null, currency: "GBP", exchange: "LSE" } },
+        technical: { ...lens.technical, ticker: "ARCH", price: 3100, currency: "GBp", asOf: "2026-02-03" },
+      } });
+    });
+    await page.route("**/api/backend/research/ARCH.L/prices?**", (route) => route.fulfill({ json: {
+      ticker: "ARCH.L", currency: "GBp", points: [{ date: "2026-02-03", close: 3100 }], actualInterval: "1d",
+    } }));
+    await page.goto("/research?ticker=ARCH.L&view=technical");
+    const header = page.locator(".mx-security-price");
+    await expect(header.locator("strong")).toHaveText("£31.00");
+    await expect(header).toContainText(/3 Feb(?: 2026)? close/);
+  });
+
   test("legacy links, keyboard navigation, Back and manual scrolling follow the section headings", async ({ page, isMobile }) => {
     await page.goto("/research?ticker=AAPL&view=analyst&analystView=forecast");
     const index = page.getByRole("navigation", { name: "On this page" });

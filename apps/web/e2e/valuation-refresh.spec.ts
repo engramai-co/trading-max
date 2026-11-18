@@ -493,6 +493,64 @@ test.describe("valuation refresh", () => {
     await expect(page).toHaveURL(/ticker=SYNT&view=valuation$/);
   });
 
+  for (const [unit, scale, symbol] of [
+    ["GBp", 100, "£"], ["GBP", 1, "£"], ["USD", 1, "US$"], ["EUR", 1, "€"],
+  ] as const) {
+    test(`live and saved valuations agree in ${unit}`, async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await synthetic(page, false);
+      const data = preview("SYNT", 31 * scale, "2026-02-03", false, {});
+      data.basis.currency = unit;
+      for (const key of scenarios) {
+        data.scenarios[key].value = 1.5 * scale;
+        for (const year of data.scenarios[key].years) year.presentValue = 1.5 * scale;
+      }
+      for (const cell of data.sensitivity) cell.value = 1.5 * scale;
+      const saved = { id: "frozen", savedAt: "2026-02-03T21:00:00Z", preview: data };
+      await page.route("**/api/backend/research/SYNT/valuation-preview", (route) => route.fulfill({ json: data }));
+      await page.route("**/api/backend/research/SYNT/journal", (route) => route.fulfill({ json: {
+        ticker: "SYNT", notes: [], models: [saved],
+      } }));
+      const value = symbol + "1.50";
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      await expect(page.locator(".mx-scenario-spot strong")).toHaveText(symbol + "31.00");
+      await expect(page.locator(".mx-scenario-cards strong").first()).toHaveText(value);
+      await expect.soft(page.locator(".mx-valuation-readout")).toContainText(value, { timeout: 1000 });
+      await expect.soft(page.locator("#research-worksheet").getByRole("row", { name: /^Value per share/ })).toContainText(value, { timeout: 1000 });
+      await expect.soft(page.locator(".mx-sensitivity-matrix td strong").first()).toHaveText("1.50", { timeout: 1000 });
+
+      await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+      await page.getByRole("button", { name: "New note" }).click();
+      await page.getByRole("combobox", { name: "Related model version" }).click();
+      await expect.soft(page.getByRole("option").first()).toContainText(value, { timeout: 1000 });
+
+      await page.goto("/research?ticker=SYNT&view=ledger&notebook=models");
+      const comparison = page.getByRole("region", { name: "Saved model comparison" });
+      await expect.soft(comparison.getByRole("row", { name: /^Base value/ })).toContainText(value, { timeout: 1000 });
+      await expect.soft(comparison.getByRole("row", { name: /^Price at save/ })).toContainText(symbol + "31.00", { timeout: 1000 });
+      await comparison.getByRole("button", { name: "Open worksheet" }).click();
+      await expect(page.getByRole("dialog")).toContainText("Value per share: " + value);
+    });
+  }
+
+  test("archived vendor EPS keeps its unverified unit separate from the price", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    const history = forwardHistory(true)!;
+    state.forwardPe = { ...history, currency: "GBp", points: [{
+      ...history.points[0], price: 3100, eps: 200, pe: 15.5, source: "yahoo-forward-pe",
+    }] };
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const section = page.locator(".mx-pe-history");
+    const reading = section.locator(".mx-chart-readout-values");
+    await expect(reading).toContainText("Price 31.00");
+    await expect.soft(reading).toContainText("Forward EPS (unit unverified) 200.00", { timeout: 1000 });
+    await section.locator(".mx-info").first().click();
+    const help = page.locator(".mx-help-popover");
+    await expect(help).toContainText("Price currency: GBP.");
+    await expect(help).not.toContainText("Price and EPS currency");
+  });
+
   test("trailing P/E reuses the lens and makes its basis readable from the chart", async ({ page, isMobile }, testInfo) => {
     if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));

@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
 const base = Date.UTC(2026, 9, 5, 10, 30);
@@ -86,6 +86,7 @@ test.describe("chart evidence and fullscreen", () => {
       } } });
     });
     await page.goto("/research?ticker=AAPL&view=analyst");
+    await page.getByRole("heading", { name: "Quarterly EPS", exact: true }).scrollIntoViewIfNeeded();
     const chart = page.getByRole("group", { name: "Reported and estimated quarterly EPS" });
     // The live region sits beside the plot frame, inside the chart's host.
     const reading = chart.locator("xpath=../../..").locator("[data-chart-reading]");
@@ -111,8 +112,7 @@ test.describe("chart evidence and fullscreen", () => {
   });
 });
 
-test("a pinch zooms while a vertical swipe leaves the time range alone", async ({ browser, page, isMobile }) => {
-  test.skip(!process.env.PLAYWRIGHT_BASE_URL || isMobile || browser.browserType().name() !== "chromium", "Uses Chromium touch input.");
+async function pinchIndex(page: Page) {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   const cdp = await page.context().newCDPSession(page);
@@ -128,27 +128,47 @@ test("a pinch zooms while a vertical swipe leaves the time range alone", async (
   const box = (await chart.boundingBox())!;
   const x = Math.floor(box.x + box.width * 0.55);
   const y = Math.floor(box.y + 110);
-  async function countRecords() {
+  async function visibleRecords() {
     await full.getByText("More", { exact: true }).click();
     const ready = page.waitForEvent("download");
     await full.getByRole("button", { name: "Export CSV" }).click();
     const data = await readFile((await (await ready).path())!, "utf-8");
     await full.getByText("More", { exact: true }).click();
-    return data.split(/\r?\n/).length - 1;
+    return data.trimEnd().split(/\r?\n/).slice(1);
   }
-  expect(await countRecords()).toBe(20);
+  expect(await visibleRecords()).toHaveLength(20);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: x - 30, y, id: 1 }, { x: x + 30, y, id: 2 }] });
   for (const dx of [38, 46, 54, 62]) {
     await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x - dx, y, id: 1 }, { x: x + dx, y, id: 2 }] });
   }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  const zoomed = await countRecords();
-  expect(zoomed).toBeLessThan(20);
-  expect(zoomed).toBeGreaterThan(3);
+  const zoomed = await visibleRecords();
+  expect(zoomed.length).toBeLessThan(20);
+  expect(zoomed.length).toBeGreaterThan(3);
+  return { cdp, x, y, zoomed, visibleRecords };
+}
+
+test("a pinch zooms while a vertical swipe leaves the time range alone", async ({ browser, page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL || isMobile || browser.browserType().name() !== "chromium", "Uses Chromium touch input.");
+  const { cdp, x, y, zoomed, visibleRecords } = await pinchIndex(page);
   await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y, id: 1 }] });
   for (const dy of [10, 24, 48, 75]) {
     await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: x + 2, y: y - dy, id: 1 }] });
   }
   await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
-  expect(await countRecords()).toBe(zoomed);
+  expect(await visibleRecords()).toEqual(zoomed);
+});
+
+test("a delayed index context preserves the pinch-zoomed records", async ({ browser, page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL || isMobile || browser.browserType().name() !== "chromium", "Uses Chromium touch input.");
+  let releaseContext!: () => void;
+  const gate = new Promise<void>((resolve) => { releaseContext = resolve; });
+  await page.route("**/api/backend/indices/sp-500/context", async (route) => {
+    await gate;
+    await route.fulfill({ json: {} });
+  });
+  const { visibleRecords, zoomed } = await pinchIndex(page);
+  releaseContext();
+  await expect(page.locator(".mx-index-holdings h3")).toHaveText("Tracking ETFs I hold");
+  expect(await visibleRecords()).toEqual(zoomed);
 });

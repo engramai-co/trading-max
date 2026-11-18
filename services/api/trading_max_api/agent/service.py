@@ -12,7 +12,7 @@ import logging
 import re
 import time
 from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, field, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -23,16 +23,16 @@ from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
 from pydantic_ai import Agent, CancellationToken
 from pydantic_ai.exceptions import RunCancelled, RunTimedOut
 from pydantic_ai.models import Model
-from pydantic_ai.run import AgentRunResult
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter, VercelAIEventStream
 from pydantic_ai.ui.vercel_ai.response_types import BaseChunk, ErrorChunk
+from pydantic_ai.usage import RunUsage
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
 from .deps import AccountScope
 from .roles import PageRole, RoleContext
-from .runtime import SIDEBAR_FORMAT, USAGE_LIMITS, error_code, run_context
+from .runtime import SIDEBAR_FORMAT, USAGE_LIMITS, TurnLimits, error_code, run_context
 from .store import SqliteConversationStore
 from .tools import Lens, PageRange, Ticker
 
@@ -87,6 +87,7 @@ class ChatContext(BaseModel):
     range: PageRange | None = None
     ticker: Ticker | None = None
     lens: Lens | None = None
+    benchmark: Literal["VOO", "QQQ", "VT", "ALL"] | None = None
     timezone: str | None = Field(default=None, max_length=64)
 
 
@@ -183,8 +184,7 @@ async def _closing(
             release()
 
 
-def _log_run(status: str, started: float, model: Model, result: AgentRunResult | None = None):
-    usage = result.usage if result is not None else None
+def _log_run(status: str, started: float, model: Model, usage: RunUsage | None = None):
     LOGGER.info(
         "assistant run finished",
         extra={
@@ -279,8 +279,10 @@ class AssistantService:
         model = bound.model
         started = time.monotonic()
 
-        def completed(result: AgentRunResult) -> None:
-            _log_run("completed", started, model, result)
+        limits = TurnLimits(**asdict(USAGE_LIMITS))
+
+        def completed(result) -> None:
+            _log_run("completed", started, model, result.usage - (limits.opening or RunUsage()))
 
         def cancelled(exc: RunCancelled) -> None:
             _log_run("timed_out" if isinstance(exc, RunTimedOut) else "cancelled", started, model)
@@ -304,6 +306,7 @@ class AssistantService:
                     period=context.range,
                     ticker=context.ticker,
                     lens=context.lens,
+                    benchmark=context.benchmark,
                 )
                 + (SIDEBAR_FORMAT if response_format == "references" else "")
                 + (
@@ -311,7 +314,7 @@ class AssistantService:
                     if context.role
                     else ""
                 ),
-                usage_limits=USAGE_LIMITS,
+                usage_limits=limits,
                 timeout=RUN_TIMEOUT_SECONDS,
                 conversation_store=self.store,
                 conversation_scope=CONVERSATION_SCOPE,

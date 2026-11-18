@@ -71,7 +71,12 @@ def test_exact_listing_match_uses_immutable_security_and_fund_evidence(tmp_path:
     assert calendars.name({"ticker": "ONLY", "isin": fund_isin}) is None
     assert calendars.name({"ticker": "SYN", "isin": fund_isin}) == "XETR"
     assert calendars.name({"ticker": "SYNGBP", "isin": fund_isin}) == "XLON"
-    assert (
-        calendars.name({"ticker": "SYN", "broker_ticker": "SYNl_EQ", "isin": fund_isin}) == "XLON"
-    )
-    assert calendars.name({"ticker": "ONLY", "isin": stock_isin, "mic": "XAMS"}) == "XAMS"
+    assert calendars.name({"ticker": "SYN", "broker_ticker": "SYNl_EQ", "isin": fund_isin}) is None
+    assert calendars.name({"ticker": "ONLY", "isin": stock_isin, "mic": "XAMS"}) is None
+
+    assert calendars.name({"ticker": "SYN", "broker_ticker": "SYN_US_EQ"}) == "XNYS"
+    for exchange in ("OTC Markets OTCPK", "Unverified venue"):
+        assert (
+            calendars.name({"ticker": "SYN", "broker_ticker": "SYN_US_EQ", "exchange": exchange})
+            is None
+        )

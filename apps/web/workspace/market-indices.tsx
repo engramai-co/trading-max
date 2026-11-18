@@ -15,6 +15,7 @@ import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatD
 import { useChartColours } from "@/ui/charts/palette";
 import type { ChartReadout, Reading } from "./chart-readout";
 import { comparisonFigures, fixed } from "./reading-format";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { DataBasis } from "./reading-card";
 import { api, isReadTimeout, readApi } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, TextLink, useCopy } from "./foundation";
@@ -188,7 +189,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
     : formatDeltaPercent(quote.change, locale, 2);
   const level = index.kind === "volatility" && quote.level != null
     ? `${formatNumber(quote.level, locale, { maximumFractionDigits: 2 })} ${t("点", "pts")}`
-    : index.kind === "etf-price" && index.currency ? formatCurrency(quote.level, locale, index.currency)
+    : index.kind === "etf-price" ? quoteValue(quote.level, index.currency, { locale })
     : formatNumber(quote.level, locale, { maximumFractionDigits: 2, minimumFractionDigits: nameOverride ? 2 : undefined });
   const tone = index.kind === "volatility" || quote.change == null || quote.change === 0
     ? "neutral" : quote.change > 0 ? "up" : "down";
@@ -300,14 +301,6 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   });
   const query = useQuery(historyQuery(index?.id));
   const peerQuery = useQuery(historyQuery(peer?.id));
-  const context = useQuery({
-    queryKey: ["index-context", index?.id],
-    queryFn: ({ signal }) => readApi<IndexContext>(`/indices/${index?.id}/context`, signal),
-    enabled: !!index,
-    refetchInterval: 4 * 60_000,
-    staleTime: 60_000,
-    retry: 0,
-  });
   useLayoutEffect(() => {
     if (!index || (hasHistory && query.isPending) || lastFocused.current === id) return;
     const frame = requestAnimationFrame(() => {
@@ -353,7 +346,11 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const lastPaired = matched.findLastIndex(({ left, right }) => left != null && right != null);
   const commonEnd = lastPaired > 0 ? matched[lastPaired] : undefined;
   const seriesReturn = (value: number | undefined | null) => formatDeltaPercent(value == null ? null : value / 100 - 1, locale, 2);
-  const readingUnit = index.kind === "volatility" ? t("点", "pts") : seriesCurrency;
+  const fundPrice = !matched.length && index.kind === "etf-price";
+  const levelText = (value: number | null | undefined) => fundPrice
+    ? quoteValue(value, seriesCurrency, { style: "figure" }) : fixed(value);
+  const readingUnit = index.kind === "volatility" ? t("点", "pts")
+    : fundPrice ? quoteUnit(seriesCurrency).currency : seriesCurrency;
   const error = query.error ?? peerQuery.error;
   const plotRows = matched.length ? matched : history ? indexHistoryRows(history) : [];
   const shortRange = period === "1W" || period === "1M";
@@ -374,7 +371,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     const row = plotRows[position];
     if (!row || (row.left == null && row.right == null)) return null;
     const time = formatReadingTime(row.at, locale, intraday ? timeZone : "UTC", period === "1D" ? "clock" : intraday ? "intraday" : "day");
-    if (!matched.length) return { time, primary: { value: fixed(row.left) } };
+    if (!matched.length) return { time, primary: { value: levelText(row.left) } };
     return {
       time: time + " · " + t("起点归 100", "Rebased to 100"),
       ...comparisonFigures([
@@ -393,7 +390,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   const latestIndexRow = plotRows.findLast((row) => row.left != null);
   const indexReadout: ChartReadout = {
     positions: primaryPositions,
-    latest: latestIndexRow?.left != null ? fixed(latestIndexRow.left) : "—",
+    latest: latestIndexRow?.left != null ? levelText(latestIndexRow.left) : "—",
     read: readPoint,
     marks: (position: number) => {
       const row = plotRows[position];
@@ -505,6 +502,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
                 splitLine: { show: false },
               },
               yAxis: { type: "value", scale: true, splitNumber: phone ? 4 : 5,
+                axisLabel: fundPrice ? { formatter: (v: number) => quoteValue(v, seriesCurrency, { style: "number" }) } : undefined,
                 name: matched.length ? undefined : readingUnit ?? undefined, nameGap: 5 },
               series: [...lines, ...compared].flatMap(({ key, label, colour, dashed }): SeriesOption[] => {
                 const { visible, gaps, single } = indexPlotLine(plotRows, key, phone ? 270 : 800);
@@ -545,15 +543,24 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         </dl>
         {history && <IndexDrawdownChart history={history} />}
       </section>
-      {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} error={context.error} showDataStatusLink={false} /> :
-        context.data && <IndexContextPanels context={context.data} phone={phone} />}
+      <IndexContextPanels id={index.id} phone={phone} />
     </div>
   );
 }
 
-function IndexContextPanels({ context, phone }: { context: IndexContext; phone: boolean }) {
+function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
+  const query = useQuery({
+    queryKey: ["index-context", id],
+    queryFn: ({ signal }) => readApi<IndexContext>(`/indices/${id}/context`, signal),
+    refetchInterval: 4 * 60_000,
+    staleTime: 60_000,
+    retry: 0,
+  });
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  if (query.isPending) return <Pending compact />;
+  if (query.isError) return <QueryError retry={query.refetch} error={query.error} showDataStatusLink={false} />;
+  const context = query.data;
   const basket = context.basket;
   return (
     <>

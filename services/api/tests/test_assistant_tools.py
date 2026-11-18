@@ -41,7 +41,11 @@ from services.api.trading_max_api.watchlist import SecuritySearchService, Watchl
 def publication(tmp_path):
     store = ArtifactStore(tmp_path)
     manifest = publish_fixture(store)
-    deps = replace(AssistantDepsFactory(store).for_run(), captured_at=STALE_NOW)
+    research = ResearchLedger(store, WatchlistStore(tmp_path))
+    deps = replace(
+        AssistantDepsFactory(store, bind_price_series=research.bind_price_series).for_run(),
+        captured_at=STALE_NOW,
+    )
     return store, manifest, deps
 
 
@@ -279,6 +283,7 @@ def test_research_pagination_val_evidence_and_freshness(tmp_path):
         "overview",
         "fundamentals",
         "technical",
+        "analyst",
         "valuation",
     ]
     valuation = _call(
@@ -351,6 +356,7 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
         (socket, "getaddrinfo"),
         (HistoryReader, "read"),
         (WatchlistStore, "load"),
+        (WatchlistStore, "listing_exchanges"),
         (ResearchLedger, "lens_snapshot"),
         (SecurityPriceHistory, "get"),
         (FundResearchService, "get"),
@@ -370,6 +376,20 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
         "read_valuation_evidence": {"ticker": "TEST", "listing": "US:TEST", "group": "market"},
         "data_freshness": {"scope": "invest", "domain": "portfolio"},
         "recent_decisions": {"scope": "cfd"},
+        "daily_returns": {"scope": "invest", "range": "3M"},
+        "dated_exposure": {
+            "scope": "broker_total",
+            "dimension": "country",
+            "on_or_before": "2026-02-03",
+        },
+        "holding_fx_split": {"scope": "invest", "period": "open_position"},
+        "decision_timing_and_habits": {"scope": "invest"},
+        "price_key_moments": {
+            "scope": "invest",
+            "ticker": "TEST",
+            "start": "2026-01-28",
+            "end": "2026-02-03",
+        },
         "news_and_events": {"scope": "invest", "start": "2026-01-01", "end": "2026-02-03"},
         "upcoming_events": {"scope": "invest", "start": "2026-02-03", "end": "2026-02-10"},
     }

@@ -21,6 +21,7 @@ day stay unattributed.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from itertools import pairwise
@@ -36,12 +37,28 @@ CENT = Decimal("0.01")
 WINDOW_DAYS = 5
 
 
+@dataclass(frozen=True)
+class ShareMovement:
+    observed_at: datetime
+    isin: str
+    action: str
+    quantity: Decimal
+
+
+type ShareMovements = Mapping[str, tuple[ShareMovement, ...]]
+
+
 class BaselinePosition(DomainModel):
     key: str
+    isin: str = ""
     ticker: str
     name: str
     quantity: Decimal
     value_gbp: Decimal
+    local_price: Decimal | None = None
+    price_currency: str | None = None
+    average_price_paid: Decimal | None = None
+    total_cost_gbp: Decimal | None = None
 
 
 class AccountBaseline(DomainModel):
@@ -63,6 +80,8 @@ class PositionContribution(DomainModel):
     # it existed have none.
     instrument: str | None = None
     contribution_gbp: Decimal
+    local_price_effect_gbp: Decimal | None = None
+    fx_effect_gbp: Decimal | None = None
     # Value of the shares held through the window at its opening, so a consumer
     # can state the change as a share of it. Only the 1D attribution carries it;
     # a chained 5D total has no single opening.
@@ -73,6 +92,7 @@ class AccountDayAttribution(DomainModel):
     since: datetime
     as_of: datetime
     contributions: list[PositionContribution] = Field(default_factory=list)
+    unreconciled_instruments: list[str] = Field(default_factory=list)
 
 
 class DayAttribution(DomainModel):
@@ -169,33 +189,153 @@ def _positions(account: Mapping[str, Any]) -> list[BaselinePosition] | None:
         positions.append(
             BaselinePosition(
                 key=str(row.get("broker_ticker") or ticker),
+                isin=str(row.get("isin") or ""),
                 ticker=ticker,
                 name=str(row.get("name") or ticker),
                 quantity=quantity,
                 value_gbp=value,
+                local_price=_decimal(row.get("current_price")),
+                price_currency=row.get("price_currency"),
+                average_price_paid=_decimal(row.get("average_price_paid")),
+                total_cost_gbp=_decimal(row.get("total_cost_gbp")),
             )
         )
     return positions
 
 
+def _restate(start: BaselinePosition, quantity: Decimal) -> BaselinePosition:
+    return start.model_copy(
+        update={
+            "quantity": quantity,
+            "local_price": start.local_price * start.quantity / quantity
+            if start.local_price is not None
+            else None,
+        }
+    )
+
+
+def _opening_units(
+    start: BaselinePosition, end: BaselinePosition, movements: list[ShareMovement]
+) -> tuple[BaselinePosition, Decimal] | None:
+    """Reconcile the observed units and retain only shares held through the interval."""
+    if start.isin and end.isin and start.isin != end.isin:
+        return None
+    if movements:
+        quantity = held = start.quantity
+        factor = Decimal(1)
+        pending_close = False
+        for move in movements:
+            if move.quantity <= 0:
+                return None
+            if pending_close:
+                if move.action != "split_open":
+                    return None
+                ratio = move.quantity / quantity
+                factor *= ratio
+                held *= ratio
+                quantity = move.quantity
+                pending_close = False
+            elif move.action == "split_close" and move.quantity == quantity:
+                pending_close = True
+            elif move.action == "buy":
+                quantity += move.quantity
+            elif move.action == "sell" and move.quantity <= quantity:
+                quantity -= move.quantity
+                held = min(held, quantity)
+            else:
+                return None
+        if pending_close or quantity != end.quantity:
+            return None
+        return _restate(start, start.quantity * factor), held
+    if start.quantity == end.quantity:
+        return start, start.quantity
+    factor = end.quantity / start.quantity
+    same_cost = (
+        start.total_cost_gbp is not None
+        and start.total_cost_gbp > 0
+        and end.total_cost_gbp is not None
+        and abs(start.total_cost_gbp - end.total_cost_gbp) <= CENT
+    )
+    if (
+        same_cost
+        and start.price_currency
+        and start.price_currency == end.price_currency
+        and start.average_price_paid
+        and start.average_price_paid > 0
+        and end.average_price_paid
+        and end.average_price_paid > 0
+        and abs(start.average_price_paid / end.average_price_paid / factor - 1) <= Decimal("0.0001")
+    ):
+        return _restate(start, end.quantity), end.quantity
+    # Marks and market values cannot distinguish a fill from a change of units.
+    return None
+
+
 def _contributions(
-    opening: list[BaselinePosition], current: list[BaselinePosition]
+    opening: list[BaselinePosition],
+    current: list[BaselinePosition],
+    unreconciled: set[str],
+    share_movements: ShareMovements,
+    since: datetime,
+    as_of: datetime,
 ) -> list[PositionContribution]:
     now = {position.key: position for position in current}
+    instruments: dict[str, dict[str, set[str]]] = {}
+    for position in (*opening, *current):
+        instruments.setdefault(position.ticker.upper(), {}).setdefault(position.key, set()).add(
+            position.isin
+        )
     rows = []
     for start in opening:
         end = now.get(start.key)
         if end is None or start.quantity <= 0 or end.quantity <= 0:
             continue
-        held = min(start.quantity, end.quantity)
+        isin = end.isin or start.isin
+        ticker = end.ticker.upper()
+        movements = [
+            move
+            for move in share_movements.get(ticker, ())
+            if since < move.observed_at <= as_of
+            and (not isin or not move.isin or move.isin == isin)
+        ]
+        # Export rows use tickers and ISINs, while baselines carry the exact broker
+        # listing. A shared symbol without matching ISINs cannot identify a fill.
+        ambiguous = any(
+            other_key != end.key and (not move.isin or not any(isins) or move.isin in isins)
+            for move in movements
+            for other_key, isins in instruments[ticker].items()
+        )
+        reconciled = None if ambiguous else _opening_units(start, end, movements)
+        if reconciled is None:
+            unreconciled.add(end.key)
+            continue
+        start, held = reconciled
+        if held <= 0:
+            continue
         opening_price = start.value_gbp / start.quantity
         change = held * (end.value_gbp / end.quantity - opening_price)
+        change = change.quantize(CENT)
+        local = None
+        if start.price_currency and start.price_currency == end.price_currency:
+            if start.price_currency in {"GBP", "GBp", "GBX"}:
+                local = change
+            elif (
+                start.local_price
+                and start.local_price > 0
+                and end.local_price
+                and end.local_price > 0
+                and end.value_gbp > 0
+            ):
+                closing_fx = end.value_gbp / (end.quantity * end.local_price)
+                local = (held * (end.local_price - start.local_price) * closing_fx).quantize(CENT)
         rows.append(
             PositionContribution(
                 ticker=end.ticker,
                 name=end.name,
                 instrument=end.key,
-                contribution_gbp=change.quantize(CENT),
+                contribution_gbp=change,
+                local_price_effect_gbp=local,
+                fx_effect_gbp=change - local if local is not None else None,
                 opening_value_gbp=(held * opening_price).quantize(CENT),
             )
         )
@@ -206,6 +346,8 @@ def _contributions(
 def update_day_attribution(
     previous_baseline: Mapping[str, Any] | None,
     accounts: Mapping[str, Mapping[str, Any]],
+    *,
+    share_movements: Mapping[str, ShareMovements] | None = None,
 ) -> tuple[DayBaseline, DayAttribution]:
     """Carry or reset each account's opening and attribute the change since it."""
 
@@ -234,10 +376,20 @@ def update_day_attribution(
             continue
         if code not in opening:
             opening[code] = AccountBaseline(captured_at=observed[code], positions=current)
+        unreconciled: set[str] = set()
+        rows = _contributions(
+            opening[code].positions,
+            current,
+            unreconciled,
+            (share_movements or {}).get(code, {}),
+            opening[code].captured_at,
+            observed[code],
+        )
         result[code] = AccountDayAttribution(
             since=opening[code].captured_at,
             as_of=observed[code],
-            contributions=_contributions(opening[code].positions, current),
+            contributions=rows,
+            unreconciled_instruments=sorted(unreconciled),
         )
     return DayBaseline(day=day, accounts=opening), DayAttribution(day=day, accounts=result)
 
@@ -248,6 +400,7 @@ def update_window_attribution(
     accounts: Mapping[str, Mapping[str, Any]],
     *,
     history: Callable[[date], DayBaseline | None] | None = None,
+    share_movements: Mapping[str, ShareMovements] | None = None,
 ) -> tuple[WindowBaselines, WindowAttribution]:
     """Chain the daily openings of the 5D window up to the current observation.
 
@@ -288,23 +441,30 @@ def update_window_attribution(
             continue
         points = [*chain, (_timestamp(account["fetched_at"]), current)]
         # One total per broker instrument, so two listings never merge.
-        totals: dict[str, tuple[str, str, Decimal]] = {}
-        for (_, start), (_, end) in pairwise(points):
-            for row in _contributions(start, end):
+        totals: dict[str, PositionContribution] = {}
+        unreconciled: set[str] = set()
+        for (since, start), (as_of, end) in pairwise(points):
+            for row in _contributions(
+                start, end, unreconciled, (share_movements or {}).get(code, {}), since, as_of
+            ):
                 instrument = row.instrument or row.ticker
-                _, _, total = totals.get(instrument, (row.ticker, row.name, Decimal(0)))
-                totals[instrument] = (row.ticker, row.name, total + row.contribution_gbp)
+                prior = totals.get(instrument)
+                if prior is None:
+                    totals[instrument] = row.model_copy(update={"opening_value_gbp": None})
+                    continue
+                prior.contribution_gbp += row.contribution_gbp
+                for field in ("local_price_effect_gbp", "fx_effect_gbp"):
+                    a, b = getattr(prior, field), getattr(row, field)
+                    setattr(prior, field, a + b if a is not None and b is not None else None)
         rows = sorted(
-            (
-                PositionContribution(
-                    ticker=ticker, name=name, instrument=instrument, contribution_gbp=total
-                )
-                for instrument, (ticker, name, total) in totals.items()
-            ),
+            (row for instrument, row in totals.items() if instrument not in unreconciled),
             key=lambda row: (-abs(row.contribution_gbp), row.ticker, row.instrument or ""),
         )
         result[code] = AccountDayAttribution(
-            since=chain[0][0], as_of=points[-1][0], contributions=rows
+            since=chain[0][0],
+            as_of=points[-1][0],
+            contributions=rows,
+            unreconciled_instruments=sorted(unreconciled),
         )
     return (
         WindowBaselines(days=openings),

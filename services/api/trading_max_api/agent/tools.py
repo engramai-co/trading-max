@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 from hashlib import sha256
 from math import isfinite
 from typing import Annotated, Any, Literal, cast, get_type_hints
@@ -14,6 +15,7 @@ from typing import Annotated, Any, Literal, cast, get_type_hints
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.toolsets import FunctionToolset, WrapperToolset
+from trading_max.analytics.exposure_history import DIMENSIONS, TOP_COMPANIES, exposure_rows
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import (
     HistoryInput,
@@ -140,7 +142,9 @@ class PositionArgs(Scoped, Paged):
 
 
 class ExposureArgs(Scoped, Paged):
-    dimension: Literal["country", "sector", "company"] = Field(description="Exposure grouping.")
+    dimension: Literal["country", "sector", "gics", "company"] = Field(
+        description="Exposure grouping."
+    )
 
 
 class PeriodArgs(Scoped, Paged):
@@ -314,6 +318,7 @@ class _Read:
     tool: str
     args: Args
     scope: str
+    evidence_context: str | None = None
 
     def ref(self, key: str) -> ArtifactInfo | None:
         manifest = self.deps.manifest
@@ -341,6 +346,9 @@ class _Read:
         quality: Json = {"issues": list(dict.fromkeys(issues))}
         if reason:
             quality["reason_code"] = reason
+        identity = [self.tool, self.args.model_dump(mode="json"), self.deps.snapshot_id]
+        if self.evidence_context is not None:
+            identity.append(self.evidence_context)
         return {
             "status": status,
             "data": data,
@@ -355,9 +363,7 @@ class _Read:
                 _source(ref) for key in dict.fromkeys(keys) if (ref := self.ref(key)) is not None
             ],
             "quality": quality,
-            "evidence_id": _short_id(
-                "ev_", [self.tool, self.args.model_dump(mode="json"), self.deps.snapshot_id]
-            ),
+            "evidence_id": _short_id("ev_", identity),
         }
 
     def missing(self, reason: str = "snapshot_missing", *, keys: Iterable[str] = ()) -> Json:
@@ -572,7 +578,9 @@ _POSITION_FIELDS = {
 }
 
 
-def _position_rows(read: _Read, scope: AccountScope) -> tuple[list[Json], list[str], list[str]]:
+def _position_rows(
+    read: _Read, scope: AccountScope, *, observed_accounts: Json | None = None
+) -> tuple[list[Json], list[str], list[str]]:
     codes = read.account_codes(scope)
     if "C" in codes:
         return [], [], ["cfd_open_positions_not_published"]
@@ -597,6 +605,11 @@ def _position_rows(read: _Read, scope: AccountScope) -> tuple[list[Json], list[s
             issues.append("positions_not_published")
             continue
         found = True
+        if observed_accounts is not None:
+            observed_accounts[CODE_SCOPE[code]] = {
+                "as_of": _iso(account.get("positions_observed_at")) or _account_time(account),
+                "since": None,
+            }
         for row in _rows(positions):
             bounded = {
                 key: _text(row.get(key), 512)
@@ -650,8 +663,54 @@ def position_detail(ctx: Context, args: PositionArgs) -> Json:
     return read.page(matches, args, {"value_currency": "GBP"}, keys=keys, issues=issues)
 
 
+def _exposure_reading(
+    raw: Json, dimension: str, *, dated: bool = False
+) -> tuple[list[Json], Json, list[str]]:
+    _, name_key, _ = DIMENSIONS[dimension]
+    rows = []
+    ranked = exposure_rows(raw, dimension)
+    for row in ranked[:TOP_COMPANIES] if dated and dimension == "company" else ranked:
+        item = {
+            "name": _text(row.get(name_key), 512),
+            "value_gbp": _number(row.get("valueGbp")),
+            "weight_fraction": _number(row.get("allocationPct")),
+        }
+        if dimension == "company":
+            item.update(
+                ticker=_text(row.get("ticker"), 64),
+                isin=_text(row.get("isin"), 64),
+            )
+            if not dated:
+                item.update(
+                    direct_value_gbp=_number(row.get("directValueGbp")),
+                    indirect_value_gbp=_number(row.get("indirectValueGbp")),
+                )
+        if dimension == "gics":
+            item.update(
+                code=_text(row.get("subIndustryCode"), 16),
+                classification_status=_text(row.get("classificationStatus"), 32),
+            )
+        rows.append(item)
+    lookthrough = _number(raw.get("lookthroughCoveragePct"))
+    coverage = {"lookthrough_coverage_fraction": lookthrough}
+    issues = ["lookthrough_incomplete"] if lookthrough is None or lookthrough < 0.99995 else []
+    if dimension == "gics":
+        classification = _number(raw.get("gicsCoveragePct"))
+        coverage.update(
+            gics_coverage_fraction=classification,
+            gics_portfolio_coverage_fraction=_number(raw.get("gicsPortfolioCoveragePct")),
+        )
+        if (
+            classification is None
+            or classification < 0.99995
+            or any(r["classification_status"] is None for r in rows)
+        ):
+            issues.append("gics_classification_incomplete")
+    return rows, coverage, issues
+
+
 def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
-    """Read published broker-wide country, sector or underlying company exposures.
+    """Read published broker-wide country, sector, GICS sub-industry or underlying company exposures.
     Only broker_total has this projection. Weights are fractions of invested GBP,
     with unclassified and non-security exposure shown separately.
     """
@@ -662,34 +721,11 @@ def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
     raw = read.read(LOOKTHROUGH)
     if not raw or raw.get("available") is not True:
         return read.missing("lookthrough_unavailable", keys=(LOOKTHROUGH,))
-    rows_key, name_key, basis_key = {
-        "country": ("countryAllocation", "country", "countryBasis"),
-        "sector": ("industryAllocation", "industry", "industryBasis"),
-        "company": ("positions", "name", None),
-    }[args.dimension]
+    rows_key, _, basis_key = DIMENSIONS[args.dimension]
     if not isinstance(raw.get(rows_key), list):
         return read.missing("exposure_dimension_unavailable", keys=(LOOKTHROUGH,))
-    rows = []
-    for row in _rows(raw[rows_key]):
-        item = {
-            "name": _text(row.get(name_key), 512),
-            "value_gbp": _number(row.get("valueGbp")),
-            "weight_fraction": _number(row.get("allocationPct")),
-        }
-        if args.dimension == "company":
-            item.update(
-                ticker=_text(row.get("ticker"), 64),
-                isin=_text(row.get("isin"), 64),
-                direct_value_gbp=_number(row.get("directValueGbp")),
-                indirect_value_gbp=_number(row.get("indirectValueGbp")),
-            )
-        rows.append(item)
-    rows.sort(key=lambda row: row["value_gbp"] or 0, reverse=True)
+    rows, coverage, issues = _exposure_reading(raw, args.dimension)
     ref = read.ref(LOOKTHROUGH)
-    coverage = _number(raw.get("lookthroughCoveragePct"))
-    issues = []
-    if coverage is None or coverage < 0.99995:
-        issues.append("lookthrough_incomplete")
     if ref and ref.warnings:
         issues.append("source_reported_warnings")
     return read.page(
@@ -700,7 +736,7 @@ def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
             "currency": "GBP",
             "basis": _text(raw.get(basis_key)) if basis_key else "direct_and_fund_constituents",
             "invested_value_gbp": _number(raw.get("investedValueGbp")),
-            "lookthrough_coverage_fraction": coverage,
+            **coverage,
             "non_security_value_gbp": _number(raw.get("nonSecurityValueGbp")),
             "broker_as_of": _iso(raw.get("brokerAsOf")),
         },
@@ -1051,15 +1087,30 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
     read = _Read(ctx.deps, "read_research_lens", args, "public_research")
     if args.field and args.lens != "analyst":
         raise ModelRetry("Earnings events are available from the analyst lens.")
-    clocks = _stored_clocks(read, args.ticker)
+    if ctx.deps.listing_error:
+        return read.missing(ctx.deps.listing_error)
+    pinned = (
+        ctx.deps.pin_listing(args.ticker, ctx.deps.manifest)
+        if ctx.deps.pin_listing and ctx.deps.manifest
+        else None
+    )
+    if pinned and pinned.venue().conflict:
+        return read.missing("listing_calendar_unavailable")
+    ticker = pinned.symbol if pinned else args.ticker
+    clocks = _stored_clocks(read, ticker)
     needed = (
         _LENS_FIELDS[args.lens].keys()
         if args.lens
         else dict.fromkeys(key for fields in _LENS_FIELDS.values() for key in fields)
     )
-    stored = {
-        key: row for key in needed if (row := _ticker_row(read.read(key), args.ticker)) is not None
-    }
+    stored = {}
+    for key in needed:
+        raw = read.read(key)
+        row = pinned.feed_row(partial(_ticker_row, raw)) if pinned else _ticker_row(raw, ticker)
+        if row and pinned:
+            row, _ = pinned.event_row(row)
+        if row:
+            stored[key] = row
     if not stored:
         return read.missing("ticker_lens_not_published")
     if args.lens is None:
@@ -1067,7 +1118,7 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
             raise ModelRetry("Choose a lens before supplying a cursor.")
         return read.result(
             data={
-                "ticker": args.ticker,
+                "ticker": ticker,
                 "available_lenses": [
                     lens
                     for lens, fields in _LENS_FIELDS.items()
@@ -1125,7 +1176,7 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
     return read.page(
         rows,
         args,
-        {"ticker": args.ticker, "lens": args.lens},
+        {"ticker": ticker, "lens": args.lens},
         keys=keys,
         issues=issues,
     )
@@ -1149,6 +1200,11 @@ def read_valuation_evidence(ctx: Context, args: ValuationArgs) -> Json:
     manifest = read.deps.manifest
     if manifest is None:
         return read.missing()
+    if ctx.deps.listing_error:
+        return read.missing(ctx.deps.listing_error)
+    pinned = ctx.deps.pin_listing(args.ticker, manifest) if ctx.deps.pin_listing else None
+    if pinned and pinned.venue().conflict:
+        return read.missing("listing_calendar_unavailable")
     binding = EvidenceBinding(
         workspace_id="assistant-workspace",
         ticker=args.ticker,
@@ -1432,6 +1488,13 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
 def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
     """Construct the fixed Trading Max tool registry for Pydantic AI."""
     from .events import news_and_events, upcoming_events
+    from .insights import (
+        daily_returns,
+        dated_exposure,
+        decision_timing_and_habits,
+        holding_fx_split,
+        price_key_moments,
+    )
 
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
@@ -1445,6 +1508,11 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (read_valuation_evidence, 8),
         (data_freshness, 5),
         (recent_decisions, 5),
+        (daily_returns, 10),
+        (holding_fx_split, 5),
+        (dated_exposure, 5),
+        (decision_timing_and_habits, 8),
+        (price_key_moments, 8),
         (news_and_events, 8),
         (upcoming_events, 8),
     ):

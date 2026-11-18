@@ -1,6 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test as base, type Page } from "@playwright/test";
 import { join } from "node:path";
 import type { ResearchPriceSeries } from "../lib/types";
+
+const test = base.extend<{ uiLocale: "en" | "zh" }>({ uiLocale: ["en", { option: true }] });
 
 const bars = Array.from({ length: 100 }, (_, index) => {
   const date = new Date(Date.UTC(2026, 6, 23 + index)).toISOString().slice(0, 10);
@@ -16,6 +18,14 @@ const latest = bars.at(-1)!.date;
 const day = bars.at(-4)!.date;
 const splitDay = bars.at(-7)!.date;
 const markers: NonNullable<ResearchPriceSeries["tradeMarkers"]> = [
+  {
+    ticker: "AAPL", date: bars.at(-9)!.date, kind: "T", accounts: ["isa", "invest"],
+    buyOrders: 2, sellOrders: 3, buyQuantity: 3, sellQuantity: 4.5, buyAveragePrice: 100, sellAveragePrice: null,
+    fills: [
+      { at: bars.at(-9)!.date + "T13:00:00Z", side: "buy", account: "isa", quantity: 2, amount: 200, currency: "USD" },
+      { at: bars.at(-9)!.date + "T14:00:00Z", side: "sell", account: "isa", quantity: 1.25, amount: 125, currency: "USD" },
+    ],
+  },
   {
     ticker: "AAPL", date: bars.at(-8)!.date, kind: "B", accounts: ["invest"],
     buyOrders: 1, sellOrders: 0, buyQuantity: 1, sellQuantity: 0, buyAveragePrice: 141, sellAveragePrice: null,
@@ -56,9 +66,9 @@ async function mockPrices(page: Page, mode: "candles" | "no OHLC" = "candles") {
 
 test.describe("primary chart reading", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a seeded local preview.");
-  test.beforeEach(async ({ page, isMobile }) => {
+  test.beforeEach(async ({ page, isMobile, uiLocale }) => {
     if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), uiLocale);
     await page.emulateMedia({ reducedMotion: "reduce" });
   });
 
@@ -124,9 +134,9 @@ test.describe("primary chart reading", () => {
       await page.keyboard.press("Enter");
 
       const track = chartPanel.getByRole("region", { name: "Event timeline" });
-      await expect(track.getByRole("button", { name: / · B$/ })).toBeVisible();
-      await expect(track.getByRole("button", { name: / · S$/ })).toBeVisible();
-      const marker = track.getByRole("button", { name: / · T \(\+2\)/ });
+      await expect(track.getByRole("button", { name: / B$/ })).toBeVisible();
+      await expect(track.getByRole("button", { name: / S$/ })).toBeVisible();
+      const marker = track.getByRole("button", { name: / T \+2$/ });
       await marker.focus();
       await page.keyboard.press("Enter");
       await expect(marker).toHaveAttribute("aria-expanded", "true");
@@ -165,6 +175,46 @@ test.describe("primary chart reading", () => {
       await expect(chartPanel.getByRole("button", { name: "Full chart", exact: true })).toBeFocused();
     });
   }
+
+  for (const locale of ["en", "zh"] as const) {
+    test.describe(`mixed archive in ${locale}`, () => {
+      test.use({ uiLocale: locale });
+      for (const colorScheme of ["light", "dark"] as const) {
+        test(`expands single and multiple orders in ${colorScheme}`, async ({ page }, info) => {
+          const en = locale === "en";
+          await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
+          await mockPrices(page);
+          await page.goto("/research?ticker=AAPL&view=technical");
+          const track = page.getByRole("region", { name: en ? "Event timeline" : "事件时间轴" });
+          const marker = track.getByRole("button", { name: / T \+4$/ });
+          await expect(marker).toHaveAccessibleName((await marker.innerText()).replace(/\s+/g, " ").trim());
+          await marker.focus();
+          await page.keyboard.press("Enter");
+          const rows = track.getByRole("listitem");
+          await expect(rows.filter({ hasText: en ? "Buy · ISA" : "买入 · ISA" })).toContainText("200 USD");
+          await expect(rows.filter({ hasText: en ? "Sell · ISA" : "卖出 · ISA" })).toContainText("125 USD");
+          const archive = rows.filter({ hasText: en ? "Original amount unavailable in this archive" : "旧档案未记录原币金额" });
+          const single = archive.filter({ hasText: en ? "Buy 1 share" : "买入 1 股" });
+          const multiple = archive.filter({ hasText: en ? "Sell 3.25 shares" : "卖出 3.25 股" });
+          await expect(single.getByText(en ? "1 order" : "1 笔", { exact: true })).toBeVisible();
+          await expect(multiple.getByText(en ? "2 orders" : "2 笔", { exact: true })).toBeVisible();
+          if (process.env.CHART_QA_DIR) await track.screenshot({ path: join(process.env.CHART_QA_DIR, `mixed-archive-${info.project.name}-${locale}-${colorScheme}.png`) });
+        });
+      }
+    });
+  }
+
+  test("the chart explains unavailable price history for the selected listing", async ({ page }, info) => {
+    await page.route("**/api/backend/research/AAPL/prices?**", route => route.fulfill({
+      status: 404, json: { detail: "security-price-history-unavailable" },
+    }));
+    await page.goto("/research?ticker=AAPL&view=technical&chart=full");
+    const message = page.getByText("Price history unavailable for this listing", { exact: true }).last();
+    await expect(message).toBeVisible();
+    if (process.env.CHART_QA_DIR) await message.locator("..").screenshot({
+      path: join(process.env.CHART_QA_DIR, `listing-unavailable-${info.project.name}.png`),
+    });
+  });
 
   test("a response with no OHLC is visibly identified as closing prices", async ({ page }) => {
     await mockPrices(page, "no OHLC");

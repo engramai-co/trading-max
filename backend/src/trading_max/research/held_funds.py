@@ -6,33 +6,19 @@ from trading_max.analytics.etf_projection import ETFReading
 from trading_max.reference import CatalogSecurityMaster, SecurityDescriptor, is_fund_instrument
 
 from .listing import LONDON, broker_listing
+from .venues import (
+    YAHOO_MIC_BY_SUFFIX,
+    YAHOO_SUFFIX_BY_MIC,
+    VenueClaim,
+    provider_claim,
+    resolve_venue,
+)
 
 FUND_PRICE_DIRECTORY_KEY = "research/fund_price_directory.json"
 FUND_PRICES_KEY = "research/fund_prices.json"
 BROKER_SNAPSHOT_KEY = "account/broker_snapshot_metrics.json"
 LOOKTHROUGH_KEY = "account/lookthrough_metrics.json"
 SECURITY_MASTER_KEY = "reference/security_master.json"
-
-_SUFFIX_BY_MIC = {
-    "XLON": ".L",
-    "XAMS": ".AS",
-    "XETR": ".DE",
-    "XFRA": ".F",
-    "XBRU": ".BR",
-    "XMAD": ".MC",
-    "XSTO": ".ST",
-    "XHKG": ".HK",
-    "XTKS": ".T",
-    "XASX": ".AX",
-    "XTSE": ".TO",
-    "XPAR": ".PA",
-    "XMIL": ".MI",
-    "XSWX": ".SW",
-    "XNYS": "",
-    "XNAS": "",
-    "ARCX": "",
-}
-_MIC_BY_SUFFIX = {suffix: mic for mic, suffix in _SUFFIX_BY_MIC.items() if suffix}
 
 
 def _text(value: object) -> str:
@@ -52,28 +38,28 @@ class FundListingIdentity:
         return (self.isin, self.mic, self.symbol)
 
 
-def fund_listing(position: dict, catalog: CatalogSecurityMaster) -> FundListingIdentity:
+def fund_listing(position: dict, catalog: CatalogSecurityMaster) -> FundListingIdentity | None:
     ticker = _text(position.get("ticker"))
     isin = _text(position.get("isin"))
     mic = _text(position.get("mic"))
     exchange = _text(position.get("exchange"))
-    if listing := broker_listing(position.get("broker_ticker")):
-        market, symbol = listing.split(":", 1)
-        if market == LONDON:
-            return FundListingIdentity(isin, "XLON", symbol, symbol + ".L", market)
-        if not mic:
-            # The broker confirms a US listing; an exact catalog listing can narrow its MIC.
-            exchange = market
+    requested = ticker
+    claims = [VenueClaim("mic", mic), provider_claim(exchange)]
+    instrument = broker_listing(position.get("broker_ticker"))
+    if instrument:
+        market, symbol = instrument.split(":", 1)
+        claims.append(VenueClaim("mic", "XLON") if market == LONDON else VenueClaim("region", "US"))
+        exchange = exchange or market
         ticker = symbol
-    base, dot, venue = ticker.rpartition(".")
-    if dot and (suffix := "." + venue) in _MIC_BY_SUFFIX:
-        return FundListingIdentity(
-            isin, mic or _MIC_BY_SUFFIX[suffix], base, ticker, exchange or _MIC_BY_SUFFIX[suffix]
-        )
-    if exchange in {"LSE", "LONDON", "LONDON STOCK EXCHANGE"}:
-        mic = mic or "XLON"
-    if mic in _SUFFIX_BY_MIC:
-        return FundListingIdentity(isin, mic, ticker, ticker + _SUFFIX_BY_MIC[mic], exchange or mic)
+    venue = resolve_venue(requested, *claims)
+    if venue.conflict:
+        return None
+    if not mic and len(venue.venues) == 1:
+        mic = next(iter(venue.venues))
+    suffix = YAHOO_SUFFIX_BY_MIC.get(mic)
+    if suffix is not None:
+        base = ticker.removesuffix(suffix) if suffix else ticker
+        return FundListingIdentity(isin, mic, base, base + suffix, exchange or mic)
 
     # A provider-qualified symbol must describe this exact listing. Do not choose
     # another listing of the same ISIN just because it uses the same currency.
@@ -86,9 +72,11 @@ def fund_listing(position: dict, catalog: CatalogSecurityMaster) -> FundListingI
                 symbol = _text(observed.ticker)
                 venue_mic = _text(observed.mic)
                 if not venue_mic:
-                    venue_mic = _MIC_BY_SUFFIX.get("." + symbol.rpartition(".")[2], "")
-                suffix = _SUFFIX_BY_MIC.get(venue_mic, "")
-                if exchange == "US" and suffix:
+                    venue_mic = YAHOO_MIC_BY_SUFFIX.get("." + symbol.rpartition(".")[2], "")
+                suffix = YAHOO_SUFFIX_BY_MIC.get(venue_mic, "")
+                if resolve_venue(
+                    requested, *claims, VenueClaim("symbol", symbol), VenueClaim("mic", venue_mic)
+                ).conflict:
                     continue
                 if symbol.removesuffix(suffix) == ticker:
                     matches.add(
@@ -98,6 +86,14 @@ def fund_listing(position: dict, catalog: CatalogSecurityMaster) -> FundListingI
             mic, qualified = next(iter(matches))
             return FundListingIdentity(isin, mic, ticker, qualified, exchange or mic)
     return FundListingIdentity(isin, mic, ticker, ticker, exchange)
+
+
+def observed_product(*values, fund=False):
+    """A fund collection can contain both mutual funds and exchange-traded funds."""
+    known = {str(v).strip().upper() for v in values if v and str(v).strip().upper() != "UNKNOWN"}
+    if len(known) > 1:
+        return "CONFLICT"
+    return next(iter(known), "FUND" if fund else None)
 
 
 def known_fund(
@@ -142,6 +138,8 @@ def held_fund_positions(
             except (TypeError, ValueError):
                 continue
             listing = fund_listing(position, catalog)
+            if listing is None:
+                continue
             if not (
                 (listing.isin in share_classes if listing.isin else ticker in observed_symbols)
                 or known_fund(

@@ -38,6 +38,7 @@ def publication(
                     "current_value_gbp": total - 100,
                     "total_cost_gbp": total - 110,
                     "unrealized_profit_loss_gbp": 10,
+                    "fx_impact_gbp": 0,
                 }
             ],
         }
@@ -154,6 +155,33 @@ def publication(
                 "B": {"status": "unavailable", "reason": "synthetic-no-output"},
             },
         },
+    }
+    payloads["account/exposure_history/2026-02-03.json"] = payloads[tools.LOOKTHROUGH]
+    payloads[tools.TECHNICAL]["rows"][0]["price_series"] = [
+        {
+            "date": day,
+            "close": close,
+            "volume": 100 + i,
+            "high": None,
+            "low": None,
+            "open": None,
+            "sma20": None,
+            "sma50": None,
+            "sma200": None,
+        }
+        for i, (day, close) in enumerate(zip(DATES, [32, 32, 34, 33, 30], strict=True))
+    ]
+    payloads[tools.ANALYST] = {
+        "rows": [
+            {
+                "ticker": "TEST",
+                "analyst": {
+                    "earningsEvents": [
+                        {"date": DATES[-1], "id": "synthetic-report", "status": "reported"}
+                    ]
+                },
+            }
+        ]
     }
     payloads[tools.HISTORY_KEYS[3]] = {
         "points": [

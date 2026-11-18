@@ -2,37 +2,23 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 
 import exchange_calendars as xcals
+import numpy as np
 import pandas as pd
+from exchange_calendars.common_holidays import ascension_day, corpus_christi, whit_monday
 from exchange_calendars.errors import CalendarError
+from exchange_calendars.exchange_calendar import HolidayCalendar
+from exchange_calendars.exchange_calendar_xfra import XFRAExchangeCalendar
+from pandas.tseries.holiday import EasterMonday, GoodFriday, Holiday
 from pydantic import Field
 
 from trading_max.domain import DomainModel
-from trading_max.reference.venues import venue_mic
 
-# Session scheduling can fall back to a time zone when the venue is absent.
-ZONES = {
-    "America/New_York": "XNYS",
-    "America/Toronto": "XTSE",
-    "Europe/London": "XLON",
-    "Europe/Dublin": "XDUB",
-    "Europe/Amsterdam": "XAMS",
-    "Europe/Berlin": "XETR",
-    "Europe/Brussels": "XBRU",
-    "Europe/Madrid": "XMAD",
-    "Europe/Rome": "XMIL",
-    "Europe/Paris": "XPAR",
-    "Europe/Zurich": "XSWX",
-    "Asia/Hong_Kong": "XHKG",
-    "Asia/Shanghai": "XSHG",
-    "Asia/Seoul": "XKRX",
-    "Asia/Taipei": "XTAI",
-    "Asia/Tokyo": "XTKS",
-    "Australia/Sydney": "XASX",
-}
+from .venues import VenueResolution, provider_claim, resolve_venue, row_claims, watchlist_claim
+
 # A schedule covers the recent sessions a quote or broker price can belong to
 # and the coming ones a page can stay open into.
 SCHEDULE_BEFORE = timedelta(days=14)
@@ -62,32 +48,64 @@ class SessionSchedule(DomainModel):
     until: str | None = None
 
 
+def fx_rate_due(days: pd.DatetimeIndex) -> np.ndarray:
+    """Whether each day should have a daily exchange rate of its own.
+
+    None is due at weekends, on Christmas Day and New Year's Day, when the
+    currency market closes, or on Good Friday and Easter Monday, which the
+    provider can skip.
+    """
+
+    first, last = days.min(), days.max()
+    easter = GoodFriday.dates(first, last).union(EasterMonday.dates(first, last))
+    holiday = ((days.month == 12) & (days.day == 25)) | ((days.month == 1) & (days.day == 1))
+    return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
+
+
 def calendar_name(exchange: str | None) -> str | None:
-    mic = venue_mic(exchange)
-    if mic == "XKOS":
-        return "XKRX"
-    return "XNYS" if mic in {"XNAS", "XASE", "ARCX"} else mic
+    return resolve_venue(None, provider_claim(exchange)).calendar
+
+
+def listing_venues(symbol: str | None, exchange: str | None) -> frozenset[str]:
+    return resolve_venue(symbol, watchlist_claim(symbol, exchange)).venues
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:
-    """The calendar of the exchange that quotes a listing.
+    return resolve_venue(symbol, provider_claim(exchange)).calendar
 
-    The provider's exchange code decides, then its time zone, then a London
-    ``.L`` symbol.
-    """
 
-    return (
-        calendar_name(exchange)
-        or ZONES.get(str(timezone or ""))
-        or ("XLON" if str(symbol or "").strip().upper().endswith(".L") else None)
-    )
+class _FrankfurtEquitiesCalendar(XFRAExchangeCalendar):
+    """Frankfurt floor-market shares and funds follow their own extended session."""
+
+    open_times = ((None, time(8)),)
+    close_times = ((None, time(20)), (pd.Timestamp("2021-11-29"), time(22)))
+
+    @property
+    def special_closes(self):
+        traded_holidays = HolidayCalendar(
+            [
+                ascension_day(start_date="2021-11-29"),
+                whit_monday(start_date="2021-11-29"),
+                corpus_christi(start_date="2021-11-29"),
+                Holiday(
+                    "German Unity Day",
+                    month=10,
+                    day=3,
+                    start_date="2021-11-29",
+                    days_of_week=(0, 1, 2, 3, 4),
+                ),
+            ]
+        )
+        return [*super().special_closes, (time(20), traded_holidays)]
 
 
 @lru_cache(maxsize=64)
 def market_calendar(name: str, first_year: int, last_year: int, *, buffer_years: int = 1):
-    return xcals.get_calendar(
-        name, start=f"{first_year - buffer_years}-01-01", end=f"{last_year + buffer_years}-12-31"
-    )
+    start = f"{first_year - buffer_years}-01-01"
+    end = f"{last_year + buffer_years}-12-31"
+    if name == "XFRA":
+        return _FrankfurtEquitiesCalendar(start=start, end=end)
+    return xcals.get_calendar(name, start=start, end=end)
 
 
 @lru_cache(maxsize=256)
@@ -146,7 +164,33 @@ def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
     )
 
 
-def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFrame:
+def frame_venue(attrs, ticker=None, exchange=None):
+    """Validate observed history identity and retain verified session evidence."""
+    requested = ticker or attrs.get("ticker") or (attrs.get("provider_venue") or {}).get("symbol")
+    venue = resolve_venue(
+        requested,
+        *row_claims(requested, attrs),
+        *attrs.get("venue_claims", ()),
+        provider_claim(exchange),
+        aliases=attrs.get("venue_aliases", ()),
+    )
+    if not (
+        exchange
+        or attrs.get("exchange")
+        or attrs.get("provider_venue")
+        or any(
+            claim.source not in {"symbol", "identity"} for claim in attrs.get("venue_claims", ())
+        )
+        or attrs.get("mic")
+    ):
+        # A requested symbol alone does not attest that the fetched frame is its session.
+        return VenueResolution(venue.venues, venue.conflict)
+    return venue
+
+
+def completed_daily_bars(
+    frame: pd.DataFrame, *, now: pd.Timestamp, ticker: str | None = None
+) -> pd.DataFrame:
     """Keep daily indicators off a still-forming bar, including early-close sessions."""
     if frame.empty:
         return frame
@@ -155,7 +199,7 @@ def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFr
     today = pd.Timestamp(local.date())
     days = frame.index.tz_localize(None).normalize()
     complete = days < today
-    name = calendar_name(frame.attrs.get("exchange"))
+    name = frame_venue(frame.attrs, ticker).calendar
     if name:
         cal = market_calendar(name, today.year, today.year)
         if cal.is_session(today) and cal.session_close(today) <= now:
@@ -171,7 +215,7 @@ def completed_months(close: pd.Series, *, exchange: str | None, now: pd.Timestam
     timestamps = close.index.tz_localize(None).normalize()
     daily = pd.Series(close.to_numpy(), index=timestamps)
     monthly = daily.resample("ME").last()
-    name = calendar_name(exchange)
+    name = frame_venue(close.attrs, exchange=exchange).calendar
     if not name:
         # Legacy data with unknown exchange: final observed month stays pending.
         cutoff = min(

@@ -73,7 +73,7 @@ class AccountDecisionStage:
     """Publish decision outcomes and reconciled allocation evidence."""
 
     name = "accounts.decisions"
-    version = "decision-review-stage-v7"
+    version = "decision-review-stage-v9"
     required_for = frozenset({"all", "accounts"})
     dependencies = ("accounts.snapshot",)
 
@@ -109,7 +109,9 @@ class AccountDecisionStage:
 
         try:
             frame = completed_daily_bars(
-                self.history_loader(BENCHMARK_SYMBOL, start.date(), end.date()), now=now
+                self.history_loader(BENCHMARK_SYMBOL, start.date(), end.date()),
+                now=now,
+                ticker=BENCHMARK_SYMBOL,
             )
             usd = final_rates(self.history_loader, "GBPUSD=X", start, end, now)
         except Exception:

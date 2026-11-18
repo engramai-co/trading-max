@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from trading_max.portfolio_math import period_return
+
 from ..portfolio_cashflows import CashFlowTimeline
 from .values import JsonObject, csv_rows, nullable_number
 
@@ -16,6 +18,8 @@ def nav_series(
     a_text: str,
     b_text: str,
     c_text: str | None = None,
+    *,
+    include_daily_returns: bool = False,
 ) -> list[JsonObject]:
     account_rows = {
         "invest": {row["Date"]: row for row in csv_rows(a_text)},
@@ -59,6 +63,7 @@ def nav_series(
     result: list[JsonObject] = []
 
     for date in dates:
+        daily_returns = {}
         daily_external_flow = 0.0
         daily_weighted_flow = 0.0
         for account in ("invest", "isa"):
@@ -79,8 +84,16 @@ def nav_series(
                 state["pnlPeakGbp"] = max(float(state["pnlPeakGbp"]), pnl, 0.0)
                 state["pnlDrawdownGbp"] = pnl - float(state["pnlPeakGbp"])
             twr_wealth = nullable_number(row.get("TWRWealth"))
-            if twr_wealth is not None:
-                state["twr"] = twr_wealth - 1.0
+            prior_twr = state["twr"]
+            state["twr"] = twr_wealth - 1.0 if twr_wealth is not None else None
+            if include_daily_returns and performance_valid[account]:
+                # Modern exports publish the actual interval, including an explicit
+                # blank for a missing denominator. Legacy exports have only wealth.
+                daily_returns[account + "DailyReturn"] = (
+                    nullable_number(row["DailyReturn"])
+                    if "DailyReturn" in row
+                    else period_return(prior_twr, state["twr"])
+                )
             drawdown = nullable_number(row.get("Drawdown"))
             if drawdown is not None:
                 state["drawdown"] = drawdown
@@ -235,6 +248,8 @@ def nav_series(
             }
         )
         point = result[-1]
+        if include_daily_returns:
+            point.update(daily_returns, totalDailyReturn=combined_return)
         point["flowStatus"] = "daily_official" if total_performance_valid else "unverified"
         for account, valid in performance_valid.items():
             if not valid:

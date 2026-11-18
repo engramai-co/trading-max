@@ -3,6 +3,7 @@ import {
   basisPrice,
   brokerPriceLate,
   inSession,
+  lensFallback,
   previousClose,
   priceBasis,
   quoteTime,
@@ -80,8 +81,29 @@ const fundClose = {
 };
 
 describe("research price basis", () => {
+  it("selects each fallback with its own unit and date, passing over unpriced or unitless records", () => {
+    const market = { spot: 88, currency: "EUR", asOf: "2026-02-05" };
+    const technical = { price: 3100, currency: "GBp", asOf: "2026-02-03" };
+    const valuation = { spot: 29, currency: "USD", spotAsOf: "2026-01-30", asOf: "2026-02-04" };
+    expect(lensFallback({ market, technical, valuation })).toEqual({ price: 88, currency: "EUR", asOf: market.asOf });
+    expect(lensFallback({ market: { ...market, spot: null }, technical, valuation })).toEqual(technical);
+    expect(lensFallback({ market: { ...market, currency: "" }, technical: { ...technical, currency: "" }, valuation }))
+      .toEqual({ price: 29, currency: "USD", asOf: valuation.spotAsOf });
+    expect(lensFallback({ valuation: { ...valuation, spotAsOf: null } })?.asOf).toBeNull();
+    expect(lensFallback({ technical: { ...technical, currency: "" } })).toBeUndefined();
+  });
+
+  it("uses the fallback observation’s unit and clock without a change from the missing quote", () => {
+    const absent = { ...close, price: null, currency: "GBP" };
+    const fallback = { price: 3100, currency: "GBp", asOf: "2026-02-03" };
+    const now = new Date("2026-11-04T16:00:00Z");
+    expect(priceBasis(undefined, absent, fallback, now)).toMatchObject({ price: 31, currency: "GBP",
+      change: null, changePct: null, time: { kind: "close", date: fallback.asOf } });
+    expect(priceBasis(undefined, absent, { ...fallback, currency: "" }, now)).toMatchObject({ price: null, time: null });
+  });
+
   it("prices a held security like the holdings page and measures today from the last close", () => {
-    const basis = priceBasis(held, close, null, null, new Date("2026-11-04T16:00:00Z"));
+    const basis = priceBasis(held, close, null, new Date("2026-11-04T16:00:00Z"));
     expect(basis.source).toBe("broker");
     expect(basis.price).toBe(194.37);
     expect(basis.change).toBeCloseTo(194.37 - 214.01, 6);
@@ -95,7 +117,7 @@ describe("research price basis", () => {
   });
 
   it("marks a broker price late during the session", () => {
-    const late = priceBasis(held, close, null, null, new Date("2026-11-04T17:00:00Z"));
+    const late = priceBasis(held, close, null, new Date("2026-11-04T17:00:00Z"));
     expect(late.time).toMatchObject({ kind: "time", stale: true });
   });
 
@@ -109,7 +131,7 @@ describe("research price basis", () => {
       currency: "USD",
       asOf: close.asOf,
     });
-    const header = priceBasis(london, close, null, null, new Date("2026-11-04T16:00:00Z"));
+    const header = priceBasis(london, close, null, new Date("2026-11-04T16:00:00Z"));
     expect(header).toMatchObject({ source: "quote", price: 214.01, change: 17.76 });
     // Several lines under one ticker name neither a listing nor a price.
     const several = {
@@ -123,7 +145,7 @@ describe("research price basis", () => {
     // A line or quote whose market is unknown cannot confirm the listing.
     expect(basisPrice({ ...held, brokerListing: null }, close)).toMatchObject({ source: "quote" });
     expect(basisPrice(held, { ...close, listing: null })).toMatchObject({ source: "quote" });
-    expect(basisPrice(held, undefined, 210, "USD")).toMatchObject({ source: "quote", price: 210 });
+    expect(basisPrice(held, undefined, { price: 210, currency: "USD" })).toMatchObject({ source: "quote", price: 210 });
   });
 
   it("keeps the research basis when the broker line trades in another currency", () => {
@@ -158,7 +180,7 @@ describe("research price basis", () => {
   });
 
   it("falls back to the research quote and names a close that a newer session has passed", () => {
-    const trading = priceBasis({ held: false }, close, null, null, new Date("2026-11-04T16:00:00Z"));
+    const trading = priceBasis({ held: false }, close, null, new Date("2026-11-04T16:00:00Z"));
     expect(trading.source).toBe("quote");
     expect(trading.change).toBe(17.76);
     expect(trading.time).toEqual({ kind: "close", date: "2026-11-03", stale: true });
@@ -199,10 +221,10 @@ describe("research price basis", () => {
     (brokerAsOf) => {
       const fundPosition = { ...held, brokerPrice: 95, brokerAsOf };
       expect(previousClose(fundClose, brokerAsOf)).toBe(100);
-      expect(priceBasis(fundPosition, fundClose, null, null, new Date(brokerAsOf)))
+      expect(priceBasis(fundPosition, fundClose, null, new Date(brokerAsOf)))
         .toMatchObject({ source: "broker", price: 95, change: -5, changePct: -0.05 });
       const noChange = { ...fundClose, change: null, changePct: null };
-      expect(priceBasis(fundPosition, noChange, null, null, new Date(brokerAsOf)))
+      expect(priceBasis(fundPosition, noChange, null, new Date(brokerAsOf)))
         .toMatchObject({ source: "broker", price: 95, change: null, changePct: null });
     },
   );
@@ -211,14 +233,14 @@ describe("research price basis", () => {
     const quote = { ...fundClose, change: null, changePct: null };
     const brokerAsOf = "2026-11-16T15:00:00Z";
     expect(previousClose(quote, brokerAsOf)).toBe(96);
-    expect(priceBasis({ ...held, brokerPrice: 99, brokerAsOf }, quote, null, null, new Date(brokerAsOf)))
+    expect(priceBasis({ ...held, brokerPrice: 99, brokerAsOf }, quote, null, new Date(brokerAsOf)))
       .toMatchObject({ source: "broker", price: 99, change: 3, changePct: 3 / 96 });
     expect(previousClose(quote, "2026-11-17T15:00:00Z")).toBeNull();
   });
 
   it("shows an unheld fund's own close and change through the weekend and the opening grace period", () => {
     const saturday = new Date("2026-11-14T16:20:00Z");
-    expect(priceBasis({ held: false }, fundClose, null, null, saturday)).toMatchObject({
+    expect(priceBasis({ held: false }, fundClose, null, saturday)).toMatchObject({
       source: "quote",
       price: 96,
       change: -4,
@@ -251,7 +273,7 @@ describe("research price basis", () => {
     const friday = "2026-11-06T16:00:00Z";
     // Tuesday's close against Friday's broker price spans three sessions.
     expect(previousClose(close, friday)).toBeNull();
-    expect(priceBasis({ ...held, brokerAsOf: friday }, close, null, null, new Date(friday)).change)
+    expect(priceBasis({ ...held, brokerAsOf: friday }, close, null, new Date(friday)).change)
       .toBeNull();
     // Thursday's close is Friday's reference; Friday's close is Monday's.
     expect(previousClose({ ...close, asOf: "2026-11-05T21:00:02Z" }, friday)).toBe(214.01);
@@ -273,7 +295,6 @@ describe("research price basis", () => {
     const header = priceBasis(
       { ...held, brokerAsOf: "2026-11-03T20:00:00Z" },
       close,
-      null,
       null,
       wednesdayPreMarket,
     );
@@ -312,7 +333,6 @@ describe("research price basis", () => {
       { ...held, brokerAsOf },
       wednesday,
       null,
-      null,
       new Date("2026-11-27T16:05:00Z"),
     );
     expect(basis.change).toBeCloseTo(194.37 - 214.01, 6);
@@ -344,7 +364,7 @@ describe("research price basis", () => {
       brokerAsOf: "2026-09-01T09:00:00Z",
       brokerListing: "LSE:SYNT",
     };
-    const basis = priceBasis(line, friday, null, null, new Date("2026-09-01T09:05:00Z"));
+    const basis = priceBasis(line, friday, null, new Date("2026-09-01T09:05:00Z"));
     expect(basis).toMatchObject({ source: "broker", price: 96.5, time: { stale: false } });
     expect(basis.change).toBeCloseTo(96.5 - 95.7, 6);
   });
@@ -376,7 +396,6 @@ describe("research price basis", () => {
       { ...held, brokerPrice: 120, brokerAsOf },
       quote,
       null,
-      null,
       new Date("2026-11-17T15:05:00Z"),
     );
     expect(basis).toMatchObject({ source: "broker", price: 120, change: null, changePct: null });
@@ -405,7 +424,7 @@ describe("research price basis", () => {
     expect(inSession(quote, expired)).toBe(false);
     expect(brokerPriceLate(quote, new Date("2026-11-16T14:55:00Z"), expired)).toBe(true);
     expect(
-      priceBasis({ ...held, brokerAsOf: "2026-11-16T14:55:00Z" }, quote, null, null, expired).time,
+      priceBasis({ ...held, brokerAsOf: "2026-11-16T14:55:00Z" }, quote, null, expired).time,
     ).toMatchObject({ kind: "time", stale: true });
   });
 });

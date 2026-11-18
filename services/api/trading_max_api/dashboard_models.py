@@ -10,6 +10,7 @@ from trading_max.research.facts import FinancialFacts, ResearchContext
 from trading_max.research.forward_pe import ForwardPeHistory
 from trading_max.research.fund_references import USFundPeer
 from trading_max.research.trailing_pe import TrailingPeHistory
+from trading_max.research.venues import VenueClaim
 
 from .models import (
     ApiModel,
@@ -810,6 +811,10 @@ class ResearchTradeFill(ApiModel):
 
 
 class ResearchTradeMarker(ApiModel):
+    # Each unitemised legacy row can prove its side for the full set of accounts it covers.
+    aggregate_sides: list[tuple[set[str], Literal["B", "S", "T"]]] = Field(
+        default_factory=list, exclude=True
+    )
     ticker: str
     date: str
     kind: Literal["B", "S", "T"]
@@ -829,6 +834,17 @@ class BenchmarkPricePoint(ApiModel):
 
 
 class ResearchPriceSeries(ApiModel):
+    # The legacy storage key can differ from the verified listing used for external reads.
+    published_bar_ticker: str | None = Field(default=None, exclude=True)
+    venue_claims: tuple[VenueClaim, ...] = Field(default=(), exclude=True)
+    published_fund_row: bool = Field(default=False, exclude=True)
+    published_bar_asset_type: str | None = Field(default=None, exclude=True)
+    published_bar_mic: str | None = Field(default=None, exclude=True)
+    published_bar_segment: str | None = Field(default=None, exclude=True)
+    published_bar_exchange: str | None = Field(default=None, exclude=True)
+    # None means the publication supplied no marker rows. Dates keep quality scoped to the window.
+    unresolved_trade_accounts: dict[str, set[str]] | None = Field(default=None, exclude=True)
+    published_series_id: str | None = None
     ticker: str
     requested_interval: str = "1d"
     actual_interval: str = "1d"
@@ -1047,6 +1063,7 @@ class ValuationSensitivity(ApiModel):
 class ValuationRow(ApiModel):
     baseline_model_id: str | None = None
     ticker: str
+    spot_as_of: str | None = None
     assumptions: dict[str, Any] = Field(default_factory=dict)
     as_of: str
     currency: str

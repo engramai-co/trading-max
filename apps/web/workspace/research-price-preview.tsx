@@ -6,12 +6,12 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { useChartColours } from "@/ui/charts/palette";
 import { inRange } from "@/lib/portfolio/nav";
-import { number } from "@/workspace/data";
+import { quoteUnit, quoteValue } from "./financial-values";
 import type { TechnicalScoreSummary } from "@/lib/types";
 import type { useOverviewPrices } from "./research";
 import { Plot } from "./charts";
 import { candleSeries, candleValues, priceGapConnectors, priceReading } from "./research-price-candles";
-import { fixed, volume } from "./reading-format";
+import { volume } from "./reading-format";
 import { TechnicalScoreCard } from "./research-technical";
 import { Empty, Panel, Pending, QueryError, UpdateFailure, useCopy } from "./foundation";
 
@@ -36,7 +36,7 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
   const labels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   return (
     <Panel
-      title={[t("价格走势", "Price history"), "3M", code].filter(Boolean).join(" · ")}
+      title={[t("价格走势", "Price history"), "3M", quoteUnit(code).currency].filter(Boolean).join(" · ")}
       className="mx-price-diagnosis-preview"
       action={<>
         {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}
@@ -63,9 +63,9 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
                 readout={{
                   positions: points.flatMap((_, index) => !candles || bars[index][0] != null ? [index] : []),
                   gap: (index) => candles && bars[Math.round(index)]?.[0] == null,
-                  latest: fixed(latest.close),
+                  latest: quoteValue(latest.close, code, { style: "figure" }),
                   read: (index) => priceReading({
-                    bar: points[index],
+                    bar: points[index], unit: code,
                     previous: index > 0 ? points[index - 1].close : null,
                     time: formatCalendarDate(points[index].date, locale),
                     candle: candles,
@@ -89,7 +89,7 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
                   },
                   yAxis: {
                     type: "value", scale: true, splitNumber: 4, position: "right",
-                    axisLabel: { formatter: (v: number) => number(v, 2) },
+                    axisLabel: { formatter: (v: number) => quoteValue(v, code, { style: "figure" }) },
                   },
                   series: [candles ? candleSeries(ticker, bars, c) : {
                     type: "line",

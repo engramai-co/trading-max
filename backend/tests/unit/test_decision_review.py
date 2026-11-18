@@ -405,7 +405,10 @@ def test_a_close_without_its_own_days_rate_waits_instead_of_borrowing_one() -> N
     assert after[1]["effect_to_date_gbp"] == pytest.approx(-240.0)
     # A window between final closes does not move when the gap fills.
     assert (after[0]["observed_days"], after[0]["effect_to_date_gbp"]) == (3, 0.0)
-    assert before[0] == after[0]
+    # A newly settled interior close changes which hindsight candidates can be assessed.
+    assert before[0]["hindsight_to_date"] is None
+    assert after[0]["hindsight_to_date"]["best_date"] == "2026-10-30"
+    assert {**before[0], "hindsight_to_date": after[0]["hindsight_to_date"]} == after[0]
 
 
 def test_a_horizon_ending_on_a_close_without_its_rate_waits_for_it() -> None:
@@ -1102,3 +1105,70 @@ def test_a_range_that_does_not_contain_the_fills_is_not_shown() -> None:
     )
     assert review["round_trips"][0]["range_gbp"] is None
     assert review["round_trip_summary"]["ranged"] == 0
+
+
+def test_hindsight_includes_dividends_and_stops_at_the_selected_close():
+    closes = _closes("2026-01-05", [100, 95] + [104] * 19 + [50])
+    dividends = pd.Series([10.0], index=closes.index[[1]])
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-01-05T10:00:00Z", "Market buy", 1, 100),
+                _fill("2026-01-05T11:00:00Z", "Market buy", 3, 300),
+                _fill("2026-01-06T11:00:00Z", "Market sell", 1, 95),
+            ]
+        )
+    )
+    identity = trades["SecurityIdentity"].iloc[0]
+    security = SecurityPrices(identity, "NVDA", "NVDA Inc", "NVDA", closes, dividends=dividends)
+    buy, sell = build_decision_review(trades, {identity: security}, as_of=closes.index[-1])[
+        "decisions"
+    ]
+    # Buying at 95 would surrender the 10 dividend and underperform the original entry.
+    assert buy["hindsight_horizon"]["best_date"] == "2026-01-05"
+    assert buy["hindsight_horizon"]["missed_gbp"] == 0
+    assert buy["hindsight_to_date"]["best_date"] == closes.index[-1].date().isoformat()
+    assert buy["hindsight_to_date"]["average_order_gbp"] == 200
+    assert buy["hindsight_to_date"]["missed_gbp"] == 80
+    # Both distinct purchases size this sale; its proceeds do not enter the basis.
+    assert sell["hindsight_horizon"]["average_order_gbp"] == 200
+    assert sell["hindsight_horizon"]["missed_gbp"] == round(200 * (104 / 95 - 1), 2)
+
+
+@pytest.mark.parametrize("earlier_buy", [False, True])
+def test_sell_hindsight_requires_a_known_purchase_size(earlier_buy):
+    closes = _closes("2026-01-05", [100, 95, 110, 120])
+    orders = [
+        _fill("2026-01-06T12:00:00Z", "Market sell", 1, 95),
+        _fill("2026-01-07T12:00:00Z", "Market buy", 1, 110),
+    ]
+    if earlier_buy:
+        orders.insert(0, _fill("2026-01-05T12:00:00Z", "Market buy", 1, 100))
+    trades = _trade_columns(pd.DataFrame(orders))
+    if earlier_buy:
+        trades.loc[trades["BusinessDate"] == closes.index[0], "TotalGBP"] = float("nan")
+    key = trades["SecurityIdentity"].iloc[0]
+    security = SecurityPrices(key, "NVDA", "Synthetic", "NVDA", closes)
+    result = build_decision_review(trades, {key: security}, as_of=closes.index[-1])
+    sell = next(row for row in result["decisions"] if row["side"] == "sell")
+    assert sell["effect_to_date_gbp"] is not None
+    assert sell["hindsight_to_date"] is None
+
+
+def test_cached_review_marks_keep_verified_calendar_without_display_exchange(tmp_path):
+    from trading_max.analytics.review_evidence import ReviewListing, _ListingMarks
+
+    def history(symbol, start, end):
+        frame = pd.DataFrame({"Close": [123.0]}, index=pd.DatetimeIndex(["2026-11-27"]))
+        frame.attrs["provider_venue"] = {"symbol": symbol, "mic": "XNYS"}
+        return frame
+
+    clock = pd.Timestamp("2026-11-27T18:01Z")
+    cache = CachedDailyHistory(tmp_path, fetch=history, now=lambda: clock.to_pydatetime())
+    window = (date(2026, 11, 26), date(2026, 11, 27))
+    cache("SYN", *window)
+    frame = cache.read_cached("SYN", *window)
+    listing = ReviewListing("SYN", "USD", "SYN", "USD", frame)
+    marks = _ListingMarks(listing, pd.Timestamp(window[0]), pd.Timestamp(window[1]))
+    assert marks.price(clock - pd.Timedelta(minutes=2)) is None
+    assert marks.price(clock) == 123

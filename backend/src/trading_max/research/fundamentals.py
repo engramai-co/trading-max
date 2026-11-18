@@ -25,6 +25,7 @@ from trading_max.research.facts import build_financial_facts
 from trading_max.research.listing import quote_listing
 from trading_max.research.statement_valuation import statement_row
 from trading_max.research.valuation_basis import classify
+from trading_max.research.venues import resolve_venue, row_claims
 
 JsonObject = dict[str, Any]
 InfoLoader = Callable[[str], Mapping[str, Any]]
@@ -342,7 +343,15 @@ class YFinanceResearchService:
                 if all(value is None for value in metrics.values()):
                     missing[ticker] = "provider-no-data"
                     warnings.append(f"{ticker}: Yahoo Finance returned no fundamentals")
-                    continue
+                    if not resolve_venue(ticker, *row_claims(ticker, {}, info)).conflict:
+                        continue
+                # Preserve identity even on a conflict so downstream joins cannot silently
+                # use another listing or infer a schedule from the remaining evidence.
+                for key in ("symbol", "mic", "exchange", "exchangeName", "marketSegment"):
+                    if info.get(key):
+                        metrics[key] = _json_safe(info[key])
+                if resolve_venue(ticker, *row_claims(ticker, {}, metrics)).conflict:
+                    warnings.append(f"{ticker}: conflicting provider listing evidence")
                 rows.append(
                     {
                         "ticker": ticker,
@@ -833,6 +842,7 @@ def build_valuation(
             {
                 "ticker": ticker,
                 "price": spot,
+                "spot_as_of": tech.get("as_of") if spot is not None else None,
                 "currency": quote_currency,
                 "lenses": lenses,
                 "ev5": ev5,

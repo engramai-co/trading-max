@@ -6,6 +6,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { LineSeriesOption } from "echarts";
 import { useState } from "react";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent, formatReadingTime } from "@/ui/formatters";
@@ -119,8 +120,12 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
   const intraday = ["1D", "1W", "1M"].includes(period);
   const daily = history?.displayInterval === "1d";
   const weekly = history?.displayInterval === "1wk";
+  const fundPrice = !comparing && index.kind === "etf-price";
+  const priceUnit = history?.currency ?? index.currency;
+  const levelText = (value: number | null | undefined) => fundPrice
+    ? quoteValue(value, priceUnit, { style: "figure" }) : fixed(value);
   const unit = comparing ? "100" : index.kind === "volatility" ? t("波动率点数", "Volatility points")
-    : index.kind === "etf-price" ? index.currency ?? "—" : t("点", "pts");
+    : fundPrice ? quoteUnit(priceUnit).currency || "—" : t("点", "pts");
   const first = primary.find((value) => value != null);
   const last = primary.findLast((value) => value != null);
   const performance = first && last != null ? last / first - 1 : null;
@@ -130,7 +135,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
     ? new Date(at).toLocaleString(locale, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone })
     : formatCalendarDate(at, locale);
   const valueText = (value: number | null | undefined) => value == null ? "—"
-    : formatNumber(value, locale, { maximumFractionDigits: 2 });
+    : fundPrice ? quoteValue(value, priceUnit, { style: "number" }) : formatNumber(value, locale, { maximumFractionDigits: 2 });
   // The index is the one solid primary line; comparisons are an ink dash and a grey dot.
   const strokes: ReadingKey[] = [
     { colour: colours.brand },
@@ -140,7 +145,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
   const read = (i: number): Reading | null => {
     if (!dates[i]) return null;
     const time = intraday ? formatReadingTime(dates[i], locale, timeZone, period === "1D" ? "clock" : "intraday") : formatCalendarDate(dates[i], locale);
-    if (!comparing) return { time, primary: { value: fixed(primary[i]) } };
+    if (!comparing) return { time, primary: { value: levelText(primary[i]) } };
     return {
       time: time + " · " + t("起点 = 100", "Rebased to 100"),
       ...comparisonFigures(labels.map((name, series) => {
@@ -152,7 +157,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
   const positions = primary.flatMap((value, i) => value == null ? [] : [i]);
   const readout: ChartReadout = {
     positions,
-    latest: positions.length ? fixed(primary[positions.at(-1)!]) : "—",
+    latest: positions.length ? levelText(primary[positions.at(-1)!]) : "—",
     read,
     marks: (i) => values.flatMap((series, s) => series[i] == null ? [] : [{ value: series[i]!, colour: strokes[s].colour }]),
     gap: (i: number) => primary[Math.round(i)] == null,

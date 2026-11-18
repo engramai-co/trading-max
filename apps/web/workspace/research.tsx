@@ -53,7 +53,7 @@ import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
 import { OptionsView } from "./research-options";
 import { PricePreview } from "./research-price-preview";
-import { basisPrice } from "./research-price-basis";
+import { basisPrice, lensFallback } from "./research-price-basis";
 import { TechnicalWorkspace } from "./research-technical";
 import { Seasonality } from "./research-seasonality";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
@@ -204,7 +204,7 @@ function SecurityResearchWorkspace() {
   });
   const quote = previousForIdentity(lens.data, lens.data?.ticker, ticker) ?? cached;
   // A held line on the quote's listing is quoted at its broker price everywhere on the page.
-  const price = basisPrice(selected, quote?.context?.quote);
+  const price = basisPrice(selected, quote?.context?.quote, lensFallback(quote));
   // Lenses name the next report by the exchange's date and carry its sessions:
   // a lens left open refetches when that date turns or the sessions run out.
   useLensRefresh(ticker, quote?.context?.quote);

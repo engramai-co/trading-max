@@ -8,6 +8,10 @@
  * nothing is shown as current until the lens is refetched.
  */
 
+import type { ResearchLensSnapshot } from "@/lib/types";
+import { numeric } from "@/lib/numeric";
+import { quoteAmount, quoteUnit } from "./financial-values";
+
 type Session = { date: string; open: string; close: string };
 
 type Quote = {
@@ -178,6 +182,24 @@ export function brokerPriceLate(quote: Quote | undefined, asOf: Date, now: Date)
   return closed != null && asOf.valueOf() < closed.close - margin;
 }
 
+/** Select the amount, unit and clock from a single lens record. */
+export function lensFallback(lens: {
+  market?: ResearchLensSnapshot["market"];
+  technical?: Quote | null;
+  valuation?: Pick<NonNullable<ResearchLensSnapshot["valuation"]>, "spot" | "currency" | "spotAsOf"> | null;
+} | undefined): Quote | undefined {
+  const market = lens?.market;
+  const valuation = lens?.valuation;
+  const candidates = [
+    { price: numeric(market?.spot), currency: typeof market?.currency === "string" ? market.currency : null,
+      asOf: typeof market?.asOf === "string" ? market.asOf : null },
+    lens?.technical,
+    valuation && { price: valuation.spot, currency: valuation.currency, asOf: valuation.spotAsOf ?? null },
+  ];
+  return candidates.find((row): row is NonNullable<typeof row> =>
+    row != null && quoteAmount(row.price, row.currency) != null);
+}
+
 /**
  * The price figures on the research page are quoted against. A held security
  * uses the broker price only when its one broker line is the research quote's
@@ -188,8 +210,7 @@ export function brokerPriceLate(quote: Quote | undefined, asOf: Date, now: Date)
 export function basisPrice(
   position: Position | undefined,
   quote: Quote | undefined,
-  fallbackPrice: number | null = null,
-  fallbackCurrency: string | null = null,
+  fallback?: Quote | null,
 ): ResearchPrice {
   const brokerPrice = position?.held ? position.brokerPrice : null;
   const sameListing =
@@ -197,32 +218,33 @@ export function basisPrice(
     position?.brokerListing === quote?.listing &&
     Boolean(quote?.currency) &&
     position?.brokerPriceCurrency === quote?.currency;
-  return brokerPrice != null && brokerPrice > 0 && sameListing
-    ? {
-        source: "broker",
-        price: brokerPrice,
-        currency: quote?.currency ?? null,
-        asOf: position?.brokerAsOf ?? null,
-      }
-    : {
-        source: "quote",
-        price: quote?.price ?? fallbackPrice,
-        currency: quote?.currency || fallbackCurrency,
-        asOf: quote?.asOf ?? null,
-      };
+  if (brokerPrice != null && brokerPrice > 0 && sameListing) {
+    return {
+      source: "broker",
+      price: quoteAmount(brokerPrice, position?.brokerPriceCurrency),
+      currency: quoteUnit(position?.brokerPriceCurrency).currency,
+      asOf: position?.brokerAsOf ?? null,
+    };
+  }
+  const observation = quoteAmount(quote?.price, quote?.currency) != null ? quote : fallback;
+  return {
+    source: "quote",
+    price: quoteAmount(observation?.price, observation?.currency),
+    currency: quoteUnit(observation?.currency ?? quote?.currency).currency || null,
+    asOf: observation?.asOf ?? null,
+  };
 }
 
 export function priceBasis(
   position: Position | undefined,
   quote: Quote | undefined,
-  fallbackPrice: number | null,
-  fallbackCurrency: string | null,
+  fallback: Quote | null | undefined,
   now: Date,
 ): PriceBasis {
   const research = quote ?? {};
-  const { source, price, currency } = basisPrice(position, quote, fallbackPrice, fallbackCurrency);
+  const { source, price, currency, asOf } = basisPrice(position, quote, fallback);
   if (source === "broker" && price != null) {
-    const reference = previousClose(research, position?.brokerAsOf);
+    const reference = quoteAmount(previousClose(research, position?.brokerAsOf), research.currency);
     const change = reference ? price - reference : null;
     const asOf = validInstant(position?.brokerAsOf);
     return {
@@ -242,12 +264,13 @@ export function priceBasis(
           : null,
     };
   }
+  const hasQuote = quoteAmount(research.price, research.currency) != null;
   return {
     source: "quote",
     price,
     currency,
-    change: research.change ?? null,
-    changePct: research.changePct ?? null,
-    time: quoteTime(research, now),
+    change: hasQuote ? quoteAmount(research.change, research.currency) : null,
+    changePct: hasQuote ? research.changePct ?? null : null,
+    time: price == null ? null : quoteTime({ schedule: research.schedule, asOf, delayMinutes: hasQuote ? research.delayMinutes : null }, now),
   };
 }
