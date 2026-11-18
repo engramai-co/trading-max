@@ -372,7 +372,9 @@ a.mx-journal-act:focus-visible,
   border-radius: 12px;
   background: var(--mx-surface);
 }
-.mx-review-habits-space p { margin: 0; }
+.mx-review-habits-space p {
+  margin: 0;
+}
 .mx-review-habits-space,
 .mx-review-body > .mx-digest {
   min-block-size: var(--mx-habits-head-height);
