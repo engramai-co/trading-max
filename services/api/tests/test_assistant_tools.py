@@ -370,6 +370,8 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
         "read_valuation_evidence": {"ticker": "TEST", "listing": "US:TEST", "group": "market"},
         "data_freshness": {"scope": "invest", "domain": "portfolio"},
         "recent_decisions": {"scope": "cfd"},
+        "news_and_events": {"scope": "invest", "start": "2026-01-01", "end": "2026-02-03"},
+        "upcoming_events": {"scope": "invest", "start": "2026-02-03", "end": "2026-02-10"},
     }
     seen = []
 

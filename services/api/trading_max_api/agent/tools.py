@@ -1320,6 +1320,8 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
 
 def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
     """Construct the fixed Trading Max tool registry for Pydantic AI."""
+    from .events import news_and_events, upcoming_events
+
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
         (portfolio_overview, 4),
@@ -1332,6 +1334,8 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (read_valuation_evidence, 8),
         (data_freshness, 5),
         (recent_decisions, 5),
+        (news_and_events, 8),
+        (upcoming_events, 8),
     ):
         toolset.add_function(function, takes_ctx=True, timeout=timeout, strict=True)
     return toolset
