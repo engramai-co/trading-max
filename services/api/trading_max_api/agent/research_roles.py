@@ -81,8 +81,8 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
         figure = f"{data['change']:+.2%}"
         facts.append(
             observation(
-                f"{basis} · {'指数变动' if context.index_id else '收盘价变动'} {figure}",
-                f"{basis} · {'index change' if context.index_id else 'close-to-close change'} {figure}",
+                f"{basis} · {'指数变动' if data.get('unit') == 'points' else '收盘价变动'} {figure}",
+                f"{basis} · {'index change' if data.get('unit') == 'points' else 'close-to-close change'} {figure}",
             )
         )
     for item in data.get("benchmarks", []):

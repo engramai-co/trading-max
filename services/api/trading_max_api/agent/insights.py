@@ -506,16 +506,21 @@ def dated_events(
     scopes = {CODE_SCOPE[code] for code in codes}
     if not scopes & {"invest", "isa"}:
         return events, keys, issues
-    if series is None or series.unresolved_trade_accounts is None:
+    if series is not None:
+        markers, unresolved = series.trade_markers, series.unresolved_trade_accounts
+    elif read.deps.listing_markers and read.deps.manifest:
+        markers, unresolved = read.deps.listing_markers(read.deps.manifest, args.ticker)
+    else:
+        markers, unresolved = [], None
+    if unresolved is None:
         issues.append("trade_markers_unavailable")
         return events, keys, issues
     keys.append(TRADE_MARKERS)
     if any(
-        args.start <= day <= args.end and accounts & scopes
-        for day, accounts in series.unresolved_trade_accounts.items()
+        args.start <= day <= args.end and accounts & scopes for day, accounts in unresolved.items()
     ):
         issues.append("trade_listing_unresolved")
-    for row in series.trade_markers:
+    for row in markers:
         # The chart resolves listing identity. Limit its marker to the authorised accounts.
         sides = {f.side for f in row.fills if f.account in scopes}
         marker = {
@@ -567,11 +572,14 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         bars = [{"date": p.at.date().isoformat(), "close": p.value} for p in history.points]
         events = news_events(read, args.ticker) if history.index.symbol else []
         if history.index.kind == "etf-price":
-            security_events, keys, _ = dated_events(read, args, codes)
+            security_events, keys, issues = dated_events(read, args, codes)
             events.extend(security_events)
         else:
-            keys = []
+            keys, issues = [], []
+        if history.state != "available":
+            issues.append("index_history_" + history.state)
         return read.result(
+            "partial" if issues else "ok",
             data={
                 "ticker": args.ticker,
                 "start": args.start,
@@ -583,6 +591,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
                 "items": key_moments(bars, events, args.start, args.end),
             },
             keys=[NEWS_KEY, *keys],
+            issues=issues,
         )
     observed = (
         deps.observed_prices(deps.snapshot_id, args.ticker, args.published_series_id)
@@ -619,7 +628,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         read,
         args.model_copy(update={"ticker": listing}),
         codes,
-        series,
+        None if observed else series,
     )
     events.extend(news_events(read, listing))
     keys.append(NEWS_KEY)

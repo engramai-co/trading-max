@@ -128,7 +128,10 @@ def setup(tmp_path):
     publish()
     ledger = ResearchLedger(store, WatchlistStore(tmp_path))
     factory = AssistantDepsFactory(
-        store, bind_price_series=ledger.bind_price_series, observed_prices=ledger.observed_prices
+        store,
+        bind_price_series=ledger.bind_price_series,
+        observed_prices=ledger.observed_prices,
+        listing_markers=ledger.listing_trade_markers,
     )
     bindings = []
 
@@ -262,6 +265,7 @@ def test_index_uses_observed_levels_and_only_its_own_dated_news(tmp_path):
     history = SimpleNamespace(
         index=SimpleNamespace(id="example", symbol="TEST", kind="index"),
         range="3M",
+        state="available",
         display_interval="1d",
         currency="USD",
         points=[
@@ -292,3 +296,21 @@ def test_index_uses_observed_levels_and_only_its_own_dated_news(tmp_path):
         f.evidence.arguments["index"] == "example" for f in facts
     )
     assert insights.moments_data(deps, args.model_copy(update={"ticker": "OTHER"}))["data"] is None
+
+    history.index.kind = "etf-price"
+    history.points.insert(0, SimpleNamespace(at=datetime.fromisoformat("2026-01-27"), value=10))
+    args = args.model_copy(update={"start": "2026-01-27"})
+    etf = insights.moments_data(deps, args)
+    assert any(
+        event["kind"] == "own_trade" and event["reference"] == "B"
+        for row in etf["data"]["items"]
+        for event in row["events"]
+    )
+    reading = RoleTools.pinned(deps, role.allowed_tools).read(
+        research.research_position, research.PositionArgs(**ctx.model_dump())
+    )["data"]
+    assert (reading["trade_date"], reading["side"], reading["change"]) == (
+        DATES[0],
+        "buy",
+        26 / 20 - 1,
+    )

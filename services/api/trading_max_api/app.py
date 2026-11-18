@@ -182,6 +182,7 @@ def create_app(
             store=store,
             bind_price_series=research.bind_price_series,
             observed_prices=research.observed_prices,
+            listing_markers=research.listing_trade_markers,
             index_history=lambda index, series: app.state.indices.reading_history(index, series),
         ).for_run,
         check_ready=assistant_ready,

@@ -2516,6 +2516,21 @@ class ResearchLedger:
 
         return self._facts_cache.get_or_compute((manifest.run_id, "legacy_marker_listings"), load)
 
+    def listing_trade_markers(self, manifest: SnapshotManifest, ticker: str):
+        """The chart and its readings resolve broker fills against the same pinned listing."""
+
+        def load():
+            if not _artifact(manifest, "account/trade_markers.json"):
+                return [], None
+            payload = self._read_optional(manifest, "account/trade_markers.json")
+            return chart_trade_markers(
+                payload, ticker, lambda: self._legacy_marker_listings(manifest)
+            )
+
+        return self._facts_cache.get_or_compute(
+            (manifest.run_id, "listing_trade_markers", ticker), load
+        )
+
     def published_price_series(
         self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
     ) -> ResearchPriceSeries:
@@ -2526,7 +2541,6 @@ class ResearchLedger:
         listing = exact[0] if exact else None
         fund_price = self._fund_price(manifest, ticker, listing, with_points=True)
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
-        marker_artifact = _artifact(manifest, "account/trade_markers.json")
         cache_key = (manifest.run_id, ticker)
         if cached := self._price_series_cache.get(cache_key):
             return _visible_price_sessions(cached, limit)
@@ -2554,14 +2568,7 @@ class ResearchLedger:
             if fund_price
             else market.get("currency") or source.get("currency") or ""
         )
-        raw_markers = (
-            self._read_optional(manifest, "account/trade_markers.json")
-            if marker_artifact is not None
-            else {}
-        )
-        all_markers, unresolved = chart_trade_markers(
-            raw_markers, bar_ticker, lambda: self._legacy_marker_listings(manifest)
-        )
+        all_markers, unresolved = self.listing_trade_markers(manifest, bar_ticker)
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,

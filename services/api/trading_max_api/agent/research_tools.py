@@ -7,10 +7,8 @@ from typing import Annotated
 from pydantic import StringConstraints
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.research.held_funds import FUND_PRICES_KEY
-from trading_max.research.listing import broker_listing
 from trading_max.research.news import NEWS_KEY
 
-from .events import _listing_symbol
 from .insights import TRADE_MARKERS, CalendarDay, moment_headlines
 from .tools import (
     ANALYST,
@@ -40,6 +38,22 @@ class PositionArgs(SecurityArgs):
     index_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")] | None = None
 
 
+def last_listing_trade(read, ticker, end, fallback=()):
+    markers = (
+        read.deps.listing_markers(read.deps.manifest, ticker)[0]
+        if read.deps.manifest and read.deps.listing_markers
+        else fallback
+    )
+    fills = (
+        (row.date, fill.at, fill.side)
+        for row in markers
+        if row.date <= end
+        for fill in row.fills
+        if fill.account in {"invest", "isa"}
+    )
+    return max(fills, default=None)
+
+
 def research_position(ctx: Context, args: PositionArgs) -> dict:
     """Read the exact chart's close and its change since the last verified Invest or ISA trade."""
     deps = ctx.deps
@@ -58,17 +72,40 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
         ):
             return read.missing("displayed_index_series_unavailable")
         opening, latest = history.points[0], history.points[-1]
+        end = latest.at.date().isoformat()
+        trade = (
+            last_listing_trade(read, args.ticker, end)
+            if history.index.kind == "etf-price"
+            else None
+        )
+        if trade:
+            opening = next(
+                (
+                    p
+                    for p in history.points
+                    if history.display_interval == "1d" and p.at.date().isoformat() == trade[0]
+                ),
+                None,
+            )
+        issues = [] if history.state == "available" else ["index_history_" + history.state]
         return read.result(
+            "partial" if issues else "ok",
             data={
                 "ticker": args.ticker,
-                "start": opening.at.date().isoformat(),
+                "trade_date": trade[0] if trade else None,
+                "side": trade[2] if trade else None,
+                "start": opening.at.date().isoformat() if opening else None,
                 "end": latest.at.date().isoformat(),
                 "close": latest.value,
                 "currency": history.currency,
                 "range": history.range,
                 "unit": "price" if history.index.kind == "etf-price" else "points",
-                "change": latest.value / opening.value - 1 if opening.value > 0 else None,
-            }
+                "change": latest.value / opening.value - 1
+                if opening and opening.value > 0
+                else None,
+            },
+            keys=[TRADE_MARKERS] if trade else [],
+            issues=issues,
         )
     observed = (
         deps.observed_prices(deps.snapshot_id, args.ticker, args.published_series_id)
@@ -93,18 +130,8 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             return read.missing("displayed_price_series_mismatch")
         ticker = series.published_bar_ticker
     latest = series.points[-1]
-    markers = read.read(TRADE_MARKERS)
-    trades = sorted(
-        (row["date"], fill.get("at") or "", fill["side"])
-        for row in _rows((markers or {}).get("rows"))
-        if _iso(row.get("date")) and row["date"] <= latest.date
-        for fill in _rows(row.get("fills"))
-        if fill.get("account") in {"invest", "isa"}
-        and fill.get("side") in {"buy", "sell"}
-        and _listing_symbol(broker_listing(fill.get("broker_ticker"))) == ticker
-    )
+    last_trade = last_listing_trade(read, ticker, latest.date, series.trade_markers)
     previous = series.points[-2] if len(series.points) >= 2 else None
-    last_trade = trades[-1] if trades else None
     base = (
         next((p for p in series.points if p.date == last_trade[0]), None)
         if last_trade
@@ -140,7 +167,7 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             "start": base.date if base else None,
             "change": latest.close / base.close - 1 if base and base.close > 0 else None,
         },
-        keys=[TECHNICAL, FUND_PRICES_KEY, TRADE_MARKERS],
+        keys=[TECHNICAL, FUND_PRICES_KEY, FUNDAMENTALS, TRADE_MARKERS],
     )
 
 

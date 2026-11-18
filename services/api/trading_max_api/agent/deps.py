@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from typing import Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from ..dashboard_models import ResearchPriceSeries
+from ..dashboard_models import ResearchPriceSeries, ResearchTradeMarker
 from ..index_models import IndexHistory
 from ..models import SnapshotManifest
 
@@ -18,6 +18,11 @@ ALL_ACCOUNT_SCOPES: frozenset[AccountScope] = frozenset(
     ("invest", "isa", "broker_total", "household", "cfd")
 )
 DEFAULT_TIMEZONE = ZoneInfo("Europe/London")
+
+
+type MarkerReader = Callable[
+    [SnapshotManifest, str], tuple[list[ResearchTradeMarker], dict[str, set[str]] | None]
+]
 
 
 class AssistantSnapshotReader(Protocol):
@@ -47,6 +52,7 @@ class AssistantDeps:
     page_hint: str | None = None
     captured_at: datetime | None = None
     price_series: PublishedPriceReader | None = None
+    listing_markers: MarkerReader | None = None
     observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
     index_history: Callable[[str, str], IndexHistory | None] | None = None
 
@@ -62,6 +68,7 @@ class AssistantDepsFactory:
     store: AssistantSnapshotSource
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
+    listing_markers: MarkerReader | None = None
     observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
     index_history: Callable[[str, str], IndexHistory | None] | None = None
     bind_price_series: Callable[[], PublishedPriceReader] | None = None
@@ -81,6 +88,7 @@ class AssistantDepsFactory:
         return AssistantDeps(
             index_history=self.index_history,
             observed_prices=self.observed_prices,
+            listing_markers=self.listing_markers,
             price_series=price_series,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
