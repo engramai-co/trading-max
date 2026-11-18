@@ -796,8 +796,19 @@ for (const view of ["holdings","money","returns","risk"] as const) {
     const data=await pinned.json();
     expect(data.runId).toBe(id);
     if(view==="risk") {
-      expect(data.nav.some((p:{isaDrawdown?:number})=>p.isaDrawdown!=null)).toBe(true);
-      expect(data.nav.some((p:{isaTwr?:number})=>p.isaTwr!=null)).toBe(true);
+      const rows = data.nav as {date:string; isaDrawdown?:number; isaTwr?:number}[];
+      const lowest = Math.min(...rows.flatMap(p=>p.isaDrawdown == null ? [] : [p.isaDrawdown]));
+      const trough = rows.findIndex(p=>p.isaDrawdown === lowest);
+      const peak = rows.slice(0,trough).filter(p=>p.isaTwr != null).sort((a,b)=>b.isaTwr!-a.isaTwr! || b.date.localeCompare(a.date))[0];
+      expect(lowest).toBeLessThan(0);
+      expect(peak).toBeDefined();
+      const episode = page.locator(".mx-risk-drawdown-episode time");
+      await expect(episode.first()).toHaveAttribute("datetime", peak.date);
+      await expect(episode.last()).toHaveAttribute("datetime", rows[trough].date);
+      if (!isMobile && process.env.TM_INSPECTION_SHOTS) {
+        await page.locator(".mx-risk-readings").scrollIntoViewIfNeeded();
+        await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"desktop-retained-isa-drawdown.png")});
+      }
       expect(Object.keys(data.risk)).toEqual(["B"]);
       expect(data).not.toHaveProperty("benchmarkSeries");
     }
