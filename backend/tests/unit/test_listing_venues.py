@@ -4,28 +4,48 @@ import pytest
 from trading_max.research.venues import VenueClaim, resolve_venue
 
 
-def test_all_pairs_of_explicit_claims_preserve_listing_identity_in_either_order():
+def test_all_pairs_of_claims_agree_conflict_or_are_missing_for_one_or_two_listings():
+    # Each column names the same venue in the source's own namespace. The two
+    # broad claims describe the whole market, so neither implies a calendar.
     values = {
-        "symbol": ("SYN.F", "SYN.DE"),
-        "mic": ("XFRA", "XETR"),
-        "yahoo": ("FRA", "GER"),
-        "fundamentals": ("Frankfurt", "XETRA"),
-        "openfigi": ("GF", "GY"),
-        "name": ("Frankfurt Stock Exchange", None),
+        "symbol": ("SYN.F", "SYN.T"),
+        "mic": ("XFRA", "XTKS"),
+        "yahoo": ("FRA", "JPX"),
+        "fundamentals": ("Frankfurt", "Tokyo"),
+        "openfigi": ("GF", "JT"),
+        "name": ("Frankfurt Stock Exchange", "Tokyo Stock Exchange"),
+        "region": ("GR", "JP"),
+        "market": ("GR", "JP"),
     }
+    markets = ({"XFRA", "XETR"}, {"XTKS", "XOSE"})
+    exact = ({"XFRA"}, {"XTKS"})
     for left, right in combinations_with_replacement(values, 2):
-        for a, b, observed in product((0, 1, None), (0, 1, None), ("SYN", "SYNTH")):
+        for a, b, observed in product((0, 1, None), (0, 1, None), ("SYN", "ALIAS")):
+            entries = [(left, a, "SYN"), (right, b, observed)]
             claims = [
                 VenueClaim(kind, values[kind][idx] if idx is not None else None, owner)
-                for kind, idx, owner in ((left, a, "SYN"), (right, b, observed))
+                for kind, idx, owner in entries
             ]
-            known = {idx for idx, claim in zip((a, b), claims, strict=True) if claim.value}
-            expected = (
-                frozenset(("XFRA", "XETR")[i] for i in known) if len(known) == 1 else frozenset()
+            owners_with_evidence = {
+                owner for kind, idx, owner in entries if idx is not None and kind != "market"
+            }
+            applicable = [
+                (markets if kind in {"market", "region"} else exact)[idx]
+                for kind, idx, owner in entries
+                if idx is not None and (kind != "market" or owner not in owners_with_evidence)
+            ]
+            venues = set.intersection(*applicable) if applicable else set()
+            has_exact = any(
+                idx is not None and kind not in {"market", "region"} for kind, idx, _ in entries
             )
+            calendar = next(iter(venues)) if venues and has_exact else None
             for pair in (claims, claims[::-1]):
                 result = resolve_venue("SYN", *pair)
-                assert (result.venues, result.conflict) == (expected, len(known) > 1), pair
+                assert (result.venues, result.conflict, result.calendar) == (
+                    venues,
+                    bool(applicable and not venues),
+                    calendar,
+                ), pair
 
 
 def test_market_defaults_are_local_to_the_claimed_symbol_and_namespaces_are_disjoint():
