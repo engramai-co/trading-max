@@ -126,13 +126,17 @@ break the line and are not compared. Withheld points keep their close and EPS
 and carry the reason in `notMeaningful`. The distribution and the latest rank
 use only the remaining multiples.
 
-The EPS replay ignores a filing whose repeated periods are all the same power
-of ten, at least 100 times, above the values already recorded for them: per-share
-values tagged in thousands. Its report period still becomes the latest one, so
-the series shows a gap rather than the previous trailing EPS. An implied fourth
-quarter stays at its annual filing's vintage through ordinary restatements of
-the first three quarters, but is implied again when one of them is corrected by
-such a factor.
+The EPS replay compares each filing with the values already recorded for the
+periods it repeats. If every one of them moves up by the same power of ten, at
+least 100 times, the filing tagged its per-share values in thousands and is
+ignored. A value missing on either side is no evidence and zero against zero
+fits any scale, but zero against a nonzero value rules a rescaling out. The
+ignored filing's report period still becomes the latest one, so the series
+shows a gap rather than the previous trailing EPS. An implied fourth quarter
+keeps the first three quarters as filed at its annual filing's vintage, so
+later restatements do not offset into it. Only a filing that moves every period
+it repeats down by one such power corrects those quarters there, and a new
+filing of the annual EPS implies the quarter again from the current quarters.
 
 NTM uses the last PE-0 observation of each exchange-local archive date, for the
 same listing and quote currency, bounded by the snapshot publication time. The

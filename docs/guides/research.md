@@ -167,10 +167,13 @@ near zero rather than a valuation; growth phases of large listings have stayed
 below it. Such multiples are marked **Not meaningful** and left as gaps. So is
 every close of a new EPS reading that opens more than five times higher or
 lower than the previous close's multiple. Neither enters the band or the rank,
-and the reading names the reason. A filing that repeats earlier periods at 100
-or more times their filed per-share values, by a power of ten, is treated as a
-unit error and not used. Its quarter stays unknown until a later filing repeats
-it correctly.
+and the reading names the reason. A filing whose repeated earlier periods are
+all 100 or more times their filed per-share values, by the same power of ten,
+is treated as a unit error and not used. Its quarter stays unknown until a
+later filing repeats it correctly. An inferred fourth quarter keeps the
+quarters it was inferred from: a later restatement leaves it unchanged unless a
+filing scales every period it repeats back down by such a factor, or the annual
+EPS is filed again.
 
 The shaded band shows the 25th to 75th percentiles with the median dashed.
 Switch to **Mean ±1σ** for the mean and one population standard deviation.

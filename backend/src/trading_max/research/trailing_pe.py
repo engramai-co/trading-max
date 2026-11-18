@@ -31,8 +31,9 @@ MEANINGFUL_PE_CAP = 400.0
 # move where a new reading starts is a break in the earnings data, not a
 # change in valuation.
 SEGMENT_JUMP = 5.0
-# A filing that restates every period it repeats by the same power of ten of
-# at least two orders of magnitude used the wrong scale for per-share values.
+# A filing that restates every earlier period it repeats by one power of ten of
+# at least two orders of magnitude either used the wrong scale for per-share
+# values (upwards) or corrects an earlier filing that did (downwards).
 SCALE_ERROR_POWER = 2
 NEW_YORK = ZoneInfo("America/New_York")
 DAY = timedelta(days=1)
@@ -180,7 +181,7 @@ def _quarter_chain(quarters: Facts, end: date, count: int) -> list[tuple[Period,
     return chain
 
 
-def _power_of_ten(before: float | None, after: float | None) -> int | None:
+def _power_of_ten(before: float, after: float) -> int | None:
     """The power of ten that turns one value into the other, if either is a rescaling of the other."""
     if not before or not after or (before > 0) != (after > 0):
         return None
@@ -189,80 +190,111 @@ def _power_of_ten(before: float | None, after: float | None) -> int | None:
     return round(power) if abs(power - round(power)) <= 0.05 else None
 
 
+@dataclass
+class _ImpliedQuarter:
+    """A fourth quarter implied from annual EPS and Q1–Q3 as filed at the annual's vintage."""
+
+    period: Period
+    annual: float
+    quarters: dict[Period, float]
+
+    @property
+    def eps(self) -> float:
+        return round(math.fsum([self.annual, *(-value for value in self.quarters.values())]), 12)
+
+
 class _EarningsReplay:
     def __init__(self) -> None:
         self.quarters: Facts = {}
         self.annuals: Facts = {}
         self.derived: Facts = {}
-        self.derived_years: dict[Period, Period] = {}
+        self.derived_years: dict[Period, _ImpliedQuarter] = {}
         # Every period's latest accepted value, to check new filings against.
         self.recorded: Facts = {}
         self.period_end: date | None = None
         self.is_annual = False
 
-    def _misscaled(self, filing: EpsFiling, split_factor: float) -> bool:
-        """Whether a filing repeats earlier-filed periods, all at the same power of ten above them.
+    def _rescaling(
+        self, facts: list[tuple[Period, float | None]]
+    ) -> tuple[int, dict[Period, float]] | None:
+        """The one power of ten by which a filing restates the recorded periods it repeats.
 
-        Tagging per-share values in thousands is a known filing error. Such a
-        filing is ignored; a later filing that repeats the periods correctly
-        restores them.
+        Returns the power with those periods' recorded values, or None unless
+        every comparison agrees. A value unavailable on either side is no
+        evidence, and zero against zero fits any scale. Zero against a nonzero
+        value, a change of sign or a factor other than a power of ten rules a
+        rescaling out; an unchanged value counts as the power zero.
         """
-        powers = {
-            _power_of_ten(before, None if fact.value is None else fact.value / split_factor)
-            for fact in filing.observations
-            if (before := self.recorded.get((fact.start, fact.end))) and fact.value
-        }
-        return (
-            len(powers) == 1
-            and (power := next(iter(powers))) is not None
-            and power >= SCALE_ERROR_POWER
-        )
+        powers: set[int | None] = set()
+        repeated: dict[Period, float] = {}
+        for period, value in facts:
+            before = self.recorded.get(period)
+            if before is None or value is None or before == value == 0:
+                continue
+            powers.add(_power_of_ten(before, value))
+            repeated[period] = before
+        power = powers.pop() if len(powers) == 1 else None
+        return None if power is None else (power, repeated)
 
     def apply(self, filings: list[EpsFiling], split_factor: float) -> None:
         changes: dict[Period, set[float | None]] = defaultdict(set)
+        # Recorded values that a filing has shown were tagged at the wrong
+        # scale, with the factor that corrects each.
+        misscaled: dict[Period, tuple[float, int]] = {}
         for filing in filings:
             if self.period_end is None or filing.report_end > self.period_end:
                 self.period_end = filing.report_end
                 self.is_annual = filing.annual
             elif filing.report_end == self.period_end:
                 self.is_annual |= filing.annual
-            if self._misscaled(filing, split_factor):
-                # Its period still becomes the latest one: unknown, not carried over.
+            facts = [
+                ((fact.start, fact.end), None if fact.value is None else fact.value / split_factor)
+                for fact in filing.observations
+            ]
+            power, repeated = self._rescaling(facts) or (0, {})
+            if power >= SCALE_ERROR_POWER:
+                # Per-share values tagged in thousands, say. The filing is
+                # ignored, but its period still becomes the latest one:
+                # unknown, not carried over.
                 continue
-            for fact in filing.observations:
-                changes[fact.start, fact.end].add(
-                    None if fact.value is None else fact.value / split_factor
-                )
+            if power <= -SCALE_ERROR_POWER:
+                misscaled |= {period: (before, 10**-power) for period, before in repeated.items()}
+            for period, value in facts:
+                changes[period].add(value)
 
         updated_annuals = set()
-        rescaled = set()
         for period, values in changes.items():
             value = next(iter(values)) if len(values) == 1 else None
             if _quarter(*period):
-                if abs(_power_of_ten(self.quarters.get(period), value) or 0) >= SCALE_ERROR_POWER:
-                    rescaled.add(period)
                 self.quarters[period] = value
             elif _year(*period):
                 self.annuals[period] = value
                 updated_annuals.add(period)
             self.recorded[period] = value
-        # An implied Q4 stays at its annual's vintage through ordinary
-        # restatements, but not when a quarter it used was filed at the wrong
-        # scale and is now corrected.
-        updated_annuals.update(
-            year
-            for year in self.annuals
-            if any(year[0] <= start and end < year[1] for start, end in rescaled)
-        )
+
+        # An implied Q4 keeps Q1–Q3 as filed at its annual's vintage, so a later
+        # restatement of one of them doesn't rewrite Q4 to offset it. Only a
+        # value since shown to be tagged at the wrong scale is corrected there;
+        # a new vintage of the annual implies Q4 again below.
+        for year, implied in self.derived_years.items():
+            if year in updated_annuals:
+                continue
+            corrected = {
+                period: value / misscaled[period][1]
+                for period, value in implied.quarters.items()
+                if period in misscaled and misscaled[period][0] == value
+            }
+            if corrected:
+                implied.quarters |= corrected
+                self.derived[implied.period] = implied.eps
 
         # If a prerequisite was missing at the annual filing, a newly
         # disclosed comparative can complete the calculation prospectively.
         for period in sorted(updated_annuals | (self.annuals.keys() - self.derived_years.keys())):
-            # Freeze the implied Q4 at the annual observation's vintage. A
-            # later correction to Q1–Q3 alone must not rewrite Q4 to offset it.
+            # A new vintage of the annual implies Q4 from the current quarters.
             previous = self.derived_years.pop(period, None)
             if previous:
-                self.derived.pop(previous, None)
+                self.derived.pop(previous.period, None)
             annual = self.annuals[period]
             if annual is None:
                 continue
@@ -276,9 +308,9 @@ class _EarningsReplay:
                     candidates.append((start, chain))
             if len(candidates) == 1:
                 start, chain = candidates[0]
-                fourth = (start, period[1])
-                self.derived[fourth] = math.fsum([annual, *(-v for _, v in chain)])
-                self.derived_years[period] = fourth
+                implied = _ImpliedQuarter((start, period[1]), annual, dict(chain))
+                self.derived[implied.period] = implied.eps
+                self.derived_years[period] = implied
 
     def reading(self) -> tuple[date, float, Method] | None:
         end = self.period_end
