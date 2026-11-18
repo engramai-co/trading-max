@@ -832,7 +832,7 @@ const draftResponse = { phase: "complete", result: { id: "synthetic-draft", snap
     scenarios:{bear:{discountRate:.12}}, evidenceIds:["statement"] } },
   evidence: {
     estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {kind:"forecast",end:"2026-12-31"},
-      observedAt:"2026-11-03T21:00:00Z", value: 0.19, unit: "ratio" },
+      publishedAt:"2025-12-20", observedAt:"2026-11-03T21:00:00Z", value: 0.19, unit: "ratio" },
     statement: { locator: { dataset: "financials" }, metric: "freeCashflow", period: {kind:"annual",end:"2025-12-31"},
       observedAt:"2026-02-10T21:00:00Z", value: 120, unit: "currency", currency: "USD" },
     revenue: { locator: { dataset: "financials" }, metric: "revenue", period: {kind:"annual",end:"2025-12-31"},
@@ -891,7 +891,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
     expect(saved).toBeNull();
     await expect(editor.getByRole("link", {name: en ? "Analysts" : "分析师", exact:true})).toHaveAttribute("href", "#draft-evidence-estimate");
-    await expect(accept.locator("xpath=ancestor::div[contains(@class,'mx-draft-row')]")).toContainText(en ? "Observed" : "采集于");
+    await expect(accept.locator("xpath=ancestor::div[contains(@class,'mx-draft-row')]")).toContainText(en ? "As of" : "截至");
     await captureDraft(page, info.project.name, locale, scheme, "cash-flow");
     await editor.getByRole("link", { name: en ? "Analysts" : "分析师", exact:true }).first().click();
     const evidence = page.locator("#draft-evidence-estimate");

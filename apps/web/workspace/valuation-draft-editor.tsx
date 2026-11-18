@@ -202,8 +202,9 @@ function EvidenceFigure({row}: {row: EvidenceRow}) {
     quarterly: t("季度", "Quarter"), semiannual: t("半年", "Half-year"), irregular: t("报告期", "Period"),
     forecast: t("预测期", "Forecast period")};
   const period = [periods[row.period.kind], row.period.end && formatCalendarDate(row.period.end, locale)].filter(Boolean).join(" ");
-  return <>{metricLabel(row.metric, locale)} {evidenceValue(row,t)} · {period} · {t("采集于", "Observed")}{" "}
-    {row.observedAt ? formatDateTime(row.observedAt, locale, timeZone) : "—"}</>;
+  const stamp = row.publishedAt ?? row.observedAt;
+  const asOf = stamp?.length === 10 ? formatCalendarDate(stamp, locale) : stamp ? formatDateTime(stamp, locale, timeZone) : "—";
+  return <>{metricLabel(row.metric, locale)} {evidenceValue(row,t)} · {period} · {row.publishedAt ? t("截至", "As of") : t("采集于", "Observed")} {asOf}</>;
 }
 
 const scenarioLabels = { bear: ["保守", "Bear"], base: ["中性", "Base"], bull: ["乐观", "Bull"] };

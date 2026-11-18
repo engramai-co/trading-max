@@ -329,13 +329,14 @@ def _revenue_expectations(capture: _Capture, row: _Row | None) -> None:
         period = EvidencePeriod(
             kind="forecast", end=_day(estimate.get("endDate")), forecast_slot=slot
         )
-        stamp = _instant(estimate.get("asOf") or analyst.get("asOf"))
+        as_of = estimate.get("asOf") or analyst.get("asOf")
+        stamp = _instant(as_of) or _day(as_of)
         currency = _currency(estimate.get("currency"))
         usable = (
             row is not None
             and period.end is not None
             and stamp is not None
-            and stamp <= row.observed_at
+            and publication_within(stamp, row.observed_at)
         )
         for metric, field, value, unit in (
             (
@@ -353,6 +354,7 @@ def _revenue_expectations(capture: _Capture, row: _Row | None) -> None:
                 row=row,
                 dataset="analyst",
                 field="revenueEstimate." + field,
+                published_at=stamp if usable else None,
                 period=period if usable else EvidencePeriod(kind="forecast", forecast_slot=slot),
                 currency=currency if usable and unit == "currency" else None,
                 basis="provider-consensus",
