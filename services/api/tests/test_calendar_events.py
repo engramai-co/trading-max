@@ -768,3 +768,71 @@ def test_earnings_eligibility_survives_the_financials_summary(tmp_path):
         ]
         is False
     )
+
+
+def test_current_scheduled_publication_reserves_space_for_a_ratings_only_lens(tmp_path):
+    import json
+
+    from services.api.tests.test_assistant_settings import _enable, _register
+    from services.api.trading_max_api.agent.research_roles import SecurityContext
+    from services.api.trading_max_api.agent.roles import role_registry
+
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = app.state.store
+    publication = store.publish_typed(
+        scope="research",
+        source="synthetic",
+        artifacts=[
+            store.immutable_artifacts.put_json(
+                key=events.ANALYST,
+                payload={
+                    "rows": [
+                        {
+                            "ticker": "ALFA",
+                            "analyst": {"recommendations": [{"period": "0m", "buy": 2}]},
+                        }
+                    ]
+                },
+            )
+        ],
+    )
+    repo = app.state.settings_repository
+    _register(repo, "openai", "gpt-5.6-luna")
+    _enable(repo, "openai/gpt-5.6-luna")
+    client = TestClient(app)
+    lens = "/v1/research/ALFA/lens/analyst"
+    assert not client.get(lens).json()["earningsBriefEligible"]
+    role = role_registry()["earnings-brief"]
+    context = SecurityContext(ticker="ALFA")
+    with app.state.assistant_readings.database.transaction() as db:
+        db.execute(
+            "INSERT INTO assistant_readings VALUES (?, ?, ?, ?, ?)",
+            (
+                "scheduled:" + role.cache_id,
+                role.object_key(context),
+                "observed",
+                publication.created_at.isoformat(),
+                json.dumps(
+                    {
+                        "role": role.id,
+                        "snapshotId": publication.run_id,
+                        "version": "observed",
+                        "asOf": publication.created_at.isoformat(),
+                        "lines": [
+                            {
+                                "zh": "观测。",
+                                "en": "Observation.",
+                                "evidence": {
+                                    "tool": "research_earnings",
+                                    "source": "financials",
+                                    "evidenceId": "ev_observed",
+                                },
+                            }
+                        ],
+                    }
+                ),
+            ),
+        )
+    ratings = client.get(lens).json()
+    assert ratings["analyst"]["recommendations"] == [{"period": "0m", "buy": 2}]
+    assert ratings["earningsBriefEligible"]

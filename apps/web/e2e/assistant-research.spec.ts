@@ -431,7 +431,8 @@ test("financials summary keeps the earnings brief before its first section", asy
 });
 
 test("Ratings keeps a verified brief ahead of the cached section with no estimate fields", async ({page},info) => {
-  await fixtures(page);
+  let release!: () => void;
+  await fixtures(page, true, new Promise<void>(resolve => { release = resolve; }));
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await page.route("**/api/backend/research/SYNT/lens/analyst?**", route => {
     const url = new URL(route.request().url());
@@ -444,6 +445,7 @@ test("Ratings keeps a verified brief ahead of the cached section with no estimat
   const rating = page.locator("#research-ratings");
   await expect(rating).toBeVisible();
   const before = await rating.boundingBox();
+  release();
   const brief = page.locator(".mx-earnings-brief");
   await expect(brief).toBeVisible();
   expect((await rating.boundingBox())?.y).toBe(before?.y);

@@ -62,6 +62,18 @@ class ReadingService:
                 ).fetchone()
         return RoleReading.model_validate_json(row[0]) if row else None
 
+    def has_publication(self, role: PageRole, context: RoleContext, snapshot_id: str) -> bool:
+        """Read only an existence flag for this role, object and retained publication."""
+        with self.database.read() as db:
+            return (
+                db.execute(
+                    "SELECT 1 FROM assistant_readings WHERE role=? AND object_key=? "
+                    "AND json_extract(reading_json, '$.snapshotId')=? LIMIT 1",
+                    ("scheduled:" + role.cache_id, role.object_key(context), snapshot_id),
+                ).fetchone()
+                is not None
+            )
+
     def reserve(self, day: str, role: PageRole, context: RoleContext, slot: str) -> bool:
         with self.database.transaction(immediate=True) as db:
             db.execute(

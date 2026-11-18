@@ -32,6 +32,8 @@ from trading_max.research.valuation_preview import (
 from trading_max.research.venues import VenueConflict, row_claims
 
 from ..agent.research_citations import CitationQuery, ResearchCitation, resolve_citation
+from ..agent.research_roles import SecurityContext
+from ..agent.roles import role_registry
 from ..agent.tools import Ticker
 from ..dashboard_models import (
     PriceSeriesPoint,
@@ -803,6 +805,18 @@ def research_lens(
         detail=detail,
         diagnostics=diagnostics,
     )
+    if (
+        view in {"analyst", "fundamentals"}
+        and not payload.earnings_brief_eligible
+        and payload.context
+        and payload.context.asset_type not in {"ETF", "INDEX", "MUTUALFUND"}
+        and app_service(request, "settings_repository").get_profile().assistant_enabled
+    ):
+        role = role_registry()["earnings-brief"]
+        if app_service(request, "assistant_readings").has_publication(
+            role, SecurityContext(ticker=payload.ticker), payload.run_id
+        ):
+            payload = payload.model_copy(update={"earnings_brief_eligible": True})
     response.headers["Server-Timing"] = (
         f'research_lens;dur={(perf_counter() - started) * 1000:.1f}, research_cache;desc="{diagnostics.get("cache", "unknown")}"'
     )
