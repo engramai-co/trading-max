@@ -1,0 +1,207 @@
+/* These lenses can share a window with a pinned list and a side panel. */
+.mx-reading-container {
+  --mx-reading-top: 56px;
+  container: research-reading / inline-size;
+  min-width: 0;
+}
+.mx-reading-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 142px;
+  gap: 24px;
+  align-items: start;
+}
+.mx-section-index {
+  position: sticky;
+  top: calc(var(--mx-reading-top) + 12px);
+  grid-column: 2;
+  grid-row: 1;
+  display: grid;
+  gap: 4px;
+  z-index: 4;
+}
+.mx-section-index a {
+  padding: 7px 10px;
+  border-inline-start: 2px solid transparent;
+  color: var(--mx-muted);
+  text-decoration: none;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.mx-section-index a[aria-current] {
+  border-color: var(--mx-brand);
+  color: var(--mx-ink);
+  font-weight: 600;
+}
+.mx-section-index a:hover {
+  color: var(--mx-ink);
+}
+.mx-reading-sections {
+  grid-area: 1 / 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+}
+.mx-reading-sections > [id] {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  scroll-margin-top: calc(var(--mx-reading-top) + 12px);
+}
+.mx-reading-sections > section > h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.mx-reading-sections :is(.mx-panel, details, .mx-model-output, .mx-plot, .mx-table-wrap) {
+  min-width: 0;
+}
+.mx-reading-sections .mx-model-inputs {
+  scroll-margin-top: calc(var(--mx-reading-top) + 60px);
+  position: static;
+}
+.mx-reading-sections .mx-forecast-table th:first-child {
+  white-space: nowrap;
+}
+.mx-valuation-readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.mx-valuation-readout > .mx-metric {
+  min-width: 0;
+  padding-inline: 18px;
+  border-inline-start: 1px solid var(--mx-border);
+}
+.mx-valuation-readout > .mx-metric:first-child {
+  border: 0;
+  padding-inline-start: 0;
+}
+.mx-valuation-readout .mx-number {
+  font-size: clamp(18px, 2.3cqi, 28px);
+}
+.mx-reading-sections .mx-expectations {
+  --mx-rating-0: var(--mx-muted);
+  --mx-rating-1: color-mix(in srgb, var(--mx-muted) 85%, var(--mx-surface));
+  --mx-rating-2: color-mix(in srgb, var(--mx-muted) 70%, var(--mx-surface));
+  --mx-rating-3: color-mix(in srgb, var(--mx-muted) 55%, var(--mx-surface));
+  --mx-rating-4: color-mix(in srgb, var(--mx-muted) 40%, var(--mx-surface));
+}
+.mx-target-key {
+  margin-inline-start: 8px;
+  font-size: inherit;
+}
+.mx-target-key::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mx-muted);
+  vertical-align: middle;
+  margin-inline-end: 4px;
+}
+.mx-reading-detail {
+  margin: 0;
+}
+.mx-compact-records {
+  display: none;
+}
+.mx-reading-sections > .mx-model-workbench {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.mx-reading-sections .mx-model-output {
+  grid-column: 1 / -1;
+}
+.mx-reading-sections .mx-model-reference-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+@container research-reading (max-width: 920px) {
+  .mx-reading-layout {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+  .mx-section-index {
+    grid-area: 1 / 1;
+    top: var(--mx-reading-top);
+    display: flex;
+    overflow-x: auto;
+    background: var(--mx-canvas);
+    border-bottom: 1px solid var(--mx-border);
+    gap: 8px;
+  }
+  .mx-section-index a {
+    padding: 12px 4px;
+    min-height: 44px;
+    white-space: nowrap;
+    border: 0;
+    border-bottom: 2px solid transparent;
+  }
+  .mx-section-index a[aria-current] {
+    border-bottom-color: var(--mx-brand);
+  }
+  .mx-reading-sections {
+    grid-area: 2 / 1;
+  }
+  .mx-reading-sections > [id], .mx-reading-sections #valuation-results {
+    scroll-margin-top: calc(var(--mx-reading-top) + 56px);
+  }
+  .mx-reading-sections .mx-model-workbench, .mx-reading-sections .mx-model-reference-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 767px) {
+  .mx-reading-container {
+    --mx-reading-top: calc(64px + env(safe-area-inset-top));
+  }
+  .mx-wide-records {
+    display: none;
+  }
+  .mx-compact-records {
+    display: block;
+  }
+  .mx-compact-records :is(dl, dd) {
+    margin: 0;
+  }
+  .mx-compact-records dl + dl, .mx-compact-records section + section {
+    border-top: 1px solid var(--mx-border);
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  .mx-compact-records dl > div {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding-block: 4px;
+  }
+  .mx-compact-records dt {
+    white-space: nowrap;
+    color: var(--mx-muted);
+  }
+  .mx-compact-records dd {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+  .mx-compact-records h4 {
+    margin: 0 0 6px;
+  }
+  .mx-compact-records abbr {
+    text-decoration: none;
+  }
+  .mx-valuation-readout > .mx-metric {
+    padding-inline: 8px;
+  }
+  .mx-valuation-readout > .mx-metric:last-child {
+    padding-inline-end: 0;
+  }
+  .mx-valuation-readout .mx-number {
+    font-size: clamp(15px, 4.5cqi, 20px);
+  }
+  .mx-reading-sections .mx-table {
+    width: max-content;
+    min-width: 100%;
+  }
+  .mx-reading-sections :is(.mx-target-values, .mx-table-wrap, .mx-table-scroll) {
+    max-width: 100%;
+    overflow-x: auto;
+  }
+}

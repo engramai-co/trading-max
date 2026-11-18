@@ -272,14 +272,6 @@
   text-align: left;
   color: var(--mx-warning);
 }
-.mx-target-history {
-  margin-top: 18px;
-}
-.mx-target-history h3 {
-  margin: 0;
-  font-size: 14px;
-}
-
 .mx-chart-host[data-expanded="true"] {
   position: fixed;
   z-index: 1100;
