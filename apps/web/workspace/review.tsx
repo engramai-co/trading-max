@@ -83,15 +83,22 @@ export function ReviewWorkspace() {
   const { params, update } = useRouteState("push");
   const scope = reviewScope(params.get("account"));
   const all = scope === "all";
-  const overview = useDashboardLens("review", undefined, all);
-  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all, ACCOUNT_REVIEW_SELECTION);
+  const snapshotId = params.get("snapshotId");
+  const pinned = snapshotId !== null;
+  const decision = parseDecisionParam(params.get("decision"));
+  const canRead = !pinned || (!!snapshotId && (scope === "A" || scope === "B") && !!decision);
+  const overview = useDashboardLens("review", undefined, all && canRead);
+  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all && canRead, ACCOUNT_REVIEW_SELECTION, snapshotId ?? undefined);
   const query = all ? overview : single;
   const current = useMemo(
     () => query.data && { scope, data: query.data, updatedAt: query.dataUpdatedAt },
     [scope, query.data, query.dataUpdatedAt],
   );
   // Another scope keeps showing the last one until its own review arrives.
-  const result = useRetainedResult(current);
+  const live = useRetainedResult(pinned ? undefined : current);
+  // Recheck retention before revealing even a previously cached citation.
+  const confirmed = !query.isFetching && !query.isError && current?.data.runId === snapshotId;
+  const result = pinned ? (confirmed ? current : undefined) : live;
   const publicationFailure = usePublicationFailure(result?.updatedAt ?? 0);
   const failure = query.isError && result ? { updatedAt: result.updatedAt, retry: query.refetch } : publicationFailure;
   // Horizon choices live here, keyed by account and decision, so they outlive the panels that use them.
@@ -102,7 +109,8 @@ export function ReviewWorkspace() {
     () => !data || shown === "C" ? [] : shown === "all" ? allDecisions(data.decisionReviews) : scopedDecisions(shown, data.selectedAccountDecisions),
     [data, shown],
   );
-  const focus = shown === "all" || shown === "C" ? undefined : linkedDecision(rows, parseDecisionParam(params.get("decision")));
+  const focus = shown === "all" || shown === "C" ? undefined : linkedDecision(rows, decision);
+  const missingDecision = pinned && (!canRead || (!!result && !focus));
   const { horizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
   const reviews = shown === "all"
     ? (["A", "B"] as const).map((code) => data?.decisionReviews?.[code])
@@ -116,7 +124,7 @@ export function ReviewWorkspace() {
     <Page
       className="mx-review-page"
       title={t("投资复盘", "Investment review")}
-      nav={<ScopeSwitch value={scope} onChange={(value) => update({ account: value === "all" ? null : value, decision: null })} />}
+      nav={<ScopeSwitch value={scope} onChange={(value) => update({ account: value === "all" ? null : value, decision: null, snapshotId:null })} />}
       actions={
         <span className="mx-freshness-group">
           {available && <HorizonSwitch horizon={horizon} days={days} onChange={choose} />}
@@ -125,10 +133,12 @@ export function ReviewWorkspace() {
         </span>
       }
     >
-      {!result && query.isPending ? (
+      {missingDecision ? (
+        <Empty title={t("引用的交易决定暂不可用", "Cited decision unavailable")} />
+      ) : !result && (query.isPending || (pinned && query.isFetching)) ? (
         <Pending shape="review" label={t("正在读取账户复盘…", "Loading account reviews…")} />
       ) : !result || !data ? (
-        <QueryError retry={query.refetch} />
+        pinned ? <Empty title={t("引用的数据版本暂不可用", "Cited publication unavailable")} /> : <QueryError retry={query.refetch} />
       ) : (
         <div className="mx-data-body mx-review-body" aria-busy={result.scope !== scope || undefined}>
           {shown === "C" ? (
@@ -164,7 +174,7 @@ export function ReviewWorkspace() {
                     focus={focus}
                     onClear={() => {
                       release();
-                      update({ decision: null });
+                      update({ decision: null, snapshotId:null });
                     }}
                     onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row) })}
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}

@@ -61,6 +61,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     enabled: checkStatus, staleTime: statusFreshFor, retry: false,
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
+  // A failed status read leaves the previous approval unconfirmed. Keep the local
+  // thread hidden until a fresh answer arrives, just as for a pending consent signal.
+  const suspended = waitingForConsent || (checkStatus && status.isError);
   const confirmConsent = useCallback(async () => {
     const revision = ++nextRevision.current;
     setExternalRevision(revision);
@@ -122,7 +125,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, suspended: waitingForConsent, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }

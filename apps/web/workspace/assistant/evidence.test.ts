@@ -350,3 +350,10 @@ it("preserves the selected market on an early-close source link", () => {
   const url = new URL(evidenceHref(line.evidence!)!, "http://localhost");
   expect(Object.fromEntries(url.searchParams)).toMatchObject({market:"US",eventTicker:"ALFA",eventId:"ev_early",snapshotId:"saved"});
 });
+
+it("withholds Broker links without an investing account and a decision identity", () => {
+  const args = {scope:"invest", side:"buy", date:"2026-11-25", ticker:"ALFA", event:"own_trade", eventId:"ev_trade", snapshotId:"original"};
+  for (const missing of [{scope:"broker_total"}, {scope:"cfd"}, {side:""}, {date:""}, {ticker:""}, {eventId:""}, {snapshotId:""}]) {
+    expect(evidenceHref({tool:"news_and_events", source:"broker", evidenceId:"ev_source", arguments:{...args,...missing}})).toBeNull();
+  }
+});

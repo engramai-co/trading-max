@@ -240,3 +240,49 @@ def test_retained_returns_cannot_evict_the_live_dashboard(research_root, tmp_pat
             )
             assert result.status_code == 200
         assert app.state.cached_dashboard(publications[-1], include_history=False) is live
+
+
+def test_retained_account_decisions_reopen_the_original_then_expire(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    store = ArtifactStore(tmp_path / "state")
+    typed_fixture(research_root, store)
+    base = store.immutable_snapshots.latest().manifest.artifacts
+
+    def publish_decision(amount):
+        item = {
+            "date": "2026-11-25",
+            "ticker": "ALFA",
+            "name": "Synthetic",
+            "side": "buy",
+            "kind": "B",
+            "amount_gbp": amount,
+        }
+        artifact = store.immutable_artifacts.put_json(
+            key="account/decisions.json",
+            payload={"accounts": {"A": {"status": "available", "decisions": [item]}}},
+        )
+        return store.immutable_snapshots.publish(
+            scope="all",
+            source="test",
+            artifacts=[
+                *[entry for entry in base if entry.key != "account/decisions.json"],
+                artifact,
+            ],
+        ).manifest.run_id
+
+    old = publish_decision(125)
+    new = publish_decision(950)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    with TestClient(app) as client:
+        path = "/v1/dashboard/lens/account-analysis"
+        params = {"detail": "summary", "account": "A"}
+        for run, amount in [(new, 950), (old, 125)]:
+            response = client.get(path, params={**params, "run_id": run})
+            assert response.status_code == 200
+            data = response.json()
+            assert data["runId"] == run
+            assert data["selectedAccountDecisions"]["decisions"][0]["amountGbp"] == amount
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert old in store.prune_snapshots(keep_recent=1)
+        assert client.get(path, params={**params, "run_id": old}).status_code == 404

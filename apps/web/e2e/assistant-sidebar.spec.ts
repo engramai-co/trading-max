@@ -894,16 +894,8 @@ test("a historical dividend in chat reopens its published amount and basis", asy
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
 });
 
-test("mixed historical event replies retain their published dates and citations", async ({page}, info) => {
-  await fixtures(page);
-  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+async function streamHistoricalEventReplies(page: Page, turns: string[][]) {
   const items = historicalEvents.data.items;
-  // Each turn selects up to four observations from the same eight-row tool result.
-  const turns = [
-    ["news", "earnings", "ex_dividend", "dividend"],
-    ["earnings", "dividend", "ex_dividend", "dividend_pay"],
-    ["news", "rating_change", "filing", "own_trade"],
-  ];
   let next = 0;
   await page.route("**/api/backend/assistant/chat*", route => {
     const id = "historical-" + next;
@@ -917,6 +909,19 @@ test("mixed historical event replies retain their published dates and citations"
     return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
       body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n"});
   });
+}
+
+test("mixed historical event replies retain their published dates and citations", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const items = historicalEvents.data.items;
+  // Each turn selects up to four observations from the same eight-row tool result.
+  const turns = [
+    ["news", "earnings", "ex_dividend", "dividend"],
+    ["earnings", "dividend", "ex_dividend", "dividend_pay"],
+    ["news", "rating_change", "filing", "own_trade"],
+  ];
+  await streamHistoricalEventReplies(page, turns);
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   const input = page.getByRole("textbox",{name:"Message"});
@@ -942,4 +947,152 @@ test("mixed historical event replies retain their published dates and citations"
     }
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dates-"+index+".png")});
   }
+});
+
+async function openDraftBeforeStatusCheck(page: Page) {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const draft = panel.getByRole("textbox", {name:"Message"});
+  await expect(draft).toBeFocused();
+  await page.keyboard.type("Continue");
+  await expect(draft).toHaveValue("Continue");
+  return {panel, draft, send:panel.getByRole("button", {name:"Send"})};
+}
+
+async function holdPassiveStatus(page: Page) {
+  let release!: (status: number) => void;
+  const held = new Promise<number>(resolve => { release = resolve; });
+  await page.route("**/api/backend/assistant/status", async route => {
+    const status = await held;
+    await route.fulfill({status, json:status === 200 ? {ready:true,code:null} : {detail:"Temporarily unavailable"}});
+  }, {times:1});
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.locator("#mx-assistant-panel").getByText("Checking connection…")).toBeVisible();
+  return release;
+}
+
+test("a passive status failure preserves the draft until readiness recovers", async ({page}) => {
+  const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
+  const posts: string[] = [];
+  page.on("request", request => {
+    if (new URL(request.url()).pathname.endsWith("/assistant/chat")) posts.push(request.postDataJSON().messages[0].parts[0].text);
+  });
+  const fail = await holdPassiveStatus(page);
+  await expect(send).toBeDisabled();
+  await page.keyboard.type("s through recovery");
+  await expect(draft).toHaveValue("Continues through recovery");
+  fail(503);
+  await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+  await expect(draft).toBeHidden();
+  const retry = await holdPassiveStatus(page);
+  // Exercise the actual submission handler even if the composer is hidden during confirmation.
+  await panel.locator("form").evaluateAll(forms => forms.forEach(form => (form as HTMLFormElement).requestSubmit()));
+  expect(posts).toEqual([]);
+  retry(200);
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue("Continues through recovery");
+  await expect(send).toBeEnabled();
+  await page.keyboard.press("Enter");
+  await expect.poll(() => posts).toEqual(["Continues through recovery"]);
+});
+
+test("a status failure after profile confirmation retains the hidden draft", async ({page}) => {
+  const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
+  const failed = page.waitForResponse(res => res.url().endsWith("/assistant/status") && res.status() === 503);
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({status:503, json:{detail:"Temporarily unavailable"}}), {times:1});
+  await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", {
+    key:"trading_max-assistant-settings-revision", newValue:"2",
+  })));
+  await failed;
+  await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+  await expect(draft).toBeHidden();
+  const retry = await holdPassiveStatus(page);
+  await expect(draft).toBeHidden();
+  retry(200);
+  await expect(draft).toBeFocused();
+  await expect(draft).toHaveValue("Continue");
+  await expect(send).toBeEnabled();
+});
+
+test("narrowing restores Message when the remembered Send button is disabled", async ({page}) => {
+  await page.setViewportSize({width:1440, height:900});
+  const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
+  await send.focus();
+  await expect(send).toBeFocused();
+  const skip = page.getByRole("link", {name:"Skip to content"});
+  await skip.focus();
+  await expect(skip).toBeFocused();
+
+  const release = await holdPassiveStatus(page);
+  try {
+    await expect(send).toBeDisabled();
+    await expect(skip).toBeFocused();
+    await page.setViewportSize({width:1100, height:900});
+    await expect(panel).toHaveRole("dialog");
+    await expect(draft).toBeFocused();
+    await page.keyboard.type(" typing");
+    await expect(draft).toHaveValue("Continue typing");
+  } finally { release(200); }
+});
+
+test("a Broker citation opens the retained decision and reports expiry", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await streamHistoricalEventReplies(page, [["own_trade", "earnings"]]);
+  const trade = historicalEvents.data.items.find(row => row.kind === "own_trade")!;
+  const snapshot = historicalEvents.snapshot_id;
+  let state: "available" | "missing" | "expired" = "available";
+  const requests: (string | null)[] = [];
+  await page.route("**/api/backend/dashboard/lens/account-analysis?**", route => {
+    const run = new URL(route.request().url()).searchParams.get("runId");
+    requests.push(run);
+    if (run === snapshot && state === "expired") return route.fulfill({status:404, json:{detail:"snapshot not found"}});
+    const decision = {date:trade.date,ticker:trade.ticker,side:trade.side,kind:"B",amountGbp:125,
+      name:run === snapshot ? "Original synthetic fill" : "Replacement synthetic fill",observedDays:2,events:[]};
+    return route.fulfill({json:{runId:run ?? "newer",accounts:[],holdings:[],nav:[],brokerAsOf:trade.date,
+      selectedAccountDecisions:{status:"available",asOf:trade.date,decisions:state === "missing" ? [] : [decision]}}});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const draft = page.getByRole("textbox", {name:"Message"});
+  await expect(draft).toBeFocused();
+  await page.keyboard.type("When was the purchase?");
+  await page.getByRole("button", {name:"Send"}).click();
+  await page.locator(".mx-turn-assistant").getByRole("link", {name:"Broker"}).click();
+  await expect(page).toHaveURL(url => url.pathname === "/review" && url.searchParams.get("snapshotId") === snapshot);
+  await expect.poll(() => requests[0]).toBe(snapshot);
+  await expect(page.locator(".mx-decision-focus")).toContainText("Original synthetic fill");
+  for (const outcome of ["missing", "expired"] as const) {
+    state = outcome;
+    await page.reload();
+    await expect(page.getByText(outcome === "expired" ? "Cited publication unavailable" : "Cited decision unavailable")).toBeVisible();
+    await expect(page.locator(".mx-decision-focus")).toHaveCount(0);
+  }
+  expect(requests.every(run => run === snapshot)).toBe(true);
+});
+
+test("first approval focuses the lazy composer after the opening consent check", async ({page}, info) => {
+  if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  let approve!: () => void;
+  const held = new Promise<void>(resolve => { approve = resolve; });
+  await page.route("**/api/backend/assistant/status", async route => {
+    await held;
+    await route.fulfill({json:{ready:true,code:null}});
+  });
+  await page.goto("/");
+  await page.keyboard.press("Control+j");
+  const panel = page.locator("#mx-assistant-panel");
+  try { await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused(); }
+  finally { approve(); }
+  const draft = panel.getByRole("textbox", {name:"Message"});
+  await expect(draft).toBeFocused();
+  await page.keyboard.type("First message");
+  await expect(draft).toHaveValue("First message");
 });

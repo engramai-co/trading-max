@@ -8,6 +8,7 @@ import { useCopy } from "../foundation";
 import { errorLabel } from "./status-label";
 import { ASSISTANT_NAME } from "../assistant-settings";
 import { useAssistant } from "./context";
+import { focusAssistantControl } from "./focus";
 
 const Sidebar = dynamic(() => import("./sidebar"), { ssr: false });
 
@@ -19,7 +20,7 @@ function cyclePanelTab(event: ReactKeyboardEvent<HTMLDivElement>) {
   event.preventDefault();
   const index = controls.indexOf(document.activeElement as HTMLElement);
   const next = event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length;
-  controls[next].focus();
+  focusAssistantControl(controls[next]);
 }
 
 export function AssistantEntry() {
@@ -51,30 +52,27 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
   const [composer, setComposer] = useState<HTMLTextAreaElement | null>(null);
   const panel = useRef<HTMLDivElement>(null);
   const lastControl = useRef<HTMLElement>(null);
-  const gateClose = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (open !== wasOpen.current) {
       needsOpeningFocus.current = open;
       if (open && composer) lastControl.current = composer;
-      if (!open) document.querySelector<HTMLElement>("[data-assistant-trigger]")?.focus({preventScroll:true});
+      if (!open) focusAssistantControl(document.querySelector<HTMLElement>("[data-assistant-trigger]"));
     }
     wasOpen.current = open;
     if (!ready && !pending && !suspended) lastControl.current = null;
     if (!open || searchOpen) return;
-    if (handoff && handoff.sequence !== focusedHandoff.current && composer?.isConnected && showThread) {
+    if (handoff && handoff.sequence !== focusedHandoff.current && showThread && focusAssistantControl(composer)) {
       focusedHandoff.current = handoff.sequence;
       needsOpeningFocus.current = false;
-      composer.focus({preventScroll:true});
       return;
     }
     const active = document.activeElement;
     // An explicit open can precede the lazy composer. A non-modal panel leaves background focus alone.
     if (!needsOpeningFocus.current && !overlay && active && active !== document.body && !panel.current?.contains(active)) return;
-    const target = !showThread ? gateClose.current : lastControl.current?.isConnected ? lastControl.current : composer;
-    if (target?.isConnected) {
-      needsOpeningFocus.current = false;
-      if (target !== active) target.focus({preventScroll:true});
-    }
+    // The lazy thread can mount its Close button one render before its composer ref arrives.
+    if (needsOpeningFocus.current && showThread && !composer && !lastControl.current) return;
+    const dismiss = panel.current?.querySelectorAll<HTMLElement>("[data-assistant-dismiss]") ?? [];
+    if (focusAssistantControl(lastControl.current, composer, ...dismiss)) needsOpeningFocus.current = false;
   }, [open, overlay, pending, ready, suspended, searchOpen, composer, showThread, handoff]);
   if (thread === "unvisited" && !open) return null;
   return <div ref={panel} id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
@@ -83,7 +81,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
     {(ready || pending || suspended) && thread !== "unvisited" && <div className="mx-assistant-thread" hidden={!showThread}
       onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, search, scopeLabel }} checking={showThread && pending} composerRef={setComposer} /></div>}
     {!showThread && <>
-      <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button ref={gateClose} onClick={close}
+      <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button data-assistant-dismiss onClick={close}
         onKeyDown={event => { if (pending && event.key === "Tab") event.preventDefault(); }}
         aria-label={t("关闭侧栏","Close sidebar")}><X /></button></div>
       <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
