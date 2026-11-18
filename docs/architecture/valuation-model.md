@@ -201,5 +201,10 @@ value divided by the current batch spot less one. A currency mismatch withholds
 the reading. Clearing the designation restores the automatic batch result.
 Editing or saving alone does not designate a baseline.
 
+A saved version can be compared with the latest statements, price and
+exchange rate and with the editor's current proposal. The comparison and
+locked assumptions are described in the [valuation agent](valuation-agent.md#reviewing-new-evidence)
+notes.
+
 Valuation alerts remain disabled for indicative models pending back-testing
 and calibration.
