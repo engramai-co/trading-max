@@ -55,6 +55,22 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
                 {"date": row["date"], "kind": row["kind"], "reference": row["source_url"]}
             )
 
+    # The pinned chart itself can be the only record of a fund distribution.
+    # A payment date is distinct from an ex-date, even if both fall on one day.
+    distribution_days = {e["date"] for e in events if e["kind"] in {"dividend", "ex_dividend"}}
+    if series.published_bar_ticker == ticker:
+        for bar in series.events:
+            day = bar["date"]
+            if (
+                bar["kind"] == "dividend"
+                and args.start <= day <= args.end
+                and day not in distribution_days
+            ):
+                events.append(
+                    {"date": day, "kind": "dividend", "reference": f"price_bar:{ticker}:{day}"}
+                )
+                distribution_days.add(day)
+
     def feed(key):
         return _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
 
@@ -73,9 +89,11 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
     if evidence.get("news"):
         keys.append(FINANCIALS)
     rows = [row for row in listed_headlines(ticker, raw_rows) if row]
-    exchange = series.exchange_calendar or listing_calendar(
-        ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
-    )
+    exchange = series.exchange_calendar
+    if not exchange and not series.published_bar_exchange:
+        exchange = listing_calendar(
+            ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
+        )
     for row in headline_stories(rows, raw_rows):
         published = row["date"]
         day = _news_session(exchange, row["instant"]) if row["instant"] else published

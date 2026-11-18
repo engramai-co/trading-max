@@ -2,57 +2,71 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 
 import exchange_calendars as xcals
 import pandas as pd
+from exchange_calendars.common_holidays import ascension_day, corpus_christi, whit_monday
 from exchange_calendars.errors import CalendarError
+from exchange_calendars.exchange_calendar import HolidayCalendar
+from exchange_calendars.exchange_calendar_xfra import XFRAExchangeCalendar
+from pandas.tseries.holiday import Holiday
 from pydantic import Field
 
 from trading_max.domain import DomainModel
 
-EXCHANGES = {
-    "NMS": "XNYS",
-    "NGM": "XNYS",
-    "NCM": "XNYS",
-    "NYQ": "XNYS",
-    "ASE": "XNYS",
-    "PCX": "XNYS",
-    "NASDAQ": "XNYS",
-    "NYSE": "XNYS",
-    "LSE": "XLON",
-    "LONDON": "XLON",
-    "HKG": "XHKG",
-    "JPX": "XTKS",
-    "TOR": "XTSE",
-    "ASX": "XASX",
-    "GER": "XFRA",
-    "PAR": "XPAR",
-    "AMS": "XAMS",
+YAHOO_SUFFIX_BY_MIC = {
+    "XLON": ".L",
+    "XAMS": ".AS",
+    "XETR": ".DE",
+    "XFRA": ".F",
+    "XBRU": ".BR",
+    "XMAD": ".MC",
+    "XSTO": ".ST",
+    "XHKG": ".HK",
+    "XTKS": ".T",
+    "XASX": ".AX",
+    "XTSE": ".TO",
+    "XPAR": ".PA",
+    "XMIL": ".MI",
+    "XSWX": ".SW",
+    "XNYS": "",
+    "XNAS": "",
+    "ARCX": "",
 }
+YAHOO_MIC_BY_SUFFIX = {suffix: mic for mic, suffix in YAHOO_SUFFIX_BY_MIC.items() if suffix}
 
-# Exchanges by the time zone the provider reports, for exchange names it does
-# not give as a code above (for example NasdaqGS or XETRA).
-ZONES = {
-    "America/New_York": "XNYS",
-    "America/Toronto": "XTSE",
-    "Europe/London": "XLON",
-    "Europe/Dublin": "XDUB",
-    "Europe/Amsterdam": "XAMS",
-    "Europe/Berlin": "XETR",
-    "Europe/Brussels": "XBRU",
-    "Europe/Madrid": "XMAD",
-    "Europe/Rome": "XMIL",
-    "Europe/Paris": "XPAR",
-    "Europe/Zurich": "XSWX",
-    "Asia/Hong_Kong": "XHKG",
-    "Asia/Shanghai": "XSHG",
-    "Asia/Seoul": "XKRX",
-    "Asia/Taipei": "XTAI",
-    "Asia/Tokyo": "XTKS",
-    "Australia/Sydney": "XASX",
+# Provider codes, exchange names and MICs for regular cash-equity sessions.
+# Several US venues share the NYSE regular schedule.
+_VENUES = {
+    "XNYS": "XNYS NYQ NYSE NMS NGM NCM NGS NASDAQ NASDAQGS NASDAQGM NASDAQCM XNAS "
+    "ASE XASE AMEX NYSEAMERICAN PCX ARCX NYSEARCA BATS BTS BZX CBOEBZX",
+    "XLON": "XLON LSE LONDON LONDONSTOCKEXCHANGE",
+    "XFRA": "XFRA FRA FRANKFURT",
+    "XETR": "XETR GER XETRA ETR DEUTSCHEBOERSEXETRA",
+    "XAMS": "XAMS AMS EURONEXTAMSTERDAM",
+    "XBRU": "XBRU BRU EURONEXTBRUSSELS",
+    "XMAD": "XMAD MCE BOLSADEMADRID",
+    "XSTO": "XSTO STO STOCKHOLM",
+    "XHKG": "XHKG HKG HKEX HKSE",
+    "XTKS": "XTKS JPX TYO TOKYOSTOCKEXCHANGE",
+    "XASX": "XASX ASX ASX-ALLMARKETS",
+    "XTSE": "XTSE TOR TSX TORONTOSTOCKEXCHANGE",
+    "XPAR": "XPAR PAR EURONEXTPARIS",
+    "XMIL": "XMIL MIL BORSAITALIANA",
+    "XSWX": "XSWX EBS SWX SIXSWISSEXCHANGE",
+    "XDUB": "XDUB ISE",
+    "XKRX": "XKRX KSC KOSPI",
+    "XTAI": "XTAI TAI TWSE",
+    "XCSE": "XCSE CPH",
+    "XHEL": "XHEL HEL",
+    "XLIS": "XLIS LIS",
+    "XOSL": "XOSL OSL",
+    "XWBO": "XWBO VIE",
 }
+EXCHANGES = {code: mic for mic, codes in _VENUES.items() for code in codes.split()}
+
 # A schedule covers the recent sessions a quote or broker price can belong to
 # and the coming ones a page can stay open into.
 SCHEDULE_BEFORE = timedelta(days=14)
@@ -83,28 +97,49 @@ class SessionSchedule(DomainModel):
 
 
 def calendar_name(exchange: str | None) -> str | None:
-    return EXCHANGES.get(str(exchange or "").upper())
+    return EXCHANGES.get("".join(str(exchange or "").upper().split()))
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:
-    """The calendar of the exchange that quotes a listing.
+    """Resolve an observed venue or a qualified listing. Time zones span exchanges."""
+    if str(exchange or "").strip():
+        return calendar_name(exchange)
+    _, dot, suffix = str(symbol or "").strip().upper().rpartition(".")
+    return YAHOO_MIC_BY_SUFFIX.get(dot + suffix)
 
-    The provider's exchange code decides, then its time zone, then a London
-    ``.L`` symbol.
-    """
 
-    return (
-        calendar_name(exchange)
-        or ZONES.get(str(timezone or ""))
-        or ("XLON" if str(symbol or "").strip().upper().endswith(".L") else None)
-    )
+class _FrankfurtEquitiesCalendar(XFRAExchangeCalendar):
+    """Frankfurt floor-market shares and funds follow their own extended session."""
+
+    open_times = ((None, time(8)),)
+    close_times = ((None, time(20)), (pd.Timestamp("2021-11-29"), time(22)))
+
+    @property
+    def special_closes(self):
+        traded_holidays = HolidayCalendar(
+            [
+                ascension_day(start_date="2021-11-29"),
+                whit_monday(start_date="2021-11-29"),
+                corpus_christi(start_date="2021-11-29"),
+                Holiday(
+                    "German Unity Day",
+                    month=10,
+                    day=3,
+                    start_date="2021-11-29",
+                    days_of_week=(0, 1, 2, 3, 4),
+                ),
+            ]
+        )
+        return [*super().special_closes, (time(20), traded_holidays)]
 
 
 @lru_cache(maxsize=64)
 def market_calendar(name: str, first_year: int, last_year: int, *, buffer_years: int = 1):
-    return xcals.get_calendar(
-        name, start=f"{first_year - buffer_years}-01-01", end=f"{last_year + buffer_years}-12-31"
-    )
+    start = f"{first_year - buffer_years}-01-01"
+    end = f"{last_year + buffer_years}-12-31"
+    if name == "XFRA":
+        return _FrankfurtEquitiesCalendar(start=start, end=end)
+    return xcals.get_calendar(name, start=start, end=end)
 
 
 @lru_cache(maxsize=256)
