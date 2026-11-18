@@ -4,20 +4,25 @@ import "./readings.css";
 import { Drawer } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
-import { useEffect, useId, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
+import { createContext, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
 import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
 import { evidenceHref, observationText, sourceLabel, type Evidence, type Reading } from "./evidence";
 
+/** A bottom sheet closes when one of its citations is followed, so the page can take focus. */
+const FollowCitation = createContext<(() => void) | null>(null);
+
 export function EvidenceLink({ evidence, onNavigate }: { evidence: Evidence; onNavigate?: ComponentProps<typeof Link>["onNavigate"] }) {
   const t = useCopy();
   const { close, open } = useAssistant();
+  const leaveSheet = useContext(FollowCitation);
   const word = sourceLabel(evidence, t);
   const href = evidenceHref(evidence);
   if (href && /^https?:/.test(href)) return <a className="mx-reading-source" href={href} title={evidence.arguments?.credit} rel="noreferrer" target="_blank">{word}</a>;
-  return href ? <Link className="mx-reading-source" href={href} onNavigate={onNavigate} onClick={() => { if (open && window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
+  return href ? <Link className="mx-reading-source" href={href} onNavigate={(event) => { onNavigate?.(event); leaveSheet?.(); }}
+    onClick={() => { if (open && window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
 export function ObservationLine({line}: {line: Reading["lines"][number]}) {
   const {locale, timeZone} = useLocale();
@@ -67,7 +72,9 @@ function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef }: R
   return <Drawer opened onClose={dismiss} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title + " · " + card.object}</span>}
     returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{ref:closeButton,"aria-label":t("关闭解读", "Close reading")}}
     classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>
-    {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
+    <FollowCitation.Provider value={onClose}>
+      {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
+    </FollowCitation.Provider>
   </Drawer>;
 }
 export function InlineReading({ card, children, onClose, focusClose, returnFocusRef }: ReadingContainerProps) {
