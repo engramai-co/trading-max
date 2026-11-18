@@ -831,7 +831,7 @@ const draftResponse = { phase: "complete", result: { id: "synthetic-draft", snap
     growthCap:.3, marginCap:.18, shareCagr:.01, exitMultiple:16, basis:{startMargin:.12} },
     scenarios:{bear:{discountRate:.12}}, evidenceIds:["statement"] } },
   evidence: {
-    estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {kind:"forecast",end:"2026-12-31"},
+    estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {kind:"forecast",forecastSlot:"+1y",end:"2026-12-31"},
       publishedAt:"2025-12-20", observedAt:"2026-11-03T21:00:00Z", value: 0.19, unit: "ratio" },
     statement: { locator: { dataset: "financials" }, metric: "freeCashflow", period: {kind:"annual",end:"2025-12-31"},
       observedAt:"2026-02-10T21:00:00Z", value: 120, unit: "currency", currency: "USD" },
@@ -896,6 +896,8 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await editor.getByRole("link", { name: en ? "Analysts" : "分析师", exact:true }).first().click();
     const evidence = page.locator("#draft-evidence-estimate");
     await expect(evidence).toContainText("19%");
+    await expect(evidence).toContainText(en ? "Next fiscal year" : "下一财年");
+    await expect(evidence).toContainText(en ? "As of 20 Dec 2025" : "截至 2025年12月20日");
     await expect(evidence.getByRole("link")).toHaveAttribute("href", /view=analyst/);
     await editor.getByRole("button", {name:(en ? "Reject " : "拒绝 ") + margin, exact:true}).click();
     await editor.getByRole("button", {name:en ? "Save model version" : "保存模型版本",exact:true}).click();

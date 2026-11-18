@@ -211,7 +211,9 @@ function EvidenceFigure({row}: {row: EvidenceRow}) {
   const periods = {spot: t("时点", "Spot"), ttm: t("过去十二个月", "TTM"), annual: t("财年", "FY"),
     quarterly: t("季度", "Quarter"), semiannual: t("半年", "Half-year"), irregular: t("报告期", "Period"),
     forecast: t("预测期", "Forecast period")};
-  const period = [periods[row.period.kind], row.period.end && formatCalendarDate(row.period.end, locale)].filter(Boolean).join(" ");
+  const forecast = {"0q":t("本财季", "Current fiscal quarter"), "+1q":t("下一财季", "Next fiscal quarter"),
+    "0y":t("本财年", "Current fiscal year"), "+1y":t("下一财年", "Next fiscal year")};
+  const period = [row.period.forecastSlot ? forecast[row.period.forecastSlot] : periods[row.period.kind], row.period.end && formatCalendarDate(row.period.end, locale)].filter(Boolean).join(" ");
   const stamp = row.publishedAt ?? row.observedAt;
   const asOf = stamp?.length === 10 ? formatCalendarDate(stamp, locale) : stamp ? formatDateTime(stamp, locale, timeZone) : "—";
   return <>{metricLabel(row.metric, locale)} {evidenceValue(row,t)} · {period} · {row.publishedAt ? t("截至", "As of") : t("采集于", "Observed")} {asOf}</>;
