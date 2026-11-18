@@ -90,6 +90,11 @@ export function displayTurns(messages: UIMessage[]) {
   }
   return turns;
 }
+export function evidenceArguments(args: Json, output: Json): Record<string, string> {
+  const effective = {...args, ...object(output.bound_arguments)};
+  return Object.fromEntries(Object.entries(effective).filter((p): p is [string, string] => typeof p[1] === "string"));
+}
+
 export function completedEvidence(message: UIMessage) {
   const refs = new Map<string, { ref: Evidence; output: Json }>();
   const ambiguous = new Set<string>();
@@ -100,7 +105,7 @@ export function completedEvidence(message: UIMessage) {
     const id = str(output.evidence_id);
     if (!id || ambiguous.has(id)) continue;
     const raw = object(object(part.input).args ?? part.input);
-    const args = Object.fromEntries(Object.entries(raw).filter((p): p is [string, string] => typeof p[1] === "string"));
+    const args = evidenceArguments(raw, output);
     const ref: Evidence = { evidenceId: id, tool, arguments: args, source: tool === "read_research_lens" && lensWords[args.lens] || destinations[tool][1] };
     if (tool === "research_headline") {
       const story = object(output.data);
