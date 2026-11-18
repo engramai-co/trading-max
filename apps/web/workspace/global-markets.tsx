@@ -218,7 +218,9 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   }, [placement]);
   const deferDismiss = () => {
     cancelDismiss();
-    if (!pinned.current) closeTimer.current = setTimeout(close, 240);
+    if (!pinned.current) closeTimer.current = setTimeout(() => {
+      if (document.activeElement !== trigger.current && !popover.current?.contains(document.activeElement)) close();
+    }, 240);
   };
   const bindings = (market: Market) => ({
     onPointerEnter: (event: React.PointerEvent) => { if (event.pointerType !== "touch") setHovered(market); },

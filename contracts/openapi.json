@@ -5241,6 +5241,13 @@
             "title": "Total Items",
             "type": "integer"
           },
+          "window_benchmarks": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Window Benchmarks",
+            "type": "object"
+          },
           "window_end": {
             "title": "Window End",
             "type": "string"
@@ -5248,6 +5255,20 @@
           "window_start": {
             "title": "Window Start",
             "type": "string"
+          },
+          "window_twr_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window Twr Fraction"
+          },
+          "worst_day": {
+            "$ref": "#/components/schemas/DailyReturn"
           }
         },
         "required": [
@@ -5259,6 +5280,9 @@
           "range",
           "window_start",
           "window_end",
+          "window_twr_fraction",
+          "window_benchmarks",
+          "worst_day",
           "benchmark",
           "benchmark_currency",
           "benchmark_basis"

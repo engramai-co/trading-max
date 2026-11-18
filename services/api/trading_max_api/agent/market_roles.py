@@ -97,7 +97,17 @@ def sector_facts(read: RoleTools, context: SectorContext):
     facts = []
 
     def add(section, zh, en, source="market"):
-        facts.append(line(section, zh, en, result, source, "market_sector", **context.model_dump()))
+        facts.append(
+            line(
+                section,
+                zh,
+                en,
+                result,
+                source,
+                "market_sector",
+                **context.model_dump(exclude_none=True),
+            )
+        )
 
     if not data:
         return []
@@ -218,7 +228,7 @@ def map_facts(read: RoleTools, context: MarketContext):
             result,
             "market",
             "global_map",
-            **context.model_dump(),
+            **context.model_dump(exclude_none=True),
         )
         for m in data["markets"]:
             day = data["day"]
@@ -243,6 +253,10 @@ def map_facts(read: RoleTools, context: MarketContext):
                     f"A local index quote was unavailable on {day}.",
                 )
             item.variants[m["market"]] = LinkedObservation(zh=zh, en=en, evidence=item.evidence)
+        # The model sees the observations behind both editorial angles in one run.
+        item.en += ". " + " ".join(
+            f"{market.upper()}: {value.en}" for market, value in item.variants.items()
+        )
         facts.append(item)
     return facts
 

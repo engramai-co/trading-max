@@ -3244,10 +3244,17 @@ export interface components {
             range: string;
             /** Total Items */
             total_items: number;
+            /** Window Benchmarks */
+            window_benchmarks: {
+                [key: string]: number;
+            };
             /** Window End */
             window_end: string;
             /** Window Start */
             window_start: string;
+            /** Window Twr Fraction */
+            window_twr_fraction: number | null;
+            worst_day: components["schemas"]["DailyReturn"];
         };
         /** DailyTracking */
         DailyTracking: {

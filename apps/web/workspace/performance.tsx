@@ -342,6 +342,7 @@ export function PerformanceContent({
       ) : (
         <>
           <Panel className="mx-performance-chart">
+            {ready && <h2 className="sr-only">{view === "money" ? t("资金与盈亏","Money and P&L") : t("收益对比","Return comparison")}</h2>}
             {/* The tab names the view; the chart's controls share one row. */}
             <div className="mx-toolbar mx-chart-toolbar">
               {view === "money" ? (

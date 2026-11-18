@@ -16,7 +16,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
-  daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
+  selected_money: ["/analytics","account"], daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
   dated_exposure: ["/holdings","exposure"], exposure_benchmark: ["/holdings","exposure"],
   market_sector: ["/sectors","market"], global_map: ["/sectors","market"], update_issue: ["/health","health"],
   news_and_events: ["/research","publisher"], data_freshness: ["/health", "health"],

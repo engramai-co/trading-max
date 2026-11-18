@@ -53,6 +53,9 @@ class DailyReturns(Page[DailyReturn]):
     range: str
     window_start: str
     window_end: str
+    window_twr_fraction: float | None
+    window_benchmarks: dict[str, float]
+    worst_day: DailyReturn
     benchmark: str
     benchmark_currency: str | None
     benchmark_basis: str | None

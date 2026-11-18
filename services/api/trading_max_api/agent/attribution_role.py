@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import model_validator
+from trading_max.portfolio_math import portfolio_money, select_portfolio_history
 
-from . import insights
+from . import insights, tools
 from .deps import AccountScope
-from .overview_roles import line
+from .overview_roles import LONDON, line
 from .roles import PageRole, RoleContext, RoleTools
 
 
@@ -40,20 +41,59 @@ class AttributionContext(RoleContext):
 def matches(since: str | None, as_of: str | None, context: AttributionContext):
     if not since or not as_of:
         return False
-    if len(context.start) == 10:
-        from .overview_roles import LONDON
+    for raw, selected in ((since, context.start), (as_of, context.end)):
+        observed = datetime.fromisoformat(raw)
+        if len(selected) == 10:
+            day = observed.astimezone(LONDON).date() if observed.tzinfo else observed.date()
+            if day.isoformat() != selected:
+                return False
+        elif observed != datetime.fromisoformat(selected):
+            return False
+    return True
 
-        return all(
-            datetime.fromisoformat(raw).astimezone(LONDON).date().isoformat() == day
-            for raw, day in ((since, context.start), (as_of, context.end))
-            if len(raw) > 10
-        ) and all(
-            len(raw) > 10 or raw == day
-            for raw, day in ((since, context.start), (as_of, context.end))
+
+def selected_money(ctx: tools.Context, args: AttributionContext):
+    """Cash-flow-adjusted money result from the chart's full-cadence records."""
+    read = tools._Read(ctx.deps, "selected_money", args, args.scope)
+    read.account_codes(args.scope)
+    loaded = tools._history_input(read, args.scope, "ALL")
+    if not loaded:
+        return read.missing("history_unavailable")
+    source, keys = loaded
+    scope = tools._math_scope(args.scope)
+    if len(args.start) > 10:
+        # Use the history projection for verified flows and the household CFD proxy.
+        history = select_portfolio_history(
+            range="ALL",
+            scope=scope,
+            daily=source["nav"],
+            intraday=source["intradayNav"],
+            as_of=source["brokerAsOf"],
+            require_cash_flows=True,
         )
-    return datetime.fromisoformat(since) == datetime.fromisoformat(
-        context.start
-    ) and datetime.fromisoformat(as_of) == datetime.fromisoformat(context.end)
+        series = history["points"]
+    else:
+        series = source["nav"]
+    start, end = (datetime.fromisoformat(value) for value in (args.start, args.end))
+    rows = []
+    for row in series:
+        stamp = datetime.fromisoformat(row["date"])
+        if (stamp.tzinfo is None) == (start.tzinfo is None) and start <= stamp <= end:
+            rows.append(row)
+    if (
+        len(rows) < 2
+        or datetime.fromisoformat(rows[0]["date"]) != start
+        or datetime.fromisoformat(rows[-1]["date"]) != end
+    ):
+        return read.missing("endpoint_unavailable", keys=keys)
+    money = portfolio_money(rows, scope)
+    return read.result(
+        data={
+            "pnl": money["pnl"],
+            "estimated": any(r.get("valuationSource") == "reconstructed" for r in rows),
+        },
+        keys=keys,
+    )
 
 
 def attribution_facts(read: RoleTools, context: AttributionContext):
@@ -114,6 +154,26 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                     "market",
                 )
             )
+    if not any(f.section == "return" for f in facts):
+        amount = read.read(selected_money, context)
+        money = amount.get("data") or {}
+        if (pnl := money.get("pnl")) is not None:
+            proxy = context.scope in {"cfd", "household"}
+            zh = "（含 CFD 已实现现金权益代理）" if proxy else ""
+            en = " (includes imported realised CFD cash equity)" if proxy else ""
+            if money["estimated"]:
+                zh += "（含估算）"
+                en += " (includes estimates)"
+            facts.append(
+                observed(
+                    "return",
+                    f"所选区间的净盈亏为 £{pnl:+,.2f}{zh}。",
+                    f"Cash-flow-adjusted net P&L was £{pnl:+,.2f}{en}.",
+                    "account",
+                    amount,
+                    "selected_money",
+                )
+            )
     if not any(f.section == "benchmark" for f in facts):
         facts.append(
             observed(
@@ -167,7 +227,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
 ATTRIBUTION = PageRole(
     "attribution",
     "analytics",
-    frozenset({"daily_returns", "holding_fx_split"}),
+    frozenset({"daily_returns", "holding_fx_split", "selected_money"}),
     AttributionContext,
     "Select one fact from each section for the selected range. Preserve benchmark currency and basis. Price and currency effects apply only to held shares.",
     attribution_facts,
