@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
@@ -14,7 +14,6 @@ export function OverviewBrief({ snapshot }: { snapshot: string }) {
   const [role, setRole] = useState<"daily" | "weekly">("daily");
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const client = useQueryClient();
   const controller = useRef<AbortController | null>(null);
   const benchmark = usePerformanceBenchmark();
   const request = useMemo(() => ({ role, context: {}, latest: true, cachedOnly: true }), [role]);
@@ -23,21 +22,20 @@ export function OverviewBrief({ snapshot }: { snapshot: string }) {
     mutationFn: async () => {
       const run = new AbortController();
       controller.current = run;
-      const result = await fetchReading({role, context: {}, snapshotId: snapshot}, run.signal);
-      if (!run.signal.aborted && result) client.setQueryData(["assistant-reading", request], result);
-      return result;
+      return await fetchReading({role, context: {}, snapshotId: snapshot}, run.signal);
     },
   });
   useEffect(() => () => controller.current?.abort(), [role, snapshot]);
-  const saved = query.data;
+  const saved = query.data ?? (generate.data?.role === role && generate.data.version === snapshot ? generate.data : null);
   const reading = useMemo(() => saved && ({...saved, lines: saved.lines.map(line => line.variants?.[benchmark] ? {...line, ...line.variants[benchmark]} : line)}), [saved, benchmark]);
   const title = role === "daily" ? t("日报", "Daily brief") : t("周报", "Weekly brief");
   const asOf = reading && new Intl.DateTimeFormat(locale === "zh" ? "zh-CN" : "en-GB", {timeZone, month: "short", day:"numeric", hour:"2-digit", minute:"2-digit", hourCycle: "h23"}).format(new Date(reading.asOf));
   const card = useMemo<RoleCard>(() => ({
     role, title, object: t("全部投资账户", "All investment accounts"), context: {benchmark}, reading,
+    origin: {page:"overview", search:role === "weekly" ? "range=1W" : "range=1D", snapshotId:reading?.snapshotId ?? reading?.version ?? snapshot},
     questions: [t("与 {benchmark} 同期相比如何？", "How did the portfolio compare with {benchmark}?").replace("{benchmark}", benchmark),
       t("哪些持仓影响最大？", "Which holdings had the largest impact?"), t("下一份持仓财报是什么？", "Which holding reports next?")],
-  }), [role, title, t, benchmark, reading]);
+  }), [role, title, t, benchmark, reading, snapshot]);
   usePageRole(card);
   const portfolio = reading?.lines.find(line => line.section === "portfolio");
   return <DigestRow storageKey="overview" header={<div className="mx-brief-period" role="group" aria-label={t("简报周期", "Brief period")}>

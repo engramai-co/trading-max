@@ -240,14 +240,22 @@ error code. Completed readings are kept in
 workspace SQLite by role, object and snapshot, with the latest sixteen versions
 per object retained. Cached-only requests make no model calls. The workspace
 sidebar uses the chat stream for follow-ups and sends the validated role context
-with the next question.
+with the next question. A follow-up keeps the reading's page, account, period,
+object and immutable snapshot across navigation and when restoring a stopped
+draft. Chat displays two to four lines only after their source references resolve
+within the same turn. A completed reply is announced once.
 
 The background writer observes completed publication records from both worker
 modes. Each scheduled full update can produce a daily brief. Saturday's 02:00
 Europe/London fold uses the last completed scheduled publication available by
 that time. The scheduler skips live and performance updates and checks current
 consent and the background preference before sending. A persistent reservation
-limits the workspace to twelve background attempts per London day. One brief
+limits the workspace to twelve background attempts per London day. The dispatch
+guard rechecks the background switch using the bound Settings revision. Opting
+out cancels background runs while allowing foreground replies to finish.
+A public role request can write only to its manual cache. Only the writer
+publishes results to the scheduled cache. A visible overview polls this cache
+every thirty seconds without calling a provider. One brief
 includes bilingual text and all supported benchmark comparisons, so changing
 language or benchmark needs no further model call.
 ## News and scheduled events

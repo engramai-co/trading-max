@@ -55,7 +55,7 @@ export function AnalystView({
         ]}
       />
       {section === "events" ? (
-        <EarningsEvents data={data} />
+        <div data-reading-event=""><EarningsEvents data={data} /></div>
       ) : !data.analyst ? (
         <Panel>
           <Empty title={t("暂无分析师覆盖", "No analyst coverage")} />

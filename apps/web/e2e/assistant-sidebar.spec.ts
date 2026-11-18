@@ -20,7 +20,7 @@ async function fixtures(page: Page, ready = true) {
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
       const chunks = [{type:"start", messageId:"a1"}, {type:"start-step"}, {type:"text-start",id:"t1"},
-        {type:"text-delta",id:"t1",delta:"A synthetic reply."},{type:"text-end",id:"t1"}, {type:"finish-step"}, {type:"finish",finishReason:"stop"}];
+        {type:"text-delta",id:"t1",delta:"A synthetic reply. [inference]\nA second observation. [inference]"},{type:"text-end",id:"t1"}, {type:"finish-step"}, {type:"finish",finishReason:"stop"}];
       return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"});
     }
     if (url.pathname.endsWith("/conversations")) return route.fulfill({json:[]});
@@ -57,6 +57,7 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   expect(body.context).toMatchObject({page:"overview",role:"daily",scope:"broker_total"});
   expect(body.messages).toHaveLength(1);
   await expect(page.locator(".mx-turn-assistant")).toContainText("A synthetic reply.");
+  await expect(page.locator("[aria-live=polite]").filter({hasText:"A synthetic reply."})).toHaveCount(1);
   await input.fill("Draft retained");
   if (info.project.name === "desktop") {
     const pageBox = await page.locator("#main-content").boundingBox();
@@ -110,6 +111,7 @@ test("saved history loads and deletes a conversation", async ({page}) => {
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   await page.getByRole("button", {name:"历史对话"}).click();
+  await expect(page.getByRole("button", {name:"返回对话"})).toBeFocused();
   await page.getByRole("button", {name:"Synthetic prior turn", exact:true}).click();
   await expect(page.locator(".mx-turn-user")).toHaveText("Historical question");
   await page.getByRole("button", {name:"历史对话"}).click();
@@ -141,4 +143,78 @@ test("stopping a turn restores its question and evidence points to the selected 
   await digest.getByRole("link", {name:"账户",exact:true}).click();
   await expect(page).toHaveURL(/analytics.*evidence=period_performance/);
   await expect(page.locator("[data-assistant-evidence]")).toBeVisible();
+});
+
+test("weekly follow-ups retain the reading context after navigation and stop", async ({page}, info) => {
+  await fixtures(page);
+  await page.goto("/?scope=invest&range=3M");
+  const digest = page.locator(".mx-digest");
+  await digest.getByRole("button", {name:"周报",exact:true}).click();
+  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-reading-actions button").first().click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  const draft = await input.inputValue();
+  if (info.project.name === "desktop") {
+    await page.locator(".mx-sidebar a[href='/holdings']").click();
+  } else {
+    await page.locator("#mx-assistant-panel").getByRole("button", {name:"关闭侧栏"}).click();
+    await page.locator("a[href='/holdings']:visible").first().click();
+    await page.locator("[data-assistant-trigger]").click();
+  }
+  let release: () => void = () => {};
+  const held = new Promise<void>(resolve => {release = resolve;});
+  await page.route("**/api/backend/assistant/chat", async route => {await held; await route.abort().catch(() => {});});
+  try {
+    for (let i = 0; i < 2; i++) {
+      const sent = page.waitForRequest(r => r.url().endsWith("/assistant/chat"));
+      await input.press("Enter");
+      expect((await sent).postDataJSON().context).toMatchObject({role:"weekly",page:"overview",scope:"broker_total",range:"1W",snapshotId:"synthetic",object:{benchmark:"VOO"}});
+      await page.getByRole("button",{name:"停止", exact:true}).click();
+      await expect(input).toHaveValue(draft);
+    }
+  } finally {release();}
+});
+test("an open Overview discovers a scheduled reading without starting a model run", async ({page}) => {
+  await page.clock.install();
+  await fixtures(page);
+  let reads = 0;
+  await page.route("**/api/backend/assistant/roles/daily/reading", route => {
+    expect(route.request().postDataJSON()).toMatchObject({latest:true,cachedOnly:true});
+    reads++;
+    return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({type:"result",reading:{role:"daily",version:"revision-"+reads,asOf:"2026-01-30T20:00:00Z",lines:[line("portfolio","account","period_performance","修订 "+reads,"Revision "+reads)]}})+"\n"});
+  });
+  await page.goto("/");
+  await expect(page.locator(".mx-digest-summary")).toHaveText("修订 1");
+  await page.clock.fastForward(65_000);
+  await expect(page.locator(".mx-digest-summary")).toHaveText(/修订 [2-9]/);
+});
+test("uncited or invented chat evidence stays out of the transcript and announcement", async ({page}) => {
+  await fixtures(page);
+  const chunks = [{type:"start",messageId:"bad"}, {type:"text-start",id:"t"}, {type:"text-delta",id:"t",delta:"Invented fact.\nAnother claim [ev_missing]"}, {type:"text-end",id:"t"}, {type:"finish",finishReason:"stop"}];
+  await page.route("**/api/backend/assistant/chat", route => route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"}));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.locator(".mx-assistant-questions button").first().click();
+  await expect(page.locator(".mx-turn-assistant")).toContainText("无法核实");
+  await expect(page.locator("#mx-assistant-panel")).not.toContainText("Invented fact");
+});
+
+test("cited money and ex-dividend dates open their published evidence", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/dashboard/history?**", route => {
+    const url = new URL(route.request().url());
+    const data = backendFixture(url) as Record<string,unknown>;
+    return route.fulfill({json:{...data,runId:url.searchParams.get("runId")}});
+  });
+  const history = page.waitForRequest(r => r.url().includes("/dashboard/history?") && new URL(r.url()).searchParams.get("runId") === "older");
+  await page.goto("/analytics?view=money&range=1W&moneyFrom=2026-01-26&moneyTo=2026-01-30&snapshotId=older&evidence=period_performance");
+  expect(new URL((await history).url()).searchParams.get("range")).toBe("1W");
+  await expect(page.locator(".mx-money-summary[data-assistant-evidence]")).toBeVisible();
+  await page.route("**/api/backend/research/SYNT/lens/overview?**", route => {
+    const data = backendFixture(new URL(route.request().url())) as Record<string,unknown>;
+    return route.fulfill({json:{...data,fundamentals:{earningsCalendar:{"Ex-Dividend Date":"2026-11-28"}}}});
+  });
+  await page.goto("/research?ticker=SYNT&view=overview&event=exDividend&date=2026-11-28&evidence=read_research_lens");
+  await expect(page.locator("[data-reading-event]")).toContainText("2026-11-28");
+  await expect(page.locator("[data-reading-event]")).toContainText("除息日期");
 });

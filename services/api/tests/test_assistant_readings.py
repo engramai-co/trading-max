@@ -39,7 +39,9 @@ def sample(tmp_path):
     async def status():
         return {"ready": ready[0], "code": None if ready[0] else "assistant_disabled"}
 
-    service = AssistantService(None, None, bind, factory.for_run, check_ready=status)
+    service = AssistantService(
+        None, None, bind, factory.for_run, check_ready=status, bind_background_model=bind
+    )
     return ReadingService(service, db), factory.for_run(), calls, ready
 
 
@@ -61,12 +63,18 @@ def test_role_endpoint_pins_versions_links_and_refuses_scope_expansion(tmp_path)
     assert first[0]["type"] == "reading" and first[-1]["type"] == "result"
     assert any(event["type"] == "lines" and event["lines"] for event in first)
     result = first[-1]["reading"]
-    assert result["version"] == deps.snapshot_id
+    assert result["version"] == result["snapshotId"] == deps.snapshot_id
+    money = next(row for row in result["lines"] if row["section"] == "portfolio")["evidence"][
+        "arguments"
+    ]
+    assert money["metric"] == "period_pnl_gbp" and money["snapshotId"] == deps.snapshot_id
+    assert money["start"] <= money["end"]
     assert result["lines"][0]["section"] == "market"
     assert "VOO" in result["lines"][0]["en"]
     assert "QQQ" in result["lines"][0]["variants"]["QQQ"]["en"]
     assert all(row["evidence"]["evidenceId"].startswith("ev_") for row in result["lines"])
-    assert events({"cachedOnly": True, "latest": True}) == [first[-1]]
+    assert events({"cachedOnly": True, "latest": True}) == [{"type": "empty"}]
+    assert events({"cachedOnly": True, "snapshotId": deps.snapshot_id}) == [first[-1]]
     assert len(calls) == 1
     assert client.post(route, json={"context": {"account": "outside"}}).status_code == 422
     assert client.post(route, json={"snapshotId": "../x"}).status_code == 422
@@ -107,7 +115,7 @@ def test_background_daily_weekly_slots_versions_and_budget(tmp_path):
     asyncio.run(writer.tick())
     asyncio.run(writer.tick())
     assert len(calls) == 2
-    assert service.cached(role_registry()["weekly"], OverviewContext(), deps.snapshot_id)
+    assert service.cached(role_registry()["weekly"], OverviewContext(), None)
     role = role_registry()["daily"]
     assert (
         sum(
@@ -162,5 +170,152 @@ def test_weekly_fold_uses_friday_publication_without_a_saturday_refresh(tmp_path
     asyncio.run(writer.tick())
     asyncio.run(writer.tick())
     assert len(calls) == 1
-    assert service.cached(role_registry()["weekly"], OverviewContext(), deps.snapshot_id)
-    assert not service.cached(role_registry()["daily"], OverviewContext(), deps.snapshot_id)
+    assert service.cached(role_registry()["weekly"], OverviewContext(), None)
+    assert not service.cached(role_registry()["daily"], OverviewContext(), None)
+
+
+def test_full_scope_and_midnight_reservation(tmp_path):
+    service, deps, _, _ = sample(tmp_path)
+    before = datetime(2026, 11, 18, 23, 59, 58, tzinfo=UTC)
+    after = before + timedelta(seconds=7)
+    full = job(before, deps.snapshot_id, "research").model_copy(update={"scope": "research"})
+    single = full.model_copy(update={"tickers": ["TEST"]})
+    assert not overview_schedule(False, single)
+    times = iter([before, after])
+    asyncio.run(
+        BriefWriter(service, lambda: True, lambda: [full], lambda: next(times, after)).tick()
+    )
+    with service.database.read() as db:
+        assert db.execute("SELECT day FROM assistant_brief_attempts").fetchone()[0] == "2026-11-19"
+
+
+def test_background_opt_out_while_model_is_binding(tmp_path):
+    service, deps, _, _ = sample(tmp_path)
+    allowed = [True]
+    model = TestModel(custom_output_args={"indices": [1, 0, 2, 3]})
+
+    async def bind():
+        allowed[0] = False
+        return BoundModel(model, {})
+
+    service.assistant.bind_model = bind
+
+    async def scenario():
+        return [
+            e
+            async for e in service.events(
+                role_registry()["daily"], OverviewContext(), deps, permitted=lambda: allowed[0]
+            )
+        ]
+
+    result = asyncio.run(scenario())
+    assert result[-1].code == "assistant_disabled"
+    assert model.last_model_request_parameters is None
+
+
+def test_weekly_handoff_rejects_wrong_page_scope_and_period():
+    from fastapi import HTTPException
+
+    from services.api.trading_max_api.agent.service import _context
+
+    context = {
+        "page": "overview",
+        "role": "weekly",
+        "range": "1W",
+        "scope": "broker_total",
+        "snapshotId": "synthetic",
+        "object": {"benchmark": "VOO"},
+    }
+    assert _context({"context": context}, None).page == "overview"
+    for invalid in (
+        {"page": "holdings"},
+        {"range": "3M"},
+        {"scope": "invest"},
+        {"snapshotId": None},
+    ):
+        with pytest.raises(HTTPException) as error:
+            _context({"context": {**context, **invalid}}, None)
+        assert error.value.status_code == 422
+
+
+def test_calendar_windows_and_dated_events_have_distinct_visible_targets(tmp_path):
+    from services.api.trading_max_api.agent import tools
+    from services.api.trading_max_api.agent.overview_roles import upcoming
+
+    store = ArtifactStore(tmp_path)
+    artifacts = {
+        tools.EARNINGS: {
+            "rows": [
+                {
+                    "ticker": "TEST",
+                    "calendar": {
+                        "Earnings Date": ["2026-11-23", "2026-11-26"],
+                        "Ex-Dividend Date": "2026-11-28",
+                    },
+                }
+            ]
+        }
+    }
+
+    role = role_registry()["weekly"]
+
+    def facts():
+        publication(store, extra_artifacts=artifacts)
+        deps = AssistantDepsFactory(store).for_run()
+        return upcoming(
+            RoleTools.pinned(deps, role.allowed_tools), datetime(2026, 11, 18, tzinfo=UTC).date()
+        )
+
+    window, ex_div = facts()
+    assert "2026-11-23" in window.en and "2026-11-26" in window.en
+    assert ex_div.evidence.arguments["event"] == "exDividend"
+    artifacts[tools.ANALYST] = {
+        "rows": [
+            {
+                "ticker": "TEST",
+                "analyst": {
+                    "earningsEvents": [
+                        {"date": "2026-11-25", "id": "TEST-report", "status": "provider-estimate"}
+                    ]
+                },
+            }
+        ]
+    }
+    report, ex_div = facts()
+    assert "2026-11-25" in report.en and "2026-11-23" not in report.en
+    assert report.evidence.arguments["eventId"] == "TEST-report"
+
+
+def test_follow_up_tools_read_the_original_snapshot_after_a_new_publication(tmp_path):
+    from pydantic_ai import FunctionToolset, RunContext
+
+    from services.api.tests.test_assistant_runtime import answer_after_tool, make_app, user_turn
+    from services.api.trading_max_api.agent.deps import AssistantDeps
+    from services.api.trading_max_api.agent.runtime import build_assistant_agent
+
+    store = ArtifactStore(tmp_path)
+    original = publication(store)
+    newer = publication(store, invest_total=1500)
+    assert original.run_id != newer.run_id
+    observations = []
+
+    def snapshot(ctx: RunContext[AssistantDeps]) -> dict:
+        """Read the current turn's publication."""
+        observations.append(ctx.deps.snapshot_id)
+        return {"evidence_id": "ev_test", "data": {}}
+
+    stream, _ = answer_after_tool("snapshot")
+    app, service = make_app(tmp_path, stream)
+    service.agent = build_assistant_agent([FunctionToolset([snapshot])])
+    service.deps_for_run = AssistantDepsFactory(store).for_run
+    body = user_turn("old-brief", "u", "Continue this weekly reading")
+    body["context"] = {
+        "page": "overview",
+        "scope": "broker_total",
+        "range": "1W",
+        "role": "weekly",
+        "snapshotId": original.run_id,
+    }
+    response = TestClient(app).post("/v1/assistant/chat", json=body)
+    assert response.status_code == 200
+    assert observations == [original.run_id]

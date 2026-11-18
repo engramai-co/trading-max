@@ -21194,6 +21194,17 @@
             "title": "Role",
             "type": "string"
           },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
+          },
           "version": {
             "title": "Version",
             "type": "string"

@@ -1453,6 +1453,15 @@ class ResearchLedger:
             else None,
         }
         fundamental = {"metrics": metrics, "currency": "USD" if reference else None}
+        if view == "overview":
+            calendar = _normalized_earnings_calendar(
+                _find(
+                    self._cached_rows(manifest, "research/earnings.json", _fundamentals_rows),
+                    ticker,
+                )
+            )
+            if calendar is not None:
+                fundamental["earningsCalendar"] = calendar
         quote = make_quote(ticker, market or {}, fundamental)
         previous = number(price.get("previous_close")) if price else None
         if (

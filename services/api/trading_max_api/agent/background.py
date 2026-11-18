@@ -8,12 +8,12 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
-from functools import partial
 from zoneinfo import ZoneInfo
 
 from trading_max.infrastructure import SqliteDatabase
 
 from ..models import JobRecord
+from .overview_roles import full_publication
 from .readings import ReadingService
 from .roles import BriefTarget, PageRole, RoleTools, role_registry
 
@@ -76,7 +76,7 @@ class BriefWriter:
                 else:
                     targets = role.scheduled(job) if role.scheduled else []
                 for target in targets:
-                    await self.write(job, role, target, now)
+                    await self.write(job, role, target)
         local = now.astimezone(LONDON)
         if local.weekday() != 5 or local.hour < 2:
             return
@@ -89,9 +89,7 @@ class BriefWriter:
                 for j in recent
                 if j.finished_at
                 and j.snapshot_run_id
-                and j.status == "succeeded"
-                and j.scheduled_for
-                and j.trigger in {"nightly", "research", "reconciliation"}
+                and full_publication(j)
                 and fold - timedelta(days=1) <= j.finished_at <= fold
             ),
             None,
@@ -103,17 +101,12 @@ class BriefWriter:
                         cutoff,
                         role,
                         BriefTarget(role.context_schema(), fold.date().isoformat()),
-                        now,
                     )
 
-    async def write(
-        self, job: JobRecord, role: PageRole, target: BriefTarget, now: datetime
-    ) -> None:
+    async def write(self, job: JobRecord, role: PageRole, target: BriefTarget) -> None:
         if not job.snapshot_run_id:
             return
         if not self.permitted():
-            return
-        if self.readings.cached(role, target.context, job.snapshot_run_id):
             return
         if self.readings.attempted(role, target.context, target.slot):
             return
@@ -126,10 +119,10 @@ class BriefWriter:
             role,
             target.context,
             replace(deps, manifest=manifest),
+            scheduled=True,
             permitted=self.permitted,
-            reserve=partial(
-                self.readings.reserve,
-                now.astimezone(LONDON).date().isoformat(),
+            reserve=lambda: self.readings.reserve(
+                self.clock().astimezone(LONDON).date().isoformat(),
                 role,
                 target.context,
                 target.slot,

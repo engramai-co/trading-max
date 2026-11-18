@@ -63,6 +63,7 @@ class ReadingLine(LinkedObservation):
 class RoleReading(ApiModel):
     role: str
     version: str
+    snapshot_id: str | None = None
     as_of: datetime
     lines: list[ReadingLine]
 

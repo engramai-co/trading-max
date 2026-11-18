@@ -4,11 +4,14 @@ import { useQuery } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import { api } from "../data";
 import { assistantSettingsKey } from "../assistant-settings";
+import type { AssistantSettings } from "@/lib/types";
+import { desktopPage } from "../desktop-routing";
 import type { Reading } from "./evidence";
 
 export type RoleCard = {
   role: string; title: string; object: string; questions: readonly string[]; reading?: Reading | null;
   context?: Record<string, unknown>;
+  origin?: { page: string; search: string; snapshotId?: string };
 };
 type Handoff = { card: RoleCard; draft: string; sequence: number };
 type AssistantState = {
@@ -41,7 +44,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   // Settings writes through this shared query key. A new revision immediately
   // gates visible content and requests a fresh readiness check.
-  const settings = useQuery<{ revision: number; enabled: boolean; acceptedConsentRevision: number | null; consentRevision: number }>({
+  const settings = useQuery<AssistantSettings>({
     queryKey: assistantSettingsKey, queryFn: ({ signal }) => api("/settings/assistant", { signal }), enabled: false,
   });
   const status = useQuery({ queryKey: ["assistant-status", settings.data?.revision ?? null],
@@ -66,7 +69,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, [toggle]);
   function continueInSidebar(card: RoleCard, draft = "") {
     if (!ready) return;
-    setHandoff(previous => ({ card, draft, sequence: (previous?.sequence ?? 0) + 1 }));
+    const page = (desktopPage(location.pathname) ?? location.pathname.slice(1)) || "overview";
+    const origin = card.origin ?? {page, search: location.search, snapshotId: card.reading?.snapshotId ?? undefined};
+    setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
   return <Context.Provider value={{ open, ready, pending: status.isPending, code: status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>

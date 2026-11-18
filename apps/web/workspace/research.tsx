@@ -25,7 +25,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
+import { api, isReadTimeout, jsonRequest, object, readApi } from "@/workspace/data";
 import {
   Empty,
   LoadingStatus,
@@ -63,6 +63,21 @@ import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { previousForIdentity } from "./loading-state";
 import { useRetainedResult } from "./retained-result";
 import { useRouteState } from "./route-state";
+
+function CitedCalendarEvent({data, kind, date, end}: {data: ResearchLensSnapshot; kind: string; date: string | null; end: string | null}) {
+  const t = useCopy();
+  const calendar = object(object(data.fundamentals).earningsCalendar);
+  const exDividend = kind === "exDividend";
+  const raw = exDividend ? calendar["Ex-Dividend Date"] : calendar["Earnings Date"];
+  const days = [...new Set((Array.isArray(raw) ? raw : [raw]).flatMap(day =>
+    typeof day === "string" && /^\d{4}-\d{2}-\d{2}/.test(day) ? [day.slice(0, 10)] : []))].sort();
+  const dates = days.length ? [...new Set([days[0], days[days.length-1]])].join(" – ") : t("暂无可核实日期", "No verified date");
+  return <section data-reading-event=""><Panel title={exDividend ? t("除息日期", "Ex-dividend date") : t("预计财报日期", "Estimated earnings date")}>
+    <p>{data.ticker} · {dates}</p>
+    {days.length > 0 && (date !== days[0] || (end && end !== days.at(-1))) &&
+      <p>{t("当前日历已更新。", "The current calendar has changed since this brief.")}</p>}
+  </Panel></section>;
+}
 
 export type ResearchTab =
   | "overview"
@@ -647,6 +662,9 @@ function SecurityResearchWorkspace() {
                 ) : (
                   displayData && (
                     <>
+                      {displayTab === "overview" && params.get("evidence") === "read_research_lens" &&
+                        ["exDividend","earningsWindow"].includes(params.get("event") ?? "") &&
+                        <CitedCalendarEvent data={displayData} kind={params.get("event")!} date={params.get("date")} end={params.get("end")} />}
                       {displayTab === "overview" && (
                         <>
                           {isFund ? (

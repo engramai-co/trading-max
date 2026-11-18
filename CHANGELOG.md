@@ -29,6 +29,17 @@ All notable public Trading Max releases are recorded here.
 ### Security
 - The web dependency audit accepts the picomatch advisory in development tooling until 18 December 2026. Affected production dependencies still block releases.
 
+## [1.54.0] - 2026-11-18
+
+### Added
+- Settings now has a MaxAI section. Choose a connected model, test its tool calls and review which data the provider receives before enabling it. Background brief writing and sharing saved valuation assumptions each have their own switch.
+- Turning MaxAI off or withdrawing consent stops active replies. Local conversations can be deleted separately. Existing users must accept the updated disclosure to enable MaxAI again, and changing the provider or local endpoint requires fresh consent.
+
+## [1.53.1] - 2026-11-18
+
+### Security
+- The web dependency audit accepts the picomatch advisory in development tooling until 18 December 2026. Affected production dependencies still block releases.
+
 ## [1.53.0] - 2026-11-17
 
 ### Changed
