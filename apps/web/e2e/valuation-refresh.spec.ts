@@ -1049,10 +1049,8 @@ test.describe("frozen draft review", () => {
     await entry.click();
     const accept = editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true});
     await expect(accept).toBeVisible();
-    state.newResearch = true;
     state.publication = "synthetic-reviewed-two";
-    const fresh = page.waitForResponse(response => response.url().includes("/SYNT/valuation-preview") &&
-      response.request().method() === "GET" && response.ok());
+    const fresh = page.waitForResponse(response => response.url().includes("/research/shell") && response.ok());
     await page.clock.fastForward(60_000);
     await fresh;
     await expect(accept).toBeDisabled({timeout:1500});

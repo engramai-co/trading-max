@@ -121,10 +121,12 @@ function statementPeriod(result: Preview, data: ResearchLensSnapshot, t: ReturnT
 export function ValuationWorkbench({
   data,
   revision,
+  publication,
   price,
 }: {
   data: ResearchLensSnapshot;
   revision?: string | null;
+  publication?: string | null;
   price?: ResearchPrice;
 }) {
   const t = useCopy();
@@ -249,7 +251,7 @@ export function ValuationWorkbench({
                 setReload(n => n + 1);
               }
             }}
-            initial={editor} output={output} referencePanel={reference}
+            publication={publication ?? data.runId} initial={editor} output={output} referencePanel={reference}
             onDirty={setDirty} onReading={setReading} data={data} revision={revision}
             methodology={methodology} refreshing={query.isFetching}
             onRetry={query.isError ? () => void query.refetch() : undefined} />
@@ -271,7 +273,7 @@ export function ValuationWorkbench({
 }
 
 function ModelEditor({
-  draftAction, draftModule, defaultBlock,
+  draftAction, draftModule, defaultBlock, publication,
   output,
   referencePanel,
   methodology,
@@ -287,6 +289,7 @@ function ModelEditor({
   refreshing,
   onRetry,
 }: {
+  publication?: string | null;
   draftAction: HTMLSpanElement | null;
   draftModule: DraftModule | null;
   defaultBlock: string | null;
@@ -567,7 +570,7 @@ function ModelEditor({
   return (
     <>
       {draftModule && <draftModule.DraftController initial={initial} requestedFamily={requestedFamily} horizon={horizon}
-        inputs={inputs} publication={revision ?? data.runId} currentBasis={currentBasis} actions={actions} onChange={setDrafting} />}
+        inputs={inputs} publication={publication} currentBasis={currentBasis} actions={actions} onChange={setDrafting} />}
       {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
         {t("放弃草稿", "Discard draft")}
       </Button> : <Button variant="default" size="compact-xs"
