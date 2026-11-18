@@ -14,8 +14,10 @@ from trading_max.domain import DomainModel
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.facts import fingerprint
 from trading_max.research.valuation_preview import (
+    LockedInput,
     ValuationPreview,
     ValuationPreviewRequest,
+    locked_set,
     project,
 )
 
@@ -68,12 +70,22 @@ class SavedResearchModel(DomainModel):
     preview: ValuationPreview
     reason: str = ""
     draft_audit: DraftAudit | None = Field(default=None, exclude_if=lambda audit: audit is None)
+    # Versions without locks keep the earlier journal format.
+    locked_inputs: list[LockedInput] = Field(
+        default_factory=list, exclude_if=lambda locked: not locked
+    )
 
 
 class ResearchModelSaveRequest(ValuationPreviewRequest):
     family_selection: Literal["automatic", "override"] | None = None
     draft_review: DraftReview | None = None
     reason: str = Field(default="", max_length=4000)
+    locked_inputs: list[LockedInput] = Field(default_factory=list, max_length=27)
+
+    def preview_request(self) -> ValuationPreviewRequest:
+        return ValuationPreviewRequest.model_validate(
+            self.model_dump(exclude={"reason", "draft_review", "family_selection", "locked_inputs"})
+        )
 
 
 class BaselineSelection(DomainModel):
@@ -207,18 +219,18 @@ class ResearchJournalStore:
                 or draft.evidence.family != body.family
             ):
                 raise ValueError("valuation-draft-review-required")
+            kept = {(item.scenario, item.field) for item in draft.locked_inputs}
+            if any((p.scenario, p.field) in kept for p in draft.result.proposals):
+                raise ValueError("valuation-draft-review-required")
             verify_decisions(draft, review, body.scenarios)
-            result = calculate(
-                ValuationPreviewRequest.model_validate(
-                    body.model_dump(exclude={"reason", "draft_review", "family_selection"})
-                ),
-                manifest,
-            )
+            result = calculate(body.preview_request(), manifest)
             if not result.scenarios or result.basis != draft.review_basis:
                 raise ValueError("valuation-draft-review-required")
             result.family_selection = draft.result.family_selection
             audit = DraftAudit(draft=draft, review=review, request_digest=digest)
-            state.models.insert(0, self._model_version(result, body.reason, audit))
+            state.models.insert(
+                0, self._model_version(result, body.reason, audit, body.locked_inputs)
+            )
             path = self._path(ticker)
             with (
                 _prepared_write(path, state.model_dump(mode="json")) as temporary,
@@ -230,24 +242,39 @@ class ResearchJournalStore:
 
     @staticmethod
     def _model_version(
-        model: ValuationPreview, reason: str, audit: DraftAudit | None
+        model: ValuationPreview,
+        reason: str,
+        audit: DraftAudit | None,
+        locked: list[LockedInput] | None = None,
     ) -> SavedResearchModel:
         reason = reason.strip()
+        locked = locked_set(locked or [])
         model_id = fingerprint([model.id, reason]) if reason else model.id
         if model.family_selection == "override":
             model_id = fingerprint([model_id, "family-override"])
         if audit:
             model_id = fingerprint([model_id, str(audit.review.id)])
+        if locked:
+            model_id = fingerprint([model_id, "locked", [[i.scenario, i.field] for i in locked]])
         return SavedResearchModel(
-            id=model_id, saved_at=datetime.now(UTC), preview=model, reason=reason, draft_audit=audit
+            id=model_id,
+            saved_at=datetime.now(UTC),
+            preview=model,
+            reason=reason,
+            draft_audit=audit,
+            locked_inputs=locked,
         )
 
     def save_model(
-        self, model: ValuationPreview, reason: str = "", audit: DraftAudit | None = None
+        self,
+        model: ValuationPreview,
+        reason: str = "",
+        audit: DraftAudit | None = None,
+        locked: list[LockedInput] | None = None,
     ) -> ResearchJournal:
         with self.lock:
             state = self.load(model.basis.ticker)
-            version = self._model_version(model, reason, audit)
+            version = self._model_version(model, reason, audit, locked)
             if not any(m.id == version.id for m in state.models):
                 state.models.insert(0, version)
                 self._save(state)

@@ -2467,6 +2467,70 @@
         "title": "AssistantStatus",
         "type": "object"
       },
+      "AssumptionChange": {
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "enum": [
+              "revenue_cagr",
+              "target_fcf_margin",
+              "discount_rate",
+              "exit_fcf_multiple",
+              "share_cagr",
+              "ramp_years",
+              "initial_roe",
+              "payout",
+              "terminal_pb"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "locked": {
+            "default": false,
+            "title": "Locked",
+            "type": "boolean"
+          },
+          "proposed": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proposed"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved"
+          },
+          "scenario": {
+            "enum": [
+              "bear",
+              "base",
+              "bull"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario",
+          "field",
+          "saved",
+          "proposed"
+        ],
+        "title": "AssumptionChange",
+        "type": "object"
+      },
       "AssumptionReference": {
         "additionalProperties": false,
         "properties": {
@@ -2774,6 +2838,95 @@
           "modelId"
         ],
         "title": "BaselineSelection",
+        "type": "object"
+      },
+      "BasisPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "fxRate": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fxrate"
+          },
+          "periodChoice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "latest-four-quarters",
+                  "previous-four-quarters",
+                  "latest-fiscal-year",
+                  "previous-fiscal-year"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodchoice"
+          },
+          "periodId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodid"
+          },
+          "reportingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportingcurrency"
+          },
+          "spot": {
+            "title": "Spot",
+            "type": "number"
+          },
+          "spotAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotasof"
+          },
+          "spotSource": {
+            "enum": [
+              "quote",
+              "broker"
+            ],
+            "title": "Spotsource",
+            "type": "string"
+          }
+        },
+        "required": [
+          "periodId",
+          "periodChoice",
+          "spot",
+          "spotSource",
+          "spotAsOf",
+          "fxRate",
+          "reportingCurrency"
+        ],
+        "title": "BasisPoint",
         "type": "object"
       },
       "BenchmarkPricePoint": {
@@ -7248,6 +7401,14 @@
             "title": "Horizon",
             "type": "integer"
           },
+          "lockedInputs": {
+            "items": {
+              "$ref": "#/components/schemas/LockedInput"
+            },
+            "maxItems": 27,
+            "title": "Lockedinputs",
+            "type": "array"
+          },
           "previewId": {
             "maxLength": 64,
             "minLength": 1,
@@ -7317,6 +7478,13 @@
             "title": "Horizon",
             "type": "integer"
           },
+          "lockedInputs": {
+            "items": {
+              "$ref": "#/components/schemas/LockedInput"
+            },
+            "title": "Lockedinputs",
+            "type": "array"
+          },
           "original": {
             "additionalProperties": {
               "$ref": "#/components/schemas/ScenarioInputs"
@@ -7343,8 +7511,11 @@
             "title": "Parentmodelid"
           },
           "promptVersion": {
-            "const": "valuation-draft-v1",
             "default": "valuation-draft-v1",
+            "enum": [
+              "valuation-draft-v1",
+              "valuation-maintenance-v1"
+            ],
             "title": "Promptversion",
             "type": "string"
           },
@@ -8290,6 +8461,83 @@
         "title": "EodhdIntegrationUpdate",
         "type": "object"
       },
+      "EstimateChange": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "current": {
+            "title": "Current",
+            "type": "number"
+          },
+          "currentAsOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currentasof"
+          },
+          "metric": {
+            "enum": [
+              "consensusEps",
+              "consensusRevenueGrowth"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "periodEnd": {
+            "format": "date",
+            "title": "Periodend",
+            "type": "string"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "number"
+          },
+          "savedAsOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Savedasof"
+          }
+        },
+        "required": [
+          "metric",
+          "periodEnd",
+          "saved",
+          "current"
+        ],
+        "title": "EstimateChange",
+        "type": "object"
+      },
       "EstimateObservation": {
         "additionalProperties": false,
         "properties": {
@@ -9188,6 +9436,74 @@
           "accounts"
         ],
         "title": "FXSplit",
+        "type": "object"
+      },
+      "FigureChange": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "metric": {
+            "enum": [
+              "revenue",
+              "startMargin",
+              "freeCashflow",
+              "earnings",
+              "cash",
+              "commonEquity",
+              "listingShares"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved"
+          },
+          "unit": {
+            "enum": [
+              "currency",
+              "ratio",
+              "shares"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "saved",
+          "current",
+          "unit"
+        ],
+        "title": "FigureChange",
         "type": "object"
       },
       "FillEffect": {
@@ -15189,6 +15505,42 @@
         "title": "LocalizedAnalysisText",
         "type": "object"
       },
+      "LockedInput": {
+        "additionalProperties": false,
+        "description": "One scenario assumption the reader keeps fixed until they unlock it.",
+        "properties": {
+          "field": {
+            "enum": [
+              "revenue_cagr",
+              "target_fcf_margin",
+              "discount_rate",
+              "exit_fcf_multiple",
+              "share_cagr",
+              "ramp_years",
+              "initial_roe",
+              "payout",
+              "terminal_pb"
+            ],
+            "title": "Field",
+            "type": "string"
+          },
+          "scenario": {
+            "enum": [
+              "bear",
+              "base",
+              "bull"
+            ],
+            "title": "Scenario",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scenario",
+          "field"
+        ],
+        "title": "LockedInput",
+        "type": "object"
+      },
       "LookthroughContributor": {
         "properties": {
           "ticker": {
@@ -20779,6 +21131,14 @@
             "title": "Horizon",
             "type": "integer"
           },
+          "lockedInputs": {
+            "items": {
+              "$ref": "#/components/schemas/LockedInput"
+            },
+            "maxItems": 27,
+            "title": "Lockedinputs",
+            "type": "array"
+          },
           "reason": {
             "default": "",
             "maxLength": 4000,
@@ -21556,6 +21916,65 @@
           "sellAveragePrice"
         ],
         "title": "ResearchTradeMarker",
+        "type": "object"
+      },
+      "Restatement": {
+        "additionalProperties": false,
+        "description": "A figure of the saved period that the current statements report differently.",
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "current": {
+            "title": "Current",
+            "type": "number"
+          },
+          "metric": {
+            "enum": [
+              "revenue",
+              "startMargin",
+              "freeCashflow",
+              "earnings",
+              "cash",
+              "commonEquity",
+              "listingShares"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "periodId": {
+            "title": "Periodid",
+            "type": "string"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "number"
+          },
+          "unit": {
+            "enum": [
+              "currency",
+              "shares"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "periodId",
+          "metric",
+          "saved",
+          "current",
+          "unit"
+        ],
+        "title": "Restatement",
         "type": "object"
       },
       "ReviewAttribution": {
@@ -23605,6 +24024,39 @@
         "title": "RoundTripSummary",
         "type": "object"
       },
+      "SavedModelReference": {
+        "additionalProperties": false,
+        "description": "The saved version an editor starts from, with the inputs it keeps locked.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "lockedInputs": {
+            "items": {
+              "$ref": "#/components/schemas/LockedInput"
+            },
+            "title": "Lockedinputs",
+            "type": "array"
+          },
+          "previewId": {
+            "title": "Previewid",
+            "type": "string"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "title": "Savedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "savedAt",
+          "previewId"
+        ],
+        "title": "SavedModelReference",
+        "type": "object"
+      },
       "SavedOrigin": {
         "additionalProperties": false,
         "properties": {
@@ -23663,6 +24115,13 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "lockedInputs": {
+            "items": {
+              "$ref": "#/components/schemas/LockedInput"
+            },
+            "title": "Lockedinputs",
+            "type": "array"
           },
           "preview": {
             "$ref": "#/components/schemas/ValuationPreview"
@@ -23872,6 +24331,73 @@
           "upside"
         ],
         "title": "ScenarioProjection",
+        "type": "object"
+      },
+      "ScenarioWalk": {
+        "additionalProperties": false,
+        "description": "Per-share values in the quote's major unit, and the change each part adds.",
+        "properties": {
+          "assumptionsEffect": {
+            "title": "Assumptionseffect",
+            "type": "number"
+          },
+          "priceFx": {
+            "title": "Pricefx",
+            "type": "number"
+          },
+          "priceFxEffect": {
+            "title": "Pricefxeffect",
+            "type": "number"
+          },
+          "proposal": {
+            "title": "Proposal",
+            "type": "number"
+          },
+          "restated": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restated"
+          },
+          "restatementEffect": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restatementeffect"
+          },
+          "saved": {
+            "title": "Saved",
+            "type": "number"
+          },
+          "statements": {
+            "title": "Statements",
+            "type": "number"
+          },
+          "statementsEffect": {
+            "title": "Statementseffect",
+            "type": "number"
+          }
+        },
+        "required": [
+          "saved",
+          "statements",
+          "priceFx",
+          "proposal",
+          "statementsEffect",
+          "priceFxEffect",
+          "assumptionsEffect"
+        ],
+        "title": "ScenarioWalk",
         "type": "object"
       },
       "ScheduledSession": {
@@ -25022,6 +25548,77 @@
           "as_of"
         ],
         "title": "Source",
+        "type": "object"
+      },
+      "SourceConflict": {
+        "additionalProperties": false,
+        "description": "Two statements of one quantity that disagree; neither is blended into the other.",
+        "properties": {
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "fiscalYear": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscalyear"
+          },
+          "kind": {
+            "enum": [
+              "quarters-vs-fiscal-year",
+              "conflicting-source-rows"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "periodId": {
+            "title": "Periodid",
+            "type": "string"
+          },
+          "quarters": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quarters"
+          },
+          "unit": {
+            "enum": [
+              "currency",
+              "shares"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "periodId",
+          "metric",
+          "unit"
+        ],
+        "title": "SourceConflict",
         "type": "object"
       },
       "StageStatus": {
@@ -27361,6 +27958,216 @@
         "title": "ValuationCompanyAssumptions",
         "type": "object"
       },
+      "ValuationMaintenance": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionChange"
+            },
+            "title": "Assumptions",
+            "type": "array"
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/SourceConflict"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "current": {
+            "$ref": "#/components/schemas/BasisPoint"
+          },
+          "estimates": {
+            "items": {
+              "$ref": "#/components/schemas/EstimateChange"
+            },
+            "title": "Estimates",
+            "type": "array"
+          },
+          "family": {
+            "enum": [
+              "cash-flow",
+              "net-income",
+              "residual-income"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "figures": {
+            "items": {
+              "$ref": "#/components/schemas/FigureChange"
+            },
+            "title": "Figures",
+            "type": "array"
+          },
+          "formulaVersion": {
+            "enum": [
+              "equity-proxy-projection-v1",
+              "statement-equity-v2"
+            ],
+            "title": "Formulaversion",
+            "type": "string"
+          },
+          "fxSeparated": {
+            "title": "Fxseparated",
+            "type": "boolean"
+          },
+          "horizon": {
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "lockedInputs": {
+            "items": {
+              "$ref": "#/components/schemas/LockedInput"
+            },
+            "title": "Lockedinputs",
+            "type": "array"
+          },
+          "modelId": {
+            "title": "Modelid",
+            "type": "string"
+          },
+          "newEstimates": {
+            "title": "Newestimates",
+            "type": "boolean"
+          },
+          "newStatements": {
+            "title": "Newstatements",
+            "type": "boolean"
+          },
+          "restatementCheck": {
+            "enum": [
+              "unchanged",
+              "restated",
+              "unavailable"
+            ],
+            "title": "Restatementcheck",
+            "type": "string"
+          },
+          "restatements": {
+            "items": {
+              "$ref": "#/components/schemas/Restatement"
+            },
+            "title": "Restatements",
+            "type": "array"
+          },
+          "saved": {
+            "$ref": "#/components/schemas/BasisPoint"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "title": "Savedat",
+            "type": "string"
+          },
+          "scenarios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScenarioWalk"
+            },
+            "propertyNames": {
+              "enum": [
+                "bear",
+                "base",
+                "bull"
+              ]
+            },
+            "title": "Scenarios",
+            "type": "object"
+          }
+        },
+        "required": [
+          "modelId",
+          "savedAt",
+          "family",
+          "formulaVersion",
+          "horizon",
+          "currency",
+          "saved",
+          "current",
+          "fxSeparated",
+          "scenarios",
+          "figures",
+          "restatementCheck",
+          "restatements",
+          "conflicts",
+          "estimates",
+          "assumptions",
+          "lockedInputs",
+          "newStatements",
+          "newEstimates"
+        ],
+        "title": "ValuationMaintenance",
+        "type": "object"
+      },
+      "ValuationMaintenanceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "dataVersion": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataversion"
+          },
+          "horizon": {
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "lockedInputs": {
+            "items": {
+              "$ref": "#/components/schemas/LockedInput"
+            },
+            "maxItems": 27,
+            "title": "Lockedinputs",
+            "type": "array"
+          },
+          "modelId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Modelid",
+            "type": "string"
+          },
+          "scenarios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScenarioInputs"
+            },
+            "maxProperties": 3,
+            "minProperties": 3,
+            "propertyNames": {
+              "enum": [
+                "bear",
+                "base",
+                "bull"
+              ]
+            },
+            "title": "Scenarios",
+            "type": "object"
+          }
+        },
+        "required": [
+          "modelId",
+          "horizon",
+          "scenarios"
+        ],
+        "title": "ValuationMaintenanceRequest",
+        "type": "object"
+      },
       "ValuationPreview": {
         "additionalProperties": false,
         "properties": {
@@ -27542,6 +28349,16 @@
               }
             ],
             "title": "Reversevalue"
+          },
+          "savedModel": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SavedModelReference"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "scenarios": {
             "additionalProperties": {
@@ -35413,6 +36230,58 @@
           }
         },
         "summary": "Remove Watchlist Item",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v2/research/{ticker}/valuation-maintenance": {
+      "post": {
+        "operationId": "valuation_maintenance_v2_research__ticker__valuation_maintenance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuationMaintenanceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationMaintenance"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Valuation Maintenance",
         "tags": [
           "research"
         ]

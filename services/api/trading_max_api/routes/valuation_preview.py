@@ -7,6 +7,7 @@ from trading_max.research.statement_valuation import freeze_basis, scenario_defa
 from trading_max.research.valuation_basis import EXCLUDED_ASSETS, Family, classify
 from trading_max.research.valuation_preview import (
     LEGACY_VERSION,
+    SavedModelReference,
     ScenarioInputs,
     ValuationPreview,
     ValuationPreviewRequest,
@@ -165,6 +166,14 @@ def family_valuation_preview(
             )
         result = preview(basis, inputs)
         result.default_source = default_source
+        if default_source == "saved-model":
+            seed = saved[0]
+            result.saved_model = SavedModelReference(
+                id=seed.id,
+                saved_at=seed.saved_at,
+                preview_id=seed.preview.id,
+                locked_inputs=seed.locked_inputs,
+            )
         result.family_selection = (
             "override"
             if requested_family
