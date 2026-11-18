@@ -89,7 +89,7 @@ const calendarStatuses: Record<string, Words> = {
 export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
   if (output.status !== "ok" && output.status !== "partial") return null;
   const field = resolveField(output, pointer);
-  if (!field || field.group !== "items" || !["date","local_date","instant","local_time","title_en","title_zh"].includes(field.field)) return null;
+  if (!field || field.group !== "items" || !["date","end_date","local_date","instant","local_time","title_en","title_zh","status"].includes(field.field)) return null;
   const row = field.parent;
   const day = calendarDate(row.date);
   const title = str(row[locale === "zh" ? "title_zh" : "title_en"]);

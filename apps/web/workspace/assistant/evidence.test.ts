@@ -204,6 +204,8 @@ it.each([
   ["provisional","2026-03","2026-04","en","CPI (provisional) · 2026-03 – 2026-04"],
 ] as const)("retains calendar status %s and the precision of each endpoint", (status,date,end_date,locale,expected) => {
   const output = {data:{items:[{kind:"macro",status,date,end_date,evidence_id:"ev_cpi",title_en:"CPI",title_zh:"消费价格"}]}};
-  const [line] = verifiedLines(fieldReply("upcoming_events",output,"/data/items/0/date"),locale);
-  expect(line.text).toBe(expected);
+  for (const field of ["date","status", ...(end_date ? ["end_date"] : [])]) {
+    const [line] = verifiedLines(fieldReply("upcoming_events",output,"/data/items/0/" + field),locale);
+    expect(line?.text).toBe(expected);
+  }
 });
