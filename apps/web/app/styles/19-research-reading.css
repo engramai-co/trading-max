@@ -48,6 +48,10 @@
   gap: 16px;
   scroll-margin-top: calc(var(--mx-reading-top) + 12px);
 }
+/* The chart and its diagnosis share the score rail's grid; each still lands below the bar. */
+.mx-reading-sections .mx-tech-workspace > [id] {
+  scroll-margin-top: calc(var(--mx-reading-top) + 12px);
+}
 .mx-reading-sections > section > h2 {
   font-size: 18px;
   margin: 0;
@@ -226,7 +230,8 @@
   .mx-reading-sections {
     grid-area: 2 / 1;
   }
-  .mx-reading-sections > [id], .mx-reading-sections #valuation-results {
+  .mx-reading-sections > [id], .mx-reading-sections #valuation-results,
+  .mx-reading-sections .mx-tech-workspace > [id] {
     scroll-margin-top: calc(var(--mx-reading-top) + 56px);
   }
   .mx-reading-sections .mx-model-workbench, .mx-reading-sections .mx-model-reference-grid {

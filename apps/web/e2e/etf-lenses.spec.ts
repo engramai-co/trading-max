@@ -347,7 +347,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(page.locator(".mx-etf-summary")).toContainText("跟踪质量");
     await expect(page.locator(".mx-tech-score-compact .mx-tech-number strong")).toHaveText("28");
     await page.getByRole("button", { name: "技术评分", exact: true }).click();
-    await expect(page.locator("#technical-diagnosis")).toBeFocused();
+    await expect(page.locator("#research-data h2").first()).toBeFocused();
     await expect(page.getByRole("heading", { name: "技术诊断" })).toBeVisible();
     await lenses.getByRole("tab", { name: "概览" }).click();
     await expect(page.getByText("已获批")).toBeVisible();

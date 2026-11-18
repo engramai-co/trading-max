@@ -393,4 +393,45 @@ test.describe("research section navigation", () => {
     await expect(reading).not.toContainText("Close");
     await expect(page.getByRole("group", { name: "Historical firm targets" })).toHaveCount(0);
   });
+
+  test("price, diagnosis and seasonality read as one page", async ({ page }) => {
+    const seasonality: string[] = [];
+    page.on("request", (request) => {
+      if (/\/research\/AAPL\/lens\/technical\?.*detail=seasonality/.test(request.url())) seasonality.push(request.url());
+    });
+    await page.goto("/research?ticker=AAPL&view=technical&technicalView=seasonality");
+    const index = page.getByRole("navigation", { name: "On this page" });
+    await expect(index.getByRole("link")).toHaveText(["Price", "Technical diagnosis", "Seasonality"]);
+    await expect(page.locator("#research-seasonality h2").first()).toBeFocused();
+    await expect(page.locator("#research-seasonality")).toContainText("Monthly seasonality");
+    expect(seasonality.length).toBeGreaterThan(0);
+    await index.getByRole("link", { name: "Technical diagnosis" }).click();
+    await expect(page.locator("#research-data h2").first()).toBeFocused();
+    await expect(index.getByRole("link", { name: "Technical diagnosis" })).toHaveAttribute("aria-current", "location");
+    await expect(page.getByRole("tab", { name: "Seasonality" })).toHaveCount(0);
+  });
+
+  test("financial sections read as one page and load every reported row on approach", async ({ page }) => {
+    let full = 0;
+    page.on("request", (request) => {
+      if (/\/research\/AAPL\/lens\/fundamentals\?.*detail=full/.test(request.url())) full += 1;
+    });
+    await page.goto("/research?ticker=AAPL&view=fundamentals");
+    const index = page.getByRole("navigation", { name: "On this page" });
+    await expect(index.getByRole("link")).toHaveText([
+      "Operating analysis", "Income", "Balance sheet", "Cash flow", "Segments", "Ownership & dividends", "All reported rows",
+    ]);
+    await expect(page.getByRole("region", { name: "Income statement" })).toBeAttached();
+    await expect(page.getByRole("region", { name: "Balance sheet" })).toBeAttached();
+    await expect(page.getByRole("region", { name: "Cash flow statement" })).toBeAttached();
+    expect(full).toBe(0);
+    await index.getByRole("link", { name: "All reported rows" }).click();
+    await expect(page.locator("#research-full h2").first()).toBeFocused();
+    await expect.poll(() => full).toBeGreaterThan(0);
+    // A former mode link opens its section, with the shared reporting controls above.
+    await page.goto("/research?ticker=AAPL&view=fundamentals&financialMode=cash&frequency=ttm");
+    await expect(page.locator("#research-cash h2").first()).toBeFocused();
+    await expect(index.getByRole("link", { name: "Cash flow" })).toHaveAttribute("aria-current", "location");
+    await expect(page.getByRole("radiogroup", { name: "Reporting frequency" }).or(page.getByRole("group", { name: "Reporting frequency" })).first()).toBeAttached();
+  });
 });
