@@ -45,13 +45,13 @@ function failureCode(message: string) {
     return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : "assistant_unavailable";
   } catch { return "assistant_unavailable"; }
 }
-type SidebarProps = { page: string; search: string; scopeLabel: string; composerRef: (node: HTMLTextAreaElement | null) => void };
-function Thread({ page, search, scopeLabel, composerRef, initial, history, onHistory, onNew }: SidebarProps & {
+type SidebarProps = { checking: boolean; page: string; search: string; scopeLabel: string; composerRef: (node: HTMLTextAreaElement | null) => void };
+function Thread({ page, search, scopeLabel, checking, composerRef, initial, history, onHistory, onNew }: SidebarProps & {
   history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
 }) {
   const t = useCopy();
   const { timeZone, locale } = useLocale();
-  const { open, ready, close, pageCard, handoff } = useAssistant();
+  const { open, ready, pending, close, pageCard, handoff } = useAssistant();
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
@@ -99,7 +99,7 @@ function Thread({ page, search, scopeLabel, composerRef, initial, history, onHis
   };
   function send(value: string) {
     const text = value.trim();
-    if (!text || busy || !ready) return;
+    if (!text || busy || !ready || pending) return;
     clearError();
     const origin = card.origin ?? {page, search, snapshotId:card.reading?.snapshotId ?? undefined};
     const turn = card.role ? {...chatContext(origin.page, origin.search, timeZone), role:card.role, object:card.context ?? {}, snapshotId:origin.snapshotId} : context;
@@ -118,7 +118,7 @@ function Thread({ page, search, scopeLabel, composerRef, initial, history, onHis
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
       {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} /><ReadingLines card={card} />
-        <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} onClick={() => send(q)}>{q}<span aria-hidden="true">→</span></button>)}</div>
+        <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} disabled={pending} onClick={() => send(q)}>{q}<span aria-hidden="true">→</span></button>)}</div>
       </div>}
       {turns.map(m => <div key={m.id} className={"mx-assistant-turn mx-turn-" + m.role}>
         {m.role === "user" ? m.parts.map((p, i) => p.type === "text" ? <p key={i}>{p.text}</p> : null) : <ChatAnswer message={m} pending={busy && m === turns.at(-1)} />}
@@ -128,12 +128,12 @@ function Thread({ page, search, scopeLabel, composerRef, initial, history, onHis
     </div>
     <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
     <form className="mx-assistant-composer" onSubmit={e => { e.preventDefault(); send(draft); }}>
-      <span className="mx-assistant-scope">{contextCard?.object || [context.ticker, scopeLabel].filter(Boolean).join(" · ")}</span>
+      <span className="mx-assistant-scope">{checking ? t("正在检查连接…", "Checking connection…") : contextCard?.object || [context.ticker, scopeLabel].filter(Boolean).join(" · ")}</span>
       <div><textarea ref={history ? null : composerRef} rows={2} value={draft} onChange={e => setDraft(e.target.value)} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(draft); } }} />
         {busy ? <button type="button" onClick={event => { event.preventDefault(); void stop(); setDraft(submitted.current.text); setContextCard(submitted.current.card); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
-          : <button type="submit" disabled={!draft.trim()} aria-label={t("发送", "Send")}><ArrowUp weight="bold" /></button>}
+          : <button type="submit" disabled={pending || !ready || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp weight="bold" /></button>}
       </div>
     </form>
   </>;
