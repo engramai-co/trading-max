@@ -276,6 +276,18 @@ declare the selectable dimensions in `RoleContext.variant_fields` and use
 evidence stays with the variant. A role adopting bindings starts a separate
 reading cache so older answers cannot supply unverified selections.
 
+The Holdings tool returns the selected category or group and searches retained
+observations at least thirty days old for a matching classification and invested-value
+denominator. Returns binds the account, requested range, benchmark and both chart
+endpoints. A date-only daily NAV cannot establish an intraday FX valuation instant.
+The market map projects each market from the opening board in one reading request.
+A sector headline uses the selected board's leading constituent and session.
+
+A failed or interrupted refresh can precede the first snapshot. Its diagnosis uses
+the public terminal job record, completion timestamp, recorded attempts and
+allowlisted stage names. The reading stays cached for that job across subsequent
+publications. Broker reconciliation explanations label possible causes as inferences.
+
 The chat route defaults to `format=prose` and streams a tool-grounded answer
 in the user's language. The sidebar passes `format=references` to request
 two to four references for the current turn. For example,

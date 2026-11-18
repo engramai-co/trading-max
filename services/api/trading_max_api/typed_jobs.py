@@ -780,9 +780,12 @@ class TypedJobManager:
         except KeyError as exc:
             raise FileNotFoundError(str(exc)) from exc
 
-    def get(self, job_id: str) -> JobRecord:
+    def get(self, job_id: str, *, include_system: bool = True) -> JobRecord:
         try:
-            return _api_record(self.queue.get(job_id))
+            record = self.queue.get(job_id)
+            if not include_system and record.trigger == "system":
+                raise FileNotFoundError("Internal job")
+            return _api_record(record)
         except KeyError as exc:
             raise FileNotFoundError(str(exc)) from exc
 

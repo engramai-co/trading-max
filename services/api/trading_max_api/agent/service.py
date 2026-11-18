@@ -290,6 +290,8 @@ class AssistantService:
                 raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
         if context._reading:
             role, selected = context._reading
+            if role.id == "diagnosis" and not context.snapshot_id:
+                deps = replace(deps, manifest=None)
             deps = role.bind(deps, selected)
         model = bound.model
         started = time.monotonic()

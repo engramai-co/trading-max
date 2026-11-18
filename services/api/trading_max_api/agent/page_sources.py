@@ -39,10 +39,7 @@ def published_page_sources(indices, jobs) -> PageSources:
     @lru_cache(maxsize=1)
     def published_job(job_id: str):
         # Match the workspace's public refresh history. Internal queue jobs never enter model context.
-        for item in jobs.list(limit=200):
-            if item.job_id == job_id:
-                return item
-        raise FileNotFoundError("Update outside the displayed job history")
+        return jobs.get(job_id, include_system=False)
 
     return PageSources(
         weights,

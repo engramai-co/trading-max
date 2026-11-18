@@ -403,14 +403,30 @@ def test_failed_refresh_is_diagnosed_from_its_terminal_record(tmp_path, with_pub
     assert event.reading.version != deps.snapshot_id
 
 
-def test_benchmark_basis_is_localized_and_original_is_cited(tmp_path):
+@pytest.mark.parametrize(
+    ("basis", "en", "zh"),
+    [
+        ("adjusted_price_gbp", "adjusted prices", "复权价格"),
+        ("auto_adjusted_close", "adjusted closing prices", "复权收盘价"),
+    ],
+)
+def test_benchmark_basis_is_localized_and_original_is_cited(tmp_path, basis, en, zh):
+    from services.api.tests.assistant_fixture import publication
+    from services.api.trading_max_api.agent import tools
+
     _, deps, *_ = sample(tmp_path)
+    technical = deps.store.read_json(deps.snapshot_id, tools.TECHNICAL)
+    manifest = publication(
+        deps.store,
+        extra_artifacts={tools.TECHNICAL: {**technical, "benchmark_return_basis": basis}},
+    )
+    deps = replace(deps, manifest=manifest)
     role = role_registry()["attribution"]
     context = AttributionContext(scope="invest", start=DATES[0], end=DATES[-1], benchmark="VOO")
     facts = role.facts(role.reader(deps, context), context)
     benchmark = next(f for f in facts if f.section == "benchmark")
-    assert "adjusted prices" in benchmark.en and "复权价格" in benchmark.zh
-    assert benchmark.evidence.arguments["benchmark_basis"] == "adjusted_price_gbp"
+    assert en in benchmark.en and zh in benchmark.zh
+    assert benchmark.evidence.arguments["benchmark_basis"] == basis
 
 
 @pytest.mark.parametrize("called_scope", ["invest", "isa"])
@@ -633,3 +649,67 @@ def test_role_figure_fixture_matches_bound_tool_outputs(tmp_path):
     for tool, output in page_figure_outputs(tmp_path).items():
         assert captured[tool] == output
     assert [row["market"] for row in captured["global_map"]["data"]["markets"]] == ["us"]
+
+
+def test_first_failed_refresh_reading_survives_publication_and_filters_private_jobs(tmp_path):
+    import json
+
+    from fastapi.testclient import TestClient
+
+    from services.api.tests.assistant_fixture import publication
+    from services.api.trading_max_api.app import create_app
+    from services.api.trading_max_api.artifacts import ArtifactStore
+    from services.api.trading_max_api.config import Settings
+    from services.api.trading_max_api.credentials import InMemoryCredentialStore
+
+    app = create_app(
+        Settings(data_root=tmp_path, api_token="synthetic"),
+        credential_store=InMemoryCredentialStore(),
+    )
+    jobs = app.state.jobs
+    client = TestClient(app)
+    attempts = []
+
+    async def bind():
+        attempts.append(True)
+        return BoundModel(TestModel(custom_output_args={"indices": [0, 1]}), {})
+
+    async def ready():
+        return {"ready": True}
+
+    app.state.assistant.bind_model = bind
+    app.state.assistant.check_ready = ready
+
+    def diagnose(job):
+        response = client.post(
+            "/v1/assistant/roles/diagnosis/reading",
+            headers={"Authorization": "Bearer synthetic"},
+            json={"context": {"issue": "job", "job": job}},
+        )
+        assert response.status_code == 200, response.text
+        return json.loads(response.text.splitlines()[-1])
+
+    try:
+        queue = jobs.queue
+        failed = queue.enqueue("research", stages=[("research.fundamentals", "1", "Private label")])
+        queue.claim("synthetic-worker")
+        queue.set_stage(
+            failed.job_id,
+            "synthetic-worker",
+            "research.fundamentals",
+            "failed",
+            error_message="PRIVATE",
+        )
+        queue.fail(
+            failed.job_id, "synthetic-worker", error_code="synthetic", error_message="PRIVATE"
+        )
+        first = diagnose(failed.job_id)
+        assert first["type"] == "result" and "snapshotId" not in first["reading"]
+        assert "Fundamentals" in str(first) and "PRIVATE" not in str(first)
+        publication(ArtifactStore(tmp_path))
+        assert diagnose(failed.job_id) == first and len(attempts) == 1
+        private = queue.enqueue("research", trigger="system")
+        assert diagnose(private.job_id)["type"] == "empty"
+    finally:
+        client.close()
+        jobs.close()
