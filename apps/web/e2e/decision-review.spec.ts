@@ -1403,3 +1403,33 @@ test("a consent change hides cached Review before the other tab's profile resolv
     await other.close();
   }
 });
+
+test("collapsed unavailable Habits keeps its footprint and opens Assistant settings", async ({page,isMobile}, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (isMobile) await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await serve(page, () => ({benchmark:0.03,events:true,habitsConsented:true}));
+  let release!: () => void;
+  const held = new Promise<void>(r => {release = r;});
+  await page.route("**/api/backend/assistant/status", async route => {
+    await held;
+    await route.fulfill({json:{ready:false,code:"model_unavailable"}});
+  });
+  await page.goto("/review");
+  const timeline = page.getByRole("heading",{name:/Each decision after/});
+  await expect(timeline).toBeVisible();
+  const y = () => timeline.evaluate(el => el.getBoundingClientRect().top + scrollY);
+  const before = await y();
+  release();
+  const settings = page.getByRole("link",{name:"Assistant settings"});
+  await expect(settings).toBeVisible();
+  expect.soft(Math.abs(await y() - before)).toBeLessThan(1);
+  await expect(settings).toHaveAttribute("href","/settings?tab=assistant");
+  if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-en-collapsed-unavailable.png")});
+  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
+    enabled:true,consentRevision:2,acceptedConsentRevision:2,revision:1,providers:[],integrations:[],
+  }}));
+  await settings.click();
+  await expect(page).toHaveURL(/\/settings\?tab=assistant/);
+  await expect(page.getByRole("tab",{name:/MaxAI|Assistant/})).toHaveAttribute("aria-selected","true");
+});

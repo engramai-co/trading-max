@@ -366,8 +366,11 @@ a.mx-journal-act:focus-visible,
 .mx-review-body {
   --mx-habits-head-height: 66px;
 }
-.mx-review-habits-space:not([aria-hidden]) {
-  padding: 10px 18px;
+.mx-review-habits-space[aria-hidden] {
+  visibility: hidden;
+}
+.mx-review-habits-space {
+  padding: 8px 18px;
   border: 1px solid var(--mx-border);
   border-radius: 12px;
   background: var(--mx-surface);

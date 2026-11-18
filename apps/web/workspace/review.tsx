@@ -87,7 +87,8 @@ function HabitsSpace({ unavailable = false }: { unavailable?: boolean }) {
     catch { return false; }
   });
   return <div className="mx-review-habits-space" data-expanded={expanded || undefined} aria-hidden={!unavailable || undefined}>
-    {unavailable && <><strong>{t("习惯", "Habits")}</strong><p>{t("模型暂不可用。", "The model is unavailable.")} <Link href="/settings?section=assistant">{t("助手设置", "Assistant settings")}</Link></p></>}
+    <strong>{t("习惯", "Habits")}</strong>
+    <p>{t("模型暂不可用。", "The model is unavailable.")} <Link href="/settings?tab=assistant" prefetch={false} tabIndex={unavailable ? undefined : -1}>{t("助手设置", "Assistant settings")}</Link></p>
   </div>;
 }
 
