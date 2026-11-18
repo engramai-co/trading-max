@@ -864,9 +864,9 @@
 }
 @media (max-width: 767px) {
   .mx-assumption-picker .mx-draft-actions button {
-  min-width: 44px;
-  min-height: 44px;
-}
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 .mx-draft-reason a {
   white-space: nowrap;
@@ -880,4 +880,8 @@
 }
 .mx-draft-evidence span, .mx-draft-evidence a {
   color: var(--mx-muted);
+}
+
+.mx-draft-citation {
+  display: block;
 }

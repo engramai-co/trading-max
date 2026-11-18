@@ -22,8 +22,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
-import { DraftEvidence, DraftStatus, ProposalRow, useValuationDraft } from "./valuation-draft-editor";
-import { inputKey, type DraftReview } from "./valuation-draft";
+import { DraftEvidence, DraftStatus, ProposalRow, useDraftPreferences, useValuationDraft } from "./valuation-draft-editor";
+import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import {
   ApiError,
@@ -195,20 +195,11 @@ export function ValuationWorkbench({
     />
   );
   const reason = query.error instanceof ApiError && query.error.status === 422 ? query.error.message : null;
-  const missing =
-    reason === "currency-conversion-unavailable"
-      ? t("缺少报表币种到报价币种的汇率", "The reporting-to-quote exchange rate is missing")
-      : reason === "opening-cash-required-for-burn"
-        ? t("估算融资所需的期初现金余额缺失", "Opening cash is missing for the financing calculation")
-        : reason === "positive-common-equity-and-common-income-required"
-          ? t(
-              "需要同期普通股净利润与正的普通股净资产",
-              "Common earnings and positive common equity are required for the same period",
-            )
-          : t(
-              "此模型缺少完整同期报表、报价或上市股数",
-              "Matching statements, a quote and verified listing shares are required",
-            );
+  const prefs = useDraftPreferences();
+  const [draftAction, setDraftAction] = useState<HTMLSpanElement | null>(null);
+  const block = reason ?? (preview && reverseDraftBlock(preview));
+
+  const blockedMessage = block && draftBlockMessage(block, t, "complete-ttm-currency-and-share-count-required");
 
   return <ResearchReading parameter="valuationView" sections={editor ? valuationSections : valuationSections.slice(0, 2)}>
     <ValuationReadout data={data} preview={preview} reading={currentReading}
@@ -223,25 +214,30 @@ export function ValuationWorkbench({
       {editor && <div className="mx-model-output" ref={setOutput} inert={switching} />}
       <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
         id="valuation-assumptions" className="mx-model-inputs" help={methodology}
-        action={editor && <Button className="mx-model-jump" component="a" href="#valuation-results"
-          variant="subtle" size="compact-xs">{t("查看结果", "View results")}</Button>}>
+        action={<Group gap="xs">
+          {prefs.enabled && <span ref={setDraftAction}>
+            {!editor && block && <Button variant="default" size="compact-xs" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
+          </span>}
+          {editor && <Button className="mx-model-jump" component="a" href="#valuation-results"
+          variant="subtle" size="compact-xs">{t("查看结果", "View results")}</Button>}
+        </Group>}>
         {chooser}
         {editor ? <div className="mx-model-fields" inert={switching}>
           <ModelEditor key={reload + editorIdentity(editor)}
-        requestedFamily={family}
-        currentBasis={state.view === "editor" ? state.editor.id : null}
-        recovered={recovered?.id === editor.id ? recovered.changes : undefined}
-        reloadBasis={async changes => {
-          const result = await query.refetch();
-          if (result.isSuccess) {
-            const next = result.data;
-            setRecovered(next.basis.ticker === editor.basis.ticker && next.basis.family === editor.basis.family
-              ? { id: next.id, changes } : undefined);
-            setDirty(false);
-            setReload(n => n + 1);
-          }
-        }}
- initial={editor} output={output} referencePanel={reference}
+            requestedFamily={family} currentBasis={state.view === "editor" && !query.isError ? state.preview.id : null}
+            draftAction={!switching ? draftAction : null} prefs={prefs} defaultBlock={block ?? null}
+            recovered={recovered?.id === editor.id ? recovered.changes : undefined}
+            reloadBasis={async changes => {
+              const result = await query.refetch();
+              if (result.isSuccess) {
+                const next = result.data;
+                setRecovered(next.basis.ticker === editor.basis.ticker && next.basis.family === editor.basis.family
+                  ? { id: next.id, changes } : undefined);
+                setDirty(false);
+                setReload(n => n + 1);
+              }
+            }}
+            initial={editor} output={output} referencePanel={reference}
             onDirty={setDirty} onReading={setReading} data={data} revision={revision}
             methodology={methodology} refreshing={query.isFetching}
             onRetry={query.isError ? () => void query.refetch() : undefined} />
@@ -251,8 +247,9 @@ export function ValuationWorkbench({
           [t("股权成本", "Cost of equity"), percent(preview.reverseInputs?.discountRate)],
           [t("股数变化", "Share change"), percent(preview.reverseInputs?.shareCagr)],
         ]} /> : state.view === "error" ? (
-          reason ? <Empty title={missing} /> : <QueryError error={query.error} retry={query.refetch} />
+          reason ? <div id="valuation-draft-block"><Empty title={blockedMessage} /></div> : <QueryError error={query.error} retry={query.refetch} />
         ) : <Pending />}
+        {reverseOnly && prefs.enabled && block && <p id="valuation-draft-block" className="mx-draft-status">{blockedMessage}</p>}
       </Panel>
       {editor && <div className="mx-model-reference-grid" ref={setReference} inert={switching} />}
       {!preview && state.view === "error" && <ModelAlternatives data={data} financial={family === "residual-income"} />}
@@ -262,6 +259,7 @@ export function ValuationWorkbench({
 }
 
 function ModelEditor({
+  draftAction, prefs, defaultBlock,
   output,
   referencePanel,
   methodology,
@@ -277,6 +275,9 @@ function ModelEditor({
   refreshing,
   onRetry,
 }: {
+  draftAction: HTMLSpanElement | null;
+  prefs: ReturnType<typeof useDraftPreferences>;
+  defaultBlock: string | null;
   output: HTMLDivElement | null;
   referencePanel: HTMLDivElement | null;
   methodology?: string;
@@ -304,7 +305,7 @@ function ModelEditor({
       : 5
     : initial.horizon;
   const [inputs, setInputs] = useState<Scenarios>(() => initialValues(initial, recovered).inputs);
-  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs, revision ?? data.runId);
+  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs, revision ?? data.runId, prefs, currentBasis);
   const { draft } = drafting;
   const [editingProposal, setEditingProposal] = useState<string | null>(null);
   const focusField = useRef<string | null>(null);
@@ -399,6 +400,9 @@ function ModelEditor({
       });
     },
   });
+  const failedBlock = drafting.error && draftBlockMessage(drafting.error, t) ? drafting.error : null;
+  const draftBlock = defaultBlock ?? failedBlock ?? (query.error instanceof ApiError && query.error.status === 422
+    ? query.error.message : reverseDraftBlock(result));
   const basisChanged = currentBasis !== initial.id;
   const staleDraft = drafting.stale || Boolean((draft || dirty) && currentBasis && basisChanged) ||
     Boolean(draft && (!currentBasis || [query.error, save.error].some(e => e instanceof ApiError && [409, 422].includes(e.status))));
@@ -534,6 +538,16 @@ function ModelEditor({
   }, [initial, result, editedBase, sourceLabel, stale, busy, onReading]);
   return (
     <>
+      {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
+        {t("放弃草稿", "Discard draft")}
+      </Button> : <Button variant="default" size="compact-xs"
+        aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
+        disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
+        onClick={() => { if (drafting.phase) drafting.cancel(); else { setEditingProposal(null); void drafting.start(result); } }}>
+        {drafting.phase ? t("取消起草", "Cancel draft") : initial.defaultSource === "saved-model"
+          ? t("✦ 看新证据", "✦ Review new evidence") : t("✦ 起草", "✦ Draft")}
+      </Button>, draftAction)}
+      {drafting.enabled && draftBlock && <p className="mx-draft-status" id="valuation-draft-block">{draftBlockMessage(draftBlock, t, "complete-ttm-currency-and-share-count-required")}</p>}
       {output && createPortal(
           <Panel
             title={t("情景估值", "Scenario valuation")}
@@ -661,7 +675,7 @@ function ModelEditor({
           {draft && !drafting.phase && <p className="mx-draft-status" role="status">{changes.length ?
             t("{changes} 处改动 · 已接受 {accepted}", "{changes} proposed · {accepted} accepted").replace("{changes}", String(changes.length)).replace("{accepted}", String(accepted)) :
             t("此次起草保留了当前假设。", "The draft retains the current assumptions.")}</p>}
-          <DraftStatus phase={drafting.phase} error={drafting.error} />
+          <DraftStatus phase={drafting.phase} error={failedBlock ? null : drafting.error} />
           {reReview}
           <Segments
             label={t("编辑情景", "Edit scenario")}

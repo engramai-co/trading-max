@@ -12,7 +12,7 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel as OfflineModel
 
-from services.api.tests.test_valuation_evidence import MATURE, _publish
+from services.api.tests.test_valuation_evidence import LONDON, MATURE, _publish
 from services.api.trading_max_api.agent.service import BoundModel
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.research import ResearchLedger
@@ -307,6 +307,8 @@ def test_draft_fields_follow_the_selected_engine(desk, family, override):
             "ramp_years",
         }
     )
+    assert result["family"] == family
+    assert result["familySelection"] == ("override" if override else "automatic")
     assert fields == expect
     if family == "residual-income":
         reading = transcript[-1]["scenarios"]["base"]
@@ -447,6 +449,9 @@ def test_saved_source_records_respect_the_privacy_switch(desk):
             "reason": "private reason",
         },
     ).json()
+    assert "draftAudit" not in journal["models"][0]
+    journal_file = next(state.research_journal.root.glob("*.json"))
+    assert "draftAudit" not in json.loads(journal_file.read_text())["models"][0]
     _, body = inputs(client)
 
     async def bind():
@@ -491,6 +496,20 @@ def test_reopen_exact_hardware_template(desk):
     assert view["scenarios"]["base"]["inputs"]["exitFcfMultiple"] == 16
 
 
+def test_new_publication_discards_the_draft_even_if_the_desk_basis_is_unchanged(desk):
+    client, state, _, _ = desk
+    _, body = inputs(client)
+    bind = state.assistant.bind_model
+
+    async def republish():
+        _publish(state.store, MATURE)
+        return await bind()
+
+    state.assistant.bind_model = republish
+    assert post(client, body)[-1]["code"] == "valuation-draft-review-required"
+    assert not state.valuation_drafts.root.exists()
+
+
 def test_permission_revocation_during_final_basis_read(desk, monkeypatch):
     client, state, prefs, _ = desk
     _, body = inputs(client)
@@ -511,10 +530,10 @@ def test_permission_revocation_during_final_basis_read(desk, monkeypatch):
     assert not list(state.valuation_drafts.root.glob("*.json"))
 
 
-def test_withheld_reverse_reading_can_still_propose_values(desk, monkeypatch):
+def test_withheld_reverse_reading_discards_the_proposal(desk, monkeypatch):
     from trading_max.research.valuation_evidence import ValuationEvidenceTools
 
-    client, _, _, transcript = desk
+    client, state, _, _ = desk
     _, body = inputs(client)
     evaluate = ValuationEvidenceTools.evaluate_valuation
     monkeypatch.setattr(
@@ -522,8 +541,8 @@ def test_withheld_reverse_reading_can_still_propose_values(desk, monkeypatch):
         "evaluate_valuation",
         lambda self, req: evaluate(self, req).model_copy(update={"reverse_dcf": None}),
     )
-    assert post(client, body)[-1]["phase"] == "complete"
-    assert transcript[-1]["reverse"] is None
+    assert post(client, body)[-1]["code"] == "valuation-reverse-withheld"
+    assert not state.valuation_drafts.root.exists()
 
 
 def test_family_aware_contract_without_revenue_and_explicit_override(desk):
@@ -571,8 +590,69 @@ def test_ambiguous_receipt_requires_a_new_verified_share_basis(desk):
 
     _publish(state.store, MATURE, inject=ambiguous)
     assert client.get("/v2/research/SYNM/valuation-preview").status_code == 422
-    assert post(client, body)[-1]["code"] == "valuation-evidence-unavailable"
+    assert post(client, body)[-1]["code"] == "complete-ttm-currency-and-share-count-required"
     assert not transcript and not list(state.valuation_drafts.root.glob("*.json"))
+
+
+@pytest.mark.parametrize(
+    ("issuer", "shares", "ratio", "spot"),
+    [
+        (replace(LONDON, reporting="EUR", fx=0.85), 100, None, 24.65),
+        (replace(MATURE, ticker="BABA", reporting="EUR", fx=1.25, share_count=800), 100, 8, 25),
+    ],
+    ids=["pence-with-fx", "ordinary-shares-per-ads"],
+)
+def test_draft_uses_the_verified_desk_listing_basis(desk, issuer, shares, ratio, spot):
+    client, state, _, _ = desk
+
+    def statement_shares(batches):
+        if ratio is None:
+            return
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Ordinary Shares Number", **dict.fromkeys(dates, issuer.share_count)}
+        ]
+
+    _publish(state.store, issuer, inject=statement_shares)
+    view = client.get(f"/v2/research/{issuer.ticker}/valuation-preview").json()
+    body = {
+        "previewId": view["id"],
+        "horizon": 5,
+        "scenarios": {key: p["inputs"] for key, p in view["scenarios"].items()},
+    }
+    response = client.post(f"/v1/research/{issuer.ticker}/valuation-draft", json=body)
+    event = json.loads(response.text.splitlines()[-1])
+    assert event["phase"] == "complete", event
+    basis = next(iter(event["result"]["origins"].values()))["inputs"]["basis"]
+    for field, expected in {
+        "currency": issuer.quote_currency,
+        "reportingCurrency": issuer.reporting,
+        "spot": spot,
+        "fxRate": issuer.fx,
+        "shares": shares,
+        "ordinaryPerReceipt": ratio,
+    }.items():
+        assert basis[field] == view["basis"][field] == expected
+
+
+def test_withheld_desk_range_does_not_contact_the_provider(desk, monkeypatch):
+    client, state, _, transcript = desk
+    _, body = inputs(client)
+    calculate = valuation_draft.family_valuation_preview
+
+    def withheld(*args, **kwargs):
+        return calculate(*args, **kwargs).model_copy(
+            update={
+                "reverse_value": None,
+                "reverse_bound": None,
+                "reverse_reason": "target-margin-not-unique",
+            }
+        )
+
+    monkeypatch.setattr(valuation_draft, "family_valuation_preview", withheld)
+    assert post(client, body)[-1]["code"] == "target-margin-not-unique"
+    assert not transcript and not state.valuation_drafts.root.exists()
 
 
 def test_pending_capacity_excludes_previously_saved_reviews(desk):

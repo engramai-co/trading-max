@@ -63,7 +63,7 @@ class SavedResearchModel(DomainModel):
     saved_at: datetime
     preview: ValuationPreview
     reason: str = ""
-    draft_audit: DraftAudit | None = None
+    draft_audit: DraftAudit | None = Field(default=None, exclude_if=lambda audit: audit is None)
 
 
 class ResearchModelSaveRequest(ValuationPreviewRequest):

@@ -18,17 +18,20 @@ from trading_max.research.valuation_evidence import (
     Metric,
     ValuationEvidenceTools,
 )
+from trading_max.research.valuation_preview import ValuationPreviewRequest, preview
 
 from ..agent.runtime import error_code
 from ..agent.service import AssistantUnavailable
 from ..agent.valuation import DraftAgent, annual_revenue_growth
 from ..assistant_settings import ASSISTANT_CONSENT_REVISION
 from ..valuation_drafts import (
+    DRAFT_BLOCK_REASONS,
     DraftEvent,
     DraftInput,
     DraftRecord,
     TemplateInputs,
     ValuationDraftStore,
+    check_draft_preview,
 )
 from ..valuation_evidence import freeze_valuation_evidence
 from .dependencies import app_service, latest_or_503, require_write_auth
@@ -46,8 +49,21 @@ def _prepare(request, ticker, body, share_saved, progress):
             ticker, request, requested_family=body.requested_family, manifest=manifest
         )
         models = journal.load(ticker).models
-    if not view.scenarios or view.id != body.preview_id:
+    check_draft_preview(view)
+    if view.id != body.preview_id:
         raise ValueError("valuation-draft-review-required")
+    # Unsaved edits participate in the local eligibility check only.
+    check_draft_preview(
+        preview(
+            view.basis,
+            ValuationPreviewRequest(
+                family=view.basis.family,
+                horizon=body.horizon,
+                scenarios=body.scenarios,
+                formula_version=view.formula_version,
+            ),
+        )
+    )
     lens = app_service(request, "research").lens_snapshot(ticker, "valuation", manifest)
     listing = lens.context.quote.listing
     if not listing:
@@ -68,8 +84,24 @@ def _prepare(request, ticker, body, share_saved, progress):
     )
     frozen = frozen.model_copy(update={"formula_version": view.formula_version})
     public = ValuationEvidenceTools(binding, frozen).get_valuation_basis().basis
-    if public is None or public.revenue == 0:
+    if public is None or (public.family != "residual-income" and public.revenue == 0):
         raise ValueError("valuation-evidence-unavailable")
+    # The desk can use its broker mark; the company, statement, FX and share
+    # units still have to match the public evaluator exactly.
+    for field in (
+        "family",
+        "period_id",
+        "currency",
+        "reporting_currency",
+        "fx_rate",
+        "shares",
+        "ordinary_per_receipt",
+        "revenue",
+        "book_per_share",
+        "common_earnings",
+    ):
+        if getattr(public, field) != getattr(view.basis, field):
+            raise ValueError("valuation-evidence-unavailable")
     profile = sector_profile_by_label(lens.valuation.assumptions.get("profile"))
     cost = next(
         (
@@ -108,6 +140,7 @@ def _prepare(request, ticker, body, share_saved, progress):
         prior.id if prior and share_saved else None,
         body.horizon,
         progress,
+        "override" if body.requested_family else "automatic",
     )
     parent = models[0].id if models else None
     return runner, view, parent
@@ -179,8 +212,14 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
                 def current():
                     with journal.lock:
+                        manifest = latest_or_503(request)
+                        if manifest.run_id != runner.frozen.binding.snapshot_run_id:
+                            return False
                         latest = family_valuation_preview(
-                            ticker, request, requested_family=body.requested_family
+                            ticker,
+                            request,
+                            requested_family=body.requested_family,
+                            manifest=manifest,
                         )
                         parents = journal.load(ticker).models
                         return (
@@ -243,8 +282,10 @@ def _failure(exc: Any) -> str:
     if isinstance(exc, EvidenceLimitError):
         return "assistant_limit_reached"
     if isinstance(exc, HTTPException) and exc.status_code in {422, 503}:
+        if isinstance(exc.detail, str) and exc.detail in DRAFT_BLOCK_REASONS:
+            return exc.detail
         return "valuation-evidence-unavailable"
-    if isinstance(exc, ValueError) and str(exc) in {
+    if isinstance(exc, ValueError) and str(exc) in DRAFT_BLOCK_REASONS | {
         "valuation-draft-review-required",
         "valuation-evidence-unavailable",
         "valuation-draft-settings-changed",

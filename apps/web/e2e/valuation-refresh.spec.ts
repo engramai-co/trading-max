@@ -15,7 +15,7 @@ function preview(ticker: string, spot: number, asOf: string, held: boolean, inpu
     id: `synthetic-${ticker}-${spot}-${JSON.stringify(inputs)}`,
     formulaVersion: "equity-proxy-projection-v1",
     basis: {
-      ticker, quoteId: `${ticker}-quote`, dataVersion: `${ticker}-research`, currency: "USD",
+      ticker, family: "cash-flow", quoteId: `${ticker}-quote`, dataVersion: `${ticker}-research`, currency: "USD",
       spot, spotSource: held ? "broker" : "quote", spotAsOf: asOf,
       revenue: 1000, shares: 100, startMargin: 0.1, evidence: [],
       cashFlowType: "operating-cash-flow-less-capex-equity-proxy", discountRateType: "cost-of-equity",
@@ -823,15 +823,30 @@ test("set and clear a saved valuation baseline from its journal", async ({ page 
 
 const draftProposals = [
   { scenario: "base", field: "revenue_cagr", value: 0.19, category: "consensus", source: "consensus-growth", evidenceIds: ["estimate"] },
-  { scenario: "base", field: "target_fcf_margin", value: 0.12, category: "derived", source: "statement-margin", evidenceIds: ["statement"] },
+  { scenario: "base", field: "target_fcf_margin", value: 0.12, category: "derived", source: "statement-margin", evidenceIds: ["statement", "revenue"] },
   { scenario: "bear", field: "discount_rate", value: 0.12, category: "template", source: "sector-template", originId: "template", evidenceIds: [] },
 ];
-const draftResponse = { phase: "complete", result: { id: "synthetic-draft", proposals: draftProposals,
+const draftResponse = { phase: "complete", result: { id: "synthetic-draft", family:"cash-flow", familySelection:"automatic", proposals: draftProposals,
   origins: { template: { source: "sector-template", inputs: { profile:"hardware", effectiveDiscountRate:.1, annualRevenueGrowth:.1,
     growthCap:.3, marginCap:.18, shareCagr:.01, exitMultiple:16, basis:{startMargin:.12} },
     scenarios:{bear:{discountRate:.12}}, evidenceIds:["statement"] } },
-  evidence: { estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {end:"2026-12-31"}, value: 0.19, unit: "ratio" },
-    statement: { locator: { dataset: "financials" }, metric: "freeCashflow", period: {end:"2025-12-31"}, value: 120, unit: "currency", currency: "USD" } } } };
+  evidence: {
+    estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {kind:"forecast",end:"2026-12-31"},
+      observedAt:"2026-11-03T21:00:00Z", value: 0.19, unit: "ratio" },
+    statement: { locator: { dataset: "financials" }, metric: "freeCashflow", period: {kind:"annual",end:"2025-12-31"},
+      observedAt:"2026-02-10T21:00:00Z", value: 120, unit: "currency", currency: "USD" },
+    revenue: { locator: { dataset: "financials" }, metric: "revenue", period: {kind:"annual",end:"2025-12-31"},
+      observedAt:"2026-02-10T21:00:00Z", value: 1000, unit: "currency", currency: "USD" },
+  } } };
+
+async function captureDraft(page: Page, project: string, locale: string, scheme: string, example: string) {
+  const dir = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
+  if (!dir) return;
+  await page.locator("#valuation-assumptions").evaluate(el => {
+    window.scrollBy({top: el.getBoundingClientRect().top - (window.innerWidth < 768 ? 140 : 75), behavior: "instant"});
+  });
+  await page.screenshot({scale: "css", path: join(dir, `${example}-${project}-${locale}-${scheme}.png`)});
+}
 
 for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark"] as const) {
   test(`stage a valuation draft field and review the changed basis · ${locale} · ${scheme}`, async ({ page }, info) => {
@@ -844,6 +859,14 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await page.route("**/api/backend/settings/assistant", route => route.fulfill({json: {
       enabled: true, consentRevision: 2, acceptedConsentRevision: 2, revision: 1,
     }}));
+    await page.route("**/SYNT/valuation-preview*", async route => {
+      const body = route.request().method() === "POST" ? route.request().postDataJSON() : null;
+      const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", true, body?.scenarios ?? {});
+      return route.fulfill({json: {...p, formulaVersion:"statement-equity-v2",
+        scenarios:Object.fromEntries(Object.entries(p.scenarios).map(([key, scenario]) => [key, {
+          ...scenario, inputs:{rampYears:3, ...scenario.inputs},
+        }])), reverseMetric:"revenue-growth", reverseValue:p.impliedGrowth}});
+    });
     let runs = 0;
     await page.route("**/SYNT/valuation-draft", route => {
       runs++;
@@ -868,11 +891,8 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
     expect(saved).toBeNull();
     await expect(editor.getByRole("link", {name: en ? "Analysts" : "分析师", exact:true})).toHaveAttribute("href", "#draft-evidence-estimate");
-    const dir = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
-    if (dir) {
-      await editor.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
-      await page.screenshot({path: join(dir,`${info.project.name}-${locale}-${scheme}.png`)});
-    }
+    await expect(accept.locator("xpath=ancestor::div[contains(@class,'mx-draft-row')]")).toContainText(en ? "Observed" : "采集于");
+    await captureDraft(page, info.project.name, locale, scheme, "cash-flow");
     await editor.getByRole("link", { name: en ? "Analysts" : "分析师", exact:true }).first().click();
     const evidence = page.locator("#draft-evidence-estimate");
     await expect(evidence).toContainText("19%");
@@ -886,6 +906,80 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     expect(runs).toBe(1);
   });
 }
+
+for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`review a bank assumption and withhold an ambiguous reading · ${locale} · ${scheme}`, async ({page}, info) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    await page.setViewportSize(info.project.name === "mobile" ? {width:390, height:844} : {width:1440, height:900});
+    await page.emulateMedia({colorScheme:scheme, reducedMotion:"reduce"});
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
+      enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
+    }}));
+    let withheld = false;
+    let runs = 0;
+    await page.route("**/SYNT/valuation-preview*", route => {
+      const post = route.request().method() === "POST" ? route.request().postDataJSON() : undefined;
+      const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", false, {});
+      return route.fulfill({json: {...p, formulaVersion:"statement-equity-v2",
+        basis:{...p.basis, family:withheld ? "cash-flow" : "residual-income", bookPerShare:25, commonEarnings:150},
+        scenarios: Object.fromEntries(Object.entries(p.scenarios).map(([k,v]) => [k,{...v,
+          inputs: post?.scenarios[k] ?? {...v.inputs, initialRoe:0.15, payout:0.3, terminalPb:1, rampYears:3}}])),
+        reverseMetric: withheld ? "target-margin" : "initial-roe", reverseValue: withheld ? null : 0.18,
+        reverseReason: withheld ? "target-margin-not-unique" : null,
+      }});
+    });
+    await page.route("**/SYNT/valuation-draft", route => {
+      runs++;
+      const evidence = {
+        earnings: {...draftResponse.result.evidence.statement, metric:"netIncome", value:200},
+        equity: {...draftResponse.result.evidence.revenue, metric:"commonEquity"},
+      };
+      return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({phase:"complete", result:{
+        id:"bank-draft", family:"residual-income", familySelection:"automatic", origins:{}, evidence,
+        proposals:[{scenario:"base", field:"initial_roe", category:"derived", source:"common-roe",
+          value:0.2, evidenceIds:["earnings","equity"]}],
+      }})+"\n"});
+    });
+    const en = locale === "en";
+    const editor = page.locator("#valuation-assumptions");
+    const entry = editor.getByRole("button", {name: en ? "✦ Draft" : "✦ 起草"});
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    await entry.click();
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(1);
+    const accept = editor.getByRole("button", {name:en ? "Accept Year-one ROE" : "接受 第一年 ROE"});
+    await accept.click();
+    await expect(accept).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator(".mx-draft-reading")).not.toContainText("…");
+    await captureDraft(page, info.project.name, locale, scheme, "residual-income");
+    await editor.getByRole("button", {name:en ? "Discard draft" : "放弃草稿"}).click();
+    withheld = true;
+    await page.reload();
+    await expect(entry).toBeDisabled();
+    await expect(editor.locator("#valuation-draft-block")).toContainText(en ? "unique target margin" : "唯一的目标利润率");
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+    await captureDraft(page, info.project.name, locale, scheme, "withheld");
+    expect(runs).toBe(1);
+  });
+}
+
+test("a missing valuation basis disables drafting without starting a run", async ({page}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await synthetic(page, false);
+  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
+    enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
+  }}));
+  await page.route("**/SYNT/valuation-preview*", route => route.fulfill({status:422,json:{detail:"complete-ttm-currency-and-share-count-required"}}));
+  let runs = 0;
+  await page.route("**/SYNT/valuation-draft", route => { runs++; return route.abort(); });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor=page.locator("#valuation-assumptions");
+  await expect(editor.getByRole("button",{name:"✦ Draft"})).toBeDisabled();
+  await expect(editor.locator("#valuation-draft-block")).toContainText("verified listing shares");
+  expect(runs).toBe(0);
+});
 
 test("cancel a valuation draft and discard a late proposal", async ({ page }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");

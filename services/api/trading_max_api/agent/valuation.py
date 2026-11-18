@@ -74,12 +74,14 @@ class DraftAgent:
         saved_model_id: str | None,
         horizon: Literal[5, 10],
         progress: Callable[[str], None],
+        family_selection: Literal["automatic", "override"],
     ):
         self.frozen = frozen
         self.tools = ValuationEvidenceTools(frozen.binding, frozen)
         self.defaults = defaults
         self.horizon = horizon
         self.progress = progress
+        self.family_selection = family_selection
         self.candidates: dict[str, Proposal] = {}
         self.disclosed: set[str] = set()
         self.groups: dict[str, EvidenceGroup] = {}
@@ -275,6 +277,9 @@ class DraftAgent:
         )
         if not result.projections or not result.preview_id:
             raise ValueError(result.reason or "valuation-evidence-unavailable")
+        reverse = result.reverse_dcf
+        if reverse is None or (reverse.value is None and reverse.bound is None) or reverse.reason:
+            raise ValueError((reverse and reverse.reason) or "valuation-reverse-withheld")
         self.evaluation_id, self.proposals = result.preview_id, list(chosen.values())
         return self.deliver(
             {
@@ -293,9 +298,7 @@ class DraftAgent:
                     }
                     for s, p in result.projections.items()
                 },
-                "reverse": result.reverse_dcf.model_dump(mode="json")
-                if result.reverse_dcf
-                else None,
+                "reverse": reverse.model_dump(mode="json"),
             }
         )
 
@@ -356,6 +359,8 @@ class DraftAgent:
             if isinstance(origin, TemplateOrigin):
                 cited.update(origin.evidence_ids)
         return DraftResult(
+            family=self.frozen.family,
+            family_selection=self.family_selection,
             origins=origins,
             id=uuid4(),
             proposals=self.proposals,

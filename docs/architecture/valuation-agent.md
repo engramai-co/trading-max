@@ -67,7 +67,16 @@ dated public inputs and scenario values. Shared saved candidates point to
 their numeric configuration or saved model version. Reported and derived
 candidates cite the public rows used for their value.
 
-The model selects candidates for individual scenario fields. The server
+A draft uses the family from the desk’s v2 preview and records whether it
+was selected automatically or by the reader. The desk and public evaluator
+must agree on the statement period, listing shares, ordinary shares per
+receipt and reporting-to-quote FX. A missing basis or withheld reverse
+reading shows its reason in the editor and produces no proposal. A reading
+outside the search bounds can still support a draft.
+
+The model selects candidates for individual scenario fields. The editor
+renders each reason from the candidate source and its typed evidence,
+including the unit, period and observation time. The server
 validates each selection against the candidates returned in that run and runs
 the public evaluator. The sixth tool can only defer the evaluated proposal to
 the editor. A run has 90 seconds, six tool calls, a 64 KiB evidence budget and
@@ -82,5 +91,9 @@ lock as a manual save. The immutable version retains the reviewed decisions,
 original values, frozen evidence, formula, prompt version and computed result.
 A successful write frees the pending slot. An identical retry returns the saved
 version from the journal. Discarding a draft restores the values it replaced.
-When a newer basis arrives, re-review carries manual edits onto the new inputs. Drafts never select an overview
-baseline.
+When a newer basis arrives, re-review carries manual edits onto the new
+inputs. Drafts never select an overview baseline.
+
+Previously saved models remain readable. Manual versions keep their existing
+journal format. A reviewed version adds an audit record, so preserve the
+workspace backup from before the first reviewed save for a downgrade.

@@ -23,6 +23,7 @@ from trading_max.research.valuation_preview import (
     FormulaVersion,
     FrozenValuationBasis,
     ScenarioInputs,
+    ValuationPreview,
 )
 
 from .valuation_assumptions import _atomic_write
@@ -39,6 +40,32 @@ Source = Literal[
     "book-multiple",
 ]
 Decision = Literal["accepted", "rejected", "edited", "unreviewed"]
+
+
+DRAFT_BLOCK_REASONS = frozenset(
+    {
+        "valuation-reverse-withheld",
+        "complete-ttm-currency-and-share-count-required",
+        "currency-conversion-unavailable",
+        "positive-common-equity-and-common-income-required",
+        "company-model-not-applicable",
+        "valuation-inputs-unavailable",
+        "non-monotonic-or-flat-cashflows",
+        "target-margin-not-unique",
+        "opening-cash-required-for-burn",
+        "positive-target-and-multiple-required",
+        "no-valuation-range-to-save",
+    }
+)
+
+
+def check_draft_preview(view: ValuationPreview) -> None:
+    if view.reverse_reason:
+        raise ValueError(view.reverse_reason)
+    if not view.scenarios:
+        raise ValueError("no-valuation-range-to-save")
+    if view.reverse_value is None and view.reverse_bound is None:
+        raise ValueError("valuation-reverse-withheld")
 
 
 class DraftInput(DomainModel):
@@ -88,6 +115,8 @@ class Proposal(DomainModel):
 
 
 class DraftResult(DomainModel):
+    family: Family
+    family_selection: Literal["automatic", "override"]
     id: UUID
     proposals: list[Proposal]
     origins: dict[str, DraftOrigin]
