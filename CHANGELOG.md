@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.64.0] - 2026-11-18
+
+### Changed
+- Price & technical shows the price chart, technical score and technical diagnosis on one surface, divided by hairlines. The score sits beside the chart and the diagnosis spans the surface below them; on narrow screens they follow each other.
+- The floating research section index is frosted glass: the reading shows softly blurred through it, and its text stays faint until you point at it.
+
 ## [1.63.3] - 2026-11-18
 
 ### Fixed

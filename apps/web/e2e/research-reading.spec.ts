@@ -470,8 +470,13 @@ test.describe("research section index", () => {
     // Floating: the reading keeps its width and the faint index sits above it.
     await expect(pin).toHaveAttribute("aria-pressed", "false");
     expect((await reading.boundingBox())!.width).toBe(width);
-    // The card is solid: the reading never shows through the faint text.
-    expect(await page.locator(".mx-section-panel").evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(255, 255, 255)");
+    // Frosted glass: a translucent tint over the blurred reading.
+    const glass = await page.locator(".mx-section-panel").evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { tint: style.backgroundColor, blur: style.backdropFilter };
+    });
+    expect(glass.tint).toMatch(/\/ 0\.\d+\)$|^rgba\(/);
+    expect(glass.blur).toContain("blur(");
     await toggle.evaluate((element) => (element as HTMLElement).blur());
     await page.mouse.move(10, 600);
     await expect.poll(() => index.evaluate((element) => getComputedStyle(element).opacity)).toBe("0.55");
