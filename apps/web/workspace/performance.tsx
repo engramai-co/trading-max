@@ -9,7 +9,7 @@ import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
 import { useMemo, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import { useLocale } from "@/components/locale-provider";
-import { formatDate } from "@/ui/formatters";
+import { formatDate, formatDateTime } from "@/ui/formatters";
 import type { DashboardLens, NavPoint, RiskMetrics } from "@/lib/types";
 import { HistoryChart, Legend, type ChartLine } from "./charts";
 import { TimelineChart } from "./timeline-chart";
@@ -88,6 +88,7 @@ export function PerformanceContent({
   const preferredBenchmark = usePerformanceBenchmark();
   const benchmark = benchmarkValue(params.get("benchmark")) ?? preferredBenchmark;
   const {ready} = useAssistant();
+  const {locale, timeZone} = useLocale();
   const [selectionRange,setSelectionRange] = useState<{start:string; end:string; identity:string} | null>(null);
   const [phoneRange,setPhoneRange] = useState<string | null>(null);
   const [moneyUnit, setMoneyUnit] = useState("gbp");
@@ -181,7 +182,8 @@ export function PerformanceContent({
   const citedWindow = params.get("snapshotId")===data?.runId && linkedFrom && linkedTo && points.some(point=>point.date===linkedFrom) && points.some(point=>point.date===linkedTo) ? {start:linkedFrom,end:linkedTo} : null;
   const selectedWindow = selectionRange?.identity===identity ? selectionRange
     : phoneRange===phoneIdentity && points.length > 1 && !rangeMismatch ? {start:points[0].date,end:points.at(-1)!.date} : citedWindow;
-  const inspection = <PageInspection role="attribution" snapshotId={data?.runId} object={selectedWindow ? selectedWindow.start.slice(0,10)+" – "+selectedWindow.end.slice(0,10) : t("所选区间","Selected range")}
+  const endpointLabel = (value:string) => value.length===10 ? value : formatDateTime(value,locale,timeZone);
+  const inspection = <PageInspection role="attribution" snapshotId={data?.runId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
     context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
     onClose={() => {setSelectionRange(null);setPhoneRange(null);if (citedWindow) updateRoute({inspectFrom:null,inspectTo:null});}}/>;
   const first = points[0],
