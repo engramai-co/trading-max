@@ -48,6 +48,8 @@ function ReadingContent({ card, children }: ReadingContainerProps) {
 }
 function ReadingSheet({ card, children, onClose }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
+  const { open } = useAssistant();
+  if (open) return null;
   return <Drawer opened onClose={onClose} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title + " · " + card.object}</span>}
     returnFocus={false} closeButtonProps={{"aria-label":t("关闭解读", "Close reading")}}
     attributes={{header:{role:"presentation"}}} classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>

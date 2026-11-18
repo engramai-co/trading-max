@@ -1,3 +1,4 @@
+import listingRefusal from "../tests/fixtures/listing-prices-unavailable.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
@@ -47,7 +48,7 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>, 
     }
     if (path.startsWith(base + "/lens/")) {
       const overview = backendFixture(new URL(base + "/lens/overview",url)) as Record<string,unknown>;
-      return route.fulfill({json:{...overview,view:path.split("/").at(-1),analyst:{
+      return route.fulfill({json:{...overview,view:path.split("/").at(-1),earningsBriefEligible:true,analyst:{
         asOf:"2026-01-30",recommendations:[{period:"0m",strongBuy:1,buy:3,hold:2,sell:1,strongSell:0}],
         priceTargets:{median:105,low:90,high:115},earningsEstimate:[{period:"0q",endDate:"2026-03-31",avg:1.44,currency:"USD"}],earningsEvents:[],
       }}});
@@ -350,13 +351,27 @@ test("unavailable listing prices disclose the listing and withhold its moment co
   const calls:string[] = [];
   page.on("request", request => {if (request.url().includes("/assistant/key-moments/")) calls.push(request.url());});
   await page.route("**/api/backend/research/SYNT/prices?**",route =>
-    route.fulfill({status:404,json:{detail:"security-price-history-unavailable"}}));
+    route.fulfill({status:404,json:listingRefusal}));
   await page.goto("/research?ticker=SYNT&view=technical");
   await expect(page.getByText("Price history is unavailable for this listing.")).toBeVisible({timeout:4000});
   await expect(page.locator(".mx-track-moment, .mx-key-marker")).toHaveCount(0);
   expect(calls).toEqual([]);
 });
 
+
+test("a listing refusal clears previously verified bars and moment controls", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.goto("/research?ticker=SYNT&view=technical");
+  await expect(page.locator(".mx-track-moment")).toHaveCount(1);
+  const candidates:string[] = [];
+  page.on("request", req => { if (req.url().includes("/assistant/key-moments/")) candidates.push(req.url()); });
+  await page.route("**/api/backend/research/SYNT/prices?**", route => route.fulfill({status:404,json:listingRefusal}));
+  await page.getByRole("group",{name:"Price range"}).getByRole("button",{name:"1D",exact:true}).click();
+  await expect(page.getByText("Price history is unavailable for this listing.")).toBeVisible();
+  await expect(page.locator(".mx-track-moment, .mx-key-marker")).toHaveCount(0);
+  expect(candidates).toEqual([]);
+});
 
 test("reselecting a day after zoom keeps the new chart window in chat", async ({page,isMobile}) => {
   const selected = "2025-12-18";
@@ -391,3 +406,91 @@ test("reselecting a day after zoom keeps the new chart window in chat", async ({
   expect(second).toMatchObject({date:selected,start:query.get("start"),end:query.get("end")});
   expect(second.start).not.toBe(first.start);
 });
+
+test("financials summary keeps the earnings brief before its first section", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.route("**/api/backend/research/SYNT/lens/fundamentals?**", route => {
+    const url = new URL(route.request().url());
+    expect(url.searchParams.get("detail")).toBe("summary");
+    const overview = backendFixture(new URL(base + "/lens/overview",url)) as Record<string,unknown>;
+    return route.fulfill({json:{...overview,view:"fundamentals",earningsBriefEligible:true,analyst:null,financials:null,
+      fundamentals:{metrics:{marketCap:50000000, employees:180}}}});
+  });
+  await page.goto("/research?ticker=SYNT&view=fundamentals");
+  const brief = page.locator(".mx-earnings-brief");
+  await expect(brief).toBeVisible();
+  const first = await brief.evaluate(node => ({
+    prior: node.previousElementSibling?.className,
+    preceding: Array.from(node.parentElement?.children ?? []).map(el => el.className),
+    y: Math.round(node.getBoundingClientRect().y),
+  }));
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) await page.screenshot({scale:"css",fullPage:true,path:join(shots,info.project.name+"-financials-summary.png")});
+  expect(first.preceding[0], JSON.stringify(first)).toBe("mx-earnings-brief");
+});
+
+test("Ratings keeps a verified brief ahead of the cached section with no estimate fields", async ({page},info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.route("**/api/backend/research/SYNT/lens/analyst?**", route => {
+    const url = new URL(route.request().url());
+    const overview = backendFixture(new URL(base + "/lens/overview",url)) as Record<string,unknown>;
+    return route.fulfill({json:{...overview,view:"analyst",earningsBriefEligible:true,analyst:{asOf:"2026-01-30",
+      recommendations:[{period:"0m",strongBuy:1,buy:3,hold:2,sell:1,strongSell:0}],
+    }}});
+  });
+  await page.goto("/research?ticker=SYNT&view=analyst");
+  const rating = page.locator("#research-ratings");
+  await expect(rating).toBeVisible();
+  const before = await rating.boundingBox();
+  const brief = page.locator(".mx-earnings-brief");
+  await expect(brief).toBeVisible();
+  expect((await rating.boundingBox())?.y).toBe(before?.y);
+  const position = await brief.evaluate(node => ({
+    before: Boolean(node.compareDocumentPosition(document.querySelector("#research-ratings")!) & Node.DOCUMENT_POSITION_FOLLOWING),
+    y: Math.round(node.getBoundingClientRect().y),
+  }));
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) await page.screenshot({scale:"css",fullPage:true,path:join(shots,info.project.name+"-ratings-only-brief.png")});
+  expect(position.before, JSON.stringify(position)).toBe(true);
+});
+
+test("an already-open sidebar receives focus when a chart hands off", async ({page},info) => {
+  test.skip(info.project.name!=="desktop","The side-by-side route uses desktop width.");
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.goto("/research?ticker=SYNT&view=technical");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel.getByRole("textbox",{name:"Message"})).toBeFocused();
+  await page.locator(".mx-track-moment").click();
+  const question = page.locator(".mx-anchored-reading .mx-reading-actions button").first();
+  await question.focus();
+  await page.keyboard.press("Enter");
+  const draft = panel.getByRole("textbox",{name:"Message"});
+  await expect(draft).toHaveValue("Which events were verified that day?");
+  await expect(draft).toBeFocused({timeout:1200});
+});
+
+test("phone resize with an open research card has one modal and sends focus to MaxAI", async ({page},info) => {
+  await page.setViewportSize({width:1440,height:900});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.goto("/research?ticker=SYNT&view=technical");
+  await page.locator(".mx-track-moment").click();
+  await page.locator(".mx-anchored-reading .mx-reading-actions button").first().click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel.locator("textarea")).not.toHaveValue("");
+  const zoom = page.getByRole("button",{name:"Zoom in"});
+  await zoom.focus();
+  await expect(zoom).toBeFocused();
+  await page.setViewportSize({width:390,height:844});
+  await expect(panel).toHaveRole("dialog");
+  const active = await page.evaluate(() => document.activeElement?.outerHTML.slice(0,165));
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) await page.screenshot({scale:"css",path:join(shots,info.project.name+"-phone-modal-stacking.png")});
+  await expect(panel.locator(":focus"),active).toHaveCount(1,{timeout:2000});
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+});
+
