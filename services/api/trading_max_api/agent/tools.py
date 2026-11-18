@@ -14,6 +14,7 @@ from typing import Annotated, Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.toolsets import FunctionToolset
+from trading_max.analytics.exposure_history import DIMENSIONS, exposure_rows
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import (
     HistoryInput,
@@ -140,7 +141,9 @@ class PositionArgs(Scoped, Paged):
 
 
 class ExposureArgs(Scoped, Paged):
-    dimension: Literal["country", "sector", "company"] = Field(description="Exposure grouping.")
+    dimension: Literal["country", "sector", "gics", "company"] = Field(
+        description="Exposure grouping."
+    )
 
 
 class PeriodArgs(Scoped, Paged):
@@ -492,7 +495,9 @@ _POSITION_FIELDS = {
 }
 
 
-def _position_rows(read: _Read, scope: AccountScope) -> tuple[list[Json], list[str], list[str]]:
+def _position_rows(
+    read: _Read, scope: AccountScope, *, observed_accounts: Json | None = None
+) -> tuple[list[Json], list[str], list[str]]:
     codes = read.account_codes(scope)
     if "C" in codes:
         return [], [], ["cfd_open_positions_not_published"]
@@ -517,6 +522,11 @@ def _position_rows(read: _Read, scope: AccountScope) -> tuple[list[Json], list[s
             issues.append("positions_not_published")
             continue
         found = True
+        if observed_accounts is not None:
+            observed_accounts[CODE_SCOPE[code]] = {
+                "as_of": _iso(account.get("positions_observed_at")) or _account_time(account),
+                "since": None,
+            }
         for row in _rows(positions):
             bounded = {
                 key: _text(row.get(key), 512)
@@ -582,15 +592,11 @@ def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
     raw = read.read(LOOKTHROUGH)
     if not raw or raw.get("available") is not True:
         return read.missing("lookthrough_unavailable", keys=(LOOKTHROUGH,))
-    rows_key, name_key, basis_key = {
-        "country": ("countryAllocation", "country", "countryBasis"),
-        "sector": ("industryAllocation", "industry", "industryBasis"),
-        "company": ("positions", "name", None),
-    }[args.dimension]
+    rows_key, name_key, basis_key = DIMENSIONS[args.dimension]
     if not isinstance(raw.get(rows_key), list):
         return read.missing("exposure_dimension_unavailable", keys=(LOOKTHROUGH,))
     rows = []
-    for row in _rows(raw[rows_key]):
+    for row in exposure_rows(raw, args.dimension):
         item = {
             "name": _text(row.get(name_key), 512),
             "value_gbp": _number(row.get("valueGbp")),
@@ -604,7 +610,6 @@ def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
                 indirect_value_gbp=_number(row.get("indirectValueGbp")),
             )
         rows.append(item)
-    rows.sort(key=lambda row: row["value_gbp"] or 0, reverse=True)
     ref = read.ref(LOOKTHROUGH)
     coverage = _number(raw.get("lookthroughCoveragePct"))
     issues = []
@@ -1320,6 +1325,14 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
 
 def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
     """Construct the fixed Trading Max tool registry for Pydantic AI."""
+    from .insights import (
+        daily_returns,
+        dated_exposure,
+        decision_timing_and_habits,
+        holding_fx_split,
+        price_key_moments,
+    )
+
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
         (portfolio_overview, 4),
@@ -1332,6 +1345,11 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (read_valuation_evidence, 8),
         (data_freshness, 5),
         (recent_decisions, 5),
+        (daily_returns, 10),
+        (holding_fx_split, 5),
+        (dated_exposure, 5),
+        (decision_timing_and_habits, 8),
+        (price_key_moments, 8),
     ):
         toolset.add_function(function, takes_ctx=True, timeout=timeout, strict=True)
     return toolset

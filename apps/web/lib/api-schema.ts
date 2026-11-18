@@ -1442,6 +1442,91 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/snapshots/{run_id}/insights/daily-returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Daily Returns */
+        get: operations["daily_returns_v1_snapshots__run_id__insights_daily_returns_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/snapshots/{run_id}/insights/dated-exposure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dated Exposure */
+        get: operations["dated_exposure_v1_snapshots__run_id__insights_dated_exposure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/snapshots/{run_id}/insights/decision-timing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Decision Timing */
+        get: operations["decision_timing_v1_snapshots__run_id__insights_decision_timing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/snapshots/{run_id}/insights/holding-fx": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Holding Fx */
+        get: operations["holding_fx_v1_snapshots__run_id__insights_holding_fx_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/snapshots/{run_id}/insights/key-moments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Key Moments */
+        get: operations["key_moments_v1_snapshots__run_id__insights_key_moments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/valuation/assumptions": {
         parameters: {
             query?: never;
@@ -1706,6 +1791,19 @@ export interface components {
              * @enum {string}
              */
             status: "available" | "unavailable";
+        };
+        /** AccountEffects */
+        AccountEffects: {
+            /** As Of */
+            as_of: string | null;
+            /** Contribution Gbp */
+            contribution_gbp: number | null;
+            /** Fx Effect Gbp */
+            fx_effect_gbp: number | null;
+            /** Local Price Effect Gbp */
+            local_price_effect_gbp: number | null;
+            /** Since */
+            since: string | null;
         };
         /** AccountReportData */
         AccountReportData: {
@@ -2406,6 +2504,7 @@ export interface components {
             /** Date */
             date: string;
         };
+        CalendarDay: string;
         /** CashSpan */
         CashSpan: {
             /** Averageshare */
@@ -3076,6 +3175,46 @@ export interface components {
             /** Periodend */
             periodEnd?: string | null;
         };
+        /** DailyReturn */
+        DailyReturn: {
+            /** Benchmark Return Fractions */
+            benchmark_return_fractions: {
+                [key: string]: number | null;
+            };
+            /** Date */
+            date: string;
+            /** From Date */
+            from_date: string;
+            /** Return Fraction */
+            return_fraction: number;
+            /** Worst Rank */
+            worst_rank: number;
+        };
+        /** DailyReturns */
+        DailyReturns: {
+            /** Basis */
+            basis: string;
+            /** Benchmark */
+            benchmark: string;
+            /** Benchmark Basis */
+            benchmark_basis: string | null;
+            /** Benchmark Currency */
+            benchmark_currency: string | null;
+            /** Currency */
+            currency: string;
+            /** Items */
+            items: components["schemas"]["DailyReturn"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+            /** Range */
+            range: string;
+            /** Total Items */
+            total_items: number;
+            /** Window End */
+            window_end: string;
+            /** Window Start */
+            window_start: string;
+        };
         /** DailyTracking */
         DailyTracking: {
             /** Benchmarkcurrency */
@@ -3307,6 +3446,35 @@ export interface components {
             /** Version */
             version?: string | null;
         };
+        /** DatedExposure */
+        DatedExposure: {
+            /** Basis */
+            basis: string | null;
+            /** Broker As Of */
+            broker_as_of: string | null;
+            /** Company Limit */
+            company_limit: number | null;
+            /** Currency */
+            currency: string;
+            /** Dimension */
+            dimension: string;
+            /** History Available From */
+            history_available_from: string;
+            /** Invested Value Gbp */
+            invested_value_gbp: number | null;
+            /** Items */
+            items: components["schemas"]["ExposureRow"][];
+            /** Lookthrough Coverage Fraction */
+            lookthrough_coverage_fraction: number | null;
+            /** Next Cursor */
+            next_cursor: number | null;
+            /** Observation Date */
+            observation_date: string;
+            /** Requested Date */
+            requested_date: string;
+            /** Total Items */
+            total_items: number;
+        };
         /**
          * DayAttribution
          * @description Accounts appear only when their position detail reconciled at both ends and
@@ -3391,6 +3559,24 @@ export interface components {
              * @default 0
              */
             favourable: number;
+        };
+        /** DecisionTiming */
+        DecisionTiming: {
+            /** Date */
+            date: string;
+            /** Effect Gbp */
+            effect_gbp: number | null;
+            hindsight: components["schemas"]["Timing"] | null;
+            /** Horizon */
+            horizon: string;
+            /** Observed Days */
+            observed_days: number | null;
+            /** Scope */
+            scope: string;
+            /** Side */
+            side: string;
+            /** Ticker */
+            ticker: string;
         };
         /** DeepSeekIntegrationCandidate */
         DeepSeekIntegrationCandidate: {
@@ -3704,6 +3890,43 @@ export interface components {
             url?: string | null;
             /** Version */
             version: string;
+        };
+        /** ExposureRow */
+        ExposureRow: {
+            /** Code */
+            code?: string | null;
+            /** Isin */
+            isin?: string | null;
+            /** Name */
+            name: string | null;
+            /** Ticker */
+            ticker?: string | null;
+            /** Value Gbp */
+            value_gbp: number | null;
+            /** Weight Fraction */
+            weight_fraction: number | null;
+        };
+        /** ExposureStart */
+        ExposureStart: {
+            /** History Available From */
+            history_available_from: string;
+        };
+        /** FXSplit */
+        FXSplit: {
+            /** Accounts */
+            accounts: {
+                [key: string]: components["schemas"]["AccountEffects"];
+            };
+            /** Currency */
+            currency: string;
+            /** Items */
+            items: components["schemas"]["PositionEffects"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+            /** Period */
+            period: string;
+            /** Total Items */
+            total_items: number;
         };
         /** FillEffect */
         FillEffect: {
@@ -4462,6 +4685,25 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** Habit */
+        Habit: {
+            /** Adverse */
+            adverse: number;
+            /** Decisions */
+            decisions: number;
+            /** Effect Gbp */
+            effect_gbp: number | null;
+            /** Evaluated */
+            evaluated: number;
+            /** Favourable */
+            favourable: number;
+            /** Favourable Fraction */
+            favourable_fraction: number | null;
+            /** Side */
+            side: string;
+            /** Unchanged */
+            unchanged: number;
         };
         /** HealthResponse */
         HealthResponse: {
@@ -5791,6 +6033,30 @@ export interface components {
             /** Value */
             value: number | null;
         };
+        /** Moment */
+        Moment: {
+            /** Date */
+            date: string;
+            /** Event Count */
+            event_count: number;
+            /** Events */
+            events: components["schemas"]["MomentEvent"][];
+            /** Move Fraction */
+            move_fraction: number | null;
+            /** Unusual Rank */
+            unusual_rank: number;
+            /** Volume Z Score */
+            volume_z_score: number | null;
+        };
+        /** MomentEvent */
+        MomentEvent: {
+            /** Date */
+            date: string;
+            /** Kind */
+            kind: string;
+            /** Reference */
+            reference: string;
+        };
         /** NavPoint */
         NavPoint: {
             /** Cadenceseconds */
@@ -6133,6 +6399,8 @@ export interface components {
              */
             phaseCount: number;
         };
+        /** @enum {string} */
+        PageRange: "1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "2Y" | "ALL";
         /** PerformanceSchedule */
         PerformanceSchedule: {
             /**
@@ -6252,6 +6520,38 @@ export interface components {
             /** Ticker */
             ticker: string;
         };
+        /** PositionEffects */
+        PositionEffects: {
+            /** Contribution Gbp */
+            contribution_gbp: number | null;
+            /** Fx Effect Gbp */
+            fx_effect_gbp: number | null;
+            /** Instrument */
+            instrument: string | null;
+            /** Local Price Effect Gbp */
+            local_price_effect_gbp: number | null;
+            /** Scope */
+            scope: string;
+            /** Ticker */
+            ticker: string | null;
+        };
+        /** PriceMoments */
+        PriceMoments: {
+            /** Basis */
+            basis: string;
+            /** End */
+            end: string;
+            /** Interval */
+            interval: string;
+            /** Items */
+            items: components["schemas"]["Moment"][];
+            /** Published Series Id */
+            published_series_id: string;
+            /** Start */
+            start: string;
+            /** Ticker */
+            ticker: string;
+        };
         /** PriceSeriesPoint */
         PriceSeriesPoint: {
             /** Close */
@@ -6305,6 +6605,13 @@ export interface components {
             shares: number;
             /** Year */
             year: number;
+        };
+        /** Quality */
+        Quality: {
+            /** Issues */
+            issues: string[];
+            /** Reason Code */
+            reason_code?: string | null;
         };
         /** QuoteSnapshot */
         QuoteSnapshot: {
@@ -6372,6 +6679,97 @@ export interface components {
             worker?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** Reading[DailyReturns] */
+        Reading_DailyReturns_: {
+            data: components["schemas"]["DailyReturns"] | null;
+            /** Evidence Id */
+            evidence_id: string;
+            quality: components["schemas"]["Quality"];
+            /** Scope */
+            scope: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sources */
+            sources: components["schemas"]["Source"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "partial" | "unavailable" | "not_applicable";
+        };
+        /** Reading[FXSplit] */
+        Reading_FXSplit_: {
+            data: components["schemas"]["FXSplit"] | null;
+            /** Evidence Id */
+            evidence_id: string;
+            quality: components["schemas"]["Quality"];
+            /** Scope */
+            scope: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sources */
+            sources: components["schemas"]["Source"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "partial" | "unavailable" | "not_applicable";
+        };
+        /** Reading[PriceMoments] */
+        Reading_PriceMoments_: {
+            data: components["schemas"]["PriceMoments"] | null;
+            /** Evidence Id */
+            evidence_id: string;
+            quality: components["schemas"]["Quality"];
+            /** Scope */
+            scope: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sources */
+            sources: components["schemas"]["Source"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "partial" | "unavailable" | "not_applicable";
+        };
+        /** Reading[ReviewTiming] */
+        Reading_ReviewTiming_: {
+            data: components["schemas"]["ReviewTiming"] | null;
+            /** Evidence Id */
+            evidence_id: string;
+            quality: components["schemas"]["Quality"];
+            /** Scope */
+            scope: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sources */
+            sources: components["schemas"]["Source"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "partial" | "unavailable" | "not_applicable";
+        };
+        /** Reading[Union[DatedExposure, ExposureStart]] */
+        Reading_Union_DatedExposure__ExposureStart__: {
+            /** Data */
+            data: components["schemas"]["DatedExposure"] | components["schemas"]["ExposureStart"] | null;
+            /** Evidence Id */
+            evidence_id: string;
+            quality: components["schemas"]["Quality"];
+            /** Scope */
+            scope: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sources */
+            sources: components["schemas"]["Source"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "partial" | "unavailable" | "not_applicable";
         };
         /** RefreshAttention */
         RefreshAttention: {
@@ -7005,6 +7403,8 @@ export interface components {
             fetchedAt?: string | null;
             /** Points */
             points: components["schemas"]["PriceSeriesPoint"][];
+            /** Publishedseriesid */
+            publishedSeriesId?: string | null;
             /**
              * Requestedinterval
              * @default 1d
@@ -7593,6 +7993,27 @@ export interface components {
             unavailable_reason?: string | null;
         } & {
             [key: string]: unknown;
+        };
+        /** ReviewTiming */
+        ReviewTiming: {
+            /** As Of */
+            as_of: {
+                [key: string]: string | null;
+            };
+            /** Currency */
+            currency: string;
+            /** Habits */
+            habits: components["schemas"]["Habit"][];
+            /** Horizon */
+            horizon: string;
+            /** Items */
+            items: components["schemas"]["DecisionTiming"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+            /** Order Size Basis */
+            order_size_basis: string;
+            /** Total Items */
+            total_items: number;
         };
         /** ReviewTrade */
         ReviewTrade: {
@@ -8361,6 +8782,13 @@ export interface components {
             /** Source */
             source: string;
         };
+        /** Source */
+        Source: {
+            /** As Of */
+            as_of: string | null;
+            /** Source Id */
+            source_id: string;
+        };
         /**
          * StageStatus
          * @enum {string}
@@ -8572,6 +9000,20 @@ export interface components {
             exitMultiple?: number | null;
             /** Gordonmultiple */
             gordonMultiple?: number | null;
+        };
+        Ticker: string;
+        /** Timing */
+        Timing: {
+            /** Average Order Gbp */
+            average_order_gbp: number | null;
+            /** Best Close Gbp */
+            best_close_gbp: number | null;
+            /** Best Date */
+            best_date: string | null;
+            /** Missed Gbp */
+            missed_gbp: number | null;
+            /** Window End */
+            window_end: string | null;
         };
         /**
          * TradeDecision
@@ -12408,6 +12850,205 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    daily_returns_v1_snapshots__run_id__insights_daily_returns_get: {
+        parameters: {
+            query: {
+                /** @description Maximum rows to return. */
+                limit?: number;
+                /** @description Use the preceding next_cursor. */
+                cursor?: number;
+                /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
+                scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                range?: components["schemas"]["PageRange"];
+                benchmark?: "VOO" | "QQQ" | "VT" | "ALL";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reading_DailyReturns_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    dated_exposure_v1_snapshots__run_id__insights_dated_exposure_get: {
+        parameters: {
+            query: {
+                /** @description Maximum rows to return. */
+                limit?: number;
+                /** @description Use the preceding next_cursor. */
+                cursor?: number;
+                /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
+                scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                /** @description Exposure grouping. */
+                dimension: "country" | "sector" | "gics" | "company";
+                on_or_before: components["schemas"]["CalendarDay"];
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reading_Union_DatedExposure__ExposureStart__"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decision_timing_v1_snapshots__run_id__insights_decision_timing_get: {
+        parameters: {
+            query: {
+                /** @description Maximum rows to return. */
+                limit?: number;
+                /** @description Use the preceding next_cursor. */
+                cursor?: number;
+                /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
+                scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                horizon?: "20_sessions" | "to_date" | "decision_default";
+                ticker?: components["schemas"]["Ticker"] | null;
+                since?: components["schemas"]["CalendarDay"] | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reading_ReviewTiming_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    holding_fx_v1_snapshots__run_id__insights_holding_fx_get: {
+        parameters: {
+            query: {
+                /** @description Maximum rows to return. */
+                limit?: number;
+                /** @description Use the preceding next_cursor. */
+                cursor?: number;
+                /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
+                scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                period: "1D" | "5D" | "open_position";
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reading_FXSplit_"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    key_moments_v1_snapshots__run_id__insights_key_moments_get: {
+        parameters: {
+            query: {
+                /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
+                scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                ticker: components["schemas"]["Ticker"];
+                start: components["schemas"]["CalendarDay"];
+                end: components["schemas"]["CalendarDay"];
+                published_series_id?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Reading_PriceMoments_"];
                 };
             };
             /** @description Validation Error */
