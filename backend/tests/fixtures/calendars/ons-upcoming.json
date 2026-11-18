@@ -1,0 +1,24 @@
+{
+  "releases": [
+    {
+      "uri": "/releases/consumerpriceinflationukoctober2026timeseries",
+      "description": {
+        "release_date": "2026-11-18T07:00:00.000Z",
+        "title": "Consumer price inflation, UK: October 2026 time series",
+        "finalised": true,
+        "postponed": false,
+        "cancelled": false
+      }
+    },
+    {
+      "uri": "/releases/consumerpriceinflationukoctober2026",
+      "description": {
+        "release_date": "2026-11-18T07:00:00.000Z",
+        "title": "Consumer price inflation, UK: October 2026",
+        "finalised": true,
+        "postponed": false,
+        "cancelled": false
+      }
+    }
+  ]
+}

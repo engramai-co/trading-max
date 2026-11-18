@@ -77,6 +77,7 @@ from .research_journal import ResearchJournalStore
 from .research_prices import SecurityPriceHistory
 from .routes.analysis import router as analysis_router
 from .routes.assistant import router as assistant_router
+from .routes.events import router as events_router
 from .routes.imports import router as imports_router
 from .routes.indices import router as indices_router
 from .routes.insights import router as insights_router
@@ -652,6 +653,7 @@ def create_app(
     app.include_router(system_router)
     app.include_router(settings_router)
     app.include_router(local_workspace_router)
+    app.include_router(events_router)
     app.include_router(imports_router)
     app.include_router(analysis_router)
     app.include_router(operations_router)

@@ -156,18 +156,15 @@ uv run python tools/check_public_history.py
 ```
 
 The frontend dependency audit runs `npm --prefix apps/web run audit:dependencies`.
-Until an upstream release fixes
-[GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm), the lint-only
-`micromatch` dependency uses the exact, integrity-locked
-[braces depth-limit patch](https://github.com/micromatch/braces/pull/72) at commit
-`28d440b5dd449dbf1fe6f3506cf94ecca4d02660`. This is an unmerged upstream patch,
-not a published patched npm version. npm still reports its unchanged `3.0.3`
-version. The audit retains those findings and accepts only this advisory for
-that exact development-only patch, after the installed-code regression tests
-pass. Other advisories, an altered source/digest, another copy, a production
-dependency or an audit failure still fail the gate. This temporary handling
-expires on 2026-11-03. Replace the override with the official fixed release and
-remove the exception once it is available; keep the regression tests.
+It temporarily accepts [GHSA-fc5q-39xc-vjpf](https://github.com/advisories/GHSA-fc5q-39xc-vjpf)
+for `picomatch` used by lint and test tooling. There is no patched release.
+The exception applies only when every reported dependency path leads exclusively
+to this advisory and every affected installation on those paths is locked as a
+development dependency. Production dependencies and other high or critical
+advisories still fail the audit. The exception expires at 00:00 UTC on
+18 December 2026. Update the dependency and remove the exception as soon as
+picomatch publishes a fix. The lint regression tests also exercise the pinned
+[braces depth-limit patch](https://github.com/micromatch/braces/pull/72).
 
 Use synthetic fixtures only. Do not add Trading 212 exports, portfolio
 snapshots, watchlists, SQLite files, Keychain exports, logs, generated charts,

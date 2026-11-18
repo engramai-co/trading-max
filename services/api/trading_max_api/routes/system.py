@@ -16,6 +16,8 @@ from trading_max.analytics.review_evidence import (
     ReviewRules,
 )
 from trading_max.application.decision_stages import REVIEW_EVIDENCE_KEY
+from trading_max.research.calendars.refresh import MACRO_KEY
+from trading_max.research.news import NEWS_KEY
 
 from ..dashboard_models import (
     AccountCode,
@@ -219,6 +221,17 @@ def health(request: Request) -> HealthResponse:
         queue=queue_health,
         worker=worker_health,
         artifact_age_seconds=artifact_age,
+        event_refreshes=[
+            {
+                "kind": kind,
+                "checked_at": a.generated_at,
+                "as_of": a.data_as_of,
+                "failed_sources": len(a.warnings),
+            }
+            for a in (latest.artifacts if latest else [])
+            for key, kind in [(NEWS_KEY, "news"), (MACRO_KEY, "macro")]
+            if a.key == key
+        ],
     )
 
 

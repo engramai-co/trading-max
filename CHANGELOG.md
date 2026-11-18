@@ -10,8 +10,17 @@ All notable public Trading Max releases are recorded here.
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
+- The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
+- The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone, and date-only announcements retain the publisher’s date.
+- Data status shows the freshness of security news and official calendars, including failed updates that retained an earlier observation.
+
 ### Fixed
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
+## [1.53.1] - 2026-11-18
+
+### Security
+- The web dependency audit accepts the picomatch advisory in development tooling until 18 December 2026. Affected production dependencies still block releases.
 
 ## [1.53.0] - 2026-11-17
 
