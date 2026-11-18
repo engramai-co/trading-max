@@ -186,8 +186,8 @@ test.describe("primary chart reading", () => {
           await mockPrices(page);
           await page.goto("/research?ticker=AAPL&view=technical");
           const track = page.getByRole("region", { name: en ? "Event timeline" : "事件时间轴" });
-          const marker = track.getByRole("button", { name: / T \+4$/ });
-          await expect(marker).toHaveAccessibleName((await marker.innerText()).replace(/\s+/g, " ").trim());
+          const marker = track.getByRole("button", { name: / · T \(\+4\)$/ });
+          await expect(marker).toHaveAccessibleName(/ · T \(\+4\)$/);
           await marker.focus();
           await page.keyboard.press("Enter");
           const rows = track.getByRole("listitem");
