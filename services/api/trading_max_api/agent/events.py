@@ -259,14 +259,14 @@ def _listing(row):
     return _listing_symbol(broker_listing(row.get("broker_ticker"))) or row["ticker"].upper()
 
 
-def _trade_symbol(read, args, issues, listing, ticker, raw):
+def _trade_symbol(read, args, issues, listing, ticker, raw, *, marker_ticker=None):
     resolved = _listing_symbol(listing)
     if not args.ticker:
         return resolved or ticker
     if resolved:
         return resolved if resolved == args.ticker else None
     stamp = _stamp(raw)
-    if stamp and ticker in {args.ticker, args.ticker.removesuffix(".L")}:
+    if stamp and {ticker, marker_ticker} & {args.ticker, args.ticker.removesuffix(".L")}:
         instant = datetime.fromisoformat(stamp)
         day = (
             instant.astimezone(read.deps.timezone).date().isoformat()
@@ -289,8 +289,17 @@ def _trades(read, args, codes, issues, keys):
             ticker = row.get("ticker")
             scoped_fills = (f for f in _rows(row.get("fills")) if f.get("account") in accounts)
             for index, fill in enumerate(scoped_fills):
-                listing = fill.get("listing")
-                fill_ticker = _trade_symbol(read, args, issues, listing, ticker, fill.get("at"))
+                instrument = fill.get("broker_ticker")
+                listing = broker_listing(instrument)
+                fill_ticker = _trade_symbol(
+                    read,
+                    args,
+                    issues,
+                    listing,
+                    instrument.upper() if instrument else ticker,
+                    fill.get("at"),
+                    marker_ticker=ticker,
+                )
                 if fill_ticker:
                     yield _entry(
                         "own_trade",

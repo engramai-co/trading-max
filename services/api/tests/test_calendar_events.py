@@ -135,13 +135,15 @@ def publish(store, headline="Synthetic release", *, eps_currency="USD", markers=
                             "account": "invest",
                             "side": "buy",
                             "quantity": 1,
+                            # Older markers could derive this from a current position's ISIN.
+                            "listing": "LSE:ALFA",
                         },
                         {
                             "at": "2026-11-25T14:00:00Z",
                             "account": "isa",
                             "side": "sell",
                             "quantity": 2,
-                            "listing": "LSE:ALFA",
+                            "broker_ticker": "ALFAl_EQ",
                         },
                     ],
                 }
@@ -212,6 +214,10 @@ def test_news_and_trades_are_snapshot_and_account_bound(tmp_path):
     )
     (fill,) = [r for r in rows if r["kind"] == "own_trade"]
     assert fill["account"] == "invest" and fill["quantity"] == 1
+    assert fill["listing_verified"] is False
+    legacy_exact = events.event_data(deps, args("invest", ticker="ALFA.L"), upcoming=False)
+    assert all(r["kind"] != "own_trade" for r in legacy_exact["data"]["items"])
+    assert "trade_listing_unresolved" in legacy_exact["quality"]["issues"]
     earnings = next(r for r in rows if r["kind"] == "earnings")
     assert earnings["fiscal_period"] == "2026-09-30"
     assert earnings["source_as_of"] == "2026-11-26T00:00:00Z"
@@ -456,3 +462,40 @@ def test_analyst_lens_retains_eps_with_unpublished_currency(tmp_path, monkeypatc
     assert reading["status"] == "reported"
     assert reading["actual_eps"] is reading["estimated_eps"] is reading["currency"] is None
     assert "earnings_currency_unavailable" in result["quality"]["issues"]
+
+
+def test_fill_sharing_isin_with_a_different_listing_keeps_its_source_ticker(tmp_path):
+    import pandas as pd
+    from trading_max.analytics.ledger import transaction_marker_rows
+
+    isin = "GB0000000001"
+    tx = pd.DataFrame(
+        [
+            {
+                "Action": "Market buy",
+                "Time": pd.Timestamp("2026-11-25T10:00:00Z"),
+                "ISIN": isin,
+                "Ticker": ticker,
+                "Shares": 1,
+                "PriceN": 10,
+                "TotalN": 10,
+                "Currency (Total)": "GBP",
+            }
+            for ticker in ("ABCEU", "ABCl_EQ")
+        ]
+    )
+    markers = transaction_marker_rows(
+        {"isa": tx}, [{"ticker": "ABC", "broker_ticker": "ABCl_EQ", "isin": isin}]
+    )
+    store = ArtifactStore(tmp_path)
+    publish(store, markers=markers)
+    deps = AssistantDepsFactory(store).for_run()
+    exact = events.event_data(deps, args("isa", ticker="ABC.L"), upcoming=False)
+    assert [r["ticker"] for r in exact["data"]["items"] if r["kind"] == "own_trade"] == ["ABC.L"]
+    assert "trade_listing_unresolved" in exact["quality"]["issues"]
+    account = events.event_data(deps, args("isa"), upcoming=False)
+    assert sorted(
+        (r["ticker"], r["listing_verified"])
+        for r in account["data"]["items"]
+        if r["kind"] == "own_trade"
+    ) == [("ABC.L", True), ("ABCEU", False)]

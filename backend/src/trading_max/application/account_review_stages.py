@@ -29,7 +29,7 @@ class AccountReviewStage:
     """Bind existing authoritative lenses into one review artifact."""
 
     name = "accounts.review"
-    version = "account-review-stage-v7"
+    version = "account-review-stage-v8"
     required_for = frozenset({"all", "accounts"})
     dependencies = (
         "accounts.snapshot",
@@ -313,7 +313,7 @@ class AccountReviewStage:
             key="account/trade_markers.json",
             payload={
                 "schema_version": 1,
-                "calculation_version": "trade-markers-v2",
+                "calculation_version": "trade-markers-v3",
                 "rows": marker_rows,
             },
             kind="trade_markers",

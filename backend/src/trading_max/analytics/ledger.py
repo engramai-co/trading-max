@@ -270,7 +270,6 @@ def transaction_marker_rows(
 
     ticker_aliases: dict[str, str] = {}
     isin_aliases: dict[str, str] = {}
-    listings_by_isin: dict[str, set[str]] = {}
     for position in known_positions:
         canonical = _normalized_security_value(position.get("ticker"))
         if not canonical:
@@ -282,9 +281,6 @@ def transaction_marker_rows(
         isin = _normalized_security_value(position.get("isin"))
         if isin:
             isin_aliases[isin] = canonical
-            listing = broker_listing(position.get("broker_ticker"))
-            if listing:
-                listings_by_isin.setdefault(isin, set()).add(listing)
 
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for account, transactions in account_transactions.items():
@@ -294,8 +290,9 @@ def transaction_marker_rows(
             if side is None:
                 continue
             isin = _normalized_security_value(row.get("ISIN"))
-            raw_ticker = _normalized_security_value(row.get("Ticker"))
-            explicit_listing = broker_listing(str(row.get("Ticker")))
+            instrument = row.get("Ticker")
+            raw_ticker = _normalized_security_value(instrument)
+            explicit_listing = broker_listing(str(instrument))
             ticker = (
                 isin_aliases.get(isin)
                 or (ticker_aliases.get(raw_ticker) if not isin else None)
@@ -333,12 +330,12 @@ def transaction_marker_rows(
             marker[f"{side}_quantity"] += quantity_value
             total = row.get("TotalN")
             currency = _currency(row.get("Currency (Total)")) or None
-            listings = listings_by_isin.get(isin, set())
-            listing = explicit_listing or (next(iter(listings)) if len(listings) == 1 else None)
             marker["fills"].append(
                 {
                     "at": timestamp.isoformat(),
-                    **({"listing": listing} if listing else {}),
+                    # The daily marker can follow an ISIN through ticker changes.
+                    # Only the instrument recorded on this fill can verify its listing.
+                    **({"broker_ticker": str(instrument).strip()} if raw_ticker else {}),
                     "side": side,
                     "account": str(account).strip().lower(),
                     "quantity": quantity_value,
