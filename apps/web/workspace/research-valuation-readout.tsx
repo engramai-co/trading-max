@@ -6,6 +6,7 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { formatCalendarDate, formatCompactCurrency } from "@/ui/formatters";
 import { currency, number, percent, tone } from "@/workspace/data";
 import { Metric, Panel, useCopy } from "./foundation";
+import { ValuationFloorNote } from "./valuation-floor-note";
 import type { Preview } from "./research-facts";
 
 export type ModelReading = {
@@ -88,10 +89,11 @@ function ReverseReading({ result, retry, refreshing }: { result?: Preview } & Re
     helpBasis={limits && t("求解区间", "Search range") + " " + percent(limits[0]) + " – " + percent(limits[1])} />;
 }
 
-export function ValuationReadout({ data, preview, reading, retry, refreshing }: {
+export function ValuationReadout({ data, preview, reading, retry, refreshing, withheldReason }: {
   data: ResearchLensSnapshot;
   preview?: Preview;
   reading?: ModelReading;
+  withheldReason?: string;
   retry?: () => Promise<unknown>;
   refreshing?: boolean;
 }) {
@@ -113,6 +115,9 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing }: 
       {currency(base.value, result.basis.currency, 2)}
       {base.upside != null && <small className={"mx-metric-change mx-" + tone(base.upside)}>{percent(base.upside, true)}</small>}
     </> : "—"}
-      note={<span>{[status, modelSource, base && result && result.horizon + t(" 年", "Y")].filter(Boolean).join(" · ")}</span>} />
+      note={<>
+        <span className="mx-valuation-source">{[status, modelSource, base && result && result.horizon + t(" 年", "Y"), withheldReason].filter(Boolean).join(" · ")}</span>
+        <ValuationFloorNote adjustment={base?.equityFloorAdjustment} pending={!result && Boolean(refreshing)} />
+      </>} />
   </Panel>;
 }

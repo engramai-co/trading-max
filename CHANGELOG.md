@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.57.1] - 2026-11-18
+
+### Changed
+- Live and saved valuation readings explain when negative equity value reaches the zero floor. When a listing lacks a verified share unit or depositary receipt ratio, the Research Desk identifies the missing input.
+
 ## [1.57.0] - 2026-11-18
 
 ### Changed

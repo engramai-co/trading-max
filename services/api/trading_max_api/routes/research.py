@@ -122,6 +122,7 @@ def _valuation_preview(
             quote_id=quote.id,
             listing=quote.listing,
             name=stored.get("issuerName") or "",
+            legacy_reasons=legacy,
             is_adr=bool(stored.get("isAdr")),
             ordinary_listing=stored.get("shareUnit") == "ordinary"
             and stored.get("listing") == quote.listing,

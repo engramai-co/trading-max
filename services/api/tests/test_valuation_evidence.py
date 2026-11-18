@@ -881,6 +881,56 @@ def test_retained_ordinary_snapshot_upgrades_without_republishing(
     )
 
 
+@pytest.mark.parametrize("family", ["cash-flow", "net-income", "residual-income"])
+@pytest.mark.parametrize(
+    ("ticker", "unit", "expected"),
+    [
+        ("SYN", "receipt", "receipt-ratio-unverified"),
+        ("SYN", "ordinary", "complete-ttm-currency-and-share-count-required"),
+        ("BABA", "receipt", "complete-ttm-currency-and-share-count-required"),
+    ],
+)
+def test_preview_distinguishes_unverified_receipt_ratio_from_missing_count(
+    tmp_path, family, ticker, unit, expected
+):
+    issuer = replace(MATURE, ticker=ticker)
+    store = ArtifactStore(tmp_path)
+
+    def inject(batches):
+        stored = batches["research/valuation.json"]["rows"][0]["assumptions"]
+        stored.update(shareUnit=unit, sharesOutstanding=None)
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyIncomeStatement"].append(
+            {"index": "Net Income Common Stockholders", **dict.fromkeys(dates, 25)}
+        )
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Common Stock Equity", **dict.fromkeys(dates, 500)}
+        ]
+        if expected == "receipt-ratio-unverified":
+            raw["quarterlyBalanceSheet"].append(
+                {"index": "Ordinary Shares Number", **dict.fromkeys(dates, 100)}
+            )
+
+    _publish(store, issuer, inject=inject)
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = store
+    app.state.research = ResearchLedger(store, WatchlistStore(tmp_path))
+    app.state.research_journal = SimpleNamespace()
+    body = {**_request().model_dump(exclude={"citations"}), "family": family}
+    with TestClient(app) as client:
+        for version in ("v1", "v2"):
+            response = client.post(f"/{version}/research/{ticker}/valuation-preview", json=body)
+            assert response.status_code == 422
+            legacy = (
+                "positive-common-equity-and-common-income-required"
+                if family == "residual-income" and ticker == "BABA"
+                else "complete-ttm-currency-and-share-count-required"
+            )
+            assert response.json()["detail"] == (expected if version == "v2" else legacy)
+
+
 @pytest.mark.parametrize("venue", [None, "OTC Markets", "NasdaqGS", "NYSE"])
 def test_receipt_requires_its_reviewed_venue(tmp_path, venue):
     issuer = replace(MATURE, ticker="BABA", share_count=800)
@@ -1028,7 +1078,14 @@ def test_residual_period_and_roe_ignore_revenue_in_batch_desk_and_evidence(
     store = ArtifactStore(tmp_path)
     binding = _publish(store, issuer, inject=inject)
     period = "annual:2024-12-31" if incomplete_latest else "ttm:2025-12-31"
-    assert result["ev5"] is not None, result["model_warnings"]
+    # Published scenario values for these annual and TTM fixtures, before changing
+    # the order of operations to sum discounted dividends and the terminal price.
+    assert result["valueRange"] == pytest.approx(
+        {"bear": 4.053558499297, "base": 5.903231421315, "bull": 8.181772476508}, abs=1e-12
+    )
+    assert result["valueRange10"] == pytest.approx(
+        {"bear": 4.315132064580, "base": 6.824695713668, "bull": 10.415831826285}, abs=1e-12
+    )
     assert result["assumptions"]["periodId"] == period
     assert result["assumptions"]["reverseMetric"] == "initial-roe"
     req = EvaluateValuationRequest(
@@ -1158,6 +1215,11 @@ def test_retained_share_basis_needs_positive_listing_evidence(
             ):
                 if expected_shares is None:
                     assert response.status_code == 422
+                    assert response.json()["detail"] == (
+                        "listed-share-unit-unverified"
+                        if v == "v2"
+                        else "complete-ttm-currency-and-share-count-required"
+                    )
                 else:
                     assert response.status_code == 200, response.text
                     assert response.json()["basis"]["shares"] == expected_shares

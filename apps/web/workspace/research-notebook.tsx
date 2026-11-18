@@ -16,6 +16,7 @@ import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
 import { api, compact, currency, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
+import { ValuationFloorNote } from "./valuation-floor-note";
 import { EvidenceTable } from "./evidence-table";
 import {
   Empty,
@@ -505,7 +506,10 @@ function ModelVersions({ journal }: { journal: Journal }) {
                       {[t("保守估值", "Bear value"), t("中性估值", "Base value"), t("乐观估值", "Bull value")][i]}
                     </th>
                     {columns.map((m) => (
-                      <td key={m.id}>{currency(m.preview.scenarios[k].value, m.preview.basis.currency, 2)}</td>
+                      <td key={m.id}>
+                        {currency(m.preview.scenarios[k].value, m.preview.basis.currency, 2)}
+                        <ValuationFloorNote adjustment={m.preview.scenarios[k].equityFloorAdjustment} />
+                      </td>
                     ))}
                   </tr>
                 ))}
@@ -651,6 +655,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
             <p>
               {t("每股价值", "Value per share")}:{" "}
               {currency(detail.preview.scenarios[scenario].value, detail.preview.basis.currency, 2)}
+              <ValuationFloorNote adjustment={detail.preview.scenarios[scenario].equityFloorAdjustment} />
             </p>
             <details>
               <summary>{t("冻结的输入与来源", "Frozen inputs & sources")}</summary>
