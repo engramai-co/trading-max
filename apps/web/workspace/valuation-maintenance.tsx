@@ -108,6 +108,14 @@ function inSentence(name: string) {
 
 type GapReview = Pick<Maintenance, "restatementCheck" | "restatementGap" | "uncheckedFigures" | "family" | "saved" | "current">;
 
+/** The visible status of an incomplete restatement check; its help gives the reason. */
+export function restatementGapStatus(review: Pick<Maintenance, "restatementCheck" | "restatementGap">, t: Copy) {
+  if (!review.restatementGap) return null;
+  if (review.restatementCheck === "restated") return t("重述影响无法计算", "Restatement effect unavailable");
+  if (review.restatementCheck === "unchanged") return t("重述未全部核对", "Restatements partly checked");
+  return t("无法核对重述", "Restatements not checked");
+}
+
 /** Why the saved period, or some of its figures, could not be checked for restatements. */
 export function restatementGapText(review: GapReview, t: Copy, locale: Locale) {
   const gap = review.restatementGap;
@@ -175,6 +183,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
     </section>;
   }
   const restated = keys.some((key) => review.scenarios[key]?.restatementEffect != null);
+  const gapStatus = restatementGapStatus(review, t);
   const savedDay = formatReadingTime(review.savedAt, locale, timeZone, "day");
   const rows: Row[] = [
     { label: locale === "zh" ? `${savedDay} 保存` : `Saved ${savedDay}`, value: (w) => w.saved, kind: "value" },
@@ -241,6 +250,11 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
         </Help>
         <span>{periodText(r.periodId, locale)} · {figureName(r.metric, review.family, t)} {pair(r.saved, r.current, r.unit, r.currency, locale)}</span>
       </li>)}
+      {gapStatus && <li>
+        <Help label={gapStatus} tag={<Tag tone="warn">{gapStatus}</Tag>}>
+          <p>{restatementGapText(review, t, locale)}</p>
+        </Help>
+      </li>}
       {review.conflicts.map((c) => <li key={"c" + c.kind + c.periodId + c.metric}>
         <Help label={t("冲突", "Conflict")} tag={<Tag tone="warn">{t("冲突", "Conflict")}</Tag>}>
           <p>{c.kind === "quarters-vs-fiscal-year"
@@ -260,7 +274,6 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
           {" · "}{t("财年 ", "FY ") + formatCalendarDate(e.periodEnd, locale)}{" · "}
           {pair(e.saved, e.current, e.metric === "consensusEps" ? "currency" : "ratio", e.currency, locale)}</span>
       </li>)}
-      {review.restatementGap && <li className="mx-evidence-muted">{restatementGapText(review, t, locale)}</li>}
     </ul>
     <details className="mx-evidence-detail">
       <summary>{t("明细", "Details")}</summary>

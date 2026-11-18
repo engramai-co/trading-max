@@ -109,12 +109,9 @@
   margin-inline-end: 6px;
   vertical-align: baseline;
 }
-.mx-evidence-muted,
-.mx-evidence-empty {
-  color: var(--mx-muted);
-}
 .mx-evidence-empty {
   margin: 8px 0 0;
+  color: var(--mx-muted);
 }
 .mx-evidence-detail {
   margin-top: 8px;

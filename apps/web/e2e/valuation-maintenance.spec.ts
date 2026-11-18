@@ -254,32 +254,54 @@ test("a locked assumption is saved with the version and kept out of a MaxAI draf
     draftReview: { id: "synthetic-draft", decisions: { bull: { revenue_cagr: "accepted" } } } });
 });
 
-test("a partly checked restatement and an unchecked fiscal year say why", async ({ page }, info) => {
-  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
-  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
-  await desk(page, { amend: (review) => ({
-    ...review,
-    // The current statements no longer report the period's cash, so the combined effect is withheld.
-    scenarios: Object.fromEntries(Object.entries(review.scenarios).map(([key, walk]) =>
-      [key, { ...walk, restated: null, restatementEffect: null }])),
-    restatementGap: "metrics-incomplete", uncheckedFigures: ["cash"],
-    conflicts: [{ kind: "conflicting-source-rows", periodId: "annual:2026-09-30", metric: "revenue",
-      unit: "currency", currency: "USD", blocksComparison: true }],
-  }) });
-  await page.goto("/research?ticker=SYNT&view=valuation");
-  await page.locator("#valuation-assumptions").getByRole("button", { name: "See new evidence", exact: true }).click();
-  const review = page.locator("#valuation-evidence");
-  await expect(review.getByRole("rowheader", { name: "New financial base", exact: true })).toBeVisible();
-  await expect(review.getByRole("rowheader", { name: "Of which restated", exact: true })).toHaveCount(0);
-  await expect(review.locator(".mx-evidence-notes li").first()).toContainText("4.00k → 3.85k USD");
-  await expect(review.locator(".mx-evidence-muted")).toHaveText("The current statements lack this period's cash & " +
-    "short-term investments, so the combined effect of the restatement cannot be computed.");
-  await capture(page, info.project.name + "-partial");
-  await review.getByRole("button", { name: "Restated" }).click();
-  await expect(page.getByRole("dialog")).toContainText("it is included in the new financial base");
-  await expect(page.getByRole("dialog")).not.toContainText("Of which restated");
-  await page.keyboard.press("Escape");
-  await expect(review.locator(".mx-evidence-notes li").nth(1)).toContainText(/FY to 30 Sept? · Revenue two different rows/);
-  await review.getByRole("button", { name: "Conflict" }).click();
-  await expect(page.getByRole("dialog")).toContainText("so the four quarters cannot be checked against it");
-});
+for (const locale of ["zh", "en"] as const) {
+  test(`a partly checked restatement and an unchecked fiscal year say why · ${locale}`, async ({ page }, info) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    const en = locale === "en";
+    if (info.project.name === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
+    await desk(page, { amend: (review) => ({
+      ...review,
+      // The current statements no longer report the period's cash, so the combined effect is withheld.
+      scenarios: Object.fromEntries(Object.entries(review.scenarios).map(([key, walk]) =>
+        [key, { ...walk, restated: null, restatementEffect: null }])),
+      restatementGap: "metrics-incomplete", uncheckedFigures: ["cash"],
+      conflicts: [{ kind: "conflicting-source-rows", periodId: "annual:2026-09-30", metric: "revenue",
+        unit: "currency", currency: "USD", blocksComparison: true }],
+    }) });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    await page.locator("#valuation-assumptions").getByRole("button", { name: en ? "See new evidence" : "看新证据", exact: true }).click();
+    const review = page.locator("#valuation-evidence");
+    await expect(review.getByRole("rowheader", { name: en ? "New financial base" : "新财务基数", exact: true })).toBeVisible();
+    await expect(review.getByRole("rowheader", { name: en ? "Of which restated" : "其中重述", exact: true })).toHaveCount(0);
+    const notes = review.locator(".mx-evidence-notes li");
+    const help = page.getByRole("dialog");
+    // The restated figure stays in view, followed by a short status; the reason is in its help.
+    await expect(notes.nth(0)).toContainText(en ? "4.00k → 3.85k USD" : "4,000 → 3,850 USD");
+    await expect(notes.nth(1).locator(".mx-tag")).toHaveText(en ? "Restatement effect unavailable" : "重述影响无法计算");
+    const reason = en
+      ? "The current statements lack this period's cash & short-term investments, so the combined effect of the restatement cannot be computed."
+      : "最新报表缺少这一期的现金及短期投资，重述的合计影响无法计算。";
+    await expect(review.getByText(reason)).toHaveCount(0);
+    await capture(page, `${info.project.name}-partial-${locale}`);
+    // The help opens from the status by keyboard and hands focus back to it.
+    const status = review.getByRole("button", { name: en ? /^Restatement effect unavailable/ : /^重述影响无法计算/ });
+    await status.focus();
+    await page.keyboard.press("Enter");
+    await expect(help).toContainText(reason);
+    const dir = process.env.VALUATION_MAINTENANCE_SCREENSHOTS_DIR;
+    if (dir) await page.screenshot({ scale: "css", path: join(dir, `${info.project.name}-partial-help-${locale}.png`) });
+    await page.keyboard.press("Escape");
+    await expect(help).toHaveCount(0);
+    await expect(status).toBeFocused();
+    await review.getByRole("button", { name: en ? /^Restated\s/ : /^重述\s/ }).click();
+    await expect(help).toContainText(en ? "it is included in the new financial base" : "计入新财务基数");
+    await expect(help).not.toContainText(en ? "Of which restated" : "其中重述");
+    await page.keyboard.press("Escape");
+    await expect(help).toHaveCount(0);
+    await expect(notes.nth(2)).toContainText(en ? /FY to 30 Sept? · Revenue two different rows/ : "财年 截至 9月30日 · 营收 两行数字不同");
+    await review.getByRole("button", { name: en ? /^Conflict\s/ : /^冲突\s/ }).click();
+    await expect(help).toContainText(en ? "so the four quarters cannot be checked against it" : "无法用它核对四个季度的合计");
+  });
+}
