@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from datetime import date, timedelta
+from typing import Annotated, Literal
 
-from pydantic import StringConstraints
+from pydantic import StringConstraints, model_validator
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.research.held_funds import FUND_PRICES_KEY
 from trading_max.research.news import NEWS_KEY
 
-from .insights import TRADE_MARKERS, CalendarDay, moment_headlines
+from .insights import (
+    TRADE_MARKERS,
+    CalendarDay,
+    MomentsArgs,
+    dated_events,
+    moment_headlines,
+    moments_data,
+)
 from .tools import (
     ANALYST,
     FUNDAMENTALS,
@@ -154,6 +162,21 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
                 benchmarks.append(
                     {"symbol": symbol, "sessions": 63, "asset": asset, "benchmark": other}
                 )
+    event = None
+    event_keys = []
+    if last_trade:
+        start = max(
+            last_trade[0], (date.fromisoformat(latest.date) - timedelta(days=365)).isoformat()
+        )
+        window = MomentsArgs(ticker=ticker, scope="broker_total", start=start, end=latest.date)
+        records, event_keys, _ = dated_events(
+            read, window, read.account_codes("broker_total"), series
+        )
+        event = max(
+            (row for row in records if row["kind"] != "own_trade" and row["date"] > last_trade[0]),
+            key=lambda row: row["date"],
+            default=None,
+        )
     return read.result(
         data={
             "ticker": ticker,
@@ -161,13 +184,14 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             "close": latest.close,
             "currency": series.currency,
             "adjustment": series.adjustment,
+            "event": event,
             "benchmarks": benchmarks,
             "trade_date": last_trade[0] if last_trade else None,
             "side": last_trade[2] if last_trade else None,
             "start": base.date if base else None,
             "change": latest.close / base.close - 1 if base and base.close > 0 else None,
         },
-        keys=[TECHNICAL, FUND_PRICES_KEY, FUNDAMENTALS, TRADE_MARKERS],
+        keys=[TECHNICAL, FUND_PRICES_KEY, FUNDAMENTALS, TRADE_MARKERS, *event_keys],
     )
 
 
@@ -255,16 +279,51 @@ def earnings_universe(ctx: Context, args: Args) -> dict:
 class HeadlineArgs(SecurityArgs):
     date: CalendarDay
     reference: Annotated[str, StringConstraints(min_length=1, max_length=2048)]
+    scope: Literal["broker_total"] = "broker_total"
+    published_series_id: SeriesId | None = None
+    index_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")] | None = None
+    start: CalendarDay | None = None
+    end: CalendarDay | None = None
+
+    @model_validator(mode="after")
+    def complete_chart(self):
+        if any((self.start, self.end, self.published_series_id, self.index_id)) and not (
+            self.start
+            and self.end
+            and self.published_series_id
+            and self.start <= self.date <= self.end
+        ):
+            raise ValueError(
+                "A selected chart requires the displayed series and a window containing the date."
+            )
+        return self
 
 
 def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
-    """Read a dated publisher headline selected as a lead for the exact listing."""
+    """Read a dated publisher headline. A chart selection restricts it to that exact candidate."""
     read = _Read(ctx.deps, "research_headline", args, "public_research")
+    ticker, published = args.ticker, args.date
+    if args.published_series_id:
+        window = MomentsArgs(**args.model_dump(exclude={"reference"}))
+        selected = moments_data(ctx.deps, window).get("data") or {}
+        event = next(
+            (
+                event
+                for moment in selected.get("items", [])
+                for event in moment["events"]
+                if event["kind"] == "news" and event["reference"] == args.reference
+            ),
+            None,
+        )
+        if not event:
+            return read.missing("headline_outside_selected_moment")
+        ticker = selected.get("listing") or selected["ticker"]
+        published = event.get("publication_date", args.date)
     row = next(
         (
             row
-            for row in moment_headlines(read, args.ticker)
-            if row["date"][:10] == args.date and (row.get("id") or row["url"]) == args.reference
+            for row in moment_headlines(read, ticker)
+            if row["date"][:10] == published and (row.get("id") or row["url"]) == args.reference
         ),
         None,
     )
@@ -272,7 +331,7 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
         return read.missing("headline_unavailable")
     return read.result(
         data={
-            "ticker": args.ticker,
+            "ticker": ticker,
             **{k: row[k] for k in ("title", "publisher", "url")},
             "date": row.get("instant") or row["date"],
         },

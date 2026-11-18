@@ -1,25 +1,56 @@
 {
   "research_position": {
+    "status": "ok",
     "data": {
       "ticker": "TEST",
       "end": "2026-02-03",
       "close": 30.0,
       "currency": "USD",
       "adjustment": "split-and-dividend-adjusted",
+      "event": {
+        "date": "2026-01-29",
+        "kind": "earnings",
+        "reference": "report"
+      },
       "benchmarks": [],
       "trade_date": "2026-01-28",
       "side": "buy",
       "start": "2026-01-28",
       "change": -0.0625
     },
+    "snapshot_id": "20261118T034024-687423Z-d4e25c31",
+    "scope": "broker_total",
+    "bound_arguments": {
+      "snapshotId": "20261118T034024-687423Z-d4e25c31",
+      "ticker": "TEST",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "index_id": null
+    },
+    "sources": [
+      {
+        "source_id": "src_1cca4f6d7fd8b786",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_aaac86348209225e",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2c7a8954c63b3446",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2739d2d3e9799380",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
     "quality": {
       "issues": []
     },
-    "status": "ok",
-    "scope": "broker_total",
-    "evidence_id": "ev_d49d247b3d7d5f6f"
+    "evidence_id": "ev_b7c12fae89ca5dcd"
   },
   "research_earnings": {
+    "status": "ok",
     "data": {
       "report": {
         "date": "2026-01-29",
@@ -43,14 +74,25 @@
       "version": "59d8b2a0b488da66049b8acb385e6c3d28c6a808d6fb3e6cd8f351f05e1398b6",
       "as_of": "2026-02-03T17:00:00Z"
     },
+    "snapshot_id": "20261118T034024-687423Z-d4e25c31",
+    "scope": "public_research",
+    "bound_arguments": {
+      "snapshotId": "20261118T034024-687423Z-d4e25c31",
+      "ticker": "TEST"
+    },
+    "sources": [
+      {
+        "source_id": "src_2739d2d3e9799380",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
     "quality": {
       "issues": []
     },
-    "status": "ok",
-    "scope": "public_research",
-    "evidence_id": "ev_ebe95f9d1de5da43"
+    "evidence_id": "ev_eec663944c43571c"
   },
   "price_key_moments": {
+    "status": "partial",
     "data": {
       "ticker": "TEST",
       "listing": "TEST",
@@ -76,17 +118,46 @@
         }
       ]
     },
+    "snapshot_id": "20261118T034024-687423Z-d4e25c31",
+    "scope": "broker_total",
+    "bound_arguments": {
+      "snapshotId": "20261118T034024-687423Z-d4e25c31",
+      "ticker": "TEST",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "index_id": null,
+      "start": "2026-01-28",
+      "end": "2026-02-03",
+      "date": "2026-01-30",
+      "scope": "broker_total"
+    },
+    "sources": [
+      {
+        "source_id": "src_1cca4f6d7fd8b786",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2739d2d3e9799380",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_2c7a8954c63b3446",
+        "as_of": "2026-02-03T17:00:00Z"
+      },
+      {
+        "source_id": "src_0caff01f353b9ca1",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
     "quality": {
       "issues": [
         "rating_changes_unavailable",
         "filings_unavailable"
       ]
     },
-    "status": "partial",
-    "scope": "broker_total",
-    "evidence_id": "ev_22611873aeda68b4"
+    "evidence_id": "ev_7e1a2771a536b60e"
   },
   "research_headline": {
+    "status": "ok",
     "data": {
       "ticker": "TEST",
       "title": "Issuer publishes outlook",
@@ -94,11 +165,27 @@
       "url": "https://example.invalid/outlook",
       "date": "2026-01-30"
     },
+    "snapshot_id": "20261118T034024-687423Z-d4e25c31",
+    "scope": "public_research",
+    "bound_arguments": {
+      "snapshotId": "20261118T034024-687423Z-d4e25c31",
+      "ticker": "TEST",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "index_id": null,
+      "start": "2026-01-28",
+      "end": "2026-02-03",
+      "date": "2026-01-30",
+      "scope": "broker_total"
+    },
+    "sources": [
+      {
+        "source_id": "src_0caff01f353b9ca1",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
     "quality": {
       "issues": []
     },
-    "status": "ok",
-    "scope": "public_research",
-    "evidence_id": "ev_6ef117ef432da5e0"
+    "evidence_id": "ev_37e30ad97d4a92f1"
   }
 }

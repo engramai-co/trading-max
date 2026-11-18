@@ -46,6 +46,17 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
   if (tool === "research_position") {
     const end = isoDay(data.end), start = isoDay(data.start);
     if (!end) return null;
+    if (path === "/data/event/date") {
+      const event = object(data.event), date = isoDay(event.date), id = str(event.reference);
+      if (!date || !id) return null;
+      if (event.kind === "earnings") return figure([date, t("财报已公布", "Earnings reported")], "financials",
+        {date, lens:"analyst", event:"earnings", eventId:id});
+      if (event.kind === "rating_change") return figure([date, t("评级变动", "Rating change"), id], "analysts",
+        {date, lens:"analyst", event:"rating_change"});
+      if (event.kind === "filing") return figure([date, t("监管披露", "Regulatory filing"), id], "disclosure",
+        {date, lens:"ledger", event:"filing"});
+      return null;
+    }
     const quote = data.unit === "points" && finite(data.close) ? number(data.close) + t(" 点", " index points") : nativeMoney(data.close, data.currency);
     const chart = {lens:"technical", date:end, indexRange:str(data.range)};
     if (path === "/data/close" && quote) return figure([end, t("收盘", "Close") + " " + quote], "market", chart);

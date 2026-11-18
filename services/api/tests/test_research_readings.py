@@ -1,16 +1,21 @@
 """Research readings select verified facts from the exact security and data revision."""
 
 import asyncio
+import json
 from dataclasses import replace
 from datetime import datetime
 from types import SimpleNamespace
 
+import pytest
+from fastapi.testclient import TestClient
+from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 from trading_max.infrastructure import SqliteDatabase
 from trading_max.research.news import NEWS_KEY
 
 from services.api.tests.assistant_fixture import AS_OF, DATES, publication
 from services.api.tests.test_assistant_readings import job
+from services.api.tests.test_assistant_runtime import answer_after_tool, events, make_app, user_turn
 from services.api.trading_max_api.agent import insights, tools
 from services.api.trading_max_api.agent import research_tools as research
 from services.api.trading_max_api.agent.background import BriefWriter
@@ -22,6 +27,7 @@ from services.api.trading_max_api.agent.research_roles import (
     SecurityContext,
 )
 from services.api.trading_max_api.agent.roles import RoleTools, role_registry
+from services.api.trading_max_api.agent.runtime import build_assistant_agent
 from services.api.trading_max_api.agent.service import AssistantService, BoundModel
 from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.research import ResearchLedger
@@ -222,14 +228,14 @@ def test_timed_news_is_attached_to_the_exchange_day_and_opens_the_original_headl
         date="2026-01-30",
     )
     role = role_registry()["key-moment"]
-    reader = RoleTools.pinned(deps, role.allowed_tools)
+    reader = role.reader(deps, selection)
     facts = role.facts(reader, selection)
     news = next(fact for fact in facts if fact.evidence.source == "publisher")
     assert news.en.startswith("2026-01-30") and news.evidence.arguments["url"] == STORY["url"]
     assert (
         reader.read(
             research.research_headline,
-            research.HeadlineArgs(ticker="TEST", date="2026-01-31", reference=STORY["id"]),
+            {"reference": STORY["id"]},
         )["data"]["date"]
         == stamp
     )
@@ -240,14 +246,12 @@ def test_position_baseline_is_the_last_matching_trade_session_not_an_execution_p
     deps = factory.for_run()
     series = deps.price_series("TEST", deps.manifest, limit=2000)
     role = role_registry()["your-position"]
-    reader = RoleTools.pinned(deps, role.allowed_tools)
-    args = research.PositionArgs(ticker="TEST", published_series_id=series.published_series_id)
-    reading = reader.read(research.research_position, args)["data"]
+    selection = PriceContext(ticker="TEST", published_series_id=series.published_series_id)
+    reader = role.reader(deps, selection)
+    reading = reader.read(research.research_position, {})["data"]
     assert (reading["trade_date"], reading["start"], reading["side"]) == (DATES[0], DATES[0], "buy")
     assert reading["change"] == 30 / 32 - 1
-    assert all(
-        line.evidence.evidence_id for line in role.facts(reader, PriceContext(**args.model_dump()))
-    )
+    assert all(line.evidence.evidence_id for line in role.facts(reader, selection))
 
 
 def test_earnings_publications_follow_material_changes_and_exclude_retained_results(tmp_path):
@@ -323,7 +327,7 @@ def test_index_uses_observed_levels_and_only_its_own_dated_news(tmp_path):
     assert [r["date"] for r in data["items"]] == [STORY["date"]]
     ctx = PriceContext(ticker="TEST", index_id="example", published_series_id=key)
     role = role_registry()["your-position"]
-    facts = role.facts(RoleTools.pinned(deps, role.allowed_tools), ctx)
+    facts = role.facts(role.reader(deps, ctx), ctx)
     assert any("index points" in f.en for f in facts) and all(
         f.evidence.arguments["index"] == "example" for f in facts
     )
@@ -338,11 +342,102 @@ def test_index_uses_observed_levels_and_only_its_own_dated_news(tmp_path):
         for row in etf["data"]["items"]
         for event in row["events"]
     )
-    reading = RoleTools.pinned(deps, role.allowed_tools).read(
-        research.research_position, research.PositionArgs(**ctx.model_dump())
-    )["data"]
+    reading = role.reader(deps, ctx).read(research.research_position, {})["data"]
     assert (reading["trade_date"], reading["side"], reading["change"]) == (
         DATES[0],
         "buy",
         26 / 20 - 1,
     )
+
+
+def test_follow_up_tools_only_read_the_selected_chart_security_and_event(tmp_path):
+    _, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    series = deps.price_series("TEST", deps.manifest, limit=2000)
+    price = PriceContext(ticker="TEST", published_series_id=series.published_series_id)
+    moment = MomentContext(**price.model_dump(), start=DATES[0], end=DATES[-1], date=DATES[2])
+    roles = role_registry()
+    reader = roles["key-moment"].reader(deps, moment)
+    result = reader.read(insights.price_key_moments, {})
+    assert [item["date"] for item in result["data"]["items"]] == [moment.date]
+    selection = {**moment.model_dump(), "scope": "broker_total", "snapshotId": deps.snapshot_id}
+    assert result["bound_arguments"] == selection
+    assert (
+        reader.read(research.research_headline, {"reference": "different article"})["data"] is None
+    )
+    assert (
+        reader.read(research.research_headline, {"reference": STORY["id"]})["bound_arguments"]
+        == selection
+    )
+    for field, value in {
+        "scope": "isa",
+        "ticker": "OTHER",
+        "start": DATES[1],
+        "end": DATES[2],
+        "date": DATES[1],
+        "published_series_id": "0" * 20,
+        "index_id": "other",
+    }.items():
+        with pytest.raises(ModelRetry):
+            reader.read(insights.price_key_moments, {field: value})
+    position = roles["your-position"].reader(deps, price)
+    with pytest.raises(ModelRetry):
+        position.read(research.research_position, {"ticker": "OTHER"})
+    assert position.read(research.research_position, {})["data"]["event"]["kind"] == "earnings"
+    earnings = roles["earnings-brief"].reader(deps, SecurityContext(ticker="TEST"))
+    with pytest.raises(ModelRetry):
+        earnings.read(research.research_earnings, {"ticker": "OTHER"})
+    with pytest.raises(ValueError, match="outside"):
+        earnings.read(research.earnings_universe, {})
+
+
+@pytest.mark.parametrize("extra", [{}, {"ticker": "OTHER"}, {"date": DATES[1]}])
+def test_chat_cannot_retarget_a_research_moment(tmp_path, extra):
+    _, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    series = deps.price_series("TEST", deps.manifest, limit=2000)
+    selected = MomentContext(
+        ticker="TEST",
+        start=DATES[0],
+        end=DATES[-1],
+        date=DATES[2],
+        published_series_id=series.published_series_id,
+    )
+    stream, seen = answer_after_tool(
+        "research_headline", json.dumps({"reference": STORY["id"], **extra})
+    )
+
+    async def reply(messages, info):
+        free = {
+            tool.name: set(tool.parameters_json_schema["properties"])
+            for tool in info.function_tools
+        }
+        assert free == {"price_key_moments": set(), "research_headline": {"reference"}}
+        async for chunk in stream(messages, info):
+            yield chunk
+
+    app, service = make_app(tmp_path, reply)
+    service.agent = build_assistant_agent([tools.build_assistant_toolset()])
+    service.deps_for_run = lambda page, tz: deps
+    body = user_turn("moment-binding", "question", "Which headline was reported?")
+    body["context"] = {
+        "page": "research",
+        "role": "key-moment",
+        "lens": "technical",
+        "scope": "broker_total",
+        "ticker": "TEST",
+        "snapshotId": deps.snapshot_id,
+        "object": selected.model_dump(),
+    }
+    response = TestClient(app).post("/v1/assistant/chat?format=references", json=body)
+    assert seen and response.status_code == 200
+    outputs = [e["output"] for e in events(response.text) if e["type"] == "tool-output-available"]
+    if extra:
+        assert not outputs
+    else:
+        assert outputs[0]["data"]["url"] == STORY["url"]
+        assert outputs[0]["bound_arguments"] == {
+            **selected.model_dump(),
+            "scope": "broker_total",
+            "snapshotId": deps.snapshot_id,
+        }

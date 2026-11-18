@@ -18,6 +18,7 @@ describe("research follow-up citations", () => {
   it.each([
     ["research_position","/data/change","-6.25%","eventDate=2026-02-03"],
     ["research_position","/data/trade_date","2026-01-28","eventDate=2026-01-28"],
+    ["research_position","/data/event/date","Earnings reported","eventId=report"],
     ["price_key_moments","/data/items/0/move_fraction","+6.25%","eventDate=2026-01-30"],
     ["research_earnings","/data/report/actual","$1.20/share","eventId=report"],
     ["research_earnings","/data/report/surprise","+4.35%","eventId=report"],

@@ -106,8 +106,8 @@ position quantity and unit price, benchmark rows, decision amounts, dated events
 freshness states and available valuation evidence values. For a research lens, select
 items/N/value for a typed price (with currency), technical score, expiry count,
 as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
-For research_position select /data/close, /data/change, /data/trade_date or
-/data/benchmarks/N/asset or benchmark. For price_key_moments use the row of the selected
+For research_position select /data/close, /data/change, /data/trade_date, /data/event/date
+or /data/benchmarks/N/asset or benchmark. For price_key_moments use the row of the selected
 date: /data/items/N/move_fraction or volume_z_score. Cite a separate research_headline
 /data/title only as a lead. For research_earnings choose /data/report/actual, estimate,
 surprise or date, or /data/estimates/N/mean for the relevant fiscal period.

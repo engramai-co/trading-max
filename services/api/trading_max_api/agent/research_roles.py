@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from datetime import date as calendar_date
-from datetime import timedelta
 from typing import Annotated
 
 from pydantic import StringConstraints, model_validator
 
 from ..models import JobRecord
-from . import events, insights
+from . import insights
 from . import research_tools as research
 from .overview_roles import line
 from .roles import BriefTarget, PageRole, ReadingLine, RoleContext, RoleTools
-from .tools import Args, Ticker
+from .tools import Ticker
 
 PROMPT = (
     "Select two to four useful observations and include each named section. "
@@ -43,7 +41,7 @@ class MomentContext(PriceContext):
 
 
 def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
-    result = read.read(research.research_position, research.PositionArgs(**context.model_dump()))
+    result = read.read(research.research_position, {})
     data = result.get("data")
     if not data:
         return []
@@ -95,43 +93,21 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
                 "technical",
             )
         )
-    if trade and not context.index_id:
-        start = max(trade, (calendar_date.fromisoformat(day) - timedelta(days=365)).isoformat())
-        event_result = read.read(
-            events.news_and_events,
-            events.EventArgs(
-                ticker=data["ticker"], scope="broker_total", start=start, end=day, limit=12
-            ),
-        )
-        for event in (event_result.get("data") or {}).get("items", []):
-            kind, stamp = event.get("kind"), event.get("date")
-            if (
-                kind not in {"filing", "rating_change", "earnings"}
-                or not stamp
-                or stamp <= trade
-                or stamp > day
-            ):
-                continue
-            if kind == "earnings" and event.get("status") != "reported":
-                continue
-            zh, en, source, lens = EVENTS[kind]
-            detail = event.get("form") or event.get("firm")
-            text = " · " + detail if detail else ""
-            facts.append(
-                line(
-                    "",
-                    f"{stamp} · {zh}{text}",
-                    f"{stamp} · {en}{text}",
-                    event_result,
-                    source,
-                    "news_and_events",
-                    ticker=data["ticker"],
-                    lens=lens,
-                    date=stamp,
-                    event=kind,
-                )
+    if event := data.get("event"):
+        kind, stamp, reference = event["kind"], event["date"], event["reference"]
+        zh, en, source, lens = EVENTS[kind]
+        detail = " · " + reference if kind in {"filing", "rating_change"} else ""
+        facts.append(
+            observation(
+                f"{stamp} · {zh}{detail}",
+                f"{stamp} · {en}{detail}",
+                source,
+                lens=lens,
+                date=stamp,
+                event=kind,
+                eventId=reference,
             )
-            break
+        )
     return facts
 
 
@@ -144,8 +120,7 @@ EVENTS = {
 
 
 def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
-    args = insights.MomentsArgs(scope="broker_total", **context.model_dump())
-    result = read.read(insights.price_key_moments, args)
+    result = read.read(insights.price_key_moments, {})
     data = result.get("data") or {}
     moment = next((r for r in data.get("items", []) if r["date"] == context.date), None)
     if not moment:
@@ -190,14 +165,7 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
     for event in moment["events"]:
         kind, ref = event["kind"], event["reference"]
         if kind == "news":
-            news = read.read(
-                research.research_headline,
-                research.HeadlineArgs(
-                    ticker=data.get("listing") or data["ticker"],
-                    date=event.get("publication_date", date),
-                    reference=ref,
-                ),
-            )
+            news = read.read(research.research_headline, {"reference": ref})
             story = news.get("data")
             if story:
                 fact = line(
@@ -229,16 +197,16 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
     return facts
 
 
-def earnings_data(read, context):
-    return read.read(research.research_earnings, research.SecurityArgs(ticker=context.ticker))
+def earnings_data(read):
+    return read.read(research.research_earnings, {})
 
 
 def earnings_version(read, context):
-    return (earnings_data(read, context).get("data") or {}).get("version", "")
+    return (earnings_data(read).get("data") or {}).get("version", "")
 
 
 def earnings_facts(read: RoleTools, context: SecurityContext) -> list[ReadingLine]:
-    result = earnings_data(read, context)
+    result = earnings_data(read)
     data = result.get("data") or {}
     facts = []
 
@@ -316,25 +284,40 @@ def earnings_targets(job: JobRecord, read: RoleTools):
         or job.trigger not in {"on_demand", "research", "nightly", "reconciliation"}
     ):
         return []
-    symbols = read.read(research.earnings_universe, Args())["data"]["tickers"]
+    symbols = read.read(research.earnings_universe, {})["data"]["tickers"]
     targets = []
     for ticker in symbols:
         if job.tickers and ticker not in job.tickers:
             continue
         context = SecurityContext(ticker=ticker)
-        if version := earnings_version(read, context):
+        result = read.read(research.research_earnings, {"ticker": ticker})
+        if version := (result.get("data") or {}).get("version"):
             targets.append(BriefTarget(context, version))
     return targets
+
+
+def position_bindings(context: PriceContext, snapshot_id: str | None):
+    return {"research_position": context.model_dump()}
+
+
+def moment_bindings(context: MomentContext, snapshot_id: str | None):
+    selected = {**context.model_dump(), "scope": "broker_total"}
+    return {"price_key_moments": selected, "research_headline": selected}
+
+
+def earnings_bindings(context: SecurityContext, snapshot_id: str | None):
+    return {"research_earnings": {"ticker": context.ticker}}
 
 
 RESEARCH_ROLES = (
     PageRole(
         "your-position",
         "research",
-        frozenset({"research_position", "news_and_events"}),
+        frozenset({"research_position"}),
         PriceContext,
         PROMPT,
         price_facts,
+        tool_bindings=position_bindings,
     ),
     PageRole(
         "key-moment",
@@ -343,6 +326,7 @@ RESEARCH_ROLES = (
         MomentContext,
         PROMPT,
         moment_facts,
+        tool_bindings=moment_bindings,
     ),
     PageRole(
         "earnings-brief",
@@ -351,6 +335,7 @@ RESEARCH_ROLES = (
         SecurityContext,
         PROMPT,
         earnings_facts,
+        tool_bindings=earnings_bindings,
         publication_targets=earnings_targets,
         data_version=earnings_version,
     ),
