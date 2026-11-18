@@ -727,6 +727,11 @@ export function Tabs<T extends string>({
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const labelsKey = options.map((option) => option.label).join("\u0000");
+  // In manual mode the one tab stop follows focus, so Tab and Shift+Tab leave the list from the tab
+  // the arrows reached; once focus has left, the stop returns to the selected tab for re-entry.
+  const [focused, setFocused] = useState<T | null>(null);
+  const manual = activation === "manual";
+  const stop = manual && focused != null && options.some((option) => option.value === focused) ? focused : value;
   useSelectionIndicator(listRef, '[aria-selected="true"]', value + labelsKey);
   useEffect(() => {
     const list = listRef.current;
@@ -764,7 +769,9 @@ export function Tabs<T extends string>({
     };
   }, [value, labelsKey]);
   return (
-    <div ref={listRef} className="mx-tabs" role="tablist" aria-label={label}>
+    <div ref={listRef} className="mx-tabs" role="tablist" aria-label={label} onBlur={manual ? (event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(null);
+    } : undefined}>
       {options.map((option, index) => (
         <button
           type="button"
@@ -775,7 +782,8 @@ export function Tabs<T extends string>({
           aria-controls={panel}
           aria-label={option.short ? option.label : undefined}
           aria-selected={value === option.value}
-          tabIndex={value === option.value ? 0 : -1}
+          tabIndex={stop === option.value ? 0 : -1}
+          onFocus={manual ? () => setFocused(option.value) : undefined}
           onClick={() => onChange(option.value)}
           onKeyDown={(event) => {
             const offset =

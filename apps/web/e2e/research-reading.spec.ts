@@ -170,6 +170,42 @@ test.describe("research section navigation", () => {
     await expect(page.locator("#research-ratings h2").first()).toBeFocused();
   });
 
+  test("Tab and Shift+Tab leave the lenses from the tab the arrows reached, and come back to the open one", async ({ page }) => {
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const tabs = page.getByRole("tablist", { name: "Research perspectives" });
+    const estimates = tabs.getByRole("tab", { name: /Estimates/ });
+    const onTab = () => page.evaluate(() => document.activeElement?.getAttribute("role") === "tab");
+    // The reading has rendered, so the elements around the list stay put while focus moves.
+    await expect(page.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
+    // Charts mount as the reader approaches them. Mount the first one, so focus leaving the list
+    // cannot bring a new focusable chart in between.
+    await page.locator(".mx-target-chart").scrollIntoViewIfNeeded();
+    const chart = page.getByRole("group", { name: /^Historical prices and analyst target range/ });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+    await estimates.focus();
+    // Before the open lens: the tab stop follows focus, so Tab leaves the list forwards.
+    await page.keyboard.press("Home");
+    await expect(tabs.getByRole("tab").first()).toBeFocused();
+    await expect(tabs.getByRole("tab").first()).toHaveAttribute("tabindex", "0");
+    await expect(estimates).toHaveAttribute("tabindex", "-1");
+    await page.keyboard.press("Tab");
+    expect(await onTab()).toBe(false);
+    // Coming back lands on the open lens.
+    await page.keyboard.press("Shift+Tab");
+    await expect(estimates).toBeFocused();
+    // After it: Shift+Tab leaves the list backwards, and Tab comes back to the open lens.
+    await page.keyboard.press("End");
+    await expect(tabs.getByRole("tab").last()).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    expect(await onTab()).toBe(false);
+    await page.keyboard.press("Tab");
+    await expect(estimates).toBeFocused();
+    // Nothing opened on the way.
+    await expect(estimates).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/view=analyst/);
+  });
+
   test("estimates read each figure one way: surprises in their colour, amounts with their currency", async ({ page }) => {
     await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
       const response = await route.fetch();
