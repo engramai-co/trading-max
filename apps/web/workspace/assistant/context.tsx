@@ -37,7 +37,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   // Settings writes through this shared query key. A new revision immediately
   // gates visible content and requests a fresh readiness check.
   const settings = useQuery<{ revision: number; enabled: boolean; acceptedConsentRevision: number | null; consentRevision: number }>({
-    queryKey: assistantSettingsKey, enabled: false,
+    queryKey: assistantSettingsKey, queryFn: ({ signal }) => api("/settings/assistant", { signal }), enabled: false,
   });
   const status = useQuery({ queryKey: ["assistant-status", settings.data?.revision ?? null],
     queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal }),

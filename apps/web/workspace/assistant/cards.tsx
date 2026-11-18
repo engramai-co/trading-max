@@ -11,9 +11,11 @@ import { evidenceHref, sourceWords, type Evidence } from "./evidence";
 
 export function EvidenceLink({ evidence }: { evidence: Evidence }) {
   const t = useCopy();
-  const word = t(...sourceWords[evidence.source] as [string, string]);
+  const { close } = useAssistant();
+  const [zh, en] = sourceWords[evidence.source];
+  const word = evidence.source === "publisher" && evidence.publisher ? evidence.publisher : t(zh, en);
   const href = evidenceHref(evidence);
-  return href ? <Link className="mx-reading-source" href={href}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
+  return href ? <Link className="mx-reading-source" href={href} onClick={() => { if (window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
 export function ReadingLines({ card }: { card: RoleCard }) {
   const t = useCopy();
@@ -24,27 +26,45 @@ export function ReadingLines({ card }: { card: RoleCard }) {
 export function CardTitle({ card }: { card: RoleCard }) {
   return <h3 className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title}{card.object && " · " + card.object}</h3>;
 }
-export function FollowUps({ card }: { card: RoleCard }) {
+export function FollowUps({ card, onContinue }: { card: RoleCard; onContinue?: () => void }) {
   const t = useCopy();
   const { continueInSidebar } = useAssistant();
-  return <div className="mx-reading-actions">{card.questions.map(q => <button key={q} onClick={() => continueInSidebar(card, q)}>{q}</button>)}
-    <button className="mx-reading-continue" onClick={() => continueInSidebar(card)}>{t("在右栏继续 →", "Continue in sidebar →")}</button>
+  function handoff(draft?: string) {
+    onContinue?.();
+    continueInSidebar(card, draft);
+  }
+  return <div className="mx-reading-actions">{card.questions.map(q => <button key={q} onClick={() => handoff(q)}>{q}</button>)}
+    <button className="mx-reading-continue" onClick={() => handoff()}>{t("在右栏继续 →", "Continue in sidebar →")}</button>
   </div>;
 }
-export function InlineReading({ card, children }: { card: RoleCard; children?: ReactNode }) {
-  const { ready } = useAssistant();
-  if (!ready) return null;
+type ReadingContainerProps = { card: RoleCard; children?: ReactNode; onClose?: () => void };
+function ReadingContent({ card, children }: ReadingContainerProps) {
   return <section className="mx-inline-reading"><CardTitle card={card} />{children ?? <ReadingLines card={card} />}<FollowUps card={card} /></section>;
 }
+function ReadingSheet({ card, children, onClose }: ReadingContainerProps & {onClose: () => void}) {
+  const t = useCopy();
+  return <Drawer opened onClose={onClose} position="bottom" size="auto" title={card.title + " · " + card.object}
+    returnFocus={false} closeButtonProps={{"aria-label":t("关闭解读", "Close reading")}}
+    classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>
+    {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
+  </Drawer>;
+}
+export function InlineReading({ card, children, onClose }: ReadingContainerProps) {
+  const { ready } = useAssistant();
+  const phone = useMediaQuery("(max-width: 767px)");
+  if (!ready) return null;
+  return phone && onClose ? <ReadingSheet card={card} onClose={onClose}>{children}</ReadingSheet>
+    : <ReadingContent card={card}>{children}</ReadingContent>;
+}
 /** Mount beside a selected point in its positioned inspection surface. */
-export function AnchoredReading({ card, onClose, children }: { card: RoleCard; onClose: () => void; children?: ReactNode }) {
+export function AnchoredReading({ card, onClose, children }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
   const { ready } = useAssistant();
   const phone = useMediaQuery("(max-width: 767px)");
   if (!ready) return null;
-  const content = <InlineReading card={card}>{children}</InlineReading>;
-  if (phone) return <Drawer opened onClose={onClose} position="bottom" size="auto" title={card.title} classNames={{content:"mx-reading-sheet"}}>{content}</Drawer>;
-  return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>{content}</div>;
+  if (phone) return <ReadingSheet card={card} onClose={onClose}>{children}</ReadingSheet>;
+  return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>
+    <ReadingContent card={card}>{children}</ReadingContent></div>;
 }
 export function DigestRow({ storageKey, header, headline, children }: { storageKey: string; header: ReactNode; headline: ReactNode; children: ReactNode }) {
   const { ready } = useAssistant();

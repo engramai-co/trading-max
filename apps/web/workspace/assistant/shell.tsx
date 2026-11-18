@@ -28,8 +28,8 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
     return () => { window.removeEventListener("keydown", escape); if (overlay) document.body.style.overflow = previous; };
   }, [close, open, overlay, searchOpen]);
   if (!visited) return null;
-  return <FocusTrap active={Boolean(open && overlay && !searchOpen)}><aside id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
+  return <FocusTrap active={Boolean(open && overlay && !searchOpen)}><div id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
     <Sidebar {...{ page, search, scopeLabel }} />
-  </aside></FocusTrap>;
+  </div></FocusTrap>;
 }

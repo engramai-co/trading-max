@@ -5534,6 +5534,14 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** LinkedObservation */
+        LinkedObservation: {
+            /** En */
+            en: string;
+            evidence: components["schemas"]["ReadingEvidence"];
+            /** Zh */
+            zh: string;
+        };
         /** LocalWorkspaceStatus */
         LocalWorkspaceStatus: {
             /** Activejobid */
@@ -6376,6 +6384,52 @@ export interface components {
             worker?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ReadingEvent */
+        ReadingEvent: {
+            /** Code */
+            code?: string | null;
+            reading?: components["schemas"]["RoleReading"] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "reading" | "result" | "error" | "empty";
+        };
+        /** ReadingEvidence */
+        ReadingEvidence: {
+            /** Arguments */
+            arguments?: {
+                [key: string]: string;
+            };
+            /** Evidenceid */
+            evidenceId: string;
+            /** Publisher */
+            publisher?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "account" | "broker" | "holdings" | "exposure" | "market" | "technical" | "financials" | "analysts" | "disclosure" | "review" | "health" | "calendar" | "inference" | "publisher";
+            /** Tool */
+            tool: string;
+        };
+        /** ReadingLine */
+        ReadingLine: {
+            /** En */
+            en: string;
+            evidence: components["schemas"]["ReadingEvidence"];
+            /**
+             * Section
+             * @default
+             */
+            section: string;
+            /** Variants */
+            variants?: {
+                [key: string]: components["schemas"]["LinkedObservation"];
+            };
+            /** Zh */
+            zh: string;
         };
         /** ReadingRequest */
         ReadingRequest: {
@@ -7792,6 +7846,20 @@ export interface components {
             twr: number | null;
             /** Volatility */
             volatility: number | null;
+        };
+        /** RoleReading */
+        RoleReading: {
+            /**
+             * Asof
+             * Format: date-time
+             */
+            asOf: string;
+            /** Lines */
+            lines: components["schemas"]["ReadingLine"][];
+            /** Role */
+            role: string;
+            /** Version */
+            version: string;
         };
         /**
          * RoundTripReview
@@ -9764,7 +9832,9 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/x-ndjson": components["schemas"]["ReadingEvent"];
+                };
             };
             /** @description Validation Error */
             422: {

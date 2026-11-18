@@ -321,3 +321,46 @@
     background: var(--mx-brand-soft);
   }
 }
+.mx-brief-period {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--mx-soft);
+}
+.mx-brief-period button {
+  min-height: 30px;
+  padding-inline: 10px;
+  border-radius: 6px;
+  color: var(--mx-muted);
+}
+.mx-brief-period button[aria-pressed="true"] {
+  background: var(--mx-surface);
+  color: var(--mx-ink);
+  box-shadow: var(--mx-shadow);
+}
+.mx-brief-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 0 0;
+  color: var(--mx-muted);
+  font-size: 14px;
+}
+.mx-brief-empty button {
+  color: var(--mx-brand);
+}
+
+[data-assistant-evidence] {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 3px;
+  scroll-margin-top: 70px;
+}
+
+.mx-reading-sheet-inner {
+  padding-bottom: calc(68px + env(safe-area-inset-bottom));
+}
+.mx-reading-sheet .mantine-Drawer-close {
+  min-width: 44px;
+  min-height: 44px;
+}

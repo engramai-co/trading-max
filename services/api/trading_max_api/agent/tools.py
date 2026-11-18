@@ -833,11 +833,10 @@ def compare_benchmarks(ctx: Context, args: BenchmarkArgs) -> Json:
     raw = read.read(TECHNICAL)
     if not raw:
         return read.missing("benchmark_series_unavailable", keys=keys)
-    daily = [
-        point
-        for point in in_range(source.get("nav", []), args.range)
-        if nav_number(point, scope) is not None
-    ]
+    published = [point for point in source.get("nav", []) if nav_number(point, scope) is not None]
+    # One daily return needs two closes. Keep the latest portfolio dates fixed:
+    # a missing benchmark close must never silently shift the comparison back.
+    daily = published[-2:] if args.range == "1D" else in_range(published, args.range)
     names = ["VOO", "QQQ", "VT"] if args.benchmark == "ALL" else [args.benchmark]
     comparison = benchmark_comparison(daily, scope, _benchmark_series(raw), names)
     keys.append(TECHNICAL)

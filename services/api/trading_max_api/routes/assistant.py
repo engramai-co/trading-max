@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from pydantic import Field, ValidationError
 from starlette.responses import StreamingResponse
 
-from ..agent.readings import ReadingService
+from ..agent.readings import ReadingEvent, ReadingService
 from ..agent.roles import role_registry
 from ..agent.service import AssistantService
 from ..models import ApiModel
@@ -90,6 +90,10 @@ async def delete_assistant_conversation(
     return Response(status_code=204)
 
 
+class ReadingStream(StreamingResponse):
+    media_type = "application/x-ndjson"
+
+
 class ReadingRequest(ApiModel):
     context: dict[str, Any] = Field(default_factory=dict, max_length=20)
     snapshot_id: str | None = Field(default=None, max_length=128, pattern=r"^[a-zA-Z0-9_-]+$")
@@ -100,9 +104,12 @@ class ReadingRequest(ApiModel):
 @router.post(
     "/v1/assistant/roles/{role_id}/reading",
     dependencies=[Depends(require_write_auth)],
-    response_class=StreamingResponse,
+    response_class=ReadingStream,
     responses={
-        200: {"description": "Newline-delimited reading progress and final evidence-linked result."}
+        200: {
+            "model": ReadingEvent,
+            "description": "Newline-delimited reading progress and final evidence-linked result.",
+        }
     },
 )
 async def role_reading(request: Request, role_id: str, body: ReadingRequest) -> StreamingResponse:
@@ -113,7 +120,7 @@ async def role_reading(request: Request, role_id: str, body: ReadingRequest) -> 
         context = role.context_schema.model_validate(body.context)
     except ValidationError:
         raise HTTPException(422, detail={"code": "assistant_context_invalid"}) from None
-    if body.latest and (not body.cached_only or not role.scheduled):
+    if body.latest and (not body.cached_only or not role.is_digest):
         raise HTTPException(422, detail={"code": "assistant_context_invalid"})
     service: ReadingService = request.app.state.assistant_readings
     deps = service.assistant.deps_for_run(role.page, None)
@@ -129,6 +136,4 @@ async def role_reading(request: Request, role_id: str, body: ReadingRequest) -> 
         ):
             yield event.encode()
 
-    return StreamingResponse(
-        stream(), media_type="application/x-ndjson", headers={"Cache-Control": "private, no-store"}
-    )
+    return ReadingStream(stream(), headers={"Cache-Control": "private, no-store"})

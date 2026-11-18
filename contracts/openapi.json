@@ -12708,6 +12708,28 @@
         "title": "LLMRoutePolicyUpdate",
         "type": "object"
       },
+      "LinkedObservation": {
+        "properties": {
+          "en": {
+            "title": "En",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ReadingEvidence"
+          },
+          "zh": {
+            "title": "Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zh",
+          "en",
+          "evidence"
+        ],
+        "title": "LinkedObservation",
+        "type": "object"
+      },
       "LocalWorkspaceStatus": {
         "properties": {
           "activeJobId": {
@@ -15546,6 +15568,138 @@
           "status"
         ],
         "title": "ReadinessResponse",
+        "type": "object"
+      },
+      "ReadingEvent": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RoleReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": [
+              "reading",
+              "result",
+              "error",
+              "empty"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "ReadingEvent",
+        "type": "object"
+      },
+      "ReadingEvidence": {
+        "properties": {
+          "arguments": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Arguments",
+            "type": "object"
+          },
+          "evidenceId": {
+            "title": "Evidenceid",
+            "type": "string"
+          },
+          "publisher": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher"
+          },
+          "source": {
+            "enum": [
+              "account",
+              "broker",
+              "holdings",
+              "exposure",
+              "market",
+              "technical",
+              "financials",
+              "analysts",
+              "disclosure",
+              "review",
+              "health",
+              "calendar",
+              "inference",
+              "publisher"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "tool": {
+            "title": "Tool",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source",
+          "tool",
+          "evidenceId"
+        ],
+        "title": "ReadingEvidence",
+        "type": "object"
+      },
+      "ReadingLine": {
+        "properties": {
+          "en": {
+            "title": "En",
+            "type": "string"
+          },
+          "evidence": {
+            "$ref": "#/components/schemas/ReadingEvidence"
+          },
+          "section": {
+            "default": "",
+            "title": "Section",
+            "type": "string"
+          },
+          "variants": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/LinkedObservation"
+            },
+            "title": "Variants",
+            "type": "object"
+          },
+          "zh": {
+            "title": "Zh",
+            "type": "string"
+          }
+        },
+        "required": [
+          "zh",
+          "en",
+          "evidence"
+        ],
+        "title": "ReadingLine",
         "type": "object"
       },
       "ReadingRequest": {
@@ -19554,6 +19708,38 @@
           "benchmark"
         ],
         "title": "RiskMetrics",
+        "type": "object"
+      },
+      "RoleReading": {
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "title": "Asof",
+            "type": "string"
+          },
+          "lines": {
+            "items": {
+              "$ref": "#/components/schemas/ReadingLine"
+            },
+            "title": "Lines",
+            "type": "array"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "version",
+          "asOf",
+          "lines"
+        ],
+        "title": "RoleReading",
         "type": "object"
       },
       "RoundTripReview": {
@@ -24449,6 +24635,14 @@
         },
         "responses": {
           "200": {
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadingEvent",
+                  "type": "string"
+                }
+              }
+            },
             "description": "Newline-delimited reading progress and final evidence-linked result."
           },
           "422": {
