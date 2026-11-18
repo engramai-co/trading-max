@@ -39,7 +39,7 @@ import pandas as pd
 from trading_max.analytics.decision_prices import SecurityPrices
 from trading_max.research.calendar import market_calendar
 
-CALCULATION_VERSION = "decisions-v4"
+CALCULATION_VERSION = "decisions-v5"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
 MAX_ROUND_TRIPS = 500
@@ -102,6 +102,44 @@ def _window(
     if paid is None:
         return None, None
     return (float(security.closes.iloc[ending]) + paid) / close - 1.0, paid
+
+
+def _hindsight(
+    security: SecurityPrices,
+    opening: pd.Timestamp,
+    end: pd.Timestamp | None,
+    side: str,
+    average_order: float | None,
+) -> dict[str, Any] | None:
+    """Compare feasible closing trades, including dividends earned while holding."""
+    if end is None or end <= opening or average_order is None:
+        return None
+    days = security.quoted
+    days = days[(days >= opening) & (days <= end)]
+    if len(days) < 2 or not days.isin(security.final_days).all():
+        return None
+    prices = security.closes.loc[days]
+    dividends = security.dividends
+    if dividends.empty:
+        dividends = pd.Series(0.0, index=days)
+    else:
+        dividends = dividends[(dividends.index > opening) & (dividends.index <= end)]
+    if prices.isna().any() or (prices <= 0).any() or dividends.isna().any():
+        return None
+    # Include non-session ex-dates, and only payments after a candidate entry.
+    paid = dividends.reindex(days.union(dividends.index), fill_value=0).cumsum().loc[days]
+    if side == "buy":
+        outcomes = (prices.iloc[-1] + paid.iloc[-1] - paid) / prices
+    else:
+        outcomes = (prices + paid) / prices.iloc[0]
+    best = outcomes.idxmax()
+    return {
+        "best_date": best.date().isoformat(),
+        "window_end": end.date().isoformat(),
+        "best_close_gbp": _round(prices.loc[best], 6),
+        "average_order_gbp": _round(average_order),
+        "missed_gbp": _round(average_order * (outcomes.loc[best] - outcomes.iloc[0])),
+    }
 
 
 def _on_day(series: pd.Series, day: pd.Timestamp) -> float | None:
@@ -201,6 +239,12 @@ def build_decision_review(
     )
     fills["AmountGBP"] = pd.to_numeric(fills.get("TotalGBP"), errors="coerce").abs()
     fills["SharesN"] = pd.to_numeric(fills.get("Shares"), errors="coerce").abs()
+    # Each normalised export order is counted separately, before netting same-day sides.
+    order_sizes = fills.groupby(["SecurityIdentity", "BusinessDate"])["AmountGBP"].agg(
+        ["sum", "count", "size"]
+    )
+    running = order_sizes.groupby(level=0).cumsum()
+    means = (running["sum"] / running["count"]).where(running["count"] == running["size"])
     decisions: list[dict[str, Any]] = []
     round_trips: list[dict[str, Any]] = []
     unscored = 0
@@ -295,6 +339,19 @@ def build_decision_review(
                 unscored += 1
                 continue
             sign = 1.0 if side == "buy" else -1.0
+            mean = means.loc[(identity, day)]
+            average_order = float(mean) if pd.notna(mean) and mean > 0 else None
+            starting_session = own[-1] if valued else None
+            hindsight_20 = (
+                _hindsight(security, starting_session, horizon_day, side, average_order)
+                if horizon_return is not None and starting_session == stamp
+                else None
+            )
+            hindsight_latest = (
+                _hindsight(security, starting_session, final[-1], side, average_order)
+                if latest_return is not None and starting_session == stamp
+                else None
+            )
             decisions.append(
                 {
                     "date": stamp.date().isoformat(),
@@ -327,6 +384,8 @@ def build_decision_review(
                     # outcome, a repeated one is not.
                     "observed_days": observed,
                     "horizon_complete": horizon_return is not None,
+                    "hindsight_horizon": hindsight_20,
+                    "hindsight_to_date": hindsight_latest,
                 }
             )
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))

@@ -40,7 +40,7 @@ class AccountSnapshotStage:
     """Normalize Invest and ISA snapshots into one versioned account artifact."""
 
     name = "accounts.snapshot"
-    version = "accounts-v3"
+    version = "accounts-v4"
     required_for = frozenset({"all", "accounts", "intraday"})
     dependencies: tuple[str, ...] = ()
 

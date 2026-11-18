@@ -413,3 +413,54 @@ def test_window_never_starts_from_an_opening_stored_under_another_trading_day():
         for day in state["window"]["days"]
         if "A" in day["accounts"]
     } == {"2026-11-06": "2026-11-06", "2026-11-09": "2026-11-09"}
+
+
+def test_fx_effect_reconciles_to_position_contribution_for_held_shares_and_chained_days():
+    def account(day, quantity, native, gbp_per_usd):
+        value = int(quantity * native * gbp_per_usd)
+        result = _account(day, ("SYN", str(quantity), str(value)))
+        result["positions"][0].update(current_price=str(native), price_currency="USD")
+        return {"B": result}
+
+    first = account("2026-11-02T08:00:00Z", 10, 100, 0.8)
+    next_day = account("2026-11-03T08:00:00Z", 15, 110, 0.7)
+    last = account("2026-11-03T16:00:00Z", 12, 120, 0.75)
+    opening, _ = update_day_attribution(None, first)
+    saved, _ = update_window_attribution(None, opening, first)
+    second, _ = update_day_attribution(_saved(opening), next_day)
+    _, daily = update_day_attribution(_saved(second), last)
+    _, window = update_window_attribution(_saved(saved), second, last)
+    row = daily.accounts["B"].contributions[0]
+    assert (row.local_price_effect_gbp, row.fx_effect_gbp, row.contribution_gbp) == (90, 66, 156)
+    # First segment's ten held shares gained £70 on price and lost £100 in FX.
+    chained = window.accounts["B"].contributions[0]
+    assert (chained.local_price_effect_gbp, chained.fx_effect_gbp, chained.contribution_gbp) == (
+        160,
+        -34,
+        126,
+    )
+    old, _ = update_day_attribution(
+        None, {"B": _account("2026-11-03T08:00:00Z", ("SYN", "15", "1155"))}
+    )
+    _, mixed = update_day_attribution(_saved(old), last)
+    assert mixed.accounts["B"].contributions[0].fx_effect_gbp is None
+
+
+def test_open_position_uses_broker_fx_then_native_cost_basis():
+    from trading_max.analytics.accounts import _position_metrics
+    from trading_max.ingestion.brokers.trading212 import _position_from_payload
+
+    raw = {
+        "instrument": {"ticker": "SYN_US_EQ", "currency": "USD"},
+        "quantity": 10,
+        "currentPrice": 110,
+        "averagePricePaid": 100,
+        "walletImpact": {"totalCost": 800, "currentValue": 770, "unrealizedProfitLoss": -30},
+    }
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp == -100
+    raw["walletImpact"]["fxImpact"] = -99
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp == -99
+    del raw["averagePricePaid"], raw["walletImpact"]["fxImpact"]
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp is None
+    raw["instrument"]["currency"] = "GBX"
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp == 0
