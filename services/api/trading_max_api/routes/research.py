@@ -15,7 +15,6 @@ from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
 from trading_max.infrastructure.alpaca_market_prices import is_alpaca_listing
 from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_benchmark
-from trading_max.research.calendar import calendar_name
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import number
 from trading_max.research.fund_references import us_fund, us_fund_listing
@@ -29,7 +28,7 @@ from trading_max.research.valuation_preview import (
     ValuationPreviewRequest,
     preview,
 )
-from trading_max.research.venues import VenueConflict
+from trading_max.research.venues import VenueConflict, row_claims
 
 from ..agent.research_citations import CitationQuery, ResearchCitation, resolve_citation
 from ..agent.tools import Ticker
@@ -573,8 +572,7 @@ def research_prices(
             venue = research.price_venue(selected, series, manifest)
         except VenueConflict as exc:
             raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
-        if venue.venues or series.published_bar_exchange:
-            series.exchange_calendar = venue.calendar
+        series.exchange_calendar = venue.calendar
         series.points = series.points[-limit:]
         series.coverage_start = series.points[0].date if series.points else None
         series.coverage_end = series.points[-1].date if series.points else None
@@ -651,14 +649,23 @@ def research_prices(
         return live_window(
             ResearchPriceSeries(
                 ticker=series.symbol.strip().upper(),
-                quote_exchange=reference.exchange,
+                quote_exchange=series.exchange_name or series.full_exchange_name,
+                published_bar_ticker=series.symbol,
                 currency="USD",
                 as_of=points[-1].date,
                 requested_interval=interval,
                 available_sessions=len(points),
                 points=points,
                 timezone=series.timezone,
-                exchange_calendar=calendar_name(reference.exchange),
+                source=series.source,
+                venue_claims=row_claims(
+                    series.symbol,
+                    {
+                        "mic": series.mic,
+                        "exchangeName": series.exchange_name,
+                        "fullExchangeName": series.full_exchange_name,
+                    },
+                ),
                 adjustment="provider-close",
                 fetched_at=series.fetched_at.isoformat() if series.fetched_at else None,
                 coverage_reason="requested-interval-unavailable-daily-history-retained"
