@@ -19,7 +19,7 @@ export function formatPageField(
   timeZone: string,
 ): string[] | null {
   const { data, parent, field, group, value } = row;
-  const t = (en: string, zh: string) => (locale === "en" ? en : zh);
+  const t = (zh: string, en: string) => (locale === "en" ? en : zh);
   if (
     tool === "update_issue" &&
     ["last_publication", "finished_at"].includes(field) &&
@@ -29,8 +29,8 @@ export function formatPageField(
   ) {
     return [
       field === "finished_at"
-        ? t("Update ended", "更新结束")
-        : t("Last publication", "最近发布"),
+        ? t("更新结束", "Update ended")
+        : t("最近发布", "Last publication"),
       formatDateTime(value, locale, timeZone),
     ];
   }
@@ -44,7 +44,7 @@ export function formatPageField(
     parent.source_url
   ) {
     return [
-      t("Headline", "新闻标题"),
+      t("新闻标题", "Headline"),
       str(locale === "en" ? parent.title_en : parent.title_zh) ||
         parent.title_en,
     ];
@@ -58,15 +58,15 @@ export function formatPageField(
     data.start &&
     data.end
   ) {
-    const label = t("Cash-flow-adjusted net P&L", "扣除资金流的净盈亏");
+    const label = t("扣除资金流的净盈亏", "Cash-flow-adjusted net P&L");
     const proxy = ["cfd", "household"].includes(scope)
-      ? t("including realised CFD cash equity", "含 CFD 已实现现金权益代理")
+      ? t("含 CFD 已实现现金权益代理", "including realised CFD cash equity")
       : "";
     return [
       [
         label,
         proxy,
-        data.estimated === true ? t("includes estimates", "含估算") : "",
+        data.estimated === true ? t("含估算", "includes estimates") : "",
       ]
         .filter(Boolean)
         .join(" · "),
@@ -86,13 +86,13 @@ export function formatPageField(
           ? "MSCI World (SWDA)"
           : "";
     return benchmark
-      ? [benchmark + " · " + t("weight", "权重"), percent(value, false, 2)]
+      ? [benchmark + " · " + t("权重", "weight"), percent(value, false, 2)]
       : null;
   }
   if (tool === "daily_returns") {
     if (field === "window_twr_fraction" && !group)
       return [
-        t("Portfolio time-weighted return", "组合时间加权收益"),
+        t("组合时间加权收益", "Portfolio time-weighted return"),
         percent(value, true, 2),
       ];
     if (
@@ -113,8 +113,8 @@ export function formatPageField(
     )
       return [
         group === "worst_day"
-          ? t("Lowest observed daily return", "区间最低已观测日收益")
-          : t("Daily portfolio return", "组合日收益"),
+          ? t("区间最低已观测日收益", "Lowest observed daily return")
+          : t("组合日收益", "Daily portfolio return"),
         percent(value, true, 2),
       ];
     if (
@@ -124,7 +124,7 @@ export function formatPageField(
       value > 0
     )
       return [
-        t("Rank from lowest daily return", "日收益由低至高排名"),
+        t("日收益由低至高排名", "Rank from lowest daily return"),
         number(value, 0),
       ];
   }
@@ -135,12 +135,12 @@ export function formatPageField(
   ) {
     if (field === "fx_effect_gbp")
       return [
-        t("Held-share currency effect", "持股汇率影响"),
+        t("持股汇率影响", "Held-share currency effect"),
         currency(value, "GBP", 2),
       ];
     if (field === "local_price_effect_gbp")
       return [
-        t("Held-share price effect", "持股价格影响"),
+        t("持股价格影响", "Held-share price effect"),
         currency(value, "GBP", 2),
       ];
   }
@@ -151,30 +151,34 @@ export function formatPageField(
     )
       return null;
     if (field === "move")
-      return [t("Session move", "本时段涨跌"), percent(value, true, 2)];
+      return [t("本时段涨跌", "Session move"), percent(value, true, 2)];
     if (field === "contribution" && data.weight_stale !== true) {
       const index = tool === "global_map" ? "MSCI ACWI" : "MSCI World";
       return [
-        index + " · " + t("estimated contribution", "估算贡献"),
-        formatNumber(value * 100,locale,{minimumFractionDigits:2,maximumFractionDigits:2,signDisplay:"exceptZero"}) + t(" pp", " 个百分点"),
+        index + " · " + t("估算贡献", "estimated contribution"),
+        formatNumber(value * 100, locale, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+          signDisplay: "exceptZero",
+        }) + t(" 个百分点", " pp"),
       ];
     }
     if (tool === "market_sector" && field === "exposure")
       return [
-        t("Matched exposure", "匹配的组合敞口"),
+        t("匹配的组合敞口", "Matched exposure"),
         currency(value, "GBP", 2),
       ];
     if (tool === "market_sector" && field === "weight" && data.weights_as_of)
       return [
         "MSCI World (SWDA) · " +
-          t("weight", "权重") +
-          (data.weight_stale ? t(" (stale)", "（待更新）") : ""),
+          t("权重", "weight") +
+          (data.weight_stale ? t("（待更新）", " (stale)") : ""),
         percent(value, false, 2),
       ];
     const breadth: Record<string, string> = {
-      up: t("Advancing constituents", "上涨成分"),
-      flat: t("Flat constituents", "持平成分"),
-      down: t("Declining constituents", "下跌成分"),
+      up: t("上涨成分", "Advancing constituents"),
+      flat: t("持平成分", "Flat constituents"),
+      down: t("下跌成分", "Declining constituents"),
     };
     if (
       group === "breadth" &&
@@ -191,9 +195,9 @@ export function formatPageField(
     value >= 0
   ) {
     if (field === "completed")
-      return [t("Completed stages", "已完成阶段"), number(value, 0)];
+      return [t("已完成阶段", "Completed stages"), number(value, 0)];
     if (field === "stages")
-      return [t("Recorded stages", "已记录阶段"), number(value, 0)];
+      return [t("已记录阶段", "Recorded stages"), number(value, 0)];
   }
   return null;
 }
