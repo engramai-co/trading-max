@@ -335,6 +335,34 @@ def test_check_fails_closed_on_a_quantity_or_name_it_cannot_confirm(sentence, zh
     assert restated(sentence, zh) is False
 
 
+@pytest.mark.parametrize(
+    ("sentence", "zh", "valid"),
+    [
+        pytest.param(
+            "It operates in 12 markets.", "公司在 12 个市场经营，建议买入。", False, id="advice"
+        ),
+        pytest.param("It operates in 12 markets.", "公司看好 12 个市场。", False, id="view"),
+        pytest.param(
+            "It operates in 12 markets.", "公司在 12 个市场经营，目标价上调。", False, id="target"
+        ),
+        pytest.param(
+            "The company provides personalised recommendations.",
+            "公司提供个性化推荐服务。",
+            True,
+            id="recommendations",
+        ),
+        pytest.param(
+            "The company provides credit ratings to investors.",
+            "公司为投资者提供信用评级。",
+            True,
+            id="ratings",
+        ),
+    ],
+)
+def test_restatement_never_adds_advice_or_a_rating(sentence, zh, valid):
+    assert restated(sentence, zh) is valid
+
+
 # Faithful restatements of sentences in the style of company descriptions, with
 # synthetic names: names stay in English, everything else is translated.
 FAITHFUL = [

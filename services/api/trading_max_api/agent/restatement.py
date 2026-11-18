@@ -874,6 +874,16 @@ def _within(run: list[str], span: list[str]) -> bool:
     return any(span[start : start + len(run)] == run for start in range(len(span) - len(run) + 1))
 
 
+# A description never advises. Advice or a rating in the line rejects it, unless the
+# sentence itself speaks of recommendations, ratings or targets.
+_ZH_ADVICE = re.compile(
+    r"建议|推荐|买入|卖出|增持|减持|评级|目标价|看好|看空|看涨|看跌|值得(?:投资|买)"
+)
+_EN_ADVICE = re.compile(
+    r"\b(?:recommend\w*|advi[cs]\w*|ratings?|rated|target price|outlook)\b", re.IGNORECASE
+)
+
+
 def faithful(zh: str, sentence: str) -> bool:
     """Accept substantive Chinese that repeats only the sentence's quantities and names."""
     line = zh.strip()
@@ -882,6 +892,8 @@ def faithful(zh: str, sentence: str) -> bool:
     text = unicodedata.normalize("NFKC", line.translate(_CHINESE_PUNCTUATION))
     source = unicodedata.normalize("NFKC", sentence)
     if _LINK_OR_MARKUP.search(text) or not all(_ALLOWED.match(char) for char in text):
+        return False
+    if _ZH_ADVICE.search(text) and not _EN_ADVICE.search(source):
         return False
     spans = name_spans(source)
     kept = 0
