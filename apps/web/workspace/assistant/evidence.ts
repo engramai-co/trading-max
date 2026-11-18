@@ -159,12 +159,13 @@ export function evidenceHref(ref: Evidence): string | null {
       if (a.indexRange) params.set("indexRange",a.indexRange);
       return path + "?" + params;
     }
+    // Research links name the listing before the section.
+    const ticker = decisionEvent ? a.listing : a.ticker;
+    if (ticker) params.set("ticker", ticker);
     if (a.analystView) params.set("analystView",a.analystView);
     if (a.date && a.lens === "technical") { params.set("eventDate",a.date); params.set("priceRange","ALL"); params.set("interval","1d"); }
     if (a.event === "filing") params.set("notebook","filings");
     if (a.event === "rating_change") params.set("analystView","actions");
-    const ticker = decisionEvent ? a.listing : a.ticker;
-    if (ticker) params.set("ticker", ticker);
     if (citedEventKind(a.event)) {
       params.set("event", a.event);
       if (a.date) params.set("date", a.date);

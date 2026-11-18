@@ -200,6 +200,8 @@ it.each(["events", "actions", "ratings"])("opens the selected listing’s %s sec
   const opened = new URL(href!, "https://example.org");
   expect(opened.pathname).toBe("/research");
   expect(opened.searchParams.get("ticker")).toBe("TEST.L");
+  // Research links name the listing before the section.
+  expect(opened.search).toMatch(/ticker=TEST\.L&.*analystView=/);
   expect(Object.fromEntries(opened.searchParams)).toMatchObject({snapshotId:"saved-run", calendarEventId:"ev_0123456789abcdef", date:"2026-08-28"});
   expect(opened.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
 });
