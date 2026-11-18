@@ -683,6 +683,28 @@ test("company reading returns keyboard focus to the underlying detail", async ({
   if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-company-detail-focus.png")});
 });
 
+test("same-page Returns citations take precedence over a brush and follow browser history", async ({page,isMobile})=>{
+  test.skip(isMobile, "Keyboard brushes are desktop controls.");
+  const calls=await setup(page,"en",false);
+  const first="/analytics?view=returns&range=1M&benchmark=QQQ&snapshotId="+runId+"&evidence=selected_daily&inspectFrom=2026-01-06&inspectTo=2026-01-20";
+  const second=first.replace("01-06","01-05").replace("01-20","01-16");
+  await page.goto(first);
+  const chart=page.locator('[aria-roledescription="Interactive chart"]').first();
+  const card=page.locator(".mx-inline-reading").last();
+  await expect(card).toContainText("2026-01-06");
+  await chart.focus();
+  await chart.press("End");
+  await chart.press("Shift+ArrowLeft");
+  await expect(card).toContainText("2026-01-30");
+  await page.evaluate(url=>history.pushState(null,"",url),second);
+  await expect(card).toContainText("2026-01-05 – 2026-01-16");
+  await expect.poll(()=>calls.at(-1)).toMatchObject({snapshotId:runId,context:{start:"2026-01-05",end:"2026-01-16"}});
+  await page.goBack();
+  await expect(card).toContainText("2026-01-06 – 2026-01-20");
+  await page.goForward();
+  await expect(card).toContainText("2026-01-05 – 2026-01-16");
+});
+
 for (const view of ["holdings","money","returns","risk"] as const) {
   test(`opens the cited ${view} using the retained dashboard API`, async ({page,request})=>{
     const calls=await setup(page,"en",false);

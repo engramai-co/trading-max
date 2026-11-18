@@ -122,7 +122,8 @@ export function PerformanceContent({
     view, updatedAt: Math.max(summary.dataUpdatedAt, historyQuery.dataUpdatedAt),
   } : undefined, [incoming, pinnedMoney, historyQuery.data, historyQuery.dataUpdatedAt, requestedRange, requestedScope, summary.dataUpdatedAt, view]);
   const reading = useReadingBoundary();
-  const identity = [view,requestedScope,requestedRange,benchmark,start,end,citedId].join("|");
+  const identity = [view,requestedScope,requestedRange,benchmark,start,end,citedId,linkedFrom,linkedTo].join("|");
+  if (selectionRange && selectionRange.identity !== identity) setSelectionRange(null);
   const activeRange = ready && selectionRange?.identity === identity ? selectionRange : null;
   const publicationOf = (chart: NonNullable<typeof current>) => chart.view === "money" ? chart.history?.runId : chart.data?.runId;
   const retained = useRetainedResult(current, Object.is, (next, previous) =>
