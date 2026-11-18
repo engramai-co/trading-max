@@ -714,6 +714,7 @@ class AssistantPreferences(ApiModel):
     background_briefs_enabled: bool
     share_valuation_assumptions: bool
     accepted_consent_revision: int | None
+    accepted_destination: str | None
     accepted_at: datetime | None
     revision: int
     updated_at: datetime
@@ -726,6 +727,7 @@ class AssistantPreferencesUpdate(ApiModel):
     background_briefs_enabled: bool | None = None
     share_valuation_assumptions: bool | None = None
     accepted_consent_revision: int | None = Field(default=None, ge=1, strict=True)
+    expected_consent_destination: str | None = Field(default=None, max_length=2_000)
     expected_revision: int | None = Field(default=None, ge=1)
 
 

@@ -358,6 +358,7 @@ class SettingsRepository:
             share_valuation_assumptions=bool(row["share_valuation_assumptions"]),
             accepted_consent_revision=row["accepted_consent_revision"],
             accepted_at=_parse_datetime(row["accepted_at"]),
+            accepted_destination=row["accepted_destination"],
             revision=int(row["revision"]),
             updated_at=_parse_datetime(row["updated_at"]) or _now(),
         )
@@ -402,31 +403,59 @@ class SettingsRepository:
                 previous.route or ""
             ).partition("/")[0]
             consent = changes.get("accepted_consent_revision", previous.accepted_consent_revision)
-            if "accepted_consent_revision" in changes and consent not in (
-                None,
-                ASSISTANT_CONSENT_REVISION,
-            ):
+            consent_updated = "accepted_consent_revision" in changes
+            if consent_updated and consent not in (None, ASSISTANT_CONSENT_REVISION):
                 raise AssistantSettingsError(
                     "assistant_consent_required", "accept the current assistant consent revision"
                 )
-            if provider_changed and "accepted_consent_revision" not in changes:
+            if consent_updated and consent is None and update.enabled is None:
+                enabled = False
+            if provider_changed and not consent_updated:
                 consent = None
             if enabled and consent != ASSISTANT_CONSENT_REVISION:
                 raise AssistantSettingsError(
                     "assistant_consent_required", "accept the current assistant consent revision"
                 )
-            if enabled or ("route" in changes and route_id is not None):
+            granting_consent = consent_updated and consent is not None
+            accepted_destination = previous.accepted_destination if consent is not None else None
+            if enabled or granting_consent or ("route" in changes and route_id is not None):
                 route = parse_assistant_route(route_id)
                 route_id = route.route_id
-                if enabled:
-                    validate_assistant_integration(route, self.get_integration(route.provider))
-            if (enabled, route_id, reasoning, background, assumptions, consent) == (
+                spec = PROVIDER_REGISTRY[route.provider]
+                destination = spec.base_url
+                if enabled or (granting_consent and spec.local):
+                    _, destination = validate_assistant_integration(
+                        route, self.get_integration(route.provider)
+                    )
+                if granting_consent:
+                    if (spec.local or update.expected_consent_destination is not None) and (
+                        update.expected_consent_destination != destination
+                    ):
+                        raise AssistantSettingsError(
+                            "assistant_preferences_conflict",
+                            "review the current assistant destination",
+                        )
+                    accepted_destination = destination
+                if enabled and accepted_destination != destination:
+                    raise AssistantSettingsError(
+                        "assistant_consent_required", "accept the current assistant destination"
+                    )
+            if (
+                enabled,
+                route_id,
+                reasoning,
+                background,
+                assumptions,
+                consent,
+                accepted_destination,
+            ) == (
                 previous.enabled,
                 previous.route,
                 previous.reasoning,
                 previous.background_briefs_enabled,
                 previous.share_valuation_assumptions,
                 previous.accepted_consent_revision,
+                previous.accepted_destination,
             ):
                 return previous
             now = _now()
@@ -434,14 +463,16 @@ class SettingsRepository:
                 None
                 if consent is None
                 else previous.accepted_at
-                if consent == previous.accepted_consent_revision and not provider_changed
+                if consent == previous.accepted_consent_revision
+                and accepted_destination == previous.accepted_destination
+                and not provider_changed
                 else now
             )
             revision = previous.revision + 1
             row = connection.execute(
                 """UPDATE assistant_preferences SET enabled = ?, route = ?, reasoning = ?,
                    background_briefs_enabled = ?, share_valuation_assumptions = ?,
-                   accepted_consent_revision = ?, accepted_at = ?, revision = ?, updated_at = ?
+                   accepted_consent_revision = ?, accepted_destination = ?, accepted_at = ?, revision = ?, updated_at = ?
                    WHERE preference_id = 'local' RETURNING *""",
                 (
                     int(enabled),
@@ -450,6 +481,7 @@ class SettingsRepository:
                     int(background),
                     int(assumptions),
                     consent,
+                    accepted_destination,
                     _iso(accepted_at) if accepted_at is not None else None,
                     revision,
                     _iso(now),
@@ -629,6 +661,16 @@ class SettingsRepository:
                     now,
                 ),
             )
+            spec = PROVIDER_REGISTRY.get(provider)
+            if spec is not None and spec.local:
+                # A replacement endpoint needs fresh consent even if the model ID stays the same.
+                connection.execute(
+                    """UPDATE assistant_preferences SET enabled = 0, accepted_consent_revision = NULL,
+                       accepted_destination = NULL, accepted_at = NULL, updated_at = ?, revision = revision + 1
+                       WHERE route LIKE ? AND accepted_consent_revision IS NOT NULL
+                       AND accepted_destination IS NOT ?""",
+                    (now, provider + "/%", base_url or spec.base_url),
+                )
             self._audit(
                 connection,
                 actor=actor,

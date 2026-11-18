@@ -71,7 +71,8 @@ fallback to another provider.
 The web app proxies assistant and settings routes under `/api/backend`.
 The chat route passes the stream through without buffering or compression.
 
-The assistant connection test in Settings makes one small exchange in which the
+The saved-model test in Settings requires an enabled assistant and current
+consent for that model and endpoint. It makes a small exchange in which the
 model must call a tool. Models that only return text fail it with
 `assistant_tools_unsupported`, rather than failing later on every question.
 
@@ -86,8 +87,13 @@ agreement; the web test suite fails when they drift.
 
 The assistant is off until the user enables it and accepts the current consent
 revision. Settings names the recipient and asks for consent again when the
-provider changes. Turning the assistant off retains consent. Withdrawing
-consent disables it and keeps conversations available for separate deletion.
+provider or local endpoint changes. Turning the assistant off or withdrawing
+consent cancels active turns. Every outgoing provider request, including each
+retry, checks the bound preferences and integration against the workspace.
+Clients granting consent to a local model must send the endpoint shown to the
+user in `expectedConsentDestination`. A changed endpoint returns a conflict.
+Turning the assistant off retains consent. Both actions keep conversations
+available for separate deletion.
 Background writing and sharing saved valuation assumptions each have a
 default-on preference. Both require enablement and current consent.
 

@@ -21,6 +21,8 @@ export function connectedAssistantModels(settings: AssistantSettings) {
       label: provider.label + " · " + model,
       provider: provider.provider,
       recipient: provider.label,
+      destination: provider.local ? (connection.baseUrl ?? provider.baseUrl) : provider.baseUrl,
+      local: provider.local,
       model,
     }));
   });

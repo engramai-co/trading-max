@@ -39,6 +39,9 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
   const models = connectedAssistantModels(settings);
   const selected = settings.route ? models.find((option) => option.value === settings.route) : models[0];
   const consented = settings.acceptedConsentRevision === settings.consentRevision;
+  const selectedConsent = Boolean(consented && selected &&
+    settings.route === selected.value && settings.acceptedDestination === selected.destination);
+  const canProbe = settings.enabled && selectedConsent;
   const enabled = settings.enabled && consented;
   const currentDisclosure = settings.consentRevision === DISCLOSURE_REVISION;
   const busy = useIsMutating({ mutationKey: actionKey }) > 0;
@@ -91,15 +94,16 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
     { key: "backgroundBriefsEnabled", label: t("后台预写简报", "Write briefs in the background") },
     { key: "shareValuationAssumptions", label: t("分享已保存的估值假设", "Share saved valuation assumptions") },
   ] as const;
-  const probeMatches = selected && probe.variables?.value === selected.value;
+  const probeMatches = canProbe && selected && probe.variables?.value === selected.value &&
+    probe.variables.destination === selected.destination;
 
-  return <Panel title={ASSISTANT_NAME} action={<Switch
+  return <Panel className="mx-assistant-settings" title={ASSISTANT_NAME} action={<Switch
     className="mx-assistant-enable" aria-label={t("启用 ", "Enable ") + ASSISTANT_NAME}
     checked={enabled} disabled={busy || (!enabled && (!selected || !currentDisclosure))}
     onChange={() => {
       if (inFlight()) return;
       if (enabled) update({ enabled: false });
-      else if (selected && consented && settings.route === selected.value) update({ enabled: true });
+      else if (selectedConsent) update({ enabled: true });
       else if (selected) consent(selected, true);
     }}
   />}>
@@ -113,8 +117,8 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
             if (consented && settings.route?.split("/")[0] !== option.provider) consent(option, enabled);
             else update({ route: option.value });
           }} />
-        <Button variant="default" disabled={!selected || busy} loading={probe.isPending} onClick={() => {
-          if (!selected || inFlight()) return;
+        <Button variant="default" disabled={!canProbe || busy} loading={probe.isPending} onClick={() => {
+          if (!selected || !canProbe || inFlight()) return;
           reset();
           probe.mutate(selected);
         }}>{t("测试工具调用", "Test tool calls")}</Button>
@@ -123,7 +127,7 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
         <Button variant="default" onClick={openModels}>{t("连接模型", "Connect a model")}</Button>
       </>}
     </div>
-    {settings.route && !selected && <Notice tone="warn">{t("已选模型不可用。请重新连接或选择其他模型。", "The selected model is unavailable. Reconnect it or choose another model.")}</Notice>}
+    {models.length > 0 && settings.route && !selected && <Notice tone="warn">{t("已选模型不可用。请重新连接或选择其他模型。", "The selected model is unavailable. Reconnect it or choose another model.")}</Notice>}
     {!currentDisclosure && <Notice tone="warn">{t("请更新工作区以查看当前同意条款。", "Update the workspace to review the current consent terms.")}</Notice>}
     {probeMatches && probe.isSuccess && <Notice tone="good">{t("工具调用测试通过。", "Tool call succeeded.")}</Notice>}
     {probeMatches && probe.isError && <Notice tone="bad">{probe.error instanceof ApiError && probe.error.code === "assistant_tools_unsupported"
@@ -143,11 +147,11 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
     {erase.isSuccess && <Notice tone="good">{t("已删除此工作区中的对话。", "Conversations deleted from this workspace.")}</Notice>}
     <span role="status" className="sr-only">{save.isPending ? t("正在保存…", "Saving…") : save.isSuccess ? t("已保存", "Saved") : null}</span>
     <Modal opened={dialog !== null} onClose={() => { if (!inFlight()) setDialog(null); }} centered
-      attributes={{ header: { role: "presentation" } }}
+      classNames={{ content: "mx-assistant-dialog" }} attributes={{ header: { role: "presentation" } }}
       closeButtonProps={{ "aria-label": t("关闭", "Close") }}
       title={dialog?.kind === "delete" ? t("删除所有对话？", "Delete all conversations?") : t("同意向模型分享数据", "Consent to share data")}>
       {dialog?.kind === "consent" && <Stack>
-        <p className="mx-assistant-consent"><strong>{dialog.option.recipient} ({dialog.option.model})</strong>{" "}{t(
+        <p className="mx-assistant-consent"><strong>{dialog.option.recipient} ({dialog.option.model}){dialog.option.local && <> · {dialog.option.destination}</>}</strong>{" "}{t(
           "将收到你的消息、当前对话和工具读取的数据，包括持仓和金额。",
           "will receive your question, this conversation and the data read by tools, including holdings and amounts.",
         )}</p>
@@ -164,7 +168,7 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
           <Button variant="default" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
           <Button disabled={busy || !currentDisclosure} loading={save.isPending} onClick={() => update({
             route: dialog.option.value, enabled: dialog.enable, expectedRevision: dialog.revision,
-            acceptedConsentRevision: DISCLOSURE_REVISION,
+            acceptedConsentRevision: DISCLOSURE_REVISION, expectedConsentDestination: dialog.option.destination,
           })}>{dialog.enable ? t("同意并启用", "Agree and enable") : t("同意并保存", "Agree and save")}</Button>
         </Group>
       </Stack>}

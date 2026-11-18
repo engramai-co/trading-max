@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import anyio
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
-from pydantic_ai import Agent
+from pydantic_ai import Agent, CancellationToken
 from pydantic_ai.exceptions import RunCancelled, RunTimedOut
 from pydantic_ai.models import Model
 from pydantic_ai.run import AgentRunResult
@@ -185,6 +185,12 @@ class AssistantService:
     # was abandoned before streaming began, so expire it after the run timeout.
     _active: dict[str, float] = field(default_factory=dict, init=False, repr=False)
 
+    _access: CancellationToken = field(default_factory=CancellationToken, init=False, repr=False)
+
+    def cancel_active_turns(self) -> None:
+        previous, self._access = self._access, CancellationToken()
+        previous.cancel()
+
     def _release(self, conversation_id: str) -> None:
         self._active.pop(conversation_id, None)
 
@@ -222,6 +228,7 @@ class AssistantService:
             raise
 
     async def _run(self, request: Request, conversation_id: str, context: ChatContext) -> Response:
+        access = self._access
         try:
             bound = await self.bind_model()
         except AssistantUnavailable as exc:
@@ -246,6 +253,7 @@ class AssistantService:
                 sdk_version=SDK_VERSION,
                 model=model,
                 model_settings=bound.settings,
+                cancellation_token=access,
                 deps=deps,
                 instructions=run_context(
                     now=self.clock(),

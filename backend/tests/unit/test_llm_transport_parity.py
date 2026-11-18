@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import anyio
@@ -444,3 +445,34 @@ def test_retry_after_beyond_budget_is_not_replayed(monkeypatch):
     with pytest.raises(ProviderError, match="provider_rate_limited"):
         facade.complete(messages=[{"role": "user", "content": "Synthetic question"}], timeout=1)
     assert len(calls) == 1
+
+
+def test_authorisation_is_rechecked_before_a_transport_retry(monkeypatch):
+    attempts = []
+    checks = []
+
+    def check():
+        checks.append(len(attempts))
+        if attempts:
+            raise PermissionError("consent withdrawn")
+
+    def transport(request):
+        attempts.append(request.url)
+        return httpx2.Response(429, json={}, headers={"retry-after-ms": "1"})
+
+    monkeypatch.setattr(factory, "_base_transport", lambda: httpx2.MockTransport(transport))
+    connection = replace(
+        _connection("openai", "gpt-5.6-luna", REMOTE_BASE_URLS["openai"]), before_request=check
+    )
+
+    async def run():
+        native = build_model(connection, max_retries=2)
+        async with native:
+            await native.request(
+                [ModelRequest(parts=[UserPromptPart("Synthetic")])], {}, ModelRequestParameters()
+            )
+
+    with pytest.raises(PermissionError, match="consent withdrawn"):
+        anyio.run(run)
+    assert checks == [0, 1]
+    assert len(attempts) == 1

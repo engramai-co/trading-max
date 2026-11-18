@@ -27,8 +27,6 @@ from ..agent.probe import check_assistant_connection
 from ..assistant_settings import (
     ASSISTANT_CONSENT_REVISION,
     AssistantSettingsError,
-    parse_assistant_route,
-    validate_assistant_integration,
 )
 from ..credentials import CredentialStoreError, secret_fingerprint
 from ..llm_routing import (
@@ -79,7 +77,7 @@ from ..models import (
 )
 from ..provider_runtime import (
     ProviderRuntimeError,
-    assistant_provider_credentials,
+    resolve_assistant_connection,
 )
 from ..valuation_assumptions import (
     ValuationAssumptionsHistoryEntry,
@@ -254,6 +252,8 @@ def _safe_integration_error(exc: Exception) -> HTTPException:
         code = "provider_invalid_output"
     else:
         code = "integration_test_failed"
+    if code in {"assistant_consent_required", "assistant_disabled", "assistant_settings_changed"}:
+        return HTTPException(status_code=403, detail={"code": code})
     status_code = (
         503
         if code
@@ -784,13 +784,17 @@ def save_assistant_settings(
     body: AssistantPreferencesUpdate, request: Request
 ) -> AssistantSettingsResponse:
     repository = app_service(request, "settings_repository")
-    try:
-        preferences = repository.save_assistant_preferences(body)
-    except AssistantSettingsError as exc:
-        raise HTTPException(
-            status_code=409 if exc.code == "assistant_preferences_conflict" else 422,
-            detail={"code": exc.code, "message": str(exc)},
-        ) from None
+    # Finish cancellation before a concurrent enable can admit new turns.
+    with app_service(request, "assistant_settings_lock"):
+        try:
+            preferences = repository.save_assistant_preferences(body)
+        except AssistantSettingsError as exc:
+            raise HTTPException(
+                status_code=409 if exc.code == "assistant_preferences_conflict" else 422,
+                detail={"code": exc.code, "message": str(exc)},
+            ) from None
+        if not preferences.enabled:
+            app_service(request, "assistant").cancel_active_turns()
     return _assistant_settings(request, preferences)
 
 
@@ -833,39 +837,25 @@ async def test_assistant_provider(
 ) -> IntegrationTestResult:
     spec = _llm_spec_or_404(provider, workload="assistant")
     candidate = _assistant_candidate(body, spec)
-    key = candidate.api_key
-    codex_credentials = None
+    use_saved = saved or (candidate.api_key is None and not spec.local)
     try:
-        if saved:
-            repository = app_service(request, "settings_repository")
-            integration, destination = validate_assistant_integration(
-                parse_assistant_route(f"{spec.provider}/{body.model}"),
-                repository.get_integration(spec.provider),
-            )
-            # A saved credential may only be used at its stored, validated destination.
-            candidate = AssistantIntegrationCandidate(model=candidate.model, base_url=destination)
-            key = None
-            needs_saved_key = not spec.local or bool(integration.credential_fingerprint)
-        else:
-            needs_saved_key = key is None and not spec.local
-        if needs_saved_key:
-            key, codex_credentials = await run_in_threadpool(
-                assistant_provider_credentials,
+        if use_saved:
+            connection = await run_in_threadpool(
+                resolve_assistant_connection,
                 app_service(request, "settings"),
-                spec,
+                app_service(request, "settings_repository"),
                 app_service(request, "credential_store"),
+                requested_route=f"{spec.provider}/{candidate.model}",
             )
-        await check_assistant_connection(
-            llm.ModelConnection(
+            model_connection = connection.to_model_connection()
+        else:
+            model_connection = llm.ModelConnection(
                 provider=spec.provider,
                 model=candidate.model,
                 base_url=candidate.base_url or spec.base_url,
-                api_key=key,
-                codex_credentials=codex_credentials,
+                api_key=candidate.api_key,
             )
-        )
-    except AssistantSettingsError as exc:
-        raise HTTPException(status_code=422, detail={"code": exc.code}) from None
+        await check_assistant_connection(model_connection)
     except Exception as exc:
         raise _safe_integration_error(exc) from None
     return IntegrationTestResult(
@@ -880,7 +870,7 @@ async def test_assistant_provider(
                 integration_id=spec.credential_ref,
                 digest=_assistant_candidate_digest(request, candidate),
             )
-            if not saved and (spec.local or candidate.api_key is not None)
+            if not use_saved
             else None
         ),
     )

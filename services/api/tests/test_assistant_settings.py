@@ -3,12 +3,20 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import anyio
+import httpx2
 import pytest
 from fastapi.testclient import TestClient
+from pydantic_ai import FunctionToolset
+from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 from trading_max.infrastructure import SqliteDatabase
 
+from services.api.trading_max_api.agent.probe import check_assistant_connection
+from services.api.trading_max_api.agent.runtime import build_assistant_agent
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.assistant_settings import ASSISTANT_CONSENT_REVISION
 from services.api.trading_max_api.config import Settings
@@ -208,7 +216,11 @@ def _register(
 def _enable(repository: SettingsRepository, route: str):
     return repository.save_assistant_preferences(
         AssistantPreferencesUpdate(
-            enabled=True, route=route, accepted_consent_revision=_CONSENT, reasoning="high"
+            enabled=True,
+            route=route,
+            accepted_consent_revision=_CONSENT,
+            reasoning="high",
+            expected_consent_destination=provider_spec(route.split("/")[0]).base_url,
         )
     )
 
@@ -368,9 +380,13 @@ def test_assistant_preferences_are_explicit_opt_in_and_revision_checked(assistan
     assert (
         update(acceptedConsentRevision=999).json()["detail"]["code"] == "assistant_consent_required"
     )
-    accepted = update(acceptedConsentRevision=_CONSENT).json()
+    assert (
+        update(acceptedConsentRevision=_CONSENT).json()["detail"]["code"]
+        == "provider_route_invalid"
+    )
+    accepted = update(route="openai/gpt-5.6-luna", acceptedConsentRevision=_CONSENT).json()
     assert accepted["acceptedAt"] is not None
-    assert update(enabled=True).json()["detail"]["code"] == "provider_route_invalid"
+    assert update(enabled=True).json()["detail"]["code"] == "provider_not_configured"
     assert (
         update(
             enabled=True,
@@ -442,6 +458,7 @@ def test_assistant_provider_checks_candidate_before_save_and_keeps_picker_unchan
         json={
             "enabled": True,
             "route": f"{provider}/{model}",
+            "expectedConsentDestination": url,
             "reasoning": "medium",
             "acceptedConsentRevision": _CONSENT,
         },
@@ -505,6 +522,25 @@ def test_assistant_connection_can_test_a_stored_chatgpt_account(
     source = object()
     monkeypatch.setattr(OAuthCredentialVault, "credential_source", lambda self: source)
     credentials.put("openai-codex:default", "synthetic-oauth")
+    probe = f"{_provider_path('openai-codex')}/test"
+    model = "gpt-5.6-luna"
+    _register(client.app.state.settings_repository, "openai-codex", model)
+    with monkeypatch.context() as deny:
+        deny.setattr(credentials, "get", lambda *_: pytest.fail("read credentials before consent"))
+        for path in (probe, probe + "?saved=true"):
+            assert client.post(path, headers=_AUTH, json={"model": model}).status_code == 403
+    assert attempts == []
+    _enable(client.app.state.settings_repository, f"openai-codex/{model}")
+    with monkeypatch.context() as deny:
+        deny.setattr(
+            credentials, "get", lambda *_: pytest.fail("read credentials for another model")
+        )
+        assert (
+            client.post(
+                probe + "?saved=true", headers=_AUTH, json={"model": "gpt-5.6-terra"}
+            ).status_code
+            == 403
+        )
     result = client.post(
         f"{_provider_path('openai-codex')}/test", headers=_AUTH, json={"model": "gpt-5.6-luna"}
     )
@@ -553,7 +589,7 @@ def test_migrate_consent_and_preserve_model_choice(tmp_path: Path) -> None:
             8,
         )
         assert not upgraded.enabled and upgraded.accepted_consent_revision is None
-        assert upgraded.accepted_at is None
+        assert upgraded.accepted_at is None and upgraded.accepted_destination is None
         assert upgraded.background_briefs_enabled and upgraded.share_valuation_assumptions
         with pytest.raises(ProviderRuntimeError, match="enable the assistant"):
             resolve_assistant_connection(
@@ -584,3 +620,168 @@ def test_privacy_preferences_and_consent_follow_the_selected_provider(assistant_
     assert third["backgroundBriefsEnabled"] is False and third["shareValuationAssumptions"] is False
     assert save(backgroundBriefsEnabled=True).json()["shareValuationAssumptions"] is False
     assert save(shareValuationAssumptions=True).json()["backgroundBriefsEnabled"] is True
+
+
+def test_replacing_a_local_endpoint_invalidates_saved_and_pending_consent(assistant_client):
+    client, attempts, _ = assistant_client
+    repo = client.app.state.settings_repository
+    provider, model = "ollama", "local-model"
+    route = f"{provider}/{model}"
+    original = provider_spec(provider).base_url
+    replacement = "http://127.0.0.1:8456/v1"
+    _register(repo, provider, model, key=False)
+    _enable(repo, route)
+    assert client.get("/v1/assistant/status").json()["ready"]
+    _register(repo, provider, model, key=False, base_url=replacement)
+    current = client.get(_PREFERENCES).json()
+    assert not current["enabled"] and current["acceptedDestination"] is None
+    assert (
+        current["acceptedConsentRevision"] is None
+        and not client.get("/v1/assistant/status").json()["ready"]
+    )
+    probe = f"{_provider_path(provider)}/test?saved=true"
+    assert client.post(probe, headers=_AUTH, json={"model": model}).status_code == 403
+    consent = {"enabled": True, "route": route, "acceptedConsentRevision": _CONSENT}
+    assert (
+        client.put(
+            _PREFERENCES, headers=_AUTH, json={**consent, "expectedConsentDestination": original}
+        ).status_code
+        == 409
+    )
+    assert client.put(_PREFERENCES, headers=_AUTH, json=consent).status_code == 409
+    confirmed = client.put(
+        _PREFERENCES, headers=_AUTH, json={**consent, "expectedConsentDestination": replacement}
+    ).json()
+    assert confirmed["acceptedDestination"] == replacement
+    assert client.post(probe, headers=_AUTH, json={"model": model}).status_code == 200
+    assert [attempt.base_url for attempt in attempts] == [replacement]
+
+
+@pytest.mark.parametrize("withdraw", [False, True], ids=["turn-off", "withdraw-consent"])
+def test_settings_cancel_an_active_turn_before_its_tool_result_is_sent(
+    assistant_client, monkeypatch, withdraw
+):
+    client, _, _ = assistant_client
+    repository = client.app.state.settings_repository
+    _register(repository, "ollama", "local-model", key=False)
+    _enable(repository, "ollama/local-model")
+    entered = threading.Event()
+    stopped = threading.Event()
+    release = threading.Event()
+    model_requests = []
+
+    async def read_amount() -> str:
+        """Read a synthetic amount."""
+        entered.set()
+        try:
+            await anyio.to_thread.run_sync(release.wait, abandon_on_cancel=True)
+        finally:
+            stopped.set()
+        return "synthetic portfolio result"
+
+    async def model(messages, info):
+        model_requests.append(messages)
+        if len(model_requests) == 1:
+            yield {0: DeltaToolCall(name="read_amount", json_args="{}", tool_call_id="read")}
+        else:
+            yield "Finished"
+
+    client.app.state.assistant.agent = build_assistant_agent([FunctionToolset([read_amount])])
+    monkeypatch.setattr(
+        "services.api.trading_max_api.app.build_model",
+        lambda connection: FunctionModel(stream_function=model),
+    )
+    turn = {
+        "trigger": "submit-message",
+        "id": "cancel-test",
+        "messages": [
+            {
+                "id": "u1",
+                "role": "user",
+                "parts": [{"type": "text", "text": "Read the synthetic amount"}],
+            }
+        ],
+    }
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(client.post, "/v1/assistant/chat", json=turn, headers=_AUTH)
+        try:
+            assert entered.wait(5)
+            change = {"acceptedConsentRevision": None} if withdraw else {"enabled": False}
+            assert client.put(_PREFERENCES, json=change, headers=_AUTH).status_code == 200
+            assert stopped.wait(5), (
+                "the active tool should be cancelled without waiting for its result"
+            )
+            assert '"type":"abort"' in pending.result(timeout=5).text
+        finally:
+            release.set()
+    assert len(model_requests) == 1
+    assert client.post("/v1/assistant/chat", json=turn, headers=_AUTH).status_code == 403
+
+
+def test_a_bound_connection_checks_current_consent_and_generation_on_every_request(
+    assistant_client,
+):
+    client, _, credentials = assistant_client
+    repository = client.app.state.settings_repository
+    _register(repository, "ollama", "local-model", key=False)
+    route = "ollama/local-model"
+    _enable(repository, route)
+    bound = resolve_assistant_connection(
+        client.app.state.settings, repository, credentials
+    ).to_model_connection()
+    bound.before_request()
+    client.put(
+        _PREFERENCES, json={"enabled": False, "acceptedConsentRevision": None}, headers=_AUTH
+    ).raise_for_status()
+    with pytest.raises(ProviderRuntimeError, match="assistant_disabled"):
+        bound.before_request()
+    _enable(repository, route)
+    with pytest.raises(ProviderRuntimeError, match="assistant_settings_changed"):
+        bound.before_request()
+
+
+def test_saved_probe_rechecks_consent_before_sending_its_tool_result(assistant_client, monkeypatch):
+    client, _, _ = assistant_client
+    repo = client.app.state.settings_repository
+    _register(repo, "ollama", "local-model", key=False)
+    _enable(repo, "ollama/local-model")
+    requests = []
+
+    def provider(request):
+        requests.append(json.loads(request.content))
+        # Another writer withdraws consent while the provider is preparing its tool call.
+        repo.save_assistant_preferences(AssistantPreferencesUpdate(accepted_consent_revision=None))
+        tool = {"name": "connection_check", "arguments": '{"value":"ok"}'}
+        return httpx2.Response(
+            200,
+            json={
+                "id": "synthetic",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "local-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "finish_reason": "tool_calls",
+                        "message": {
+                            "role": "assistant",
+                            "tool_calls": [{"id": "check", "type": "function", "function": tool}],
+                        },
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr(
+        "trading_max.llm.model._base_transport", lambda: httpx2.MockTransport(provider)
+    )
+    monkeypatch.setattr(
+        "services.api.trading_max_api.routes.settings.check_assistant_connection",
+        check_assistant_connection,
+    )
+    result = client.post(
+        f"{_provider_path('ollama')}/test?saved=true", headers=_AUTH, json={"model": "local-model"}
+    )
+    assert result.status_code == 403
+    assert result.json()["detail"]["code"] == "assistant_disabled"
+    assert len(requests) == 1 and requests[0]["tools"][0]["function"]["name"] == "connection_check"

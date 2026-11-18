@@ -607,6 +607,7 @@ def create_app(
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
     app.state.assistant = assistant
+    app.state.assistant_settings_lock = threading.Lock()
     app.state.validation_secret = validation_secret
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research

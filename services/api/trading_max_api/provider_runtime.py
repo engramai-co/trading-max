@@ -27,7 +27,7 @@ from .llm_routing import (
     ProviderSpec,
     parse_route,
 )
-from .models import AssistantReasoning
+from .models import AssistantPreferences, AssistantReasoning, IntegrationSummary
 from .oauth import OAuthCredentialVault
 from .settings import SettingsRepository
 
@@ -52,6 +52,7 @@ class AssistantConnection:
     provider_revision: int
     preferences_revision: int
     consent_revision: int
+    before_request: Callable[[], None] = field(repr=False, compare=False)
 
     def to_model_connection(self) -> ModelConnection:
         return ModelConnection(
@@ -60,6 +61,7 @@ class AssistantConnection:
             base_url=self.base_url,
             api_key=self.api_key,
             codex_credentials=self.codex_credentials,
+            before_request=self.before_request,
         )
 
 
@@ -96,15 +98,9 @@ def assistant_provider_credentials(
         ) from None
 
 
-def resolve_assistant_connection(
-    settings: Settings,
-    preferences: SettingsRepository,
-    credentials: CredentialStore,
-) -> AssistantConnection:
-    """Resolve the selected, consented assistant route using OS credentials.
-
-    Run in a worker thread: the credential manager is synchronous.
-    """
+def _consented_assistant_route(
+    preferences: SettingsRepository, requested_route: str | None
+) -> tuple[AssistantPreferences, LLMRoute, IntegrationSummary, str]:
     current = preferences.get_assistant_preferences()
     if not current.enabled:
         raise ProviderRuntimeError("assistant_disabled", "enable the assistant in Settings")
@@ -119,6 +115,38 @@ def resolve_assistant_connection(
         )
     except AssistantSettingsError as exc:
         raise ProviderRuntimeError(exc.code, str(exc)) from None
+    if current.accepted_destination != base_url or (
+        requested_route is not None and route.route_id != requested_route
+    ):
+        raise ProviderRuntimeError(
+            "assistant_consent_required", "review the selected assistant destination"
+        )
+    return current, route, integration, base_url
+
+
+def resolve_assistant_connection(
+    settings: Settings,
+    preferences: SettingsRepository,
+    credentials: CredentialStore,
+    *,
+    requested_route: str | None = None,
+) -> AssistantConnection:
+    """Resolve the selected, consented assistant route using OS credentials.
+
+    Run in a worker thread: the credential manager is synchronous.
+    """
+    current, route, integration, base_url = _consented_assistant_route(preferences, requested_route)
+
+    def before_request() -> None:
+        latest, _, latest_integration, _ = _consented_assistant_route(preferences, route.route_id)
+        if (
+            latest.revision != current.revision
+            or latest_integration.revision != integration.revision
+        ):
+            raise ProviderRuntimeError(
+                "assistant_settings_changed", "start a new turn with the current settings"
+            )
+
     spec = PROVIDER_REGISTRY[route.provider]
     key, codex_credentials = (
         (None, None)
@@ -136,6 +164,7 @@ def resolve_assistant_connection(
         provider_revision=integration.revision,
         preferences_revision=current.revision,
         consent_revision=ASSISTANT_CONSENT_REVISION,
+        before_request=before_request,
     )
 
 

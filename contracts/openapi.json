@@ -2080,6 +2080,18 @@
             ],
             "title": "Enabled"
           },
+          "expectedConsentDestination": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedconsentdestination"
+          },
           "expectedRevision": {
             "anyOf": [
               {
@@ -2236,6 +2248,17 @@
             ],
             "title": "Acceptedconsentrevision"
           },
+          "acceptedDestination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepteddestination"
+          },
           "backgroundBriefsEnabled": {
             "title": "Backgroundbriefsenabled",
             "type": "boolean"
@@ -2312,6 +2335,7 @@
           "backgroundBriefsEnabled",
           "shareValuationAssumptions",
           "acceptedConsentRevision",
+          "acceptedDestination",
           "acceptedAt",
           "revision",
           "updatedAt",

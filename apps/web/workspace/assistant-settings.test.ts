@@ -3,7 +3,7 @@ import type { AssistantSettings } from "@/lib/types";
 import { connectedAssistantModels } from "./assistant-settings";
 
 const settings: AssistantSettings = {
-  enabled: false, acceptedConsentRevision: null, acceptedAt: null, consentRevision: 2, revision: 1, updatedAt: "",
+  enabled: false, acceptedDestination: null, acceptedConsentRevision: null, acceptedAt: null, consentRevision: 2, revision: 1, updatedAt: "",
   route: "openai/legacy", reasoning: null, shareValuationAssumptions: true, backgroundBriefsEnabled: true,
   providers: [
     { provider: "openai", label: "OpenAI", models: ["current"], defaultModel: "current", freeformModels: false, local: false, authMethod: "api_key", baseUrl: "" },

@@ -2214,6 +2214,8 @@ export interface components {
             backgroundBriefsEnabled?: boolean | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Expectedconsentdestination */
+            expectedConsentDestination?: string | null;
             /** Expectedrevision */
             expectedRevision?: number | null;
             /** Reasoning */
@@ -2254,6 +2256,8 @@ export interface components {
             acceptedAt: string | null;
             /** Acceptedconsentrevision */
             acceptedConsentRevision: number | null;
+            /** Accepteddestination */
+            acceptedDestination: string | null;
             /** Backgroundbriefsenabled */
             backgroundBriefsEnabled: boolean;
             /** Consentrevision */
