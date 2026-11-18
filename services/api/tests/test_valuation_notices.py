@@ -122,7 +122,9 @@ def test_new_evidence_is_announced_once_and_never_drafts_or_saves(desk):
     assert notices(client)["notices"] == [notice]
     # The comparison names the same evidence, so opening it settles exactly these keys.
     view, body = inputs(client)
-    shown = client.post(REVIEW, json={"modelId": model_id, "horizon": 5, "scenarios": body["scenarios"]})
+    shown = client.post(
+        REVIEW, json={"modelId": model_id, "horizon": 5, "scenarios": body["scenarios"]}
+    )
     assert sorted(shown.json()["evidenceKeys"]) == sorted(item["key"] for item in notice["items"])
     # An unreadable journal of another security leaves this notice in place.
     (state.research_journal.root / "unreadable.json").write_text("{")
@@ -219,7 +221,8 @@ def test_an_older_period_after_an_incomplete_publication_is_not_a_new_report(des
 
     def without_the_new_quarter(batches):
         # The same consensus as at the save, but statements that end a quarter earlier.
-        batches["research/analyst.json"]["rows"][0]["analyst"]["revenueEstimate"][0]["growth"] = 0.31
+        analyst = batches["research/analyst.json"]["rows"][0]["analyst"]
+        analyst["revenueEstimate"][0]["growth"] = 0.31
 
     _publish(state.store, MATURE, inject=without_the_new_quarter)
     assert notices(client)["notices"] == []

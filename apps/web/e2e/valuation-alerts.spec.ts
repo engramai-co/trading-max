@@ -94,7 +94,10 @@ test("evidence that arrives after the comparison opened stays marked until a com
     window.dispatchEvent(new Event("online"));
   });
   await refreshed;
-  // The open comparison predates the evidence, so the notice stays.
+  // The open comparison predates the evidence, so the notice stays: give a settling
+  // request time to be sent, then check that none was.
+  await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();
+  await page.waitForTimeout(1_000);
   await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();
   expect(state.reviews.length).toBe(comparisons);
   expect(state.seen).toEqual([]);
