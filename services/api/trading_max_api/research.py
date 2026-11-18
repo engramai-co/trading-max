@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, date, datetime
@@ -46,7 +47,6 @@ from .dashboard_models import (
     ResearchLensSnapshot,
     ResearchPriceSeries,
     ResearchShell,
-    ResearchTradeMarker,
     TechnicalScoreSummary,
 )
 from .etf_snapshot import find_etf, read_etf_portfolio
@@ -67,6 +67,7 @@ from .models import (
 from .projections.broker import overlay_live_broker_snapshot
 from .projections.research import option_rows, valuation_rows
 from .projections.research import technical_rows as project_technical_rows
+from .projections.trade_markers import broker_symbol, chart_trade_markers
 from .watchlist import WatchlistStore
 
 if TYPE_CHECKING:
@@ -239,6 +240,18 @@ _TECHNICAL_SEASONALITY = ("seasonality", "seasonalityCoverage", "seasonalityMatr
 
 def published_price_series_id(artifact_hash: str, ticker: str) -> str:
     return fingerprint([artifact_hash, ticker.upper()])
+
+
+def _visible_price_sessions(series: ResearchPriceSeries, limit: int) -> ResearchPriceSeries:
+    points = series.points[-limit:]
+    dates = {point.date for point in points}
+    return series.model_copy(
+        update={
+            "points": points,
+            "trade_markers": [m for m in series.trade_markers if m.date in dates],
+            "events": [e for e in series.events if e["date"] in dates],
+        }
+    )
 
 
 def _canonical_ticker(value: str) -> str:
@@ -549,10 +562,7 @@ class ResearchLedger:
         self._facts_cache: SingleFlightCache[tuple, Any] = SingleFlightCache(128)
         self._row_cache: SingleFlightCache[tuple, list[JsonObject]] = SingleFlightCache(256)
         self._raw_price_cache: SingleFlightCache[str, JsonObject] = SingleFlightCache(2)
-        self._price_series_cache: dict[
-            tuple[str, str, str],
-            tuple[str, str, str, list[PriceSeriesPoint], list[ResearchTradeMarker]],
-        ] = {}
+        self._price_series_cache: dict[tuple[str, str], ResearchPriceSeries] = {}
         self._history_lock = threading.RLock()
         self._history_signature: tuple[str | None, ...] | None = None
         self._history_manifests_cache: list[SnapshotManifest] = []
@@ -2443,6 +2453,44 @@ class ResearchLedger:
         ticker = listing.ticker if listing else self._route_ticker(ticker, exchanges)
         return self.published_price_series(ticker, manifest, limit=limit)
 
+    def _published_technicals(self, manifest: SnapshotManifest) -> JsonObject:
+        key = "research/technical.json"
+        ref = _artifact(manifest, key)
+        return self._raw_price_cache.get_or_compute(
+            ref.sha256 if ref else manifest.run_id, lambda: self._read_optional(manifest, key)
+        )
+
+    def _legacy_marker_listings(self, manifest: SnapshotManifest) -> dict[str, set[str]]:
+        """Inventory the listings in this publication, independent of current routing aliases."""
+
+        def load():
+            symbols = {listing.ticker for listing in self._held_funds(manifest)}
+            technicals = self._published_technicals(manifest)
+            symbols.update(
+                str(row.get("ticker") or "").upper()
+                for row in technicals.get("rows") or []
+                if isinstance(row, dict)
+            )
+            for key in (FUND_PRICES_KEY, FUND_PRICE_DIRECTORY_KEY, "research/fundamentals.json"):
+                if _artifact(manifest, key):
+                    rows = self._cached_rows(manifest, key, _fundamentals_rows)
+                    symbols.update(str(r.get("ticker") or "").upper() for r in rows)
+            symbols.update(str(r["ticker"]).upper() for r in self._market_rows(manifest))
+            aliases = defaultdict(set)
+            for account in self._broker_snapshot(manifest).get("accounts", {}).values():
+                for position in account.get("positions") or []:
+                    instrument = position.get("broker_ticker")
+                    if symbol := broker_symbol(instrument):
+                        symbols.add(symbol)
+                        # Old publications uppercased the case-sensitive broker instrument.
+                        aliases[instrument.strip().upper()].add(symbol)
+            for symbol in symbols:
+                aliases[symbol].add(symbol)
+                aliases[symbol.partition(".")[0]].add(symbol)
+            return dict(aliases)
+
+        return self._facts_cache.get_or_compute((manifest.run_id, "legacy_marker_listings"), load)
+
     def published_price_series(
         self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
     ) -> ResearchPriceSeries:
@@ -2453,42 +2501,11 @@ class ResearchLedger:
         listing = exact[0] if exact else None
         fund_price = self._fund_price(manifest, ticker, listing, with_points=True)
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
-        metadata_artifact = _artifact(manifest, "research/fundamentals.json")
         marker_artifact = _artifact(manifest, "account/trade_markers.json")
-        cache_key = (
-            (artifact.sha256 + ":" + metadata_artifact.sha256)
-            if artifact is not None and metadata_artifact is not None
-            else manifest.run_id,
-            marker_artifact.sha256 if marker_artifact is not None else "",
-            ticker,
-        )
-        cached = self._price_series_cache.get(cache_key)
-        if cached is not None:
-            bar_ticker, as_of, currency, all_points, all_markers = cached
-            points = all_points[-limit:]
-            visible_dates = {point.date for point in points}
-            return ResearchPriceSeries(
-                published_bar_ticker=bar_ticker,
-                published_series_id=published_price_series_id(artifact.sha256, ticker)
-                if artifact
-                else None,
-                ticker=ticker,
-                as_of=as_of,
-                currency=currency,
-                available_sessions=len(all_points),
-                points=points,
-                trade_markers=[marker for marker in all_markers if marker.date in visible_dates],
-                events=[
-                    {"date": p.date, "kind": kind, "value": value, "currency": currency}
-                    for p in points
-                    for kind, value in (("dividend", p.dividend), ("split", p.split))
-                    if value
-                ],
-            )
-        raw = self._raw_price_cache.get_or_compute(
-            artifact.sha256 if artifact else manifest.run_id,
-            lambda: {} if fund_price else self._read_optional(manifest, "research/technical.json"),
-        )
+        cache_key = (manifest.run_id, ticker)
+        if cached := self._price_series_cache.get(cache_key):
+            return _visible_price_sessions(cached, limit)
+        raw = {} if fund_price else self._published_technicals(manifest)
         raw_rows = raw.get("rows")
         rows = raw_rows if isinstance(raw_rows, list) else []
         source = fund_price or (
@@ -2517,25 +2534,11 @@ class ResearchLedger:
             if marker_artifact is not None
             else {}
         )
-        marker_rows = raw_markers.get("rows")
-        all_markers = [
-            ResearchTradeMarker.model_validate(marker)
-            for marker in (marker_rows if isinstance(marker_rows, list) else [])
-            if isinstance(marker, dict)
-            and str(marker.get("ticker") or "").strip().upper() == bar_ticker
-        ]
-        if len(self._price_series_cache) >= 128:
-            self._price_series_cache.clear()
-        self._price_series_cache[cache_key] = (
-            bar_ticker,
-            as_of,
-            currency,
-            all_points,
-            all_markers,
+        all_markers, unresolved = chart_trade_markers(
+            raw_markers, bar_ticker, lambda: self._legacy_marker_listings(manifest)
         )
-        points = all_points[-limit:]
-        visible_dates = {point.date for point in points}
-        return ResearchPriceSeries(
+        series = ResearchPriceSeries(
+            unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
             published_series_id=published_price_series_id(artifact.sha256, ticker)
             if artifact
@@ -2544,12 +2547,16 @@ class ResearchLedger:
             as_of=as_of,
             currency=currency,
             available_sessions=len(all_points),
-            points=points,
-            trade_markers=[marker for marker in all_markers if marker.date in visible_dates],
+            points=all_points,
+            trade_markers=all_markers,
             events=[
                 {"date": p.date, "kind": kind, "value": value, "currency": currency}
-                for p in points
+                for p in all_points
                 for kind, value in (("dividend", p.dividend), ("split", p.split))
                 if value
             ],
         )
+        if len(self._price_series_cache) >= 128:
+            self._price_series_cache.clear()
+        self._price_series_cache[cache_key] = series
+        return _visible_price_sessions(series, limit)
