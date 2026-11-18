@@ -2496,8 +2496,16 @@ class ResearchLedger:
                     claims.extend(row_claims(symbol, row))
             if market := exact_row(markets, symbol):
                 claims.extend(market["_venue_claims"])
-                if market.get("currency"):
-                    units.append(market["currency"])
+                market_unit = market.get("currency")
+                venue_fields = any(
+                    c.source not in {"identity", "symbol"} for c in market["_venue_claims"]
+                )
+                if unit and market_unit == "USD" and not venue_fields:
+                    # Old compact rows defaulted to USD. Their technical publisher
+                    # normalised prices to major units before omitting the bar unit.
+                    units = [major_quote_unit(unit)[0]]
+                elif market_unit:
+                    units.append(market_unit)
             return claims, units
 
         if route != requested:
