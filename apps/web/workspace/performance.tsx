@@ -39,7 +39,7 @@ import {
 } from "./foundation";
 import { useAssistant } from "./assistant/context";
 import { PageInspection } from "./assistant/inspection-entry";
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
 import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
@@ -374,7 +374,7 @@ export function PerformanceContent({
         </Notice>
       ) : view === "risk" ? (
         <div className="mx-data-body mx-performance-risk" aria-busy={waiting || undefined}>
-          <RiskDashboard onBrush={brush} inspection={inspection} data={runtime.status === "ready" ? data : undefined} scope={scope}
+          <RiskDashboard onBrush={brush} rangeTrigger={rangeTrigger} inspection={inspection} data={runtime.status === "ready" ? data : undefined} scope={scope}
             unavailable={unavailable} retry={usesAnalytics ? summary.refetch : undefined} />
         </div>
       ) : (
@@ -626,8 +626,9 @@ function RiskReadings({ rows, scope, pending }: { rows: NavPoint[]; scope: Scope
   </div>;
 }
 
-function RiskDashboard({ data, scope, unavailable, retry, onBrush, inspection }: {
+function RiskDashboard({ data, scope, unavailable, retry, onBrush, rangeTrigger, inspection }: {
   onBrush?: (start:string,end:string)=>void;
+  rangeTrigger: RefObject<HTMLButtonElement | null>;
   inspection:ReactNode;
   data?: DashboardLens;
   scope: Scope;
@@ -650,7 +651,7 @@ function RiskDashboard({ data, scope, unavailable, retry, onBrush, inspection }:
             "Time-weighted returns on end-of-day account values, in pounds; intraday records are not used.",
           )}</DataBasis>
         </>}
-        action={<span className="mx-risk-basis">{onBrush && dates.length>1 && <button className="mx-range-inspect-mobile" onClick={()=>onBrush(dates[0],dates.at(-1)!)}>{t("解读区间","Read range")}</button>}{t("全部可用历史", "All available history")} <PeriodSpan points={rows} /></span>}
+        action={<span className="mx-risk-basis">{onBrush && dates.length>1 && <button ref={rangeTrigger} className="mx-range-inspect-mobile" onClick={()=>onBrush(dates[0],dates.at(-1)!)}>{t("解读区间","Read range")}</button>}{t("全部可用历史", "All available history")} <PeriodSpan points={rows} /></span>}
       >
         <RiskReadings rows={rows} scope={scope} pending={!data && !unavailable} />
         {unavailable ? <div className="mx-performance-unavailable"><InlineRetry {...unavailable} /></div>

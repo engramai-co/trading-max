@@ -24,7 +24,7 @@ function point(date: string, i: number, intraday: boolean): NavPoint {
 }
 const nav = dailyDates.map((date, i) => point(date, i, false));
 const intradayNav = times.map((date, i) => point(date, i, true));
-const history = { runId, dataRevision, brokerAsOf: asOf, nav, intradayNav };
+export const historyFixture = { runId, dataRevision, brokerAsOf: asOf, nav, intradayNav };
 const holdings = Array.from({ length: 12 }, (_, i) => ({
   ticker: i === 0 ? ticker : "SYN" + i, name: "Synthetic Company " + (i + 1), account: "A",
   currency: "GBP", currentValueGbp: 200 + i * 25, allocationPct: 3 + i * 0.5,
@@ -112,7 +112,7 @@ export function backendFixture(url: URL) {
   const path = url.pathname.slice("/api/backend".length);
   if (path !== "/dashboard/history") return responses[path];
   const range = portfolioRange(url.searchParams.get("range"));
-  const prepared = prepareHistory(history, { range, scope: "total" });
+  const prepared = prepareHistory(historyFixture, { range, scope: "total" });
   const page = url.searchParams.get("page");
   if (page !== null) return historyPage(prepared, Number(page));
   const openings = url.searchParams.getAll("opening");

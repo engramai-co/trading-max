@@ -4,7 +4,9 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { navNumber, periodReturn, type Scope } from "../lib/portfolio/nav";
 import type { DashboardLens } from "../lib/types";
-import { backendFixture } from "../tests/loading/fixtures";
+import { portfolioRange } from "../lib/portfolio/history";
+import { prepareHistory } from "../lib/portfolio/prepared";
+import { backendFixture, historyFixture } from "../tests/loading/fixtures";
 
 const stamp = "2026-01-30T20:00:00Z";
 const runId = "synthetic-loading";
@@ -720,7 +722,8 @@ test("same-page Returns citations take precedence over a brush and follow browse
   await expect(card).toContainText("2026-01-05 – 2026-01-16");
 });
 
-test("a missing endpoint in the updated phone reading keeps the dialog and focuses recovery", async ({page,isMobile})=>{
+for (const view of ["returns", "money", "risk"] as const) {
+test(`a missing endpoint in the updated phone ${view} reading restores its range control`, async ({page,isMobile})=>{
   test.skip(!isMobile);
   await page.setViewportSize({width:390,height:844});
   const calls=await setup(page,"en",false);
@@ -730,12 +733,22 @@ test("a missing endpoint in the updated phone reading keeps the dialog and focus
     const data=backendFixture(new URL(route.request().url())) as DashboardLens;
     return route.fulfill({json:{...data,runId:id,nav:id===runId?data.nav:data.nav?.slice(0,-1)}});
   });
+  if (view === "money") {
+    await page.route("**/dashboard/history?**", route => {
+      const url = new URL(route.request().url());
+      const input = id === runId ? historyFixture : {...historyFixture, runId:id, dataRevision:id,
+        nav:historyFixture.nav.slice(0,-1), intradayNav:historyFixture.intradayNav.slice(0,-1)};
+      return route.fulfill({json:prepareHistory(input,{scope:"total",range:portfolioRange(url.searchParams.get("range"))}).chart});
+    });
+  }
   await page.clock.install();
-  await Promise.all([page.waitForResponse(r=>r.url().endsWith("/assistant/status")),page.goto("/analytics?view=returns&range=3M")]);
-  await expect(page.getByRole("heading",{name:"Return comparison",exact:true})).toBeAttached();
-  await page.getByRole("button",{name:"YTD",exact:true}).click();
+  await Promise.all([page.waitForResponse(r=>r.url().endsWith("/assistant/status")),page.goto("/analytics?view="+view+"&range=3M")]);
+  await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
+  const trigger=page.getByRole("button",{name:view === "risk" ? "Read range" : "YTD",exact:true});
+  await trigger.focus();
+  await trigger.press("Enter");
   const sheet=page.getByRole("dialog");
-  await expect(sheet).toContainText("time-weighted");
+  await expect(sheet).toContainText("currency split");
   id="new-publication";
   const changed=page.waitForResponse(r=>r.url().includes("/dashboard/lens/analytics?"));
   await page.clock.fastForward(65_000);
@@ -744,12 +757,13 @@ test("a missing endpoint in the updated phone reading keeps the dialog and focus
   await expect(sheet.getByRole("status")).toHaveText("Cited interval unavailable");
   await expect(sheet.getByRole("button",{name:"Close reading"})).toBeFocused();
   expect(calls.some(c=>c.snapshotId===id)).toBe(false);
-  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-updated-endpoint-unavailable.png")});
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-"+view+"-updated-endpoint-unavailable.png")});
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
-  await expect(page.getByRole("button",{name:"YTD",exact:true})).toBeFocused();
-  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-dismissed-focus-ytd.png")});
+  await expect(trigger).toBeFocused();
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-"+view+"-dismissed-focus.png")});
 });
+}
 
 for (const view of ["holdings","money","returns","risk"] as const) {
   test(`opens the cited ${view} using the retained dashboard API`, async ({page,request,isMobile})=>{
