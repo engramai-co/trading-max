@@ -2510,7 +2510,12 @@ class ResearchLedger:
 
         if route != requested:
             exact_claims, _ = evidence_for(requested)
-            if resolve_venue(
+            rows = technicals.get("rows") or []
+            separate_bars = (
+                "." not in requested and exact_row(rows, requested) and exact_row(rows, route)
+            )
+            exact_venue = resolve_venue(requested, *exact_claims, *exchanges.get(requested, ()))
+            if (separate_bars and exact_venue.venues != {"XLON"}) or resolve_venue(
                 requested,
                 *exact_claims,
                 VenueClaim("symbol", route, route),
