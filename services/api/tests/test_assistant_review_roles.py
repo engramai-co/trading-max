@@ -180,7 +180,9 @@ def test_decision_uses_dated_lead_and_hindsight_label_through_test_model(tmp_pat
         and "+9.0%" in lines["outcome"].en
         and "+3.0%" in lines["outcome"].en
     )
-    assert "2026-01-29" in lines["earnings"].en and "Synthetic Research" in lines["rating_change"].en
+    assert (
+        "2026-01-29" in lines["earnings"].en and "Synthetic Research" in lines["rating_change"].en
+    )
     assert "In hindsight" in lines["outcome"].en and "£12.00" in lines["outcome"].en
     assert (
         lines["headline"].evidence.publisher == "Synthetic Wire"
