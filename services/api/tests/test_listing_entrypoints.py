@@ -278,7 +278,14 @@ def test_wrong_same_venue_symbol_cannot_be_cached_as_decision_history(tmp_path):
 
 @pytest.mark.parametrize(
     ("bar_unit", "quote_unit", "expected"),
-    [("GBP", "USD", "GBP"), ("GBp", "USD", "GBp"), ("", "GBp", "GBp"), ("", "USD", "")],
+    [
+        ("GBP", "USD", "GBP"),
+        ("GBp", "USD", "GBp"),
+        ("", "GBp", "GBP"),
+        ("", "GBP", "GBP"),
+        ("USD", "GBp", "USD"),
+        ("", "USD", ""),
+    ],
 )
 def test_selected_original_quote_unit_for_bar_dividends(bound, bar_unit, quote_unit, expected):
     app, initial, _ = bound
@@ -310,6 +317,7 @@ def test_selected_original_quote_unit_for_bar_dividends(bound, bar_unit, quote_u
     assert response.status_code == 200
     assert response.json()["currency"] == expected
     assert response.json()["events"][-1]["currency"] == expected
+    assert response.json()["events"][-1]["value"] == (1.2 if expected else None)
 
 
 def test_valuations_tool_does_not_return_conflicting_stored_listing_quote(bound):

@@ -2500,11 +2500,11 @@ class ResearchLedger:
                 venue_fields = any(
                     c.source not in {"identity", "symbol"} for c in market["_venue_claims"]
                 )
-                if unit and market_unit == "USD" and not venue_fields:
-                    # Old compact rows defaulted to USD. Their technical publisher
-                    # normalised prices to major units before omitting the bar unit.
-                    units = [major_quote_unit(unit)[0]]
-                elif market_unit:
+                # Old compact rows defaulted to USD without provider evidence.
+                legacy_default = (
+                    market_unit == "USD" and not venue_fields and (unit or route.endswith(".L"))
+                )
+                if market_unit and not legacy_default:
                     units.append(market_unit)
             return claims, units
 
@@ -2535,12 +2535,12 @@ class ResearchLedger:
         for symbol in dict.fromkeys((requested, route, published)):
             claims.extend(exchanges.get(symbol, ()))
             claims.append(VenueClaim("symbol", symbol, symbol))
-        units = {}
+        major_units = set()
         for symbol in dict.fromkeys((requested, route, published)):
             observed, quote_units = evidence_for(symbol)
             claims.extend(observed)
             for unit in quote_units:
-                units[major_quote_unit(unit)] = unit
+                major_units.add(major_quote_unit(unit)[0])
         if listing:
             claims.extend(row_claims(listing.ticker, {"mic": listing.mic}))
             claims.append(watchlist_claim(listing.ticker, listing.exchange))
@@ -2556,7 +2556,11 @@ class ResearchLedger:
             source,
             bool(fund_price),
             (source or {}).get("currency")
-            or (next(iter(units.values())) if len(units) == 1 else ""),
+            or (
+                next(iter(major_units))
+                if technical and not fund_price and len(major_units) == 1
+                else ""
+            ),
         )
 
     def bind_price_series(self):
@@ -2704,12 +2708,20 @@ class ResearchLedger:
             points=all_points,
             trade_markers=all_markers,
             events=[
-                {"date": p.date, "kind": kind, "value": value, "currency": currency}
+                {
+                    "date": p.date,
+                    "kind": kind,
+                    "value": value if kind == "split" or currency else None,
+                    "currency": currency,
+                }
                 for p in all_points
                 for kind, value in (("dividend", p.dividend), ("split", p.split))
                 if value
             ],
         )
+        if not currency:
+            for point in series.points:
+                point.dividend = None
         if len(self._price_series_cache) >= 128:
             self._price_series_cache.clear()
         self._price_series_cache[cache_key] = series
