@@ -154,6 +154,7 @@ def project(
     """Value one quoted share. All currency amounts use the quote's major unit."""
     years = []
     opening_book = 0.0
+    discounted_dividends = 0.0
     revenue, shares, cash = basis.revenue, basis.shares, basis.opening_cash
     residual = basis.family == "residual-income"
     if version == LEGACY_VERSION and basis.family != "cash-flow":
@@ -183,7 +184,9 @@ def project(
             earnings = book * roe
             residual_income = earnings - inputs.discount_rate * book
             # Only positive earnings pay dividends. Losses reduce book in full.
-            book += earnings - max(earnings, 0) * inputs.payout
+            dividend = max(earnings, 0) * inputs.payout
+            discounted_dividends += dividend * discount
+            book += earnings - dividend
             years.append(
                 ProjectionYear(
                     year=year,
@@ -248,7 +251,8 @@ def project(
     )
     terminal_pv = terminal * years[-1].discount_factor
     premium_pv = (inputs.terminal_pb - 1) * book * years[-1].discount_factor if residual else None
-    raw_value = operating + (premium_pv if residual else terminal_pv)
+    # The clean-surplus identity avoids cancellation between book and the terminal premium.
+    raw_value = (discounted_dividends if residual else operating) + terminal_pv
     value = max(raw_value, 0)
     return ScenarioProjection(
         inputs=inputs,

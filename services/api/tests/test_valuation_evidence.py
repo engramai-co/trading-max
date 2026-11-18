@@ -1028,7 +1028,14 @@ def test_residual_period_and_roe_ignore_revenue_in_batch_desk_and_evidence(
     store = ArtifactStore(tmp_path)
     binding = _publish(store, issuer, inject=inject)
     period = "annual:2024-12-31" if incomplete_latest else "ttm:2025-12-31"
-    assert result["ev5"] is not None, result["model_warnings"]
+    # Published scenario values for these annual and TTM fixtures, before changing
+    # the order of operations to sum discounted dividends and the terminal price.
+    assert result["valueRange"] == pytest.approx(
+        {"bear": 4.053558499297, "base": 5.903231421315, "bull": 8.181772476508}, abs=1e-12
+    )
+    assert result["valueRange10"] == pytest.approx(
+        {"bear": 4.315132064580, "base": 6.824695713668, "bull": 10.415831826285}, abs=1e-12
+    )
     assert result["assumptions"]["periodId"] == period
     assert result["assumptions"]["reverseMetric"] == "initial-roe"
     req = EvaluateValuationRequest(

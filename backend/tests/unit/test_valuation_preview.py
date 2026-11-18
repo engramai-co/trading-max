@@ -5,6 +5,7 @@ from trading_max.research.valuation_preview import (
     ScenarioInputs,
     ValuationPreviewRequest,
     preview,
+    project,
 )
 
 
@@ -113,6 +114,14 @@ def test_residual_income_equals_dividends_plus_terminal_price(years):
     assert recovered.reverse_value == pytest.approx(0.2)
 
 
+def test_residual_income_with_no_dividends_or_terminal_price_is_exactly_zero():
+    basis, _ = fixture()
+    basis = basis.model_copy(update={"family": "residual-income", "book_per_share": 100})
+    inputs = ScenarioInputs(initial_roe=0.2, payout=0, terminal_pb=0, discount_rate=0.15)
+    result = project(basis, inputs, 5)
+    assert (result.value, result.equity_floor_adjustment) == (0, 0)
+
+
 @pytest.mark.parametrize("family", ["cash-flow", "net-income"])
 def test_flat_operating_model_golden(family):
     basis, _ = fixture()
@@ -167,8 +176,6 @@ def test_reverse_only_zero_revenue_has_no_scenario_range():
 
 
 def test_financing_can_make_three_target_margins_fit_the_same_price():
-    from trading_max.research.valuation_preview import project
-
     basis, _ = fixture()
     basis = basis.model_copy(
         update={
@@ -204,8 +211,6 @@ def test_financing_can_make_three_target_margins_fit_the_same_price():
 
 
 def test_terminal_dependence_is_the_full_discounted_sale_even_at_book():
-    from trading_max.research.valuation_preview import project
-
     basis, _ = fixture()
     basis = basis.model_copy(update={"family": "residual-income", "book_per_share": 100})
     inputs = ScenarioInputs(initial_roe=0.2, payout=0, terminal_pb=1, discount_rate=0.1)
