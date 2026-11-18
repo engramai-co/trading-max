@@ -87,6 +87,7 @@ const quote = {
 const responses: Record<string, unknown> = {
   "/profile": { displayName: "Synthetic workspace", accountLabels: { A: "Synthetic Invest" } },
   "/health": health,
+  "/assistant/status": { ready: false, code: "assistant_disabled", provider: null, model: null },
   "/health/details": { health, checkedAt: asOf, readiness: { status: "ready" }, jobs: [], errors: [] },
   "/refresh/attention": { checkedAt: asOf, issues: [] },
   "/dashboard/lens/overview": { ...summary, holdings },

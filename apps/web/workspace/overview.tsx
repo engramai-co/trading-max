@@ -44,6 +44,7 @@ import {
 } from "./foundation";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
+import { OverviewBrief } from "./assistant/overview";
 import { Narrative } from "./narrative";
 import { HistoryCoverage, HistoryHelp, PeriodSpan, periodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, driverOpenings } from "./day-drivers";
@@ -246,7 +247,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
           runId={data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
           brokerAsOf={data?.brokerAsOf} account={requestedScope} />}
-      {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
+      {!initialWaiting && data && <><Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" /><OverviewBrief snapshot={data.runId} /></>}
     </div></ReadingBoundary.Provider>
   );
 }

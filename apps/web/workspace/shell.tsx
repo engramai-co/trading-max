@@ -38,6 +38,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { ResearchShell } from "@/lib/types";
 import { BrandMark } from "@/ui/brand-mark";
 import { api } from "@/workspace/data";
+import { useEvidenceHighlight } from "./assistant/highlight";
 import { AssistantEntry, AssistantPanel } from "./assistant/shell";
 import { useAssistant } from "./assistant/context";
 import { useWorkspaceProfile } from "./profile";
@@ -75,6 +76,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const [routeSearch, setRouteSearch] = useState("");
   const params = new URLSearchParams(routeSearch);
   const pathname = desktop ? "/" + (desktopPage(actualPathname) ?? "") : actualPathname;
+  useEvidenceHighlight(pathname, routeSearch);
   const profile = useWorkspaceProfile();
   const router = useRouter();
   const navigateBuild = useBuildNavigation();

@@ -1,3 +1,4 @@
+import type { components } from "@/lib/api-schema";
 import type { UIMessage } from "ai";
 import { object, str } from "../data";
 
@@ -6,11 +7,10 @@ export const sourceWords = {
   exposure: ["穿透", "Exposure"], market: ["行情", "Market"], technical: ["技术", "Technicals"],
   financials: ["财报", "Financials"], analysts: ["分析师", "Analysts"], disclosure: ["披露", "Disclosure"],
   review: ["复盘", "Review"], health: ["数据状态", "Data status"], calendar: ["日历", "Calendar"],
-  inference: ["推断", "Inference"],
+  inference: ["推断", "Inference"], publisher: ["披露", "Disclosure"],
 } as const;
-export type Evidence = { source: keyof typeof sourceWords; tool: string; arguments: Record<string, string>; evidenceId: string };
-export type ReadingLine = { zh: string; en: string; section: string; evidence: Evidence };
-export type Reading = { role: string; version: string; asOf: string; lines: ReadingLine[] };
+export type Evidence = components["schemas"]["ReadingEvidence"];
+export type Reading = components["schemas"]["RoleReading"];
 
 const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
@@ -24,13 +24,20 @@ export function evidenceHref(ref: Evidence) {
   if (!entry) return null;
   const [path] = entry;
   const params = new URLSearchParams();
-  const a = ref.arguments;
+  const a = ref.arguments ?? {};
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && a.range === "1D" ? "money" : "returns");
     if (a.range) params.set("range", a.range);
     if (a.benchmark) params.set("benchmark", a.benchmark);
+    if (ref.tool === "compare_benchmarks" && a.start && a.end) {
+      params.set("returnFrom", a.start);
+      params.set("returnTo", a.end);
+    }
   }
-  if (a.scope && a.scope !== "broker_total") params.set(path === "/holdings" ? "account" : "scope", a.scope);
+  if (a.scope && a.scope !== "broker_total") {
+    if (path === "/holdings" && ["invest", "isa"].includes(a.scope)) params.set("account", a.scope === "invest" ? "A" : "B");
+    else if (path !== "/holdings") params.set("scope", a.scope);
+  }
   if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
@@ -39,6 +46,20 @@ export function evidenceHref(ref: Evidence) {
   }
   params.set("evidence", ref.tool);
   return path + "?" + params;
+}
+/** Restored conversations can split tool steps and the final text into
+ * consecutive assistant messages. Keep evidence within the same user turn. */
+export function displayTurns(messages: UIMessage[]) {
+  const turns: UIMessage[] = [];
+  for (const message of messages) {
+    const previous = turns.at(-1);
+    if (previous?.role === "assistant" && message.role === "assistant") {
+      previous.parts = [...previous.parts, ...message.parts];
+    } else {
+      turns.push({ ...message });
+    }
+  }
+  return turns;
 }
 export function messageEvidence(message: UIMessage) {
   const refs = new Map<string, Evidence>();
@@ -55,7 +76,8 @@ export function messageEvidence(message: UIMessage) {
 }
 export function chatContext(page: string, search: string, timezone: string) {
   const params = new URLSearchParams(search);
-  const scope = params.get("scope") || params.get("account");
+  const account = params.get("account");
+  const scope = params.get("scope") || (account === "A" ? "invest" : account === "B" ? "isa" : account === "C" ? "cfd" : account);
   const ticker = params.get("ticker");
   const range = params.get("range");
   const lens = params.get("view");

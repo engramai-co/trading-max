@@ -159,3 +159,29 @@ percentage points before comparison. Figures need a matching `[ev_…]` in
 their sentence or table row, and every evidence ID must come from this turn.
 The deterministic language and advice checks are pattern based; they are
 regression signals rather than a substitute for reviewing borderline answers.
+
+## Page readings
+
+A page role declares its identifier, page, strict context schema, permitted read
+tools and editorial instructions. Its projection turns tool results from one
+immutable snapshot into bilingual observations with source references. The
+model selects and orders two to four observations. Their figures, units, dates
+and sources travel together. The browser constructs local evidence links from
+the tool and its checked arguments.
+
+`POST /v1/assistant/roles/{role_id}/reading` accepts a context and optional
+snapshot ID. The newline-delimited stream reports progress and then a complete
+reading, an empty result or a stable error code. Completed readings are kept in
+workspace SQLite by role, object and snapshot, with the latest sixteen versions
+per object retained. Cached-only requests make no model calls. The workspace
+sidebar uses the chat stream for follow-ups and sends the validated role context
+with the next question.
+
+The background writer observes completed publication records from both worker
+modes. Each scheduled full update can produce a daily brief. Saturday's 02:00
+Europe/London fold uses the last completed scheduled publication available by
+that time. The scheduler skips live and performance updates and checks current
+consent and the background preference before sending. A persistent reservation
+limits the workspace to twelve background attempts per London day. One brief
+includes bilingual text and all supported benchmark comparisons, so changing
+language or benchmark needs no further model call.

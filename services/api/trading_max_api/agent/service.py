@@ -140,7 +140,9 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
             role = role_registry().get(context.role)
             if not role:
                 raise ValueError("unknown role")
-            context.object = role.context_schema.model_validate(context.object or {}).model_dump(mode="json")
+            context.object = role.context_schema.model_validate(context.object or {}).model_dump(
+                mode="json"
+            )
         elif context.object:
             raise ValueError("object requires a role")
         return context
@@ -198,13 +200,22 @@ class AssistantService:
     # was abandoned before streaming began, so expire it after the run timeout.
     _active: dict[str, float] = field(default_factory=dict, init=False, repr=False)
 
-    def _release(self, conversation_id: str) -> None:
+    def release(self, conversation_id: str) -> None:
         self._active.pop(conversation_id, None)
 
     def _expire_abandoned_runs(self) -> None:
         horizon = time.monotonic() - RUN_TIMEOUT_SECONDS - 30
         for stale in [key for key, started in self._active.items() if started < horizon]:
-            self._release(stale)
+            self.release(stale)
+
+    def claim(self, key: str) -> None:
+        """Share the same concurrency limit across chats and role readings."""
+        self._expire_abandoned_runs()
+        if key in self._active:
+            raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
+        if len(self._active) >= MAX_ACTIVE_RUNS:
+            raise HTTPException(status_code=429, detail={"code": "assistant_busy"})
+        self._active[key] = time.monotonic()
 
     async def status(self) -> dict[str, Any]:
         """Whether a turn could start now, without calling the model."""
@@ -222,16 +233,11 @@ class AssistantService:
         if not isinstance(conversation_id, str) or not CONVERSATION_ID.fullmatch(conversation_id):
             raise HTTPException(status_code=422, detail={"code": "conversation_id_invalid"})
         context = _context(body, request)
-        self._expire_abandoned_runs()
-        if conversation_id in self._active:
-            raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
-        if len(self._active) >= MAX_ACTIVE_RUNS:
-            raise HTTPException(status_code=429, detail={"code": "assistant_busy"})
-        self._active[conversation_id] = time.monotonic()
+        self.claim(conversation_id)
         try:
             return await self._run(request, conversation_id, context)
         except BaseException:
-            self._release(conversation_id)
+            self.release(conversation_id)
             raise
 
     async def _run(self, request: Request, conversation_id: str, context: ChatContext) -> Response:
@@ -269,7 +275,12 @@ class AssistantService:
                     period=context.range,
                     ticker=context.ticker,
                     lens=context.lens,
-                ) + (f"\nContinue the {context.role} reading for this object: {context.object}." if context.role else ""),
+                )
+                + (
+                    f"\nContinue the {context.role} reading for this object: {context.object}."
+                    if context.role
+                    else ""
+                ),
                 usage_limits=USAGE_LIMITS,
                 timeout=RUN_TIMEOUT_SECONDS,
                 conversation_store=self.store,
@@ -287,11 +298,11 @@ class AssistantService:
             response.body_iterator = _closing(
                 response.body_iterator,
                 model,
-                lambda: self._release(conversation_id),
+                lambda: self.release(conversation_id),
             )
         else:
             await model.__aexit__(None, None, None)
-            self._release(conversation_id)
+            self.release(conversation_id)
         return response
 
     async def conversations(self) -> list[dict[str, Any]]:

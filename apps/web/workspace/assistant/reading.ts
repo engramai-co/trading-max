@@ -1,5 +1,6 @@
 "use client";
 
+import type { components } from "@/lib/api-schema";
 import { useQuery } from "@tanstack/react-query";
 import type { Reading } from "./evidence";
 import { useAssistant } from "./context";
@@ -20,11 +21,11 @@ export async function fetchReading(request: ReadingRequest, signal: AbortSignal,
       buffer += value;
       let end = buffer.indexOf("\n");
       while (end >= 0) {
-        const event = JSON.parse(buffer.slice(0, end));
+        const event: components["schemas"]["ReadingEvent"] = JSON.parse(buffer.slice(0, end));
         buffer = buffer.slice(end + 1);
-        if (event.type === "result") return event.reading;
+        if (event.type === "result" && event.reading) return event.reading;
         if (event.type === "empty") return null;
-        if (event.type === "error") throw new Error(event.code);
+        if (event.type === "error") throw new Error(event.code ?? "assistant_unavailable");
         if (event.type === "reading") onReading?.();
         end = buffer.indexOf("\n");
       }

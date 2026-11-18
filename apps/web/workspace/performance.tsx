@@ -20,6 +20,7 @@ import { moneyTimelineReading } from "./money-readings";
 import { DataBasis } from "./reading-card";
 import { number, percent, tone } from "@/workspace/data";
 import { inRange, navNumber, periodReturn, type Scope } from "@/lib/portfolio/nav";
+import { benchmarkValue, rememberBenchmark, usePerformanceBenchmark } from "./assistant/benchmark";
 import { benchmarkComparison } from "@/lib/portfolio/benchmark-comparison";
 import {
   Empty,
@@ -78,7 +79,8 @@ export function PerformanceContent({
       ? (params.get("scope") as Scope)
       : "total");
   const range = portfolioRange(params.get("range"));
-  const [benchmark, setBenchmark] = useState("VOO");
+  const preferredBenchmark = usePerformanceBenchmark();
+  const benchmark = benchmarkValue(params.get("benchmark")) ?? preferredBenchmark;
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const start = params.get("returnFrom"), end = params.get("returnTo");
   const customRange = view === "returns" && start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start < end
@@ -345,7 +347,7 @@ export function PerformanceContent({
                 <Select
                   aria-label={t("基准", "Benchmark")}
                   value={benchmark}
-                  onChange={(v) => setBenchmark(v ?? "VOO")}
+                  onChange={(v) => { rememberBenchmark(v ?? "VOO"); update({ benchmark: v }); }}
                   allowDeselect={false}
                   data={[
                     { value: "VOO", label: "S&P 500 · VOO" },

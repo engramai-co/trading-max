@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -13,7 +14,7 @@ from pydantic_ai import RunContext
 from pydantic_ai.usage import RunUsage
 
 from ..models import ApiModel, JobRecord
-from .deps import AssistantDeps
+from .deps import AssistantDeps, AssistantSnapshotReader
 from .tools import Args
 
 Source = Literal[
@@ -30,6 +31,7 @@ Source = Literal[
     "health",
     "calendar",
     "inference",
+    "publisher",
 ]
 
 
@@ -40,17 +42,22 @@ class RoleContext(BaseModel):
 
 
 class ReadingEvidence(ApiModel):
+    publisher: str | None = Field(default=None, max_length=80)
     source: Source
     tool: str
     arguments: dict[str, str] = Field(default_factory=dict)
     evidence_id: str
 
 
-class ReadingLine(ApiModel):
+class LinkedObservation(ApiModel):
     zh: str
     en: str
-    section: str = ""
     evidence: ReadingEvidence
+
+
+class ReadingLine(LinkedObservation):
+    section: str = ""
+    variants: dict[str, LinkedObservation] = Field(default_factory=dict)
 
 
 class RoleReading(ApiModel):
@@ -60,10 +67,23 @@ class RoleReading(ApiModel):
     lines: list[ReadingLine]
 
 
+class ReadingSnapshot:
+    """Reuse immutable payloads across tools within one reading and release them together."""
+
+    def __init__(self, store: AssistantSnapshotReader):
+        self.load_manifest = store.load_manifest
+        self.read_json = lru_cache(maxsize=24)(store.read_json)
+        self.read_text = lru_cache(maxsize=8)(store.read_text)
+
+
 @dataclass(frozen=True)
 class RoleTools:
     deps: AssistantDeps
     allowed: frozenset[str]
+
+    @classmethod
+    def pinned(cls, deps: AssistantDeps, allowed: frozenset[str]) -> RoleTools:
+        return cls(replace(deps, store=ReadingSnapshot(deps.store)), allowed)
 
     def read(self, tool: Callable, args: Args) -> dict:
         if tool.__name__ not in self.allowed:
@@ -86,6 +106,15 @@ class PageRole:
     prompt: str
     facts: Callable[[RoleTools, Any], list[ReadingLine]]
     scheduled: Callable[[JobRecord], list[BriefTarget]] | None = None
+    weekly_fold: bool = False
+    # Event-driven digests can inspect a pinned publication, enumerate affected
+    # objects and key each one by its material data (e.g. earnings or outcomes).
+    publication_targets: Callable[[JobRecord, RoleTools], list[BriefTarget]] | None = None
+    data_version: Callable[[RoleTools, Any], str] | None = None
+
+    @property
+    def is_digest(self) -> bool:
+        return bool(self.scheduled or self.publication_targets or self.weekly_fold)
 
     def object_key(self, context: RoleContext) -> str:
         return json.dumps(context.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))

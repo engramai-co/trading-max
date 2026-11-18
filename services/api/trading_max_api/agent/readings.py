@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator, Callable
+from dataclasses import dataclass
 from typing import Literal
 
+from fastapi import HTTPException
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, UsageLimits
 from trading_max.infrastructure import SqliteDatabase
@@ -39,7 +40,6 @@ class ReadingEvent(BaseModel):
 class ReadingService:
     assistant: AssistantService
     database: SqliteDatabase
-    active: set[tuple[str, str, str]] = field(default_factory=set)
 
     def cached(
         self, role: PageRole, context: RoleContext, version: str | None
@@ -75,6 +75,16 @@ class ReadingService:
                 ).rowcount
             )
 
+    def attempted(self, role: PageRole, context: RoleContext, slot: str) -> bool:
+        with self.database.read() as db:
+            return (
+                db.execute(
+                    "SELECT 1 FROM assistant_brief_attempts WHERE role=? AND object_key=? AND slot=?",
+                    (role.id, role.object_key(context), slot),
+                ).fetchone()
+                is not None
+            )
+
     async def events(
         self,
         role: PageRole,
@@ -83,31 +93,42 @@ class ReadingService:
         *,
         cached_only: bool = False,
         latest: bool = False,
+        permitted: Callable[[], bool] = lambda: True,
+        reserve: Callable[[], bool] = lambda: True,
     ) -> AsyncIterator[ReadingEvent]:
         status = await self.assistant.status()
         if not status["ready"]:
             yield ReadingEvent(type="error", code=status.get("code") or "assistant_unavailable")
             return
-        saved = self.cached(role, context, None if latest else deps.snapshot_id)
+        tools = RoleTools.pinned(deps, role.allowed_tools)
+        version = deps.snapshot_id
+        if not latest and version and role.data_version:
+            version = await asyncio.to_thread(role.data_version, tools, context)
+        if not latest and not version:
+            yield ReadingEvent(type="empty")
+            return
+        saved = self.cached(role, context, None if latest else version)
         if saved:
             yield ReadingEvent(type="result", reading=saved)
             return
-        if cached_only or not deps.manifest:
+        if cached_only or not deps.manifest or not version:
             yield ReadingEvent(type="empty")
             return
-        version = deps.manifest.run_id
         key = (role.id, role.object_key(context), version)
-        if key in self.active or len(self.active) + len(self.assistant._active) >= 2:
+        reservation = "reading:" + json.dumps(key)
+        try:
+            self.assistant.claim(reservation)
+        except HTTPException:
             yield ReadingEvent(type="error", code="assistant_busy")
             return
-        self.active.add(key)
         try:
             yield ReadingEvent(type="reading")
-            facts = await asyncio.to_thread(
-                role.facts, RoleTools(deps, role.allowed_tools), context
-            )
+            facts = await asyncio.to_thread(role.facts, tools, context)
             if len(facts) < 2:
                 yield ReadingEvent(type="empty")
+                return
+            if not permitted() or not reserve():
+                yield ReadingEvent(type="error", code="assistant_disabled")
                 return
             bound = await self.assistant.bind_model()
             agent = Agent(output_type=Selection, instructions=role.prompt, retries=1)
@@ -138,7 +159,7 @@ class ReadingService:
             reading = RoleReading(
                 role=role.id, version=version, as_of=deps.manifest.created_at, lines=lines
             )
-            if not (await self.assistant.status())["ready"]:
+            if not permitted() or not (await self.assistant.status())["ready"]:
                 yield ReadingEvent(type="error", code="assistant_unavailable")
                 return
             with self.database.transaction(immediate=True) as db:
@@ -156,4 +177,4 @@ class ReadingService:
         except Exception as exc:
             yield ReadingEvent(type="error", code=error_code(exc))
         finally:
-            self.active.discard(key)
+            self.assistant.release(reservation)

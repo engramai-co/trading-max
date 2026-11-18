@@ -33,6 +33,7 @@ from trading_max.research.facts import fingerprint
 from trading_max.research.forward_pe import ForwardPeHistory, forward_pe_history
 from trading_max.research.market import MarketResearchService
 
+from .agent.background import BriefWriter, completed_publications
 from .agent.deps import AssistantDepsFactory
 from .agent.readings import ReadingService
 from .agent.runtime import build_assistant_agent, run_settings
@@ -41,6 +42,7 @@ from .agent.store import SqliteConversationStore
 from .agent.tools import build_assistant_toolset
 from .alert_monitor import AlertMonitor, LiveAlertStore
 from .artifacts import ArtifactStore
+from .assistant_settings import ASSISTANT_CONSENT_REVISION
 from .broker_runtime import broker_profiles_loader
 from .config import Settings
 from .credentials import (
@@ -519,7 +521,27 @@ def create_app(
         performance_scheduler.start()
         alert_monitor.start()
         sector_monitor.start()
-        yield
+
+        def background_permitted() -> bool:
+            current = preferences.get_assistant_preferences()
+            return bool(
+                current.enabled
+                and current.accepted_consent_revision == ASSISTANT_CONSENT_REVISION
+                and getattr(current, "background_briefs_enabled", False)
+            )
+
+        brief_writer = BriefWriter(
+            lifespan_app.state.assistant_readings,
+            background_permitted,
+            lambda: completed_publications(assistant_database),
+        )
+        brief_task = asyncio.create_task(brief_writer.run())
+        try:
+            yield
+        finally:
+            brief_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await brief_task
         logger.info("service stopping")
         dashboard_prewarm_stop.set()
         scheduler.close()
