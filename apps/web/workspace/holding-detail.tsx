@@ -67,7 +67,7 @@ export function HoldingDetail({ holding, account, positionAsOf, runId, today, no
   }
   calculation.push([
     t("持仓快照", "Position snapshot"),
-    positionAsOf ? <time dateTime={positionAsOf}>{formatDateTime(positionAsOf, locale, timeZone, now)}</time> : "—",
+    positionAsOf ? <time dateTime={positionAsOf}>{formatDateTime(positionAsOf, locale, timeZone, now)}</time> : t("时间未提供", "Time unavailable"),
   ]);
   const day = holding.dayChangeClosedOn ?? holding.dayChangeDate;
   const dayDate = day && formatCalendarDate(day, locale, now);

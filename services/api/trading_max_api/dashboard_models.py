@@ -1499,7 +1499,7 @@ class DashboardLensSnapshot(ApiModel):
     cfd: CfdSummary | None = None
     cfd_review: CfdAccountReview | None = None
     review_summaries: list[OverviewReviewSummary] = Field(default_factory=list)
-    position_as_of: dict[InvestableAccountCode, str] = Field(default_factory=dict)
+    position_as_of: dict[InvestableAccountCode, str | None] = Field(default_factory=dict)
     holdings: list[Holding] = Field(default_factory=list)
     nav: list[NavPoint] = Field(default_factory=list)
     intraday_nav: list[NavPoint] = Field(default_factory=list)
@@ -1521,7 +1521,7 @@ class DashboardResponse(ApiModel):
     total_invested_gbp: float
     total_unrealized_pnl_gbp: float
     latest_model_day_return: float | None
-    position_as_of: dict[InvestableAccountCode, str] = Field(default_factory=dict)
+    position_as_of: dict[InvestableAccountCode, str | None] = Field(default_factory=dict)
     accounts: list[AccountSummary]
     account_analysis: dict[AccountCode, AccountAnalysisMetrics]
     account_reviews: dict[InvestableAccountCode, AccountReview] = Field(default_factory=dict)

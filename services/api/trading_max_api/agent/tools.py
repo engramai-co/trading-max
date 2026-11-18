@@ -42,7 +42,7 @@ from ..dashboard_models import NavPoint
 from ..history_projection import HistoryRange, portfolio_day, scope_points, window_start
 from ..history_reader import load_history
 from ..models import ArtifactInfo
-from ..projections.broker import overlay_live_broker_snapshot
+from ..projections.broker import overlay_live_broker_snapshot, positions_observed_at
 from ..research import _freshness
 from ..valuation_evidence import freeze_valuation_evidence
 from .deps import AccountScope, AssistantDeps, bind_arguments
@@ -619,9 +619,10 @@ def _position_rows(
             issues.append("positions_not_published")
             continue
         found = True
+        observed_at = _iso(positions_observed_at(account))
         if observed_accounts is not None:
             observed_accounts[CODE_SCOPE[code]] = {
-                "as_of": _iso(account.get("positions_observed_at")) or _account_time(account),
+                "as_of": observed_at,
                 "since": None,
             }
         for row in _rows(positions):
@@ -638,8 +639,7 @@ def _position_rows(
                 {
                     **bounded,
                     "scope": CODE_SCOPE[code],
-                    "observed_at": _iso(account.get("positions_observed_at"))
-                    or _account_time(account),
+                    "observed_at": observed_at,
                 }
             )
     return rows, keys, issues if found else ["positions_not_published"]

@@ -61,6 +61,33 @@ test("retained position prices and balances show their own observation times", a
   await expect(page.getByRole("dialog").locator('time[datetime="'+positionAt+'"]').first()).toBeVisible();
 });
 
+test("an undated ISA quote shows the price and its missing time on both position surfaces", async ({page,isMobile}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local fixture.");
+  await syntheticHoldings(page);
+  await page.setViewportSize(isMobile ? {width:390,height:844} : {width:1440,height:900});
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  const stamp = day+"T21:15:00Z";
+  await page.route("**/dashboard/lens/holdings-positions*", route => route.fulfill({json:{
+    ...lens, brokerAsOf:stamp, positionAsOf:{B:null},
+    accounts:[{...lens.accounts[0], code:"B", asOf:stamp}],
+    holdings:[{...uk, account:"B", currentPrice:7}],
+  }}));
+  await page.goto("/holdings?account=B");
+  const row = isMobile ? page.getByRole("button",{name:/SYNUK/}) : page.getByRole("row").filter({hasText:"SYNUK"});
+  await expect(row.locator(".mx-holding-quote-basis")).toContainText("Time unavailable");
+  await expect(page.locator(".mx-holdings-summary .mx-freshness")).toContainText("21:15");
+  if (isMobile) await row.tap();
+  else await row.getByRole("button",{name:/SYNUK/}).first().click();
+  const detail = page.getByRole("dialog");
+  await expect(detail.locator(".mx-position-summary")).toContainText("£7.00");
+  await expect(detail.locator(".mx-position-summary")).toContainText("Time unavailable");
+  await detail.locator("summary").filter({hasText:"Quote and calculation"}).click();
+  await expect(detail.getByText("Time unavailable",{exact:true})).toHaveCount(2);
+  if (process.env.TM_INSPECTION_SHOTS) {
+    await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,(isMobile ? "phone" : "desktop")+"-undated-isa.png")});
+  }
+});
+
 test("a closed listing replaces the day figure on each position surface", async ({ page }, info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
   const phone = info.project.name === "mobile";

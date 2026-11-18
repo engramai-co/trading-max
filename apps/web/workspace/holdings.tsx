@@ -116,7 +116,7 @@ function Positions() {
     const at = positionStamp(holding);
     return <small className="mx-holding-quote-basis">{t("券商快照", "Broker snapshot")} · {at
       ? <time dateTime={at}>{formatDateTime(at, locale, timeZone, now)}</time>
-      : t("时间未提供", "time unavailable")}</small>;
+      : t("时间未提供", "Time unavailable")}</small>;
   };
   function selectHolding(holding: Holding) {
     // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.

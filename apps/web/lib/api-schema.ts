@@ -3454,7 +3454,7 @@ export interface components {
             policy?: components["schemas"]["PolicySummary"] | null;
             /** Positionasof */
             positionAsOf?: {
-                [key: string]: string;
+                [key: string]: string | null;
             };
             /** Researchasof */
             researchAsOf: string;
@@ -3537,7 +3537,7 @@ export interface components {
             policy: components["schemas"]["PolicySummary"];
             /** Positionasof */
             positionAsOf?: {
-                [key: string]: string;
+                [key: string]: string | null;
             };
             /** Researchasof */
             researchAsOf: string;

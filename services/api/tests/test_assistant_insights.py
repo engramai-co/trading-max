@@ -1,5 +1,6 @@
 """Each read agrees with its published page inputs and stays inside its pinned scope."""
 
+import json
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
@@ -128,6 +129,61 @@ def test_daily_ranks_use_returns_page_wealth_and_cash_flow_dates(bound):
     assert rows[-2]["return_fraction"] != pytest.approx(1100 / 950 - 1)
     assert rows[-1]["worst_rank"] == 1
     assert ins.daily_data(deps, ins.DailyArgs(scope="cfd"))["status"] == "not_applicable"
+
+
+@pytest.mark.parametrize("surface", ["live", "retained", "tool"])
+def test_undated_isa_quote_does_not_inherit_balance_time(
+    surface, tmp_path, research_root, typed_fixture
+):
+    stamp = "2026-08-01T21:15:00Z"
+    path = next(research_root.rglob("broker_snapshot_metrics.json"))
+    broker = json.loads(path.read_text())
+    del broker["accounts"]["A"]
+    del broker["accounts"]["B"]["fetched_at_utc"]
+    path.write_text(json.dumps(broker))
+    store = ArtifactStore(tmp_path / "state")
+    typed_fixture(research_root, store)
+    previous = store.immutable_snapshots.latest().manifest
+    live = store.immutable_artifacts.put_json(
+        key=tools.LIVE,
+        payload={
+            "generated_at_utc": stamp,
+            "accounts": {
+                "B": {
+                    "fetched_at": stamp,
+                    "investments_value_gbp": 750,
+                    "positions": [],
+                    "positions_status": "unreconciled",
+                }
+            },
+        },
+    )
+    manifest = store.immutable_snapshots.publish(
+        scope="intraday", source="test", artifacts=[*previous.artifacts, live]
+    ).manifest
+    if surface == "tool":
+        deps = AssistantDepsFactory(store).for_run()
+        result = _call(deps, tools.list_holdings, tools.HoldingsArgs(scope="isa"))
+        (row,) = result["data"]["items"]
+        assert row["current_price"] == 7
+        assert row["observed_at"] is None
+        return
+
+    app = create_app(
+        Settings(data_root=store.data_root), credential_store=InMemoryCredentialStore()
+    )
+    query = (
+        {"detail": "summary", "run_id": manifest.run_id, "account": "B"}
+        if surface == "retained"
+        else {}
+    )
+    with TestClient(app) as client:
+        response = client.get("/v1/dashboard/lens/holdings-positions", params=query)
+        assert response.is_success
+        lens = response.json()
+        assert lens["holdings"][0]["currentPrice"] == 7
+        assert lens["brokerAsOf"] == stamp
+        assert lens["positionAsOf"] == {"B": None}
 
 
 def test_position_fx_is_the_holdings_page_figure(tmp_path, research_root, typed_fixture):

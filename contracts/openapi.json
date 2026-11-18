@@ -5904,7 +5904,14 @@
           },
           "positionAsOf": {
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "propertyNames": {
               "enum": [
@@ -6262,7 +6269,14 @@
           },
           "positionAsOf": {
             "additionalProperties": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
             },
             "propertyNames": {
               "enum": [

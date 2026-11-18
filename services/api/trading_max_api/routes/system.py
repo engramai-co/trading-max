@@ -273,9 +273,7 @@ def _retained_holdings(store, manifest, view, account):
         )
         if account
         else broker.get("generated_at_utc") or "",
-        position_as_of={
-            code: stamp for code in selected if (stamp := positions_observed_at(accounts[code]))
-        },
+        position_as_of={code: positions_observed_at(accounts[code]) for code in selected},
         holdings=published_positions(store, run, broker, selected, total, lookthrough),
         total_invested_gbp=sum(accounts[c].get("investments_value_gbp") or 0 for c in selected),
         total_unrealized_pnl_gbp=sum(

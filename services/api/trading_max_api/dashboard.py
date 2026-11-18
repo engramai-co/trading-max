@@ -552,9 +552,7 @@ def build_dashboard_data(
         "generatedAt": updated,
         "brokerAsOf": str(broker.get("generated_at_utc") or ""),
         "positionAsOf": {
-            code: stamp
-            for code in account_codes
-            if (stamp := positions_observed_at(broker["accounts"][code]))
+            code: positions_observed_at(broker["accounts"][code]) for code in account_codes
         },
         "researchAsOf": research_as_of,
         "totalValueGbp": total_value,
