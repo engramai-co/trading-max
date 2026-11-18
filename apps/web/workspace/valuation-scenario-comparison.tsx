@@ -5,6 +5,7 @@ import type { ECharts } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { Preview } from "./research-facts";
 import { DeferredPlot } from "./research-reading";
+import { useRetainedResult } from "./retained-result";
 import { currency, percent, tone } from "@/workspace/data";
 import { useCopy } from "./foundation";
 import { minus } from "./reading-figures";
@@ -53,9 +54,9 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
     chart.current?.dispatchAction({ type: "downplay" });
     if (key) chart.current?.dispatchAction({ type: "highlight", seriesId: key });
   };
-  // Symmetric percentage bounds keep spot at the same physical position even
-  // when a different scenario or horizon requires a larger comparison range.
-  const extent = Math.max(0.25, Math.ceil(Math.max(0, ...plotted.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
+  const visibleExtent = Math.max(0.25, Math.ceil(Math.max(0, ...plotted.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
+  // Removing a pending line must leave spot and the settled endpoints in place.
+  const extent = useRetainedResult(pendingScenarios.length ? undefined : visibleExtent) ?? visibleExtent;
   // Unlevered equity cannot lose more than 100%, so the downside scale never extends below -100%.
   const minBound = -Math.min(1, extent);
   const maxBound = extent;

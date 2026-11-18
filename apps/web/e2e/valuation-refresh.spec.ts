@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { join } from "node:path";
 import type { ResearchLensSnapshot } from "../lib/types";
 
@@ -1034,6 +1034,56 @@ async function reviewDraft(page: Page) {
   return {state, editor, entry, calls:() => calls};
 }
 
+// Locate the painted stroke between its endpoint dots, in CSS pixels. Exclude the
+// left-hand labels and inspect each settled row near the centre of its category.
+async function settledStroke(plot: Locator, scenario: "bear" | "bull") {
+  return plot.locator("canvas").first().evaluate((canvas: HTMLCanvasElement, key) => {
+    const ratio = canvas.width / canvas.clientWidth;
+    const left = Math.ceil(canvas.width / 3);
+    const top = Math.round(canvas.height * (key === "bear" ? 0.25 : 0.69));
+    const band = canvas.getContext("2d")!.getImageData(left, top, canvas.width - left, Math.ceil(15 * ratio));
+    let longest = {start:0, end:0, y:0};
+    for (let y = 0; y < band.height; y++) {
+      let start = 0;
+      for (let x = 0; x < band.width; x++) {
+        const alpha = band.data[(y * band.width + x) * 4 + 3];
+        if (alpha < 24) start = x + 1;
+        else if (x - start > longest.end - longest.start) longest = {start,end:x,y};
+      }
+    }
+    if (longest.end - longest.start < 10 * ratio) throw new Error("Settled scenario line missing");
+    return {start:(left + longest.start) / ratio, end:(left + longest.end) / ratio, y:(top + longest.y) / ratio};
+  }, scenario);
+}
+
+async function pendingBaseReview(page: Page) {
+  const {editor, entry} = await reviewDraft(page);
+  await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
+    body:JSON.stringify({...draftResponse, result:{...draftResponse.result, proposals:[
+      ...draftProposals, {...draftProposals[0],scenario:"bull"},
+    ], deskReadings:{bear:{value:141,upside:.41},base:{value:345,upside:2.45},bull:{value:210,upside:1.1}}}})+"\n"}));
+  let release!: () => void;
+  const hold = new Promise<void>(resolve => {release=resolve;});
+  await page.route("**/SYNT/valuation-preview*", async route => {
+    if (route.request().method() === "POST") await hold;
+    await route.fallback();
+  });
+  await entry.click();
+  const comparison = page.locator(".mx-scenario-comparison");
+  const readings = comparison.locator(".mx-draft-reading");
+  const plot = comparison.getByRole("group", {name:/Scenario valuations relative to current price/});
+  await expect(readings).toHaveText([/141.00/,/345.00/,/210.00/]);
+  await comparison.scrollIntoViewIfNeeded();
+  await expect(plot).toHaveAttribute("data-tm-chart-ready","true");
+  async function accept() {
+    const pending = page.waitForRequest(req => req.method() === "POST" && req.url().includes("/SYNT/valuation-preview"));
+    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"}).click();
+    await pending;
+    await expect(plot).toHaveAccessibleName(/Base · Pending/);
+  }
+  return {comparison, readings, plot, accept, release};
+}
+
 test.describe("frozen draft review", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   test("discard explicitly before redrafting accepted values", async ({page}) => {
@@ -1084,29 +1134,14 @@ test.describe("frozen draft review", () => {
   });
 
   test("a pending base review keeps settled bear and bull readings visible", async ({page}, info) => {
-    const {editor, entry} = await reviewDraft(page);
-    await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
-      body:JSON.stringify({...draftResponse, result:{...draftResponse.result, proposals:[
-        ...draftProposals, {...draftProposals[0],scenario:"bull"},
-      ], deskReadings:{...draftResponse.result.deskReadings,bull:{value:210,upside:1.1}}}})+"\n"}));
-    let release!: () => void;
-    const hold = new Promise<void>(resolve => {release=resolve;});
-    await page.route("**/SYNT/valuation-preview*", async route => {
-      if (route.request().method() === "POST") await hold;
-      await route.fallback();
-    });
-    await entry.click();
-    const readings = page.locator(".mx-scenario-cards .mx-draft-reading");
-    await expect(readings).toHaveText([/141.00/,/183.00/,/210.00/]);
-    const comparison = page.locator(".mx-scenario-comparison");
-    const plot = comparison.getByRole("group", {name:/Scenario valuations relative to current price/});
+    const {comparison, readings, plot, accept, release} = await pendingBaseReview(page);
     const reading = comparison.getByRole("status");
-    await comparison.scrollIntoViewIfNeeded();
-    await expect(plot).toHaveAttribute("data-tm-chart-ready","true");
-    const pending = page.waitForRequest(req => req.method() === "POST" && req.url().includes("/SYNT/valuation-preview"));
-    await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"}).click();
+    const lines = () => Promise.all([settledStroke(plot, "bear"), settledStroke(plot, "bull")]);
+    const offered = await lines();
+    await captureDraft(page, info.project.name, "en", "light", "base-offered", ".mx-scenario-comparison");
     try {
-      await pending;
+      await accept();
+      await expect.poll(lines).toEqual(offered);
       await expect(readings).toHaveText([/141.00/,/Draft …/,/210.00/]);
       await expect(plot).toHaveAccessibleName(/Bear · Draft.*Base · Pending.*Bull · Draft/);
       await plot.press("End");
@@ -1120,6 +1155,7 @@ test.describe("frozen draft review", () => {
     await expect(readings).toHaveText([/141.00/,/195.00/,/210.00/]);
     await expect(plot).toHaveAccessibleName(/Base · Draft/);
     await expect(reading).toContainText("Base · Draft: +95%");
+    await expect.poll(async () => (await settledStroke(plot, "bull")).end).toBeGreaterThan(offered[1].end);
   });
 
   test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
