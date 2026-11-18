@@ -733,9 +733,6 @@ test("a passive readiness response preserves every keystroke during typing", asy
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   try {
     await expect(panel.getByText("Checking connection…")).toBeVisible();
-    await expect(send).toBeDisabled();
-    await panel.locator("form").evaluate(form => (form as HTMLFormElement).requestSubmit());
-    await page.keyboard.press("Enter");
     await page.exposeFunction("releaseReadiness", release);
     await page.evaluate(() => document.addEventListener("keydown", () => {
       void (window as typeof window & {releaseReadiness: () => Promise<void>}).releaseReadiness();
@@ -797,6 +794,10 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
     const control = outcome === "history button" ? panel.getByRole("button", {name:"Conversation history"}) : draft;
     await control.focus();
     await expect(control).toBeFocused();
+    const sends: string[] = [];
+    page.on("request", request => {
+      if (new URL(request.url()).pathname.endsWith("/assistant/chat")) sends.push(request.url());
+    });
     const shortcut = outcome === "Control+j" || outcome === "Meta+j";
     if (shortcut || outcome === "reopened draft") {
       await page.keyboard.press("Escape");
@@ -834,10 +835,17 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
         }
       } else {
         await expect(control).toBeFocused();
+        if (outcome === "draft") {
+          await expect(panel.getByRole("button", {name:"Send"})).toBeDisabled();
+          await panel.locator("form").evaluate(form => (form as HTMLFormElement).requestSubmit());
+          await page.keyboard.press("Enter");
+          await expect(draft).toHaveValue("Keep this draft");
+        }
       }
     } finally {
       release();
     }
+    expect(sends).toEqual([]);
     if (outcome === "withdrawn") {
       await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
       await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
