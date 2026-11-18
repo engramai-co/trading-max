@@ -14,8 +14,6 @@ type Copy = (zh: string, en: string) => string;
 type Walk = components["schemas"]["ScenarioWalk"];
 type Row = { label: string; value: (walk: Walk) => number | null | undefined; kind: "value" | "change" | "sub" | "total" };
 export type InputField = components["schemas"]["LockedInput"]["field"];
-/** How the editor names and scales one assumption. */
-export type FieldFormat = { label: string; scale: number; suffix: string };
 
 const keys = ["bear", "base", "bull"] as const;
 const scenarioNames = { bear: ["保守", "Bear"], base: ["中性", "Base"], bull: ["乐观", "Bull"] } as const;
@@ -118,7 +116,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
   const heading = <div className="mx-evidence-heading">
     <h3 id="valuation-evidence-title">{t("新证据", "New evidence")}</h3>
     <Help label={t("新证据", "New evidence")} basis={t(
-      "报表、预期和价格来自当前研究数据，同一上市线持有时用券商价。每股 EPS 一致预期的变化来自本地预期记录。",
+      "报表、预期和价格来自当前研究数据，同一上市线持有时用券商价。EPS 一致预期的变化来自本地预期记录。",
       "Statements, estimates and prices come from the current research data; a held listing uses the broker price. EPS consensus changes come from the local estimate record.",
     )}>
       <p>{t(
@@ -211,8 +209,8 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
       {review.conflicts.map((c) => <li key={"c" + c.kind + c.periodId + c.metric}>
         <Help label={t("冲突", "Conflict")} tag={<Tag tone="warn">{t("冲突", "Conflict")}</Tag>}>
           <p>{c.kind === "quarters-vs-fiscal-year"
-            ? t("四个季度的合计与同一天结束的年报相差超过 0.5%。模型按文档顺序用四个季度，不把两者混合。",
-              "The four quarters and the fiscal year ending on the same day differ by more than 0.5%. The model uses the four quarters, as documented, and never blends the two.")
+            ? t("四个季度的合计与同一天结束的年报相差超过 0.5%。模型用四个季度的合计，不把两者混合。",
+              "The four quarters and the fiscal year ending on the same day differ by more than 0.5%. The model uses the four quarters and never blends the two.")
             : t("数据源对这一期给出了两行不同的数字，这一期不进入模型。",
               "The source reports two different rows for this period, so the model does not use it.")}</p>
         </Help>
