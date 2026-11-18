@@ -815,6 +815,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/research/{ticker}/citation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Research Citation */
+        get: operations["research_citation_v1_research__ticker__citation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/research/{ticker}/estimate-history": {
         parameters: {
             query?: never;
@@ -3278,7 +3295,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change";
+            kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change" | "filing" | "macro";
             /** Licence Url */
             licence_url?: string | null;
             /** Local Date */
@@ -4499,6 +4516,17 @@ export interface components {
             /** Providerend */
             providerEnd: string;
         };
+        /** FollowingSession */
+        FollowingSession: {
+            /** Date */
+            date: string;
+            /** Return Fraction */
+            return_fraction: number;
+            /** Sessions */
+            sessions: number;
+            /** Start */
+            start: string;
+        };
         /** ForwardPeHistory */
         ForwardPeHistory: {
             /** Currency */
@@ -5662,6 +5690,8 @@ export interface components {
             maxDrawdown?: number | null;
             /** Points */
             points?: components["schemas"]["IndexPoint"][];
+            /** Publishedseriesid */
+            publishedSeriesId?: string | null;
             /**
              * Range
              * @enum {string}
@@ -7257,14 +7287,25 @@ export interface components {
         };
         /** PriceMoments */
         PriceMoments: {
+            /** Adjustment */
+            adjustment?: string | null;
             /** Basis */
             basis: string;
             /** End */
             end: string;
+            /**
+             * Following
+             * @default []
+             */
+            following: components["schemas"]["FollowingSession"][];
+            /** Index Range */
+            index_range?: string | null;
             /** Interval */
             interval: string;
             /** Items */
             items: components["schemas"]["Moment"][];
+            /** Listing */
+            listing?: string | null;
             /** Published Series Id */
             published_series_id: string;
             /** Start */
@@ -7742,6 +7783,18 @@ export interface components {
             /** Task */
             task: string;
         };
+        /** ResearchCitation */
+        ResearchCitation: {
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["ReadingLine"][];
+            /** Output */
+            output: {
+                [key: string]: unknown;
+            };
+        };
         /** ResearchContext */
         ResearchContext: {
             /** Assettype */
@@ -8066,6 +8119,11 @@ export interface components {
             context?: components["schemas"]["ResearchContext"] | null;
             /** Datarevision */
             dataRevision?: string | null;
+            /**
+             * Earningsbriefeligible
+             * @default false
+             */
+            earningsBriefEligible: boolean;
             /** Events */
             events?: components["schemas"]["ResearchEvent"][];
             financialFacts?: components["schemas"]["FinancialFacts"] | null;
@@ -8267,10 +8325,14 @@ export interface components {
             exchangeCalendar?: string | null;
             /** Fetchedat */
             fetchedAt?: string | null;
+            /** Observedseriesid */
+            observedSeriesId?: string | null;
             /** Points */
             points: components["schemas"]["PriceSeriesPoint"][];
             /** Publishedseriesid */
             publishedSeriesId?: string | null;
+            /** Quoteexchange */
+            quoteExchange?: string | null;
             /**
              * Requestedinterval
              * @default 1d
@@ -8281,6 +8343,8 @@ export interface components {
              * @default regular
              */
             session: string;
+            /** Snapshotid */
+            snapshotId?: string | null;
             /**
              * Source
              * @default Yahoo Finance
@@ -10194,7 +10258,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "macro" | "earnings" | "ex_dividend" | "dividend_pay" | "holiday" | "half_day";
+            kind: "macro" | "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change" | "filing" | "holiday" | "half_day";
             /** Licence Url */
             licence_url?: string | null;
             /** Local Date */
@@ -12354,6 +12418,57 @@ export interface operations {
             };
         };
     };
+    research_citation_v1_research__ticker__citation_get: {
+        parameters: {
+            query: {
+                tool: "price_key_moments" | "research_position" | "research_earnings" | "research_headline" | "news_and_events" | "upcoming_events";
+                snapshotId: string;
+                evidenceId: string;
+                series?: string | null;
+                index?: string | null;
+                date?: components["schemas"]["CalendarDay"] | null;
+                start?: components["schemas"]["CalendarDay"] | null;
+                end?: components["schemas"]["CalendarDay"] | null;
+                observation?: string | null;
+                unselected?: boolean;
+                eventId?: string | null;
+                reference?: string | null;
+                event?: string | null;
+                scope?: "broker_total" | "invest" | "isa" | "household" | "cfd";
+                timezone?: string;
+                market?: ("US" | "GB" | "EA" | "JP" | "HK" | "KR") | null;
+                eventTicker?: components["schemas"]["Ticker"] | null;
+                limit?: number;
+                cursor?: number;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchCitation"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     research_estimate_history_v1_research__ticker__estimate_history_get: {
         parameters: {
             query?: {
@@ -14132,7 +14247,7 @@ export interface operations {
         parameters: {
             query: {
                 ticker: components["schemas"]["Ticker"];
-                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change";
+                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change" | "filing" | "macro";
                 event_id?: string | null;
                 research_event_id?: string | null;
             };
@@ -14173,6 +14288,7 @@ export interface operations {
                 cursor?: number;
                 /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
                 scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                market?: ("US" | "GB" | "EA" | "JP" | "HK" | "KR") | null;
                 start: string;
                 end: string;
                 ticker?: components["schemas"]["Ticker"] | null;
@@ -14377,9 +14493,11 @@ export interface operations {
             query: {
                 /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
                 scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                index_id?: string | null;
                 ticker: components["schemas"]["Ticker"];
                 start: components["schemas"]["CalendarDay"];
                 end: components["schemas"]["CalendarDay"];
+                date?: components["schemas"]["CalendarDay"] | null;
                 published_series_id?: string | null;
             };
             header?: never;

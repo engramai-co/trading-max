@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssistant } from "./assistant/context";
 import { ActionIcon, Button, Drawer, Menu, Select } from "@mantine/core";
 import { CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
@@ -43,6 +44,7 @@ export function IndexResearchWorkspace() {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const demonstration = useDemonstration();
+  const assistant = useAssistant();
   const { params, update } = useRouteState("push");
   const [finder, setFinder] = useState(false);
   const [finderQuery, setFinderQuery] = useState("");
@@ -60,7 +62,7 @@ export function IndexResearchWorkspace() {
   const shell = useQuery({
     queryKey: researchShellKey,
     queryFn: ({ signal }) => readApi<ResearchShell>("/research/shell", signal),
-    enabled: listOpen,
+    enabled: listOpen || assistant.ready && !demonstration,
     retry: 0,
   });
   const instruments = shell.data?.instruments ?? [];
@@ -137,9 +139,9 @@ export function IndexResearchWorkspace() {
               options={views.map((value) => ({ value, ...tabLabels[value] }))}
               onChange={(next) => update({ view: next === "overview" ? null : next })} />
             <div className="mx-index-research-body" role="tabpanel" id={lensPanel} aria-labelledby={tabId(lensPanel, view)}>
-              {view === "price" ? <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} demonstration={demonstration} />
+              {view === "price" ? <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} demonstration={demonstration} />
                 : view === "overview" ? <>
-                  <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} preview demonstration={demonstration} />
+                  <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} preview demonstration={demonstration} />
                   {overview.isError ? <QueryError retry={overview.refetch} /> : overview.data
                     ? <IndexOverview index={index} data={overview.data} /> : null}
                 </> : selected.isPending && !demonstration ? <Pending shape="research" quiet />

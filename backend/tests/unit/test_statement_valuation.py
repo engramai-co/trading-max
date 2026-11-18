@@ -351,3 +351,38 @@ def test_catalog_listing_type_preserves_local_symbol_and_withholds_ambiguous_ent
     assert not lookup(
         [{"ticker": "SHEL", "exchange": "London", "mic": "XNYS"}], ticker="SHEL", exchange="NYSE"
     )
+
+
+def test_catalog_listing_type_reconciles_nasdaq_operating_mic_with_one_tier():
+    from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
+    from trading_max.reference.security_master import SecurityDescriptor
+
+    def lookup(*entities, exchange):
+        records = [
+            {
+                "entityId": f"synthetic-{index}",
+                "canonicalTicker": "SYN",
+                "entityName": "Synthetic",
+                "providerSecurityType": "Common Stock",
+                "source": "synthetic",
+                "listings": [{"ticker": "SYN", **venue, "source": "synthetic"} for venue in venues],
+            }
+            for index, venues in enumerate(entities)
+        ]
+        catalog = CatalogSecurityMaster(SecurityMasterCatalog.model_validate({"records": records}))
+        return catalog.listing_security_type(SecurityDescriptor(ticker="SYN", exchange=exchange))
+
+    operating = {"mic": "XNAS"}
+    select = {"exchange": "NasdaqGS"}
+    capital = {"exchange": "NasdaqCM"}
+    # The operating MIC and one observed tier describe the same listing, in either direction.
+    assert "Common Stock" in lookup([operating], exchange="NasdaqGS")
+    assert "Common Stock" in lookup([select], exchange="Nasdaq")
+    assert "Common Stock" in lookup([select], exchange="NasdaqGS")
+    assert "Common Stock" in lookup([operating, select], exchange="NasdaqGS")
+    # Distinct tiers, an entity spanning another tier and two matching entities stay unavailable.
+    assert not lookup([capital], exchange="NasdaqGS")
+    assert not lookup([select, capital], exchange="Nasdaq")
+    assert not lookup([operating, capital], exchange="NasdaqGS")
+    assert not lookup([operating], [select], exchange="NasdaqGS")
+    assert not lookup([operating], exchange="NYSE")

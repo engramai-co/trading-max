@@ -24,7 +24,7 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 
-from .venues import listing_mic, local_venue_symbol
+from .venues import listing_mic, local_venue_symbol, shared_venue
 
 ResolutionMethod = Literal[
     "isin",
@@ -575,14 +575,15 @@ class CatalogSecurityMaster:
         """Use a catalog type only when its scope is one exact quoted listing.
 
         Older catalogs attach types to the entity, so an entity spanning several
-        instruments cannot attribute that type to any one of its listings.
+        instruments cannot attribute that type to any one of its listings. Venues
+        are compared through the shared resolver: Nasdaq's operating MIC and one of
+        its listing tiers describe the same listing, while two different tiers do not.
         """
         ticker = _identifier(security.ticker)
         venue = listing_mic(security.exchange, security.mic)
         if not ticker or not venue:
             return ""
         symbol = local_venue_symbol(ticker, venue)
-        target = (symbol, venue)
         candidates = {
             record.entity_id: record
             for key in {ticker, symbol}
@@ -594,9 +595,13 @@ class CatalogSecurityMaster:
             for item in record.listings:
                 mic = listing_mic(item.exchange, item.mic)
                 listings.add((local_venue_symbol(item.ticker, mic), mic))
-            if target in listings:
+            quoted = {
+                (code, mic) for code, mic in listings if code == symbol and shared_venue(mic, venue)
+            }
+            if quoted:
                 if (
-                    listings != {target}
+                    quoted != listings
+                    or not shared_venue(venue, *(mic for _, mic in quoted))
                     or local_venue_symbol(record.canonical_ticker, venue) != symbol
                 ):
                     return ""

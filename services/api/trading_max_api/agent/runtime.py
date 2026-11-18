@@ -120,6 +120,11 @@ global_map /data/markets/N/contribution or /data/markets/N/move, and update_issu
 /data/completed, /data/stages, /data/attempts, /data/failed_stages/N/en or /data/finished_at. Use an actual returned array index
 in place of N. A sector_headline or news_and_events /data/items/N/title_en is a publisher's headline;
 keep it separate from a measured change.
+For research_position select /data/close, /data/change, /data/trade_date, /data/event/date
+or /data/benchmarks/N/asset or benchmark; /data/sector_comparison explains missing coverage. For price_key_moments use the row of the selected
+date: /data/items/N/move_fraction, volume_z_score, or /data/items/N/events/M/kind for a dated non-news event. For subsequent sessions choose /data/following/N/return_fraction. Cite a separate research_headline
+/data/title only as a lead. For research_earnings choose /data/report/actual, estimate,
+surprise or date, /data/estimates/N/mean or /data/changes/N/change for the relevant fiscal period. For news_and_events or upcoming_events cite a dated non-news row with /data/items/N/title_en.
 To offer a qualitative interpretation choose a suitable reference from this list:
 {{other-drivers}}, {{attribution}}, {{cash-flows}}, {{concentration}}, {{benchmark}},
 {{valuation}}, {{history}}, {{insufficient-evidence}}. End it with a space and [inference].

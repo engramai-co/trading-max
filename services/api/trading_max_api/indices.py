@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import statistics
@@ -386,6 +387,7 @@ class IndexService:
         self._ndx_closes: tuple[str, bool, dict[str, SparkSeries]] | None = None
         self.eodhd = eodhd
         self.eodhd_configuration = eodhd_configuration
+        self._reading_histories: dict[str, IndexHistory] = {}
         self._histories: dict[tuple[str, str, bool, int], tuple[datetime, IndexHistory]] = {}
 
     def catalog(self) -> list[IndexIdentity]:
@@ -686,6 +688,26 @@ class IndexService:
         self._markets[scope] = (now, result)
         return result
 
+    def reading_history(self, index_id: str, series_id: str) -> IndexHistory | None:
+        """Resolve only the exact locally observed series. Never fetch from a provider."""
+        with self._lock:
+            result = self._reading_histories.get(series_id)
+            return result if result and result.index.id == index_id else None
+
+    def _remember_chart(self, history: IndexHistory, gbp: bool) -> IndexHistory:
+        if not history.points or gbp:
+            return history
+        if not history.published_series_id:
+            history.published_series_id = hashlib.sha256(
+                history.model_dump_json().encode()
+            ).hexdigest()[:20]
+        key = history.published_series_id
+        self._reading_histories.pop(key, None)
+        self._reading_histories[key] = history
+        if len(self._reading_histories) > 64:
+            del self._reading_histories[next(iter(self._reading_histories))]
+        return history
+
     def history(self, spec: IndexSpec, period: IndexRange, gbp: bool) -> IndexHistory:
         configuration = (
             self.eodhd_configuration() if spec.eodhd and self.eodhd_configuration else None
@@ -696,7 +718,7 @@ class IndexService:
             now = self.now()
             cached = self._histories.get(key)
             if cached and now - cached[0] < timedelta(minutes=4):
-                return cached[1]
+                return self._remember_chart(cached[1], gbp)
             currency = "GBP" if gbp and spec.currency else spec.currency
             result = IndexHistory(
                 index=index_identity(spec, eodhd_enabled=bool(configuration)),
@@ -710,7 +732,10 @@ class IndexService:
             if configuration and self.eodhd_configuration() != configuration:
                 return IndexHistory(index=index_identity(spec), range=period, currency=currency)
             if not result.points and cached and cached[1].points:
-                result = cached[1].model_copy(update={"state": "stale"})
+                result = cached[1].model_copy(
+                    update={"state": "stale", "published_series_id": None}
+                )
+            self._remember_chart(result, gbp)
             self._histories[key] = (now, result)
             return result
 

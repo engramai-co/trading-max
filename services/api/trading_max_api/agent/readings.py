@@ -66,6 +66,18 @@ class ReadingService:
                 ).fetchone()
         return RoleReading.model_validate_json(row[0]) if row else None
 
+    def publication_version(
+        self, role: PageRole, context: RoleContext, snapshot_id: str
+    ) -> str | None:
+        """The completed writer's version for this exact immutable publication."""
+        with self.database.read() as db:
+            row = db.execute(
+                "SELECT version FROM assistant_readings WHERE role=? AND object_key=? "
+                "AND json_extract(reading_json, '$.snapshotId')=? ORDER BY as_of DESC LIMIT 1",
+                ("scheduled:" + role.cache_id, role.object_key(context), snapshot_id),
+            ).fetchone()
+        return row[0] if row else None
+
     def reserve(self, day: str, role: PageRole, context: RoleContext, slot: str) -> bool:
         with self.database.transaction(immediate=True) as db:
             db.execute(
@@ -102,6 +114,7 @@ class ReadingService:
         scheduled: bool = False,
         cached_only: bool = False,
         latest: bool = False,
+        match_data_version: bool = False,
         permitted: Callable[[], bool] = lambda: True,
         reserve: Callable[[], bool] = lambda: True,
     ) -> AsyncIterator[ReadingEvent]:
@@ -113,18 +126,34 @@ class ReadingService:
             tools = role.reader(deps, context)
             version = deps.snapshot_id
             as_of = deps.manifest.created_at if deps.manifest else None
+            # A material-data digest belongs to the displayed statements or estimates.
+            # A scheduled digest for a previous revision cannot describe a new result.
+            material = role.data_version is not None and (not latest or match_data_version)
             if not latest and role.record_anchor:
                 anchor = await asyncio.to_thread(role.record_anchor, tools, context)
                 version, as_of = anchor or (None, None)
-            elif not latest and version and role.data_version:
+            elif material and version:
                 version = await asyncio.to_thread(role.data_version, tools, context)
+                if (
+                    not version
+                    and cached_only
+                    and latest
+                    and match_data_version
+                    and role.id == "earnings-brief"
+                ):
+                    version = self.publication_version(role, context, deps.snapshot_id)
         except (ModelRetry, ValueError):
             yield ReadingEvent(type="error", code="assistant_context_invalid")
             return
-        if not latest and not version:
+        if (not latest or material) and not version:
             yield ReadingEvent(type="empty")
             return
-        saved = self.cached(role, context, None if latest else version, scheduled=scheduled)
+        saved = self.cached(
+            role,
+            context,
+            None if latest and not material else version,
+            scheduled=scheduled or latest,
+        )
         if cached_only and not latest and role.refresh_cached_facts:
             saved = self.cached(role, context, version, scheduled=True) or saved
         if saved and not latest and role.refresh_cached_facts:

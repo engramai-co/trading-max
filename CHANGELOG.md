@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.65.0] - 2026-11-18
+
+### Added
+- With MaxAI enabled, Research Overview can open a reading of your position in the selected security, and Price & technicals numbers up to three event-backed price moves on the chart. Each reading follows the subsequent sessions, and follow-ups keep the selected moment. Position readings identify the return basis and the matched market and sector comparison dates. Citations reopen the recorded publication and disclose expiry.
+- Financials & business and Estimates & events open with a dated earnings brief that names verified consensus changes. Consented workspaces write it in the background when a held or research-list company reports results or its estimates change.
+
+### Changed
+- Per-share valuations tell Nasdaq's listing tiers apart. A catalogue entry under Nasdaq's general market code still applies to the quoted tier. Saved valuations that recorded only the general code are checked again against their own publication, even when the quote names only Nasdaq. They stay unavailable if that publication lists the security on two tiers or in two catalogue entries, or holds no share-class evidence.
+
+### Fixed
+- Research keeps unverified listing prices off the chart and shows the reason in place. Keyboard follow-ups move focus to the composer.
+
 ## [1.64.2] - 2026-11-18
 
 ### Changed

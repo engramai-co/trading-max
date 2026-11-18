@@ -397,6 +397,8 @@ class SharedMarketPrices:
                         # chartPreviousClose refers to the beginning of the whole range.
                         previous_close=_price(meta.get("previousClose")),
                         timezone=meta.get("exchangeTimezoneName"),
+                        provider_symbol=meta.get("symbol"),
+                        currency=meta.get("currency"),
                         mic=meta.get("mic"),
                         exchange_name=meta.get("exchangeName"),
                         full_exchange_name=meta.get("fullExchangeName"),

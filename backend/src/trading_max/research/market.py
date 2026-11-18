@@ -20,6 +20,7 @@ from pydantic import Field
 from trading_max.domain import DomainModel
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.reference import is_fund_instrument
+from trading_max.reference.msci_world_sectors import WORLD_INDUSTRY_INDICES
 
 from .calendar import completed_daily_bars, frame_venue, fx_rate_due, market_calendar
 from .technical import (
@@ -141,7 +142,9 @@ class MarketResearchService:
         options_loader: OptionsLoader = _default_options,
         adr_loader: AdrLoader = adr_research,
         prices: SharedMarketPrices | None = None,
+        assistant_enabled: Callable[[], bool] = lambda: False,
     ) -> None:
+        self.assistant_enabled = assistant_enabled
         self.history_loader = history_loader
         self.options_loader = options_loader
         self.adr_loader = adr_loader
@@ -204,10 +207,21 @@ class MarketResearchService:
             raise MarketDataError("technical research requires at least one ticker")
 
         # Relative-performance inputs can fail independently of listing prices.
+        sectors = (
+            [
+                spec.symbol
+                for spec in WORLD_INDUSTRY_INDICES
+                if spec.level == "sector" and spec.symbol
+            ]
+            if set(universe).difference(fund_tickers) and self.assistant_enabled()
+            else []
+        )
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="research-benchmark") as pool:
             histories = {
-                symbol: pool.submit(self.history_loader, symbol, history_period)
-                for symbol in ("SPY", "QQQ", "SOXX", "GBPUSD=X", "VOO", "VT")
+                symbol: pool.submit(
+                    self.history_loader, symbol, "6mo" if symbol in sectors else history_period
+                )
+                for symbol in ("SPY", "QQQ", "SOXX", "GBPUSD=X", "VOO", "VT", *sectors)
             }
         technical_rows: list[TechnicalResearchArtifact] = []
         option_rows: list[OptionsResearchArtifact] = []
@@ -217,7 +231,7 @@ class MarketResearchService:
         benchmark_series: dict[str, list[dict[str, Any]]] = {}
         benchmark_closes = {}
         now = pd.Timestamp.now(tz="UTC")
-        for symbol in ("SPY", "QQQ", "SOXX"):
+        for symbol in ("SPY", "QQQ", "SOXX", *sectors):
             try:
                 benchmark_closes[symbol] = completed_daily_bars(
                     histories[symbol].result(), now=now, ticker=symbol

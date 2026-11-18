@@ -59,6 +59,7 @@ class TypedWorkerRuntime:
         *,
         on_snapshot_published: Callable[[StoredSnapshot, str], None] | None = None,
         market_service: MarketResearchService | None = None,
+        assistant_enabled: Callable[[], bool] = lambda: False,
         research_service: YFinanceResearchService | None = None,
         lookthrough_service: LookthroughService | None = None,
         taxonomy_provider: RawTaxonomyCatalogProvider | None = None,
@@ -72,7 +73,10 @@ class TypedWorkerRuntime:
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.on_snapshot_published = on_snapshot_published
-        self.market_service = market_service or MarketResearchService()
+        self.assistant_enabled = assistant_enabled
+        self.market_service = market_service or MarketResearchService(
+            assistant_enabled=assistant_enabled
+        )
         self.research_service = research_service or YFinanceResearchService(
             evidence_loader=ResearchEvidenceProvider(
                 self.state_root / "research-cache" / "disclosures",
@@ -147,7 +151,9 @@ class TypedWorkerRuntime:
                 ),
                 EarningsArtifactStage(self.artifacts, self.research_service),
                 MacroCalendarStage(self.artifacts, self.snapshots),
-                SecurityNewsStage(self.artifacts, self.snapshots, self.market_service),
+                SecurityNewsStage(
+                    self.artifacts, self.snapshots, self.market_service, self.assistant_enabled
+                ),
                 ETFDepthStage(self.state_root, self.artifacts, self.snapshots),
                 TypedPublishSnapshotStage(
                     self.artifacts,

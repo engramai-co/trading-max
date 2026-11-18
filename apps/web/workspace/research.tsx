@@ -1,4 +1,6 @@
 "use client";
+import dynamic from "next/dynamic";
+import { useEarningsBrief, PositionReading } from "./assistant/research-entry";
 
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -100,14 +102,17 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
   return useQuery({ ...researchPriceQuery(ticker, revision, "1d", "3M"), enabled });
 }
 
+const CitedResearch = dynamic(() => import("./assistant/cited-research"));
+
 export function ResearchWorkspace() {
   const { params } = useRouteState();
   const reviewEvent = ["decision_timing_and_habits","news_and_events"].includes(params.get("evidence") ?? "") &&
     ["events","actions","ratings"].includes(params.get("analystView") ?? "");
   if (reviewEvent) return <CitedResearchEvent recorded />;
-  if (params.get("evidence") === "read_research_lens" && citedEventKind(params.get("event"))) {
+  if (["read_research_lens", "upcoming_events", "news_and_events"].includes(params.get("evidence") ?? "") && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }
+  if ((params.has("snapshotId") || params.has("unavailable")) && params.has("evidenceId")) return <CitedResearch/>;
   return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;
 }
 
@@ -222,6 +227,7 @@ function SecurityResearchWorkspace() {
     (prices.isPending && !prices.data) || runtime.status === "loading"
   );
   const technicalPrice = tab === "technical";
+  const earnings = useEarningsBrief(ticker, lensName, lens.data?.runId ?? revision ?? undefined, Boolean(selected && !isFund && (lensName === "analyst" || lensName === "fundamentals")), lens.isPlaceholderData ? undefined : lens.data);
   const currentLens = !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
     ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
   } : undefined;
@@ -599,6 +605,8 @@ function SecurityResearchWorkspace() {
                     : <Panel className="mx-research-wait"><Pending shape="chart" height={338} quiet /></Panel>
                 ) : (
                 <div className="mx-data-body mx-research-read" aria-busy={switching || undefined}>
+                {tab === "overview" && displayTab === tab && !prices.isPlaceholderData && (prices.data?.publishedSeriesId || prices.data?.observedSeriesId) && <PositionReading
+                  security={{ticker: prices.data.ticker, published_series_id: (prices.data.publishedSeriesId || prices.data.observedSeriesId)!}} snapshotId={prices.data.snapshotId ?? shell.data?.status.runId ?? undefined} />}
                 {displayTab === "overview" && shown && (!isFund || selected.status !== "pending") && (runtime.status === "failed"
                   ? <QueryError retry={runtime.retry} />
                   : <PricePreview ticker={ticker} query={prices} summary={displayData?.technicalSummary} />
@@ -609,6 +617,7 @@ function SecurityResearchWorkspace() {
                               key={ticker}
                               ticker={ticker}
                               runId={revision ?? ""}
+                              snapshotId={shell.data?.status.runId ?? undefined}
                               data={displayTab === "technical" ? displayData : undefined}
                               pending={lens.isPending}
                               error={lens.isError}
@@ -671,7 +680,8 @@ function SecurityResearchWorkspace() {
                             onExplore={exploreHolding}
                           />
                         ) : (
-                          <FinancialWorkbench key={ticker} data={displayData} ticker={ticker} revision={revision} preview={readOnly} />
+                          <FinancialWorkbench key={ticker} data={displayData} ticker={ticker} revision={revision} preview={readOnly}
+                            earningsBrief={tab === displayTab ? earnings : null} />
                         ))}
                       {displayTab === "financials" &&
                         (isFund ? (
@@ -688,6 +698,7 @@ function SecurityResearchWorkspace() {
                             ticker={ticker}
                             revision={revision}
                             preview={readOnly}
+                            earningsBrief={tab === displayTab ? earnings : null}
                           />
                         ))}
                       {isFund && (displayTab === "tracking" || displayTab === "peers") && (
@@ -699,7 +710,7 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView key={ticker} data={displayData} revision={revision} price={price} />
+                        <AnalystView earningsBrief={tab === "analyst" ? earnings : null} key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
                       {displayTab === "ledger" && (

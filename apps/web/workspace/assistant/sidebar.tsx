@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, ClockCounterClockwise, Plus, Square, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -46,6 +46,9 @@ function failureCode(message: string) {
     return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : "assistant_unavailable";
   } catch { return "assistant_unavailable"; }
 }
+function selectionKey(card: RoleCard | null) {
+  return hashKey([card?.role, card?.context, card?.origin, card?.reading?.snapshotId ?? card?.origin?.snapshotId]);
+}
 type SidebarProps = { checking: boolean; page: string; search: string; scopeLabel: string; composerRef: (node: HTMLTextAreaElement | null) => void };
 function Thread({ page, search, scopeLabel, checking, composerRef, initial, history, onHistory, onNew }: SidebarProps & {
   history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
@@ -55,8 +58,10 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
   const { open, ready, pending, close, pageCard, handoff } = useAssistant();
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
+  const [sentScope, setSentScope] = useState<string | null>(null);
+  const routeScope = page + search;
   const historyButton = useRef<HTMLButtonElement>(null);
-  const wasHistory = useRef(history);
+  const wasHistory = useRef({history, sequence:handoff?.sequence});
   const submitted = useRef<{text:string; card:RoleCard | null}>({text:"",card:null});
   const [announcement, setAnnouncement] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -79,9 +84,11 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
   useEffect(() => () => { void stop(); }, [stop]);
   useEffect(() => { if (!ready) void stop(); }, [ready, stop]);
   useEffect(() => {
-    if (open && wasHistory.current && !history) focusAssistantControl(historyButton.current);
-    wasHistory.current = history;
-  }, [open, history]);
+    if (open && wasHistory.current.history && !history && wasHistory.current.sequence === handoff?.sequence) {
+      focusAssistantControl(historyButton.current);
+    }
+    wasHistory.current = {history, sequence:handoff?.sequence};
+  }, [open, history, handoff?.sequence]);
   useEffect(() => {
     const el = scroller.current;
     if (el && open && el.scrollHeight - el.scrollTop - el.clientHeight < 320) el.scrollTop = el.scrollHeight;
@@ -92,6 +99,13 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
     setSeen(handoff.sequence);
     setDraft(handoff.draft);
     setContextCard(handoff.card);
+    setSentScope(null);
+  } else if (sentScope !== null && sentScope !== routeScope) {
+    setContextCard(null);
+    setSentScope(null);
+  } else if (sentScope !== null && pageCard?.role === "key-moment" &&
+    selectionKey(contextCard) !== selectionKey(pageCard)) {
+    setContextCard(pageCard);
   }
   const context = chatContext(page, search, timeZone);
   const card: RoleCard = contextCard ?? pageCard ?? {
@@ -109,7 +123,8 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
     setAnnouncement("");
     setDraft("");
     void sendMessage({ text }, { body: { context:turn } });
-    setContextCard(null);
+    setContextCard(submitted.current.card);
+    setSentScope(routeScope);
   }
   const turns = displayTurns(messages);
   return <>
@@ -119,7 +134,7 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
       <button data-assistant-dismiss onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button>
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
-      {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} /><ReadingLines card={card} />
+      {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} />{card.status && <p role="status" className="mx-assistant-note">{card.status}</p>}<ReadingLines card={card} />
         <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} disabled={sendingBlocked} onClick={() => send(q)}>{q}<span aria-hidden="true">→</span></button>)}</div>
       </div>}
       {turns.map(m => <div key={m.id} className={"mx-assistant-turn mx-turn-" + m.role}>
@@ -173,19 +188,21 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
 export default function AssistantSidebar(props: SidebarProps) {
   const { handoff } = useAssistant();
   const [initial, setInitial] = useState(() => ({ id: makeConversationId(), messages: [] as UIMessage[], sequence: 0 }));
-  const [history, setHistory] = useState(false);
+  const [historyAt, setHistoryAt] = useState<number | null>(null);
+  const sequence = handoff?.sequence ?? 0;
+  const history = historyAt === sequence;
   const fresh = () => setInitial({ id: makeConversationId(), messages: [], sequence: handoff?.sequence ?? 0 });
   useEffect(() => {
     const erased = () => {
       setInitial({id:makeConversationId(), messages:[], sequence:handoff?.sequence ?? 0});
-      setHistory(false);
+      setHistoryAt(null);
     };
     window.addEventListener(conversationsErasedEvent, erased);
     return () => window.removeEventListener(conversationsErasedEvent, erased);
   }, [handoff?.sequence]);
   return <>
-    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...props} initial={initial} history={history} onNew={fresh} onHistory={() => setHistory(true)} /></div>
-    {history && <History back={() => setHistory(false)} select={(id, messages) => { setInitial({ id, messages, sequence: handoff?.sequence ?? 0 }); setHistory(false); }}
+    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...props} initial={initial} history={history} onNew={fresh} onHistory={() => setHistoryAt(sequence)} /></div>
+    {history && <History back={() => setHistoryAt(null)} select={(id, messages) => { setInitial({ id, messages, sequence: handoff?.sequence ?? 0 }); setHistoryAt(null); }}
       removed={id => { if (id === initial.id) fresh(); }} />}
   </>;
 }

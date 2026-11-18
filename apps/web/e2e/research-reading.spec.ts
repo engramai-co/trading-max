@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 
 const days = ["2026-10-01", "2026-10-02", "2026-10-05"];
@@ -541,6 +542,39 @@ test.describe("research section navigation", () => {
     await expect(index.getByRole("link", { name: "Cash flow" })).toHaveAttribute("aria-current", "location");
     await expect(page.getByRole("radiogroup", { name: "Reporting frequency" }).or(page.getByRole("group", { name: "Reporting frequency" })).first()).toBeAttached();
   });
+
+  for (const language of ["en", "zh"] as const) for (const theme of ["light", "dark"] as const) {
+    test(`a published earnings brief opens Financials & business ahead of its reporting controls · ${language} · ${theme}`, async ({ page }, info) => {
+      await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+      await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), language);
+      await page.route("**/api/backend/profile", async (route) => {
+        const response = await route.fetch();
+        await route.fulfill({ response, json: { ...await response.json(), assistantEnabled: true } });
+      });
+      await page.route("**/api/backend/assistant/status", (route) => route.fulfill({ json: { ready: true, code: null } }));
+      await page.route("**/api/backend/assistant/roles/earnings-brief/reading", (route) => route.fulfill({
+        contentType: "application/x-ndjson",
+        body: JSON.stringify({ type: "result", reading: {
+          role: "earnings-brief", snapshotId: "synthetic", version: "synthetic", asOf: "2026-10-05T20:00:00Z",
+          lines: [
+            ["每股收益为 USD 1.90，预期为 1.80。", "EPS was USD 1.90 versus an estimate of 1.80.", "financials"],
+            ["下季度每股收益一致预期为 USD 2.00。", "Consensus EPS for the next quarter was USD 2.00.", "analysts"],
+          ].map(([zh, en, source]) => ({ zh, en, evidence: { source, tool: "research_earnings", evidenceId: "ev_brief",
+            arguments: { ticker: "AAPL", fiscalPeriod: "FY2026 Q4", reportDate: "2026-10-01" } } })),
+        } }) + "\n",
+      }));
+      await page.goto("/research?ticker=AAPL&view=fundamentals");
+      const brief = page.locator(".mx-earnings-brief");
+      await expect(brief).toContainText("AAPL · FY2026 Q4");
+      await expect(page.locator("#research-performance")).toBeAttached();
+      const order = await page.locator(".mx-reading-sections").evaluate((column) => [...column.children].slice(0, 3).map((child) =>
+        child.classList.contains("mx-earnings-brief") ? "brief"
+          : child.classList.contains("mx-research-context-toolbar") ? "controls" : child.id));
+      expect(order).toEqual(["brief", "controls", "research-performance"]);
+      const folder = process.env.ASSISTANT_SCREENSHOTS;
+      if (folder) await page.screenshot({ scale: "css", path: join(folder, [info.project.name, language, theme, "financials-statements"].join("-") + ".png") });
+    });
+  }
 });
 
 test.describe("research section index", () => {

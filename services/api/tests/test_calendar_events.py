@@ -754,3 +754,134 @@ def test_cited_holding_event_returns_the_original_single_row(tmp_path, ticker, k
         assert response.status_code == 200
         assert response.json() == cited
         assert client.get(path, params=query | {"event_id": "ev_missing"}).status_code == 404
+
+
+def test_bound_market_calendar_row_reopens_with_the_original_arguments(tmp_path):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    publish(app.state.store)
+    deps = app.state.assistant.deps_for_run("research", "Europe/London")
+    day = "2026-11-27"
+    args = events.EventArgs(ticker="ALFA", market="US", start=day, end=day, scope="broker_total")
+    response = events.event_data(deps, args, upcoming=True)
+    rows = response["data"]["items"]
+    assert any(row["kind"] == "half_day" for row in rows), rows
+    row = next(row for row in rows if row["kind"] == "half_day")
+    params = {
+        "tool": "upcoming_events",
+        "scope": args.scope,
+        "start": day,
+        "end": day,
+        "timezone": "Europe/London",
+        "eventTicker": "ALFA",
+        "eventId": row["evidence_id"],
+        "market": "US",
+        "event": "half_day",
+        "evidenceId": response["evidence_id"],
+        "snapshotId": deps.snapshot_id,
+    }
+    reopened = TestClient(app).get("/v1/research/MARKET/citation", params=params)
+    assert reopened.status_code == 200, (reopened.status_code, row["date"], row["market"])
+    assert reopened.json()["output"]["data"]["items"] == rows
+    assert (
+        TestClient(app)
+        .get("/v1/research/MARKET/citation", params={**params, "market": "GB"})
+        .status_code
+        == 404
+    )
+
+
+def test_earnings_eligibility_survives_the_financials_summary(tmp_path):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    publish(app.state.store)
+    client = TestClient(app)
+    summary = client.get("/v1/research/ALFA/lens/fundamentals?detail=summary").json()
+    assert summary["analyst"] is None
+    assert summary["earningsBriefEligible"] is True
+    assert client.get("/v1/research/ALFA/lens/analyst").json()["earningsBriefEligible"] is True
+    assert (
+        client.get("/v1/research/BETA/lens/fundamentals?detail=summary").json()[
+            "earningsBriefEligible"
+        ]
+        is False
+    )
+
+
+def test_current_scheduled_publication_reserves_space_for_a_ratings_only_lens(tmp_path):
+    import json
+
+    from services.api.tests.test_assistant_settings import _enable, _register
+    from services.api.trading_max_api.agent.research_roles import SecurityContext
+    from services.api.trading_max_api.agent.roles import role_registry
+
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = app.state.store
+    publication = store.publish_typed(
+        scope="research",
+        source="synthetic",
+        artifacts=[
+            store.immutable_artifacts.put_json(
+                key=events.ANALYST,
+                payload={
+                    "rows": [
+                        {
+                            "ticker": "ALFA",
+                            "analyst": {"recommendations": [{"period": "0m", "buy": 2}]},
+                        }
+                    ]
+                },
+            )
+        ],
+    )
+    repo = app.state.settings_repository
+    _register(repo, "openai", "gpt-5.6-luna")
+    _enable(repo, "openai/gpt-5.6-luna")
+    client = TestClient(app)
+    lens = "/v1/research/ALFA/lens/analyst"
+    assert not client.get(lens).json()["earningsBriefEligible"]
+    role = role_registry()["earnings-brief"]
+    context = SecurityContext(ticker="ALFA")
+    with app.state.assistant_readings.database.transaction() as db:
+        db.execute(
+            "INSERT INTO assistant_readings VALUES (?, ?, ?, ?, ?)",
+            (
+                "scheduled:" + role.cache_id,
+                role.object_key(context),
+                "observed",
+                publication.created_at.isoformat(),
+                json.dumps(
+                    {
+                        "role": role.id,
+                        "snapshotId": publication.run_id,
+                        "version": "observed",
+                        "asOf": publication.created_at.isoformat(),
+                        "lines": [
+                            {
+                                "zh": "观测。",
+                                "en": "Observation.",
+                                "evidence": {
+                                    "tool": "research_earnings",
+                                    "source": "financials",
+                                    "evidenceId": "ev_observed",
+                                },
+                            }
+                        ],
+                    }
+                ),
+            ),
+        )
+    ratings = client.get(lens).json()
+    assert ratings["analyst"]["recommendations"] == [{"period": "0m", "buy": 2}]
+    assert ratings["earningsBriefEligible"]
+
+    async def ready():
+        return {"ready": True}
+
+    app.state.assistant.check_ready = ready
+    query = {
+        "context": {"ticker": "ALFA"},
+        "snapshotId": publication.run_id,
+        "latest": True,
+        "cachedOnly": True,
+    }
+    response = client.post("/v1/assistant/roles/earnings-brief/reading", json=query)
+    assert json.loads(response.text)["type"] == "result"
