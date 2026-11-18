@@ -594,7 +594,8 @@ def test_aliased_listing_moments_match_returned_chart_identity(bound, watchliste
         assert pinned["data"]["ticker"] == "SYN.L"
         assert pinned["data"]["published_series_id"] == series["publishedSeriesId"]
         new_run = ins.moments_data(app.state.assistant.deps_for_run(None, None), args)
-        assert new_run["quality"]["reason_code"] == "displayed_price_series_mismatch"
+        assert new_run["data"] is None
+        assert new_run["quality"]["reason_code"] == "published_daily_bars_unavailable"
 
 
 def distinct_listing_events(bound, *, london_report=False):
@@ -1599,3 +1600,42 @@ def test_relative_daily_range_uses_returns_lens_calendar(bound):
     assert [(row["from_date"], row["date"]) for row in result["data"]["items"]] == [
         tuple(DATES[-2:])
     ]
+
+
+@pytest.mark.parametrize(("requested", "published"), [("SYN", "SYN.L"), ("SYN.L", "SYN")])
+def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, requested, published):
+    app, _ = distinct_listing_events(bound, london_report=True)
+    store = app.state.store
+    technical = store.read_json(store.latest_manifest().run_id, tools.TECHNICAL)
+    technical["rows"] = [row for row in technical["rows"] if row["ticker"] == published]
+    manifest = republish(
+        store,
+        {
+            tools.TECHNICAL: store.immutable_artifacts.put_json(
+                key=tools.TECHNICAL, payload=technical
+            )
+        },
+    )
+    app.state.watchlist.add(
+        SecuritySearchResult(
+            ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+        )
+    )
+
+    def missing_live(symbol, *args, **kwargs):
+        assert symbol == requested
+        raise ValueError("synthetic missing bars")
+
+    monkeypatch.setattr(app.state.security_prices, "get", missing_live)
+    client = TestClient(app)
+    assert client.get(f"/v1/research/{published}/prices").json()["points"]
+    missing = client.get(f"/v1/research/{requested}/prices")
+    assert missing.status_code == 404
+    result = client.get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={"ticker": requested, "scope": "invest", "start": DATES[0], "end": DATES[-1]},
+    ).json()
+    assert (
+        result["data"] is None
+        and result["quality"]["reason_code"] == "published_daily_bars_unavailable"
+    )
