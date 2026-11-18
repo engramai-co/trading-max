@@ -31,11 +31,11 @@ export function CitedResearchEvent() {
     queryFn: async ({signal}) => {
       // The saved day belongs to the original reader. Include adjacent days for a timezone change.
       const dateAt = (offset: number) => new Date(stamp + offset * 86_400_000).toISOString().slice(0,10);
-      const query = new URLSearchParams({ticker,scope:"broker_total",start:dateAt(-1),end:dateAt(1),timezone:timeZone,limit:"20"});
+      const query = new URLSearchParams({ticker,scope:"broker_total",start:dateAt(-2),end:dateAt(2),timezone:timeZone,limit:"20"});
       let cursor: number | null = 0;
       while (cursor !== null) {
         query.set("cursor", String(cursor));
-        const page: EventPage = await readApi(`/snapshots/${snapshot}/events/upcoming?${query}`, signal);
+        const page: EventPage = await readApi(`/publications/${snapshot}/events/upcoming?${query}`, signal);
         if (page.snapshot_id !== snapshot) return null;
         const found = page.data?.items.find(row => row.ticker === ticker && row.kind === kind &&
           (rowId ? row.evidence_id === rowId : researchId ? row.research_event_id === researchId :

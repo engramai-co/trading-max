@@ -405,7 +405,6 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
-    manifest = _dashboard_manifest(request, run_id)
     if run_id is not None:
         if (
             view != "analytics"
@@ -414,11 +413,13 @@ def dashboard_lens(
             or scope not in {None, "invest", "isa", "total"}
         ):
             raise HTTPException(422, "Retained dashboard lenses support only the Returns summary")
+        manifest = _dashboard_manifest(request, run_id)
         selected = scope or "total"
         return request.app.state.retained_returns.get_or_compute(
             (run_id, selected),
             lambda: _retained_returns(app_service(request, "store"), manifest, selected),
         )
+    manifest = latest_or_503(request)
     dashboard_data = request.app.state.cached_dashboard(
         manifest, include_history=detail != "summary"
     )

@@ -357,7 +357,7 @@ test("earnings citations reopen the exact retained row and disclose expiry", asy
   await fixtures(page);
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   let expired = false;
-  await page.route("**/api/backend/snapshots/saved/events/upcoming?**", route => route.fulfill(expired
+  await page.route("**/api/backend/publications/saved/events/upcoming?**", route => route.fulfill(expired
     ? {status:404,json:{detail:"snapshot not found"}} : {json:{snapshot_id:"saved",data:{items:[
       {kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture"},
     ]}}}));
