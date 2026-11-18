@@ -9714,7 +9714,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "macro" | "earnings" | "ex_dividend" | "dividend_pay" | "holiday" | "half_day";
+            kind: "macro" | "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change" | "filing" | "holiday" | "half_day";
             /** Licence Url */
             licence_url?: string | null;
             /** Local Date */
@@ -13629,7 +13629,7 @@ export interface operations {
         parameters: {
             query: {
                 ticker: components["schemas"]["Ticker"];
-                kind: "earnings" | "ex_dividend";
+                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change" | "filing" | "macro";
                 event_id?: string | null;
                 research_event_id?: string | null;
             };

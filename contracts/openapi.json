@@ -24974,6 +24974,9 @@
               "earnings",
               "ex_dividend",
               "dividend_pay",
+              "dividend",
+              "rating_change",
+              "filing",
               "holiday",
               "half_day"
             ],
@@ -32565,7 +32568,12 @@
             "schema": {
               "enum": [
                 "earnings",
-                "ex_dividend"
+                "ex_dividend",
+                "dividend_pay",
+                "dividend",
+                "rating_change",
+                "filing",
+                "macro"
               ],
               "title": "Kind",
               "type": "string"

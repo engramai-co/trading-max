@@ -29,10 +29,10 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
-  if (ref.tool === "upcoming_events" && !ref.arguments?.rowCitation) {
+  if (["upcoming_events","news_and_events"].includes(ref.tool) && (ref.arguments?.holdingTicker || ref.tool === "upcoming_events" && !ref.arguments?.rowCitation)) {
     const args = ref.arguments ?? {};
     if (args.url) return safeUrl(args.url) ?? null;
-    if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
+    if (args.holdingTicker && args.eventId) {
       return evidenceHref({...ref, tool:"read_research_lens", arguments:{
         ticker:args.holdingTicker, lens:args.researchEventId ? "analyst" : "overview", event:args.event,
         date:args.date, end:args.endDate, eventId:args.researchEventId,
@@ -101,7 +101,7 @@ export function evidenceHref(ref: Evidence): string | null {
     if (a.event === "filing") params.set("notebook","filings");
     if (a.event === "rating_change") params.set("analystView","actions");
     if (a.ticker) params.set("ticker", a.ticker);
-    if (["earnings", "earningsWindow", "exDividend"].includes(a.event)) {
+    if (["earnings", "earningsWindow", "exDividend", "ex_dividend", "dividend", "dividend_pay", "rating_change", "filing", "macro"].includes(a.event)) {
       params.set("event", a.event);
       if (a.date) params.set("date", a.date);
       if (a.end) params.set("end", a.end);

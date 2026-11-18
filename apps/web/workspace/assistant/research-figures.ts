@@ -1,6 +1,7 @@
 import type { Locale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
+import { calendarObservation } from "./figures";
 import type { Evidence } from "./evidence";
 
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
@@ -49,16 +50,8 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
       : events[Number(selected[1])];
     const kind = str(row?.kind);
     if (!row || !Object.hasOwn(eventLabels,kind) || !str(row.evidence_id)) return null;
-    const [, , source,lens] = eventLabels[kind];
-    const title = str(row[locale === "zh" ? "title_zh" : "title_en"]);
-    const date = str(row.date);
-    if (!title || !/^\d{4}-\d{2}(?:-\d{2})?$/.test(date)) return null;
-    const end = str(row.end_date);
-    const dateText = row.instant ? formatDateTime(str(row.instant),locale,timeZone) : end && end !== date ? date + " – " + end : date;
-    const observed = figure([str(row.ticker) !== ticker ? str(row.ticker) : "", dateText,title,str(row.firm),str(row.status)],source,
-      {lens,date,event:kind,eventId:str(row.evidence_id),rowCitation:"1",start:str(data.start),end:str(data.end),
-        eventTicker:str(ref.arguments?.ticker),timezone:str(data.timezone) || timeZone,scope:str(output.scope),ticker:str(row.ticker) || "MARKET"});
-    return observed;
+    const index = events.indexOf(row);
+    return calendarObservation(ref, output, "/data/items/" + index + "/" + selected[2], locale, timeZone);
   }
 
   function priceEvent(event: Json) {

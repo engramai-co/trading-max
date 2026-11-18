@@ -497,8 +497,15 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     """Resolve a publication's exact security event without reading the account calendar."""
     args = Scoped(scope="broker_total")
     read = _Read(deps, "upcoming_events", args, args.scope)
-    data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-    for row in _public(ticker, data, upcoming=True):
+    if kind == "macro" and ticker == "MARKET":
+        entries = _macros(read.read(MACRO_KEY) or {}, "0001-01-01", "9999-12-31", [])
+    else:
+        data = {
+            key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS)
+        }
+        data[NEWS_KEY] = {}
+        entries = _public(ticker, data, upcoming=False)
+    for row in entries:
         if not row or row["kind"] != kind:
             continue
         local = (

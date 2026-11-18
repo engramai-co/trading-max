@@ -105,7 +105,8 @@ const CitedResearch = dynamic(() => import("./assistant/cited-research"));
 
 export function ResearchWorkspace() {
   const { params } = useRouteState();
-  if (params.get("evidence") === "read_research_lens" && ["earnings", "earningsWindow", "exDividend"].includes(params.get("event") ?? "")) {
+  if (["read_research_lens", "upcoming_events", "news_and_events"].includes(params.get("evidence") ?? "") &&
+      ["earnings", "earningsWindow", "exDividend", "ex_dividend", "dividend_pay", "dividend", "macro", "rating_change", "filing"].includes(params.get("event") ?? "")) {
     return <CitedResearchEvent />;
   }
   if ((params.has("snapshotId") || params.has("unavailable")) && params.has("evidenceId")) return <CitedResearch/>;

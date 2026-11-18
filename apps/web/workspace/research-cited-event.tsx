@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
 import { formatDateTimeInTimeZone } from "@/ui/formatters";
-import { readApi } from "./data";
+import { readApi, safeUrl } from "./data";
 import { Empty, LoadingStatus, Page, Panel, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
 
@@ -18,8 +18,9 @@ export function CitedResearchEvent() {
   const t = useCopy();
   const ticker = params.get("ticker") ?? "";
   const snapshot = params.get("snapshotId") ?? "";
-  const kind = params.get("event") === "exDividend" ? "ex_dividend" : "earnings";
-  const rowId = params.get("calendarEventId");
+  const event = params.get("event") ?? "";
+  const kind = event === "exDividend" ? "ex_dividend" : event === "earningsWindow" ? "earnings" : event;
+  const rowId = params.get("calendarEventId") ?? (params.get("evidence") !== "read_research_lens" ? params.get("eventId") : null);
   const researchId = params.get("eventId");
   const valid = /^[a-zA-Z0-9_-]{1,100}$/.test(snapshot) && !!ticker && !!(rowId || researchId);
   const result = useQuery({
@@ -30,17 +31,17 @@ export function CitedResearchEvent() {
       if (rowId) query.set("eventId", rowId);
       else if (researchId) query.set("researchEventId", researchId);
       const item = await readApi<PublishedEvent>(`/publications/${snapshot}/events/upcoming?${query}`, signal);
-      return item.ticker === ticker && item.kind === kind &&
+      return (item.ticker ?? "MARKET") === ticker && item.kind === kind &&
         (rowId ? item.evidence_id === rowId : item.research_event_id === researchId) ? item : null;
     },
   });
   const row = !result.isFetching && !result.isError && result.data;
-  const title = kind === "earnings" ? t("财报", "Earnings") : t("除息日期", "Ex-dividend date");
+  const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : t("引用的事件","Cited event");
   return <Page title={t("研究", "Research")}><section data-reading-event=""><Panel title={ticker + " · " + title}>
     {result.isFetching ? <LoadingStatus label={t("正在读取引用…","Loading citation…")} /> :
       row ? <><h3>{locale === "zh" ? row.title_zh : row.title_en}</h3>
         <p>{row.instant ? formatDateTimeInTimeZone(row.instant, locale, timeZone) : [...new Set([row.date, row.end_date].filter(Boolean))].join(" – ")}</p>
-        <p>{row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
+        <p>{safeUrl(row.source_url ?? "") ? <a href={safeUrl(row.source_url ?? "")!} target="_blank" rel="noreferrer">{row.publisher}</a> : row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
     <Button variant="subtle" onClick={() => update({evidence:null,snapshotId:null,event:null,date:null,end:null,eventId:null,calendarEventId:null})}>
       {t("打开证券研究", "Open security research")}
     </Button>

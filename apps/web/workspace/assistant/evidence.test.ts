@@ -249,3 +249,11 @@ it.each([
     expect(line?.text).toBe(expected);
   }
 });
+
+it.each(["ex_dividend","dividend_pay","dividend"])("reopens a calendar %s from its retained publication and row", kind => {
+  const row = {kind,ticker:"TEST",title_en:"Dividend",date:"2026-01-15",evidence_id:"ev_row",source_url:"https://example.invalid/events"};
+  const [line] = verifiedLines(fieldReply("upcoming_events",{snapshot_id:"older",data:{items:[row]}},"/data/items/0/date"));
+  const link = new URL(evidenceHref(line.evidence!)!,"http://localhost");
+  expect(link.pathname).toBe("/research");
+  expect(Object.fromEntries(link.searchParams)).toMatchObject({snapshotId:"older",calendarEventId:"ev_row",ticker:"TEST"});
+});
