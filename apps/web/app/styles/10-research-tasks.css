@@ -434,20 +434,30 @@
     gap: 4px;
   }
 }
-/* Daily technical diagnosis: score rail, chart and divided evidence, not a second chart state. */
+/* The chart, its score and the diagnosis share one surface divided by hairlines. */
 .mx-tech-workspace {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 230px;
-  gap: 20px;
-  align-items: start;
-}
-/* The diagnosis spans the chart column. Keep this class apart from .mx-tech-evidence,
-   whose direct children are flex factor rows. */
-.mx-tech-diagnosis-slot {
+  grid-template-columns: minmax(0, 1fr) 248px;
   min-width: 0;
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-border);
+  border-radius: 12px;
+  box-shadow: var(--mx-shadow);
+}
+/* The diagnosis spans the surface below the chart and score. Keep this class apart from
+   .mx-tech-evidence, whose direct children are flex factor rows. */
+.mx-tech-diagnosis-slot {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border-top: 1px solid var(--mx-border);
+}
+.mx-tech-diagnosis-slot > section {
+  padding: 18px 20px 10px;
 }
 .mx-tech-rail {
-  grid-row: span 2;
+  min-width: 0;
+  padding: 16px 20px;
+  border-inline-start: 1px solid var(--mx-border);
 }
 .mx-tech-main {
   min-width: 0;
@@ -689,7 +699,8 @@
 }
 @media (max-width: 1000px) {
   .mx-tech-rail {
-    grid-row: auto;
+    border-inline-start: 0;
+    border-top: 1px solid var(--mx-border);
   }
   .mx-tech-workspace {
     grid-template-columns: minmax(0, 1fr);

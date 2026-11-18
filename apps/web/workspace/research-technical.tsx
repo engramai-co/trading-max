@@ -65,8 +65,8 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
   const [opened, setOpened] = useState<string | null>("trend");
   const tech = data.technical;
   const breakdown = tech?.scoreBreakdown;
-  if (!tech) return <Panel title={t("技术诊断", "Technical diagnosis")}><Empty title={t("技术诊断尚未就绪", "Technical diagnosis unavailable")} /></Panel>;
-  return <Panel className="mx-tech-diagnosis" title={t("技术诊断", "Technical diagnosis")}
+  if (!tech) return <Panel bare title={t("技术诊断", "Technical diagnosis")}><Empty title={t("技术诊断尚未就绪", "Technical diagnosis unavailable")} /></Panel>;
+  return <Panel bare className="mx-tech-diagnosis" title={t("技术诊断", "Technical diagnosis")}
     help={t("每组右侧的数字是它对总分的影响：现有评分规则实际加减的分数，不是四个独立的百分制评分。缺失读数不参与评分；原始指标仍可展开查看。", "The number beside each group is its contribution to the total score: the points the existing scoring rules actually add or subtract, not four independent /100 scores. Missing readings add no points; original metrics remain available below.")}>
     {breakdown ? <div>{breakdown.groups.map((g) => {
       const open = opened === g.key;
@@ -105,9 +105,9 @@ export function TechnicalWorkspace({ ticker, runId, data, pending, error, retry,
   return <ResearchReading sections={seasonality ? technicalSections : technicalSections.slice(0, 2)} parameter="technicalView">
     <div className="mx-tech-workspace">
       <div id="research-price" className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} technical compactChart context={data} /></div>
-      <Panel className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
+      <Panel bare className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
       <div id="research-data" className="mx-tech-diagnosis-slot">{data ? <TechnicalDiagnosis data={data} />
-        : <Panel title={t("技术诊断", "Technical diagnosis")}>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}</div>
+        : <Panel bare title={t("技术诊断", "Technical diagnosis")}>{error ? <QueryError retry={retry} /> : pending ? <Pending /> : <Empty title="—" />}</Panel>}</div>
     </div>
     {seasonality}
   </ResearchReading>;

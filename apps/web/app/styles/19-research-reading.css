@@ -247,7 +247,7 @@
 .mx-draft-status:empty {
   margin: 0;
 }
-/* A floating index grows from its button over the reading on a solid card; its text stays faint
+/* A floating index grows from its button as frosted glass over the reading; its text stays faint
    until the reader points at it. */
 @container research-reading (min-width: 921px) {
   .mx-reading-layout[data-index="float"] .mx-section-panel {
@@ -256,9 +256,12 @@
     right: -5px;
     width: 184px;
     padding: 4px 4px 8px;
-    border: 1px solid var(--mx-border);
+    border: 1px solid color-mix(in srgb, var(--mx-border) 70%, transparent);
     border-radius: 12px;
-    background: var(--mx-surface);
+    /* A fine grain over a thin tint gives the blur a frosted surface. */
+    background: url("/textures/frost-grain.svg"), color-mix(in srgb, var(--mx-surface) 22%, transparent);
+    -webkit-backdrop-filter: blur(12px) saturate(1.5);
+    backdrop-filter: blur(12px) saturate(1.5);
     box-shadow: 0 8px 28px rgb(17 24 39 / 10%);
   }
   .mx-reading-layout[data-index="float"] .mx-section-index {

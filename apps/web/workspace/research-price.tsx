@@ -783,6 +783,7 @@ export function PriceHistory({
   return (
     <>
       <Panel
+        bare={compactChart}
         className={compactChart ? "mx-tech-chart" : undefined}
         title={[t("价格走势", "Price history"), quoteUnit(unit).currency].filter(Boolean).join(" · ")}
         action={<Button ref={fullButton} variant="default" size="compact-sm" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}

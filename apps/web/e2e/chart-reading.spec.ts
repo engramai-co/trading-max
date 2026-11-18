@@ -97,9 +97,11 @@ test.describe("primary chart reading", () => {
       await expect(chart).toBeVisible();
       await expect(readout).toContainText("Open");
       await expect(chartPanel.getByRole("button", { name: "Candles" })).toHaveAttribute("aria-pressed", "true");
-      // The diagnosis below the chart spans the chart column instead of shrinking to its rows.
-      const [chartBox, diagnosisBox] = await Promise.all([chartPanel.boundingBox(), page.locator(".mx-tech-diagnosis").boundingBox()]);
-      expect(Math.abs(diagnosisBox!.width - chartBox!.width)).toBeLessThanOrEqual(2);
+      // The chart, score and diagnosis share one surface; the diagnosis spans it below them.
+      const [surfaceBox, chartBox, diagnosisBox] = await Promise.all([
+        page.locator(".mx-tech-workspace").boundingBox(), chartPanel.boundingBox(), page.locator(".mx-tech-diagnosis").boundingBox(),
+      ]);
+      expect(Math.abs(diagnosisBox!.width - (surfaceBox!.width - 2))).toBeLessThanOrEqual(2);
       expect(diagnosisBox!.x).toBeCloseTo(chartBox!.x, 0);
       if (width === 1100) {
         const [plot, score] = await Promise.all([chart.boundingBox(), page.locator(".mx-tech-rail").boundingBox()]);
