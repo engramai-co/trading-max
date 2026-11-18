@@ -16,6 +16,7 @@ from trading_max.portfolio_math import benchmark_comparison, in_range, nav_numbe
 from trading_max.research.held_funds import FUND_PRICES_KEY
 
 from ..dashboard import _benchmark_series
+from ..dashboard_models import ResearchPriceSeries
 from ..projections.day_change import measures_broker_observation, within_trading_days
 from ..projections.nav import nav_series
 from ..projections.values import csv_rows
@@ -466,7 +467,7 @@ TRADE_MARKERS = "account/trade_markers.json"
 
 
 def dated_events(
-    read: _Read, args: MomentsArgs, codes: set[str]
+    read: _Read, args: MomentsArgs, codes: set[str], series: ResearchPriceSeries
 ) -> tuple[list[dict], list[str], list[str]]:
     """Dated evidence for the selected listing. Extra sources can supply the same event rows."""
     events = []
@@ -515,28 +516,29 @@ def dated_events(
     for row in _rows(filing_evidence.get("filings")):
         add(row.get("date"), "filing", row.get("accession") or row.get("id"))
     scopes = {CODE_SCOPE[code] for code in codes}
-    marker_rows = (
-        (read.read(TRADE_MARKERS) or {}).get("rows") if scopes & {"invest", "isa"} else None
-    )
-    if isinstance(marker_rows, list):
-        keys.append(TRADE_MARKERS)
-    elif scopes & {"invest", "isa"}:
+    if not scopes & {"invest", "isa"}:
+        return events, keys, issues
+    if series.unresolved_trade_accounts is None:
         issues.append("trade_markers_unavailable")
-    for row in _rows(marker_rows):
-        if str(row.get("ticker") or "").strip().upper() != args.ticker:
-            continue
-        # Mixed-account aggregate markers cannot stand in for an individual account's trade.
-        fills = [f for f in _rows(row.get("fills")) if f.get("account") in scopes]
-        sides = {f.get("side") for f in fills}
+        return events, keys, issues
+    keys.append(TRADE_MARKERS)
+    if any(
+        args.start <= day <= args.end and accounts & scopes
+        for day, accounts in series.unresolved_trade_accounts.items()
+    ):
+        issues.append("trade_listing_unresolved")
+    for row in series.trade_markers:
+        # The chart resolves listing identity. Limit its marker to the authorised accounts.
+        sides = {f.side for f in row.fills if f.account in scopes}
         marker = {
             frozenset({"buy", "sell"}): "T",
             frozenset({"buy"}): "B",
             frozenset({"sell"}): "S",
         }.get(frozenset(sides))
-        if marker is None and row.get("accounts") and set(row["accounts"]) <= scopes:
-            marker = row.get("kind")
-        if marker in {"B", "S", "T"}:
-            add(row.get("date"), "own_trade", marker)
+        if not row.fills and row.accounts and set(row.accounts) <= scopes:
+            marker = row.kind
+        if marker:
+            add(row.date, "own_trade", marker)
     return events, keys, issues
 
 
@@ -566,7 +568,10 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         return read.missing("displayed_price_series_mismatch", keys=[key])
     bars = [p.model_dump(mode="json") for p in series.points]
     events, keys, issues = dated_events(
-        read, args.model_copy(update={"ticker": series.published_bar_ticker}), codes
+        read,
+        args.model_copy(update={"ticker": series.published_bar_ticker}),
+        codes,
+        series,
     )
     moments = key_moments(bars, events, args.start, args.end)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)

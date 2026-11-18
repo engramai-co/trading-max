@@ -142,7 +142,11 @@ visible days. Among dates with evidence, the better rank wins, with the
 earlier date breaking a tie. The chart and reading resolve the same requested
 listing, including exchange-qualified watchlist aliases. A run captures its
 aliases at the start and reads prices and events from its pinned snapshot.
-Events must match the ticker on the published bar row. If the aliases cannot
+Events must match the listing on the published bar row. The chart resolves each
+new broker fill by its recorded instrument code. Older markers can use a ticker
+when the published listings and broker positions identify a single match.
+Key moments use the chart's resolved trades and report `trade_listing_unresolved`
+for an ambiguous trade in the selected account and date range. If the aliases cannot
 be read, key moments return an unavailable reading. Their evidence IDs include
 the resolved `publishedSeriesId`, which identifies the price artifact and ticker.
 A chart caller passes it as `published_series_id` so a newer publication cannot be
