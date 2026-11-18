@@ -345,6 +345,8 @@ def test_held_fund_directory_uses_broker_listings_and_published_share_classes(bo
             "Synthetic issuer",
         )
     assert boundary_client.get("/v1/research/NEW.L/fund").json()["state"] == "pending"
+    pending_snapshot = boundary_client.get("/v1/research/NEW.L").json()
+    assert pending_snapshot["fundamentals"]["metrics"]["quoteType"] == "FUND"
     for view, field in (
         ("analyst", "analyst"),
         ("options", "options"),
@@ -558,3 +560,31 @@ def test_public_peer_lens_scores_bars_without_publishing_research(boundary_clien
     assert data["technicalSummary"]["score"] is not None
     assert not client.get("/v1/watchlist").json()["items"]
     assert store.latest_manifest().run_id == immutable.manifest.run_id
+
+
+def test_public_mutual_fund_retains_its_product_type(boundary_client, monkeypatch):
+    from services.api.trading_max_api.models import SecuritySearchResult
+
+    app = boundary_client.app
+    store = app.state.store
+    ref = store.immutable_artifacts.put_json(key="research/coverage.json", payload={"rows": []})
+    store.immutable_snapshots.publish(scope="research", source="synthetic", artifacts=[ref])
+    monkeypatch.setattr(
+        app.state.security_search,
+        "exact",
+        lambda _: SecuritySearchResult(
+            ticker="SYN",
+            name="Synthetic Mutual Fund",
+            security_type="MUTUALFUND",
+            exchange="UN",
+            exchange_source="openfigi",
+            figi="",
+            bloomberg_ticker="",
+        ),
+    )
+    result = boundary_client.get("/v1/research/SYN/lens/fundamentals?preview=true").json()
+    assert (
+        result["context"]["assetType"]
+        == result["fundamentals"]["metrics"]["quoteType"]
+        == "MUTUALFUND"
+    )

@@ -8,6 +8,7 @@ import pandas as pd
 from trading_max.research.calendar import session_schedule
 from trading_max.research.facts import ResearchCapability, ResearchContext, make_quote
 from trading_max.research.fund_references import us_fund
+from trading_max.research.held_funds import observed_product
 from trading_max.research.technical import analyze_ticker
 from trading_max.research.venues import (
     VenueConflict,
@@ -34,9 +35,10 @@ def public_lens(
 ) -> ResearchLensSnapshot:
     """Build a transient view without modifying the watchlist or a published run."""
     ticker = security.ticker
-    is_fund = (security.security_type or "").upper() in {"ETF", "ETP", "MUTUALFUND"}
     reference = us_fund(ticker)
-    asset_type = "ETF" if is_fund or reference else "EQUITY"
+    asset_type = observed_product(security.security_type, "ETF" if reference else None) or "UNKNOWN"
+    if asset_type == "CONFLICT":
+        asset_type = "UNKNOWN"
     market = {}
     metrics = {"fullExchangeName": security.exchange, "quoteType": asset_type}
     technical = None

@@ -968,9 +968,17 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> ResearchTickerSnapshot:
-        if listing := self.held_fund(ticker, manifest):
+        ticker = ticker.strip().upper()
+        exchanges = self.watchlist.listing_exchanges()
+        if listing := self.held_fund(ticker, manifest, exchanges):
             lens = self._fund_lens(
-                listing.ticker, "technical", manifest, detail="full", listing=listing
+                ticker,
+                listing.ticker,
+                "technical",
+                manifest,
+                exchanges,
+                detail="full",
+                listing=listing,
             )
             return ResearchTickerSnapshot(
                 ticker=listing.ticker,
@@ -978,7 +986,7 @@ class ResearchLedger:
                 generated_at=manifest.created_at,
                 market=lens.market,
                 technical=lens.technical.model_dump() if lens.technical else None,
-                fundamentals={"metrics": {"quoteType": "ETF"}},
+                fundamentals={"metrics": {"quoteType": lens.context.asset_type}},
                 portfolio_impact=self.portfolio_impact(listing.ticker, manifest),
             )
         ticker = self._route_ticker(ticker)
@@ -1433,9 +1441,11 @@ class ResearchLedger:
 
     def _fund_lens(
         self,
+        requested: str,
         ticker: str,
         view: ResearchLensName,
         manifest: SnapshotManifest,
+        exchanges: dict[str, tuple[VenueClaim, ...]],
         *,
         detail: str,
         listing: FundListingIdentity | None = None,
@@ -1509,15 +1519,20 @@ class ResearchLedger:
             else None,
         }
         fundamental = {"metrics": metrics, "currency": "USD" if reference else None}
-        exchange_claims = self.watchlist.listing_exchanges()
-        claims = [*exchange_claims.get(ticker, ()), *row_claims(ticker, price or {}, exact_metrics)]
+        claims = [
+            *exchanges.get(requested, ()),
+            *exchanges.get(ticker, ()),
+            *row_claims(ticker, price or {}, exact_metrics),
+        ]
         if listing:
             claims.extend(
                 (VenueClaim("mic", listing.mic), watchlist_claim(ticker, listing.exchange))
             )
         if reference:
             claims.append(provider_claim(reference.exchange, ticker))
-        venue = resolve_venue(ticker, *claims)
+        venue = resolve_venue(requested, *claims)
+        if venue.conflict:
+            market = price = None
         quote = make_quote(ticker, market or {}, fundamental, venue=venue)
         previous = number(price.get("previous_close")) if price else None
         if (
@@ -1528,7 +1543,7 @@ class ResearchLedger:
         ):
             quote.change = quote.price - previous
             quote.change_pct = quote.change / previous
-        if listing and not price:
+        if listing and not price and not venue.conflict:
             position = next(iter(self._held_funds(manifest)[listing].values()))["positions"][0]
             currency, _ = major_quote_unit(str(position.get("price_currency") or ""))
             quote.currency = currency or quote.currency
@@ -1625,10 +1640,12 @@ class ResearchLedger:
         exchanges = self.watchlist.listing_exchanges()
         listing = self.held_fund(ticker, manifest, exchanges)
         if listing:
-            return self._fund_lens(listing.ticker, view, manifest, listing=listing, detail=detail)
+            return self._fund_lens(
+                requested, listing.ticker, view, manifest, exchanges, listing=listing, detail=detail
+            )
         ticker = self._route_ticker(ticker, exchanges)
         if us_fund(ticker):
-            return self._fund_lens(ticker, view, manifest, detail=detail)
+            return self._fund_lens(requested, ticker, view, manifest, exchanges, detail=detail)
         market = _find(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
             ticker=ticker,
