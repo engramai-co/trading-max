@@ -662,6 +662,8 @@ class AutomationSettings(ApiModel):
     intraday_window_start: str
     intraday_window_end: str
     intraday_weekdays: list[int] = Field(default_factory=list)
+    # Local notices of new evidence for saved valuation versions; off by default.
+    evidence_notices_enabled: bool = False
     revision: int = Field(ge=1)
     updated_at: datetime
 
@@ -672,6 +674,7 @@ class AutomationSettingsUpdate(ApiModel):
     research_enabled: bool | None = None
     nightly_enabled: bool | None = None
     intraday_enabled: bool | None = None
+    evidence_notices_enabled: bool | None = None
     expected_revision: int | None = Field(default=None, ge=1)
 
 

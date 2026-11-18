@@ -131,6 +131,7 @@ def _automation_settings(request: Request) -> AutomationSettings:
         intraday_window_start=window_start,
         intraday_window_end=window_end,
         intraday_weekdays=list(intraday.weekdays),
+        evidence_notices_enabled=preferences.evidence_notices_enabled,
         revision=preferences.revision,
         updated_at=preferences.updated_at,
     )

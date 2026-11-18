@@ -105,6 +105,7 @@ class ResearchJournalStore:
         self.root = state_root / "research-journal"
         self.lock = threading.RLock()
         self.baselines = SingleFlightCache(capacity=128)
+        self.latest = SingleFlightCache(capacity=256)
 
     def _path(self, ticker: str) -> Path:
         return self.root / (fingerprint(ticker.upper()) + ".json")
@@ -118,6 +119,35 @@ class ResearchJournalStore:
 
     def _save(self, state: ResearchJournal) -> None:
         _atomic_write(self._path(state.ticker), state.model_dump(mode="json"))
+
+    def _newest(self, path: Path) -> tuple[str, SavedResearchModel | None] | None:
+        """A journal's security and the version an editor opens from, read once per write."""
+        try:
+            stat = path.stat()
+        except FileNotFoundError:
+            return None
+
+        def read():
+            journal = ResearchJournal.model_validate_json(path.read_text())
+            return journal.ticker, next((m for m in journal.models if m.preview.scenarios), None)
+
+        return self.latest.get_or_compute((path.name, stat.st_ino, stat.st_mtime_ns), read)
+
+    def latest_model(self, ticker: str) -> SavedResearchModel | None:
+        newest = self._newest(self._path(ticker))
+        return newest[1] if newest else None
+
+    def latest_models(self) -> list[tuple[str, SavedResearchModel]]:
+        """Each security's newest saved version, in no particular order."""
+        found = []
+        for path in sorted(self.root.glob("*.json")) if self.root.is_dir() else ():
+            try:
+                newest = self._newest(path)
+            except ValueError:
+                continue  # an unreadable journal fails where it is opened, not here
+            if newest and newest[1] is not None:
+                found.append((newest[0], newest[1]))
+        return found
 
     def set_baseline(self, ticker: str, model_id: str | None) -> ResearchJournal:
         with self.lock:

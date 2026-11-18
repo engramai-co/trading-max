@@ -2609,6 +2609,11 @@
             "title": "Dailyreconciliationlocaltime",
             "type": "string"
           },
+          "evidenceNoticesEnabled": {
+            "default": false,
+            "title": "Evidencenoticesenabled",
+            "type": "boolean"
+          },
           "intradayEnabled": {
             "title": "Intradayenabled",
             "type": "boolean"
@@ -2748,6 +2753,17 @@
       },
       "AutomationSettingsUpdate": {
         "properties": {
+          "evidenceNoticesEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidencenoticesenabled"
+          },
           "expectedRevision": {
             "anyOf": [
               {
@@ -9144,6 +9160,182 @@
         "title": "EvidenceLocator",
         "type": "object"
       },
+      "EvidenceNotice": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceNoticeItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "modelId": {
+            "title": "Modelid",
+            "type": "string"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "title": "Savedat",
+            "type": "string"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "modelId",
+          "savedAt",
+          "items"
+        ],
+        "title": "EvidenceNotice",
+        "type": "object"
+      },
+      "EvidenceNoticeItem": {
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "statements",
+              "restatement",
+              "estimate"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "metric": {
+            "anyOf": [
+              {
+                "enum": [
+                  "consensusEps",
+                  "consensusRevenueGrowth"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric"
+          },
+          "periodEnd": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodend"
+          },
+          "periodId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodid"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saved"
+          }
+        },
+        "required": [
+          "key",
+          "kind"
+        ],
+        "title": "EvidenceNoticeItem",
+        "type": "object"
+      },
+      "EvidenceNotices": {
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceNotice"
+            },
+            "title": "Notices",
+            "type": "array"
+          },
+          "runId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Runid"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "title": "EvidenceNotices",
+        "type": "object"
+      },
       "EvidencePeriod": {
         "additionalProperties": false,
         "properties": {
@@ -9273,6 +9465,32 @@
           "version"
         ],
         "title": "EvidenceRef",
+        "type": "object"
+      },
+      "EvidenceSeen": {
+        "additionalProperties": false,
+        "properties": {
+          "keys": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "title": "Keys",
+            "type": "array"
+          },
+          "modelId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Modelid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "modelId",
+          "keys"
+        ],
+        "title": "EvidenceSeen",
         "type": "object"
       },
       "ExposureRow": {
@@ -16197,6 +16415,32 @@
           "state"
         ],
         "title": "MetricObservation",
+        "type": "object"
+      },
+      "ModelVersionAt": {
+        "additionalProperties": false,
+        "description": "The newest version saved by the end of a day, as Review reads a decision.",
+        "properties": {
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SavedModelSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "day"
+        ],
+        "title": "ModelVersionAt",
         "type": "object"
       },
       "Moment": {
@@ -24055,6 +24299,46 @@
           "previewId"
         ],
         "title": "SavedModelReference",
+        "type": "object"
+      },
+      "SavedModelSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "family": {
+            "enum": [
+              "cash-flow",
+              "net-income",
+              "residual-income"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
+          "horizon": {
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "savedAt": {
+            "format": "date-time",
+            "title": "Savedat",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "savedAt",
+          "family",
+          "horizon",
+          "currency"
+        ],
+        "title": "SavedModelSummary",
         "type": "object"
       },
       "SavedOrigin": {
@@ -32610,6 +32894,59 @@
         ]
       }
     },
+    "/v1/research/{ticker}/models/as-of": {
+      "get": {
+        "description": "The newest version saved by the end of a decision's day, which is a UTC ledger day.",
+        "operationId": "research_model_as_of_v1_research__ticker__models_as_of_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "day",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelVersionAt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Research Model As Of",
+        "tags": [
+          "research"
+        ]
+      }
+    },
     "/v1/research/{ticker}/models/baseline": {
       "put": {
         "operationId": "research_model_baseline_v1_research__ticker__models_baseline_put",
@@ -36007,6 +36344,95 @@
         "summary": "Upsert Valuation Assumptions",
         "tags": [
           "settings"
+        ]
+      }
+    },
+    "/v1/valuation/evidence-notices": {
+      "get": {
+        "operationId": "evidence_notices_v1_valuation_evidence_notices_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceNotices"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Evidence Notices",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v1/valuation/evidence-notices/{ticker}/seen": {
+      "post": {
+        "operationId": "evidence_notices_seen_v1_valuation_evidence_notices__ticker__seen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceSeen"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceNotices"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Evidence Notices Seen",
+        "tags": [
+          "research"
         ]
       }
     },

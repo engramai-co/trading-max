@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from trading_max.research.facts import number
 from trading_max.research.valuation_evidence import Metric
 from trading_max.research.valuation_maintenance import (
+    EstimateChange,
     ValuationMaintenance,
     ValuationMaintenanceRequest,
     assumption_changes,
@@ -27,6 +28,7 @@ from trading_max.research.valuation_preview import (
     locked_set,
 )
 
+from ..models import SnapshotManifest
 from ..research_journal import SavedResearchModel
 from .dependencies import app_service, latest_or_503
 from .valuation_preview import family_valuation_preview
@@ -82,6 +84,28 @@ def _current_revenue_growth(analyst: dict[str, Any] | None):
     return points
 
 
+def saved_estimate_changes(
+    ticker: str,
+    request: Request,
+    manifest: SnapshotManifest,
+    saved: SavedResearchModel,
+    listing: str | None,
+) -> list[EstimateChange]:
+    """Consensus at the save, from the local archive and the version itself, and now."""
+    eps = []
+    if listing:
+        archive = app_service(request, "estimate_history")
+        symbol = ticker.upper()
+        before = archive.valuation_window(symbol, listing, cutoff=saved.saved_at.astimezone(UTC))
+        now = archive.valuation_window(symbol, listing, cutoff=manifest.created_at)
+        eps = eps_changes(before[0] if before else None, now[0] if now else None)
+    analyst = app_service(request, "research").lens_snapshot(ticker, "analyst", manifest).analyst
+    return [
+        *eps,
+        *revenue_growth_changes(_saved_revenue_growth(saved), _current_revenue_growth(analyst)),
+    ]
+
+
 @router.post("/v2/research/{ticker}/valuation-maintenance", response_model=ValuationMaintenance)
 def valuation_maintenance(
     ticker: str, body: ValuationMaintenanceRequest, request: Request
@@ -121,18 +145,7 @@ def valuation_maintenance(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     listing = lens.context.quote.listing if lens.context else None
-    archive = app_service(request, "estimate_history")
-    eps = []
-    if listing:
-        symbol = ticker.upper()
-        before = archive.valuation_window(symbol, listing, cutoff=saved.saved_at.astimezone(UTC))
-        now = archive.valuation_window(symbol, listing, cutoff=manifest.created_at)
-        eps = eps_changes(before[0] if before else None, now[0] if now else None)
-    analyst = research.lens_snapshot(ticker, "analyst", manifest).analyst
-    estimates = [
-        *eps,
-        *revenue_growth_changes(_saved_revenue_growth(saved), _current_revenue_growth(analyst)),
-    ]
+    estimates = saved_estimate_changes(ticker, request, manifest, saved, listing)
     locked = locked_set(body.locked_inputs)
     return ValuationMaintenance(
         model_id=saved.id,
