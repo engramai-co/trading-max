@@ -142,9 +142,8 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await page.goto("/research?ticker=SYNT&view=fundamentals");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","true");
     await expect(digest).toBeVisible();
-    // The brief opens the reading column, ahead of the reporting-period controls and first section.
-    expect(await digest.evaluate(el => el === el.parentElement?.firstElementChild &&
-      !!el.parentElement?.querySelector(".mx-research-context-toolbar"))).toBe(true);
+    // Without statements the brief still opens the lens, above its empty state.
+    expect(await digest.evaluate(el => el === el.parentElement?.firstElementChild)).toBe(true);
     await shot("financials");
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(isMobile?390:1440);
   });
