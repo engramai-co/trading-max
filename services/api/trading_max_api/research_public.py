@@ -21,7 +21,7 @@ from .dashboard_models import ResearchLensName, ResearchLensSnapshot
 from .models import SecuritySearchResult, SnapshotManifest
 from .projections.research import technical_rows
 from .research import _technical_summary
-from .research_prices import SecurityPriceHistory
+from .research_prices import SecurityPriceHistory, verified_provider_claims
 
 LOGGER = logging.getLogger(__name__)
 
@@ -55,7 +55,7 @@ def public_lens(
             series = (
                 price_reader.alpaca_etf(ticker, "1d") if reference else None
             ) or price_reader.get(ticker, "1d", market_etf=True)
-            venue = resolve_venue(ticker, *claims, *series.venue_claims)
+            venue = resolve_venue(ticker, *claims, *verified_provider_claims(ticker, series))
             if venue.conflict:
                 raise VenueConflict("public quote belongs to another venue")
             frame = pd.DataFrame(

@@ -15,6 +15,7 @@ from trading_max.analytics.etf_peers import ETFPeerComparison
 from trading_max.domain.etf_depth import ETF_PEERS_KEY, HMRC_REPORTING_KEY, UKReportingFund
 from trading_max.infrastructure.alpaca_market_prices import is_alpaca_listing
 from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_benchmark
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import number
 from trading_max.research.fund_references import us_fund, us_fund_listing
@@ -548,6 +549,7 @@ def research_prices(
     import re
 
     from ..research_prices import price_window as project_window
+    from ..research_prices import verified_provider_claims
 
     if not re.fullmatch(r"[A-Za-z0-9^=._-]{1,32}", ticker):
         raise HTTPException(status_code=422, detail="invalid-security-symbol")
@@ -572,6 +574,7 @@ def research_prices(
 
     def live_window(series: ResearchPriceSeries) -> ResearchPriceSeries:
         try:
+            verified_provider_claims(symbol, series)
             venue = research.price_venue(selected, series, manifest)
         except VenueConflict as exc:
             raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE) from exc
@@ -632,10 +635,11 @@ def research_prices(
             series = None
         if series is None or series.symbol.strip().upper() != reference.ticker:
             raise HTTPException(status_code=404, detail=LISTING_PRICES_UNAVAILABLE)
+        currency, divisor = major_quote_unit(series.currency or "")
         points = [
             PriceSeriesPoint(
                 date=datetime.fromtimestamp(stamp, UTC).date().isoformat(),
-                close=close,
+                close=close / divisor,
                 open=None,
                 high=None,
                 low=None,
@@ -653,8 +657,8 @@ def research_prices(
             ResearchPriceSeries(
                 ticker=series.symbol.strip().upper(),
                 quote_exchange=series.exchange_name or series.full_exchange_name,
-                published_bar_ticker=series.symbol,
-                currency="USD",
+                published_bar_ticker=series.provider_symbol,
+                currency=currency,
                 as_of=points[-1].date,
                 requested_interval=interval,
                 available_sessions=len(points),
@@ -662,7 +666,7 @@ def research_prices(
                 timezone=series.timezone,
                 source=series.source,
                 venue_claims=row_claims(
-                    series.symbol,
+                    series.provider_symbol,
                     {
                         "mic": series.mic,
                         "exchangeName": series.exchange_name,

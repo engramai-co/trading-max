@@ -1,7 +1,14 @@
 """Research selects prices and citations from the identified listing."""
 
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from types import SimpleNamespace
+
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from trading_max.infrastructure import shared_market_prices as shared
 
 from services.api.tests.test_assistant_insights import (
     DATES,
@@ -17,6 +24,7 @@ from services.api.tests.test_assistant_insights import (
 from services.api.tests.test_assistant_insights import (
     bound as bound,
 )
+from services.api.trading_max_api import research_prices
 
 
 @pytest.mark.parametrize("source", ["live", "live-without-venue", "unverified-alias"])
@@ -53,6 +61,12 @@ def test_london_route_rejects_unverified_or_foreign_prices(bound, monkeypatch, s
         params={"interval": "1d" if source == "unverified-alias" else "60m"},
     )
     assert response.status_code == 404
+    assert response.json() == json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "apps/web/tests/fixtures/listing-prices-unavailable.json"
+        ).read_text()
+    )
     assert not app.state.research._observed_prices
 
 
@@ -139,3 +153,79 @@ def test_observed_fund_distribution_qualifies_as_a_moment(bound):
         for m in result["data"]["items"]
         for e in m["events"]
     )
+
+
+@pytest.mark.parametrize("provider_identity", [{}, {"exchangeName": "LSE"}, {"symbol": "TEST.L"}])
+def test_live_route_requires_independent_listing_evidence(bound, monkeypatch, provider_identity):
+    app, _, _ = bound
+    frame = pd.DataFrame(
+        {
+            "Open": [31, 33],
+            "High": [33, 35],
+            "Low": [30, 32],
+            "Close": [32, 34],
+            "Volume": [100, 110],
+        },
+        index=pd.date_range("2026-01-28 13:30", periods=2, freq="h", tz="America/New_York"),
+    )
+    proxy = SimpleNamespace(
+        history=lambda **kw: frame,
+        get_history_metadata=lambda: {
+            "currency": "USD",
+            **provider_identity,
+        },
+    )
+    monkeypatch.setattr(research_prices.yf, "Ticker", lambda ticker: proxy)
+    response = TestClient(app).get("/v1/research/TEST.L/prices?interval=60m")
+    if not provider_identity:
+        chart = response.json()
+        assert response.status_code == 404, (
+            response.status_code,
+            chart.get("ticker"),
+            chart.get("exchangeCalendar"),
+            chart.get("currency"),
+            [row["close"] for row in chart.get("points", [])],
+        )
+    else:
+        assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize(
+    ("identity", "expected"),
+    [
+        ({}, 404),
+        ({"exchangeName": "LSE"}, 404),
+        ({"symbol": "SMH.L"}, 404),
+        ({"symbol": "SMH", "exchangeName": "NMS"}, 200),
+    ],
+)
+def test_shared_close_history_requires_independent_venue_and_currency(
+    bound, monkeypatch, identity, expected
+):
+    app, _, _ = bound
+    now = datetime(2026, 1, 29, 20, tzinfo=UTC)
+    provider_row = {
+        "meta": {"currency": "GBP", **identity},
+        "timestamp": [int(now.timestamp())],
+        "indicators": {"quote": [{"close": [85.0]}]},
+    }
+    monkeypatch.setattr(
+        shared,
+        "_yahoo_get",
+        lambda *_args: SimpleNamespace(
+            status_code=200, json=lambda: {"chart": {"result": [provider_row]}}
+        ),
+    )
+    monkeypatch.setattr(app.state, "market_prices", shared.SharedMarketPrices())
+    monkeypatch.setattr(app.state.security_prices, "alpaca_etf", lambda *args: None)
+
+    def no_ohlc(*args, **kwargs):
+        raise ValueError("synthetic fixture has only closes")
+
+    monkeypatch.setattr(app.state.security_prices, "get", no_ohlc)
+    response = TestClient(app).get("/v1/research/SMH/prices?interval=60m")
+    assert response.status_code == expected
+    if expected == 200:
+        chart = response.json()
+        assert chart["currency"] == "GBP"
+        assert chart["points"][0]["close"] == 85.0

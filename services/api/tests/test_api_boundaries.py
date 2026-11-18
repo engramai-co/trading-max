@@ -445,7 +445,15 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
 
     def prices(ticker):
         assert ticker == "SMH"
-        return SparkSeries(ticker, (int(now.timestamp()),), (101.0,), fetched_at=now)
+        return SparkSeries(
+            ticker,
+            (int(now.timestamp()),),
+            (101.0,),
+            fetched_at=now,
+            provider_symbol=ticker,
+            exchange_name="NMS",
+            currency="USD",
+        )
 
     def unavailable(*_args, **_kwargs):
         raise ValueError("no synthetic OHLC")
@@ -474,7 +482,7 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
         {"symbol": "OTHER", "exchangeName": "NMS"},
     ):
         provider_row = {
-            "meta": observed,
+            "meta": {**observed, "currency": "USD"},
             "timestamp": [int(now.timestamp())],
             "indicators": {"quote": [{"close": [101.0]}]},
         }
