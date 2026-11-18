@@ -271,6 +271,10 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
     if not row:
         return read.missing("headline_unavailable")
     return read.result(
-        data={"ticker": args.ticker, **{k: row[k] for k in ("title", "publisher", "url", "date")}},
+        data={
+            "ticker": args.ticker,
+            **{k: row[k] for k in ("title", "publisher", "url")},
+            "date": row.get("instant") or row["date"],
+        },
         keys=[NEWS_KEY],
     )

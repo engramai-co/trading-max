@@ -7,12 +7,15 @@ from dataclasses import replace
 from datetime import UTC, date, datetime
 from itertools import pairwise
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
+from exchange_calendars.errors import CalendarError
 from pydantic import AfterValidator, StringConstraints, model_validator
 from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
+from trading_max.research.calendar import listing_calendar, market_calendar
 from trading_max.research.held_funds import FUND_PRICES_KEY
 from trading_max.research.news import NEWS_KEY, web_url
 
@@ -29,6 +32,7 @@ from .tools import (
     CODE_SCOPE,
     DECISIONS,
     FINANCIALS,
+    FUNDAMENTALS,
     HISTORY_KEYS,
     LIVE,
     TECHNICAL,
@@ -49,6 +53,7 @@ from .tools import (
     _Read,
     _rows,
     _text,
+    _ticker_row,
 )
 
 
@@ -550,11 +555,34 @@ def moment_headlines(read: _Read, ticker: str) -> list[dict]:
     ]
 
 
-def news_events(read: _Read, ticker: str) -> list[dict]:
-    return [
-        {"date": row["date"][:10], "kind": "news", "reference": str(row.get("id") or row["url"])}
-        for row in moment_headlines(read, ticker)
-    ]
+def news_events(read: _Read, ticker: str, *, zone=None, calendar=None) -> list[dict]:
+    rows = moment_headlines(read, ticker)
+    if not zone and not calendar and any(row.get("instant") for row in rows):
+        listing = _mapped((_ticker_row(read.read(FUNDAMENTALS), ticker) or {}).get("metrics"))
+        zone = listing.get("exchangeTimezoneName")
+        calendar = listing_calendar(ticker, listing.get("fullExchangeName"), zone)
+    events = []
+    for row in rows:
+        published = row["date"][:10]
+        day = published
+        if stamp := row.get("instant"):
+            try:
+                instant = datetime.fromisoformat(stamp)
+                if instant.utcoffset() is None or not (zone or calendar):
+                    continue
+                local = (
+                    ZoneInfo(zone)
+                    if zone
+                    else market_calendar(calendar, instant.year, instant.year).tz
+                )
+                day = instant.astimezone(local).date().isoformat()
+            except (CalendarError, KeyError, TypeError, ValueError, OverflowError):
+                continue
+        event = {"date": day, "kind": "news", "reference": str(row.get("id") or row["url"])}
+        if day != published:
+            event["publication_date"] = published
+        events.append(event)
+    return events
 
 
 def selected_moments(bars, events, args: MomentsArgs) -> list[dict]:
@@ -578,7 +606,11 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         ):
             return read.missing("displayed_index_series_unavailable")
         bars = [{"date": p.at.date().isoformat(), "close": p.value} for p in history.points]
-        events = news_events(read, args.ticker) if history.index.symbol else []
+        events = (
+            news_events(read, args.ticker, calendar=history.index.calendar)
+            if history.index.symbol
+            else []
+        )
         if history.index.kind == "etf-price":
             security_events, keys, issues = dated_events(read, args, codes)
             events.extend(security_events)
@@ -638,7 +670,9 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         codes,
         None if observed else series,
     )
-    events.extend(news_events(read, listing))
+    events.extend(
+        news_events(read, listing, zone=series.timezone, calendar=series.exchange_calendar)
+    )
     keys.append(NEWS_KEY)
     moments = selected_moments(bars, events, args)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)

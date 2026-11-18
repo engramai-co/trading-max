@@ -193,7 +193,9 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
             news = read.read(
                 research.research_headline,
                 research.HeadlineArgs(
-                    ticker=data.get("listing") or data["ticker"], date=date, reference=ref
+                    ticker=data.get("listing") or data["ticker"],
+                    date=event.get("publication_date", date),
+                    reference=ref,
                 ),
             )
             story = news.get("data")

@@ -66,11 +66,11 @@ def analyst(eps=1.25, stamp=AS_OF):
 def setup(tmp_path):
     store = ArtifactStore(tmp_path)
 
-    def publish(eps=1.25, stamp=AS_OF):
+    def publish(eps=1.25, stamp=AS_OF, *, story=STORY):
         return publication(
             store,
             extra_artifacts={
-                NEWS_KEY: {"securities": {"TEST": {"items": [STORY]}}},
+                NEWS_KEY: {"securities": {"TEST": {"items": [story]}}},
                 tools.ANALYST: analyst(eps, stamp),
                 insights.TRADE_MARKERS: {
                     "rows": [
@@ -208,6 +208,33 @@ def test_moments_require_selected_rule_candidate_and_exact_chart(tmp_path):
     )
 
 
+def test_timed_news_is_attached_to_the_exchange_day_and_opens_the_original_headline(tmp_path):
+    publish, _, factory, _, _ = setup(tmp_path)
+    stamp = "2026-01-31T01:00:00+00:00"  # Friday evening in New York.
+    publish(story={**STORY, "date": "2026-01-31", "instant": stamp})
+    deps = factory.for_run()
+    series = deps.price_series("TEST", deps.manifest, limit=2000)
+    selection = MomentContext(
+        ticker="TEST",
+        published_series_id=series.published_series_id,
+        start=DATES[0],
+        end=DATES[-1],
+        date="2026-01-30",
+    )
+    role = role_registry()["key-moment"]
+    reader = RoleTools.pinned(deps, role.allowed_tools)
+    facts = role.facts(reader, selection)
+    news = next(fact for fact in facts if fact.evidence.source == "publisher")
+    assert news.en.startswith("2026-01-30") and news.evidence.arguments["url"] == STORY["url"]
+    assert (
+        reader.read(
+            research.research_headline,
+            research.HeadlineArgs(ticker="TEST", date="2026-01-31", reference=STORY["id"]),
+        )["data"]["date"]
+        == stamp
+    )
+
+
 def test_position_baseline_is_the_last_matching_trade_session_not_an_execution_price(tmp_path):
     _, _, factory, _, _ = setup(tmp_path)
     deps = factory.for_run()
@@ -268,7 +295,7 @@ def test_index_uses_observed_levels_and_only_its_own_dated_news(tmp_path):
     _, _, factory, _, _ = setup(tmp_path)
     key = "f" * 20
     history = SimpleNamespace(
-        index=SimpleNamespace(id="example", symbol="TEST", kind="index"),
+        index=SimpleNamespace(id="example", symbol="TEST", kind="index", calendar="XNYS"),
         range="3M",
         state="available",
         display_interval="1d",

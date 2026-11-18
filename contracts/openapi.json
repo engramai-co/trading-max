@@ -14330,6 +14330,17 @@
             "title": "Kind",
             "type": "string"
           },
+          "publication_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Date"
+          },
           "reference": {
             "title": "Reference",
             "type": "string"

@@ -151,6 +151,7 @@ class MomentEvent(BaseModel):
     date: str
     kind: str
     reference: str
+    publication_date: str | None = None
 
 
 class Moment(BaseModel):
