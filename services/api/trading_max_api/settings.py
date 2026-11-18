@@ -102,6 +102,7 @@ class SettingsRepository:
     @staticmethod
     def _profile(row: Any) -> UserProfile:
         return UserProfile(
+            assistant_enabled=bool(row["assistant_enabled"]),
             profile_id=row["profile_id"],
             display_name=row["display_name"],
             initials=row["initials"],
@@ -117,7 +118,10 @@ class SettingsRepository:
     def get_profile(self) -> UserProfile:
         with self.database.read() as connection:
             row = connection.execute(
-                "SELECT * FROM user_profile WHERE profile_id = 'local'"
+                """SELECT p.*, a.enabled AND a.accepted_consent_revision = ? AS assistant_enabled
+                   FROM user_profile p LEFT JOIN assistant_preferences a
+                   ON a.preference_id = p.profile_id WHERE p.profile_id = 'local'""",
+                (ASSISTANT_CONSENT_REVISION,),
             ).fetchone()
         if row is None:
             raise RuntimeError("local profile was not initialized")

@@ -9,21 +9,6 @@
   color: inherit;
   font: inherit;
 }
-.mx-assistant-panel {
-  position: fixed;
-  inset: 56px 14px 14px auto;
-  z-index: 125;
-  width: 386px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--mx-border);
-  border-radius: 12px;
-  background: var(--mx-surface);
-  color: var(--mx-ink);
-  font-size: 14px;
-}
-.mx-assistant-panel[hidden],
 .mx-assistant-thread[hidden] {
   display: none;
 }
@@ -33,7 +18,6 @@
   min-height: 0;
   flex: 1;
 }
-.mx-assistant-heading,
 .mx-assistant-heading > div,
 .mx-digest-head,
 .mx-reading-title,
@@ -42,13 +26,6 @@
   display: flex;
   align-items: center;
 }
-.mx-assistant-heading {
-  justify-content: space-between;
-  margin: 0 16px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--mx-border);
-}
-.mx-assistant-heading button,
 .mx-assistant-history button:last-child,
 .mx-reading-close {
   display: grid;
@@ -58,10 +35,6 @@
   border-radius: 8px;
   color: var(--mx-muted);
 }
-.mx-assistant-panel svg {
-  width: 18px;
-  height: 18px;
-}
 .mx-assistant-transcript {
   flex: 1;
   overflow: auto;
@@ -69,10 +42,6 @@
   padding: 16px;
   scrollbar-width: thin;
   overflow-wrap: anywhere;
-}
-.mx-assistant-opening {
-  padding: 16px;
-  line-height: 1.65;
 }
 .mx-assistant-transcript .mx-assistant-opening {
   padding: 0;
@@ -273,27 +242,12 @@
   border-inline-start: 1px solid var(--mx-border);
   padding-inline-start: 14px;
 }
-@media (max-width: 1199px) {
-  .mx-assistant-panel {
-    inset: 0 0 0 auto;
-    z-index: 500;
-    width: 400px;
-    border-radius: 0;
-  }
-}
 @media (max-width: 767px) {
-  .mx-assistant-panel {
-    width: 100%;
-    border: 0;
-    padding-top: env(safe-area-inset-top);
-    padding-bottom: env(safe-area-inset-bottom);
-  }
   .mx-assistant-panel button,
   .mx-reading-sheet button,
   .mx-digest button {
     min-height: 44px;
   }
-  .mx-assistant-heading button,
   .mx-assistant-composer button {
     min-width: 44px;
   }
@@ -306,7 +260,6 @@
   }
 }
 @media (hover: hover) {
-  .mx-assistant-heading button:hover,
   .mx-assistant-history button:hover,
   .mx-reading-actions button:hover,
   .mx-assistant-questions button:hover {

@@ -87,7 +87,7 @@ def upcoming(
         raise HTTPException(422, "Unknown display timezone") from None
     deps = request.app.state.assistant.deps_for_run(None, zone.key)
     try:
-        manifest = deps.store.load_manifest(run_id)
+        manifest = request.app.state.store.load_manifest(run_id, require_retained=True)
     except FileNotFoundError:
         raise HTTPException(404, "Snapshot not found") from None
     args = EventArgs.model_validate(query.model_dump(exclude={"timezone"}))

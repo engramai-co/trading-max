@@ -646,6 +646,7 @@ def create_app(
     app.state.assistant = assistant
     app.state.assistant_readings = ReadingService(assistant, assistant_database)
     app.state.validation_secret = validation_secret
+    app.state.retained_returns = SingleFlightCache(4)
     app.state.cached_dashboard = cached_dashboard
     app.state.cached_research = cached_research
     app.state.cached_research_shell = cached_research_shell

@@ -561,6 +561,7 @@ export type AnalysisRun = {
 };
 
 export type UserProfile = {
+  assistantEnabled?: boolean;
   profileId: string;
   displayName: string;
   initials: string;

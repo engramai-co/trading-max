@@ -50,3 +50,74 @@
   outline-offset: 3px;
   scroll-margin-top: 70px;
 }
+
+/* The consent hint uses the same panel before any reading or chat code loads. */
+.mx-assistant-panel {
+  position: fixed;
+  inset: 56px 14px 14px auto;
+  z-index: 125;
+  width: 386px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--mx-border);
+  border-radius: 12px;
+  background: var(--mx-surface);
+  color: var(--mx-ink);
+  font-size: 14px;
+}
+.mx-assistant-panel[hidden] {
+  display: none;
+}
+.mx-assistant-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-assistant-heading button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mx-muted);
+}
+.mx-assistant-panel svg {
+  width: 18px;
+  height: 18px;
+}
+.mx-assistant-opening {
+  padding: 16px;
+  line-height: 1.65;
+}
+@media (max-width: 1199px) {
+  .mx-assistant-panel {
+    inset: 0 0 0 auto;
+    z-index: 500;
+    width: 400px;
+    border-radius: 0;
+  }
+}
+@media (max-width: 767px) {
+  .mx-assistant-panel {
+    width: 100%;
+    border: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .mx-assistant-heading button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+@media (hover: hover) {
+  .mx-assistant-heading button:hover {
+    background: var(--mx-brand-soft);
+  }
+}

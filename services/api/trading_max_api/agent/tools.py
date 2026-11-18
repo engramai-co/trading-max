@@ -37,7 +37,7 @@ from trading_max.research.valuation_evidence import (
     Metric,
 )
 
-from ..dashboard import _benchmark_series
+from ..dashboard import benchmark_series
 from ..dashboard_models import NavPoint
 from ..history_projection import HistoryRange, portfolio_day, scope_points, window_start
 from ..history_reader import load_history
@@ -968,7 +968,7 @@ def compare_benchmarks(ctx: Context, args: BenchmarkArgs) -> Json:
     # a missing benchmark close must never silently shift the comparison back.
     daily = published[-2:] if args.range == "1D" else in_range(published, args.range)
     names = ["VOO", "QQQ", "VT"] if args.benchmark == "ALL" else [args.benchmark]
-    comparison = benchmark_comparison(daily, scope, _benchmark_series(raw), names)
+    comparison = benchmark_comparison(daily, scope, benchmark_series(raw), names)
     keys.append(TECHNICAL)
     points = comparison["points"]
     if len(points) < 2 or not comparison["comparisons"]:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from functools import partial
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -42,148 +42,15 @@ def line(
     )
 
 
-def calendar_days(raw: object) -> list[str]:
-    days = set()
-    for value in raw if isinstance(raw, list) else [raw]:
-        try:
-            days.add(date.fromisoformat(str(value)[:10]).isoformat())
-        except ValueError:
-            continue
-    return sorted(days)
-
-
-def holding_events(read: RoleTools, ticker: str, today: str) -> list[tuple[str, ReadingLine]]:
-    result = []
-    cursor = 0
-    while True:
-        events = read.read(
-            tools.read_research_lens,
-            tools.ResearchArgs(
-                ticker=ticker, lens="analyst", field="earningsEvents", cursor=cursor, limit=20
-            ),
-        )
-        data = events.get("data") or {}
-        for event in data.get("items", []):
-            days = calendar_days(event.get("date"))
-            if (
-                not days
-                or days[0] < today
-                or not event.get("id")
-                or event.get("status") == "reported"
-            ):
-                continue
-            day = days[0]
-            result.append(
-                (
-                    day,
-                    line(
-                        "next",
-                        f"{day} · {ticker} 预计财报",
-                        f"{day} · {ticker} estimated earnings",
-                        events,
-                        "financials",
-                        "read_research_lens",
-                        ticker=ticker,
-                        lens="analyst",
-                        event="earnings",
-                        eventId=event["id"],
-                        date=day,
-                    ),
-                )
-            )
-        cursor = data.get("next_cursor")
-        if cursor is None:
-            break
-    lens = read.read(tools.read_research_lens, tools.ResearchArgs(ticker=ticker, lens="ledger"))
-    calendar = next(
-        (
-            row["value"]
-            for row in (lens.get("data") or {}).get("items", [])
-            if row.get("path") == "/calendar" and isinstance(row.get("value"), dict)
-        ),
-        {},
-    )
-    window = calendar_days(calendar.get("Earnings Date"))
-    if not result and window and window[-1] >= today:
-        span = " – ".join(dict.fromkeys((window[0], window[-1])))
-        result.append(
-            (
-                window[0],
-                line(
-                    "next",
-                    f"{span} · {ticker} 预计财报",
-                    f"{span} · {ticker} estimated earnings",
-                    lens,
-                    "financials",
-                    "read_research_lens",
-                    ticker=ticker,
-                    lens="overview",
-                    event="earningsWindow",
-                    date=window[0],
-                    end=window[-1],
-                ),
-            )
-        )
-    for day in calendar_days(calendar.get("Ex-Dividend Date")):
-        if day >= today:
-            result.append(
-                (
-                    day,
-                    line(
-                        "next",
-                        f"{day} · {ticker} 除息",
-                        f"{day} · {ticker} ex-dividend",
-                        lens,
-                        "disclosure",
-                        "read_research_lens",
-                        ticker=ticker,
-                        lens="overview",
-                        event="exDividend",
-                        date=day,
-                    ),
-                )
-            )
-    return result
-
-
-def upcoming(read: RoleTools, today: date) -> list[ReadingLine]:
-    seen: set[str] = set()
-    candidates = []
-    cursor = 0
-    while True:
-        holdings = read.read(
-            tools.list_holdings, tools.HoldingsArgs(scope="broker_total", cursor=cursor, limit=20)
-        )
-        data = holdings.get("data") or {}
-        for item in data.get("items", []):
-            ticker = item.get("ticker")
-            if ticker and ticker not in seen:
-                seen.add(ticker)
-                candidates.extend(holding_events(read, ticker, today.isoformat()))
-        cursor = data.get("next_cursor")
-        if cursor is None:
-            break
-    return [item for _, item in sorted(candidates, key=lambda pair: pair[0])[:4]] or [
-        line(
-            "next",
-            "持仓的近期财报与除息日期暂无可核实记录。",
-            "No upcoming earnings or ex-dividend date is confirmed for these holdings.",
-            holdings,
-            "holdings",
-            "list_holdings",
-        )
-    ]
-
-
 def calendar_window(deps: AssistantDeps) -> dict[str, str]:
     today = deps.manifest.created_at.astimezone(deps.timezone).date()
     return {"start": today.isoformat(), "end": (today + timedelta(days=29)).isoformat()}
 
 
-class DailyRole(PageRole):
+class OverviewRole(PageRole):
     @property
     def cache_id(self) -> str:
-        # Earlier daily readings contain only the holdings calendar.
+        # Earlier overview readings contain only the holdings calendar.
         return "calendar:" + super().cache_id
 
     def bind(self, deps: AssistantDeps, context: RoleContext) -> AssistantDeps:
@@ -193,7 +60,7 @@ class DailyRole(PageRole):
         return selected
 
 
-def daily_calendar(read: RoleTools) -> ReadingLine:
+def overview_calendar(read: RoleTools) -> ReadingLine:
     """Keep the nearest dated release, earnings and ex-dividend event from this publication."""
     selected = {}
     cursor = 0
@@ -400,9 +267,7 @@ def overview_facts(
                 "recent_decisions",
             )
         )
-    if period == "1D":
-        return [*facts, daily_calendar(read)]
-    return [*facts, *upcoming(read, read.deps.manifest.created_at.astimezone(LONDON).date())]
+    return [*facts, overview_calendar(read)]
 
 
 def full_publication(job: JobRecord) -> bool:
@@ -437,12 +302,12 @@ def overview_bindings(
         "list_holdings": account,
         "recent_decisions": {**window, "since": None},
         "read_research_lens": {},
-        **({"upcoming_events": {**account, "ticker": None}} if period == "1D" else {}),
+        "upcoming_events": {**account, "ticker": None},
     }
 
 
 OVERVIEW_ROLES = tuple(
-    (DailyRole if role == "daily" else PageRole)(
+    OverviewRole(
         id=role,
         page="overview",
         allowed_tools=frozenset(
@@ -451,7 +316,7 @@ OVERVIEW_ROLES = tuple(
                 "compare_benchmarks",
                 "recent_decisions",
                 "list_holdings",
-                *(["upcoming_events"] if role == "daily" else []),
+                "upcoming_events",
                 "read_research_lens",
             }
         ),

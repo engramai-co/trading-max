@@ -184,11 +184,59 @@ def test_analytics_lens_pins_nav_and_prices_and_rechecks_retention(
         assert newer["nav"] != original["nav"]
         assert newer["benchmarkSeries"] != original["benchmarkSeries"]
         pinned_url = f"{lens}&run_id={run}"
-        cited = client.get(pinned_url).json()
+        from unittest.mock import Mock
+
+        retained_store = app.state.store
+        metadata = Mock(wraps=retained_store._api_manifest)
+        monkeypatch.setattr(retained_store, "_api_manifest", metadata)
+        full_dashboard = Mock(wraps=app.state.cached_dashboard)
+        monkeypatch.setattr(app.state, "cached_dashboard", full_dashboard)
+        for view in ("overview", "holdings-positions", "account-analysis", "review"):
+            assert client.get(f"/v1/dashboard/lens/{view}?run_id={run}").status_code == 422
+        for _ in range(3):
+            response = client.get(pinned_url)
+            assert response.status_code == 200
+        assert metadata.call_count <= 1
+        full_dashboard.assert_not_called()
+        cited = response.json()
+        assert set(cited) <= {
+            "view",
+            "runId",
+            "generatedAt",
+            "brokerAsOf",
+            "researchAsOf",
+            "nav",
+            "benchmarkSeries",
+        }
+        assert all(set(row) <= {"date", "flowStatus", "isa", "isaTwr"} for row in cited["nav"])
         assert cited["runId"] == run
-        assert cited["nav"] == original["nav"]
+        assert [(p["date"], p.get("isaTwr")) for p in cited["nav"]] == [
+            (p["date"], p.get("isaTwr")) for p in original["nav"]
+        ]
         assert cited["benchmarkSeries"] == original["benchmarkSeries"]
         # The retention worker and API have independent, warm manifest caches.
         monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
         assert run in store.prune_snapshots(keep_recent=1)
         assert client.get(pinned_url).status_code == 404
+
+
+def test_retained_returns_cannot_evict_the_live_dashboard(research_root, tmp_path, typed_fixture):
+    store = ArtifactStore(tmp_path / "state")
+    publications = []
+    for _ in range(6):
+        typed_fixture(research_root, store)
+        publications.append(store.latest_manifest())
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    with TestClient(app) as client:
+        live = app.state.cached_dashboard(publications[-1], include_history=False)
+        for publication in publications[:-1]:
+            result = client.get(
+                "/v1/dashboard/lens/analytics",
+                params={
+                    "scope": "invest",
+                    "detail": "summary",
+                    "run_id": publication.run_id,
+                },
+            )
+            assert result.status_code == 200
+        assert app.state.cached_dashboard(publications[-1], include_history=False) is live
