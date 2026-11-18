@@ -441,3 +441,151 @@ def test_chat_cannot_retarget_a_research_moment(tmp_path, extra):
             "scope": "broker_total",
             "snapshotId": deps.snapshot_id,
         }
+
+
+def test_price_basis_and_matched_session_period(tmp_path):
+    import pandas as pd
+    from trading_max.research.technical import _relative_stats
+
+    days = pd.bdate_range("2026-01-01", periods=66)
+    prices = pd.Series(range(100, 166), index=days)
+    stats = _relative_stats(prices, prices.iloc[:-1], 63)
+    assert (stats["start"], stats["end"]) == (
+        days[1].date().isoformat(),
+        days[-2].date().isoformat(),
+    )
+    _, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    chart = deps.price_series("TEST", deps.manifest, limit=2000)
+    selection = PriceContext(ticker="TEST", published_series_id=chart.published_series_id)
+    role = role_registry()["your-position"]
+    assert any(
+        "split- and dividend-adjusted" in fact.en
+        for fact in role.facts(role.reader(deps, selection), selection)
+    )
+
+
+def test_writer_reads_newly_requested_equity_without_prior_news(tmp_path):
+    store = ArtifactStore(tmp_path)
+    batch = analyst()
+    batch["rows"][0]["ticker"] = "NEW"
+    publication(
+        store, extra_artifacts={tools.ANALYST: batch, NEWS_KEY: {"securities": {"OLD": {}}}}
+    )
+    deps = AssistantDepsFactory(store).for_run()
+    record = job(deps.manifest.created_at, deps.snapshot_id, "on_demand").model_copy(
+        update={"scope": "research", "tickers": ["NEW"]}
+    )
+    role = role_registry()["earnings-brief"]
+    targets = role.publication_targets(record, RoleTools.pinned(deps, role.allowed_tools))
+    assert [target.context.ticker for target in targets] == ["NEW"]
+
+
+def test_moment_reports_subsequent_sessions_outside_selected_window(tmp_path):
+    _, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    series = deps.price_series("TEST", deps.manifest, limit=2000)
+    args = insights.MomentsArgs(
+        ticker="TEST",
+        scope="broker_total",
+        date=DATES[2],
+        start=DATES[0],
+        end=DATES[2],
+        published_series_id=series.published_series_id,
+    )
+    data = insights.moments_data(deps, args)["data"]
+    trajectory = data["following"]
+    assert [(r["date"], r["sessions"]) for r in trajectory] == [(DATES[3], 1), (DATES[-1], 2)]
+    assert [r["return_fraction"] for r in trajectory] == pytest.approx([33 / 34 - 1, 30 / 34 - 1])
+
+
+@pytest.mark.parametrize("zone", ["America/New_York", None])
+def test_published_technical_zone_determines_timed_headline_coverage(tmp_path, zone):
+    _, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    batch = deps.store.read_json(deps.snapshot_id, tools.TECHNICAL)
+    batch["rows"][0]["timezone"] = zone
+    story = {**STORY, "date": "2026-01-31", "instant": "2026-01-31T01:00:00Z"}
+    publication(
+        factory.store,
+        extra_artifacts={
+            tools.TECHNICAL: batch,
+            tools.FUNDAMENTALS: {"rows": []},
+            NEWS_KEY: {"securities": {"TEST": {"items": [story]}}},
+        },
+    )
+    deps = factory.for_run()
+    series = deps.price_series("TEST", deps.manifest, limit=2000)
+    args = insights.MomentsArgs(
+        ticker="TEST",
+        scope="broker_total",
+        start=DATES[0],
+        end=DATES[-1],
+        published_series_id=series.published_series_id,
+    )
+    result = insights.moments_data(deps, args)
+    if zone:
+        assert series.timezone == zone
+        assert any(
+            e["kind"] == "news" and e["date"] == DATES[2]
+            for m in result["data"]["items"]
+            for e in m["events"]
+        )
+    else:
+        assert "news_exchange_timing_unavailable" in result["quality"]["issues"]
+
+
+def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, monkeypatch):
+    from contextlib import nullcontext
+    from trading_max.application.event_stages import SecurityNewsStage
+    from trading_max.application.stages import StageContext
+    from trading_max.reference.indices import INDEX_REGISTRY
+    from trading_max.research import news
+
+    spec = INDEX_REGISTRY["sp-500"]
+    store = ArtifactStore(tmp_path)
+    stage = SecurityNewsStage(
+        store.immutable_artifacts,
+        store.immutable_snapshots,
+        SimpleNamespace(prices=SimpleNamespace(yahoo_request=nullcontext)),
+    )
+    monkeypatch.setattr(
+        news,
+        "verified_news",
+        lambda proxy: (
+            [
+                {
+                    "title": "Index bulletin",
+                    "pubDate": DATES[2],
+                    "publisher": "Test wire",
+                    "link": STORY["url"],
+                }
+            ]
+            if proxy.ticker == spec.symbol
+            else []
+        ),
+    )
+    result = stage.run(StageContext(job_id="synthetic", scope="research", tickers=("OTHER",)))
+    stories = store.immutable_artifacts.get_json(result.artifacts[0].artifact_id).payload
+    assert spec.symbol in stories["securities"]
+    publication(store, extra_artifacts={NEWS_KEY: stories})
+    history = SimpleNamespace(
+        index=spec,
+        range="3M",
+        state="available",
+        display_interval="1d",
+        points=[
+            SimpleNamespace(at=datetime.fromisoformat(d), value=v)
+            for d, v in zip(DATES, [10, 10, 12, 12, 12], strict=True)
+        ],
+    )
+    deps = replace(AssistantDepsFactory(store).for_run(), index_history=lambda *_: history)
+    args = insights.MomentsArgs(
+        ticker=spec.symbol,
+        index_id=spec.id,
+        published_series_id="f" * 20,
+        scope="broker_total",
+        start=DATES[0],
+        end=DATES[-1],
+    )
+    assert [m["date"] for m in insights.moments_data(deps, args)["data"]["items"]] == [DATES[2]]

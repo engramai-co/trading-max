@@ -163,7 +163,16 @@ class Moment(BaseModel):
     event_count: int
 
 
+class FollowingSession(BaseModel):
+    start: str
+    date: str
+    sessions: int
+    return_fraction: float
+
+
 class PriceMoments(BaseModel):
+    adjustment: str | None = None
+    following: list[FollowingSession] = []
     listing: str | None = None
     index_range: str | None = None
     ticker: str

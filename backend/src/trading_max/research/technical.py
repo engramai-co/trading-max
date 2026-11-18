@@ -400,7 +400,7 @@ def _adx_dmi(
 
 def _relative_stats(
     close: pd.Series, benchmark: pd.Series, sessions: int
-) -> dict[str, float | None]:
+) -> dict[str, float | str | None]:
     # Compare trading dates, including when listings have different time zones.
     def by_session(series: pd.Series, name: str) -> pd.Series:
         return series.rename(name).set_axis(series.index.tz_localize(None).normalize())
@@ -422,6 +422,8 @@ def _relative_stats(
     variance = daily["benchmark"].var()
     beta = daily["asset"].cov(daily["benchmark"]) / variance if variance else np.nan
     return {
+        "start": aligned.index[-sessions - 1].date().isoformat(),
+        "end": aligned.index[-1].date().isoformat(),
         "asset_return": _finite(asset_return, 6),
         "benchmark_return": _finite(benchmark_return, 6),
         "excess_return": _finite(asset_return - benchmark_return, 6),

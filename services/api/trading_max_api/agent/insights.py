@@ -555,13 +555,16 @@ def moment_headlines(read: _Read, ticker: str) -> list[dict]:
     ]
 
 
-def news_events(read: _Read, ticker: str, *, zone=None, calendar=None) -> list[dict]:
+def news_events(
+    read: _Read, ticker: str, *, zone=None, calendar=None
+) -> tuple[list[dict], list[str]]:
     rows = moment_headlines(read, ticker)
     if not zone and not calendar and any(row.get("instant") for row in rows):
         listing = _mapped((_ticker_row(read.read(FUNDAMENTALS), ticker) or {}).get("metrics"))
         zone = listing.get("exchangeTimezoneName")
         calendar = listing_calendar(ticker, listing.get("fullExchangeName"), zone)
     events = []
+    issues = set()
     for row in rows:
         published = row["date"][:10]
         day = published
@@ -569,6 +572,7 @@ def news_events(read: _Read, ticker: str, *, zone=None, calendar=None) -> list[d
             try:
                 instant = datetime.fromisoformat(stamp)
                 if instant.utcoffset() is None or not (zone or calendar):
+                    issues.add("news_exchange_timing_unavailable")
                     continue
                 local = (
                     ZoneInfo(zone)
@@ -577,17 +581,33 @@ def news_events(read: _Read, ticker: str, *, zone=None, calendar=None) -> list[d
                 )
                 day = instant.astimezone(local).date().isoformat()
             except (CalendarError, KeyError, TypeError, ValueError, OverflowError):
+                issues.add("news_exchange_timing_unavailable")
                 continue
         event = {"date": day, "kind": "news", "reference": str(row.get("id") or row["url"])}
         if day != published:
             event["publication_date"] = published
         events.append(event)
-    return events
+    return events, sorted(issues)
 
 
 def selected_moments(bars, events, args: MomentsArgs) -> list[dict]:
     candidates = key_moments(bars, events, args.start, args.end)
     return [item for item in candidates if item["date"] == args.date] if args.date else candidates
+
+
+def following_sessions(bars, moments, day):
+    if not day or not moments:
+        return []
+    selected = next((i for i, row in enumerate(bars) if row["date"] == day), None)
+    if selected is None or not (base := _number(bars[selected].get("close"))) or base <= 0:
+        return []
+    following = bars[selected + 1 :]
+    return [
+        {"start": day, "date": row["date"], "sessions": i, "return_fraction": close / base - 1}
+        for i, row in enumerate(following, 1)
+        if i in {1, 2, 3, 4, 5, 20, 63, len(following)}
+        and (close := _number(row.get("close"))) is not None
+    ]
 
 
 def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
@@ -606,18 +626,20 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         ):
             return read.missing("displayed_index_series_unavailable")
         bars = [{"date": p.at.date().isoformat(), "close": p.value} for p in history.points]
-        events = (
+        events, timing_issues = (
             news_events(read, args.ticker, calendar=history.index.calendar)
             if history.index.symbol
-            else []
+            else ([], [])
         )
         if history.index.kind == "etf-price":
             security_events, keys, issues = dated_events(read, args, codes)
             events.extend(security_events)
         else:
             keys, issues = [], []
+        issues.extend(timing_issues)
         if history.state != "available":
             issues.append("index_history_" + history.state)
+        moments = selected_moments(bars, events, args)
         return read.result(
             "partial" if issues else "ok",
             data={
@@ -628,7 +650,11 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
                 "basis": "observed_index_series",
                 "index_range": history.range,
                 "published_series_id": args.published_series_id,
-                "items": selected_moments(bars, events, args),
+                "items": moments,
+                "following": following_sessions(bars, moments, args.date),
+                "adjustment": "index-level"
+                if history.index.kind != "etf-price"
+                else "provider-close",
             },
             keys=[NEWS_KEY, *keys],
             issues=issues,
@@ -670,9 +696,11 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         codes,
         None if observed else series,
     )
-    events.extend(
-        news_events(read, listing, zone=series.timezone, calendar=series.exchange_calendar)
+    headlines, timing_issues = news_events(
+        read, listing, zone=series.timezone, calendar=series.exchange_calendar
     )
+    events.extend(headlines)
+    issues.extend(timing_issues)
     keys.append(NEWS_KEY)
     moments = selected_moments(bars, events, args)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)
@@ -689,6 +717,8 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
             "basis": "observed_daily_closes" if observed else "published_daily_closes",
             "published_series_id": series_id,
             "items": moments,
+            "adjustment": series.adjustment,
+            "following": following_sessions(bars, moments, args.date),
         },
         keys=[*price_keys, *keys],
         issues=issues,

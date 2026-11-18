@@ -158,9 +158,16 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
                 _number(stats.get("asset_return")),
                 _number(stats.get("benchmark_return")),
             )
-            if asset is not None and other is not None:
+            if asset is not None and other is not None and stats.get("start") and stats.get("end"):
                 benchmarks.append(
-                    {"symbol": symbol, "sessions": 63, "asset": asset, "benchmark": other}
+                    {
+                        "symbol": symbol,
+                        "sessions": 63,
+                        "start": stats["start"],
+                        "end": stats["end"],
+                        "asset": asset,
+                        "benchmark": other,
+                    }
                 )
     event = None
     event_keys = []
@@ -272,7 +279,16 @@ def earnings_universe(ctx: Context, args: Args) -> dict:
     """Return the exact symbols in this research publication's held and research-list universe."""
     read = _Read(ctx.deps, "earnings_universe", args, "public_research")
     return read.result(
-        data={"tickers": sorted((read.read(NEWS_KEY) or {}).get("securities", {}))}, keys=[NEWS_KEY]
+        data={
+            "tickers": sorted(
+                {
+                    row["ticker"]
+                    for row in _rows((read.read(ANALYST) or {}).get("rows"))
+                    if row.get("ticker")
+                }
+            )
+        },
+        keys=[ANALYST],
     )
 
 

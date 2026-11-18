@@ -77,10 +77,16 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
     if data.get("change") is not None:
         basis = f"{data['start']} – {day}"
         figure = f"{data['change']:+.2%}"
+        if data.get("unit") == "points":
+            zh, en = "指数变动", "index level change"
+        elif data.get("adjustment") == "split-and-dividend-adjusted":
+            zh, en = "拆股及股息调整后回报", "split- and dividend-adjusted return"
+        else:
+            zh, en = "图表收盘价变动", "change in chart closes"
         facts.append(
             observation(
-                f"{basis} · {'指数变动' if data.get('unit') == 'points' else '收盘价变动'} {figure}",
-                f"{basis} · {'index change' if data.get('unit') == 'points' else 'close-to-close change'} {figure}",
+                f"{basis} · {zh} {figure}",
+                f"{basis} · {en} {figure}",
             )
         )
     for item in data.get("benchmarks", []):
@@ -88,8 +94,8 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
         sessions, asset, other = item["sessions"], item["asset"], item["benchmark"]
         facts.append(
             observation(
-                f"截至 {day} 的 {sessions} 个共同交易日，{data['ticker']} {asset:+.2%}，{name} {other:+.2%}。",
-                f"Through {day}, over {sessions} matched USD sessions, {data['ticker']} returned {asset:+.2%} and {name} {other:+.2%}.",
+                f"{item['start']} – {item['end']}，{sessions} 个共同交易日，{data['ticker']} {asset:+.2%}，{name} {other:+.2%}。",
+                f"{item['start']} – {item['end']}, over {sessions} matched USD sessions, {data['ticker']} returned {asset:+.2%} and {name} {other:+.2%}.",
                 "technical",
             )
         )

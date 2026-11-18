@@ -490,7 +490,7 @@ def event_data(deps, args, *, upcoming):
     # This is the pinned universe of the last scheduled research run. A
     # current editable watchlist cannot describe a historical publication.
     if upcoming and args.scope == "household" and not args.ticker:
-        symbols.update(data[NEWS_KEY])
+        symbols.update((raw or {}).get("research_symbols", data[NEWS_KEY]))
         if raw is None:
             issues.append("research_universe_unavailable")
     entries = []
