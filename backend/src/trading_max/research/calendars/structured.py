@@ -101,13 +101,10 @@ def ons(source, content, today):
             else "provisional"
         )
         day, end = local.date(), None
-        # A postponed flag records an earlier change. A confirmed replacement
-        # still has its published time.
+        # The index publishes clocks for provisional and revised dates too.
         clock = (
             local.time()
-            if d.get("finalised")
-            and not d.get("cancelled")
-            and time.min not in (local.time(), instant.time())
+            if not d.get("cancelled") and time.min not in (local.time(), instant.time())
             else None
         )
         if not d.get("finalised") and d.get("provisional_date"):

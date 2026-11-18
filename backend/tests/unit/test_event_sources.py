@@ -329,12 +329,14 @@ def test_central_release_time_during_us_uk_clock_change_gap():
 
 
 def test_ons_revised_time_provisional_month_and_licence():
-    revised, month_only = parse(
+    revised, month_only, provisional = parse(
         CATALOG["ons-upcoming"], (FIXTURES / "ons-precision.json").read_bytes(), NOW.date()
     )
     assert revised.instant.isoformat() == "2026-11-24T09:30:00+00:00"
     assert month_only.model_dump(mode="json")["date"] == "2026-12"
     assert month_only.instant is None
+    assert provisional.status == "provisional"
+    assert provisional.instant and provisional.instant.isoformat() == "2027-02-19T07:00:00+00:00"
     assert (
         revised.licence_url
         == "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
