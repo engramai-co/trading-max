@@ -118,8 +118,9 @@ an incomplete month is excluded and a short history can change the result.
 The ratings section puts individual firms’ dated targets on the 12-month price
 chart. The range at its right shows the current target snapshot. The page
 continues with earnings estimates, the earnings calendar and institutional
-actions. Use the section index beside the page or the strip at the top on a
-narrow screen to jump directly to a heading.
+actions. Earnings times use your display time zone, with the date added when
+your clock is already on another day. Use the section index beside the page or
+the strip at the top on a narrow screen to jump directly to a heading.
 
 ## Work through a valuation
 
@@ -160,6 +161,15 @@ available; otherwise it adds four consecutive quarters. An unreported fourth
 quarter is inferred from annual EPS minus the first three quarters. Later
 restatements apply from their own acceptance times. Missing closes, incomplete
 earnings windows, and nonpositive EPS leave gaps.
+
+A multiple above 200× has an earnings yield under 0.5%, which usually means
+earnings near zero rather than a valuation. Such multiples are marked **Not
+meaningful** and left as gaps. So is every close of a new EPS reading that
+opens more than five times higher or lower than the previous close's multiple.
+Neither enters the band or the rank, and the reading names the reason. A
+filing that repeats earlier periods at 100 or more times their filed per-share
+values, by a power of ten, is treated as a unit error and not used. Its
+quarter stays unknown until a later filing repeats it correctly.
 
 The shaded band shows the 25th to 75th percentiles with the median dashed.
 Switch to **Mean ±1σ** for the mean and one population standard deviation.

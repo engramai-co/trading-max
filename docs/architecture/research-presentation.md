@@ -116,6 +116,24 @@ diluted SEC EPS known at that close. The line breaks at EPS vintages; missing
 or nonpositive EPS is not plotted. Annual P/E and TTM P/S at filing dates remain
 available as separate evidence.
 
+The trailing P/E model screens every series it validates, so a stored series
+is served with the same rules as a new one. Each multiple is recomputed from
+its close and EPS. A multiple above `MEANINGFUL_PE_CAP` (200×, an earnings
+yield under 0.5%) is withheld as `aboveCap`. An EPS reading whose first
+multiple differs from the previous close's by more than `SEGMENT_JUMP` (five
+times) is withheld in full as `segmentJump`; earnings crossing zero already
+break the line and are not compared. Withheld points keep their close and EPS
+and carry the reason in `notMeaningful`. The distribution and the latest rank
+use only the remaining multiples.
+
+The EPS replay ignores a filing whose repeated periods are all the same power
+of ten, at least 100 times, above the values already recorded for them: per-share
+values tagged in thousands. Its report period still becomes the latest one, so
+the series shows a gap rather than the previous trailing EPS. An implied fourth
+quarter stays at its annual filing's vintage through ordinary restatements of
+the first three quarters, but is implied again when one of them is corrected by
+such a factor.
+
 NTM uses the last PE-0 observation of each exchange-local archive date, for the
 same listing and quote currency, bounded by the snapshot publication time. The
 remaining fraction of the fiscal year is the days from observation to the
