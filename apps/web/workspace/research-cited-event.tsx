@@ -42,27 +42,6 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
         (rowId ? item.evidence_id === rowId : item.research_event_id === researchId) ? item : null;
     },
   });
-  const row = await readApi<components["schemas"]["RecordedEvent"]>(
-          `/publications/${snapshot}/events/recorded/${rowId}?ticker=${encodeURIComponent(ticker)}`, signal);
-        return row.snapshot_id === snapshot && row.evidence_id === rowId && row.kind === kind && row.ticker === ticker ? row : null;
-      }
-      // The saved day belongs to the original reader. Include adjacent days for a timezone change.
-      const dateAt = (offset: number) => new Date(stamp + offset * 86_400_000).toISOString().slice(0,10);
-      const query = new URLSearchParams({ticker,scope:"broker_total",start:dateAt(-2),end:dateAt(2),timezone:timeZone,limit:"20"});
-      let cursor: number | null = 0;
-      while (cursor !== null) {
-        query.set("cursor", String(cursor));
-        const page: EventPage = await readApi(`/publications/${snapshot}/events/upcoming?${query}`, signal);
-        if (page.snapshot_id !== snapshot) return null;
-        const found = page.data?.items.find(row => row.ticker === ticker && row.kind === kind &&
-          (rowId ? row.evidence_id === rowId : researchId ? row.research_event_id === researchId :
-            row.date === day && (row.end_date ?? row.date) === (end ?? day)));
-        if (found) return found;
-        cursor = page.data?.next_cursor ?? null;
-      }
-      return null;
-    },
-  });
   const row = !result.isFetching && !result.isError && result.data;
   const title = kind === "earnings" ? t("财报", "Earnings") : t("除息日期", "Ex-dividend date");
   const heading = recorded ? rating ? t("机构行动", "Institutional actions") : t("财报事件", "Earnings events") : ticker + " · " + title;
