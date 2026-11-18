@@ -11,7 +11,7 @@ import {
   Tooltip,
   useMantineColorScheme,
 } from "@mantine/core";
-import { useOs } from "@mantine/hooks";
+import { useMediaQuery, useOs } from "@mantine/hooks";
 import {
   ArrowRight,
   ChartBar,
@@ -38,6 +38,9 @@ import { useLocale } from "@/components/locale-provider";
 import type { ResearchShell } from "@/lib/types";
 import { BrandMark } from "@/ui/brand-mark";
 import { api } from "@/workspace/data";
+import { useEvidenceHighlight } from "./assistant/highlight";
+import { AssistantEntry, AssistantPanel } from "./assistant/shell";
+import { useAssistant } from "./assistant/context";
 import { useWorkspaceProfile } from "./profile";
 import { Tag, useCopy } from "./foundation";
 
@@ -67,10 +70,13 @@ function SearchRouteObserver({ onChange }: { onChange: (search: string) => void 
 
 export function WorkspaceShell({ children, desktop = false, localWorkspace = false, demonstration = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean; demonstration?: boolean }) {
   const t = useCopy();
+  const assistant = useAssistant();
+  const assistantOverlay = useMediaQuery("(max-width: 1199px)") && assistant.open;
   const actualPathname = usePathname();
   const [routeSearch, setRouteSearch] = useState("");
   const params = new URLSearchParams(routeSearch);
   const pathname = desktop ? "/" + (desktopPage(actualPathname) ?? "") : actualPathname;
+  useEvidenceHighlight(pathname, routeSearch);
   const profile = useWorkspaceProfile();
   const router = useRouter();
   const navigateBuild = useBuildNavigation();
@@ -421,12 +427,12 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     </Tooltip>
   );
   return (
-    <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen}>
+    <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen} data-assistant-open={assistant.open || undefined}>
       <Suspense fallback={null}><SearchRouteObserver onChange={setRouteSearch} /></Suspense>
       <a className="mx-skip" href="#main-content">
         {t("跳到正文", "Skip to content")}
       </a>
-      <aside className="mx-sidebar">
+      <aside className="mx-sidebar" inert={assistantOverlay || undefined}>
         <Tooltip.Group openDelay={250} closeDelay={100}>
         {brand}
         {desktop && searchTrigger("mx-sidebar-search", "right")}
@@ -440,7 +446,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         </div>
         </Tooltip.Group>
       </aside>
-      <div className="mx-content">
+      <div className="mx-content" inert={assistantOverlay || undefined}>
         <header className="mx-topbar">
           <div className="mx-topbar-title">
             <span className="mx-topbar-workspace">
@@ -452,6 +458,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           </div>
           <Group gap={4} wrap="nowrap">
             {demonstration && <Tag>{t("演示数据", "Demo data")}</Tag>}
+            <AssistantEntry />
             {searchTrigger("mx-topbar-search", "bottom-end")}
             {/* In the App, language lives in workspace preferences and appearance follows macOS. */}
             {!desktop && <ActionIcon
@@ -469,7 +476,8 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           {children}
         </main>
       </div>
-      <nav
+      <AssistantPanel page={active?.href.slice(1) || "overview"} search={routeSearch} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
+      <nav inert={assistantOverlay || undefined}
         className="mx-mobile-dock"
         aria-label={t("快捷导航", "Quick navigation")}
       >

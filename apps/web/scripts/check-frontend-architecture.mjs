@@ -3,7 +3,8 @@ import { extname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 const root = new URL("../", import.meta.url).pathname;
-const allowedCss = new Set(["app/globals.css", "app/desktop/desktop.css"]);
+const deferredStyles = ["app/desktop/desktop.css", "workspace/assistant/readings.css"];
+const allowedCss = new Set(["app/globals.css", ...deferredStyles]);
 // Authored styles live in ordered surface files that app/globals.css imports.
 const stylesDirectory = "app/styles/";
 const stylesheetLineBudget = 900;
@@ -51,7 +52,7 @@ if ((await stat(globals)).isFile()) {
 }
 
 // One declaration per line, so diffs and agent edits stay precise.
-for (const path of [...styleFiles, "app/desktop/desktop.css"]) {
+for (const path of [...styleFiles, ...deferredStyles]) {
   const lines = (await readFile(join(root, path), "utf8")).split(/\r?\n/);
   if (lines.length > stylesheetLineBudget) violations.push(`${path} is ${lines.length} lines; split it (budget ${stylesheetLineBudget})`);
   let inComment = false;

@@ -228,6 +228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/assistant/roles/{role_id}/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Role Reading */
+        post: operations["role_reading_v1_assistant_roles__role_id__reading_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/assistant/status": {
         parameters: {
             query?: never;
@@ -1468,6 +1485,23 @@ export interface paths {
         };
         /** Snapshot Artifact */
         get: operations["snapshot_artifact_v1_snapshots__run_id__artifacts__artifact_key__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/snapshots/{run_id}/events/cited": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cited Event */
+        get: operations["cited_event_v1_snapshots__run_id__events_cited_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3106,6 +3140,66 @@ export interface components {
             positionId?: string | null;
             /** Symbol */
             symbol?: string | null;
+        };
+        /** CitedHoldingEvent */
+        CitedHoldingEvent: {
+            /** Actual Eps */
+            actual_eps?: number | null;
+            /** Amount */
+            amount?: number | null;
+            /** Basis */
+            basis?: string | null;
+            /** Credit */
+            credit?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Date */
+            date: string;
+            /** End Date */
+            end_date?: string | null;
+            /** Estimated Eps */
+            estimated_eps?: number | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Fiscal Period */
+            fiscal_period?: string | null;
+            /** Instant */
+            instant?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend";
+            /** Licence Url */
+            licence_url?: string | null;
+            /** Local Date */
+            local_date: string;
+            /** Local Time */
+            local_time: string | null;
+            /** Market */
+            market?: string | null;
+            /** Publisher */
+            publisher: string;
+            /** Research Event Id */
+            research_event_id?: string | null;
+            /** Source As Of */
+            source_as_of?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Ticker */
+            ticker?: string | null;
+            /** Time Source Url */
+            time_source_url?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+            /** Title En */
+            title_en: string;
+            /** Title Zh */
+            title_zh: string;
+            /** Unit */
+            unit?: string | null;
         };
         /** ClosedTradeReview */
         ClosedTradeReview: {
@@ -5932,6 +6026,14 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** LinkedObservation */
+        LinkedObservation: {
+            /** En */
+            en: string;
+            evidence: components["schemas"]["ReadingEvidence"];
+            /** Zh */
+            zh: string;
+        };
         /** LocalWorkspaceStatus */
         LocalWorkspaceStatus: {
             /** Activejobid */
@@ -6949,6 +7051,75 @@ export interface components {
             worker?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** ReadingEvent */
+        ReadingEvent: {
+            /** Code */
+            code?: string | null;
+            /** Lines */
+            lines?: components["schemas"]["ReadingLine"][] | null;
+            reading?: components["schemas"]["RoleReading"] | null;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "reading" | "lines" | "result" | "error" | "empty";
+        };
+        /** ReadingEvidence */
+        ReadingEvidence: {
+            /** Arguments */
+            arguments?: {
+                [key: string]: string;
+            };
+            /** Evidenceid */
+            evidenceId: string;
+            /** Publisher */
+            publisher?: string | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "account" | "broker" | "holdings" | "exposure" | "market" | "technical" | "financials" | "analysts" | "disclosure" | "review" | "health" | "calendar" | "inference" | "publisher";
+            /** Tool */
+            tool: string;
+        };
+        /** ReadingLine */
+        ReadingLine: {
+            /** En */
+            en: string;
+            evidence: components["schemas"]["ReadingEvidence"];
+            /** Related */
+            related?: components["schemas"]["LinkedObservation"][];
+            /**
+             * Section
+             * @default
+             */
+            section: string;
+            /** Variants */
+            variants?: {
+                [key: string]: components["schemas"]["LinkedObservation"];
+            };
+            /** Zh */
+            zh: string;
+        };
+        /** ReadingRequest */
+        ReadingRequest: {
+            /**
+             * Cachedonly
+             * @default false
+             */
+            cachedOnly: boolean;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Latest
+             * @default false
+             */
+            latest: boolean;
+            /** Snapshotid */
+            snapshotId?: string | null;
         };
         /** RefreshAttention */
         RefreshAttention: {
@@ -8360,6 +8531,22 @@ export interface components {
             /** Volatility */
             volatility: number | null;
         };
+        /** RoleReading */
+        RoleReading: {
+            /**
+             * Asof
+             * Format: date-time
+             */
+            asOf: string;
+            /** Lines */
+            lines: components["schemas"]["ReadingLine"][];
+            /** Role */
+            role: string;
+            /** Snapshotid */
+            snapshotId?: string | null;
+            /** Version */
+            version: string;
+        };
         /**
          * RoundTripReview
          * @description Shares bought and sold on the same day: realised result against the day's range.
@@ -9464,6 +9651,8 @@ export interface components {
             market?: string | null;
             /** Publisher */
             publisher: string;
+            /** Research Event Id */
+            research_event_id?: string | null;
             /** Source As Of */
             source_as_of?: string | null;
             /** Source Url */
@@ -10425,7 +10614,10 @@ export interface operations {
     };
     assistant_chat_v1_assistant_chat_post: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Return prose or field references for the workspace sidebar. */
+                format?: "prose" | "references";
+            };
             header?: {
                 authorization?: string | null;
             };
@@ -10551,6 +10743,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    role_reading_v1_assistant_roles__role_id__reading_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingRequest"];
+            };
+        };
+        responses: {
+            /** @description Newline-delimited reading progress and final evidence-linked result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/x-ndjson": components["schemas"]["ReadingEvent"];
+                };
             };
             /** @description Validation Error */
             422: {
@@ -10703,6 +10932,7 @@ export interface operations {
     dashboard_lens_v1_dashboard_lens__view__get: {
         parameters: {
             query?: {
+                run_id?: string | null;
                 account?: ("A" | "B" | "C") | null;
                 range?: ("1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL") | null;
                 scope?: ("invest" | "isa" | "total" | "household" | "cfd") | null;
@@ -13297,6 +13527,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cited_event_v1_snapshots__run_id__events_cited_get: {
+        parameters: {
+            query: {
+                ticker: components["schemas"]["Ticker"];
+                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend";
+                event_id?: string | null;
+                research_event_id?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitedHoldingEvent"];
                 };
             };
             /** @description Validation Error */

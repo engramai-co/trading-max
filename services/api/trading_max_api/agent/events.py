@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
@@ -102,12 +103,13 @@ def _indexed(payload):
     return {str(r.get("ticker", "")).upper(): r for r in _rows((payload or {}).get("rows"))}
 
 
-def _public(ticker, data, upcoming):
+def _security_entry(ticker):
     url = "https://finance.yahoo.com/quote/" + quote(ticker, safe="") + "/"
+    return partial(_entry, ticker=ticker, url=url)
 
-    def add(kind, title, zh, raw, **kw):
-        return _entry(kind, title, zh, raw, ticker=ticker, url=kw.pop("url", url), **kw)
 
+def _public(ticker, data, upcoming):
+    add = _security_entry(ticker)
     analyst = data[ANALYST].get(ticker, {}).get("analyst", {})
     recorded = set()
     for e in _rows(analyst.get("earningsEvents")):
@@ -120,6 +122,7 @@ def _public(ticker, data, upcoming):
             "Earnings",
             "业绩公布",
             e.get("instant") or e.get("date"),
+            **({"research_event_id": e["id"]} if e.get("id") else {}),
             status=e.get("status"),
             estimated_eps=_number(e.get("estimatedEps")) if currency else None,
             actual_eps=_number(e.get("actualEps")) if currency else None,
@@ -135,9 +138,9 @@ def _public(ticker, data, upcoming):
             unit="per_share",
         )
     cal = data[EARNINGS].get(ticker, {}).get("calendar", {})
-    days = sorted(
-        {v[:10] for v in (cal.get("Earnings Date") or []) if isinstance(v, str) and _stamp(v)}
-    )
+    raw_days = cal.get("Earnings Date")
+    values = raw_days if isinstance(raw_days, list) else [raw_days]
+    days = sorted({v[:10] for v in values if isinstance(v, str) and _stamp(v)})
     if days and not any(days[0] <= d <= days[-1] for d in recorded if d):
         yield add(
             "earnings",
@@ -189,17 +192,7 @@ def _public(ticker, data, upcoming):
             form=r.get("form"),
             reference=r.get("accession") or r.get("id"),
         )
-    for r in _rows(evidence.get("dividends")):
-        yield add(
-            "dividend",
-            "Dividend",
-            "股息",
-            r.get("date"),
-            amount=_number(r.get("amount")),
-            currency=r.get("currency"),
-            unit="per_share",
-            basis=r.get("basis"),
-        )
+    yield from _reported_dividends(ticker, evidence)
     for row in _headline_rows(data, ticker):
         url_value = web_url(row.get("url"))
         if not url_value or not (row.get("publisher") or row.get("source")):
@@ -213,6 +206,21 @@ def _public(ticker, data, upcoming):
             publisher=row.get("publisher") or row.get("source"),
             provider_id=row.get("id") if row.get("id") != url_value else None,
             role="lead",
+        )
+
+
+def _reported_dividends(ticker, evidence):
+    add = _security_entry(ticker)
+    for r in _rows(evidence.get("dividends")):
+        yield add(
+            "dividend",
+            "Dividend",
+            "股息",
+            r.get("date"),
+            amount=_number(r.get("amount")),
+            currency=r.get("currency"),
+            unit="per_share",
+            basis=r.get("basis"),
         )
 
 
@@ -448,6 +456,48 @@ def _macros(payload, start, end, issues):
     ]
 
 
+def _published_row(snapshot_id, row, local):
+    # Research navigation and earnings coverage metadata are not event identity.
+    row = {k: v for k, v in row.items() if k != "currency_missing"}
+    identity = (
+        ["news", row["reference"]]
+        if row["kind"] == "news"
+        else {key: value for key, value in row.items() if key != "research_event_id"}
+    )
+    return {
+        **row,
+        "evidence_id": _short_id("ev_", [snapshot_id, identity]),
+        "local_date": local.date().isoformat() if local else row["date"],
+        "local_time": local.isoformat() if local else None,
+    }
+
+
+def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
+    """Resolve a publication's exact security event without reading the account calendar."""
+    args = Scoped(scope="broker_total")
+    read = _Read(deps, "upcoming_events", args, args.scope)
+    if kind == "dividend":
+        financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
+        rows = _reported_dividends(ticker, financials.get("evidence", {}))
+    else:
+        data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
+        rows = _public(ticker, data, upcoming=True)
+    for row in rows:
+        if not row or row["kind"] != kind:
+            continue
+        local = (
+            datetime.fromisoformat(row["instant"]).astimezone(deps.timezone)
+            if row.get("instant")
+            else None
+        )
+        item = _published_row(deps.snapshot_id, row, local)
+        if event_id == item["evidence_id"] or (
+            research_event_id and research_event_id == item.get("research_event_id")
+        ):
+            return item
+    return None
+
+
 def event_data(deps, args, *, upcoming):
     name = "upcoming_events" if upcoming else "news_and_events"
     read = _Read(deps, name, args, args.scope)
@@ -569,14 +619,8 @@ def event_data(deps, args, *, upcoming):
         first, last = window_bounds(day, row.get("end_date"))
         if args.start > last or first > args.end:
             continue
-        identity = ["news", row["reference"]] if row["kind"] == "news" else row
-        evidence = _short_id("ev_", [deps.snapshot_id, identity])
-        rows[evidence] = {
-            **row,
-            "evidence_id": evidence,
-            "local_date": day,
-            "local_time": local.isoformat() if local else None,
-        }
+        item = _published_row(deps.snapshot_id, row, local)
+        rows[item["evidence_id"]] = item
     ordered = sorted(
         rows.values(),
         key=lambda r: (

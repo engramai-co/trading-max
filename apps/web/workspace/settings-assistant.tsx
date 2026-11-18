@@ -8,7 +8,7 @@ import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import { api, ApiError, jsonRequest } from "./data";
 import { Notice, Panel, Pending, QueryError, useCopy } from "./foundation";
 import { workspaceProfileKey } from "./profile";
-import { ASSISTANT_NAME, assistantSettingsChange, assistantSettingsKey, connectedAssistantModels, DISCLOSURE_REVISION } from "./assistant-settings";
+import { ASSISTANT_NAME, assistantSettingsChange, assistantSettingsKey, conversationsErasedEvent, connectedAssistantModels, DISCLOSURE_REVISION } from "./assistant-settings";
 
 const path = "/settings/assistant";
 const actionKey = [...assistantSettingsKey, "action"];
@@ -76,7 +76,11 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
   const erase = useMutation({
     mutationKey: actionKey,
     mutationFn: () => api<void>("/assistant/conversations", { method: "DELETE" }),
-    onSuccess: () => setDialog(null),
+    onSuccess: () => {
+      client.setQueryData(["assistant-conversations"], []);
+      window.dispatchEvent(new Event(conversationsErasedEvent));
+      setDialog(null);
+    },
   });
   function reset() {
     save.reset();

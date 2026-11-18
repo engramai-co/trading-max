@@ -4,7 +4,7 @@ import { backendFetch, backendUrl } from "@/lib/backend";
 import { backendUnavailable, PRIVATE_JSON_HEADERS } from "@/lib/backend-proxy";
 
 export const ASSISTANT_MAX_REQUEST_BYTES = 1_000_000;
-const FORWARDED_QUERY = ["page", "tz"] as const;
+const FORWARDED_QUERY = ["page", "tz", "format"] as const;
 // The AI SDK client reads the stream protocol version from this header.
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "x-vercel-ai-ui-message-stream"] as const;
 
@@ -38,7 +38,7 @@ async function boundedBody(
  * Pass the assistant's event stream through untouched: no buffering, no
  * compression. Closing the browser request aborts the backend run.
  */
-export async function proxyAssistantChat(request: Request): Promise<Response> {
+export async function proxyAssistantChat(request: Request, path = "/v1/assistant/chat"): Promise<Response> {
   const incoming = new URL(request.url);
   const query = new URLSearchParams();
   for (const key of FORWARDED_QUERY) {
@@ -46,7 +46,7 @@ export async function proxyAssistantChat(request: Request): Promise<Response> {
     if (value) query.set(key, value);
   }
   const suffix = query.size ? `?${query}` : "";
-  return proxyAssistantStream(request, `/v1/assistant/chat${suffix}`, "text/event-stream");
+  return proxyAssistantStream(request, path + suffix, "text/event-stream");
 }
 
 export async function proxyAssistantStream(request: Request, path: string, accept: string): Promise<Response> {

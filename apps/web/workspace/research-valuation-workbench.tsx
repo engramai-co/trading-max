@@ -23,7 +23,7 @@ import { createPortal } from "react-dom";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
 import type { DraftActions, DraftView } from "./valuation-draft-editor";
-import { useAssistantEnabled } from "./profile";
+import { useAssistant } from "./assistant/context";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import {
@@ -201,7 +201,7 @@ export function ValuationWorkbench({
     />
   );
   const reason = query.error instanceof ApiError && query.error.status === 422 ? query.error.message : null;
-  const enabled = useAssistantEnabled();
+  const {consented: enabled} = useAssistant();
   const [module, setModule] = useState<DraftModule | null>(null);
   useEffect(() => {
     if (!enabled) return;

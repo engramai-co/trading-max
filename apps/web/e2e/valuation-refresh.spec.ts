@@ -1152,11 +1152,14 @@ test.describe("frozen draft review", () => {
   });
 });
 
-test("loading and retaining a draft requires workspace consent", async ({page}) => {
+test("cold disabled valuation stays dormant and cross-tab withdrawal clears shell and review", async ({page,context}) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
-  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await context.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   const state = await synthetic(page, false);
   let enabled = false;
+  let hold = false;
+  let release!: () => void;
+  const refresh = new Promise<void>(resolve => { release = resolve; });
   const scripts: Promise<string>[] = [];
   const requests: string[] = [];
   page.on("response", response => {
@@ -1164,7 +1167,12 @@ test("loading and retaining a draft requires workspace consent", async ({page}) 
       scripts.push(response.text().catch(() => ""));
   });
   page.on("request", request => { requests.push(request.url()); });
-  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:enabled}}));
+  await page.route("**/api/backend/profile", async route => {
+    if (hold) await refresh;
+    await route.fulfill({json:{assistantEnabled:enabled, accountLabels:{}}});
+  });
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:enabled, code:null}}));
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[]}));
   await page.route("**/SYNT/valuation-draft", route => route.fulfill({
     contentType:"application/x-ndjson", body:JSON.stringify(draftResponse)+"\n",
   }));
@@ -1177,7 +1185,7 @@ test("loading and retaining a draft requires workspace consent", async ({page}) 
   const renderer = "Divides common earnings by common equity", streamReader = "assistant_interrupted";
   expect(await hasScript(renderer)).toBe(false);
   expect(await hasScript(streamReader)).toBe(false);
-  expect(requests.filter(url => /settings\/assistant|valuation-draft/.test(url))).toEqual([]);
+  expect(requests.filter(url => /settings\/assistant|valuation-draft|assistant\/(status|conversations|chat)/.test(url))).toEqual([]);
   await expect(entry).toHaveCount(0);
   await growth.fill("14");
   await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(.14);
@@ -1191,7 +1199,34 @@ test("loading and retaining a draft requires workspace consent", async ({page}) 
   expect(await hasScript(streamReader)).toBe(true);
   await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
   await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
-  await consent(false);
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel.locator("textarea")).toBeVisible();
+  const other = await context.newPage();
+  const settings = {enabled:true, revision:1, route:"openai/model-a", acceptedConsentRevision:2,
+    consentRevision:2, acceptedAt:"2026-01-01", providers:[], integrations:[]};
+  await other.route("**/api/backend/settings/assistant", route => {
+    if (route.request().method() === "PUT") {
+      enabled = false;
+      hold = true;
+      return route.fulfill({json:{...settings,enabled:false,revision:2,acceptedConsentRevision:null}});
+    }
+    return route.fulfill({json:settings});
+  });
+  try {
+    await other.goto("/settings?tab=assistant");
+    await other.getByRole("button",{name:"Withdraw consent"}).click();
+    await page.bringToFront();
+    await expect(panel).toContainText("Checking connection");
+    await expect(panel.locator("textarea")).toHaveCount(0);
+    await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+    await expect(page.locator(".mx-draft-reading")).toHaveCount(0);
+  } finally {
+    release();
+    await other.close();
+  }
+  await expect(panel.getByRole("link",{name:"Open Settings"})).toBeVisible();
+  await panel.getByRole("button",{name:"Close sidebar"}).click();
   await expect(growth).toHaveValue("14%");
   await expect(entry).toHaveCount(0);
   await expect(editor.locator(".mx-draft-row")).toHaveCount(0);

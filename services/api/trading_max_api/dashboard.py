@@ -64,7 +64,7 @@ def _fund_identities(lookthrough: JsonObject) -> list[Identity]:
     return [_identity(row.get("ticker"), row.get("isin")) for row in rows if isinstance(row, dict)]
 
 
-def _benchmark_series(raw: JsonObject) -> dict[str, list[JsonObject]]:
+def benchmark_series(raw: JsonObject) -> dict[str, list[JsonObject]]:
     result: dict[str, list[JsonObject]] = {}
     payload = raw.get("benchmark_series")
     if not isinstance(payload, dict):
@@ -561,7 +561,7 @@ def build_dashboard_data(
         "nav": nav_series(nav_a, nav_b, nav_c),
         "intradayNav": intraday_nav_points(intraday_nav, cash_flows),
         "risk": {code: _risk_metrics(synthetic[code]) for code in account_codes},
-        "benchmarkSeries": _benchmark_series(technical_raw),
+        "benchmarkSeries": benchmark_series(technical_raw),
         "technical": technical,
         "options": option_rows(options_raw),
         "valuations": valuations,

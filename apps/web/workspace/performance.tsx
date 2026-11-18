@@ -20,6 +20,7 @@ import { moneyTimelineReading } from "./money-readings";
 import { DataBasis } from "./reading-card";
 import { number, percent, tone } from "@/workspace/data";
 import { inRange, navNumber, periodReturn, type Scope } from "@/lib/portfolio/nav";
+import { benchmarkValue, rememberBenchmark, usePerformanceBenchmark } from "./assistant/benchmark";
 import { benchmarkComparison } from "@/lib/portfolio/benchmark-comparison";
 import {
   Empty,
@@ -65,7 +66,10 @@ export function PerformanceContent({
 } = {}) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
-  const { params, update } = useRouteState();
+  const { params, update: updateRoute } = useRouteState();
+  const update = (values: Record<string, string | null>) => updateRoute({
+    moneyFrom:null, moneyTo:null, snapshotId:null, evidence:null, ...values,
+  });
   const view =
     params.get("view") === "returns"
       ? "returns"
@@ -78,7 +82,8 @@ export function PerformanceContent({
       ? (params.get("scope") as Scope)
       : "total");
   const range = portfolioRange(params.get("range"));
-  const [benchmark, setBenchmark] = useState("VOO");
+  const preferredBenchmark = usePerformanceBenchmark();
+  const benchmark = benchmarkValue(params.get("benchmark")) ?? preferredBenchmark;
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const start = params.get("returnFrom"), end = params.get("returnTo");
   const customRange = view === "returns" && start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start < end
@@ -88,10 +93,19 @@ export function PerformanceContent({
     [requestedRange, requestedScope]);
   // The account review lens supplies account history but no benchmark prices.
   const usesAnalytics = !suppliedData || view === "returns";
-  const summary = useDashboardLens("analytics", undefined, usesAnalytics, selection);
+  const citedId = params.get("snapshotId");
+  const pinnedReturns = view === "returns" && params.get("evidence") === "compare_benchmarks"
+    ? citedId || undefined : undefined;
+  const summary = useDashboardLens("analytics", undefined, usesAnalytics, selection, pinnedReturns);
   const incoming = usesAnalytics ? summary.data : suppliedData;
-  const historyQuery = usePortfolioHistory({ runId: incoming?.runId ?? "", range: requestedRange, scope: requestedScope },
-    view === "money" && Boolean(incoming?.runId));
+  // A cited GBP figure uses exactly the same prepared history, immutable publication and range as the tool.
+  const moneyFrom = params.get("moneyFrom"), moneyTo = params.get("moneyTo");
+  const pinnedMoney = view === "money" && params.get("evidence") === "period_performance" &&
+    moneyFrom && moneyTo && /^\d{4}-\d{2}-\d{2}$/.test(moneyFrom) && /^\d{4}-\d{2}-\d{2}$/.test(moneyTo) &&
+    moneyFrom <= moneyTo && citedId && /^[a-zA-Z0-9_-]{1,100}$/.test(citedId) ? citedId : null;
+  const historyId = pinnedMoney ?? incoming?.runId ?? "";
+  const historyQuery = usePortfolioHistory({ runId: historyId, range: requestedRange, scope: requestedScope },
+    view === "money" && Boolean(historyId));
   const runtime = useChartRuntime();
   // A single commit point: figures, dates, records and plots all consume this pair.
   // Neither half can overwrite a complete prior selection on its own.
@@ -101,12 +115,13 @@ export function PerformanceContent({
   } : undefined, [incoming, historyQuery.data, historyQuery.dataUpdatedAt, requestedRange, requestedScope, summary.dataUpdatedAt, view]);
   const reading = useReadingBoundary();
   const retained = useRetainedResult(current, Object.is, (next, previous) => !reading.active ||
-    next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope);
-  const shown = retained?.view === view && retained.scope === requestedScope ? retained : undefined;
+    next.data.runId === pinnedReturns || next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope);
+  const shown = retained?.view === view && retained.scope === requestedScope &&
+    (!pinnedReturns || (!summary.isError && retained.data.runId === pinnedReturns)) && (!pinnedMoney || retained.history?.runId === pinnedMoney) ? retained : undefined;
   const data = shown?.data;
   const scope = shown?.scope ?? requestedScope;
   const actualRange = shown?.range ?? requestedRange;
-  const historySelection = { runId: data?.runId ?? "", range: actualRange, scope };
+  const historySelection = { runId: shown?.history?.runId ?? data?.runId ?? "", range: actualRange, scope };
   const daily = useMemo(() => (data?.nav ?? []).filter((p) => !p.intraday), [data?.nav]);
   const failure = usesAnalytics && summary.isError ? summary : view === "money" && historyQuery.isError ? historyQuery : null;
   const publicationFailure = usePublicationFailure(suppliedData ? 0 : shown?.updatedAt ?? 0);
@@ -120,7 +135,8 @@ export function PerformanceContent({
   const unavailable = runtime.status === "failed"
     ? { label: t("图表暂不可用", "Chart unavailable"), retry: runtime.retry }
     : failure && !shown ? {
-      label: view === "money" ? t("盈亏记录暂不可用", "P&L history unavailable")
+      label: pinnedReturns ? t("引用的数据版本暂不可用", "Cited publication unavailable")
+        : view === "money" ? t("盈亏记录暂不可用", "P&L history unavailable")
         : view === "returns" ? t("收益记录暂不可用", "Return history unavailable")
           : t("风险记录暂不可用", "Risk history unavailable"),
       retry: failure.refetch,
@@ -345,7 +361,7 @@ export function PerformanceContent({
                 <Select
                   aria-label={t("基准", "Benchmark")}
                   value={benchmark}
-                  onChange={(v) => setBenchmark(v ?? "VOO")}
+                  onChange={(v) => { rememberBenchmark(v ?? "VOO"); update({ benchmark: v }); }}
                   allowDeselect={false}
                   data={[
                     { value: "VOO", label: "S&P 500 · VOO" },
@@ -376,6 +392,8 @@ export function PerformanceContent({
             {view === "money" && inlineFailure && <div className="mx-money-history-failure">
               <span>{t("盈亏记录", "P&L history")}</span><UpdateFailure {...inlineFailure} showRetry />
             </div>}
+            {pinnedMoney && shown?.history && <p className="mx-return-range">{shown.history.history.startDay} – {shown.history.history.endDay} <button type="button" className="mx-text-link" onClick={() => update({})}>
+              {t("返回当前记录", "Return to current history")}</button></p>}
             {view === "money" && <HistoryCoverage history={history} />}
             {view === "money" ? (
               <MoneySummary money={money} points={points} />
@@ -490,7 +508,7 @@ export function PerformanceContent({
             </div>}
           </Panel>
           {view === "returns" && shown && runtime.status === "ready" && (
-            <div className="mx-data-body" aria-busy={waiting || undefined}><ReturnGrid scope={scope} selected={customRange} onSelect={(period) => {
+            <div className="mx-data-body" aria-busy={waiting || undefined}><ReturnGrid runId={pinnedReturns} scope={scope} selected={customRange} onSelect={(period) => {
               update({ returnFrom: period.start, returnTo: period.end });
               document.querySelector(".mx-performance-chart")?.scrollIntoView({ block: "start" });
             }} /></div>

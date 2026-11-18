@@ -1,7 +1,5 @@
 "use client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect } from "react";
-import { assistantSettingsChange } from "./assistant-settings";
+import { useQuery } from "@tanstack/react-query";
 import type { UserProfile } from "@/lib/types";
 import { api } from "@/workspace/data";
 export const workspaceProfileKey = ["workspace-profile"] as const;
@@ -13,19 +11,6 @@ export function useWorkspaceProfile() {
     staleTime: profileFreshFor,
     retry: 0,
   });
-}
-export function useAssistantEnabled() {
-  const client = useQueryClient();
-  const profile = useWorkspaceProfile();
-  useEffect(() => {
-    const refresh = (event: StorageEvent) => {
-      if (event.key === assistantSettingsChange)
-        void client.invalidateQueries({queryKey: workspaceProfileKey, exact:true});
-    };
-    window.addEventListener("storage", refresh);
-    return () => window.removeEventListener("storage", refresh);
-  }, [client]);
-  return profile.data?.assistantEnabled === true;
 }
 export function accountName(profile: UserProfile | undefined, code: string) {
   const label =
