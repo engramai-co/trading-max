@@ -1603,7 +1603,10 @@ def test_relative_daily_range_uses_returns_lens_calendar(bound):
 
 
 @pytest.mark.parametrize(("requested", "published"), [("SYN", "SYN.L"), ("SYN.L", "SYN")])
-def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, requested, published):
+@pytest.mark.parametrize(("us", "london"), [("NYSE", "LSE"), ("UN", "LN"), ("US", "LN")])
+def test_missing_chart_cannot_borrow_a_known_other_venue(
+    bound, monkeypatch, requested, published, us, london
+):
     app, _ = distinct_listing_events(bound, london_report=True)
     store = app.state.store
     technical = store.read_json(store.latest_manifest().run_id, tools.TECHNICAL)
@@ -1616,11 +1619,13 @@ def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, req
             )
         },
     )
-    app.state.watchlist.add(
-        SecuritySearchResult(
-            ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+    app.state.watchlist.remove("SYN.L")
+    for symbol, venue in [("SYN", us), ("SYN.L", london)]:
+        app.state.watchlist.add(
+            SecuritySearchResult(
+                ticker=symbol, name="Synthetic", exchange=venue, bloomberg_ticker="", figi=""
+            )
         )
-    )
 
     def missing_live(symbol, *args, **kwargs):
         assert symbol == requested

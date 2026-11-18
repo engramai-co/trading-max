@@ -16,7 +16,7 @@ from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFReading
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.reference.quote_units import major_quote_unit
-from trading_max.research.calendar import listing_calendar, session_schedule
+from trading_max.research.calendar import listing_calendar, listing_venues, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
     ResearchCapability,
@@ -2442,15 +2442,15 @@ class ResearchLedger:
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
         ticker = ticker.strip().upper()
-        requested_venue = listing_calendar(ticker, exchanges.get(ticker), None)
+        requested_venues = listing_venues(ticker, exchanges.get(ticker))
         listing = self.held_fund(ticker, manifest, exchanges)
         resolved = listing.ticker if listing else self._route_ticker(ticker, exchanges)
         series = self.published_price_series(resolved, manifest, limit=limit)
         published = series.published_bar_ticker
-        published_venue = series.exchange_calendar or listing_calendar(
-            published, exchanges.get(published or ""), None
+        published_venues = listing_venues(
+            published, series.published_bar_exchange or exchanges.get(published or "")
         )
-        if requested_venue and published_venue and requested_venue != published_venue:
+        if requested_venues and published_venues and requested_venues.isdisjoint(published_venues):
             raise FileNotFoundError(f"published bars belong to another venue for {ticker}")
         return series
 
