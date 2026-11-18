@@ -137,12 +137,22 @@ def test_summary_restates_chosen_sentences_once_per_description(tmp_path):
     "items",
     [
         [{"index": 0, "zh": "公司在 13 个市场销售合成小部件。"}, RESTATED[1]],
+        [{"index": 0, "zh": "公司在 12 亿个市场设计并销售合成小部件。"}, RESTATED[1]],
         [RESTATED[0], {"index": 1, "zh": "公司还提供 AI 订阅服务 Widget Cloud。"}],
         [RESTATED[0], {"index": 1, "zh": "Widget Cloud is a subscription service."}],
+        [RESTATED[0], {"index": 1, "zh": SENTENCES[1] + " 中"}],
         [RESTATED[0], RESTATED[0]],
         [RESTATED[0], {"index": 3, "zh": "公司成立于 1999 年。"}],
     ],
-    ids=["added-figure", "added-name", "not-chinese", "repeated-sentence", "unknown-sentence"],
+    ids=[
+        "added-figure",
+        "added-scale",
+        "added-name",
+        "not-chinese",
+        "token-chinese",
+        "repeated-sentence",
+        "unknown-sentence",
+    ],
 )
 def test_invalid_restatement_is_not_shown_or_saved(tmp_path, items):
     publish, service, calls = workspace(tmp_path, {"items": items}, {"items": RESTATED})
@@ -157,7 +167,24 @@ def test_invalid_restatement_is_not_shown_or_saved(tmp_path, items):
     [
         ("公司还提供订阅服务 Widget Cloud。", 1, True),
         ("公司成立于 1999 年，总部位于 Exampleton。", 2, True),
+        ("公司成立于一九九九年，总部位于 Exampleton。", 2, True),
+        ("Synthetic Issuer Inc. 在十二个市场设计并销售合成小部件。", 0, True),
+        ("公司还提供一项订阅服务 Widget Cloud。", 1, True),
         ("公司成立于 2001 年。", 2, False),
+        # A whole quantity must match: value, scale, percentage and Chinese numerals.
+        ("公司在 12 亿个市场设计并销售合成小部件。", 0, False),
+        ("公司利润率为 12%，并在市场销售合成小部件。", 0, False),
+        ("公司在十三个市场设计并销售合成小部件。", 0, False),
+        ("公司在一二个市场销售合成小部件。", 0, False),
+        ("公司在 -12 个市场销售合成小部件。", 0, False),
+        # Other scripts and copied English are not a Chinese restatement.
+        ("公司 гарантирует прибыль。", 1, False),
+        (SENTENCES[1] + " 中", 1, False),
+        ("公司还提供 subscription service Widget Cloud。", 1, False),
+        ("The Company Also Offers Widget Cloud, A Subscription Service. 公司提供。", 1, False),
+        ("公司は Widget Cloud を提供。", 1, False),
+        ("회사는 Widget Cloud 구독 서비스를 제공합니다。", 1, False),
+        ("公司还提供订阅服务 Widget Cloud。🙂", 1, False),
         ("公司还提供 AI 订阅服务。", 1, False),
         ("公司还提供订阅服务，详见 https://example.invalid", 1, False),
         ("公司还提供**订阅服务**。", 1, False),
@@ -169,6 +196,104 @@ def test_invalid_restatement_is_not_shown_or_saved(tmp_path, items):
 def test_restatement_keeps_to_its_own_sentence(zh, sentence, valid):
     evidence = ReadingEvidence(source="disclosure", tool="company_profile", evidence_id="ev_test")
     assert restates(zh, ReadingLine(zh="", en=SENTENCES[sentence], evidence=evidence)) is valid
+
+
+@pytest.mark.parametrize(
+    ("sentence", "zh", "valid"),
+    [
+        ("It has 1.2 billion users.", "公司拥有 12 亿用户。", True),
+        ("It has 1.2 billion users.", "公司拥有 1.2 亿用户。", False),
+        ("About 40% of revenue comes from services.", "约 40% 的收入来自服务。", True),
+        ("About 40% of revenue comes from services.", "约百分之四十的收入来自服务。", True),
+        ("About 40% of revenue comes from services.", "约百分之 40 的收入来自服务。", True),
+        ("About 40% of revenue comes from services.", "约 40 的收入来自服务。", False),
+        ("It reported $5 million in revenue.", "公司报告收入 500 万美元。", True),
+        ("It reported $5 million in revenue.", "公司报告收入 500 万欧元。", False),
+        ("It reported $5 million in revenue.", "公司报告收入 -500 万美元。", False),
+        # An English scale word belongs to the number it follows.
+        (
+            "It sells widgets in 12 markets to 5 billion users.",
+            "公司在 12 个市场向 50 亿用户销售小部件。",
+            True,
+        ),
+        (
+            "It sells widgets in 12 markets to 5 billion users.",
+            "公司在 12 billion 个市场向 5 billion 用户销售小部件。",
+            False,
+        ),
+        (
+            "It sells widgets in 12 markets to 5 billion users.",
+            "公司在十二 billion 个市场销售小部件。",
+            False,
+        ),
+        (
+            "It changed its name to Example Inc. in January 2007.",
+            "公司于 2007 年 1 月更名为 Example Inc.。",
+            True,
+        ),
+        (
+            "It is the world's second-largest maker of widgets.",
+            "公司是全球第二大小部件制造商。",
+            True,
+        ),
+        ("It operates twenty-five stores.", "公司经营 25 家门店。", True),
+        ("It operates twenty-five stores.", "公司经营 20 家门店。", False),
+        ("It has twenty-five million users.", "公司拥有 2500 万用户。", True),
+        ("Widgets are sold through two channels.", "小部件通过两个渠道销售。", True),
+        ("Widgets are sold through two channels.", "小部件通过三个渠道销售。", False),
+        ("It operates department stores.", "公司经营百货商店。", True),
+        (
+            "It sells new and used vehicles, parts and retail merchandise.",
+            "公司销售新车和二手车、零部件及零售商品。",
+            True,
+        ),
+        (
+            "It sells its products through retailers at low cost.",
+            "公司以零成本通过零售商销售产品。",
+            False,
+        ),
+        ("It sells 5G modems.", "公司销售 5G 调制解调器。", True),
+        ("It sells 5G modems.", "公司销售 6G 调制解调器。", False),
+    ],
+)
+def test_restated_quantities_and_names_equal_the_sentence(sentence, zh, valid):
+    evidence = ReadingEvidence(source="disclosure", tool="company_profile", evidence_id="ev_test")
+    assert restates(zh, ReadingLine(zh="", en=sentence, evidence=evidence)) is valid
+
+
+def test_summary_written_under_the_earlier_check_is_not_served(tmp_path):
+    publish, service, calls = workspace(tmp_path, {"items": RESTATED})
+    deps = publish()
+    role = role_registry()["company-summary"]
+    context = SecurityContext(ticker="TEST")
+    version = role.data_version(role.reader(deps, context), context)
+    earlier = {
+        "role": "company-summary",
+        "version": version,
+        "snapshotId": deps.snapshot_id,
+        "asOf": deps.manifest.created_at.isoformat(),
+        "lines": [
+            {
+                "zh": "公司在 12 亿个市场设计并销售合成小部件。",
+                "en": SENTENCES[0],
+                "evidence": {"source": "disclosure", "tool": "company_profile", "evidenceId": "ev"},
+            }
+        ],
+    }
+    with service.database.transaction(immediate=True) as db:
+        db.execute(
+            "INSERT INTO assistant_readings VALUES (?, ?, ?, ?, ?)",
+            (
+                "research-publication-v2:bound:company-summary",
+                role.object_key(context),
+                version,
+                earlier["asOf"],
+                json.dumps(earlier),
+            ),
+        )
+    reading = read(service, deps)[-1].reading
+    assert [line.zh for line in reading.lines] == [item["zh"] for item in RESTATED]
+    assert len(calls) == 1
 
 
 def test_one_sentence_description_has_one_restatement(tmp_path):
