@@ -23,6 +23,7 @@ from trading_max.research.fundamentals import _sector_profile
 from trading_max.research.statement_valuation import freeze_basis, scenario_defaults
 from trading_max.research.valuation_basis import EXCLUDED_ASSETS, Family, classify
 from trading_max.research.valuation_preview import (
+    LEGACY_VERSION,
     ScenarioInputs,
     ValuationPreview,
     ValuationPreviewRequest,
@@ -63,7 +64,7 @@ from ..research_journal import (
     ResearchNoteInput,
 )
 from ..research_public import public_lens
-from ..valuation_preview_v1 import OperatingValuationPreview
+from ..valuation_preview_v1 import OperatingScenarioInputs, OperatingValuationPreview
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
 
@@ -75,6 +76,8 @@ def _valuation_preview(
     request: Request,
     inputs: ValuationPreviewRequest | None = None,
     requested_family: Family | None = None,
+    *,
+    legacy: bool = False,
 ) -> ValuationPreview:
     default_source = "user-input"
     research = app_service(request, "research")
@@ -189,6 +192,26 @@ def _valuation_preview(
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
+        if legacy:
+            if (
+                basis.family != "cash-flow"
+                or not basis.revenue
+                or not -1 <= basis.start_margin <= 1
+            ):
+                raise ValueError("family-aware-valuation-preview-required")
+            inputs = inputs.model_copy(
+                update={
+                    "formula_version": LEGACY_VERSION,
+                    "scenarios": {
+                        key: ScenarioInputs.model_validate(
+                            OperatingScenarioInputs.model_validate(
+                                params, from_attributes=True
+                            ).model_dump()
+                        )
+                        for key, params in inputs.scenarios.items()
+                    },
+                }
+            )
         result = preview(basis, inputs)
         result.default_source = default_source
         return result
@@ -229,14 +252,14 @@ def _operating_preview(result: ValuationPreview) -> OperatingValuationPreview:
 
 @router.get("/v1/research/{ticker}/valuation-preview", response_model=OperatingValuationPreview)
 def operating_preview_defaults(ticker: str, request: Request) -> OperatingValuationPreview:
-    return _operating_preview(_valuation_preview(ticker, request))
+    return _operating_preview(_valuation_preview(ticker, request, legacy=True))
 
 
 @router.post("/v1/research/{ticker}/valuation-preview", response_model=OperatingValuationPreview)
 def operating_preview_calculate(
     ticker: str, body: ValuationPreviewRequest, request: Request
 ) -> OperatingValuationPreview:
-    return _operating_preview(_valuation_preview(ticker, request, body))
+    return _operating_preview(_valuation_preview(ticker, request, body, legacy=True))
 
 
 @router.get("/v1/research/{ticker}/journal", response_model=ResearchJournal)
@@ -281,7 +304,13 @@ def research_model_save(
     ticker: str, body: ResearchModelSaveRequest, request: Request
 ) -> ResearchJournal:
     inputs = ValuationPreviewRequest.model_validate(body.model_dump(exclude={"reason"}))
-    result = _valuation_preview(ticker, request, inputs)
+    # The published client sends only its five operating controls. Family-aware
+    # clients can also call this shared save route and identify their contract.
+    legacy = not ({"family", "formula_version"} & body.model_fields_set) and all(
+        params.model_fields_set <= OperatingScenarioInputs.model_fields.keys()
+        for params in body.scenarios.values()
+    )
+    result = _valuation_preview(ticker, request, inputs, legacy=legacy)
     if not result.scenarios:
         raise HTTPException(status_code=422, detail="no-valuation-range-to-save")
     return app_service(request, "research_journal").save_model(result, body.reason)

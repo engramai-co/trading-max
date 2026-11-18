@@ -481,3 +481,32 @@ def test_overview_sets_and_clears_a_london_equity_baseline(research_root, tmp_pa
             assert row["ev5Upside"] == pytest.approx(
                 forecast.scenarios["base"].value / 25 - 1 if selected else 0.2
             )
+
+
+def test_v1_roundtrip_and_legacy_save_use_the_published_formula(tmp_path):
+    lens = _valuation_lens()
+    for params in lens.valuation.scenarios.values():
+        params.ramp_years = 4
+    app = FastAPI()
+    app.include_router(router)
+    app.state.research = SimpleNamespace(
+        lens_snapshot=lambda *args: lens, held_position=lambda *args: None
+    )
+    app.state.store = SimpleNamespace(latest_manifest=lambda: object())
+    app.state.settings = SimpleNamespace(api_token="synthetic-token")
+    app.state.research_journal = ResearchJournalStore(tmp_path)
+    app.state.valuation_assumptions = ValuationAssumptionsStore(tmp_path)
+    with TestClient(app) as client:
+        route = "/v1/research/TEST/valuation-preview"
+        first = client.get(route).json()
+        req = {"scenarios": {k: v["inputs"] for k, v in first["scenarios"].items()}}
+        again = client.post(route, json=req).json()
+        assert first["scenarios"] == again["scenarios"]
+        assert first["formulaVersion"] == again["formulaVersion"] == "equity-proxy-projection-v1"
+        saved = client.post(
+            "/v1/research/TEST/models",
+            json={**req, "reason": "Legacy worksheet"},
+            headers={"Authorization": "Bearer synthetic-token"},
+        ).json()["models"][0]["preview"]
+        assert saved["formulaVersion"] == first["formulaVersion"]
+        assert saved["scenarios"]["base"]["value"] == first["scenarios"]["base"]["value"]
