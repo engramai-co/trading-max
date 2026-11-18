@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.61.0] - 2026-11-18
+
 ### Added
 - Review can expand each recorded buy or sell into its dated evidence, subsequent return and hindsight timing gap. A trading habits brief filters the timeline and journal by pre-earnings buys, same-day basket purchases or large falls without a trade. Both horizons use the selected account’s records.
 
