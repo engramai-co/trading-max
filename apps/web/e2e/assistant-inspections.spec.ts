@@ -748,6 +748,7 @@ test("a missing endpoint in the updated phone reading keeps the dialog and focus
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
   await expect(page.getByRole("button",{name:"YTD",exact:true})).toBeFocused();
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-dismissed-focus-ytd.png")});
 });
 
 for (const view of ["holdings","money","returns","risk"] as const) {
@@ -796,6 +797,7 @@ for (const view of ["holdings","money","returns","risk"] as const) {
     expect(data.runId).toBe(id);
     if(view==="risk") {
       expect(data.nav.some((p:{isaDrawdown?:number})=>p.isaDrawdown!=null)).toBe(true);
+      expect(data.nav.some((p:{isaTwr?:number})=>p.isaTwr!=null)).toBe(true);
       expect(Object.keys(data.risk)).toEqual(["B"]);
       expect(data).not.toHaveProperty("benchmarkSeries");
     }

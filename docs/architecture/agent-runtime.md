@@ -307,8 +307,12 @@ correct a figure for the same date. Reopening that citation requires the same
 observation or reports its expiry.
 
 Holdings and Risk use dedicated retained projections. Positions include the selected
-broker accounts' timestamps and totals. Risk includes the selected scope's drawdown
-and risk metrics. Money requests the pinned portfolio history directly.
+broker accounts' position observation timestamps. Account balances carry the broker’s
+balance timestamp, including updates whose positions failed reconciliation. Risk reads
+the selected accounts’ NAV, TWR and drawdown to identify the peak and trough. Money
+requests the pinned portfolio history directly. The API index and the web’s prepared
+history have separate, bounded live and retained caches. A manifest check validates
+retained chart and exact-page hits before the web returns cached records.
 Returns binds the account, requested range, benchmark and both chart
 endpoints to the publication plotted by the chart. Daily returns report observed and
 total interval counts, the lowest day and the largest absolute daily move. Ties at
