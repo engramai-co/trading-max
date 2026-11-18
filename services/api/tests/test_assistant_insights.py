@@ -1639,3 +1639,53 @@ def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, req
         result["data"] is None
         and result["quality"]["reason_code"] == "published_daily_bars_unavailable"
     )
+
+
+@pytest.mark.parametrize("disclosure", [None, "history", "ex_date"])
+def test_fund_bar_distribution_qualifies_once_on_its_own_listing(bound, monkeypatch, disclosure):
+    app, initial, _ = bound
+    store = app.state.store
+    date = DATES[-1]
+    points = store.read_json(initial.run_id, tools.TECHNICAL)["rows"][0]["price_series"]
+    points[-1]["dividend"] = 0.5
+    data = {
+        FUND_PRICES_KEY: {"rows": [{"ticker": "SPY", "currency": "USD", "price_series": points}]}
+    }
+    if disclosure == "history":
+        data[tools.FINANCIALS] = {
+            "rows": [
+                {
+                    "ticker": "SPY",
+                    "financials": {
+                        "evidence": {
+                            "dividends": [{"date": date, "amount": 0.5, "currency": "USD"}]
+                        }
+                    },
+                }
+            ]
+        }
+    elif disclosure == "ex_date":
+        data[tools.EARNINGS] = {"rows": [{"ticker": "SPY", "calendar": {"Ex-Dividend Date": date}}]}
+    manifest = republish(
+        store, {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in data.items()}
+    )
+    monkeypatch.setattr(app.state.security_prices, "alpaca_etf", lambda *args: None)
+    client = TestClient(app)
+    chart = client.get("/v1/research/SPY/prices").json()
+    assert chart["events"] == [{"date": date, "kind": "dividend", "value": 0.5, "currency": "USD"}]
+    result = client.get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={
+            "ticker": "SPY",
+            "scope": "cfd",
+            "start": DATES[0],
+            "end": date,
+            "published_series_id": chart["publishedSeriesId"],
+        },
+    ).json()
+    (moment,) = result["data"]["items"]
+    assert moment["date"] == date and moment["move_fraction"] != 0
+    assert moment["event_count"] == 1
+    assert [event["kind"] for event in moment["events"]] == [
+        "ex_dividend" if disclosure == "ex_date" else "dividend"
+    ]

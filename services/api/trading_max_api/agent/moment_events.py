@@ -55,6 +55,22 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
                 {"date": row["date"], "kind": row["kind"], "reference": row["source_url"]}
             )
 
+    # The pinned chart itself can be the only record of a fund distribution.
+    # A payment date is distinct from an ex-date, even if both fall on one day.
+    distribution_days = {e["date"] for e in events if e["kind"] in {"dividend", "ex_dividend"}}
+    if series.published_bar_ticker == ticker:
+        for bar in series.events:
+            day = bar["date"]
+            if (
+                bar["kind"] == "dividend"
+                and args.start <= day <= args.end
+                and day not in distribution_days
+            ):
+                events.append(
+                    {"date": day, "kind": "dividend", "reference": f"price_bar:{ticker}:{day}"}
+                )
+                distribution_days.add(day)
+
     def feed(key):
         return _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
 
