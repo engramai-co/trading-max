@@ -830,7 +830,7 @@ class ValuationArtifactStage:
     """
 
     name = "research.valuation"
-    version = "valuation-v6"
+    version = "valuation-v7"
     required_for = frozenset({"all", "research"})
     dependencies = ("research.technical", "research.fundamentals", "research.financials")
 
@@ -841,11 +841,13 @@ class ValuationArtifactStage:
         *,
         fx_loader=None,
         assumptions_store=None,
+        state_root=None,
     ) -> None:
         self.artifacts = artifacts
         self.snapshots = snapshots
         self.fx_loader = fx_loader
         self.assumptions_store = assumptions_store
+        self.state_root = state_root
 
     def _previous_assumptions(self) -> dict | None:
         store = self.assumptions_store
@@ -897,9 +899,34 @@ class ValuationArtifactStage:
             )
         try:
             financials = _upstream_json(self.artifacts, context, "research/financials.json")
+            catalog = _upstream_json(self.artifacts, context, SECURITY_MASTER_KEY)
+            if catalog is None and self.snapshots:
+                previous = self.snapshots.latest(verify_artifacts=False)
+                ref = (
+                    next(
+                        (
+                            ref
+                            for ref in previous.manifest.artifacts
+                            if ref.key == SECURITY_MASTER_KEY
+                        ),
+                        None,
+                    )
+                    if previous
+                    else None
+                )
+                if ref:
+                    catalog = self.artifacts.get_json(ref.artifact_id)
+            master = (
+                CatalogSecurityMaster(SecurityMasterCatalog.model_validate(catalog.payload))
+                if catalog
+                else CatalogSecurityMaster.from_state_root(self.state_root)
+                if self.state_root
+                else None
+            )
             batch = build_valuation(
                 {**technical.payload, "tickers": list(equities)},
                 fundamentals.payload,
+                security_master=master,
                 assumptions=self._previous_assumptions(),
                 fx_loader=self.fx_loader,
                 financials=financials.payload if financials else {},
@@ -920,6 +947,7 @@ class ValuationArtifactStage:
                 technical.ref.artifact_id,
                 fundamentals.ref.artifact_id,
                 *([financials.ref.artifact_id] if financials else []),
+                *([catalog.ref.artifact_id] if catalog else []),
             ],
             quality=ArtifactQuality(
                 status=_quality_status(batch.warnings),

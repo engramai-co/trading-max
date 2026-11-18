@@ -20,7 +20,11 @@ from yfinance.exceptions import YFException
 
 from trading_max.domain import DomainModel
 from trading_max.reference.quote_units import major_quote_unit
+from trading_max.reference.security_master import SecurityDescriptor, SecurityMasterResolver
 from trading_max.research.facts import build_financial_facts
+from trading_max.research.listing import quote_listing
+from trading_max.research.statement_valuation import statement_row
+from trading_max.research.valuation_basis import classify
 
 JsonObject = dict[str, Any]
 InfoLoader = Callable[[str], Mapping[str, Any]]
@@ -495,6 +499,7 @@ def build_valuation(
     assumptions: Mapping[str, Any] | None = None,
     fx_loader: FxLoader | None = None,
     financials: Mapping[str, Any] | None = None,
+    security_master: SecurityMasterResolver | None = None,
 ) -> ValuationBatch:
     """Calculate evidence-gated scenario valuation lenses.
 
@@ -551,22 +556,16 @@ def build_valuation(
             if financials is not None
             else None
         )
-        ttm_values = (
-            {o.metric: o for o in facts.observations if o.period_id == facts.latest_ttm}
-            if facts
-            else {}
-        )
-        if facts is not None:
-            total_revenue = ttm_values.get("revenue").value if ttm_values.get("revenue") else None
-            free_cashflow = (
-                ttm_values.get("freeCashflow").value if ttm_values.get("freeCashflow") else None
-            )
+        quote_currency, _ = major_quote_unit(str(fundamental.get("currency") or ""))
+        technical_currency, divisor = major_quote_unit(str(tech.get("currency") or ""))
+        if technical_currency and technical_currency != quote_currency:
+            spot = None
+        elif spot is not None:
+            spot /= divisor
         shares = _positive_number(metrics.get("sharesOutstanding"))
         market_cap = _positive_number(metrics.get("marketCap"))
-        if shares is None and market_cap is not None and spot:
+        if shares is None and market_cap is not None and spot and spot > 0:
             shares = market_cap / spot
-        quote_currency = str(fundamental.get("currency") or "")
-        quote_currency, _ = major_quote_unit(quote_currency)
         report_currency = str(
             metrics.get("financialCurrency")
             or fundamental.get("financialCurrency")
@@ -591,40 +590,57 @@ def build_valuation(
             str(fundamental.get("industry") or metrics.get("industry") or ""),
         )
         cost_of_equity, discount_inputs = _company_cost_of_equity(metrics, sector)
+        if facts is not None:
+            descriptor = SecurityDescriptor(
+                ticker=ticker,
+                name=str(fundamental.get("name") or ""),
+                exchange=str(metrics.get("fullExchangeName") or ""),
+            )
+            security = security_master.resolve(descriptor) if security_master else None
+            # An issuer-only resolver can classify the business but cannot prove its share unit.
+            listing_type = getattr(security_master, "listing_security_type", None)
+            family, classification = classify(
+                ticker,
+                security.gics.sub_industry_code if security and security.gics else "",
+                financial_rows.get(ticker, {}),
+            )
+            if ticker == "IREN":
+                sector, _ = _sector_profile("Technology", "Data Infrastructure")
+                cost_of_equity, discount_inputs = _company_cost_of_equity(metrics, sector)
+            matching_catalog = {
+                "companies": [
+                    company
+                    for company in (assumptions or {}).get("companies", [])
+                    if isinstance(company, Mapping) and company.get("family", "cash-flow") == family
+                ]
+            }
+            rows.append(
+                statement_row(
+                    ticker,
+                    facts,
+                    family=family,
+                    classification=classification,
+                    fundamental=fundamental,
+                    spot=spot,
+                    profile=sector,
+                    cost=cost_of_equity,
+                    discount_inputs=discount_inputs,
+                    overrides=_legacy_scenarios(matching_catalog, ticker),
+                    source=_scenario_assumption_source(matching_catalog, ticker),
+                    fx=fx_rate,
+                    shares=shares,
+                    currency=quote_currency,
+                    listing=quote_listing(
+                        ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
+                    ),
+                    filing_evidence=financial_rows.get(ticker, {}).get("evidence") or {},
+                    security_type=listing_type(descriptor) if listing_type else "",
+                )
+            )
+            continue
         reported_growth = _number(metrics.get("revenueGrowth"))
         growth_basis = "provider-latest-quarter-yoy-legacy"
-        if facts is not None:
-            revenue_by_id = {
-                o.period_id: o.value
-                for o in facts.observations
-                if o.metric == "revenue" and o.value is not None and o.value > 0
-            }
-            annual = sorted(
-                (p for p in facts.periods if p.kind == "annual" and p.id in revenue_by_id),
-                key=lambda p: p.provider_end,
-            )[-4:]
-            elapsed_years = (
-                (
-                    date.fromisoformat(annual[-1].provider_end)
-                    - date.fromisoformat(annual[0].provider_end)
-                ).days
-                / 365.25
-                if len(annual) >= 2
-                else 0
-            )
-            historical_growth = (
-                (revenue_by_id[annual[-1].id] / revenue_by_id[annual[0].id]) ** (1 / elapsed_years)
-                - 1
-                if elapsed_years >= 0.9
-                else None
-            )
-            growth_basis = (
-                "reported-annual-revenue-cagr"
-                if historical_growth is not None
-                else "explicit-assumption-required"
-            )
-        else:
-            historical_growth = reported_growth
+        historical_growth = reported_growth
         growth_capped = reported_growth is not None and reported_growth > sector.growth_cap
         base_growth = (
             min(max(historical_growth, -0.10), sector.growth_cap)
@@ -688,20 +704,14 @@ def build_valuation(
             "baseRevenueGrowth": base_growth,
             "reportedRevenueGrowth": reported_growth,
             "growthBasis": growth_basis,
-            "financialFactsVersion": facts.version if facts else None,
-            "cashflowReconciliation": facts.reconciliation if facts else None,
-            "inputEvidence": {
-                name: observation.model_dump(mode="json")
-                for name, observation in ttm_values.items()
-                if name in {"revenue", "freeCashflow"}
-            },
+            "financialFactsVersion": None,
+            "cashflowReconciliation": None,
+            "inputEvidence": {},
             "freeCashflowMargin": current_fcf_margin,
             "normalizedFcfMargin": normalized_margin,
             "discountRate": cost_of_equity,
             "discountRateType": "cost-of-equity",
-            "cashFlowType": "operating-cash-flow-less-capex-equity-proxy"
-            if facts
-            else "levered-free-cash-flow-proxy",
+            "cashFlowType": "levered-free-cash-flow-proxy",
             "matureGrowth": DCF_MATURE_GROWTH,
             "shareCagr": sector.share_cagr,
             "fxRate": fx_rate if fx_rate else None,
@@ -716,11 +726,6 @@ def build_valuation(
             and shares is not None
             and fx_rate != 0.0
             and bool(quote_currency)
-            and (
-                facts is None
-                or base_growth is not None
-                or _complete_scenario_overrides(scenario_overrides)
-            )
             and sector.method != "analyst"
         )
         positive_fcf = current_fcf_margin is not None and current_fcf_margin > 0
@@ -856,9 +861,7 @@ def build_valuation(
                     "analystTargetsAreReferenceOnly": True,
                     "validationStatus": "not-backtested",
                 },
-                "source": "trading-max-valuation-v5"
-                if financials is not None
-                else "trading-max-valuation-v4",
+                "source": "trading-max-valuation-v4",
             }
         )
     return ValuationBatch(

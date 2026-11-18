@@ -8,6 +8,8 @@ const scenarios = ["bear", "base", "bull"] as const;
 
 /** What a preview is computed from besides its basis. */
 export type PreviewRequest = {
+  family?: Preview["basis"]["family"];
+  formulaVersion?: Preview["formulaVersion"];
   scenarios: Record<string, ScenarioInput>;
   horizon: number;
   dataVersion: string;
@@ -17,6 +19,8 @@ export type PreviewRequest = {
 /** The request that reproduces a preview, optionally at another horizon. */
 export function previewRequest(preview: Preview, horizon: number = preview.horizon): PreviewRequest {
   return {
+    family: preview.basis.family,
+    formulaVersion: preview.formulaVersion,
     scenarios: Object.fromEntries(scenarios.map((key) => [key, preview.scenarios[key].inputs])),
     horizon,
     dataVersion: preview.basis.dataVersion,
@@ -29,7 +33,7 @@ export function previewRequest(preview: Preview, horizon: number = preview.horiz
  * A new spot recomputes the scenarios but keeps the assumptions being edited.
  */
 export function editorIdentity(preview: Preview) {
-  return JSON.stringify([preview.basis.ticker, preview.defaultSource ?? null, previewRequest(preview)]);
+  return JSON.stringify([preview.basis.ticker, preview.defaultSource ?? null, preview.reverseMetric === "year-five-revenue" ? preview.id : previewRequest(preview)]);
 }
 
 /** One security's research data: what its default previews have in common. */
@@ -45,8 +49,9 @@ function research(data: ResearchLensSnapshot) {
 export function valuationDefaultsQuery(
   data: ResearchLensSnapshot,
   spot?: Pick<ResearchPrice, "source" | "price" | "asOf"> | null,
+  family?: Preview["basis"]["family"],
 ) {
-  const parts = research(data);
+  const parts = [...research(data), family ?? null];
   return queryOptions({
     queryKey: [
       "valuation-workbench",
@@ -55,11 +60,11 @@ export function valuationDefaultsQuery(
     ],
     queryFn: async ({ client, signal }) => {
       const preview = await api<Preview>(
-        `/research/${encodeURIComponent(data.ticker)}/valuation-preview`,
-        { signal },
+        `/research/${encodeURIComponent(data.ticker)}/valuation-preview${family ? "?family=" + family : ""}`,
+        { signal, headers: { "x-valuation-contract": "2" } },
       );
       // A later refresh that fails keeps this one on screen.
-      client.setQueryData(loadedValuationQuery(data).queryKey, preview);
+      client.setQueryData(loadedValuationQuery(data, family).queryKey, preview);
       return preview;
     },
     // The service's refusals (incomplete inputs) are final; a dropped connection
@@ -73,10 +78,10 @@ export function valuationDefaultsQuery(
 }
 
 /** The last default preview of this security's research that loaded, at any spot. */
-export function loadedValuationQuery(data: ResearchLensSnapshot) {
+export function loadedValuationQuery(data: ResearchLensSnapshot, family?: Preview["basis"]["family"]) {
   // Never fetched: each successful default preview writes it.
   return queryOptions<Preview>({
-    queryKey: ["valuation-workbench", ...research(data), "loaded"],
+    queryKey: ["valuation-workbench", ...research(data), family ?? null, "loaded"],
     queryFn: skipToken,
   });
 }
@@ -112,6 +117,7 @@ export function valuationPreviewQuery(initial: Preview, request: PreviewRequest)
     queryFn: ({ signal }) =>
       api<Preview>(`/research/${encodeURIComponent(basis.ticker)}/valuation-preview`, {
         ...jsonRequest("POST", request),
+        headers: { "Content-Type": "application/json", "x-valuation-contract": "2" },
         signal,
       }),
     staleTime: Infinity,

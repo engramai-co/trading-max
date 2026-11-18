@@ -23,7 +23,7 @@ def test_research_quotes_name_the_listing_their_exchange_quotes():
     assert quote_listing("IAG", None, None) is None
     assert quote_listing("IAG", "LSE", "Europe/London") is None
     assert quote_listing("SHOP.TO", "Toronto", "America/Toronto") is None
-    assert quote_listing("SAP.DE", "XETRA", "Europe/Berlin") is None
+    assert quote_listing("SAP.DE", "XETRA", "Europe/Berlin") == "XETR:SAP.DE"
 
 
 def test_quotes_carry_their_listing():

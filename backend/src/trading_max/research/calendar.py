@@ -15,6 +15,7 @@ from pandas.tseries.holiday import Holiday
 from pydantic import Field
 
 from trading_max.domain import DomainModel
+from trading_max.reference.venues import venue_mic
 
 YAHOO_SUFFIX_BY_MIC = {
     "XLON": ".L",
@@ -97,7 +98,10 @@ class SessionSchedule(DomainModel):
 
 
 def calendar_name(exchange: str | None) -> str | None:
-    return EXCHANGES.get("".join(str(exchange or "").upper().split()))
+    mic = venue_mic(exchange)
+    if mic == "XKOS":
+        return "XKRX"
+    return "XNYS" if mic in {"XNAS", "XASE", "ARCX"} else mic or EXCHANGES.get("".join(str(exchange or "").upper().split()))
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:
