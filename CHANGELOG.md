@@ -5,7 +5,7 @@ All notable public Trading Max releases are recorded here.
 ## [Unreleased]
 
 ### Added
-- Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. The sidebar reflows wide screens and fills the screen on phones.
+- Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Replies show figures and coverage directly from the cited records. The sidebar reflows wide screens and fills the screen on phones.
 - Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
 
 ## [1.54.0] - 2026-11-18

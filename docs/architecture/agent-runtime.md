@@ -178,8 +178,21 @@ per object retained. Cached-only requests make no model calls. The workspace
 sidebar uses the chat stream for follow-ups and sends the validated role context
 with the next question. A follow-up keeps the reading's page, account, period,
 object and immutable snapshot across navigation and when restoring a stopped
-draft. Chat displays two to four lines only after their source references resolve
-within the same turn. A completed reply is announced once.
+draft.
+
+The sidebar requests two to four references. For example,
+`{{/data/period_pnl_gbp}} [ev_example]` selects the dated GBP net P&L from
+that completed tool call. The client resolves the field in the current turn
+and formats its metric, amount, unit, window and coverage. Qualitative lines
+select a bilingual interpretation such as `{{cash-flows}} [inference]`.
+The transcript and its completion announcement use the same verifier.
+Unknown fields, conflicting IDs and model-authored prose make the whole
+reply unverifiable, including replies reopened from conversation history.
+
+To support an additional metric, add its field, label and deterministic unit
+formatter in `apps/web/workspace/assistant/figures.ts`, describe it in
+`SIDEBAR_FORMAT`, and test it with a completed tool result. Page roles
+continue to provide bilingual observations from their pinned tools.
 
 The background writer observes completed publication records from both worker
 modes. Each scheduled full update can produce a daily brief. Saturday's 02:00

@@ -12,7 +12,8 @@ import { useCopy } from "../foundation";
 import Link from "../link";
 import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
-import { chatContext, displayTurns, verifiedLines } from "./evidence";
+import { verifiedLines } from "./chat-reply";
+import { chatContext, displayTurns } from "./evidence";
 
 // getRandomValues is available on loopback and existing HTTP workspaces.
 function makeConversationId() {
@@ -26,8 +27,10 @@ const transport = new DefaultChatTransport({
 });
 function ChatAnswer({ message, pending }: { message: UIMessage; pending: boolean }) {
   const t = useCopy();
-  const lines = verifiedLines(message);
-  if (!lines.length) return pending ? null : <p className="mx-assistant-note">{t("无法核实这次回复。", "This reply could not be verified.")}</p>;
+  const { locale, timeZone } = useLocale();
+  if (pending) return null;
+  const lines = verifiedLines(message, locale, timeZone);
+  if (!lines.length) return <p className="mx-assistant-note">{t("无法核实这次回复。", "This reply could not be verified.")}</p>;
   return lines.map((line, i) => <p className="mx-reading-line" key={i}>{line.text}{" "}
     {line.evidence ? <EvidenceLink evidence={line.evidence}/> : <span className="mx-reading-source">{t("推断", "Inference")}</span>}
   </p>);
@@ -45,15 +48,17 @@ function failureCode(message: string) {
     return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : "assistant_unavailable";
   } catch { return "assistant_unavailable"; }
 }
-function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
-  page: string; search: string; scopeLabel: string; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
+function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }: {
+  page: string; search: string; scopeLabel: string; history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
 }) {
   const t = useCopy();
-  const { timeZone } = useLocale();
+  const { timeZone, locale } = useLocale();
   const { open, close, pageCard, handoff } = useAssistant();
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  const historyButton = useRef<HTMLButtonElement>(null);
+  const wasHistory = useRef(history);
   const submitted = useRef<{text:string; card:RoleCard | null}>({text:"",card:null});
   const [announcement, setAnnouncement] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
@@ -65,15 +70,19 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
       void client.invalidateQueries({ queryKey: ["assistant-conversations"] });
       const reply = displayTurns(completed).at(-1);
       if (!isAbort && !isError && !isDisconnect && reply?.role === "assistant") {
-        setAnnouncement(verifiedLines(reply).map(line => line.text).join(" "));
+        setAnnouncement(verifiedLines(reply, locale, timeZone).map(line => line.text).join(" "));
       }
     },
   });
   const busy = status === "submitted" || status === "streaming";
   useEffect(() => () => { void stop(); }, [stop]);
   useEffect(() => {
-    if (open) input.current?.focus({ preventScroll: true });
-  }, [open]);
+    if (open && !history) {
+      const target = wasHistory.current ? historyButton.current : input.current;
+      target?.focus({ preventScroll: true });
+    }
+    wasHistory.current = history;
+  }, [open, history]);
   useEffect(() => {
     const el = scroller.current;
     if (el && open && el.scrollHeight - el.scrollTop - el.clientHeight < 320) el.scrollTop = el.scrollHeight;
@@ -102,18 +111,19 @@ function Thread({ page, search, scopeLabel, initial, onHistory, onNew }: {
     void sendMessage({ text }, { body: { context:turn } });
     setContextCard(null);
   }
+  const turns = displayTurns(messages);
   return <>
     <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><div>
       <button disabled={busy} onClick={onNew} aria-label={t("新对话", "New conversation")}><Plus /></button>
-      <button disabled={busy} onClick={onHistory} aria-label={t("历史对话", "Conversation history")}><ClockCounterClockwise /></button>
+      <button ref={historyButton} disabled={busy} onClick={onHistory} aria-label={t("历史对话", "Conversation history")}><ClockCounterClockwise /></button>
       <button onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button>
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
       {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} /><ReadingLines card={card} />
         <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} onClick={() => send(q)}>{q}<span aria-hidden="true">→</span></button>)}</div>
       </div>}
-      {displayTurns(messages).map(m => <div key={m.id} className={"mx-assistant-turn mx-turn-" + m.role}>
-        {m.role === "user" ? m.parts.map((p, i) => p.type === "text" ? <p key={i}>{p.text}</p> : null) : <ChatAnswer message={m} pending={busy && m.id === messages.at(-1)?.id} />}
+      {turns.map(m => <div key={m.id} className={"mx-assistant-turn mx-turn-" + m.role}>
+        {m.role === "user" ? m.parts.map((p, i) => p.type === "text" ? <p key={i}>{p.text}</p> : null) : <ChatAnswer message={m} pending={busy && m === turns.at(-1)} />}
       </div>)}
       {busy && <p className="mx-assistant-note" role="status">{t("正在读取", "Reading ")}{scopeLabel}…</p>}
       {error && <p role="alert">{errorLabel(failureCode(error.message), t)}</p>}
@@ -172,7 +182,7 @@ export default function AssistantSidebar({ page, search, scopeLabel }: { page: s
     <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…", "Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
     {!pending && <Link href="/settings?tab=assistant" onClick={close} className="mx-text-link">{t("打开设置", "Open Settings")} →</Link>}</div></>;
   return <>
-    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...{page, search, scopeLabel, initial}} onNew={fresh} onHistory={() => setHistory(true)} /></div>
+    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...{page, search, scopeLabel, initial, history}} onNew={fresh} onHistory={() => setHistory(true)} /></div>
     {history && <History back={() => setHistory(false)} select={(id, messages) => { setInitial({ id, messages, sequence: handoff?.sequence ?? 0 }); setHistory(false); }}
       removed={id => { if (id === initial.id) fresh(); }} />}
   </>;

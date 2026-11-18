@@ -31,7 +31,7 @@ from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
 
 from .deps import AccountScope
-from .runtime import USAGE_LIMITS, error_code, run_context
+from .runtime import SIDEBAR_FORMAT, USAGE_LIMITS, error_code, run_context
 from .store import SqliteConversationStore
 from .tools import Lens, PageRange, Ticker
 
@@ -293,6 +293,7 @@ class AssistantService:
                     ticker=context.ticker,
                     lens=context.lens,
                 )
+                + SIDEBAR_FORMAT
                 + (
                     f"\nContinue the {context.role} reading for this object: {context.object}."
                     if context.role
