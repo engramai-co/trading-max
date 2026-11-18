@@ -58,8 +58,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const checkStatus = !waitingForConsent && (optedIn === true ||
     (externalRevision === 0 && optedIn === undefined && open && !profile.isPending));
   const status = useQuery({ queryKey: [...assistantStatusKey, settings.data?.revision ?? null, externalRevision],
-    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal, priority: "low" }),
-    enabled: checkStatus, staleTime: statusFreshFor, retry: false,
+    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]), priority: "low" }),
+    enabled: checkStatus, staleTime: statusFreshFor, retry: false, networkMode: "always",
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
   const consentDenied = optedIn === false || status.data?.code === "assistant_disabled" || status.data?.code === "assistant_consent_required";

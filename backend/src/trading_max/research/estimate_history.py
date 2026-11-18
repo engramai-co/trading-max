@@ -18,9 +18,10 @@ from trading_max.infrastructure import (
     SqliteDatabase,
 )
 from trading_max.reference.quote_units import major_quote_unit
+from trading_max.research.venues import resolve_venue, row_claims
 
 from .facts import number
-from .listing import quote_listing
+from .listing import resolved_quote_listing
 
 LOGGER = logging.getLogger(__name__)
 FUNDAMENTALS_KEY = "research/fundamentals.json"
@@ -187,10 +188,10 @@ def estimate_observations(
         price = price if price is not None and price > 0 and unit else None
         yield EstimateObservation(
             ticker=ticker,
-            listing=quote_listing(
+            listing=resolved_quote_listing(
                 ticker,
-                _text(metrics.get("fullExchangeName")),
-                _text(metrics.get("exchangeTimezoneName")),
+                resolve_venue(ticker, *row_claims(ticker, row, metrics)),
+                metrics.get("fullExchangeName") or metrics.get("exchange"),
             ),
             currency=currency,
             quote_unit=unit,
@@ -237,13 +238,16 @@ class EstimateHistory:
             count += 1
         return count
 
-    def list(self, ticker: str, *, limit: int) -> list[EstimateObservation]:
+    def list(
+        self, ticker: str, *, limit: int, listing: str | None = None
+    ) -> list[EstimateObservation]:
         limit = min(MAX_HISTORY_ROWS, max(1, limit))
         with self.database.read() as connection:
             rows = connection.execute(
                 "SELECT observed_at, observation_json FROM research_estimate_history WHERE ticker = ? "
+                "AND (? IS NULL OR json_extract(observation_json, '$.listing') = ?) "
                 "ORDER BY observed_at DESC, id DESC LIMIT ?",
-                (ticker.strip().upper(), limit),
+                (ticker.strip().upper(), listing, listing, limit),
             ).fetchall()
         return [
             EstimateObservation.model_validate(

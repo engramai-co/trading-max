@@ -13,9 +13,10 @@ import {
 } from "@mantine/core";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
-import { api, compact, currency, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
+import { api, compact, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
 import { ValuationFloorNote } from "./valuation-floor-note";
 import { EvidenceTable } from "./evidence-table";
 import {
@@ -302,7 +303,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
             onChange={(v) => setInput({ ...input, modelId: v })}
             data={(query.data?.models ?? []).map((m) => ({
               value: m.id,
-              label: `${m.savedAt.slice(0, 16).replace("T", " ")} · ${m.preview.horizon}Y · ${currency(m.preview.scenarios.base.value, m.preview.basis.currency, 2)}`,
+              label: `${m.savedAt.slice(0, 16).replace("T", " ")} · ${m.preview.horizon}Y · ${quoteValue(m.preview.scenarios.base.value, m.preview.basis.currency)}`,
             }))}
           />
           <TextInput
@@ -476,7 +477,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 <tr>
                   <th>{t("保存时现价", "Price at save")}</th>
                   {columns.map((m) => (
-                    <td key={m.id}>{currency(m.preview.basis.spot, m.preview.basis.currency, 2)}</td>
+                    <td key={m.id}>{quoteValue(m.preview.basis.spot, m.preview.basis.currency)}</td>
                   ))}
                 </tr>
                 {(["revenue", "shares", "startMargin"] as const).map((k, i) => (
@@ -494,8 +495,10 @@ function ModelVersions({ journal }: { journal: Journal }) {
                       <td key={m.id}>
                         {k === "startMargin"
                           ? percent(m.preview.basis[k])
-                          : compact(m.preview.basis[k], locale) +
-                            (k === "revenue" ? " " + m.preview.basis.currency : "")}
+                          : (k === "revenue"
+                            ? quoteValue(m.preview.basis.revenue, m.preview.basis.currency, { style: "compact", locale }) +
+                              " " + quoteUnit(m.preview.basis.currency).currency
+                            : compact(m.preview.basis[k], locale))}
                       </td>
                     ))}
                   </tr>
@@ -507,7 +510,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                     </th>
                     {columns.map((m) => (
                       <td key={m.id}>
-                        {currency(m.preview.scenarios[k].value, m.preview.basis.currency, 2)}
+                        {quoteValue(m.preview.scenarios[k].value, m.preview.basis.currency)}
                         <ValuationFloorNote adjustment={m.preview.scenarios[k].equityFloorAdjustment} />
                       </td>
                     ))}
@@ -595,7 +598,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
           <>
             <p>
               {detail.savedAt.slice(0, 16).replace("T", " ")} UTC · {detail.preview.horizon}Y ·{" "}
-              {detail.preview.basis.currency}
+              {quoteUnit(detail.preview.basis.currency).currency}
             </p>
             {detail.reason && (
               <div className="mx-saved-reason">
@@ -623,7 +626,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                     detail.preview.basis.family === "residual-income"
                       ? t("期末每股净资产", "Closing book / share")
                       : t("营收", "Revenue"),
-                  value: (r) => compact(r.closingBook ?? r.revenue, locale),
+                  value: (r) => quoteValue(r.closingBook ?? r.revenue, detail.preview.basis.currency, { style: "compact", locale }),
                   numeric: true,
                 },
                 {
@@ -634,9 +637,10 @@ function ModelVersions({ journal }: { journal: Journal }) {
                         ? t("净利润", "Net income")
                         : t("现金流", "Cash flow"),
                   value: (r) =>
-                    compact(
+                    quoteValue(
                       detail.preview.basis.family === "residual-income" ? r.cashflowPerShare : r.freeCashflow,
-                      locale,
+                      detail.preview.basis.currency,
+                      { style: "compact", locale },
                     ),
                   numeric: true,
                 },
@@ -647,14 +651,14 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 },
                 {
                   label: t("每股现值", "Present value / share"),
-                  value: (r) => number(r.presentValue, 2),
+                  value: (r) => quoteValue(r.presentValue, detail.preview.basis.currency),
                   numeric: true,
                 },
               ]}
             />
             <p>
               {t("每股价值", "Value per share")}:{" "}
-              {currency(detail.preview.scenarios[scenario].value, detail.preview.basis.currency, 2)}
+              {quoteValue(detail.preview.scenarios[scenario].value, detail.preview.basis.currency)}
               <ValuationFloorNote adjustment={detail.preview.scenarios[scenario].equityFloorAdjustment} />
             </p>
             <details>

@@ -3,18 +3,23 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections import Counter
 from dataclasses import replace
 from datetime import UTC, date, datetime
+from functools import partial
 from itertools import pairwise
 from math import prod
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, StringConstraints, model_validator
+from pydantic import AfterValidator, Field, StringConstraints, model_validator
+from trading_max.analytics.decision_review import CALCULATION_VERSION
 from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, nav_number, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
+from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
+from trading_max.research.venues import VenueConflict, row_claims
 
 from ..dashboard import benchmark_series
 from ..dashboard_models import ResearchPriceSeries
@@ -22,7 +27,9 @@ from ..projections.day_change import measures_broker_observation, within_trading
 from ..projections.nav import nav_series
 from ..projections.values import csv_rows
 from ..research import published_price_series_id
+from ..research_listing import PinnedListing
 from .deps import AssistantDeps
+from .events import prior_decision_events
 from .moment_events import listing_moment_events
 from .tools import (
     ANALYST,
@@ -94,10 +101,11 @@ class ReviewArgs(Scoped, Paged):
     since: CalendarDay | None = None
     decision_date: CalendarDay | None = None
     side: Literal["buy", "sell"] | None = None
+    ordinal: int | None = Field(default=None, ge=0, lt=2000)
 
     @model_validator(mode="after")
     def focused_decision(self):
-        if (self.side or self.decision_date) and not (
+        if (self.side or self.decision_date or self.ordinal is not None) and not (
             self.side and self.decision_date and self.ticker and self.scope in {"invest", "isa"}
         ):
             raise ValueError("A focused decision needs an account, ticker, date and side.")
@@ -396,21 +404,26 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             issues.append(f"{CODE_SCOPE[code]}_decisions_unavailable")
             continue
         as_of[CODE_SCOPE[code]] = _iso(account.get("as_of"))
-        for row in _rows(account.get("decisions")):
+        ordinals: Counter[tuple[str, str, str]] = Counter()
+        for row in _rows(account.get("decisions")) + _rows(account.get("unpriced_basket_buys")):
             ticker, day = _text(row.get("ticker"), 64), _iso(row.get("date"))
             side = row.get("side")
             if not day or not ticker or side not in {"buy", "sell"}:
                 continue
             if (args.since and day < args.since) or (args.ticker and ticker.upper() != args.ticker):
                 continue
+            if args.decision_date and (day, side) != (args.decision_date, args.side):
+                continue
+            identity = (day, ticker, side)
+            ordinal = ordinals[identity]
+            ordinals[identity] += 1
+            if args.ordinal is not None and ordinal != args.ordinal:
+                continue
             complete = row.get("horizon_complete")
             if complete is None:
                 complete = row.get("effect_horizon_gbp") is not None
-            if args.decision_date:
-                if (day, side) != (args.decision_date, args.side):
-                    continue
-                if args.horizon == "decision_default":
-                    horizon = "20_sessions" if complete else "to_date"
+            if args.decision_date and args.horizon == "decision_default":
+                horizon = "20_sessions" if complete else "to_date"
             observed = _number(row.get("observed_days"))
             usable = (
                 complete
@@ -421,13 +434,41 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             )
             suffix = "horizon" if horizon == "20_sessions" else "to_date"
             effect = _number(row.get(f"effect_{suffix}_gbp")) if usable else None
-            timing = _mapped(row.get(f"hindsight_{suffix}")) if effect is not None else {}
+            observed_prices = account.get("calculation_version") == CALCULATION_VERSION
+            timing = (
+                _mapped(row.get(f"hindsight_{suffix}"))
+                if effect is not None and observed_prices
+                else {}
+            )
             rows.append(
                 {
                     "scope": CODE_SCOPE[code],
                     "ticker": ticker,
+                    "ordinal": ordinal,
                     "date": day,
                     "side": side,
+                    **(
+                        {
+                            "listing": _text(row.get("listing"), 32),
+                            "name": _text(row.get("name"), 160),
+                            "first_fill_at": _iso(row.get("first_fill_at")),
+                            "prior_close_date": _iso(row.get("prior_close_date"))
+                            if observed_prices
+                            else None,
+                            "prior_close_gbp": _number(row.get("prior_close_gbp"))
+                            if observed_prices
+                            else None,
+                            "settled_per_share_gbp": _number(row.get("settled_per_share_gbp")),
+                            "security_return": _number(row.get(f"return_{suffix}"))
+                            if usable
+                            else None,
+                            "market_return": _number(row.get(f"market_return_{suffix}"))
+                            if usable
+                            else None,
+                        }
+                        if args.decision_date
+                        else {}
+                    ),
                     "horizon": horizon,
                     "observed_days": observed,
                     "effect_gbp": effect,
@@ -447,6 +488,15 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                 issues.append("hindsight_timing_unavailable")
     if not as_of:
         return read.missing("decision_history_unavailable", keys=[DECISIONS])
+    keys = [DECISIONS]
+    if args.ordinal is not None and rows:
+        # A selected decision can expose only its own listing's verified pre-trade evidence.
+        row = rows[0]
+        row["prior_events"] = prior_decision_events(
+            read, row["listing"], row["date"], row["first_fill_at"]
+        )
+        keys.extend([ANALYST, FINANCIALS, NEWS_KEY])
+        read = replace(read, evidence_context=deps.timezone.key)
     habits = []
     for side in ("buy", "sell"):
         group = [row for row in rows if row["side"] == side]
@@ -475,7 +525,7 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             "habits": habits,
             "order_size_basis": "mean_security_purchase_order_through_decision_in_account",
         },
-        keys=[DECISIONS],
+        keys=keys,
         issues=issues,
     )
 
@@ -497,8 +547,34 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
+    ticker = series.published_bar_ticker or args.ticker
+    claims = (
+        *series.venue_claims,
+        *row_claims(
+            ticker,
+            {
+                "mic": series.published_bar_mic,
+                "exchange": series.published_bar_exchange,
+            },
+        ),
+    )
+    pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker, ticker))
+    source_rows = {}
+    for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS):
+        raw = read.read(key)
+        source_rows[key] = pinned.feed_row(partial(_ticker_row, raw)) or {}
+    news_rows = {
+        key: pinned.feed_row(_mapped((read.read(key) or {}).get("securities")).get) or {}
+        for key in (NEWS_KEY, NEWS_STATUS_KEY)
+    }
+    if not pinned.venue().venues:
+        pinned = pinned.with_event_claims(*source_rows.values(), *news_rows.values())
+
     def listing_row(key):
-        return _ticker_row(read.read(key), args.ticker) or {}
+        row, rejected = pinned.event_row(source_rows[key])
+        if rejected:
+            issues.append("listing_calendar_unavailable")
+        return row
 
     analyst = _mapped(listing_row(ANALYST).get("analyst"))
     if analyst:
@@ -528,13 +604,16 @@ def dated_events(
         issues.append("filings_unavailable")
     for row in _rows(filing_evidence.get("filings")):
         add(row.get("date"), "filing", row.get("accession") or row.get("id"))
+    fundamental = listing_row(FUNDAMENTALS)
     extra_events, extra_keys, extra_issues = listing_moment_events(
         read,
         args,
         series,
         _mapped(listing_row(EARNINGS).get("calendar")),
-        _mapped(listing_row(FUNDAMENTALS).get("metrics")),
+        _mapped(fundamental.get("metrics") or fundamental.get("info")),
         filing_evidence,
+        pinned,
+        news_rows,
     )
     keys.extend(extra_keys)
     issues.extend(extra_issues)
@@ -569,6 +648,12 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         return read.missing("published_daily_bars_unavailable")
     try:
         series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+    except VenueConflict:
+        return read.result(
+            "unavailable",
+            reason="published_daily_bars_unavailable",
+            issues=["listing_calendar_unavailable"],
+        )
     except (FileNotFoundError, SnapshotIntegrityError, ValueError):
         return read.missing("published_daily_bars_unavailable")
     series_id = series.published_series_id
@@ -589,7 +674,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     bars = [p.model_dump(mode="json") for p in series.points]
     events, keys, issues = dated_events(
         read,
-        args.model_copy(update={"ticker": series.published_bar_ticker}),
+        args,
         codes,
         series,
     )
@@ -643,7 +728,9 @@ def dated_exposure(ctx: Context, args: ExposureHistoryArgs) -> Json:
 
 
 def decision_timing_and_habits(ctx: Context, args: ReviewArgs) -> Json:
-    """Read hindsight entry/exit timing and rule-based buy/sell statistics. A missing effect is unscored."""
+    """Read decision outcomes and hindsight timing. A missing effect is unscored.
+    Sidebar references include /data/items/N/market_return and /data/items/N/hindsight/missed_gbp.
+    """
     return review_data(ctx.deps, args)
 
 

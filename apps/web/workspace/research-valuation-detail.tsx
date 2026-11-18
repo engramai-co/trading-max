@@ -2,9 +2,10 @@
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Select } from "@mantine/core";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { compact, currency, number, object, objects, percent, str } from "@/workspace/data";
+import { compact, number, object, objects, percent, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Facts, Panel, useCopy } from "./foundation";
 import type { Preview } from "./research-facts";
@@ -22,7 +23,7 @@ export function ValuationSensitivity({ result }: { result: Preview }) {
         action={
           <span className="mx-unit">
             {result.horizon}
-            {t(" 年", " years")} · {result.basis.currency}
+            {t(" 年", " years")} · {quoteUnit(result.basis.currency).currency}
           </span>
         }
       >
@@ -58,7 +59,7 @@ export function ValuationSensitivity({ result }: { result: Preview }) {
                           cell.upside >= 0 ? "positive" : "negative"
                         }
                       >
-                        <strong>{number(cell.value, 2)}</strong>
+                        <strong>{quoteValue(cell.value, result.basis.currency, { style: "figure" })}</strong>
                         <span>{percent(cell.upside, true, 1)}</span>
                       </td>
                     ))}
@@ -140,21 +141,21 @@ export function ValuationWorksheet({
                   {residual ? (
                     <>
                       <td>{percent(y.roe)}</td>
-                      <td>{number(y.closingBook, 2)}</td>
-                      <td>{number(y.earningsPerShare, 2)}</td>
+                      <td>{quoteValue(y.closingBook, result.basis.currency)}</td>
+                      <td>{quoteValue(y.earningsPerShare, result.basis.currency)}</td>
                     </>
                   ) : (
                     <>
                       <td>{percent(y.growth)}</td>
-                      <td>{compact(y.revenue, locale)}</td>
+                      <td>{quoteValue(y.revenue, result.basis.currency, { style: "compact", locale })}</td>
                       <td>{percent(y.fcfMargin)}</td>
-                      <td>{compact(y.freeCashflow, locale)}</td>
-                      {financed && <td>{compact(y.financing ?? 0, locale)}</td>}
+                      <td>{quoteValue(y.freeCashflow, result.basis.currency, { style: "compact", locale })}</td>
+                      {financed && <td>{quoteValue(y.financing ?? 0, result.basis.currency, { style: "compact", locale })}</td>}
                       <td>{compact(y.shares, locale)}</td>
                     </>
                   )}
-                  <td>{number(y.cashflowPerShare, 2)}</td>
-                  <td>{number(y.presentValue, 2)}</td>
+                  <td>{quoteValue(y.cashflowPerShare, result.basis.currency)}</td>
+                  <td>{quoteValue(y.presentValue, result.basis.currency)}</td>
                 </tr>
               ))}
             </tbody>
@@ -167,18 +168,18 @@ export function ValuationWorksheet({
                       ? t("净利润现值", "Present value of earnings")
                       : t("预测现金流现值", "Projected cash-flow present value")}
                 </th>
-                <td colSpan={2}>{currency(projection.operatingValue, result.basis.currency, 2)}</td>
+                <td colSpan={2}>{quoteValue(projection.operatingValue, result.basis.currency)}</td>
               </tr>
               <tr>
                 <th colSpan={residual ? 4 : financed ? 7 : 6}>
                   {residual ? t("期末溢价现值", "Discounted terminal premium") :
                     <>{t("终值现值", "Terminal present value")} · {percent(projection.terminalContribution)}</>}
                 </th>
-                <td colSpan={2}>{currency(residual ? projection.terminalPremiumPresentValue : projection.terminalPresentValue, result.basis.currency, 2)}</td>
+                <td colSpan={2}>{quoteValue(residual ? projection.terminalPremiumPresentValue : projection.terminalPresentValue, result.basis.currency)}</td>
               </tr>
               <tr>
                 <th colSpan={residual ? 4 : financed ? 7 : 6}>{t("每股价值", "Value per share")}</th>
-                <td colSpan={2}>{currency(projection.value, result.basis.currency, 2)}</td>
+                <td colSpan={2}>{quoteValue(projection.value, result.basis.currency)}</td>
               </tr>
               {residual && <tr>
                 <th colSpan={4}>{t("期末卖出价现值占每股价值", "Discounted exit price / value")}</th>
@@ -189,7 +190,7 @@ export function ValuationWorksheet({
                   <th colSpan={residual ? 4 : financed ? 7 : 6}>
                     {t("股权零下限调整", "Equity zero-floor adjustment")}
                   </th>
-                  <td colSpan={2}>{currency(projection.equityFloorAdjustment, result.basis.currency, 2)}</td>
+                  <td colSpan={2}>{quoteValue(projection.equityFloorAdjustment, result.basis.currency)}</td>
                 </tr>
               )}
             </tfoot>
@@ -200,12 +201,12 @@ export function ValuationWorksheet({
           <dl className="mx-evidence-inputs">
             {residual ? <>
               <dt>{t("普通股净利润", "Common earnings")}</dt>
-              <dd>{currency(result.basis.commonEarnings, result.basis.currency, 0)}</dd>
+              <dd>{quoteValue(result.basis.commonEarnings, result.basis.currency, { digits: 0 })}</dd>
               <dt>{t("每股净资产", "Book value per share")}</dt>
-              <dd>{currency(result.basis.bookPerShare, result.basis.currency, 2)}</dd>
+              <dd>{quoteValue(result.basis.bookPerShare, result.basis.currency)}</dd>
             </> : <>
             <dt>{t("起始营收", "Starting revenue")}</dt>
-            <dd>{currency(result.basis.revenue, result.basis.currency, 0)}</dd>
+            <dd>{quoteValue(result.basis.revenue, result.basis.currency, { digits: 0 })}</dd>
             <dt>
               {earnings
                 ? t("起始净利率", "Starting net margin")

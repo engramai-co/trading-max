@@ -274,7 +274,9 @@ def published_positions(
                     "dayChangeDate": day_change.date if day_change else None,
                     "dayChangeClosedOn": day_change.closed_on if day_change else None,
                     "isFund": fund is not None,
-                    "researchTicker": fund_listing(position, catalog).ticker,
+                    "researchTicker": listing.ticker
+                    if (listing := fund_listing(position, catalog))
+                    else None,
                     "fundIsin": (identity[1] or fund[1] or None) if fund is not None else None,
                 }
             )

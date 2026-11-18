@@ -958,16 +958,18 @@ test("a historical dividend in chat reopens its published amount and basis", asy
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
 });
 
-async function streamHistoricalEventReplies(page: Page, turns: string[][]) {
-  const items = historicalEvents.data.items;
+async function streamHistoricalEventReplies(page: Page, turns: string[][], output = historicalEvents, field: "date" | "local_date" = "date") {
+  const items = output.data.items;
   let next = 0;
   await page.route("**/api/backend/assistant/chat*", route => {
     const id = "historical-" + next;
-    const text = turns[next++].map(kind =>
-      `{{/data/items/${items.findIndex(row => row.kind === kind)}/date}} [${historicalEvents.evidence_id}]`).join("\n");
+    const lines = turns[next++].map(kind =>
+      `{{/data/items/${items.findIndex(row => row.kind === kind)}/${field}}} [${output.evidence_id}]`);
+    if (lines.length === 1) lines.push("{{insufficient-evidence}} [inference]");
+    const text = lines.join("\n");
     const chunks = [{type:"start",messageId:id},{type:"start-step"},
-      {type:"tool-input-available",toolCallId:id,toolName:"news_and_events",input:{args:{scope:"invest",start:historicalEvents.data.start,end:historicalEvents.data.end}}},
-      {type:"tool-output-available",toolCallId:id,output:historicalEvents},
+      {type:"tool-input-available",toolCallId:id,toolName:"news_and_events",input:{args:{scope:"invest",start:output.data.start,end:output.data.end}}},
+      {type:"tool-output-available",toolCallId:id,output},
       {type:"text-start",id},{type:"text-delta",id,delta:text},{type:"text-end",id},
       {type:"finish-step"},{type:"finish",finishReason:"stop"}];
     return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
@@ -1145,6 +1147,43 @@ test("a Broker citation opens the retained decision and reports expiry", async (
   }
   expect(requests.every(run => run === snapshot)).toBe(true);
 });
+
+for (const [zone, localDay] of [
+  ["America/New_York", "2026-11-24"], ["Europe/London", "2026-11-25"], ["Asia/Tokyo", "2026-11-25"],
+]) {
+  test("an overnight Broker citation opens the original ledger decision in " + zone, async ({page}) => {
+    await fixtures(page);
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.route("**/api/backend/profile", route => route.fulfill({json:{accountLabels:{}, assistantEnabled:true, timeZone:zone}}));
+    const output = structuredClone(historicalEvents);
+    const trade = output.data.items.find(row => row.kind === "own_trade")!;
+    trade.instant = "2026-11-25T00:30:00Z";
+    trade.local_date = localDay;
+    await streamHistoricalEventReplies(page, [["own_trade"]], output, "local_date");
+    await page.route("**/api/backend/dashboard/lens/account-analysis?**", route => {
+      const run = new URL(route.request().url()).searchParams.get("runId");
+      expect(run).toBe(output.snapshot_id);
+      const shared = {ticker:trade.ticker, side:"buy", kind:"B", observedDays:2, events:[]};
+      return route.fulfill({json:{runId:run, accounts:[], holdings:[], nav:[], brokerAsOf:trade.date, selectedAccountDecisions:{
+        status:"available", asOf:trade.date, decisions:[
+          {...shared, date:"2026-11-24", amountGbp:35, name:"Earlier synthetic fill"},
+          {...shared, date:"2026-11-25", amountGbp:125, name:"Original synthetic fill"},
+        ],
+      }}});
+    });
+    await page.goto("/");
+    await page.locator("[data-assistant-trigger]").click();
+    const draft = page.getByRole("textbox", {name:"Message"});
+    await draft.fill("When was the original synthetic purchase?");
+    await draft.press("Enter");
+    const reply = page.locator(".mx-turn-assistant");
+    await expect(reply).toContainText(localDay);
+    await reply.getByRole("link", {name:"Broker"}).first().click();
+    const decision = page.locator(".mx-decision-focus");
+    await expect(decision).toContainText("£125");
+    await expect(decision).toContainText("Original synthetic fill");
+  });
+}
 
 test("first approval focuses the lazy composer after the opening consent check", async ({page}, info) => {
   if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});

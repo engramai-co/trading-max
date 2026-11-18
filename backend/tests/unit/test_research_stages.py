@@ -164,6 +164,8 @@ def test_fund_price_stage_publishes_previous_close_with_the_matching_spot(
                         "ticker": "TEST.L",
                         "as_of": as_of,
                         "price": 96.0,
+                        "asset_type": "MUTUALFUND",
+                        "provider_venue": {"exchangeName": "LSE", "fullExchangeName": "LSE"},
                         "currency": "GBP",
                         "exchange": "LSE",
                         "timezone": "Europe/London",
@@ -181,12 +183,15 @@ def test_fund_price_stage_publishes_previous_close_with_the_matching_spot(
     assert directory_ref.key == FUND_PRICE_DIRECTORY_KEY
     row = artifacts.get_json(price_ref.artifact_id).payload["rows"][0]
     published = artifacts.get_json(directory_ref.artifact_id).payload["rows"][0]
+    assert row["asset_type"] == "MUTUALFUND"
     assert row["price_series"] == points
     assert published == {
         "ticker": "TEST.L",
         "mic": "XLON",
         "as_of": as_of,
         "spot": 96.0,
+        "asset_type": "MUTUALFUND",
+        "provider_venue": {"exchangeName": "LSE", "fullExchangeName": "LSE"},
         "currency": "GBP",
         "exchange": "LSE",
         "timezone": "Europe/London",

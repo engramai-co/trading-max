@@ -168,7 +168,11 @@ class PageRole:
 
     # A terminal operational record can precede a workspace's first publication.
     record_anchor: Callable[[RoleTools, Any], tuple[str, datetime] | None] | None = None
+    # Reuse the model’s section order while repricing a running outcome from the pinned data.
+    refresh_cached_facts: bool = False
     tool_bindings: Callable[[Any, str | None], ToolBindings] | None = None
+
+    allow_single_observation: bool = False
 
     def bind(self, deps: AssistantDeps, context: RoleContext) -> AssistantDeps:
         selected = self.context_schema.model_validate(context.model_dump())
@@ -210,7 +214,16 @@ def role_registry() -> dict[str, PageRole]:
     from .exposure_role import EXPOSURE
     from .market_roles import MARKET_ROLES
     from .overview_roles import OVERVIEW_ROLES
+    from .review_roles import REVIEW_ROLES
 
     return {
-        role.id: role for role in (*OVERVIEW_ROLES, EXPOSURE, ATTRIBUTION, DIAGNOSIS, *MARKET_ROLES)
+        role.id: role
+        for role in (
+            *OVERVIEW_ROLES,
+            EXPOSURE,
+            ATTRIBUTION,
+            DIAGNOSIS,
+            *MARKET_ROLES,
+            *REVIEW_ROLES,
+        )
     }

@@ -23,6 +23,19 @@ def test_estimate_history_endpoint_is_bounded_and_independent_of_snapshots(tmp_p
         for hour, value in enumerate((18, 21, 22))
     )
 
+    history.append(
+        [
+            EstimateObservation(
+                ticker="TEST.L",
+                listing=listing,
+                currency="GBP",
+                observed_at=now + timedelta(days=day),
+                forwardPE=999,
+            )
+            for day, listing in enumerate((None, "US:TEST"), start=1)
+        ]
+    )
+
     with TestClient(app) as client:
         response = client.get("/v1/research/test.l/estimate-history", params={"limit": 2})
         assert response.status_code == 200

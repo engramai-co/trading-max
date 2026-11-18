@@ -6,15 +6,44 @@ All notable public Trading Max releases are recorded here.
 
 ### Added
 - With MaxAI enabled, select a look-through allocation, performance range or market sector for a sourced reading. Citations reopen the selected object and publication while available. Daily attribution identifies its observed intervals and largest move. Global map cards explain the selected market, and Data status can explain a failed update or stale snapshot.
+
+### Fixed
+- Holdings citations keep the dated benchmark weight. Money, Returns and Risk reopen the cited publication and interval. Archived Holdings shows the broker’s GBP amounts. An individual Money account keeps its carried balance on the same published dates after archiving. Its chart and exact rows still open if another account’s ledger is missing. Both become unavailable when the publication expires. Position prices keep their own observation time when a newer broker balance arrives. An undated quote shows “Time unavailable” in Holdings and MaxAI replies. Risk keeps the cited account’s drawdown peak. When updated data loses an endpoint, the phone reading announces the missing interval and returns focus to the range control on dismissal. If Read range disappears, focus returns to the Risk profile tab.
+
+## [1.61.0] - 2026-11-18
+
+### Added
+- Review can expand each recorded buy or sell into its dated evidence, subsequent return and hindsight timing gap. A trading habits brief filters the timeline and journal by pre-earnings buys, same-day basket purchases or large falls without a trade. Both horizons use the selected account’s records.
+
+### Fixed
+- Broker citations open the decision for the fill’s UTC ledger day, including when the reader’s time zone shows a different date.
+- Saved Review citations keep the selected horizon and habit with MaxAI off. Earnings and analyst citations reopen the recorded event or show that it is unavailable. Opening a habit citation on a phone closes the sheet. Clearing the filter returns keyboard focus to the timeline, including when it has to load the current account data.
+- Review keeps the provider’s quote currency when FX is missing, measures hindsight against observed GBP closes and excludes headlines on the UTC trade day. Basket counts include net buys with missing settlement. Habits follow-ups can compare both horizons. Briefs from older publications show only the habits those records cover.
+- When a consented provider is unavailable, Review links directly to MaxAI settings.
+
+## [1.60.0] - 2026-11-18
+
+### Added
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves. Key moments include dated dividend records and headlines for the chart’s listing. A headline published after the exchange closes goes with the next session.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
-- Holdings citations keep the dated benchmark weight. Money, Returns and Risk reopen the cited publication and interval. Archived Holdings shows the broker’s GBP amounts. An individual Money account keeps its carried balance on the same published dates after archiving. Its chart and exact rows still open if another account’s ledger is missing. Both become unavailable when the publication expires. Position prices keep their own observation time when a newer broker balance arrives. An undated quote shows “Time unavailable” in Holdings and MaxAI replies. Risk keeps the cited account’s drawdown peak. When updated data loses an endpoint, the phone reading announces the missing interval and returns focus to the range control on dismissal. If Read range disappears, focus returns to the Risk profile tab.
+- Valuation summaries, worksheets, saved models and comparisons show pence-denominated values in pounds.
+- Historical P/E labels the archived price currency without assigning it to vendor EPS of unverified unit. Valuation fallback quotes keep each ticker's own observation date.
+- Research headers show a fallback close with its own currency and date. London pence appear in pounds in price previews, chart readings, technical figures and alert messages.
+- Research keeps the price, currency and observation date of an archived quote together. Index charts keep the selected zoom when constituent and holdings data arrives.
+- London chart prices, dividends and trade markers retain their supported pound or pence units. Verified London history, news and earnings dates remain available across older ticker spellings. GBP benchmarks wait for both the ETF and currency close on days when both trade.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
-- A missing price chart stays unavailable when a similar ticker trades on a different known venue. Distributions on the chart can qualify as key moments. Timed headlines follow the published closing auction for their listing. A headline published while the auction can still close at random is marked on that session.
+- Live alerts compare prices and thresholds in the same unit, including London prices quoted in pence. Decision review and research history check the listing before using archived prices.
+- Research charts, their technical readings and the assistant’s dated events follow the same listing. Conflicting provider symbols or venues withhold the affected reading. Distributions on the chart can qualify as key moments. Timed headlines follow the published closing auction for their listing. A headline published while the auction can still close at random is marked on that session.
+- Settings panels and the MaxAI consent dialog open with their text at full contrast.
 - The first day of a chart range can qualify as a key moment when the previous session’s close is available.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
+## [1.59.0] - 2026-11-18
+
+### Added
+- With MaxAI enabled, choose Draft under Adjust assumptions to see suggested changes for the selected valuation model. Review each change and its sources, accept or reject it, and see how the scenario value changes. Choose Save model version to keep the result. If the price, exchange rate, share count, statements or parent model change, the desk asks you to review the draft again.
 
 ## [1.58.0] - 2026-11-18
 

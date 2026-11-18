@@ -107,7 +107,10 @@ freshness states and available valuation evidence values. For a calendar event s
 items/N/date, items/N/end_date or items/N/status from its row. For a historical dividend in news_and_events,
 select its items/N/amount for the published payment per share, or items/N/basis. For a research lens, select
 items/N/value for a typed price (with currency), technical score, expiry count,
-as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
+as-of date, sector, industry or country. For Review, select /data/items/N/security_return,
+/data/items/N/market_return or /data/items/N/hindsight/missed_gbp from decision_timing_and_habits.
+For review_patterns select /data/groups/GROUP/count, evaluated, mean_return or effect_gbp
+using the actual habit key from its result. Use {{/status}} if values are unavailable.
 For page readings, select selected_money /data/pnl, exposure_benchmark /data/weight,
 selected_exposure /data/current/weight_fraction or /data/previous/weight_fraction,
 selected_daily (or daily_returns) /data/window_twr_fraction, /data/worst_day/return_fraction, /data/largest_move/return_fraction (largest absolute daily move) or

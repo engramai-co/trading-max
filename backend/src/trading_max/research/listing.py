@@ -11,9 +11,9 @@ from __future__ import annotations
 
 from typing import NamedTuple
 
-from trading_max.reference.venues import local_venue_symbol, venue_mic
+from trading_max.reference.venues import local_venue_symbol
 
-from .calendar import calendar_name, listing_calendar
+from .venues import VenueClaim, VenueResolution, provider_claim, resolve_venue
 
 US = "US"
 LONDON = "LSE"
@@ -73,23 +73,33 @@ def broker_listing(instrument: str | None) -> str | None:
 def quote_listing(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:
     """The listing of a research quote: its symbol on the exchange quoting it."""
 
+    return resolved_quote_listing(symbol, resolve_venue(symbol, provider_claim(exchange)), exchange)
+
+
+def resolved_quote_listing(
+    symbol: str | None, venue: VenueResolution, exchange: str | None = None
+) -> str | None:
     code = str(symbol or "").strip().upper()
-    calendar = listing_calendar(code, exchange, timezone)
+    calendar = venue.calendar
     if code.endswith(".L") and len(code) > 2 and calendar == "XLON":
         listing = f"{LONDON}:{code.removesuffix('.L')}"
-        if listing in REVIEWED_ORDINARY_SOURCES and calendar_name(exchange) != "XLON":
+        if (
+            listing in REVIEWED_ORDINARY_SOURCES
+            and resolve_venue(None, provider_claim(exchange)).calendar != "XLON"
+        ):
             return None
         return listing
-    if code and "." not in code and calendar_name(exchange) == "XNYS":
+    if code and "." not in code and calendar == "XNYS":
         listing = f"{US}:{code}"
         receipt = REVIEWED_RECEIPTS.get(listing)
-        if receipt and venue_mic(exchange) != receipt.mic:
+        if (
+            receipt
+            and not venue.venues <= resolve_venue(None, VenueClaim("mic", receipt.mic)).venues
+        ):
             return None
         return listing
     # KOSDAQ shares the Korean trading calendar but has its own listing MIC.
-    mic = venue_mic(exchange)
-    if not mic and calendar == "XKRX" and code.endswith(".KQ"):
-        mic = "XKOS"
-    if local_venue_symbol(code, mic or calendar) != code:
+    mic = next(iter(venue.venues)) if len(venue.venues) == 1 else None
+    if calendar and local_venue_symbol(code, mic or calendar) != code:
         return f"{calendar}:{code}"
     return None

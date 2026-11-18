@@ -2,7 +2,8 @@ import type { SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
 import type { ResearchPriceSeries } from "@/lib/types";
 import type { Reading, ReadingItem } from "./chart-readout";
-import { fixed, readingTone, signedNumber, signedPercent } from "./reading-format";
+import { quoteAmount, quoteValue } from "./financial-values";
+import { readingTone, signedNumber, signedPercent } from "./reading-format";
 
 export type PriceBar = ResearchPriceSeries["points"][number];
 
@@ -52,8 +53,9 @@ export function priceChange(close: number | null | undefined, previous: number |
  * close in gain or loss colour; open, high, low and volume form a 2×2 grid. Without a whole
  * candle the close leads alone and the move takes a row. The panel names the currency once.
  */
-export function priceReading({ bar, previous, time, candle, volume, labels, digits = 2, indicators = [] }: {
+export function priceReading({ bar, unit, previous, time, candle, volume, labels, digits = 2, indicators = [] }: {
   bar: PriceBar;
+  unit: string | undefined;
   previous?: number | null;
   time: string;
   candle: boolean;
@@ -64,8 +66,8 @@ export function priceReading({ bar, previous, time, candle, volume, labels, digi
   /** Indicator cells after the prices, in the order they should survive the card's limit. */
   indicators?: ReadingItem[];
 }): Reading {
-  const price = (value: number | null | undefined) => fixed(value, digits);
-  const change = priceChange(bar.close, previous, digits);
+  const price = (value: number | null | undefined) => quoteValue(value, unit, { style: "figure", digits });
+  const change = priceChange(quoteAmount(bar.close, unit), quoteAmount(previous, unit), digits);
   const groups = indicators.length ? [indicators] : [];
   if (candle && bar.open != null && bar.high != null && bar.low != null) {
     return {

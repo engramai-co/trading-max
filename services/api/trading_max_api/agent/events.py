@@ -1,20 +1,20 @@
 """Read dated evidence from a single publication with account-scoped trades."""
 
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
-from functools import partial
+from datetime import UTC, date, datetime, time, timedelta
 from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
 
 from exchange_calendars.errors import CalendarError
 from pydantic import AfterValidator, StringConstraints, model_validator
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import market_calendar
 from trading_max.research.calendars.events import window_bounds
 from trading_max.research.calendars.refresh import MACRO_KEY
 from trading_max.research.listing import LONDON, broker_listing
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY, web_url
 
+from ..research_listing import PinnedListing
 from .tools import (
     ANALYST,
     CFD_LEDGER,
@@ -100,33 +100,47 @@ def _entry(kind, title, zh, raw, *, ticker=None, publisher=YAHOO, url=None, end=
 
 
 def _indexed(payload):
-    return {str(r.get("ticker", "")).upper(): r for r in _rows((payload or {}).get("rows"))}
+    payload = payload or {}
+    return {
+        str(r.get("ticker", "")).upper(): r
+        for r in _rows(payload.get("rows", payload.get("fundamentals")))
+    }
 
 
-def _security_entry(ticker):
+def _security_entry(ticker, kind, title, zh, raw, **kw):
     url = "https://finance.yahoo.com/quote/" + quote(ticker, safe="") + "/"
-    return partial(_entry, ticker=ticker, url=url)
+    return _entry(kind, title, zh, raw, ticker=ticker, url=kw.pop("url", url), **kw)
 
 
 def listed_dividends(ticker, cal, metrics, evidence):
-    add = _security_entry(ticker)
     for key, metric, kind, en, zh in [
         ("Ex-Dividend Date", "exDividendDate", "ex_dividend", "Ex-dividend date", "除息日"),
         ("Dividend Date", "dividendDate", "dividend_pay", "Dividend payment date", "派息日"),
     ]:
         stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
         if stamp:
-            yield add(kind, en, zh, stamp[:10])
-    yield from _reported_dividends(ticker, evidence)
+            yield _security_entry(ticker, kind, en, zh, stamp[:10])
+    for r in _rows(evidence.get("dividends")):
+        yield _security_entry(
+            ticker,
+            "dividend",
+            "Dividend",
+            "股息",
+            r.get("date"),
+            amount=_number(r.get("amount")),
+            currency=r.get("currency"),
+            unit="per_share",
+            basis=r.get("basis"),
+        )
 
 
 def listed_headlines(ticker, rows):
-    add = _security_entry(ticker)
     for row in rows:
         url_value = web_url(row.get("url"))
         if not url_value or not (row.get("publisher") or row.get("source")):
             continue
-        yield add(
+        yield _security_entry(
+            ticker,
             "news",
             row.get("title"),
             row.get("title") or "",
@@ -139,7 +153,9 @@ def listed_headlines(ticker, rows):
 
 
 def _public(ticker, data, upcoming):
-    add = _security_entry(ticker)
+    def add(kind, title, zh, raw, **kw):
+        return _security_entry(ticker, kind, title, zh, raw, **kw)
+
     analyst = data[ANALYST].get(ticker, {}).get("analyst", {})
     recorded = set()
     for e in _rows(analyst.get("earningsEvents")):
@@ -180,7 +196,8 @@ def _public(ticker, data, upcoming):
             end=days[-1] if len(days) > 1 else None,
             status="provider-estimate",
         )
-    metrics = data[FUNDAMENTALS].get(ticker, {}).get("metrics", {})
+    fundamental = data[FUNDAMENTALS].get(ticker, {})
+    metrics = fundamental.get("metrics") or fundamental.get("info") or {}
     evidence = data.get(FINANCIALS, {}).get(ticker, {}).get("financials", {}).get("evidence", {})
     yield from listed_dividends(ticker, cal, metrics, {} if upcoming else evidence)
     if upcoming:
@@ -219,19 +236,74 @@ def _public(ticker, data, upcoming):
     yield from listed_headlines(ticker, _headline_rows(data, ticker))
 
 
+def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill: str | None):
+    """The latest verified item of each kind, from the selected listing and before its first fill."""
+    trade_day = date.fromisoformat(day)
+    if not listing or trade_day <= date.min + timedelta(days=8):
+        return None
+    cutoff = datetime.fromisoformat(first_fill) if first_fill else None
+    cutoff = (
+        cutoff.astimezone(UTC)
+        if cutoff and cutoff.tzinfo
+        else datetime.combine(trade_day, time.min, UTC)
+    )
+    start = cutoff - timedelta(days=7)
+    data = {
+        ANALYST: _indexed(read.read(ANALYST)),
+        FINANCIALS: _indexed(read.read(FINANCIALS)),
+        NEWS_KEY: (read.read(NEWS_KEY) or {}).get("securities", {}),
+        EARNINGS: {},
+        FUNDAMENTALS: {},
+    }
+    latest = {}
+    for item in _public(listing, data, upcoming=False):
+        if not item:
+            continue
+        kind = item["kind"]
+        if kind not in {"news", "rating_change"} and not (
+            kind == "earnings" and item.get("status") == "reported"
+        ):
+            continue
+        if item["instant"]:
+            stamp = datetime.fromisoformat(item["instant"])
+            if kind == "news" and stamp.astimezone(UTC).date() >= trade_day:
+                continue
+            if not start <= stamp < cutoff:
+                continue
+            local_date = stamp.astimezone(read.deps.timezone).date()
+        else:
+            local_date = date.fromisoformat(item["date"])
+            if kind == "news" and local_date >= trade_day:
+                continue
+            # With no publisher zone, even the end of this day in UTC−12 must precede the fill.
+            stamp = datetime.combine(local_date, time.min, UTC)
+            if local_date < start.date() or stamp + timedelta(hours=36) > cutoff:
+                continue
+        if kind not in latest or latest[kind][0] < stamp:
+            fields = {
+                k: item[k]
+                for k in (
+                    "kind",
+                    "firm",
+                    "to_grade",
+                    "title_en",
+                    "title_zh",
+                    "publisher",
+                    "source_url",
+                )
+                if k in item
+            }
+            if kind != "news":
+                fields["record_id"] = _published_row(read.deps.snapshot_id, item, None)[
+                    "evidence_id"
+                ]
+            latest[kind] = (stamp, {**fields, "local_date": local_date.isoformat()})
+    return [item for _, item in latest.values()]
+
+
 def _reported_dividends(ticker, evidence):
-    add = _security_entry(ticker)
-    for r in _rows(evidence.get("dividends")):
-        yield add(
-            "dividend",
-            "Dividend",
-            "股息",
-            r.get("date"),
-            amount=_number(r.get("amount")),
-            currency=r.get("currency"),
-            unit="per_share",
-            basis=r.get("basis"),
-        )
+    """Dividends reported in a publication's financial evidence."""
+    yield from listed_dividends(ticker, {}, {}, evidence)
 
 
 def _headline_rows(data, ticker):
@@ -503,12 +575,12 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     read = _Read(deps, "upcoming_events", args, args.scope)
     if kind == "dividend":
         financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
-        rows = _reported_dividends(ticker, financials.get("evidence", {}))
+        rows = listed_dividends(ticker, {}, {}, financials.get("evidence", {}))
     else:
         data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-        # Reported earnings remain citable after they leave the upcoming calendar.
+        # Historical earnings and rating changes remain citable after publication.
         data.update({NEWS_KEY: {}, FINANCIALS: {}})
-        rows = _public(ticker, data, upcoming=kind != "earnings")
+        rows = _public(ticker, data, upcoming=kind in {"dividend_pay", "ex_dividend"})
     for row in rows:
         if not row or row["kind"] != kind:
             continue
@@ -531,6 +603,8 @@ def event_data(deps, args, *, upcoming, session_zone=None):
     codes = read.account_codes(args.scope)
     if not deps.manifest:
         return read.missing()
+    if deps.listing_error:
+        return read.missing(deps.listing_error)
     start, end = date.fromisoformat(args.start), date.fromisoformat(args.end)
     issues = []
     keys = []
@@ -557,9 +631,10 @@ def event_data(deps, args, *, upcoming, session_zone=None):
     diagnostics = read.read(NEWS_STATUS_KEY)
     if diagnostics:
         keys.append(NEWS_STATUS_KEY)
+    news_rows = (raw or {}).get("securities", {})
+    status_rows = (diagnostics or {}).get("securities", {})
     data[NEWS_KEY] = {
-        ticker: {**row, **(diagnostics or {}).get("securities", {}).get(ticker, {})}
-        for ticker, row in (raw or {}).get("securities", {}).items()
+        ticker: {**row, **status_rows.get(ticker, {})} for ticker, row in news_rows.items()
     }
     if raw is None and not upcoming:
         issues.append("security_news_unavailable")
@@ -569,17 +644,66 @@ def event_data(deps, args, *, upcoming, session_zone=None):
         symbols.update(data[NEWS_KEY])
         if raw is None:
             issues.append("research_universe_unavailable")
+    technical = _indexed(read.read(TECHNICAL))
+    funds = _indexed(read.read(FUND_PRICES))
+    keys.extend([TECHNICAL, FUND_PRICES])
+    names = set()
     entries = []
-    for ticker in sorted(symbols):
-        if not upcoming and not data[NEWS_KEY].get(ticker, {}).get("as_of"):
+    selected_tickers = set()
+    trade_args = args
+    for requested in sorted(symbols):
+        if deps.pin_listing:
+            pinned = deps.pin_listing(requested, deps.manifest)
+        else:
+            pinned = PinnedListing(requested, requested, requested, ()).with_event_claims(
+                technical.get(requested),
+                funds.get(requested),
+            )
+        ticker = pinned.symbol
+        if args.ticker:
+            trade_args = args.model_copy(update={"ticker": ticker})
+        if ticker in selected_tickers:
+            continue
+        selected_tickers.add(ticker)
+        news = pinned.feed_row(news_rows.get)
+        status = pinned.feed_row(status_rows.get)
+        raw_rows = {
+            key: pinned.feed_row(rows.get) or {} for key, rows in data.items() if key != NEWS_KEY
+        }
+        if not pinned.venue().venues:
+            pinned = pinned.with_event_claims(
+                news,
+                status,
+                *raw_rows.values(),
+            )
+        venue = pinned.venue()
+        if venue.conflict:
+            issues.append("listing_calendar_unavailable")
+            continue
+        if venue.calendar:
+            names.add(venue.calendar)
+        elif upcoming:
+            issues.append("listing_calendar_unavailable")
+        selected = {}
+        for key, row in raw_rows.items():
+            row, rejected = pinned.event_row(row)
+            if rejected:
+                issues.append("listing_calendar_unavailable")
+            selected[key] = {ticker: row}
+        feed_pin = pinned.with_event_claims(news, status)
+        feed, rejected = feed_pin.event_row({**(news or {}), **(status or {})})
+        if rejected:
+            issues.append("listing_calendar_unavailable")
+        selected[NEWS_KEY] = {ticker: feed}
+        if not upcoming and not feed.get("as_of"):
             issues.append("security_news_unavailable")
-        if not upcoming and data[NEWS_KEY].get(ticker, {}).get("error"):
+        if not upcoming and feed.get("error"):
             issues.append("security_news_refresh_failed")
-        if ticker not in data[ANALYST]:
+        if not selected[ANALYST][ticker]:
             issues.append("analyst_events_unavailable")
-        if not data[EARNINGS].get(ticker, {}).get("calendar"):
+        if not selected[EARNINGS][ticker].get("calendar"):
             issues.append("security_calendar_unavailable")
-        for entry in _public(ticker, data, upcoming):
+        for entry in _public(ticker, selected, upcoming):
             if entry and entry["kind"] == "earnings" and entry.pop("currency_missing", False):
                 issues.append("earnings_currency_unavailable")
             entries.append(entry)
@@ -601,24 +725,11 @@ def event_data(deps, args, *, upcoming, session_zone=None):
                 issues,
             )
         )
-        technical = _indexed(read.read(TECHNICAL))
-        funds = _indexed(read.read(FUND_PRICES))
-        keys.extend([TECHNICAL, FUND_PRICES])
-        names = set()
-        for ticker in symbols:
-            row = technical.get(ticker) or funds.get(ticker, {})
-            calendar = (
-                listing_calendar(ticker, row.get("exchange"), row.get("timezone")) if row else None
-            )
-            if calendar:
-                names.add(calendar)
-            else:
-                issues.append("listing_calendar_unavailable")
         entries.extend(
             _market_days(names, start - timedelta(days=1), end + timedelta(days=1), issues)
         )
     else:
-        entries.extend(_trades(read, args, codes, issues, keys))
+        entries.extend(_trades(read, trade_args, codes, issues, keys))
     # A single syndicated article can appear in several held security feeds.
     # Retain those associations while citing the article once.
     articles = [row for row in entries if row and row["kind"] == "news"]

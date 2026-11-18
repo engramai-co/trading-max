@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 from hashlib import sha256
 from math import isfinite
 from typing import Annotated, Any, Literal, cast, get_type_hints
@@ -1101,15 +1102,30 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
     read = _Read(ctx.deps, "read_research_lens", args, "public_research")
     if args.field and args.lens != "analyst":
         raise ModelRetry("Earnings events are available from the analyst lens.")
-    clocks = _stored_clocks(read, args.ticker)
+    if ctx.deps.listing_error:
+        return read.missing(ctx.deps.listing_error)
+    pinned = (
+        ctx.deps.pin_listing(args.ticker, ctx.deps.manifest)
+        if ctx.deps.pin_listing and ctx.deps.manifest
+        else None
+    )
+    if pinned and pinned.venue().conflict:
+        return read.missing("listing_calendar_unavailable")
+    ticker = pinned.symbol if pinned else args.ticker
+    clocks = _stored_clocks(read, ticker)
     needed = (
         _LENS_FIELDS[args.lens].keys()
         if args.lens
         else dict.fromkeys(key for fields in _LENS_FIELDS.values() for key in fields)
     )
-    stored = {
-        key: row for key in needed if (row := _ticker_row(read.read(key), args.ticker)) is not None
-    }
+    stored = {}
+    for key in needed:
+        raw = read.read(key)
+        row = pinned.feed_row(partial(_ticker_row, raw)) if pinned else _ticker_row(raw, ticker)
+        if row and pinned:
+            row, _ = pinned.event_row(row)
+        if row:
+            stored[key] = row
     if not stored:
         return read.missing("ticker_lens_not_published")
     if args.lens is None:
@@ -1117,7 +1133,7 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
             raise ModelRetry("Choose a lens before supplying a cursor.")
         return read.result(
             data={
-                "ticker": args.ticker,
+                "ticker": ticker,
                 "available_lenses": [
                     lens
                     for lens, fields in _LENS_FIELDS.items()
@@ -1175,7 +1191,7 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
     return read.page(
         rows,
         args,
-        {"ticker": args.ticker, "lens": args.lens},
+        {"ticker": ticker, "lens": args.lens},
         keys=keys,
         issues=issues,
     )
@@ -1199,6 +1215,11 @@ def read_valuation_evidence(ctx: Context, args: ValuationArgs) -> Json:
     manifest = read.deps.manifest
     if manifest is None:
         return read.missing()
+    if ctx.deps.listing_error:
+        return read.missing(ctx.deps.listing_error)
+    pinned = ctx.deps.pin_listing(args.ticker, manifest) if ctx.deps.pin_listing else None
+    if pinned and pinned.venue().conflict:
+        return read.missing("listing_calendar_unavailable")
     binding = EvidenceBinding(
         workspace_id="assistant-workspace",
         ticker=args.ticker,
@@ -1493,6 +1514,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         price_key_moments,
     )
     from .market_roles import global_map, market_sector, sector_headline
+    from .review_patterns import review_patterns
 
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
@@ -1510,6 +1532,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (holding_fx_split, 5),
         (dated_exposure, 5),
         (decision_timing_and_habits, 8),
+        (review_patterns, 8),
         (price_key_moments, 8),
         (news_and_events, 8),
         (upcoming_events, 8),

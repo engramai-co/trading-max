@@ -79,6 +79,7 @@ export function Plot({
   option,
   height = 300,
   research = false,
+  updateWhileReading = false,
   controller,
   onZoom,
   readPoint,
@@ -94,6 +95,7 @@ export function Plot({
   option: (colours: ChartColours) => EChartsOption;
   height?: number;
   research?: boolean;
+  updateWhileReading?: boolean;
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
   readPoint?: (index: number) => string;
@@ -112,7 +114,7 @@ export function Plot({
   const hasReadout = Boolean(readout);
   const touchLayout = useMediaQuery(TOUCH_LAYOUT) === true;
   const description = useId();
-  const [reading, setReading] = useState("");
+  const [reading, setReading] = useState<{index: number; text: string} | null>(null);
   const [pinned, setPinned] = useState(false);
   const [picked, setPicked] = useState<number | null>(initialSelection);
   const [gapSpan, setGapSpan] = useState<readonly [number, number] | null>(null);
@@ -228,6 +230,7 @@ export function Plot({
     },
     undefined,
     pinned || picked != null || gapSpan != null || Boolean(reading),
+    updateWhileReading,
   );
   const gestures = useChartGestures(() => control.current, expanded || customGestures);
   useEffect(() => {
@@ -346,7 +349,7 @@ export function Plot({
     control.current?.setOption({ tooltip: { alwaysShowContent: false } });
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
-    setReading("");
+    setReading(null);
     // The live region returns to the latest reading.
     setAnnounced(null);
   };
@@ -725,7 +728,10 @@ export function Plot({
             seriesIndex: 0,
             dataIndex: selected.current,
           });
-          setReading(readPoint?.(selected.current) ?? chartReading(option, selected.current, locale, t));
+          setReading({
+            index: selected.current,
+            text: readPoint?.(selected.current) ?? chartReading(option, selected.current, locale, t),
+          });
         }}
         onKeyUp={(event) => {
           if (event.key === "Shift" && keyboardAnchor.current != null) {
@@ -762,7 +768,9 @@ export function Plot({
         aria-live="polite"
         aria-atomic="true"
       >
-        {reading}
+        {reading && (updateWhileReading
+          ? readPoint?.(reading.index) ?? chartReading(settings, reading.index, locale, t)
+          : reading.text)}
       </span>
       {pinned && !readout && (
         <button type="button" className="mx-chart-tip-close" aria-label={t("关闭读数", "Close reading")} onClick={dismiss}>

@@ -135,6 +135,8 @@ def test_listing_calendar_reads_observed_venues_and_qualified_symbols():
         ("PAR", "PA", "XPAR"),
         ("MIL", "MI", "XMIL"),
         ("EBS", "SW", "XSWX"),
+        ("KOREA EXCHANGE (KOSDAQ)", "KQ", "XKRX"),
+        ("WARSAW", "WA", "XWAR"),
     ],
 )
 def test_yahoo_venues_and_qualified_fund_symbols(code, suffix, expected):
@@ -159,10 +161,24 @@ def test_frankfurt_equity_hours_include_evenings_and_holiday_early_closes():
 def test_venue_identity_distinguishes_exchanges_with_shared_closes_and_market_composites():
     nyse = listing_venues("SYN", "UN")
     assert nyse == listing_venues("SYN", "NYQ") == {"XNYS"}
-    assert listing_venues("SYN", "UW") == listing_venues("SYN", "NasdaqGS") == {"XNAS"}
+    assert listing_venues("SYN", "UW") == listing_venues("SYN", "NasdaqGS") == {"XNGS"}
     assert nyse.isdisjoint(listing_venues("SYN", "UW"))
     assert listing_venues("SYN", "US") & nyse
     assert listing_venues("SYN.L", "LN").isdisjoint(listing_venues("SYN", "US"))
     assert listing_venues("SYN", "GF") == {"XFRA"}
     assert listing_venues("SYN", "GR") & listing_venues("SYN", "GY")
     assert not listing_venues("SYN", "unverified")
+
+
+def test_openfigi_soma_is_distinct_from_bombay():
+    assert listing_venues("SYN", "BO") == {"XSOM"}
+    assert listing_venues("SYN.BO", None) == {"XBOM"}
+
+
+def test_month_end_checks_all_exchange_evidence_before_admitting_final_month():
+    close = pd.Series([100, 110], index=pd.to_datetime(["2024-02-29", "2024-03-28"]))
+    close.attrs.update(
+        ticker="SYN.L",
+        provider_venue={"symbol": "SYN.L", "exchangeName": "LSE", "fullExchangeName": "UNVERIFIED"},
+    )
+    assert completed_months(close, exchange="LSE", now=pd.Timestamp("2024-03-29T20:00Z")).empty

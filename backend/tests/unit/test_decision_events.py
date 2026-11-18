@@ -165,3 +165,15 @@ def test_decisions_record_the_benchmarks_change_over_the_same_window() -> None:
     assert buy["return_horizon"] == pytest.approx(0.2)
     assert buy["market_return_horizon"] == pytest.approx(0.1)
     assert buy["market_return_to_date"] == pytest.approx(0.1)
+
+
+def test_pre_earnings_purchases_exclude_same_day_and_unknown_history():
+    days = ["2026-10-01", "2026-10-06", "2026-10-12", "2026-10-13", "2026-11-20"]
+    rows = [{"date": d, "ticker": "TEST", "listing": "TEST", "side": "buy"} for d in days]
+    catalog = [{"date": d, "kind": "earnings"} for d in ("2026-09-01", "2026-10-13", "2026-11-10")]
+    attach_decision_events(
+        {"decisions": rows},
+        {"TEST": _listing("TEST", _closes("2026-09-01", [100.0] * 80))},
+        lambda _: catalog,
+    )
+    assert [row.get("before_earnings") for row in rows] == [False, True, True, False, None]

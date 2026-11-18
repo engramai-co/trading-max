@@ -181,7 +181,8 @@
   gap: 20px;
 }
 .mx-preview-status {
-  min-width: 64px;
+  min-width: 6.5em;
+  min-height: 1lh;
   color: var(--mx-muted);
   font-size: 12px;
 }

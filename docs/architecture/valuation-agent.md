@@ -1,8 +1,7 @@
 # Valuation agent evidence
 
-The valuation evidence contract gives Python callers access to local public research. It
-does not register an agent, call a model or provider, add HTTP routes, or save
-valuation runs. The [Research Desk](valuation-model.md) still owns its own
+The valuation evidence contract gives Python callers access to local public research. Its
+five functions read and calculate on a frozen publication. The [Research Desk](valuation-model.md) still owns its own
 default assumptions, broker mark preference, and explicit journal flow.
 
 Trusted server code selects the workspace and its local readers, the exact
@@ -55,8 +54,46 @@ fields with the desk at relative and absolute tolerances of `1e-12` for the
 same public quote. The [valuation model](valuation-model.md) specifies period
 fallbacks, supported receipt ratios, FX and the financial gates.
 
-A trusted orchestrator can bind the workspace, validate tool
-arguments and use these results to explain a proposed set of assumptions with
-citations. Retain the frozen evidence for replay if a later phase introduces
-run history. Any user-approved journal action should be a separate capability
-with a fresh comparison of the quote, FX, shares, and statements before saving.
+## Drafting in Research
+
+The editor starts a draft with an authenticated POST to
+`/v1/research/{ticker}/valuation-draft`. It sends its current inputs for a local
+record of the changes. The provider sees the listing’s frozen public evidence,
+template candidates and, when enabled in Settings, numeric saved assumptions.
+Broker prices, positions, notes and unsaved edits stay local.
+
+Each template candidate points to a frozen record of the sector parameters,
+dated public inputs and scenario values. Shared saved candidates point to
+their numeric configuration or saved model version. Reported and derived
+candidates cite the public rows used for their value.
+
+A draft uses the family from the desk’s v2 preview and records whether it
+was selected automatically or by the reader. The desk and public evaluator
+must agree on the statement period, listing shares, ordinary shares per
+receipt and reporting-to-quote FX. A missing basis or withheld reverse
+reading shows its reason in the editor and produces no proposal. A reading
+outside the search bounds can still support a draft.
+
+The model selects candidates for individual scenario fields. The editor
+renders each reason from the candidate source and its typed evidence,
+including the unit, period and observation time. The server
+validates each selection against the candidates returned in that run and runs
+the public evaluator. The sixth tool can only defer the evaluated proposal to
+the editor. A run has 90 seconds, six tool calls, a 64 KiB evidence budget and
+an 80,000-token cap. The stream reports which source is being read. A closed
+request cancels the run. Each workspace permits one draft run at a time.
+
+The latest sixteen completed pending drafts are private files in the workspace.
+An accepted field enters the ordinary deterministic desk preview, which can
+use the desk’s local broker mark. Only Save model version writes a journal
+version. Saving checks the actual desk basis and latest parent under the same
+lock as a manual save. The immutable version retains the reviewed decisions,
+original values, frozen evidence, formula, prompt version and computed result.
+A successful write frees the pending slot. An identical retry returns the saved
+version from the journal. Discarding a draft restores the values it replaced.
+When a newer basis arrives, re-review carries manual edits onto the new
+inputs. Drafts never select an overview baseline.
+
+Previously saved models remain readable. Manual versions keep their existing
+journal format. A reviewed version adds an audit record, so preserve the
+workspace backup from before the first reviewed save for a downgrade.

@@ -53,7 +53,7 @@ import { resolveResearchIdentity } from "./research-identity";
 import { ResearchNotebook } from "./research-notebook";
 import { OptionsView } from "./research-options";
 import { PricePreview } from "./research-price-preview";
-import { basisPrice } from "./research-price-basis";
+import { basisPrice, lensFallback } from "./research-price-basis";
 import { TechnicalWorkspace } from "./research-technical";
 import { Seasonality } from "./research-seasonality";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
@@ -102,6 +102,9 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
 
 export function ResearchWorkspace() {
   const { params } = useRouteState();
+  const reviewEvent = ["decision_timing_and_habits","news_and_events"].includes(params.get("evidence") ?? "") &&
+    ["events","actions","ratings"].includes(params.get("analystView") ?? "");
+  if (reviewEvent) return <CitedResearchEvent recorded />;
   if (params.get("evidence") === "read_research_lens" && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }
@@ -204,7 +207,7 @@ function SecurityResearchWorkspace() {
   });
   const quote = previousForIdentity(lens.data, lens.data?.ticker, ticker) ?? cached;
   // A held line on the quote's listing is quoted at its broker price everywhere on the page.
-  const price = basisPrice(selected, quote?.context?.quote);
+  const price = basisPrice(selected, quote?.context?.quote, lensFallback(quote));
   // Lenses name the next report by the exchange's date and carry its sessions:
   // a lens left open refetches when that date turns or the sessions run out.
   useLensRefresh(ticker, quote?.context?.quote);
@@ -674,7 +677,7 @@ function SecurityResearchWorkspace() {
                       )}
                       {displayTab === "technical" && !isFund && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
                       {displayTab === "valuation" && !isFund && (
-                        <ValuationWorkbench key={displayData.ticker} data={displayData} revision={revision} price={price} />
+                        <ValuationWorkbench key={displayData.ticker} publication={shell.data?.status.runId} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "fundamentals" &&
                         (isFund ? (

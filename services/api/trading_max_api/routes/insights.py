@@ -125,7 +125,29 @@ class Timing(BaseModel):
     missed_gbp: float | None
 
 
+class PriorDecisionEvent(BaseModel):
+    record_id: str | None = None
+    kind: Literal["earnings", "rating_change", "news"]
+    local_date: str
+    title_en: str
+    title_zh: str
+    publisher: str
+    source_url: str | None = None
+    firm: str | None = None
+    to_grade: str | None = None
+
+
 class DecisionTiming(BaseModel):
+    prior_events: list[PriorDecisionEvent] | None = None
+    ordinal: int
+    listing: str | None = None
+    name: str | None = None
+    first_fill_at: str | None = None
+    prior_close_date: str | None = None
+    prior_close_gbp: float | None = None
+    settled_per_share_gbp: float | None = None
+    security_return: float | None = None
+    market_return: float | None = None
     scope: str
     ticker: str
     date: str

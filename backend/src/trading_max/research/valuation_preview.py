@@ -121,6 +121,9 @@ class SensitivityCell(DomainModel):
 
 
 class ValuationPreview(DomainModel):
+    family_selection: Literal["automatic", "override"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     model_config = ConfigDict(allow_inf_nan=False)
     id: str
     formula_version: FormulaVersion = LEGACY_VERSION

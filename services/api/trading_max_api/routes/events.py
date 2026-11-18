@@ -99,10 +99,13 @@ def upcoming(
         raise HTTPException(422, str(exc)) from None
 
 
-CitedKind = Literal["earnings", "ex_dividend", "dividend_pay", "dividend"]
+CitedKind = Literal["earnings", "ex_dividend", "dividend_pay", "dividend", "rating_change"]
 
 
 class CitedHoldingEvent(UpcomingItem):
+    firm: str | None = None
+    from_grade: str | None = None
+    to_grade: str | None = None
     kind: CitedKind
     amount: float | None = None
     basis: str | None = None

@@ -4,8 +4,10 @@ import type { Locale } from "@/components/locale-provider";
 import { formatPageField, type ToolField } from "./page-figures";
 import type { Evidence } from "./evidence";
 import { formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
+import { tradingDay } from "@/lib/portfolio/history";
 import { numeric } from "@/lib/numeric";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
+import { renderReviewField } from "./review-figures";
 
 type Words = readonly [en: string, zh: string];
 const word = (words: Words, locale: Locale) => words[locale === "en" ? 0 : 1];
@@ -140,7 +142,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  if (kind) {
+  if (kind && kind !== "rating_change") {
     source = kind === "earnings" ? "financials" : "disclosure";
     args.holdingTicker = ticker;
     args.event = kind === "ex_dividend" ? "exDividend" : kind;
@@ -152,6 +154,8 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
     source = historicalSources[args.event];
     if (row.source_url) args.url = str(row.source_url);
     if (args.event === "own_trade") {
+      // Review groups fills by the UTC ledger weekday, even when the reader sees another date.
+      args.date = tradingDay(str(row.instant) || dateText(day), "UTC") ?? "";
       args.scope = str(row.account) || str(output.scope);
       args.ticker = ticker;
       args.side = str(row.side);
@@ -229,6 +233,7 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   if (pointer === "/status") return status === "ok" && limited ? limitedText : word(statusWords[status], locale);
   if (status !== "ok" && status !== "partial") return null;
   if (pointer === "/data/coverage" && coverage) return limited ? limitedText : word(["Complete coverage", "覆盖完整"], locale);
+  if (tool === "review_patterns" || tool === "decision_timing_and_habits") return renderReviewField(tool, output, pointer, locale);
   const row = resolveField(output, pointer);
   if (!row || (row.group === "twr" && row.parent.status !== "ok")) return null;
   const pageFormat = formatPageField(tool, row, locale, str(output.scope), timeZone);

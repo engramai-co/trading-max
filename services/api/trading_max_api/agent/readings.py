@@ -27,6 +27,10 @@ class Selection(BaseModel):
     indices: list[int] = Field(min_length=2, max_length=4)
 
 
+class SingleSelection(BaseModel):
+    indices: list[Literal[0]] = Field(min_length=1, max_length=1)
+
+
 class ReadingEvent(BaseModel):
     type: Literal["reading", "lines", "result", "error", "empty"]
     reading: RoleReading | None = None
@@ -121,6 +125,22 @@ class ReadingService:
             yield ReadingEvent(type="empty")
             return
         saved = self.cached(role, context, None if latest else version, scheduled=scheduled)
+        if cached_only and not latest and role.refresh_cached_facts:
+            saved = self.cached(role, context, version, scheduled=True) or saved
+        if saved and not latest and role.refresh_cached_facts:
+            facts = await asyncio.to_thread(role.facts, tools, context)
+            tools.attach_evidence(facts)
+            by_section = {fact.section: fact for fact in facts}
+            if not all(line.section in by_section for line in saved.lines):
+                yield ReadingEvent(type="empty")
+                return
+            saved = saved.model_copy(
+                update={
+                    "as_of": deps.manifest.created_at,
+                    "snapshot_id": deps.snapshot_id,
+                    "lines": [by_section[line.section] for line in saved.lines],
+                }
+            )
         if saved:
             yield ReadingEvent(type="result", reading=saved)
             return
@@ -142,7 +162,8 @@ class ReadingService:
             yield ReadingEvent(type="reading")
             facts = await asyncio.to_thread(role.facts, tools, context)
             tools.attach_evidence(facts)
-            if len(facts) < 2:
+            single = len(facts) == 1 and role.allow_single_observation
+            if len(facts) < 2 and not single:
                 yield ReadingEvent(type="empty")
                 return
             if not permitted():
@@ -156,7 +177,11 @@ class ReadingService:
             if not permitted() or not reserve():
                 yield ReadingEvent(type="error", code="assistant_disabled")
                 return
-            agent = Agent(output_type=Selection, instructions=role.prompt, retries=1)
+            agent = Agent(
+                output_type=SingleSelection if single else Selection,
+                instructions=role.prompt,
+                retries=1,
+            )
             prompt = json.dumps(
                 [
                     {"index": i, "section": fact.section, "observation": fact.en}

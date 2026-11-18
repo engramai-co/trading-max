@@ -378,6 +378,8 @@ class SharedMarketPrices:
                 return {}
             row = rows[0]
             meta = row.get("meta") or {}
+            if meta.get("symbol") and str(meta["symbol"]).upper() != symbol:
+                return {}
             interval = params["interval"]
             granularity = meta.get("dataGranularity")
             if not observe_granularity and (
@@ -395,6 +397,9 @@ class SharedMarketPrices:
                         # chartPreviousClose refers to the beginning of the whole range.
                         previous_close=_price(meta.get("previousClose")),
                         timezone=meta.get("exchangeTimezoneName"),
+                        mic=meta.get("mic"),
+                        exchange_name=meta.get("exchangeName"),
+                        full_exchange_name=meta.get("fullExchangeName"),
                         granularity=granularity if isinstance(granularity, str) else None,
                     )
                 }

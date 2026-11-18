@@ -12,10 +12,11 @@ import { useChartColours } from "@/ui/charts/palette";
 import { Legend, Plot } from "./charts";
 import type { Reading, ReadingItem, ReadingMark } from "./chart-readout";
 import { comparisonFigures, fixed, readingTone, signedPercent, telling, volume } from "./reading-format";
+import { quoteAmount, quoteUnit, quoteValue } from "./financial-values";
 import { DataBasis } from "./reading-card";
 import { candleSeries, candleValues, previousCloses, priceGapConnectors, priceReading, priceSlots } from "./research-price-candles";
 import { PriceEventTrack, priceEventDays } from "./research-price-events";
-import { compactTick, number, object, objects, percent, str } from "@/workspace/data";
+import { ApiError, compactTick, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
 import { EvidenceTable } from "./evidence-table";
 import {
@@ -89,7 +90,11 @@ export function PriceHistory({
   const retained = useRetainedResult(current, (a, b) => a.data === b.data &&
     a.ticker === b.ticker && a.interval === b.interval && a.range === b.range && a.updatedAt === b.updatedAt);
   const shown = previousForIdentity(retained, retained?.ticker, ticker);
-  const priceData = shown?.data;
+  const listingUnavailable = query.error instanceof ApiError && query.error.status === 404 &&
+    query.error.message === "security-price-history-unavailable";
+  const priceData = listingUnavailable ? undefined : shown?.data;
+  const unit = priceData?.currency;
+  const priceFigure = (value: unknown, digits = 2) => quoteValue(value, unit, { style: "figure", digits });
   const displayedRange = shown?.range ?? range;
   const displayedInterval = shown?.interval ?? interval;
   const updating = Boolean(shown && !current && !query.isError);
@@ -187,15 +192,15 @@ export function PriceHistory({
   // Pane under the pointer: its indicators come first so the card's four cells keep them.
   const panesShown = ["price", "volume", ...(rsi ? ["rsi"] : []), ...(macd ? ["macd"] : [])];
   const indicatorCells = (bar: (typeof points)[number], pane: string | undefined): ReadingItem[] => {
-    const macdDigits = telling([bar.macd, bar.macdSignal]);
+    const macdDigits = telling([quoteAmount(bar.macd, unit), quoteAmount(bar.macdSignal, unit)]);
     const cells = [
       ...(normalized ? [] : shownAverages.map((key, i) => ({
-        pane: "price", label: "SMA " + key.slice(3), value: fixed(bar[key]), key: averageStroke(i),
+        pane: "price", label: "SMA " + key.slice(3), value: priceFigure(bar[key]), key: averageStroke(i),
       }))),
       ...(rsi ? [{ pane: "rsi", label: "RSI 14", value: fixed(bar.rsi14), key: { colour: colours.secondary } }] : []),
       ...(macd ? [
-        { pane: "macd", label: "MACD", value: fixed(bar.macd, macdDigits), key: { colour: colours.text } },
-        { pane: "macd", label: t("信号", "Signal"), value: fixed(bar.macdSignal, macdDigits), key: { colour: colours.axis, dashed: true } },
+        { pane: "macd", label: "MACD", value: priceFigure(bar.macd, macdDigits), key: { colour: colours.text } },
+        { pane: "macd", label: t("信号", "Signal"), value: priceFigure(bar.macdSignal, macdDigits), key: { colour: colours.axis, dashed: true } },
       ] : []),
     ];
     const ordered = [...cells.filter((cell) => cell.pane === pane), ...cells.filter((cell) => cell.pane !== pane)];
@@ -208,7 +213,7 @@ export function PriceHistory({
     const time = readingTime(bar.date);
     if (!normalized) {
       return priceReading({
-        bar, previous: references[slots[index].index], time, candle, labels, indicators,
+        bar, unit, previous: references[slots[index].index], time, candle, labels, indicators,
         volume: bar.volume == null ? undefined : volume(bar.volume, locale),
       });
     }
@@ -345,7 +350,9 @@ export function PriceHistory({
   const content = (
     <>
       {tools}
-      {query.isPending && !priceData ? (
+      {listingUnavailable ? (
+        <Empty title={t("暂无此上市证券的价格记录", "Price history unavailable for this listing")} />
+      ) : query.isPending && !priceData ? (
         <Pending shape="chart" height={300} label={t("正在读取价格记录…", "Loading price records…")} />
       ) : query.isError && !priceData ? (
         <QueryError retry={query.refetch} />
@@ -414,7 +421,7 @@ export function PriceHistory({
             onSelectionChange={setSelection}
             readout={{
               positions: plottedCloses.flatMap((v, index) => v == null ? [] : [index]),
-              latest: normalized ? signedPercent(value(points.at(-1)!.close)) : fixed(points.at(-1)!.close),
+              latest: normalized ? signedPercent(value(points.at(-1)!.close)) : priceFigure(points.at(-1)!.close),
               gap: (index) => plottedCloses[Math.round(index)] == null,
               records: (index) => {
                 const bar = slots[index].bar!;
@@ -676,7 +683,7 @@ export function PriceHistory({
                     formatter: (v: number) =>
                       pane === "volume"
                         ? t("量 ", "Vol ") + compactTick(v, locale)
-                        : pane === "price" && normalized ? percent(v) : compactTick(v, locale),
+                        : pane === "price" && normalized ? percent(v) : pane === "rsi" ? compactTick(v, locale) : compactTick(quoteAmount(v, unit), locale),
                   },
                   splitLine: {
                     show: pane !== "volume",
@@ -763,7 +770,7 @@ export function PriceHistory({
                   ][i],
                   numeric: true,
                   value: (p: (typeof points)[number]) =>
-                    number(p[key], key === "volume" ? 0 : 2),
+                    key === "volume" ? number(p.volume, 0) : key === "rsi14" ? number(p.rsi14, 2) : priceFigure(p[key]),
                 })),
               ]}
             />
@@ -777,7 +784,7 @@ export function PriceHistory({
     <>
       <Panel
         className={compactChart ? "mx-tech-chart" : undefined}
-        title={[t("价格走势", "Price history"), priceData?.currency].filter(Boolean).join(" · ")}
+        title={[t("价格走势", "Price history"), quoteUnit(unit).currency].filter(Boolean).join(" · ")}
         action={<Button ref={fullButton} variant="default" size="compact-sm" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}
         help={<>
           <p>{t(
