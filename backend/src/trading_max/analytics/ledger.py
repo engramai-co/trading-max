@@ -15,6 +15,8 @@ from typing import Any
 
 import pandas as pd
 
+from trading_max.research.listing import broker_listing
+
 from .fx import FxResolver, normalized_currency, resolve_fx
 
 IDENTITY_COLUMNS = (
@@ -280,7 +282,7 @@ def transaction_marker_rows(
         if isin:
             isin_aliases[isin] = canonical
 
-    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    grouped: dict[tuple[str, str, str | None], dict[str, Any]] = {}
     for account, transactions in account_transactions.items():
         for _, row in transactions.iterrows():
             action = row.get("Action")
@@ -288,14 +290,22 @@ def transaction_marker_rows(
             if side is None:
                 continue
             isin = _normalized_security_value(row.get("ISIN"))
-            raw_ticker = _normalized_security_value(row.get("Ticker"))
-            ticker = isin_aliases.get(isin) or ticker_aliases.get(raw_ticker) or raw_ticker
+            instrument = row.get("Ticker")
+            raw_ticker = _normalized_security_value(instrument)
+            explicit_listing = broker_listing(str(instrument))
+            ticker = (
+                isin_aliases.get(isin)
+                or (ticker_aliases.get(raw_ticker) if not isin else None)
+                or raw_ticker
+            )
+            if explicit_listing:
+                ticker = explicit_listing.split(":", 1)[1]
             if not ticker:
                 continue
             timestamp = row.get("Time")
             if not isinstance(timestamp, pd.Timestamp) or pd.isna(timestamp):
                 continue
-            key = (ticker, timestamp.strftime("%Y-%m-%d"))
+            key = (ticker, timestamp.strftime("%Y-%m-%d"), explicit_listing)
             marker = grouped.setdefault(
                 key,
                 {
@@ -323,6 +333,9 @@ def transaction_marker_rows(
             marker["fills"].append(
                 {
                     "at": timestamp.isoformat(),
+                    # The daily marker can follow an ISIN through ticker changes.
+                    # Only the instrument recorded on this fill can verify its listing.
+                    **({"broker_ticker": str(instrument).strip()} if raw_ticker else {}),
                     "side": side,
                     "account": str(account).strip().lower(),
                     "quantity": quantity_value,

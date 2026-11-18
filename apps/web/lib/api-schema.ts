@@ -1459,6 +1459,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/snapshots/{run_id}/events/upcoming": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Upcoming */
+        get: operations["upcoming_v1_snapshots__run_id__events_upcoming_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/valuation/assumptions": {
         parameters: {
             query?: never;
@@ -3707,6 +3724,43 @@ export interface components {
         };
         /** @enum {string} */
         EstimatePeriod: "0q" | "+1q" | "0y" | "+1y";
+        /** EventQuality */
+        EventQuality: {
+            /** Issues */
+            issues: string[];
+            /** Reason Code */
+            reason_code?: string | null;
+        };
+        /** EventRefreshFailure */
+        EventRefreshFailure: {
+            /** Checkedat */
+            checkedAt?: string | null;
+            /** Source */
+            source: string;
+        };
+        /** EventRefreshHealth */
+        EventRefreshHealth: {
+            /** Asof */
+            asOf: string | null;
+            /** Checkedat */
+            checkedAt: string | null;
+            /** Failedsources */
+            failedSources: number;
+            /** Failures */
+            failures?: components["schemas"]["EventRefreshFailure"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "news" | "macro";
+        };
+        /** EventSource */
+        EventSource: {
+            /** As Of */
+            as_of: string | null;
+            /** Source Id */
+            source_id: string;
+        };
         /** EvidenceRef */
         EvidenceRef: {
             /** Accession */
@@ -4488,6 +4542,8 @@ export interface components {
             artifactAgeSeconds?: number | null;
             /** Bootstraperror */
             bootstrapError?: string | null;
+            /** Eventrefreshes */
+            eventRefreshes?: components["schemas"]["EventRefreshHealth"][];
             /** Latestrunid */
             latestRunId?: string | null;
             /** Queue */
@@ -8681,6 +8737,7 @@ export interface components {
             /** Gordonmultiple */
             gordonMultiple?: number | null;
         };
+        Ticker: string;
         /**
          * TradeDecision
          * @description One security, one side, one trading day; effects are GBP against not trading.
@@ -8880,6 +8937,93 @@ export interface components {
              * @default 2026-11-13
              */
             verifiedOn: string;
+        };
+        /** UpcomingItem */
+        UpcomingItem: {
+            /** Actual Eps */
+            actual_eps?: number | null;
+            /** Credit */
+            credit?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Date */
+            date: string;
+            /** End Date */
+            end_date?: string | null;
+            /** Estimated Eps */
+            estimated_eps?: number | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Fiscal Period */
+            fiscal_period?: string | null;
+            /** Instant */
+            instant?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "macro" | "earnings" | "ex_dividend" | "dividend_pay" | "holiday" | "half_day";
+            /** Licence Url */
+            licence_url?: string | null;
+            /** Local Date */
+            local_date: string;
+            /** Local Time */
+            local_time: string | null;
+            /** Market */
+            market?: string | null;
+            /** Publisher */
+            publisher: string;
+            /** Source As Of */
+            source_as_of?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Ticker */
+            ticker?: string | null;
+            /** Time Source Url */
+            time_source_url?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+            /** Title En */
+            title_en: string;
+            /** Title Zh */
+            title_zh: string;
+            /** Unit */
+            unit?: string | null;
+        };
+        /** UpcomingPage */
+        UpcomingPage: {
+            /** End */
+            end: string;
+            /** Items */
+            items: components["schemas"]["UpcomingItem"][];
+            /** Next Cursor */
+            next_cursor: number | null;
+            /** Start */
+            start: string;
+            /** Timezone */
+            timezone: string;
+            /** Total Items */
+            total_items: number;
+        };
+        /** UpcomingReading */
+        UpcomingReading: {
+            data: components["schemas"]["UpcomingPage"] | null;
+            /** Evidence Id */
+            evidence_id: string;
+            quality: components["schemas"]["EventQuality"];
+            /** Scope */
+            scope: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Sources */
+            sources: components["schemas"]["EventSource"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "partial" | "unavailable";
         };
         /** UserProfile */
         UserProfile: {
@@ -10036,6 +10180,7 @@ export interface operations {
     dashboard_lens_v1_dashboard_lens__view__get: {
         parameters: {
             query?: {
+                run_id?: string | null;
                 account?: ("A" | "B" | "C") | null;
                 range?: ("1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL") | null;
                 scope?: ("invest" | "isa" | "total" | "household" | "cfd") | null;
@@ -12556,6 +12701,48 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upcoming_v1_snapshots__run_id__events_upcoming_get: {
+        parameters: {
+            query: {
+                /** @description Maximum rows to return. */
+                limit?: number;
+                /** @description Use the preceding next_cursor. */
+                cursor?: number;
+                /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
+                scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+                start: string;
+                end: string;
+                ticker?: components["schemas"]["Ticker"] | null;
+                timezone?: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpcomingReading"];
                 };
             };
             /** @description Validation Error */

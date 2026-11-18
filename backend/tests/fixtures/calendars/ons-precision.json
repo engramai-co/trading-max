@@ -1,0 +1,35 @@
+{
+  "releases": [
+    {
+      "uri": "/releases/regionalandsubregionallabourproductivityuk2024",
+      "description": {
+        "title": "Regional and subregional labour productivity, UK: 2024",
+        "release_date": "2026-11-24T09:30:00.000Z",
+        "cancelled": false,
+        "finalised": true,
+        "postponed": true
+      }
+    },
+    {
+      "uri": "/releases/foreigndirectinvestmentinvolvingukcompanies2025",
+      "description": {
+        "title": "Foreign direct investment involving UK companies: 2025",
+        "release_date": "2026-12-17T09:30:00.000Z",
+        "cancelled": false,
+        "finalised": false,
+        "postponed": false,
+        "provisional_date": "December 2026"
+      }
+    },
+    {
+      "uri": "/releases/retailsalesgreatbritainjanuary2027",
+      "description": {
+        "title": "Retail Sales; Great Britain: January 2027",
+        "release_date": "2027-02-19T07:00:00.000Z",
+        "cancelled": false,
+        "finalised": false,
+        "provisional_date": null
+      }
+    }
+  ]
+}

@@ -348,7 +348,7 @@ function SecurityResearchWorkspace() {
   const titles: Record<ResearchTab, string> = {
     overview: t("概览", "Overview"),
     technical: t("价格与技术", "Price & technicals"),
-    valuation: t("估值模型", "Valuation"),
+    valuation: t("估值", "Valuation"),
     fundamentals: t("财务与业务", "Financials & business"),
     financials: t("财务报表", "Financials"),
     analyst: t("预期与事件", "Estimates & events"),
@@ -566,7 +566,10 @@ function SecurityResearchWorkspace() {
                 <Tabs
                   label={t("研究视角", "Research perspectives")}
                   value={tab === "financials" ? "fundamentals" : tab}
-                  onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null })}
+                  onChange={(v) => update({
+                    view: v === "overview" ? null : v,
+                    fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null,
+                  }, { focusResearchSection: false })}
                   options={(readOnly
                     ? (isFund ? ["overview", "technical", "tracking", "peers"] : ["overview", "technical"]) as ResearchTab[]
                     : isFund
@@ -683,7 +686,7 @@ function SecurityResearchWorkspace() {
                       )}
                       {displayTab === "technical" && !isFund && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
                       {displayTab === "valuation" && !isFund && (
-                        <ValuationWorkbench data={displayData} revision={revision} price={price} />
+                        <ValuationWorkbench key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "fundamentals" &&
                         (isFund ? (
@@ -717,7 +720,7 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView data={displayData} revision={revision} price={price} />
+                        <AnalystView key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
                       {displayTab === "ledger" && (

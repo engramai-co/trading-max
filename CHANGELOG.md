@@ -8,6 +8,19 @@ All notable public Trading Max releases are recorded here.
 - Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Follow-ups use the reading’s selected account, period and security. Replies show figures and coverage directly from the cited records, and name the dataset when reporting its freshness. Screen readers announce each source and any verification notice. The sidebar reflows wide screens and fills the screen on phones.
 - Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
 
+## [1.56.0] - 2026-11-18
+
+### Changed
+- Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
+- Estimates & events opens with ratings and targets on the 12-month price chart. Targets use the chart currency and account for share splits. Targets beyond the split history stay available by date at their announced amounts. The chart plots targets on the share basis of its latest close, and the upside uses the verified basis of the target and quote. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
+
+## [1.55.0] - 2026-11-18
+
+### Added
+- The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
+- The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
+- Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
+
 ## [1.54.0] - 2026-11-18
 
 ### Added

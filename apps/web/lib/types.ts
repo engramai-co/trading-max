@@ -223,6 +223,7 @@ export type HealthWorker = {
 };
 
 export type HealthResponse = {
+  eventRefreshes?: ApiSchemas["EventRefreshHealth"][];
   status: "ok" | "degraded";
   service: string;
   latestRunId: string | null;
