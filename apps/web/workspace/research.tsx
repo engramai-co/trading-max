@@ -47,7 +47,7 @@ import { ResearchComparison } from "./research-compare";
 import { useLensRefresh } from "./research-clock";
 import { FinancialWorkbench } from "./research-financials";
 import { IndexResearchWorkspace } from "./research-index";
-import { SecurityFinder } from "./research-finder";
+import { SecurityFinder, useSearchHandover } from "./research-finder";
 import { FundJournal, FundPending, FundWorkbench } from "./research-funds";
 import { SecurityActions, SecurityHeader } from "./research-header";
 import { resolveResearchIdentity } from "./research-identity";
@@ -121,20 +121,11 @@ function SecurityResearchWorkspace() {
   });
   const [finder, setFinder] = useState(false);
   const [finderQuery, setFinderQuery] = useState("");
-  // Search hands over a security that is not in the research list: the finder opens on it once.
-  const findQuery = params.get("find");
-  const [handedOver, setHandedOver] = useState<string | null>(null);
-  if (findQuery !== handedOver) {
-    setHandedOver(findQuery);
-    if (findQuery) {
-      setFinderQuery(findQuery);
-      setFinder(true);
-    }
-  }
-  const { update: replaceRoute } = useRouteState("replace");
-  useEffect(() => {
-    if (findQuery) replaceRoute({ find: null });
-  }, [findQuery, replaceRoute]);
+  // Search hands over a security that is not in the research list.
+  const handover = useSearchHandover((text) => {
+    setFinderQuery(text);
+    setFinder(true);
+  });
   const lensPanel = useId();
   const [universeOpen, setUniverseOpen] = useState(false);
   const [manage, setManage] = useState(false);
@@ -342,7 +333,10 @@ function SecurityResearchWorkspace() {
         setPinned(!pinned);
         setUniverseOpen(pinned);
       }}
-      onSearch={() => setFinder(true)}
+      onSearch={() => {
+        setFinderQuery("");
+        setFinder(true);
+      }}
     />
   );
   const universe = (
@@ -736,10 +730,14 @@ function SecurityResearchWorkspace() {
       </Drawer>
       <SecurityFinder
         opened={finder}
-        onClose={() => setFinder(false)}
+        onClose={() => {
+          setFinder(false);
+          handover.closed();
+        }}
         key={finderQuery}
         initial={finderQuery || (selected ? "" : ticker)}
         onSelect={(result) => {
+          handover.chosen();
           client.setQueryData(previewKey(result.ticker), result);
           update({ ticker: result.ticker, view: null, fromFund: isFund ? ticker : null });
           setFinder(false);

@@ -4,11 +4,45 @@ import type { SecuritySearchResponse, SecuritySearchResult } from "@/lib/types";
 import { Button, CloseButton, Modal, TextInput } from "@mantine/core";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/workspace/data";
 import { Instrument, Notice, Pending, useCopy } from "./foundation";
 import Link from "./link";
 import { researchIndexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
+import { useRouteState } from "./route-state";
+
+/**
+ * Text that Search hands to this page's finder through the address. The finder opens on it once and
+ * the address drops it again in place, so the page keeps its view, filters, scroll and edits. A
+ * finder closed without a choice returns focus to Search, where the reader started.
+ */
+export function useSearchHandover(open: (text: string) => void) {
+  const { params, update } = useRouteState("replace");
+  const text = params.get("find");
+  const [seen, setSeen] = useState<string | null>(null);
+  const [handedOver, setHandedOver] = useState(false);
+  if (text !== seen) {
+    setSeen(text);
+    if (text) {
+      setHandedOver(true);
+      open(text);
+    }
+  }
+  useEffect(() => {
+    if (text) update({ find: null });
+  }, [text, update]);
+  return {
+    closed() {
+      if (!handedOver) return;
+      setHandedOver(false);
+      requestAnimationFrame(() => Array.from(document.querySelectorAll<HTMLElement>("[data-search-trigger]"))
+        .find((element) => element.getClientRects().length)?.focus({ preventScroll: true }));
+    },
+    chosen() {
+      setHandedOver(false);
+    },
+  };
+}
 
 /**
  * One search for stocks, ETFs and indices. Indices come from the local catalogue

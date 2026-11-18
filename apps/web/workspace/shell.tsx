@@ -258,6 +258,13 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   ));
   const researchIcon = navigation.find((page) => page.href === "/research")?.icon ?? MagnifyingGlass;
   const findText = query.trim();
+  // On Research the address keeps its view, filters and everything else, and gains only the text
+  // to find: the page opens its finder over itself and drops the text again, so closing the finder
+  // leaves the page as it was. Elsewhere, and from a cited reading, which has no finder, Research
+  // opens with the finder.
+  const onResearch = pathname === "/research" && !params.has("evidence");
+  const findQuery = new URLSearchParams(onResearch ? routeSearch : "");
+  findQuery.set("find", findText);
   const results: Array<Omit<SearchResult, "group"> & {
     group: SearchResult["group"] | "holdings" | "securities";
     Icon: typeof MagnifyingGlass;
@@ -281,13 +288,12 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     ...(findsSecurity(findText, directory.data?.instruments ?? [])
       ? [
           {
-            href: "/research?" + new URLSearchParams({ ...(currentTicker ? { ticker: currentTicker } : {}), find: findText }),
+            href: "/research?" + findQuery,
             label: t("在全部证券中查找", "Find in all securities") + " “" + findText + "”",
             detail: undefined,
             group: "securities" as const,
             Icon: researchIcon,
-            // Already on Research, the finder opens over the page without another history entry.
-            replace: pathname === "/research" && params.get("type") !== "index",
+            replace: onResearch,
           },
         ]
       : []),
@@ -305,7 +311,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     setSearchOpen(false);
     const route = presentationLink(actualPathname, href);
     if (route.separate) window.open(route.href, "_blank", "noopener");
-    else if (!navigateBuild?.(route.href)) router[replace ? "replace" : "push"](route.href);
+    // Only the address of the current page changes: no navigation, scroll, remount or history entry.
+    // A fresh state, as the route helpers write, lets the router read the new address.
+    else if (replace) window.history.replaceState(null, "", route.href);
+    else if (!navigateBuild?.(route.href)) router.push(route.href);
   }
   const brand = (
     <Link

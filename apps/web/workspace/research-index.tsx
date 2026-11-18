@@ -20,7 +20,7 @@ import {
 } from "./market-indices-data";
 import { useListedIndices } from "./listed-indices";
 import { ResearchIndexChart } from "./research-index-chart";
-import { SecurityFinder } from "./research-finder";
+import { SecurityFinder, useSearchHandover } from "./research-finder";
 import { TechnicalScoreCard } from "./research-technical";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { useRouteState } from "./route-state";
@@ -45,6 +45,12 @@ export function IndexResearchWorkspace() {
   const demonstration = useDemonstration();
   const { params, update } = useRouteState("push");
   const [finder, setFinder] = useState(false);
+  const [finderQuery, setFinderQuery] = useState("");
+  // Search hands over a security that is not in the research list; the index stays open beneath.
+  const handover = useSearchHandover((text) => {
+    setFinderQuery(text);
+    setFinder(true);
+  });
   const [listOpen, setListOpen] = useState(false);
   const lensPanel = useId();
   const catalog = useIndexCatalog();
@@ -145,7 +151,11 @@ export function IndexResearchWorkspace() {
               {t("在市场页查看", "Open in Markets")}
             </Link>
           </>}
-      <SecurityFinder opened={finder} onClose={() => setFinder(false)} initial="" onSelect={(security) => {
+      <SecurityFinder opened={finder} key={finderQuery} initial={finderQuery} onClose={() => {
+        setFinder(false);
+        handover.closed();
+      }} onSelect={(security) => {
+        handover.chosen();
         update({ type: null, index: null, view: null, ticker: security.ticker });
         setFinder(false);
       }} />
@@ -153,7 +163,7 @@ export function IndexResearchWorkspace() {
         opened={listOpen}
         onClose={() => setListOpen(false)}
         title={<UniverseHeading wide={false} pinned={false} onPin={() => undefined}
-          onSearch={() => { setListOpen(false); setFinder(true); }} />}
+          onSearch={() => { setListOpen(false); setFinderQuery(""); setFinder(true); }} />}
         styles={{ title: { flex: 1 }, header: { gap: 8 } }}
         size={360}
       >
