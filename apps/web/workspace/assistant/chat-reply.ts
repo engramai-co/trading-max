@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import type { Locale } from "@/components/locale-provider";
 import { object, str } from "../data";
 import { completedEvidence, type Evidence } from "./evidence";
+import { researchFigure } from "./research-figures";
 import { inferenceText, renderToolField } from "./figures";
 
 /** Resolve the whole reply before displaying or announcing any part of it. */
@@ -22,9 +23,10 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       result.push({text, evidence:null});
     } else {
       if (!source) return [];
-      const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone);
+      const research = researchFigure(source.ref, source.output, pointer, locale, timeZone);
+      const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone, research);
       if (!text) return [];
-      let evidence = source.ref;
+      let evidence = research?.evidence ?? source.ref;
       if (evidence.tool === "period_performance" && pointer === "/data/period_pnl_gbp") {
         const data = object(source.output.data);
         evidence = {...evidence, arguments:{...evidence.arguments, metric:"period_pnl_gbp",

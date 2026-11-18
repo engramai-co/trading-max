@@ -209,6 +209,7 @@ def research_earnings(ctx: Context, args: SecurityArgs) -> dict:
     return read.result(
         data={
             **observations,
+            "ticker": args.ticker,
             "version": _digest(observations),
             "as_of": _iso(analyst.get("asOf")) or _iso(batch.get("generated_at")),
         },
@@ -243,5 +244,6 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
     if not row:
         return read.missing("headline_unavailable")
     return read.result(
-        data={k: row[k] for k in ("title", "publisher", "url", "date")}, keys=[NEWS_KEY]
+        data={"ticker": args.ticker, **{k: row[k] for k in ("title", "publisher", "url", "date")}},
+        keys=[NEWS_KEY],
     )

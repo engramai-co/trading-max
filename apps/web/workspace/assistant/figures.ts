@@ -1,5 +1,6 @@
 import type { Locale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
+import type { ResearchFigure } from "./research-figures";
 import { numeric } from "@/lib/numeric";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
 
@@ -111,7 +112,7 @@ function formatField(tool: string, row: NonNullable<ReturnType<typeof resolveFie
 }
 
 /** Every displayed word of a factual line comes from trusted copy or the cited output. */
-export function renderToolField(tool: string, output: Json, pointer: string, locale: Locale, timeZone: string) {
+export function renderToolField(tool: string, output: Json, pointer: string, locale: Locale, timeZone: string, research?: ResearchFigure | null) {
   const status = str(output.status);
   if (!Object.hasOwn(statusWords, status)) return null;
   const data = object(output.data);
@@ -122,6 +123,7 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   if (pointer === "/status") return status === "ok" && limited ? limitedText : word(statusWords[status], locale);
   if (status !== "ok" && status !== "partial") return null;
   if (pointer === "/data/coverage" && coverage) return limited ? limitedText : word(["Complete coverage", "覆盖完整"], locale);
+  if (research !== undefined) return research ? [research.text, limited ? limitedText : ""].filter(Boolean).join(" · ") : null;
   const row = resolveField(output, pointer);
   if (!row || (row.group === "twr" && row.parent.status !== "ok")) return null;
   const formatted = formatField(tool, row, locale);
