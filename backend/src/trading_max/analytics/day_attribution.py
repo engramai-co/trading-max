@@ -42,6 +42,8 @@ class BaselinePosition(DomainModel):
     name: str
     quantity: Decimal
     value_gbp: Decimal
+    local_price: Decimal | None = None
+    price_currency: str | None = None
 
 
 class AccountBaseline(DomainModel):
@@ -63,6 +65,8 @@ class PositionContribution(DomainModel):
     # it existed have none.
     instrument: str | None = None
     contribution_gbp: Decimal
+    local_price_effect_gbp: Decimal | None = None
+    fx_effect_gbp: Decimal | None = None
     # Value of the shares held through the window at its opening, so a consumer
     # can state the change as a share of it. Only the 1D attribution carries it;
     # a chained 5D total has no single opening.
@@ -173,6 +177,8 @@ def _positions(account: Mapping[str, Any]) -> list[BaselinePosition] | None:
                 name=str(row.get("name") or ticker),
                 quantity=quantity,
                 value_gbp=value,
+                local_price=_decimal(row.get("current_price")),
+                price_currency=row.get("price_currency"),
             )
         )
     return positions
@@ -190,12 +196,28 @@ def _contributions(
         held = min(start.quantity, end.quantity)
         opening_price = start.value_gbp / start.quantity
         change = held * (end.value_gbp / end.quantity - opening_price)
+        change = change.quantize(CENT)
+        local = None
+        if start.price_currency and start.price_currency == end.price_currency:
+            if start.price_currency in {"GBP", "GBp", "GBX"}:
+                local = change
+            elif (
+                start.local_price
+                and start.local_price > 0
+                and end.local_price
+                and end.local_price > 0
+                and end.value_gbp > 0
+            ):
+                closing_fx = end.value_gbp / (end.quantity * end.local_price)
+                local = (held * (end.local_price - start.local_price) * closing_fx).quantize(CENT)
         rows.append(
             PositionContribution(
                 ticker=end.ticker,
                 name=end.name,
                 instrument=end.key,
-                contribution_gbp=change.quantize(CENT),
+                contribution_gbp=change,
+                local_price_effect_gbp=local,
+                fx_effect_gbp=change - local if local is not None else None,
                 opening_value_gbp=(held * opening_price).quantize(CENT),
             )
         )
@@ -288,19 +310,20 @@ def update_window_attribution(
             continue
         points = [*chain, (_timestamp(account["fetched_at"]), current)]
         # One total per broker instrument, so two listings never merge.
-        totals: dict[str, tuple[str, str, Decimal]] = {}
+        totals: dict[str, PositionContribution] = {}
         for (_, start), (_, end) in pairwise(points):
             for row in _contributions(start, end):
                 instrument = row.instrument or row.ticker
-                _, _, total = totals.get(instrument, (row.ticker, row.name, Decimal(0)))
-                totals[instrument] = (row.ticker, row.name, total + row.contribution_gbp)
+                prior = totals.get(instrument)
+                if prior is None:
+                    totals[instrument] = row.model_copy(update={"opening_value_gbp": None})
+                    continue
+                prior.contribution_gbp += row.contribution_gbp
+                for field in ("local_price_effect_gbp", "fx_effect_gbp"):
+                    a, b = getattr(prior, field), getattr(row, field)
+                    setattr(prior, field, a + b if a is not None and b is not None else None)
         rows = sorted(
-            (
-                PositionContribution(
-                    ticker=ticker, name=name, instrument=instrument, contribution_gbp=total
-                )
-                for instrument, (ticker, name, total) in totals.items()
-            ),
+            totals.values(),
             key=lambda row: (-abs(row.contribution_gbp), row.ticker, row.instrument or ""),
         )
         result[code] = AccountDayAttribution(

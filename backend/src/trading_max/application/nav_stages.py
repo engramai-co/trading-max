@@ -621,7 +621,7 @@ class AccountDayAttributionStage:
     """Attribute each position's change over the trading day and the 5D window."""
 
     name = "accounts.day_attribution"
-    version = "day-attribution-v4"
+    version = "day-attribution-v5"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
