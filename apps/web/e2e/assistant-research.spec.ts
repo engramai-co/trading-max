@@ -195,7 +195,24 @@ test("ratings stay visible and stable while the earnings cache is pending", asyn
   expect((await ratings.boundingBox())?.y).toBe(before?.y);
 });
 
+test("withdrawing consent removes the earnings reservation", async ({page}) => {
+  await fixtures(page);
+  await page.goto("/research?ticker=SYNT");
+  await expect(page.locator(".mx-tech-preview-grid")).toBeVisible();
+  await page.getByRole("tab",{name:/预期|Estimates/}).click();
+  const ratings = page.locator("#research-ratings");
+  const brief = page.locator(".mx-earnings-brief");
+  await expect(brief).toBeVisible();
+  expect(await brief.evaluate(el => el.parentElement?.firstElementChild === el)).toBe(true);
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:false}}));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:false,code:"assistant_disabled"}}));
+  await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage",{key:"trading_max-assistant-settings-revision"})));
+  await expect(brief).toHaveCount(0);
+  await expect.poll(() => ratings.evaluate(el => el.parentElement?.firstElementChild === el)).toBe(true);
+});
+
 test("a later earnings publication preserves the ratings position", async ({page}) => {
+  const emptyResponse = page.waitForResponse(response => response.url().endsWith("/earnings-brief/reading"));
   let empty = true;
   await page.clock.install();
   await fixtures(page);
@@ -204,10 +221,13 @@ test("a later earnings publication preserves the ratings position", async ({page
   await page.goto("/research?ticker=SYNT&view=analyst");
   const ratings = page.locator("#research-ratings");
   await expect(ratings).toBeVisible();
+  await (await emptyResponse).finished();
   const before = await ratings.boundingBox();
   empty = false;
-  await page.clock.fastForward(31000);
-  await expect(page.locator(".mx-earnings-brief")).toBeVisible();
+  await expect.poll(async () => {
+    await page.clock.fastForward(31000);
+    return page.locator(".mx-earnings-brief").isVisible();
+  }).toBe(true);
   expect((await ratings.boundingBox())?.y).toBe(before?.y);
 });
 

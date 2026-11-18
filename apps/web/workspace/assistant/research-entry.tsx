@@ -47,7 +47,7 @@ export function useEarningsBrief(ticker: string, lens: string, snapshotId: strin
   const reserved = phone ? 144 : 72;
   const row = data?.reading ? <data.EarningsBrief ticker={ticker} lens={lens} reading={data.reading} minHeight={top ? reserved : undefined}/> : null;
   return {
-    before: top && eligible ? row ?? <div aria-hidden="true" style={{minHeight:reserved}}/> : null,
+    before: top && eligible && (enabled || assistant.pending && profile.data?.assistantEnabled) ? row ?? <div aria-hidden="true" style={{minHeight:reserved}}/> : null,
     after: top ? null : row,
   };
 }
