@@ -5,6 +5,7 @@ from __future__ import annotations
 from bisect import bisect_left
 from dataclasses import replace
 from datetime import UTC, date, datetime
+from functools import partial
 from itertools import pairwise
 from typing import Annotated, Literal
 
@@ -487,18 +488,12 @@ def dated_events(
         ),
     )
     pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker, ticker))
-    ticker = pinned.symbol
-    source_rows = {
-        key: _ticker_row(read.read(key), ticker) or {}
-        for key in (
-            ANALYST,
-            EARNINGS,
-            FUNDAMENTALS,
-            FINANCIALS,
-        )
-    }
+    source_rows = {}
+    for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS):
+        raw = read.read(key)
+        source_rows[key] = pinned.feed_row(partial(_ticker_row, raw)) or {}
     news_rows = {
-        key: _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
+        key: pinned.feed_row(_mapped((read.read(key) or {}).get("securities")).get) or {}
         for key in (NEWS_KEY, NEWS_STATUS_KEY)
     }
     if not pinned.venue().venues:

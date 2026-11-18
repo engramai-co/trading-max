@@ -881,14 +881,7 @@ class ResearchLedger:
         raw = self._read_optional(manifest, "research/earnings.json")
         companies = raw.get("companies", {})
         if not companies and isinstance(raw.get("rows"), list):
-            company = next(
-                (
-                    row
-                    for row in raw["rows"]
-                    if isinstance(row, dict) and str(row.get("ticker") or "").upper() == ticker
-                ),
-                None,
-            )
+            company = pinned.published_row([row for row in raw["rows"] if isinstance(row, dict)])
             company, _ = pinned.event_row(company)
             if company:
                 return [
@@ -902,7 +895,7 @@ class ResearchLedger:
                         sources=[],
                     )
                 ]
-        company = companies.get(ticker) if isinstance(companies, dict) else None
+        company = pinned.feed_row(companies.get) if isinstance(companies, dict) else None
         company, _ = pinned.event_row(company) if isinstance(company, dict) else ({}, False)
         if not company:
             return []
@@ -1014,7 +1007,7 @@ class ResearchLedger:
                 fundamentals={"metrics": {"quoteType": lens.context.asset_type}},
                 portfolio_impact=self.portfolio_impact(listing.ticker, manifest),
             )
-        market = exact_row(self._market_rows(manifest), ticker)
+        market = pinned.published_row(self._market_rows(manifest))
         technical = exact_row(
             self._cached_rows(manifest, "research/technical.json", project_technical_rows),
             pinned.ticker,
@@ -1027,7 +1020,9 @@ class ResearchLedger:
         lens = self.lens_snapshot(ticker, "fundamentals", manifest)
         fundamentals = lens.fundamentals
         analyst = pinned.event_row(
-            exact_row(self._cached_rows(manifest, "research/analyst.json", _analyst_rows), ticker)
+            pinned.published_row(
+                self._cached_rows(manifest, "research/analyst.json", _analyst_rows)
+            )
         )[0].get("analyst")
         financials = lens.financials
         events = self.events(ticker, manifest)
@@ -1646,7 +1641,7 @@ class ResearchLedger:
             )
         if pinned.held or us_fund(ticker):
             return self._fund_lens(pinned, view, manifest, detail=detail)
-        market = exact_row(self._market_rows(manifest), ticker)
+        market = pinned.published_row(self._market_rows(manifest))
         payload = ResearchLensSnapshot(
             ticker=ticker,
             view=view,
@@ -1657,7 +1652,7 @@ class ResearchLedger:
 
         def event_row(name, parser):
             rows = self._cached_rows(manifest, f"research/{name}.json", parser)
-            return pinned.event_row(exact_row(rows, ticker))[0]
+            return pinned.event_row(pinned.published_row(rows))[0]
 
         fundamental = event_row("fundamentals", _fundamentals_rows)
         metrics = fundamental.get("metrics") or fundamental.get("info") or {}
@@ -2063,7 +2058,7 @@ class ResearchLedger:
             )
             pinned = self.pin_listing(requested, manifest, exchanges=exchanges)
             ticker, listing = pinned.symbol, pinned.held
-            if pinned.venue(*current.claims).conflict or ticker != current.symbol:
+            if not pinned.same_listing(current):
                 continue
             signature = (*artifact_hashes, ticker, listing.key if listing else None)
             if signature in seen:
@@ -2077,7 +2072,7 @@ class ResearchLedger:
                     else None
                 )
             else:
-                market = exact_row(self._market_rows(manifest), ticker)
+                market = pinned.published_row(self._market_rows(manifest))
                 technical = exact_row(
                     self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                     pinned.ticker,
@@ -2517,9 +2512,14 @@ class ResearchLedger:
         if route != requested:
             exact_claims, _ = evidence_for(requested)
             rows = technicals.get("rows") or []
-            separate_bars = (
-                "." not in requested and exact_row(rows, requested) and exact_row(rows, route)
+            exact = exact_row(rows, requested) or {}
+            provider_symbol = (
+                (exact.get("provider_venue") or exact.get("providerVenue") or {}).get("symbol")
+                or exact.get("symbol")
+                or exact.get("yf_ticker")
+                or exact.get("yfTicker")
             )
+            separate_bars = "." not in requested and provider_symbol and exact_row(rows, route)
             exact_venue = resolve_venue(requested, *exact_claims, *exchanges.get(requested, ()))
             if (separate_bars and exact_venue.venues != {"XLON"}) or resolve_venue(
                 requested,

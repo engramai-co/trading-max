@@ -7,6 +7,7 @@ import re
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 from hashlib import sha256
 from math import isfinite
 from typing import Annotated, Any, Literal, cast
@@ -1023,7 +1024,8 @@ def read_research_lens(ctx: Context, args: ResearchArgs) -> Json:
     )
     stored = {}
     for key in needed:
-        row = _ticker_row(read.read(key), pinned.ticker if pinned and key == TECHNICAL else ticker)
+        raw = read.read(key)
+        row = pinned.feed_row(partial(_ticker_row, raw)) if pinned else _ticker_row(raw, ticker)
         if row and pinned:
             row, _ = pinned.event_row(row)
         if row:

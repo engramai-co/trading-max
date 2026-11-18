@@ -550,11 +550,16 @@ def event_data(deps, args, *, upcoming):
         if ticker in selected_tickers:
             continue
         selected_tickers.add(ticker)
+        news = pinned.feed_row(news_rows.get)
+        status = pinned.feed_row(status_rows.get)
+        raw_rows = {
+            key: pinned.feed_row(rows.get) or {} for key, rows in data.items() if key != NEWS_KEY
+        }
         if not pinned.venue().venues:
             pinned = pinned.with_event_claims(
-                news_rows.get(ticker),
-                status_rows.get(ticker),
-                *(rows.get(ticker) for key, rows in data.items() if key != NEWS_KEY),
+                news,
+                status,
+                *raw_rows.values(),
             )
         venue = pinned.venue()
         if venue.conflict:
@@ -564,25 +569,25 @@ def event_data(deps, args, *, upcoming):
             names.add(venue.calendar)
         elif upcoming:
             issues.append("listing_calendar_unavailable")
-        if not upcoming and not data[NEWS_KEY].get(ticker, {}).get("as_of"):
-            issues.append("security_news_unavailable")
-        if not upcoming and data[NEWS_KEY].get(ticker, {}).get("error"):
-            issues.append("security_news_refresh_failed")
-        if ticker not in data[ANALYST]:
-            issues.append("analyst_events_unavailable")
-        if not data[EARNINGS].get(ticker, {}).get("calendar"):
-            issues.append("security_calendar_unavailable")
         selected = {}
-        for key, rows in data.items():
-            parent = (
-                pinned.with_event_claims(news_rows.get(ticker), status_rows.get(ticker))
-                if key == NEWS_KEY
-                else pinned
-            )
-            row, rejected = parent.event_row(rows.get(ticker))
+        for key, row in raw_rows.items():
+            row, rejected = pinned.event_row(row)
             if rejected:
                 issues.append("listing_calendar_unavailable")
             selected[key] = {ticker: row}
+        feed_pin = pinned.with_event_claims(news, status)
+        feed, rejected = feed_pin.event_row({**(news or {}), **(status or {})})
+        if rejected:
+            issues.append("listing_calendar_unavailable")
+        selected[NEWS_KEY] = {ticker: feed}
+        if not upcoming and not feed.get("as_of"):
+            issues.append("security_news_unavailable")
+        if not upcoming and feed.get("error"):
+            issues.append("security_news_refresh_failed")
+        if not selected[ANALYST][ticker]:
+            issues.append("analyst_events_unavailable")
+        if not selected[EARNINGS][ticker].get("calendar"):
+            issues.append("security_calendar_unavailable")
         for entry in _public(ticker, selected, upcoming):
             if entry and entry["kind"] == "earnings" and entry.pop("currency_missing", False):
                 issues.append("earnings_currency_unavailable")
