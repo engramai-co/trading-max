@@ -122,7 +122,7 @@ def boe(s, root):
             c = cells(row)
             m = re.search(r"(\d{1,2}) ([A-Za-z]+)", c[0])
             if m:
-                explicit = re.search(r"(\d{1,2}[:.]\d{2}\s*(?:am|pm)?)", c[0], re.I)
+                explicit = re.search(r"(\d{1,2}[:.]\d{2}\s*(?:am|pm)?)", " ".join(c), re.I)
                 release = clock(explicit[1].replace(".", ":")) if explicit else time(12)
                 yield event(
                     s,
@@ -130,11 +130,15 @@ def boe(s, root):
                     "英国央行政策决定及会议纪要",
                     date(int(year[1]), month(m[2]), int(m[1])),
                     clock=release,
+                    time_source_url=s.url
+                    if explicit
+                    else "https://www.bankofengland.co.uk/monetary-policy",
                     status="finalised" if year[2].lower() == "confirmed" else "provisional",
                 )
 
 
 def ecb(s, root):
+    first_day = None
     for dt in root.xpath("//dl/dt"):
         dd = dt.xpath("following-sibling::*[1][self::dd]")
         stamp = re.match(r"(\d{2})/(\d{2})/(\d{4})(?:\s+(\d{2}:\d{2}))?", text(dt))
@@ -143,13 +147,21 @@ def ecb(s, root):
         day = date(int(stamp[3]), int(stamp[2]), int(stamp[1]))
         details = text(dd[0])
         if s.key == "ecb":
+            if re.search(r": monetary policy meeting.*\(Day 1\)", details, re.I):
+                first_day = day
             if re.search(r": monetary policy meeting.*\(Day 2\)", details, re.I):
+                if first_day and (day - first_day).days == 1:
+                    yield event(
+                        s, "ECB monetary policy meeting", "欧洲央行货币政策会议", first_day, end=day
+                    )
+                first_day = None
                 yield event(
                     s,
                     "ECB monetary policy decision",
                     "欧洲央行货币政策决定",
                     day,
                     clock=time(14, 15),
+                    time_source_url="https://www.ecb.europa.eu/press/govcdec/html/index.en.html",
                 )
         elif (zh := family(details.split("(Dataset:")[0])) is not None:
             yield event(

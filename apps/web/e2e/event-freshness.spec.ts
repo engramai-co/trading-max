@@ -10,6 +10,7 @@ test.describe("published event source freshness", () => {
         await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
         await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
         await page.addInitScript((language) => localStorage.setItem("trading_max-locale", language), locale);
+        const failures = theme === "light" ? 1 : 2;
         const clock = "2026-11-18T08:00:00Z";
         const worker = { healthy: true };
         const queue = { queued: 0, running: 0, succeeded: 1, failed: 0, interrupted: 0 };
@@ -18,14 +19,14 @@ test.describe("published event source freshness", () => {
           health: { status: "ok", latestRunId: "fixture", worker, queue, artifactAgeSeconds: 120,
             eventRefreshes: [
               { kind: "news", checkedAt: clock, asOf: clock, failedSources: 0 },
-              { kind: "macro", checkedAt: clock, asOf: "2026-11-17T08:00:00Z", failedSources: 1 },
+              { kind: "macro", checkedAt: clock, asOf: "2026-11-17T08:00:00Z", failedSources: failures },
             ] },
           readiness: { status: "ready", latestRunId: "fixture", worker, queue }, refresh: {}, jobs: [], errors: [],
         } }));
         await page.goto("/health");
         const summary = page.locator("summary", { hasText: locale === "en" ? "News and calendar freshness" : "新闻与日历数据时间" });
         const block = page.locator("details").filter({ has: summary });
-        await expect(block.getByText(locale === "en" ? "1 source refresh failed" : "1 个来源更新失败")).toBeVisible();
+        await expect(block.getByText(locale === "en" ? (failures === 1 ? "1 source refresh failed" : "2 source refreshes failed") : `${failures} 个来源更新失败`)).toBeVisible();
         await summary.focus();
         await page.keyboard.press("Enter");
         await expect(block).not.toHaveAttribute("open", "");

@@ -2,7 +2,7 @@
 
 import json
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
 
@@ -79,7 +79,7 @@ def ons(source, content, today):
         # have no promised clock.
         clock = (
             local.time()
-            if status == "finalised" and local.time().isoformat() != "00:00:00"
+            if status == "finalised" and time.min not in (local.time(), instant.time())
             else None
         )
         yield event(

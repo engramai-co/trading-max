@@ -8860,6 +8860,8 @@ export interface components {
             status?: string | null;
             /** Ticker */
             ticker?: string | null;
+            /** Time Source Url */
+            time_source_url?: string | null;
             /** Timezone */
             timezone?: string | null;
             /** Title En */

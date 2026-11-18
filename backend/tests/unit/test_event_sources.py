@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from datetime import UTC, date, datetime, timedelta
 from io import BytesIO
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from pypdf import PdfWriter
@@ -83,6 +84,12 @@ def test_calendar_rows(key, file, title, day, clock):
     found = next(r for r in events if r.title_en == title and r.date.isoformat() == day)
     assert (found.instant.strftime("%H:%M") if found.instant else None) == clock
     assert found.title_zh and found.credit and found.source_url.startswith("https://")
+    if key == "ecb":
+        assert (
+            found.time_source_url
+            and events[0].date == date(2026, 12, 16)
+            and events[0].end_date == found.date
+        )
     if key == "fomc":
         assert found.end_date == date(2026, 12, 9)
     if key in {"hk", "ons-upcoming"}:
@@ -196,6 +203,10 @@ def test_yahoo_budget_precision_retention_and_security_filter():
     row = first["securities"]["TEST"]
     assert len(row["items"]) == 1 and row["items"][0]["instant"].endswith("02.155000+00:00")
     assert "summary" not in str(row) and calls == ["reserved"]
+    from trading_max.research.news import headline
+
+    dated = headline({**story["content"], "pubDate": "2026-11-17"})
+    assert dated["date"] == "2026-11-17" and dated["instant"] is None
     assert refresh_news(first, ["TEST"], NOW + timedelta(hours=2), Budget(), lambda _: []) == first
     later = refresh_news(
         first, ["TEST"], NOW + timedelta(hours=8), Budget(), lambda _: [{"title": "undated"}]
@@ -221,4 +232,76 @@ def test_yahoo_budget_precision_retention_and_security_filter():
     )
     assert (
         reused["securities"]["TEST"]["items"][0]["title"] == "Cached headline" and len(calls) == 2
+    )
+
+
+def test_scheduled_stages_publish_and_reuse_original_observation(tmp_path, monkeypatch):
+    from trading_max.application import StageContext, TypedWorkerRuntime, event_stages
+    from trading_max.research.news import NEWS_KEY
+
+    from services.api.trading_max_api.typed_jobs import stage_plan
+
+    scheduled = [name for name, _ in stage_plan("research", skip_sync=True, trigger="research")]
+    live = [name for name, _ in stage_plan("live", skip_sync=False, trigger="live")]
+    assert {"research.macro_calendar", "research.security_news"} <= set(scheduled) - set(live)
+    runtime = TypedWorkerRuntime(tmp_path)
+    source = CATALOG["bea"]
+    content = (FIXTURES / "bea.ics").read_bytes()
+
+    @contextmanager
+    def fixture_reader():
+        yield lambda _: content
+
+    monkeypatch.setattr(event_stages, "official_reader", fixture_reader)
+    monkeypatch.setattr(
+        event_stages,
+        "refresh_calendar",
+        lambda last, now, read: refresh_calendar(last, NOW, read, catalog=lambda _: [source]),
+    )
+
+    class FixedClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return NOW
+
+    monkeypatch.setattr(event_stages, "datetime", FixedClock)
+    finance = runtime.artifacts.put_json(
+        key="research/financials.json",
+        payload={
+            "rows": [
+                {
+                    "ticker": "FIXTURE",
+                    "financials": {"evidence": {"news": [], "asOf": NOW.isoformat()}},
+                }
+            ]
+        },
+    )
+    context = StageContext(
+        job_id="fixture",
+        scope="research",
+        trigger="research",
+        tickers=("FIXTURE",),
+        upstream_artifact_ids=(finance.ref.artifact_id,),
+    )
+    registry = runtime.registry()
+    first = [
+        registry.get(n).run(context).artifacts[0]
+        for n in scheduled
+        if n in {"research.macro_calendar", "research.security_news"}
+    ]
+    assert len(first) == 2
+    snapshot = runtime.snapshots.publish(
+        scope="research", source="synthetic", artifacts=first, created_at=NOW
+    )
+    assert {ref.key for ref in snapshot.manifest.artifacts} == {event_stages.MACRO_KEY, NEWS_KEY}
+    assert all(ref.as_of == NOW.isoformat() for ref in first)
+    news = registry.get("research.security_news").run(context)
+    assert news.artifacts[0].artifact_id == next(r.artifact_id for r in first if r.key == NEWS_KEY)
+
+
+def test_central_release_time_during_us_uk_clock_change_gap():
+    raw = (FIXTURES / "fred.html").read_bytes().replace(b"December 10, 2026", b"March 19, 2026")
+    (row,) = parse(CATALOG["fred-10"], raw, NOW.date())
+    assert (
+        row.instant.astimezone(ZoneInfo("Europe/London")).isoformat() == "2026-03-19T12:30:00+00:00"
     )
