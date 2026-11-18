@@ -619,7 +619,7 @@ def research_prices(
             series = app_service(request, "market_prices").history(reference.ticker)
         except Exception:
             series = None
-        if series is None:
+        if series is None or series.symbol.strip().upper() != reference.ticker:
             raise HTTPException(status_code=404, detail="security-price-history-unavailable")
         points = [
             PriceSeriesPoint(
@@ -640,7 +640,8 @@ def research_prices(
             raise HTTPException(status_code=404, detail="security-price-history-unavailable")
         return live_window(
             ResearchPriceSeries(
-                ticker=reference.ticker,
+                ticker=series.symbol.strip().upper(),
+                quote_exchange=reference.exchange,
                 currency="USD",
                 as_of=points[-1].date,
                 requested_interval=interval,

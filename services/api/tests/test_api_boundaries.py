@@ -458,6 +458,10 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
     assert chart["adjustment"] == "provider-close"
     assert chart["points"][0]["close"] == 101.0
 
+    foreign = SparkSeries("SMH.L", (int(now.timestamp()),), (85.0,), fetched_at=now)
+    monkeypatch.setattr(boundary_client.app.state.market_prices, "history", lambda ticker: foreign)
+    assert boundary_client.get("/v1/research/SMH/prices?interval=60m").status_code == 404
+
     from services.api.trading_max_api.dashboard_models import ResearchPriceSeries
 
     def alpaca_etf(ticker, interval):
