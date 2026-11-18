@@ -149,7 +149,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   } else if (row.kind === "macro" && (ref.arguments?.market || ref.arguments?.rowCitation || ref.tool === "news_and_events")) {
     args.holdingTicker = "MARKET";
     args.event = "macro";
-  } else if (accountOrMarket && !(historical && row.kind === "own_trade")) {
+  } else if (accountOrMarket && !(historical && row.kind === "own_trade" && ["buy","sell"].includes(str(row.side)))) {
     const data = object(output.data);
     source = row.kind === "own_trade" ? "broker" : "calendar";
     Object.assign(args, ref.arguments, {rowCitation:"1",field:pointer,event:str(row.kind),eventId:str(row.evidence_id),
