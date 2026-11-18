@@ -1,5 +1,6 @@
 .mx-assistant-panel button,
 .mx-inline-reading button,
+.mx-reading-sheet .mx-reading-actions button,
 .mx-digest button,
 .mx-reading-close {
   appearance: none;
@@ -216,7 +217,8 @@
   position: absolute;
   inset: 4px 4px auto auto;
 }
-.mx-reading-sheet {
+.mantine-Drawer-content.mx-reading-sheet {
+  height: auto;
   max-height: 60dvh;
   padding-bottom: env(safe-area-inset-bottom);
 }

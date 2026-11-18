@@ -107,6 +107,7 @@ async function setup(
             {
               jobId: "synthetic-failed",
               scope: "accounts",
+              trigger: "nightly",
               skipSync: false,
               status: "failed",
               createdAt: stamp,
@@ -442,7 +443,7 @@ test("keyboard range survives a failed reading, stop and retry", async ({
     return route.fallback();
   });
   try {
-    await page.goto("/analytics?view=returns&scope=isa&range=3M&benchmark=QQQ");
+    await page.goto("/analytics?view=returns&scope=invest&range=3M&benchmark=QQQ");
     const chart = page
       .locator('[aria-roledescription="Interactive chart"]')
       .first();
@@ -471,7 +472,7 @@ test("keyboard range survives a failed reading, stop and retry", async ({
     await composer.press("Enter");
     expect((await sent).postDataJSON().context).toMatchObject({
       page: "analytics",
-      scope: "isa",
+      scope: "invest",
       role: "attribution",
       range: "3M",
       benchmark: "QQQ",

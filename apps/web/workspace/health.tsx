@@ -150,7 +150,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             "Check the service status and task details below to find the unfinished step.",
           );
   const lastFailed = activity.failures[0];
-  const heroIssue = staleHours != null ? "stale" : lastFailed?.jobId;
+  const heroIssue = staleHours != null ? "stale" : tone === "degraded" ? lastFailed?.jobId : null;
   function why(issue: string, label: string, location: string) {
     if (!assistantReady || readOnly) return null;
     const key = location + issue;
