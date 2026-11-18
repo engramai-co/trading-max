@@ -95,14 +95,17 @@ export function formatPageField(
         t("组合时间加权收益", "Portfolio time-weighted return"),
         percent(value, true, 2),
       ];
+    const basis = data.benchmark_basis === "auto_adjusted_close"
+      ? t("复权收盘价", "adjusted closing prices")
+      : data.benchmark_basis === "adjusted_price_gbp" ? t("复权价格", "adjusted prices") : null;
     if (
       group === "window_benchmarks" &&
       ["VOO", "QQQ", "VT"].includes(field) &&
       data.benchmark_currency &&
-      data.benchmark_basis
+      basis
     )
       return [
-        [field, str(data.benchmark_currency), str(data.benchmark_basis)].join(
+        [field, str(data.benchmark_currency), basis].join(
           " · ",
         ),
         percent(value, true, 2),

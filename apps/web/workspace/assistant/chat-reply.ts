@@ -36,6 +36,10 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       if (["selected_money","daily_returns","holding_fx_split","exposure_benchmark","market_sector","global_map","update_issue"].includes(evidence.tool)) {
         evidence = {...evidence,arguments:{...evidence.arguments,metric:pointer,snapshotId:str(source.output.snapshot_id)}};
       }
+      if (evidence.tool === "daily_returns" && pointer.startsWith("/data/window_benchmarks/")) {
+        const data = object(source.output.data);
+        evidence = {...evidence, arguments:{...evidence.arguments,benchmark_basis:str(data.benchmark_basis),benchmark_currency:str(data.benchmark_currency)}};
+      }
       if (evidence.tool === "news_and_events") {
         const match = /^\/data\/items\/(\d+)\/title_en$/.exec(pointer);
         const item = match && objects(object(source.output.data).items)[Number(match[1])];

@@ -42,13 +42,10 @@ class AttributionContext(RoleContext):
 def matches(since: str | None, as_of: str | None, context: AttributionContext):
     if not since or not as_of:
         return False
+    # Daily NAV rows expose a trading date without a valuation instant.
     for raw, selected in ((since, context.start), (as_of, context.end)):
-        observed = datetime.fromisoformat(raw)
-        if len(selected) == 10:
-            day = observed.astimezone(LONDON).date() if observed.tzinfo else observed.date()
-            if day.isoformat() != selected:
-                return False
-        elif observed != datetime.fromisoformat(selected):
+        observed, anchor = datetime.fromisoformat(raw), datetime.fromisoformat(selected)
+        if observed.utcoffset() is None or anchor.utcoffset() is None or observed != anchor:
             return False
     return True
 
@@ -96,6 +93,12 @@ def selected_money(ctx: tools.Context, args: AttributionContext):
     )
 
 
+BENCHMARK_BASES = {
+    "auto_adjusted_close": ("复权收盘价", "adjusted closing prices"),
+    "adjusted_price_gbp": ("复权价格", "adjusted prices"),
+}
+
+
 def attribution_facts(read: RoleTools, context: AttributionContext):
     args = {**context.model_dump(), "snapshotId": read.deps.snapshot_id}
     daily = read.read(
@@ -110,8 +113,8 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
     )
     data = daily.get("data") or {}
 
-    def observed(section, zh, en, source="account", result=daily, tool="daily_returns"):
-        return line(section, zh, en, result, source, tool, metric=section, **args)
+    def observed(section, zh, en, source="account", result=daily, tool="daily_returns", **metadata):
+        return line(section, zh, en, result, source, tool, metric=section, **args, **metadata)
 
     facts = []
     if (
@@ -138,14 +141,15 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                 )
             )
         if (
-            data.get("benchmark_basis")
+            data.get("benchmark_basis") in BENCHMARK_BASES
             and data.get("benchmark_currency")
             and data.get("window_benchmarks")
         ):
             comparisons = " · ".join(
                 f"{key} {value:+.2%}" for key, value in data["window_benchmarks"].items()
             )
-            basis = f"{data['benchmark_currency']} · {data['benchmark_basis']}"
+            zh_basis, en_basis = BENCHMARK_BASES[data["benchmark_basis"]]
+            currency = data["benchmark_currency"]
             requested = {"VOO", "QQQ", "VT"} if context.benchmark == "ALL" else {context.benchmark}
             missing = ", ".join(sorted(requested - data["window_benchmarks"].keys()))
             missing_en = f" {missing} has no comparison for this window." if missing else ""
@@ -153,9 +157,11 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
             facts.append(
                 observed(
                     "benchmark",
-                    f"同期基准 {comparisons}（{basis}）。{missing_zh}",
-                    f"Same-period benchmark returns were {comparisons} ({basis}).{missing_en}",
+                    f"同期基准 {comparisons}（{currency} · {zh_basis}）。{missing_zh}",
+                    f"Same-period benchmark returns were {comparisons} ({currency} · {en_basis}).{missing_en}",
                     "market",
+                    benchmark_basis=data["benchmark_basis"],
+                    benchmark_currency=currency,
                 )
             )
     if context.view == "money" or not any(f.section == "return" for f in facts):
