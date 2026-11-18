@@ -1188,6 +1188,29 @@ test.describe("frozen draft review", () => {
     }
   });
 
+  test("calculating reserves the English phone result header height", async ({page, isMobile}) => {
+    test.skip(!isMobile, "The result actions wrap on phones.");
+    const {accept, release} = await pendingBaseReview(page);
+    const results = page.locator("#valuation-results");
+    async function offsets() {
+      const values = [];
+      for (const width of [320, 390, 404, 430]) {
+        await page.setViewportSize({width, height:844});
+        values.push(await results.evaluate(el =>
+          el.querySelector(".mx-scenario-spot")!.getBoundingClientRect().top - el.getBoundingClientRect().top));
+      }
+      return values;
+    }
+    const settled = await offsets();
+    try {
+      await accept();
+      await expect(results.locator(".mx-preview-status")).toHaveText("Calculating…");
+      expect(await offsets()).toEqual(settled);
+    } finally {
+      release();
+    }
+  });
+
   test("template fields link to the frozen inputs used for this scenario", async ({page}) => {
     const {editor, entry} = await reviewDraft(page);
     await entry.click();
