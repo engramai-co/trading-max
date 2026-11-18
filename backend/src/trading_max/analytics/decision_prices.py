@@ -381,7 +381,7 @@ def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -
     before it, even when the provider publishes one of its own.
     """
 
-    rates = rates[rates > 0].sort_index()
+    rates = rates[(rates > 0) & np.isfinite(rates)].sort_index()
     rates = rates[~rates.index.duplicated(keep="last")]
     if rates.empty or days.empty:
         return pd.Series(np.nan, index=days, dtype=float)
@@ -564,7 +564,12 @@ def resolve_decision_prices(
             published_rates[code] = rates
     observed_fx = {
         code: values.where(
-            ~_rate_due(calendar_days) | calendar_days.isin(published_rates[code].dropna().index)
+            ~_rate_due(calendar_days)
+            | calendar_days.isin(
+                published_rates[code][
+                    (published_rates[code] > 0) & np.isfinite(published_rates[code])
+                ].index
+            )
         )
         for code, values in final_fx.items()
     }

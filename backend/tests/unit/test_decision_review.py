@@ -1193,7 +1193,7 @@ def test_untraded_fall_uses_only_prior_purchases_and_final_matching_windows():
     assert pending.hypothetical_to_date_gbp is None
 
 
-@pytest.mark.parametrize("missing", ["close", "fx", "zero_close"])
+@pytest.mark.parametrize("missing", ["close", "fx", "zero_close", "zero_fx", "negative_fx"])
 def test_pre_trade_close_requires_an_observed_bar_and_its_published_fx(missing):
     dates = pd.bdate_range("2026-02-02", "2026-02-18")
     quotes = pd.Series(127.5, index=dates)
@@ -1204,7 +1204,10 @@ def test_pre_trade_close_requires_an_observed_bar_and_its_published_fx(missing):
     elif missing == "zero_close":
         quotes.loc[absent] = 0
     else:
-        rates = rates.drop(absent)
+        if missing == "fx":
+            rates = rates.drop(absent)
+        else:
+            rates.loc[absent] = 0 if missing == "zero_fx" else -1.25
     review = _review_from_quotes(
         [_usd_fill("2026-02-06T02:00:00Z", "Market buy", 1, 102)],
         {"NVDA": quotes},
