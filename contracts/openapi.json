@@ -7726,6 +7726,17 @@
             "title": "Cashflowtype",
             "type": "string"
           },
+          "commonEarnings": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commonearnings"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -7799,7 +7810,8 @@
                 "enum": [
                   "latest-four-quarters",
                   "previous-four-quarters",
-                  "latest-fiscal-year"
+                  "latest-fiscal-year",
+                  "previous-fiscal-year"
                 ],
                 "type": "string"
               },
@@ -7836,9 +7848,16 @@
             "title": "Reportingcurrency"
           },
           "revenue": {
-            "minimum": 0.0,
-            "title": "Revenue",
-            "type": "number"
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revenue"
           },
           "shares": {
             "exclusiveMinimum": 0.0,
@@ -14372,6 +14391,670 @@
         "title": "OAuthLoginStatus",
         "type": "object"
       },
+      "OperatingBasis": {
+        "additionalProperties": false,
+        "properties": {
+          "bookPerShare": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bookpershare"
+          },
+          "cashFlowType": {
+            "default": "operating-cash-flow-less-capex-equity-proxy",
+            "enum": [
+              "operating-cash-flow-less-capex-equity-proxy",
+              "net-income-proxy",
+              "residual-income"
+            ],
+            "title": "Cashflowtype",
+            "type": "string"
+          },
+          "commonEarnings": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Commonearnings"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "dataVersion": {
+            "title": "Dataversion",
+            "type": "string"
+          },
+          "discountRateType": {
+            "const": "cost-of-equity",
+            "default": "cost-of-equity",
+            "title": "Discountratetype",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "family": {
+            "const": "cash-flow",
+            "default": "cash-flow",
+            "title": "Family",
+            "type": "string"
+          },
+          "fxRate": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fxrate"
+          },
+          "openingCash": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Openingcash"
+          },
+          "ordinaryPerReceipt": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ordinaryperreceipt"
+          },
+          "periodChoice": {
+            "anyOf": [
+              {
+                "enum": [
+                  "latest-four-quarters",
+                  "previous-four-quarters",
+                  "latest-fiscal-year",
+                  "previous-fiscal-year"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodchoice"
+          },
+          "periodId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodid"
+          },
+          "quoteId": {
+            "title": "Quoteid",
+            "type": "string"
+          },
+          "reportingCurrency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reportingcurrency"
+          },
+          "revenue": {
+            "exclusiveMinimum": 0.0,
+            "title": "Revenue",
+            "type": "number"
+          },
+          "shares": {
+            "exclusiveMinimum": 0.0,
+            "title": "Shares",
+            "type": "number"
+          },
+          "spot": {
+            "exclusiveMinimum": 0.0,
+            "title": "Spot",
+            "type": "number"
+          },
+          "spotAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotasof"
+          },
+          "spotSource": {
+            "default": "quote",
+            "enum": [
+              "quote",
+              "broker"
+            ],
+            "title": "Spotsource",
+            "type": "string"
+          },
+          "startMargin": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Startmargin",
+            "type": "number"
+          },
+          "ticker": {
+            "title": "Ticker",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ticker",
+          "quoteId",
+          "dataVersion",
+          "currency",
+          "spot",
+          "revenue",
+          "shares",
+          "startMargin"
+        ],
+        "title": "OperatingBasis",
+        "type": "object"
+      },
+      "OperatingProjection": {
+        "additionalProperties": false,
+        "properties": {
+          "equityFloorAdjustment": {
+            "default": 0,
+            "title": "Equityflooradjustment",
+            "type": "number"
+          },
+          "inputs": {
+            "$ref": "#/components/schemas/OperatingScenarioInputs"
+          },
+          "operatingValue": {
+            "title": "Operatingvalue",
+            "type": "number"
+          },
+          "terminalContribution": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalcontribution"
+          },
+          "terminalPremiumPresentValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalpremiumpresentvalue"
+          },
+          "terminalPresentValue": {
+            "title": "Terminalpresentvalue",
+            "type": "number"
+          },
+          "terminalValue": {
+            "title": "Terminalvalue",
+            "type": "number"
+          },
+          "upside": {
+            "title": "Upside",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          },
+          "years": {
+            "items": {
+              "$ref": "#/components/schemas/OperatingProjectionYear"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "inputs",
+          "years",
+          "operatingValue",
+          "terminalValue",
+          "terminalPresentValue",
+          "terminalContribution",
+          "value",
+          "upside"
+        ],
+        "title": "OperatingProjection",
+        "type": "object"
+      },
+      "OperatingProjectionYear": {
+        "additionalProperties": false,
+        "properties": {
+          "cashflowPerShare": {
+            "title": "Cashflowpershare",
+            "type": "number"
+          },
+          "closingBook": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closingbook"
+          },
+          "discountFactor": {
+            "title": "Discountfactor",
+            "type": "number"
+          },
+          "earningsPerShare": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Earningspershare"
+          },
+          "fcfMargin": {
+            "title": "Fcfmargin",
+            "type": "number"
+          },
+          "financing": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Financing"
+          },
+          "freeCashflow": {
+            "title": "Freecashflow",
+            "type": "number"
+          },
+          "growth": {
+            "title": "Growth",
+            "type": "number"
+          },
+          "presentValue": {
+            "title": "Presentvalue",
+            "type": "number"
+          },
+          "revenue": {
+            "title": "Revenue",
+            "type": "number"
+          },
+          "roe": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Roe"
+          },
+          "shares": {
+            "title": "Shares",
+            "type": "number"
+          },
+          "year": {
+            "title": "Year",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "year",
+          "growth",
+          "revenue",
+          "fcfMargin",
+          "freeCashflow",
+          "shares",
+          "cashflowPerShare",
+          "discountFactor",
+          "presentValue"
+        ],
+        "title": "OperatingProjectionYear",
+        "type": "object"
+      },
+      "OperatingScenarioInputs": {
+        "additionalProperties": false,
+        "properties": {
+          "discountRate": {
+            "maximum": 0.6,
+            "minimum": 0.01,
+            "title": "Discountrate",
+            "type": "number"
+          },
+          "exitFcfMultiple": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Exitfcfmultiple",
+            "type": "number"
+          },
+          "initialRoe": {
+            "anyOf": [
+              {
+                "maximum": 2.0,
+                "minimum": -0.8,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Initialroe"
+          },
+          "payout": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payout"
+          },
+          "rampYears": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Rampyears",
+            "type": "integer"
+          },
+          "revenueCagr": {
+            "maximum": 2.0,
+            "minimum": -0.8,
+            "title": "Revenuecagr",
+            "type": "number"
+          },
+          "shareCagr": {
+            "maximum": 1.0,
+            "minimum": -0.3,
+            "title": "Sharecagr",
+            "type": "number"
+          },
+          "targetFcfMargin": {
+            "maximum": 1.0,
+            "minimum": -1.0,
+            "title": "Targetfcfmargin",
+            "type": "number"
+          },
+          "terminalPb": {
+            "anyOf": [
+              {
+                "maximum": 15.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalpb"
+          }
+        },
+        "required": [
+          "revenueCagr",
+          "targetFcfMargin",
+          "discountRate",
+          "exitFcfMultiple",
+          "shareCagr"
+        ],
+        "title": "OperatingScenarioInputs",
+        "type": "object"
+      },
+      "OperatingValuationPreview": {
+        "additionalProperties": false,
+        "properties": {
+          "basis": {
+            "$ref": "#/components/schemas/OperatingBasis"
+          },
+          "defaultSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "saved-model",
+                  "configured-scenarios",
+                  "sector-template",
+                  "user-input"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Defaultsource"
+          },
+          "formulaVersion": {
+            "default": "equity-proxy-projection-v1",
+            "enum": [
+              "equity-proxy-projection-v1",
+              "statement-equity-v2"
+            ],
+            "title": "Formulaversion",
+            "type": "string"
+          },
+          "horizon": {
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Horizon",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "impliedGrowth": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowth"
+          },
+          "impliedGrowthBound": {
+            "anyOf": [
+              {
+                "enum": [
+                  "below",
+                  "above"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowthbound"
+          },
+          "impliedGrowthReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impliedgrowthreason"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/AssumptionReference"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "reverseBound": {
+            "anyOf": [
+              {
+                "enum": [
+                  "below",
+                  "above"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversebound"
+          },
+          "reverseInputs": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScenarioInputs"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reverseLimits": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reverselimits"
+          },
+          "reverseMetric": {
+            "default": "revenue-growth",
+            "enum": [
+              "revenue-growth",
+              "target-margin",
+              "initial-roe",
+              "year-five-revenue"
+            ],
+            "title": "Reversemetric",
+            "type": "string"
+          },
+          "reverseReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversereason"
+          },
+          "reverseValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reversevalue"
+          },
+          "scenarios": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/OperatingProjection"
+            },
+            "minProperties": 3,
+            "propertyNames": {
+              "enum": [
+                "bear",
+                "base",
+                "bull"
+              ]
+            },
+            "title": "Scenarios",
+            "type": "object"
+          },
+          "sensitivity": {
+            "items": {
+              "$ref": "#/components/schemas/SensitivityCell"
+            },
+            "title": "Sensitivity",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "basis",
+          "horizon",
+          "scenarios",
+          "sensitivity",
+          "impliedGrowth"
+        ],
+        "title": "OperatingValuationPreview",
+        "type": "object"
+      },
       "OptionAvailability": {
         "properties": {
           "currentExpiries": {
@@ -20219,6 +20902,17 @@
               }
             ],
             "title": "Terminalcontribution"
+          },
+          "terminalPremiumPresentValue": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Terminalpremiumpresentvalue"
           },
           "terminalPresentValue": {
             "title": "Terminalpresentvalue",
@@ -27934,7 +28628,7 @@
     },
     "/v1/research/{ticker}/valuation-preview": {
       "get": {
-        "operationId": "valuation_preview_defaults_v1_research__ticker__valuation_preview_get",
+        "operationId": "operating_preview_defaults_v1_research__ticker__valuation_preview_get",
         "parameters": [
           {
             "in": "path",
@@ -27944,27 +28638,6 @@
               "title": "Ticker",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "family",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "enum": [
-                    "cash-flow",
-                    "net-income",
-                    "residual-income"
-                  ],
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Family"
-            }
           }
         ],
         "responses": {
@@ -27972,7 +28645,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValuationPreview"
+                  "$ref": "#/components/schemas/OperatingValuationPreview"
                 }
               }
             },
@@ -27989,13 +28662,13 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Valuation Preview Defaults",
+        "summary": "Operating Preview Defaults",
         "tags": [
           "research"
         ]
       },
       "post": {
-        "operationId": "valuation_preview_calculate_v1_research__ticker__valuation_preview_post",
+        "operationId": "operating_preview_calculate_v1_research__ticker__valuation_preview_post",
         "parameters": [
           {
             "in": "path",
@@ -28022,7 +28695,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValuationPreview"
+                  "$ref": "#/components/schemas/OperatingValuationPreview"
                 }
               }
             },
@@ -28039,7 +28712,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Valuation Preview Calculate",
+        "summary": "Operating Preview Calculate",
         "tags": [
           "research"
         ]
@@ -30530,6 +31203,119 @@
           }
         },
         "summary": "Remove Watchlist Item",
+        "tags": [
+          "research"
+        ]
+      }
+    },
+    "/v2/research/{ticker}/valuation-preview": {
+      "get": {
+        "operationId": "valuation_preview_defaults_v2_research__ticker__valuation_preview_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "family",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "cash-flow",
+                    "net-income",
+                    "residual-income"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Family"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Valuation Preview Defaults",
+        "tags": [
+          "research"
+        ]
+      },
+      "post": {
+        "operationId": "valuation_preview_calculate_v2_research__ticker__valuation_preview_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "title": "Ticker",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ValuationPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValuationPreview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Valuation Preview Calculate",
         "tags": [
           "research"
         ]

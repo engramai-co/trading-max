@@ -448,7 +448,9 @@ class ValuationEvidenceTools:
         fields = {item.metric: item for item in items if item.state == "available"}
         family = self._frozen.family
         income_metric = Metric.FREE_CASHFLOW if family == "cash-flow" else Metric.EARNINGS
-        required = {Metric.SPOT, Metric.SHARES, Metric.FX, Metric.REVENUE}
+        required = {Metric.SPOT, Metric.SHARES, Metric.FX}
+        if family != "residual-income" or Metric.REVENUE in fields:
+            required.add(Metric.REVENUE)
         if Metric.REVENUE not in fields or fields[Metric.REVENUE].value != 0:
             required.add(income_metric)
             if family == "residual-income":
@@ -471,38 +473,39 @@ class ValuationEvidenceTools:
             return BasisResult(
                 state="missing", reason="currency-conversion-unavailable", items=items
             )
-        spot, shares, fx, revenue = (
-            fields[m] for m in (Metric.SPOT, Metric.SHARES, Metric.FX, Metric.REVENUE)
-        )
+        spot, shares, fx = (fields[m] for m in (Metric.SPOT, Metric.SHARES, Metric.FX))
+        revenue = fields.get(Metric.REVENUE)
         flow, book, cash = (
             fields.get(income_metric),
             fields.get(Metric.BOOK),
             fields.get(Metric.CASH),
         )
+        statement = revenue or book
         if (
             not spot.currency
-            or not revenue.currency
-            or fx.currency != revenue.currency
+            or not statement
+            or not statement.currency
+            or fx.currency != statement.currency
             or fx.counter_currency != spot.currency
-            or revenue.period.kind not in {"ttm", "annual"}
-            or (revenue.period.kind == "ttm" and len(revenue.period.component_ends) != 4)
+            or statement.period.kind not in {"ttm", "annual"}
+            or (statement.period.kind == "ttm" and len(statement.period.component_ends) != 4)
             or not self._frozen.facts_version
             or not self._frozen.quote_id
             or any(
-                row and (row.currency != revenue.currency or row.period != revenue.period)
+                row and (row.currency != statement.currency or row.period != statement.period)
                 for row in (flow, cash, book)
             )
         ):
             raise EvidenceScopeError("inconsistent valuation basis")
-        if min(spot.value, shares.value, fx.value) <= 0 or revenue.value < 0:
+        if min(spot.value, shares.value, fx.value) <= 0 or (revenue and revenue.value < 0):
             raise EvidenceScopeError("invalid valuation basis")
         if book and book.value <= 0:
             return BasisResult(
                 state="unsupported", reason="positive-common-equity-required", items=items
             )
-        margin = flow.value / revenue.value if flow and revenue.value else 0
-        converted = revenue.value * fx.value
-        if not 0 <= converted < float("inf"):
+        margin = flow.value / revenue.value if flow and revenue and revenue.value else 0
+        converted = revenue.value * fx.value if revenue else None
+        if converted is not None and not 0 <= converted < float("inf"):
             return BasisResult(
                 state="unsupported", reason="projection-outside-numeric-range", items=items
             )
@@ -528,9 +531,10 @@ class ValuationEvidenceTools:
             if spot.period.end
             else None,
             family=family,
-            period_id=self._frozen.period_id or f"{revenue.period.kind}:{revenue.period.end}",
+            period_id=self._frozen.period_id or f"{statement.period.kind}:{statement.period.end}",
             period_choice=self._frozen.period_choice,
-            reporting_currency=revenue.currency,
+            reporting_currency=statement.currency,
+            common_earnings=flow.value * fx.value if family == "residual-income" and flow else None,
             fx_rate=fx.value,
             cash_flow_type={
                 "cash-flow": "operating-cash-flow-less-capex-equity-proxy",

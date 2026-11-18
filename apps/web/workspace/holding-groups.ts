@@ -31,3 +31,10 @@ export function holdingTechnical(technical: DashboardLens["technical"], ticker: 
   return technical?.find((row) => row.ticker === researchTicker)
     ?? technical?.find((row) => row.ticker === ticker);
 }
+
+/** A combined equity row has a valuation only when every position represents the same listing. */
+export function holdingValuation(valuations: DashboardLens["valuations"], positions: HoldingGroup) {
+  const listing = positions[0].researchTicker ?? positions[0].ticker;
+  if (positions.every((position) => (position.researchTicker ?? position.ticker) === listing))
+    return valuations?.find((row) => row.ticker === listing);
+}

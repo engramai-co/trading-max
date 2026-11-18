@@ -71,7 +71,8 @@ class FrozenValuationBasis(DomainModel):
     ordinary_per_receipt: float | None = Field(default=None, gt=0)
     opening_cash: float | None = Field(default=None, ge=0)
     book_per_share: float | None = Field(default=None, gt=0)
-    revenue: float = Field(ge=0)
+    common_earnings: FiniteFloat | None = None
+    revenue: float | None = Field(ge=0)
     shares: float = Field(gt=0)
     start_margin: FiniteFloat
     cash_flow_type: Literal[
@@ -105,6 +106,7 @@ class ScenarioProjection(DomainModel):
     operating_value: float
     terminal_value: float
     terminal_present_value: float
+    terminal_premium_present_value: float | None = None
     terminal_contribution: float | None
     equity_floor_adjustment: float = 0
     value: float
@@ -157,6 +159,7 @@ def project(
     if version == LEGACY_VERSION and basis.family != "cash-flow":
         raise ValueError("legacy-cash-flow-family-required")
     if not residual and None in (
+        revenue,
         inputs.revenue_cagr,
         inputs.target_fcf_margin,
         inputs.exit_fcf_multiple,
@@ -239,12 +242,13 @@ def project(
         )
     operating = opening_book + sum(y.present_value for y in years)
     terminal = (
-        (inputs.terminal_pb - 1) * book
+        inputs.terminal_pb * book
         if residual
         else max(years[-1].cashflow_per_share, 0) * inputs.exit_fcf_multiple
     )
     terminal_pv = terminal * years[-1].discount_factor
-    raw_value = operating + terminal_pv
+    premium_pv = (inputs.terminal_pb - 1) * book * years[-1].discount_factor if residual else None
+    raw_value = operating + (premium_pv if residual else terminal_pv)
     value = max(raw_value, 0)
     return ScenarioProjection(
         inputs=inputs,
@@ -252,11 +256,79 @@ def project(
         operating_value=operating,
         terminal_value=terminal,
         terminal_present_value=terminal_pv,
+        terminal_premium_present_value=premium_pv,
         terminal_contribution=terminal_pv / value if value else None,
         equity_floor_adjustment=max(-raw_value, 0),
         value=value,
         upside=value / basis.spot - 1,
     )
+
+
+def _financed_margin(basis: FrozenValuationBasis, base: ScenarioInputs, horizon: int):
+    """Isolate a unique price crossing over all piecewise financing regimes."""
+    from functools import lru_cache
+    from itertools import pairwise
+
+    @lru_cache(maxsize=128)
+    def projection(margin):
+        return project(basis, base.model_copy(update={"target_fcf_margin": margin}), horizon)
+
+    low, high = -1.0, 1.0
+    # Revenue is fixed in this reverse reading. Each year's flow is affine
+    # in target margin. Split first where flow changes sign.
+    knots = {low, high}
+    for a, b in zip(projection(low).years, projection(high).years, strict=True):
+        if a.free_cashflow < 0 < b.free_cashflow:
+            knots.add(low - a.free_cashflow * (high - low) / (b.free_cashflow - a.free_cashflow))
+    # Between these knots cumulative burn is also affine. Each crossing of
+    # opening cash changes which year's loss is covered by share issuance.
+    for left, right in pairwise(sorted(knots)):
+        cash_a = cash_b = basis.opening_cash
+        for a, b in zip(projection(left).years, projection(right).years, strict=True):
+            cash_a += min(0, a.free_cashflow)
+            cash_b += min(0, b.free_cashflow)
+            if cash_a < 0 < cash_b:
+                knots.add(left - cash_a * (right - left) / (cash_b - cash_a))
+
+    roots = set()
+    for left, right in pairwise(sorted(knots)):
+        a, b = projection(left), projection(right)
+        lower_pv = upper_pv = min_slope = max_slope = 0.0
+        for y, z in zip(a.years, b.years, strict=True):
+            pv_a, pv_b = y.present_value, z.present_value
+            if y.year == horizon:
+                pv_a += a.terminal_present_value
+                pv_b += b.terminal_present_value
+            # Within a regime each PV term is affine divided by positive
+            # affine shares. Its extremes and derivative extremes are at the
+            # ends. Summing them bounds both value and slope throughout.
+            lower_pv += min(pv_a, pv_b)
+            upper_pv += max(pv_a, pv_b)
+            delta = pv_b - pv_a
+            slopes = delta * z.shares / y.shares, delta * y.shares / z.shares
+            min_slope += min(slopes)
+            max_slope += max(slopes)
+        if basis.spot < lower_pv or basis.spot > upper_pv:
+            continue
+        if min_slope <= 0 <= max_slope:
+            return None, None, "target-margin-not-unique"
+        if a.value == basis.spot:
+            roots.add(left)
+        elif b.value == basis.spot:
+            roots.add(right)
+        elif min(a.value, b.value) < basis.spot < max(a.value, b.value):
+            for _ in range(60):
+                middle = (left + right) / 2
+                if (projection(middle).value < basis.spot) == (a.value < b.value):
+                    left = middle
+                else:
+                    right = middle
+            roots.add((left + right) / 2)
+        if len(roots) > 1:
+            return None, None, "target-margin-not-unique"
+    if roots:
+        return roots.pop(), None, None
+    return None, "above" if projection(high).value < basis.spot else "below", None
 
 
 def _solve(value: Callable[[float], float], low: float, high: float, spot: float):
@@ -352,7 +424,12 @@ def preview(basis: FrozenValuationBasis, request: ValuationPreviewRequest) -> Va
         reverse, limits = "revenue-growth", REVERSE_GROWTH_BOUNDS
     else:
         try:
-            implied, bound, reason = _solve(value, *limits, basis.spot)
+            if reverse == "target-margin" and basis.family == "cash-flow":
+                if basis.opening_cash is None:
+                    raise ValueError("opening-cash-required-for-burn")
+                implied, bound, reason = _financed_margin(basis, base, request.horizon)
+            else:
+                implied, bound, reason = _solve(value, *limits, basis.spot)
         except ValueError as exc:
             if str(exc) != "opening-cash-required-for-burn":
                 raise
@@ -371,3 +448,35 @@ def preview(basis: FrozenValuationBasis, request: ValuationPreviewRequest) -> Va
         reverse_limits=limits,
         reverse_reason=reason,
     )
+
+
+# The published v1 client requires operating assumptions and numeric rows for
+# every scenario. The family-aware desk uses the separate v2 preview routes.
+class OperatingScenarioInputs(ScenarioInputs):
+    revenue_cagr: float = Field(ge=-0.8, le=2)
+    target_fcf_margin: float = Field(ge=-1, le=1)
+    exit_fcf_multiple: float = Field(ge=0, le=100)
+    share_cagr: float = Field(ge=-0.3, le=1)
+
+
+class OperatingBasis(FrozenValuationBasis):
+    family: Literal["cash-flow"] = "cash-flow"
+    revenue: float = Field(gt=0)
+    start_margin: float = Field(ge=-1, le=1)
+
+
+class OperatingProjectionYear(ProjectionYear):
+    growth: float
+    revenue: float
+    fcf_margin: float
+    free_cashflow: float
+
+
+class OperatingProjection(ScenarioProjection):
+    inputs: OperatingScenarioInputs
+    years: list[OperatingProjectionYear]
+
+
+class OperatingValuationPreview(ValuationPreview):
+    basis: OperatingBasis
+    scenarios: dict[Literal["bear", "base", "bull"], OperatingProjection] = Field(min_length=3)

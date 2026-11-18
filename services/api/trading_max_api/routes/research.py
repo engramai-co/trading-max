@@ -23,6 +23,7 @@ from trading_max.research.fundamentals import _sector_profile
 from trading_max.research.statement_valuation import freeze_basis, scenario_defaults
 from trading_max.research.valuation_basis import EXCLUDED_ASSETS, Family, classify
 from trading_max.research.valuation_preview import (
+    OperatingValuationPreview,
     ScenarioInputs,
     ValuationPreview,
     ValuationPreviewRequest,
@@ -119,6 +120,8 @@ def _valuation_preview(
             listing=quote.listing,
             name=stored.get("issuerName") or "",
             is_adr=bool(stored.get("isAdr")),
+            ordinary_listing=stored.get("shareUnit") == "ordinary"
+            and stored.get("listing") == quote.listing,
         )
         basis.spot_source = "broker" if broker_spot else "quote"
         basis.spot_as_of = held["asOf"] if broker_spot else quote.as_of
@@ -198,20 +201,42 @@ def _valuation_preview(
 router = APIRouter(tags=["research"])
 
 
-@router.get("/v1/research/{ticker}/valuation-preview", response_model=ValuationPreview)
+@router.get("/v2/research/{ticker}/valuation-preview", response_model=ValuationPreview)
 def valuation_preview_defaults(
     ticker: str, request: Request, family: Family | None = None
 ) -> ValuationPreview:
     return _valuation_preview(ticker, request, requested_family=family)
 
 
-@router.post("/v1/research/{ticker}/valuation-preview", response_model=ValuationPreview)
+@router.post("/v2/research/{ticker}/valuation-preview", response_model=ValuationPreview)
 def valuation_preview_calculate(
     ticker: str, body: ValuationPreviewRequest, request: Request
 ) -> ValuationPreview:
     # Pure computation: this does not refresh providers, change assumptions, or
     # save a model. The explicit save endpoint remains separate and authorized.
     return _valuation_preview(ticker, request, body)
+
+
+def _operating_preview(result: ValuationPreview) -> OperatingValuationPreview:
+    if (
+        result.basis.family != "cash-flow"
+        or not result.scenarios
+        or not -1 <= result.basis.start_margin <= 1
+    ):
+        raise HTTPException(status_code=422, detail="family-aware-valuation-preview-required")
+    return OperatingValuationPreview.model_validate(result.model_dump())
+
+
+@router.get("/v1/research/{ticker}/valuation-preview", response_model=OperatingValuationPreview)
+def operating_preview_defaults(ticker: str, request: Request) -> OperatingValuationPreview:
+    return _operating_preview(_valuation_preview(ticker, request))
+
+
+@router.post("/v1/research/{ticker}/valuation-preview", response_model=OperatingValuationPreview)
+def operating_preview_calculate(
+    ticker: str, body: ValuationPreviewRequest, request: Request
+) -> OperatingValuationPreview:
+    return _operating_preview(_valuation_preview(ticker, request, body))
 
 
 @router.get("/v1/research/{ticker}/journal", response_model=ResearchJournal)

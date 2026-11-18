@@ -1,7 +1,7 @@
 import type { DashboardLens, Holding } from "@/lib/types";
 import type { AttentionFact, HoldingSignal } from "./attention";
 import { findETF, type Copy, type ETFReading } from "./etf-data";
-import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, isFundHolding } from "./holding-groups";
+import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, holdingValuation, isFundHolding } from "./holding-groups";
 
 /**
  * Holdings with a colour and a donut segment of their own: the largest eight, then any flagged holding beyond
@@ -122,7 +122,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
     const move = moves.get(ticker)!;
     const signal = flagged.get(ticker);
     const coloured = index < COLOURED_HOLDINGS || signal !== undefined;
-    const valuation = fund ? undefined : valuations?.find(row => row.ticker===ticker);
+    const valuation = fund ? undefined : holdingValuation(valuations, positions);
     const etf = fund ? findETF(etfs, ticker, positions[0].fundIsin) : undefined;
     return {
       ticker,

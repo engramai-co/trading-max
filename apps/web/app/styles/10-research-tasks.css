@@ -63,6 +63,9 @@
   grid-template-columns: 1fr 1fr;
   gap: 20px;
 }
+.mx-model-reference-grid > :only-child {
+  grid-column: 1 / -1;
+}
 .mx-model-reference-grid .mx-metric-grid {
   grid-template-columns: 1fr 1fr;
 }
@@ -156,6 +159,7 @@
   margin: 12px 0 0;
 }
 .mx-model-detail {
+  min-width: 0;
   border-top: 1px solid var(--mx-border);
   padding-top: 16px;
 }

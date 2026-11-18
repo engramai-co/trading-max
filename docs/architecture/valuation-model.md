@@ -7,6 +7,21 @@ ten-year horizons, a base sensitivity matrix and a reverse reading. Broker
 marks apply only to the same listing and currency in the desk. The batch
 uses its own published technical price. Analyst targets remain market references.
 
+## Preview API
+
+`GET` and `POST /v2/research/{ticker}/valuation-preview` expose the family-aware
+contract. GET accepts an optional `family` query parameter. POST carries the
+family and formula version in the request body. A zero-revenue response has
+empty scenarios and sensitivity and a year-five revenue requirement. A
+residual-income year exposes ROE, book and earnings, with nullable operating
+fields. Its terminal present value is the discounted sale price, with the
+premium in `terminalPremiumPresentValue`.
+
+The v1 preview routes serve cash-flow worksheets with three complete scenarios
+and numeric annual operating fields. A family or basis the published v1 client
+cannot display returns HTTP 422. Saved versions continue to record their own
+formula and worksheet.
+
 ## Eligibility and input identity
 
 Funds and indices have no company valuation. A missing revenue observation
@@ -14,23 +29,33 @@ and reported zero revenue have different meanings. Only a reported zero
 can support the reverse-only model below.
 
 For each family, try the most recent complete four-quarter window, then earlier
-complete windows, then the most recent fiscal year. The four quarters must be
-consecutive. Revenue and cash flow (or earnings) must belong to the same
+complete windows, then fiscal years from newest to oldest. A cash-burning
+period needs its closing cash balance. Residual income needs matched common
+earnings and positive common equity and can use a period with missing revenue.
+The four quarters must be consecutive. Revenue and cash flow (or earnings) must belong to the same
 period. Balances use the closing observation for that period. The desk names
 the chosen period and its end date. Unknown inputs stay missing.
 
 Quote prices use major currency units, including GBP for a London pence quote.
 Apply the stored reporting-to-quote FX rate once to statement amounts. If the
-currencies differ, a missing rate blocks valuation. Use quoted shares
-outstanding or, if absent, the published market capitalisation divided by the
-batch price. A recognised depositary receipt requires a reviewed ratio.
+currencies differ, a missing rate blocks valuation. An ordinary-share quote needs
+an identified listing and a positive share-class identification. The existing SEC cover parser joins the trading
+symbol, exchange and security title within one XBRL context. The latest
+parsed filing or the exact canonical ticker’s explicit security-master type
+can establish a common or ordinary share. A receipt flag takes precedence.
+For an ordinary line, use quoted shares outstanding or, if absent, the
+published market capitalisation divided by the batch price. A receipt requires
+a reviewed listing-specific ratio.
 Divide statement ordinary shares outstanding by ordinary shares per receipt
 to obtain the equivalent listed count. A quoted count can also be used for a
 verified one-to-one line. The current reviewed US listings are
 [TSMC, five ordinary shares per ADS](https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf),
+[Alibaba, eight per NYSE ADS](https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm),
 [Arm, one per ADS](https://investors.arm.com/node/8281/html) and
 [Nokia, one per ADS](https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf).
-Unknown receipt ratios block a per-share result.
+Unidentified listings, ambiguous share classes and unknown receipt ratios
+withhold the per-share result. Multi-share receipts require a period with
+positive reported ordinary shares.
 
 ## Selecting a family
 
@@ -39,16 +64,21 @@ The stored security master's GICS sub-industry selects the method. Banks
 40301010) use residual income. Investment Banking & Brokerage (40203020)
 uses net income. Payments, exchanges, asset managers, insurance brokers and
 other operating companies use cash flow. Without a sub-industry, deposit or
-insurance-contract balances indicate a bank or underwriter. Customer brokerage
+insurance-contract balances indicate a bank or underwriter. The Yahoo bank
+template used by JPMorgan Chase and Bank of America reports both
+`Cash Cash Equivalents And Federal Funds Sold` and `Other Non Interest Expense`. Customer brokerage
 payables and securities loaned indicate a broker. Other statements use cash flow.
 
-Four reviewed US listings take precedence over broad provider classifications.
+Five reviewed US listings take precedence over broad provider classifications.
 SoFi operates a deposit-taking bank. Robinhood and Coinbase run trading platforms
-with customer funds. IREN operates computing infrastructure. The chosen family
+with customer funds. Interactive Brokers segregates customer funds under its
+brokerage regulatory requirements. Restricted cash alone is inconclusive,
+including for payment networks and exchanges. IREN operates computing infrastructure. The chosen family
 is switchable at the desk, subject to the selected family's input requirements.
 The evidence evaluator binds the automatic family before accepting proposals.
 [SoFi filings](https://investors.sofi.com/financials/sec-filings/default.aspx),
 [Robinhood filings](https://investors.robinhood.com/financials/sec-filings),
+[Interactive Brokers annual filing](https://www.sec.gov/Archives/edgar/data/1381197/000138119726000062/ibkr-20251231.htm),
 [Coinbase filings](https://investor.coinbase.com/financials/sec-filings/default.aspx),
 [IREN annual filing](https://www.sec.gov/Archives/edgar/data/1878848/000187884826000052/iren-20260630.htm).
 
@@ -102,7 +132,9 @@ book is B plus earnings less payout × positive earnings. This assumes
 clean surplus and no further share issues. Losses reduce book in full.
 Value is opening book plus discounted residual income plus the discounted
 terminal premium (terminal P/B − 1) × ending book. A terminal P/B of one
-therefore adds no premium. [CFA Institute, residual income valuation](https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/residual-income-valuation).
+therefore adds no premium. Terminal dependence is the full discounted exit
+price (terminal P/B × ending book discounted to today) divided by the equity
+value. With zero payout, the exit supplies the entire value. [CFA Institute, residual income valuation](https://www.cfainstitute.org/insights/professional-learning/refresher-readings/2026/residual-income-valuation).
 
 ## Reverse readings and saved baselines
 
@@ -111,7 +143,10 @@ year-one ROE. The reverse reading holds all other base inputs fixed and
 solves for growth (−30% to 80%), target margin for loss-making flows
 (−100% to 100%), or year-one ROE (−80% to 200%). A spot outside the search
 interval returns a bound. A flat projection or an unavailable input withholds
-the point estimate.
+the point estimate. For a financed margin, split the search where annual flow
+changes sign or cumulative burn exhausts cash. Within each regime the solver
+bounds the price and its slope using the individual discounted per-share
+flows. It reports a margin only when exactly one crossing can be established.
 
 Reported zero revenue yields only the year-five revenue implied by spot.
 Assume zero interim distributions. Required year-five revenue equals current

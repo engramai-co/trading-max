@@ -161,6 +161,8 @@ def _read_row(
             "assumptions": {
                 "family": stored.get("family"),
                 "isAdr": stored.get("isAdr"),
+                "listing": stored.get("listing"),
+                "shareUnit": stored.get("shareUnit"),
                 "sharesOutstanding": stored.get("sharesOutstanding"),
                 "fxRate": stored.get("fxRate"),
                 "financialFactsVersion": stored.get("financialFactsVersion"),
@@ -492,7 +494,7 @@ def freeze_valuation_evidence(
     valuation_currency = valuation.data.get("currency") if valuation else None
     aligned = quoted is not None and valuation_currency == quoted
     family = stored.get("family") or classify(binding.ticker, "", raw)[0]
-    ttm, selected = statement_basis(facts, family)
+    ttm, selected = statement_basis(facts, family, binding.listing)
     metrics_for_basis = {Metric.REVENUE: "revenue"}
     if family == "cash-flow":
         metrics_for_basis[Metric.FREE_CASHFLOW] = "freeCashflow"
@@ -525,6 +527,7 @@ def freeze_valuation_evidence(
         _positive(stored.get("sharesOutstanding")),
         selected,
         bool(stored.get("isAdr")),
+        stored.get("shareUnit") == "ordinary" and stored.get("listing") == binding.listing,
     )
     recent = [
         period

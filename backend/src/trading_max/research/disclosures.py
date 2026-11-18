@@ -113,6 +113,53 @@ def _fact_number(fact: dict[str, Any]) -> float | None:
     return sign * value * 10**scale
 
 
+def _listed_share_units(facts: list[dict[str, Any]]) -> dict[str, str]:
+    """Read SEC cover securities. Each security's three DEI tags share one context."""
+    contexts: dict[str, dict[str, set[str]]] = {}
+    for fact in facts:
+        tag = str(fact.get("name", "")).lower()
+        ctx = fact.get("contextref")
+        if ctx and tag in {"dei:tradingsymbol", "dei:security12btitle", "dei:securityexchangename"}:
+            contexts.setdefault(ctx, {}).setdefault(tag, set()).add(" ".join(fact["text"].split()))
+    units: dict[str, set[str]] = {}
+    for tags in contexts.values():
+        if len(tags) != 3 or any(len(values) != 1 for values in tags.values()):
+            continue
+        exchange = next(iter(tags["dei:securityexchangename"])).upper()
+        exchange = exchange.removeprefix("THE ").removesuffix(" LLC")
+        if exchange not in {
+            "NASDAQ",
+            "NYSE",
+            "NYSEAMER",
+            "NYSEARCA",
+            "NEW YORK STOCK EXCHANGE",
+            "NASDAQ STOCK MARKET",
+            "NASDAQ GLOBAL SELECT MARKET",
+            "NASDAQ GLOBAL MARKET",
+            "NASDAQ CAPITAL MARKET",
+            "NYSE AMERICAN",
+            "NYSE ARCA",
+        }:
+            continue
+        symbol = next(iter(tags["dei:tradingsymbol"])).upper()
+        title = next(iter(tags["dei:security12btitle"])).lower()
+        if "depositary" in title or "depository" in title:
+            unit = "receipt"
+        elif re.match(
+            r"^(?:(?:class|series) [\w-]+ )?(?:ordinary shares?|common shares?|common stock)\b",
+            title,
+        ) and not re.search(
+            r"\b(?:warrants?|units?|rights?|preferred|purchase|depositary)\b", title
+        ):
+            unit = "ordinary"
+        else:
+            unit = "unknown"
+        units.setdefault("US:" + symbol, set()).add(unit)
+    return {
+        key: next(iter(values)) if len(values) == 1 else "unknown" for key, values in units.items()
+    }
+
+
 def parse_filing(content: str, *, url: str, filed_at: str, form: str) -> dict[str, Any]:
     parser = InlineFacts()
     parser.feed(content)
@@ -319,6 +366,7 @@ def parse_filing(content: str, *, url: str, filed_at: str, form: str) -> dict[st
         ):
             del segments[identity]
     return {
+        "listedShareUnits": _listed_share_units(parser.facts),
         "periods": list(periods.values()),
         "segments": list(segments.values()),
         "version": version,
@@ -449,7 +497,7 @@ class ResearchEvidenceProvider:
         url = (filing.get("exhibits") or {}).get(form)
         if not url:
             return None
-        key = fingerprint([url, str(filing["date"]), form, "inline-parser-v2"])
+        key = fingerprint([url, str(filing["date"]), form, "inline-parser-v3"])
 
         def load() -> dict[str, Any]:
             path = self.root / (key + ".parsed.json")
@@ -553,6 +601,10 @@ class ResearchEvidenceProvider:
                 len(selected),
                 (time.perf_counter() - started) * 1000,
             )
+            if releases:
+                cover = max(releases, key=lambda r: (r["publishedAt"], r.get("periodEnd") or ""))
+                result["listedShareUnits"] = cover.get("listedShareUnits", {})
+                result["shareUnitFiling"] = cover["url"]
             result["segments"] = list(segments.values())
             result["filings"] = link_filing_periods(result["filings"], releases)
             annual_revenue = {}

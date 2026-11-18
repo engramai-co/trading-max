@@ -35,11 +35,12 @@ def freeze_basis(
     listing: str | None,
     name: str = "",
     is_adr: bool = False,
+    ordinary_listing: bool = False,
 ) -> FrozenValuationBasis:
-    period, values = statement_basis(facts, family)
+    period, values = statement_basis(facts, family, listing)
     if family == "residual-income" and not period:
         raise ValueError("positive-common-equity-and-common-income-required")
-    shares, ratio = listing_shares(ticker, listing, name, shares, values, is_adr)
+    shares, ratio = listing_shares(ticker, listing, name, shares, values, is_adr, ordinary_listing)
     if (
         not period
         or not shares
@@ -56,9 +57,7 @@ def freeze_basis(
         raise ValueError("currency-conversion-unavailable")
     income = values.get("commonIncome") or values.get("netIncome")
     flow = values.get("freeCashflow") if family == "cash-flow" else income
-    revenue = values["revenue"].value
-    if revenue < 0:
-        raise ValueError("negative-revenue-unsupported")
+    revenue = values["revenue"].value if "revenue" in values else None
     book = values.get("commonEquity") if family == "residual-income" else None
     if (
         family == "residual-income"
@@ -79,7 +78,8 @@ def freeze_basis(
         period_id=period.id,
         period_choice=period_choice(facts, period),
         family=family,
-        revenue=revenue * fx,
+        revenue=revenue * fx if revenue is not None else None,
+        common_earnings=income.value * fx if family == "residual-income" and income else None,
         start_margin=flow.value / revenue if flow and revenue else 0,
         opening_cash=cash.value * fx if cash and cash.value >= 0 else None,
         book_per_share=book.value * fx / shares if book and book.value > 0 else None,
@@ -92,7 +92,7 @@ def freeze_basis(
         evidence=[
             e
             for o in (
-                values["revenue"],
+                values.get("revenue"),
                 flow,
                 cash if family == "cash-flow" else None,
                 book if family == "residual-income" else None,
@@ -176,9 +176,9 @@ def scenario_defaults(
             "share_cagr": params["shareCagr"],
             "ramp_years": ramp,
         }
-        if basis.family == "residual-income" and basis.revenue and basis.book_per_share:
+        if basis.family == "residual-income" and basis.revenue != 0 and basis.book_per_share:
             # Reported annualised common earnings divided by period-end common equity.
-            roe = basis.start_margin * basis.revenue / (basis.book_per_share * basis.shares)
+            roe = basis.common_earnings / (basis.book_per_share * basis.shares)
             fields = {
                 "discount_rate": fields["discount_rate"],
                 "initial_roe": max(-0.8, min(2, roe + shift)),
@@ -220,6 +220,7 @@ def statement_row(
     currency: str,
     listing: str | None,
     security_type: str,
+    filing_evidence: Mapping[str, Any],
 ) -> dict[str, Any]:
     from .fundamentals import _valuation_range_position
 
@@ -228,6 +229,13 @@ def statement_row(
     is_adr = "deposit" in security_type.lower() or bool(
         {"ADR", "ADS"} & set(security_type.upper().split())
     )
+    ordinary_listing = any(
+        term in security_type.lower() for term in ("common stock", "ordinary share", "common share")
+    )
+    filed_unit = (filing_evidence.get("listedShareUnits") or {}).get(listing)
+    if filed_unit:
+        ordinary_listing = filed_unit == "ordinary"
+        is_adr = is_adr or filed_unit == "receipt"
     stored = {
         "family": family,
         "classification": classification,
@@ -239,8 +247,10 @@ def statement_row(
         "discountRate": cost,
         "discountRateInputs": discount_inputs,
         "listing": listing,
+        "shareUnitFiling": filing_evidence.get("shareUnitFiling") if filed_unit else None,
         "issuerName": name,
         "isAdr": is_adr,
+        "shareUnit": "ordinary" if ordinary_listing and not is_adr else None,
         "cashflowReconciliation": facts.reconciliation,
     }
     _, divisor = major_quote_unit(fundamental.get("currency") or "")
@@ -286,10 +296,11 @@ def statement_row(
             listing=listing,
             name=name,
             is_adr=is_adr,
+            ordinary_listing=ordinary_listing,
         )
         scenarios, _ = scenario_defaults(basis, facts, profile, cost, overrides)
         five = preview(basis, ValuationPreviewRequest(scenarios=scenarios))
-        ten = {k: project(basis, p, 10) for k, p in scenarios.items()} if basis.revenue else {}
+        ten = {k: project(basis, p, 10) for k, p in scenarios.items()} if five.scenarios else {}
     except (ValueError, ArithmeticError) as exc:
         row["model_warnings"] = [str(exc)]
         return row
@@ -303,10 +314,11 @@ def statement_row(
         reverseMetric=five.reverse_metric,
         reverseValue=five.reverse_value,
         reverseBound=five.reverse_bound,
+        reverseReason=five.reverse_reason,
     )
     stored["reportingCurrency"] = facts.currency
     stored["discountRateType"] = "cost-of-equity"
-    _, selected = statement_basis(facts, family)
+    _, selected = statement_basis(facts, family, listing)
     stored["inputEvidence"] = {
         metric: obs.model_dump(mode="json")
         for metric, obs in selected.items()

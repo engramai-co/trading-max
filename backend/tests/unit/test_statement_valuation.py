@@ -32,7 +32,8 @@ def test_choose_last_complete_rolling_period_then_fiscal_year(missing):
             shares=100,
             fx=0.8,
             quote_id="q",
-            listing=None,
+            listing="US:SYN",
+            ordinary_listing=True,
         )
 
     basis = freeze()
@@ -101,3 +102,186 @@ def test_gics_and_disclosed_statement_fallback(code, expected):
     assert classify("SYN", code, raw) == (expected, "gics-" + code)
     assert classify("SYN", "", raw) == ("residual-income", "statement-structure")
     assert classify("IREN", "40101010", raw) == ("cash-flow", "reviewed-listing")
+
+
+@pytest.mark.parametrize(
+    ("ticker", "bank", "broker"),
+    [
+        ("JPM", True, False),
+        ("BAC", True, False),
+        ("IBKR", False, True),
+        ("V", False, False),
+        ("MA", False, False),
+        ("CME", False, False),
+    ],
+)
+def test_adapter_rows_without_gics(ticker, bank, broker):
+    # Yahoo's generalised statements use these labels across financial companies.
+    income = ["Interest Expense", "Net Interest Income", "Net Income Common Stockholders"]
+    balance = ["Common Stock Equity", "Accounts Receivable"]
+    if bank:
+        balance += ["Cash Cash Equivalents And Federal Funds Sold"]
+        income += ["Other Non Interest Expense"]
+    else:
+        balance += ["Restricted Cash"]
+        income += ["Net Non Operating Interest Income Expense"]
+    if broker:
+        balance += ["Loans Receivable"]
+
+    def rows(fields):
+        return [{"index": field, "2025-12-31": 100} for field in fields]
+
+    assert classify(ticker, "", {"incomeStatement": rows(income), "balanceSheet": rows(balance)})[
+        0
+    ] == ("residual-income" if bank else "net-income" if broker else "cash-flow")
+
+
+def test_unmarked_ads_uses_verified_listing_ratio_and_ambiguous_counts_are_withheld():
+    from trading_max.research.valuation_basis import listing_shares
+
+    facts = build_financial_facts(
+        {"balanceSheet": [{"index": "Ordinary Shares Number", "2025-12-31": 800}]}, {}
+    )
+    observations = {o.metric: o for o in facts.observations}
+    for vendor_count in (100, 800):
+        assert listing_shares(
+            "BABA", "US:BABA", "Alibaba Group Holding Limited", vendor_count, observations
+        ) == (100, 8)
+    assert listing_shares("BABA", "US:BABA", "Alibaba Group Holding Limited", 800, {})[0] is None
+    for listing in ("US:SYN", None):
+        assert (
+            listing_shares("SYN", listing, "Synthetic Group Limited", 800, observations)[0] is None
+        )
+
+
+def test_burn_without_closing_cash_falls_back_to_usable_fiscal_year():
+    def q(field, value):
+        return {"index": field, **dict.fromkeys(ENDS[1:], value)}
+
+    def y(field, value):
+        return {"index": field, ENDS[0]: value}
+
+    facts = build_financial_facts(
+        {
+            "quarterlyIncomeStatement": [q("Total Revenue", 50)],
+            "quarterlyCashflow": [q("Operating Cash Flow", -10), q("Capital Expenditure", -5)],
+            "incomeStatement": [y("Total Revenue", 100)],
+            "cashflow": [y("Operating Cash Flow", 20), y("Capital Expenditure", -5)],
+        },
+        {},
+    )
+    from trading_max.research.valuation_basis import statement_basis
+
+    assert statement_basis(facts, "cash-flow")[0].id == "annual:2024-12-31"
+
+
+def test_residual_income_does_not_require_a_revenue_observation():
+    from trading_max.research.fundamentals import _sector_profile
+    from trading_max.research.statement_valuation import scenario_defaults
+    from trading_max.research.valuation_preview import ValuationPreviewRequest, preview
+
+    facts = build_financial_facts(
+        {
+            "incomeStatement": [{"index": "Net Income Common Stockholders", "2025-12-31": 30}],
+            "balanceSheet": [
+                {"index": "Common Stock Equity", "2025-12-31": 200},
+                {"index": "Ordinary Shares Number", "2025-12-31": 100},
+            ],
+        },
+        {"financialCurrency": "USD"},
+    )
+    basis = freeze_basis(
+        facts,
+        "residual-income",
+        ticker="ARM",
+        listing="US:ARM",
+        currency="USD",
+        spot=12,
+        shares=100,
+        fx=1,
+        quote_id="q",
+    )
+    assert basis.revenue is None
+    defaults, refs = scenario_defaults(basis, facts, _sector_profile("", "")[0], 0.1)
+    assert defaults["base"].initial_roe == pytest.approx(0.15) and not refs
+    assert preview(basis, ValuationPreviewRequest(scenarios=defaults)).scenarios["base"].value > 0
+
+
+def test_receipt_chooses_a_period_with_reported_ordinary_shares():
+    def row(field, quarters, value):
+        return {"index": field, **dict.fromkeys(quarters, value)}
+
+    raw = {
+        "quarterlyIncomeStatement": [row("Total Revenue", ENDS[1:], 100)],
+        "quarterlyCashflow": [
+            row("Operating Cash Flow", ENDS[1:], 20),
+            row("Capital Expenditure", ENDS[1:], -2),
+        ],
+        "incomeStatement": [row("Total Revenue", ENDS[:1], 300)],
+        "cashflow": [
+            row("Operating Cash Flow", ENDS[:1], 60),
+            row("Capital Expenditure", ENDS[:1], -6),
+        ],
+        "balanceSheet": [row("Ordinary Shares Number", ENDS[:1], 800)],
+    }
+    b = freeze_basis(
+        build_financial_facts(raw, {"financialCurrency": "USD"}),
+        "cash-flow",
+        ticker="BABA",
+        listing="US:BABA",
+        currency="USD",
+        shares=800,
+        spot=2,
+        fx=1,
+        quote_id="q",
+    )
+    assert (b.period_id, b.shares) == ("annual:2024-12-31", 100)
+
+
+@pytest.mark.parametrize(
+    ("filed_listing", "unit", "eligible"),
+    [
+        ("US:SYN", "ordinary", True),
+        ("US:SYN", "receipt", False),
+        ("US:SYN", "unknown", False),
+        ("LSE:SYN", "ordinary", False),
+    ],
+)
+def test_batch_requires_share_unit_evidence_for_the_quote(filed_listing, unit, eligible):
+    from trading_max.research.fundamentals import build_valuation
+
+    raw = {
+        "incomeStatement": [{"index": "Total Revenue", ENDS[-1]: 100}],
+        "cashflow": [
+            {"index": "Operating Cash Flow", ENDS[-1]: 25},
+            {"index": "Capital Expenditure", ENDS[-1]: -5},
+        ],
+        "evidence": {
+            "listedShareUnits": {filed_listing: unit},
+            "shareUnitFiling": "https://issuer.invalid/cover",
+        },
+    }
+    result = build_valuation(
+        {"tickers": ["SYN"], "rows": [{"ticker": "SYN", "price": 10, "currency": "USD"}]},
+        {
+            "rows": [
+                {
+                    "ticker": "SYN",
+                    "name": "Synthetic Group Limited",
+                    "currency": "USD",
+                    "metrics": {
+                        "fullExchangeName": "NYSE",
+                        "financialCurrency": "USD",
+                        "sharesOutstanding": 100,
+                        "quoteType": "EQUITY",
+                    },
+                }
+            ]
+        },
+        financials={"rows": [{"ticker": "SYN", "financials": raw}]},
+    )
+    row = result.rows[0]
+    assert (row["ev5"] is not None) == eligible
+    if eligible:
+        assert row["assumptions"]["shareUnit"] == "ordinary"
+        assert row["assumptions"]["shareUnitFiling"] == "https://issuer.invalid/cover"

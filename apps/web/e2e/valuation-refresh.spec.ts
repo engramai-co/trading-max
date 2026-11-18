@@ -510,7 +510,8 @@ for (const locale of ["en", "zh"] as const) {
             key,
             {
               ...value,
-              inputs: { ...value.inputs, rampYears: 4, initialRoe: 0.15, payout: 0.3, terminalPb: 1.2 },
+              ...(family === "residual-income" && { terminalPremiumPresentValue: 0, terminalContribution: 1 }),
+              inputs: { ...value.inputs, rampYears: 4, initialRoe: 0.15, payout: 0, terminalPb: 1 },
             },
           ]),
         );
@@ -523,6 +524,7 @@ for (const locale of ["en", "zh"] as const) {
               ...p.basis,
               family,
               bookPerShare: 25,
+              commonEarnings: 150,
               periodId: "annual:2025-12-31",
               reportingCurrency: "USD",
               fxRate: 1,
@@ -549,11 +551,23 @@ for (const locale of ["en", "zh"] as const) {
         exact: true,
       });
       await expect(heading).toBeVisible();
+      const reference = page.locator(".mx-model-reference-grid");
+      await expect(reference.getByText(locale === "en" ? "Book value per share" : "每股净资产", { exact: true })).toBeVisible();
+      await expect(reference.getByText("2025-12-31", { exact: false })).toBeVisible();
+      await expect(page.getByRole("heading", {
+        name: locale === "en" ? "Revenue-growth reference" : "营收增长参考",
+      })).toHaveCount(0);
+      await page.getByText(locale === "en" ? "Annual worksheet & sources" : "年度计算底稿与来源", { exact: true }).click();
+      await expect(page.getByText(locale === "en" ? "Discounted terminal premium" : "期末溢价现值", { exact: true })).toBeVisible();
+      await expect(page.getByRole("row", {
+        name: locale === "en" ? /Discounted exit price \/ value/ : /期末卖出价现值占每股价值/,
+      })).toContainText("100.0%");
       await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       const dir = process.env.VALUATION_QA_SCREENSHOTS_DIR;
       if (dir) {
-        await page.locator("#valuation-assumptions").scrollIntoViewIfNeeded();
+        await page.locator(".mx-model-reference-grid").scrollIntoViewIfNeeded();
         await page.screenshot({ path: join(dir, `${info.project.name}-${locale}-${scheme}.png`) });
       }
     });

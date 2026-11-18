@@ -636,6 +636,7 @@ def build_valuation(
                     listing=quote_listing(
                         ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
                     ),
+                    filing_evidence=financial_rows.get(ticker, {}).get("evidence") or {},
                     security_type=" ".join(
                         (
                             security.security_type,
@@ -644,6 +645,8 @@ def build_valuation(
                         )
                     )
                     if security
+                    and security.method == "ticker"
+                    and security.canonical_ticker.upper() == ticker
                     else "",
                 )
             )

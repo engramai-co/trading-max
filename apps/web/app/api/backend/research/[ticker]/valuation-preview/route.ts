@@ -2,13 +2,17 @@ import { proxyJsonRequest, proxyToBackend } from "@/lib/backend-proxy";
 
 export const dynamic = "force-dynamic";
 
+function version(request: Request) {
+  return request.headers.get("x-valuation-contract") === "2" ? "v2" : "v1";
+}
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ ticker: string }> },
 ) {
   const { ticker } = await context.params;
   return proxyToBackend(
-    `/v1/research/${encodeURIComponent(ticker)}/valuation-preview${new URL(request.url).search}`,
+    `/${version(request)}/research/${encodeURIComponent(ticker)}/valuation-preview${new URL(request.url).search}`,
     { signal: request.signal },
   );
 }
@@ -19,7 +23,7 @@ export async function POST(
 ) {
   const { ticker } = await context.params;
   return proxyJsonRequest(
-    `/v1/research/${encodeURIComponent(ticker)}/valuation-preview`,
+    `/${version(request)}/research/${encodeURIComponent(ticker)}/valuation-preview`,
     request,
     "POST",
   );

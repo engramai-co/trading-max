@@ -171,14 +171,19 @@ export function ValuationWorksheet({
               </tr>
               <tr>
                 <th colSpan={residual ? 4 : financed ? 7 : 6}>
-                  {t("终值现值", "Terminal present value")} · {percent(projection.terminalContribution)}
+                  {residual ? t("期末溢价现值", "Discounted terminal premium") :
+                    <>{t("终值现值", "Terminal present value")} · {percent(projection.terminalContribution)}</>}
                 </th>
-                <td colSpan={2}>{currency(projection.terminalPresentValue, result.basis.currency, 2)}</td>
+                <td colSpan={2}>{currency(residual ? projection.terminalPremiumPresentValue : projection.terminalPresentValue, result.basis.currency, 2)}</td>
               </tr>
               <tr>
                 <th colSpan={residual ? 4 : financed ? 7 : 6}>{t("每股价值", "Value per share")}</th>
                 <td colSpan={2}>{currency(projection.value, result.basis.currency, 2)}</td>
               </tr>
+              {residual && <tr>
+                <th colSpan={4}>{t("期末卖出价现值占每股价值", "Discounted exit price / value")}</th>
+                <td colSpan={2}>{percent(projection.terminalContribution)}</td>
+              </tr>}
               {projection.equityFloorAdjustment > 0 && (
                 <tr>
                   <th colSpan={residual ? 4 : financed ? 7 : 6}>
@@ -193,14 +198,21 @@ export function ValuationWorksheet({
         <details className="mx-chart-data">
           <summary>{t("输入与来源", "Inputs & sources")}</summary>
           <dl className="mx-evidence-inputs">
+            {residual ? <>
+              <dt>{t("普通股净利润", "Common earnings")}</dt>
+              <dd>{currency(result.basis.commonEarnings, result.basis.currency, 0)}</dd>
+              <dt>{t("每股净资产", "Book value per share")}</dt>
+              <dd>{currency(result.basis.bookPerShare, result.basis.currency, 2)}</dd>
+            </> : <>
             <dt>{t("起始营收", "Starting revenue")}</dt>
             <dd>{currency(result.basis.revenue, result.basis.currency, 0)}</dd>
             <dt>
-              {earnings || residual
+              {earnings
                 ? t("起始净利率", "Starting net margin")
                 : t("起始现金流率", "Starting FCF margin")}
             </dt>
             <dd>{percent(result.basis.startMargin, false, 2)}</dd>
+            </>}
             <dt>{t("总股数", "Shares outstanding")}</dt>
             <dd>{number(result.basis.shares, 0)}</dd>
           </dl>

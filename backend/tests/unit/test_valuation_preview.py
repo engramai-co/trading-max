@@ -164,3 +164,52 @@ def test_reverse_only_zero_revenue_has_no_scenario_range():
     assert result.scenarios == {} and result.sensitivity == []
     assert result.reverse_metric == "year-five-revenue"
     assert result.reverse_value == pytest.approx(20 * 100 * (0.99 * 1.1) ** 5 / (0.2 * 15))
+
+
+def test_financing_can_make_three_target_margins_fit_the_same_price():
+    from trading_max.research.valuation_preview import project
+
+    basis, _ = fixture()
+    basis = basis.model_copy(
+        update={
+            "revenue": 1,
+            "shares": 1,
+            "spot": 0.0008,
+            "opening_cash": 0.16,
+            "start_margin": -0.31,
+        }
+    )
+    params = ScenarioInputs(
+        revenue_cagr=-0.056,
+        share_cagr=-0.05,
+        ramp_years=5,
+        discount_rate=0.175,
+        exit_fcf_multiple=12,
+        target_fcf_margin=0.2,
+    )
+    for low, high in [(0.142, 0.143), (0.386, 0.387), (0.417, 0.418)]:
+
+        def gap(x):
+            return (
+                project(basis, params.model_copy(update={"target_fcf_margin": x}), 5).value
+                - basis.spot
+            )
+
+        assert gap(low) * gap(high) < 0
+    result = preview(
+        basis, ValuationPreviewRequest(scenarios=dict.fromkeys(("bear", "base", "bull"), params))
+    )
+    assert result.reverse_value is None and result.reverse_bound is None
+    assert result.reverse_reason == "target-margin-not-unique"
+
+
+def test_terminal_dependence_is_the_full_discounted_sale_even_at_book():
+    from trading_max.research.valuation_preview import project
+
+    basis, _ = fixture()
+    basis = basis.model_copy(update={"family": "residual-income", "book_per_share": 100})
+    inputs = ScenarioInputs(initial_roe=0.2, payout=0, terminal_pb=1, discount_rate=0.1)
+    p = project(basis, inputs, 5)
+    assert p.terminal_contribution == pytest.approx(1)
+    assert p.terminal_premium_present_value == 0
+    assert p.terminal_present_value == pytest.approx(p.years[-1].closing_book / 1.1**5)

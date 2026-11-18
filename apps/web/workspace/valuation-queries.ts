@@ -61,7 +61,7 @@ export function valuationDefaultsQuery(
     queryFn: async ({ client, signal }) => {
       const preview = await api<Preview>(
         `/research/${encodeURIComponent(data.ticker)}/valuation-preview${family ? "?family=" + family : ""}`,
-        { signal },
+        { signal, headers: { "x-valuation-contract": "2" } },
       );
       // A later refresh that fails keeps this one on screen.
       client.setQueryData(loadedValuationQuery(data, family).queryKey, preview);
@@ -117,6 +117,7 @@ export function valuationPreviewQuery(initial: Preview, request: PreviewRequest)
     queryFn: ({ signal }) =>
       api<Preview>(`/research/${encodeURIComponent(basis.ticker)}/valuation-preview`, {
         ...jsonRequest("POST", request),
+        headers: { "Content-Type": "application/json", "x-valuation-contract": "2" },
         signal,
       }),
     staleTime: Infinity,

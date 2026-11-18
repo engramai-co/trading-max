@@ -6,12 +6,15 @@ from typing import Any, Literal
 from .facts import FinancialFacts, FinancialPeriod, MetricObservation, number
 
 Family = Literal["cash-flow", "net-income", "residual-income"]
-PeriodChoice = Literal["latest-four-quarters", "previous-four-quarters", "latest-fiscal-year"]
+PeriodChoice = Literal[
+    "latest-four-quarters", "previous-four-quarters", "latest-fiscal-year", "previous-fiscal-year"
+]
 
 
 def period_choice(facts: FinancialFacts, period: FinancialPeriod) -> PeriodChoice:
     if period.kind == "annual":
-        return "latest-fiscal-year"
+        latest = max(p.provider_end for p in facts.periods if p.kind == "annual")
+        return "latest-fiscal-year" if period.provider_end == latest else "previous-fiscal-year"
     latest = max(
         (p.provider_end for p in facts.periods if p.kind == "quarterly"),
         default=period.provider_end,
@@ -19,9 +22,12 @@ def period_choice(facts: FinancialFacts, period: FinancialPeriod) -> PeriodChoic
     return "latest-four-quarters" if period.provider_end == latest else "previous-four-quarters"
 
 
+RECEIPT_RATIOS = {"US:TSM": 5, "US:ARM": 1, "US:NOK": 1, "US:BABA": 8}
+
 EXCLUDED_ASSETS = {"ETF", "ETP", "MUTUALFUND", "INDEX"}
 # Exact US listings. See docs/architecture/valuation-model.md for filing references.
 REVIEWED_FAMILIES: dict[str, Family] = {
+    "IBKR": "net-income",
     "IREN": "cash-flow",
     "COIN": "net-income",
     "HOOD": "net-income",
@@ -49,7 +55,10 @@ def classify(ticker: str, gics: str, raw: Mapping[str, Any]) -> tuple[Family, st
         for row in raw.get(key) or []
         if isinstance(row, Mapping) and any(number(value) is not None for value in row.values())
     }
-    if fields & {
+    if {
+        "Cash Cash Equivalents And Federal Funds Sold",
+        "Other Non Interest Expense",
+    } <= fields or fields & {
         "Total Deposits",
         "Deposits",
         "Policyholder Liabilities",
@@ -68,9 +77,9 @@ def classify(ticker: str, gics: str, raw: Mapping[str, Any]) -> tuple[Family, st
 
 
 def statement_basis(
-    facts: FinancialFacts, family: Family
+    facts: FinancialFacts, family: Family, listing: str | None = None
 ) -> tuple[FinancialPeriod | None, dict[str, MetricObservation]]:
-    """Choose four consecutive quarters, then the most recent fiscal year only."""
+    """Try consecutive four-quarter windows, then fiscal years, newest first."""
     groups: dict[str, dict[str, MetricObservation]] = {}
     for obs in facts.observations:
         if obs.value is not None and obs.state == "available":
@@ -81,15 +90,30 @@ def statement_basis(
     annual = sorted(
         (p for p in facts.periods if p.kind == "annual"), key=lambda p: p.provider_end, reverse=True
     )
-    required = {"revenue", "freeCashflow" if family == "cash-flow" else "netIncome"}
-    if family == "residual-income":
-        required = {"revenue", "commonEquity", "commonIncome"}
-    for p in [*windows, *annual[:1]]:
+    incomplete_cash = (None, {})
+    for p in [*windows, *annual]:
         values = groups.get(p.id, {})
+        ordinary = values.get("ordinaryShares")
+        if RECEIPT_RATIOS.get(listing, 1) != 1 and (not ordinary or ordinary.value <= 0):
+            continue
         revenue = values.get("revenue")
-        if (revenue and revenue.value == 0) or required <= values.keys():
+        if revenue and revenue.value == 0:
             return p, values
-    return None, {}
+        if family == "residual-income":
+            book = values.get("commonEquity")
+            if book and book.value > 0 and "commonIncome" in values:
+                return p, values
+        elif revenue and revenue.value > 0:
+            if family == "net-income" and ("commonIncome" in values or "netIncome" in values):
+                return p, values
+            flow, cash = values.get("freeCashflow"), values.get("cash")
+            if family == "cash-flow" and flow and (flow.value >= 0 or (cash and cash.value >= 0)):
+                return p, values
+            if family == "cash-flow" and flow and incomplete_cash[0] is None:
+                # Retain the missing-cash diagnostic only when every complete
+                # window and fiscal year has been exhausted.
+                incomplete_cash = (p, values)
+    return incomplete_cash
 
 
 def listing_shares(
@@ -99,16 +123,21 @@ def listing_shares(
     shares: float | None,
     values: dict[str, MetricObservation],
     is_adr: bool = False,
+    ordinary_listing: bool = False,
 ) -> tuple[float | None, float | None]:
     # Never divide an already ADR-adjusted quote-provider count by the ratio.
-    ratios = {"US:TSM": 5, "US:ARM": 1, "US:NOK": 1}
-    ratio = ratios.get(listing or "")
+    if not listing or ":" not in listing:
+        return None, None
+    market, symbol = listing.split(":", 1)
+    if not symbol or ticker.strip().upper() != (symbol + ".L" if market == "LSE" else symbol):
+        return None, None
+    ratio = RECEIPT_RATIOS.get(listing)
     if ratio:
         ordinary = values.get("ordinaryShares")
         if ordinary and ordinary.value and ordinary.value > 0:
             return ordinary.value / ratio, ratio
         return (shares if ratio == 1 else None), ratio
-    if ticker in {"TSM", "ARM", "NOK"}:
+    if not ordinary_listing:
         return None, None
     if is_adr or any(x in name.lower() for x in ("depositary", "depository", " adr", " ads")):
         return None, None

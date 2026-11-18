@@ -166,6 +166,8 @@ def _publish(store, issuer, *, created_at=None, inject=None):
             "currency": issuer.quote_currency,
             "assumptions": {
                 "sharesOutstanding": issuer.share_count,
+                "shareUnit": "ordinary",
+                "listing": issuer.listing,
                 "fxRate": issuer.fx,
                 "discountRate": 0.6,
                 "discountRateInputs": {"costEquity": 0.1},
@@ -242,7 +244,7 @@ def _desk(store, issuer, request):
     app.state.research_journal = SimpleNamespace()  # Any journal access fails.
     body = request.model_dump(mode="json", exclude={"citations"})
     with TestClient(app) as client:
-        response = client.post(f"/v1/research/{issuer.ticker}/valuation-preview", json=body)
+        response = client.post(f"/v2/research/{issuer.ticker}/valuation-preview", json=body)
     assert response.status_code == 200, response.text
     return response.json()
 
@@ -762,6 +764,8 @@ def test_new_families_freeze_and_replay_the_same_desk_basis(tmp_path, family):
             {"index": k, **dict.fromkeys(dates, n)}
             for k, n in [("Common Stock Equity", 2000), ("Cash And Cash Equivalents", 15)]
         ]
+        if family == "residual-income":
+            raw["quarterlyIncomeStatement"] = raw["quarterlyIncomeStatement"][1:]
         batches["research/valuation.json"]["rows"][0]["assumptions"]["family"] = family
 
     issuer = replace(MATURE, quarterly_ocf=-450)
@@ -774,7 +778,7 @@ def test_new_families_freeze_and_replay_the_same_desk_basis(tmp_path, family):
     raw = _request().model_dump()
     if family == "residual-income":
         raw["scenarios"] = {
-            key: {"initialRoe": 0.15, "payout": 0.3, "discountRate": 0.1, "terminalPb": 1.2}
+            key: {"initialRoe": 0.15, "payout": 0, "discountRate": 0.1, "terminalPb": 1}
             for key in ("bear", "base", "bull")
         }
     req = EvaluateValuationRequest.model_validate(raw)
@@ -790,7 +794,9 @@ def test_new_families_freeze_and_replay_the_same_desk_basis(tmp_path, family):
     elif family == "net-income":
         assert basis.start_margin == 0.1
     else:
+        assert basis.revenue is None
         assert basis.book_per_share == 20
+        assert result.projections["base"].terminal_contribution == pytest.approx(1)
 
 
 def test_missing_cash_is_disclosed_when_a_scenario_requires_funding(tmp_path):
