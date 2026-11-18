@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.57.2] - 2026-11-18
+
+### Fixed
+- The public release check recognises the upcoming-events API route as source code.
+
 ## [1.57.1] - 2026-11-18
 
 ### Changed
