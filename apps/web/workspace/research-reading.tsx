@@ -58,7 +58,9 @@ export function ResearchReading({ sections, parameter, children, before }: {
   // A route can arrive before its section (for example the model worksheet).
   // A later preview may change the available sections without requesting another jump.
   useEffect(() => {
-    pending.current = requested || null;
+    // Tabs and filters keep their focus. Opening the same URL as a bookmark
+    // has no local history state and focuses the requested section.
+    pending.current = window.history.state?.focusResearchSection === false ? null : requested || null;
     pinned.current = null;
     focusedHeading.current = null;
   }, [parameter, requested, ticker]);

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 
 const days = ["2026-10-01", "2026-10-02", "2026-10-05"];
@@ -82,8 +83,39 @@ test.describe("research section navigation", () => {
     await page.getByRole("tab", { name: "Valuation", exact: true }).click();
     await expect(page.locator("#research-history")).toBeAttached();
     await page.getByRole("tab", { name: /Estimates/ }).click();
-    await expect(page.locator("#research-ratings h2").first()).toBeFocused();
     await expect(page.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
+    await expect(page.locator("#research-ratings h2").first()).not.toBeFocused();
+  });
+
+  test("arrowing through Estimates keeps keyboard focus in the research lens tabs", async ({ page }) => {
+    await page.goto("/research?ticker=AAPL&view=technical");
+    const tabs = page.getByRole("tablist", { name: "Research perspectives" });
+    const estimates = tabs.getByRole("tab", { name: /Estimates/ });
+    await tabs.getByRole("tab", { name: "Price & technicals" }).press("ArrowRight");
+    await expect(page.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
+    await expect(estimates).toBeFocused();
+    await page.keyboard.press("ArrowRight");
+    await expect(tabs.getByRole("tab", { name: "Valuation" })).toBeFocused();
+    await expect(page.locator("#research-history")).toBeAttached();
+    await page.keyboard.press("ArrowLeft");
+    await expect(estimates).toBeFocused();
+    await page.getByRole("link", { name: "Ratings & targets" }).press("Enter");
+    await expect(page.locator("#research-ratings h2").first()).toBeFocused();
+  });
+
+  test("changing forecast frequency keeps focus on the filter, and its bookmark focuses Estimates", async ({ page }) => {
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const annual = page.getByRole("button", { name: "Annual", exact: true });
+    await annual.press("Enter");
+    await expect(annual).toHaveAttribute("aria-pressed", "true");
+    await expect(annual).toBeFocused();
+    const bookmark = page.url();
+    await page.goto("/");
+    await page.goto(bookmark);
+    await expect(page.locator("#research-actions")).toContainText("Sample Research");
+    await expect(annual).toHaveAttribute("aria-pressed", "true");
+    await expect(page.locator("#research-forecast h2").first()).toBeFocused();
+    await page.unrouteAll({ behavior: "wait" });
   });
 
   test("a clamped event jump stays current until the reader scrolls", async ({ page, isMobile }) => {
@@ -189,6 +221,61 @@ test.describe("research section navigation", () => {
     await expect(page.locator(".mx-target-summary")).toContainText("£4.50");
     await expect(page.locator(".mx-target-summary")).toContainText("+5.9%");
     await expect(page.locator(".mx-target-dateline")).toContainText("£4.25");
+  });
+
+  test("post-split announcements stay readable without changing a pre-split price chart", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    let median = 450, firmTarget = 460, covered = true;
+    await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
+      const response = await route.fetch(), data = await response.json();
+      await route.fulfill({ response, json: { ...data, context: { ...data.context,
+        quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp", asOf: days[2] } },
+        analyst: { ...lens.analyst, asOf: days[2], priceTargets: { low: median - 10, median, high: median + 10 },
+          upgradesDowngrades: [{ index: days[2], firm: "Post Split Research", currentPriceTarget: firmTarget }] } } });
+    });
+    await page.route("**/api/backend/research/AAPL/prices?**", (route) => route.fulfill({ json: {
+      ticker: "AAPL", currency: "GBP", points: covered
+        ? days.map((date) => ({ date, close: 4.25, split: date === days[2] ? 2 : 0 }))
+        : days.slice(0, 2).map((date) => ({ date, close: 8.5 })),
+    } }));
+    const chart = page.locator(".mx-target-chart");
+    const readout = chart.locator(".mx-chart-readout-values");
+    const draw = async () => {
+      await page.goto("/research?ticker=AAPL&view=analyst");
+      await chart.scrollIntoViewIfNeeded();
+      await expect(chart.getByRole("group", { name: /^Historical prices/ })).toHaveAttribute("data-tm-chart-ready", "true");
+      await expect(readout).toContainText("Post Split Research · Target " + (firmTarget / 100).toFixed(2));
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      });
+      const pixels = await chart.locator("canvas").first().evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
+      return createHash("sha256").update(pixels).digest("hex");
+    };
+    const withSplit = await draw();
+    await expect(page.locator(".mx-target-key")).toBeVisible();
+    firmTarget = 800;
+    expect(await draw()).not.toBe(withSplit);
+    covered = false;
+    firmTarget = 460;
+    const pricesOnly = await draw();
+    // Changing only the unverified snapshot, then only the unverified firm target,
+    // must leave the price scale, range, labels and scatter pixels identical.
+    median = 1500;
+    expect.soft(await draw()).toBe(pricesOnly);
+    firmTarget = 50;
+    expect.soft(await draw()).toBe(pricesOnly);
+    median = 450;
+    firmTarget = 460;
+    await draw();
+    await expect(page.locator(".mx-target-summary")).toContainText("£4.50");
+    await expect(page.locator(".mx-target-summary")).toContainText("+5.9%");
+    await expect(page.locator("#research-actions")).toContainText("£4.60");
+    await expect(page.locator(".mx-target-key")).toBeHidden();
+    await chart.getByRole("group", { name: /^Historical prices/ }).press("End");
+    await expect(readout).toContainText("5 Oct");
+    await expect(readout).toContainText("Post Split Research · Target 4.60 · as announced");
+    await expect(readout).not.toContainText("Close");
   });
 
   test("target-only dates after the last close run through the snapshot date", async ({ page }) => {
