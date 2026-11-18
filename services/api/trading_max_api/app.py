@@ -90,6 +90,7 @@ from .routes.sectors import router as sectors_router
 from .routes.settings import router as settings_router
 from .routes.system import router as system_router
 from .routes.valuation_draft import router as valuation_draft_router
+from .routes.valuation_maintenance import router as valuation_maintenance_router
 from .scheduler import NightlyScheduler
 from .sector_monitor import SectorMonitor
 from .security_entity_resolution import OpenCodeWebSearchResolver
@@ -688,6 +689,7 @@ def create_app(
     app.include_router(operations_router)
     app.include_router(research_router)
     app.include_router(valuation_draft_router)
+    app.include_router(valuation_maintenance_router)
     app.include_router(sectors_router)
     app.include_router(indices_router)
     app.include_router(assistant_router)

@@ -1,10 +1,13 @@
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { queryOptions, skipToken } from "@tanstack/react-query";
+import type { components } from "@/lib/api-schema";
+import { keepPreviousData, queryOptions, skipToken } from "@tanstack/react-query";
 import { ApiError, api, jsonRequest } from "@/workspace/data";
 import type { Preview, ScenarioInput } from "./research-facts";
 import type { ResearchPrice } from "./research-price-basis";
 
 const scenarios = ["bear", "base", "bull"] as const;
+export type LockedInput = components["schemas"]["LockedInput"];
+export type Maintenance = components["schemas"]["ValuationMaintenance"];
 
 /** What a preview is computed from besides its basis. */
 export type PreviewRequest = {
@@ -122,5 +125,51 @@ export function valuationPreviewQuery(initial: Preview, request: PreviewRequest)
       }),
     staleTime: Infinity,
     retry: false,
+  });
+}
+
+/** Locks in one order, so equal sets compare and serialise alike. */
+export function sortedLocks(locked: LockedInput[]) {
+  const order = (lock: LockedInput) => lock.scenario + "." + lock.field;
+  return [...new Map(locked.map((lock) => [order(lock), lock])).values()]
+    .sort((a, b) => order(a).localeCompare(order(b)));
+}
+
+/**
+ * How the saved version a reader started from moves to the proposal in the
+ * editor: a deterministic comparison that never saves or contacts a model.
+ */
+export function valuationMaintenanceQuery(
+  initial: Preview,
+  modelId: string | undefined,
+  request: PreviewRequest,
+  locked: LockedInput[],
+  enabled: boolean,
+) {
+  const { basis } = initial;
+  const body = {
+    modelId,
+    horizon: request.horizon,
+    scenarios: request.scenarios,
+    dataVersion: request.dataVersion,
+    lockedInputs: sortedLocks(locked),
+  };
+  return queryOptions({
+    queryKey: [
+      "valuation-maintenance",
+      basis.ticker,
+      initial.id,
+      [basis.spotSource, basis.spot, basis.spotAsOf],
+      JSON.stringify(body),
+    ],
+    queryFn: ({ signal }) =>
+      api<Maintenance>(`/research/${encodeURIComponent(basis.ticker)}/valuation-maintenance`, {
+        ...jsonRequest("POST", body),
+        signal,
+      }),
+    enabled: enabled && Boolean(modelId),
+    staleTime: Infinity,
+    retry: false,
+    placeholderData: keepPreviousData,
   });
 }

@@ -23,6 +23,7 @@ from trading_max.research.valuation_evidence import (
 from trading_max.research.valuation_preview import (
     FormulaVersion,
     FrozenValuationBasis,
+    LockedInput,
     ScenarioInputs,
     ValuationPreview,
 )
@@ -59,6 +60,7 @@ DRAFT_BLOCK_REASONS = frozenset(
         "opening-cash-required-for-burn",
         "positive-target-and-multiple-required",
         "no-valuation-range-to-save",
+        "valuation-inputs-locked",
     }
 )
 
@@ -78,6 +80,8 @@ class DraftInput(DomainModel):
     requested_family: Family | None = None
     horizon: Literal[5, 10]
     scenarios: dict[Scenario, ScenarioInputs] = Field(min_length=3, max_length=3)
+    # MaxAI receives no candidate for these fields and cannot propose them.
+    locked_inputs: list[LockedInput] = Field(default_factory=list, max_length=27)
 
 
 class TemplateInputs(DomainModel):
@@ -192,13 +196,17 @@ class DraftEvent(DomainModel):
 class DraftRecord(DomainModel):
     result: DraftResult
     evidence: FrozenValuationEvidence
-    prompt_version: Literal["valuation-draft-v1"] = "valuation-draft-v1"
+    # A maintenance run starts from the saved version the editor opened.
+    prompt_version: Literal["valuation-draft-v1", "valuation-maintenance-v1"] = "valuation-draft-v1"
     formula_version: FormulaVersion
     horizon: Literal[5, 10]
     review_basis: FrozenValuationBasis
     parent_model_id: str | None
     original: dict[Scenario, ScenarioInputs]
     public_evaluation_id: str
+    locked_inputs: list[LockedInput] = Field(
+        default_factory=list, exclude_if=lambda locked: not locked
+    )
 
 
 class DraftReview(DomainModel):

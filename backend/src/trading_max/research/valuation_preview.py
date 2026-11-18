@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from datetime import datetime
 from typing import Literal
 
 from pydantic import ConfigDict, Field, FiniteFloat
@@ -15,6 +16,18 @@ LEGACY_VERSION = "equity-proxy-projection-v1"
 VALUATION_FORMULA_VERSION = "statement-equity-v2"
 FormulaVersion = Literal["equity-proxy-projection-v1", "statement-equity-v2"]
 REVERSE_GROWTH_BOUNDS = (-0.3, 0.8)
+Scenario = Literal["bear", "base", "bull"]
+InputField = Literal[
+    "revenue_cagr",
+    "target_fcf_margin",
+    "discount_rate",
+    "exit_fcf_multiple",
+    "share_cagr",
+    "ramp_years",
+    "initial_roe",
+    "payout",
+    "terminal_pb",
+]
 
 
 class ScenarioInputs(DomainModel):
@@ -28,6 +41,28 @@ class ScenarioInputs(DomainModel):
     initial_roe: float | None = Field(default=None, ge=-0.8, le=2)
     payout: float | None = Field(default=None, ge=0, le=1)
     terminal_pb: float | None = Field(default=None, ge=0, le=15)
+
+
+class LockedInput(DomainModel):
+    """One scenario assumption the reader keeps fixed until they unlock it."""
+
+    scenario: Scenario
+    field: InputField
+
+
+def locked_set(locked: list[LockedInput]) -> list[LockedInput]:
+    """Deduplicate and order locks so equal sets serialise identically."""
+    unique = {(item.scenario, item.field) for item in locked}
+    return [LockedInput(scenario=s, field=f) for s, f in sorted(unique)]
+
+
+class SavedModelReference(DomainModel):
+    """The saved version an editor starts from, with the inputs it keeps locked."""
+
+    id: str
+    saved_at: datetime
+    preview_id: str
+    locked_inputs: list[LockedInput] = Field(default_factory=list)
 
 
 class AssumptionReference(DomainModel):
@@ -146,6 +181,10 @@ class ValuationPreview(DomainModel):
     default_source: (
         Literal["saved-model", "configured-scenarios", "sector-template", "user-input"] | None
     ) = None
+    # Present only when the editor's defaults come from a saved version.
+    saved_model: SavedModelReference | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 def project(

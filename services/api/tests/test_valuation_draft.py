@@ -380,7 +380,8 @@ def test_draft_fields_follow_the_selected_engine(desk, family, override):
     )
     assert result["family"] == family
     assert result["familySelection"] == ("override" if override else "automatic")
-    assert fields == expect
+    # Reopening a saved version reviews new evidence: only the changed field is proposed.
+    assert fields == ({pick.split(".")[1]} if override else expect)
     if family == "residual-income":
         reading = transcript[-1]["scenarios"]["base"]
         assert reading["discountedTerminalPremium"] != reading["discountedTerminalValue"]
@@ -547,25 +548,19 @@ def test_saved_source_records_respect_the_privacy_switch(desk):
     _, body = inputs(client)
 
     async def bind():
-        return BoundModel(
-            selecting(
-                transcript,
-                ["base.discount_rate.saved-assumption"]
-                if prefs.share_valuation_assumptions
-                else [],
-            ),
-            {},
-        )
+        return BoundModel(selecting(transcript, []), {})
 
     state.assistant.bind_model = bind
     for shared in (True, False):
         prefs.share_valuation_assumptions = shared
         result = post(client, body)[-1]["result"]
-        origins = [r for r in result["origins"].values() if r["source"] == "saved-assumption"]
-        assert bool(origins) is shared
+        # The saved version is the starting point, never a proposal of its own.
+        assert result["proposals"] == [] and result["origins"] == {}
         assert journal["models"][0]["id"] not in json.dumps(transcript)
+        basis = transcript[0]
+        saved_origins = [v for v in basis["origins"].values() if v["source"] == "saved-assumption"]
+        assert not any(c["source"] == "saved-assumption" for c in basis["candidates"].values())
         if shared:
-            basis = transcript[0]
             assert set(basis) == {
                 "family",
                 "listing",
@@ -575,15 +570,10 @@ def test_saved_source_records_respect_the_privacy_switch(desk):
                 "origins",
                 "candidates",
             }
-            key, shared_origin = next(
-                (k, v) for k, v in basis["origins"].items() if v["source"] == "saved-assumption"
-            )
-            assert set(shared_origin) == {"source", "scenarios"}
-            assert key not in result["origins"] and key in {
-                p["originId"] for p in basis["candidates"].values()
-            }
-            assert origins[0]["modelId"] == journal["models"][0]["id"]
-            assert origins[0]["scenarios"]["base"]["discountRate"] == 0.345678
+            assert [set(origin) for origin in saved_origins] == [{"source", "scenarios"}]
+            assert saved_origins[0]["scenarios"]["base"]["discountRate"] == 0.345678
+        else:
+            assert saved_origins == []
         assert ("0.345678" in json.dumps(transcript)) == shared
         assert "private reason" not in json.dumps(result) + json.dumps(transcript)
 

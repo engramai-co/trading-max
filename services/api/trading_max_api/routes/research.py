@@ -171,9 +171,7 @@ def research_model_save(
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
-    inputs = ValuationPreviewRequest.model_validate(
-        body.model_dump(exclude={"reason", "draft_review", "family_selection"})
-    )
+    inputs = body.preview_request()
     # The published client sends only its five operating controls. Family-aware
     # clients can also call this shared save route and identify their contract.
     legacy = not ({"family", "formula_version"} & body.model_fields_set) and all(
@@ -186,7 +184,9 @@ def research_model_save(
     )
     if not result.scenarios:
         raise HTTPException(status_code=422, detail="no-valuation-range-to-save")
-    return app_service(request, "research_journal").save_model(result, body.reason)
+    return app_service(request, "research_journal").save_model(
+        result, body.reason, locked=body.locked_inputs
+    )
 
 
 @router.put(
