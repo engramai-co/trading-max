@@ -230,6 +230,19 @@ def _enable(repository: SettingsRepository, route: str):
     )
 
 
+def test_workspace_profile_reports_current_opt_in(tmp_path: Path):
+    repository = SettingsRepository(tmp_path)
+    try:
+        assert not repository.get_profile().assistant_enabled
+        _register(repository, "openai", "gpt-5.6-luna")
+        _enable(repository, "openai/gpt-5.6-luna")
+        assert repository.get_profile().assistant_enabled
+        repository.save_assistant_preferences(AssistantPreferencesUpdate(enabled=False))
+        assert not repository.get_profile().assistant_enabled
+    finally:
+        repository.close()
+
+
 def test_resolver_has_no_environment_fallback_and_reports_missing_or_unavailable_credentials(
     tmp_path: Path,
 ) -> None:
@@ -1061,3 +1074,26 @@ def test_saved_probe_rejects_a_replacement_key_before_its_metadata_is_saved(
     assert [(attempt.base_url, attempt.api_key) for attempt in attempts] == [
         (new_url, candidate["apiKey"])
     ]
+
+
+def test_background_binding_and_dispatch_require_current_background_consent(assistant_client):
+    client, _, credentials = assistant_client
+    repo = client.app.state.settings_repository
+    _register(repo, "ollama", "local-model", key=False)
+    _enable(repo, "ollama/local-model")
+
+    def bind():
+        return resolve_assistant_connection(
+            client.app.state.settings, repo, credentials, background=True
+        )
+
+    bound = bind()
+    chat = resolve_assistant_connection(client.app.state.settings, repo, credentials)
+    bound.before_request()
+    client.put(
+        _PREFERENCES, json={"backgroundBriefsEnabled": False}, headers=_AUTH
+    ).raise_for_status()
+    assert bound.cancellation_token.cancelled and not chat.cancellation_token.cancelled
+    for check in [bound.before_request, bind]:
+        with pytest.raises(ProviderRuntimeError, match="assistant_disabled"):
+            check()

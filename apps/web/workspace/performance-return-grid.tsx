@@ -12,8 +12,9 @@ import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { percent, tone } from "@/workspace/data";
 import { Empty, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
 
-export function ReturnGrid({ scope, onSelect, selected }: {
+export function ReturnGrid({ scope, onSelect, selected, runId }: {
   scope: Scope;
+  runId?: string;
   onSelect: (period: ReturnPeriod) => void;
   selected: { start: string; end: string } | null;
 }) {
@@ -24,7 +25,7 @@ export function ReturnGrid({ scope, onSelect, selected }: {
   const [chosenYear, setYear] = useState<string>();
   const phone = useMediaQuery("(max-width: 767px)");
   const selection = useMemo(() => ({ detail: "summary" as const, range: "ALL" as const, scope }), [scope]);
-  const query = useDashboardLens("analytics", undefined, open, selection);
+  const query = useDashboardLens("analytics", undefined, open, selection, runId);
   const periods = useMemo(() => returnPeriods(query.data?.nav ?? [], scope, query.data?.brokerAsOf ?? undefined),
     [query.data?.nav, query.data?.brokerAsOf, scope]);
   const year = chosenYear && periods.years.includes(chosenYear) ? chosenYear : periods.years[0];

@@ -25,7 +25,7 @@ export function MoneySummary({ money, points }: { money: Money; points: NavPoint
   // With estimates, the amber tag is the figure's one help trigger; otherwise the figure keeps its own.
   const estimated = estimateCoverage(points).estimated > 0;
   return (
-    <div className="mx-money-summary">
+    <div className="mx-money-summary" data-period-net-pnl="">
       <Metric
         large
         label={estimated ? <>{label}<EstimateTag points={points}>{help}</EstimateTag></> : label}

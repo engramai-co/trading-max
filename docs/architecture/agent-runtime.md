@@ -61,7 +61,7 @@ fallback to another provider.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/v1/assistant/chat?page=&tz=` | Run a turn; AI SDK UI message stream. Requires the write token. |
+| POST | `/v1/assistant/chat?page=&tz=&format=` | Run a turn; AI SDK UI message stream. Requires the write token. |
 | GET | `/v1/assistant/status` | Whether a turn could start now, and why not, without calling the model. |
 | GET, DELETE | `/v1/assistant/conversations` | List recent conversations or delete all conversations and messages in the workspace. |
 | GET | `/v1/assistant/conversations/{id}` | One conversation as AI SDK UI messages. |
@@ -160,6 +160,86 @@ their sentence or table row, and every evidence ID must come from this turn.
 The deterministic language and advice checks are pattern based; they are
 regression signals rather than a substitute for reviewing borderline answers.
 
+## Page readings
+
+A page role declares its identifier, page, strict context schema, permitted read
+tools and editorial instructions. Its projection turns tool results from one
+immutable snapshot into bilingual observations with source references. The
+model selects and orders two to four observations. Their figures, units, dates
+and sources travel together. The browser constructs local evidence links from
+the tool and its checked arguments.
+
+`POST /v1/assistant/roles/{role_id}/reading` accepts a context and optional
+snapshot ID. The newline-delimited stream delivers verified lines as model
+selection progresses, then the complete reading, an empty result or a stable
+error code. Completed readings are kept in
+workspace SQLite by role, object and snapshot, with the latest sixteen versions
+per object retained. Cached-only requests make no model calls. The workspace
+sidebar uses the chat stream for follow-ups and sends the validated role context
+with the next question. A follow-up keeps the reading's page, account, period,
+object and immutable snapshot across navigation and when restoring a stopped
+draft.
+
+A role can declare `tool_bindings(context, snapshot_id)`. Its input is the
+validated role object and the immutable publication used by the turn. It
+returns one entry per enabled tool, with that tool's argument names and selected
+values. For example, a selected-money reading can bind `scope`, `start` and
+`end` from the chart. Use the tool's actual field names, converting identifiers
+where its schema requires it. An empty argument map enables a tool without
+pinning its arguments. Omitting a tool excludes it for the selection, and every
+enabled tool must belong to the role's allowlist.
+
+The registry omits pinned fields from the model's tool schema, supplies omitted
+values and rejects a conflicting value before execution. The same checks apply
+to deterministic reads through `RoleTools.read`, including reads used to derive
+a data version. Facts can pass a dictionary containing only free arguments.
+Bound selections and the snapshot travel in the result's `bound_arguments`
+and in streamed, saved and reopened evidence links. Named display variants
+declare the selectable dimensions in `RoleContext.variant_fields` and use
+`reader.for_variant(validated_context)` on the same snapshot. Their
+evidence stays with the variant. A role adopting bindings starts a separate
+reading cache so older answers cannot supply unverified selections.
+
+The chat route defaults to `format=prose` and streams a tool-grounded answer
+in the user's language. The sidebar passes `format=references` to request
+two to four references for the current turn. For example,
+`{{/data/period_pnl_gbp}} [ev_example]` selects the dated GBP net P&L from
+that completed tool call. The client resolves the field in the current turn
+and formats its metric, amount, unit, window and coverage. Qualitative lines
+select a bilingual interpretation such as `{{cash-flows}} [inference]`.
+Completion announcements include the same source words as the transcript.
+A withheld reply announces the localised verification notice.
+Unknown fields, conflicting IDs and model-authored prose make the whole
+reply unverifiable, including replies reopened from conversation history.
+
+To support an additional metric, add its field, label and deterministic unit
+formatter in `apps/web/workspace/assistant/figures.ts`, describe it in
+`SIDEBAR_FORMAT`, and test it with a completed tool result. Page roles
+continue to provide bilingual observations from their pinned tools.
+
+The background writer observes completed publication records from both worker
+modes. Each scheduled full update can produce a daily brief. Saturday's 02:00
+Europe/London fold uses the last completed scheduled publication available by
+that time. The scheduler skips live and performance updates and checks current
+consent and the background preference before sending. A persistent reservation
+limits the workspace to twelve background attempts per London day. The dispatch
+guard rechecks the background switch using the bound Settings revision. Opting
+out cancels background runs while allowing foreground replies to finish.
+A public role request can write only to its manual cache. Only the writer
+publishes results to the scheduled cache. A visible overview polls this cache
+every thirty seconds without calling a provider. One brief
+includes bilingual text and all supported benchmark comparisons, so changing
+language or benchmark needs no further model call.
+
+The daily brief reads the pinned upcoming-events projection for the next thirty
+calendar days. It groups the nearest dated official release, held earnings and
+ex-dividend entry in the Coming up section. Each entry carries its own source.
+An instant follows the display time zone even when the brief is reopened.
+Date-only events and earnings windows retain the provider’s precision.
+Overview decision reads apply the selected money window before pagination.
+Benchmark evidence links read portfolio history and benchmark closes from the
+same cited manifest. A missing manifest displays an unavailable state.
+
 ## News and scheduled events
 
 The read-only `news_and_events` tool returns dated headlines, earnings estimates
@@ -180,6 +260,12 @@ last scheduled research universe as well as holdings. Exchange calendars supply
 holidays and early closes for identifiable listings. All-day dates stay on their
 publisher's calendar day. Timed rows include the source instant and local time.
 An earnings window retains both ends when the provider has not set a single day.
+
+A saved holdings citation reopens through `GET /v1/snapshots/{run_id}/events/cited`.
+It requires the ticker, kind (earnings, ex-dividend, dividend payment or
+reported dividend) and one published row identity. Pass `event_id` for a
+calendar row or `research_event_id` for an older analyst citation. The response is the matching event. An expired
+publication or missing row returns 404.
 
 Scheduled research records Yahoo-compatible headline metadata with the shared
 Yahoo request budget. The news and disclosure loaders verify the HTTP status and ticker-stream envelope before accepting an empty result. The rolling

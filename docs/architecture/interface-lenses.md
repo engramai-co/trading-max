@@ -19,6 +19,8 @@ The FastAPI contract is `DashboardLensSnapshot`. Fields outside the selected
 lens are omitted from the JSON response, not merely ignored by the frontend.
 The Next.js BFF validates the lens and account before forwarding the request.
 
+Invest and ISA decision citations pass the published `run_id` to the single-account summary. Each read checks retention before returning the account review. An expired publication or an unmatched decision displays its unavailable state.
+
 ## On-demand portfolio history
 
 `GET /v1/dashboard/history?run_id=…&range=6M&scope=total` reads a pinned typed

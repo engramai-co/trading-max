@@ -91,10 +91,18 @@ class ArtifactStore:
             self._latest_cache = manifest
             return manifest
 
-    def load_manifest(self, run_id: str) -> SnapshotManifest:
+    def load_manifest(self, run_id: str, *, require_retained: bool = False) -> SnapshotManifest:
         with self._manifest_lock:
             cached = self._manifest_cache.get(run_id)
             if cached is not None:
+                if (
+                    require_retained
+                    and not (
+                        self.immutable_snapshots.snapshots_root / run_id / "manifest.json"
+                    ).is_file()
+                ):
+                    del self._manifest_cache[run_id]
+                    raise FileNotFoundError(f"snapshot not found: {run_id}")
                 self._manifest_cache.move_to_end(run_id)
                 return cached
         try:
