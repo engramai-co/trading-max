@@ -31,11 +31,12 @@ export function signedValue(value: number | null | undefined, currency: string) 
 const periodKinds = { ttm: ["过去十二个月", "TTM"], annual: ["财年", "FY"], quarterly: ["季度", "Quarter"] } as const;
 
 /** A statement period from its identity, such as "ttm:2026-03-31". */
-export function periodText(id: string | null | undefined, t: Copy, locale: Locale) {
+export function periodText(id: string | null | undefined, locale: Locale) {
   if (!id) return "—";
   const [kind, end] = id.split(":");
   const [zh, en] = periodKinds[kind as keyof typeof periodKinds] ?? [kind, kind];
-  return t(zh + " 截至 ", en + " to ") + formatCalendarDate(end, locale);
+  const day = formatCalendarDate(end, locale);
+  return locale === "zh" ? `${zh} 截至 ${day}` : `${en} to ${day}`;
 }
 
 function figureName(metric: string, family: Maintenance["family"], t: Copy) {
@@ -146,7 +147,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
   const restated = keys.some((key) => review.scenarios[key]?.restatementEffect != null);
   const savedDay = formatReadingTime(review.savedAt, locale, timeZone, "day");
   const rows: Row[] = [
-    { label: t(savedDay + " 保存", "Saved " + savedDay), value: (w) => w.saved, kind: "value" },
+    { label: locale === "zh" ? `${savedDay} 保存` : `Saved ${savedDay}`, value: (w) => w.saved, kind: "value" },
     { label: t("新财务基数", "New financial base"), value: (w) => w.statementsEffect, kind: "change" },
     ...(restated ? [{ label: t("其中重述", "Of which restated"), value: (w: Walk) => w.restatementEffect, kind: "sub" } as Row] : []),
     { label: t("价格与汇率", "Price and FX"), value: (w) => w.priceFxEffect, kind: "change" },
@@ -160,8 +161,8 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
   const reporting = review.current.reportingCurrency;
   const details: [string, string][] = [
     [t("期间", "Period"), review.saved.periodId === review.current.periodId
-      ? periodText(review.current.periodId, t, locale)
-      : periodText(review.saved.periodId, t, locale) + " → " + periodText(review.current.periodId, t, locale)],
+      ? periodText(review.current.periodId, locale)
+      : periodText(review.saved.periodId, locale) + " → " + periodText(review.current.periodId, locale)],
     ...review.figures.map((f): [string, string] => [figureName(f.metric, review.family, t),
       pair(f.saved, f.current, f.unit, f.currency, locale)]),
     [t("现价", "Price"), quoteValue(review.saved.spot, currency) + " → " + quoteValue(review.current.spot, currency) +
@@ -205,7 +206,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
           <p>{t("保存时用的这一期数字在最新报表里变了。它对估值的影响单独列在「其中重述」，计入新财务基数。",
             "The latest statements report this figure of the saved period differently. Its effect on the values is listed under Of which restated and included in the new financial base.")}</p>
         </Help>
-        <span>{periodText(r.periodId, t, locale)} · {figureName(r.metric, review.family, t)} {pair(r.saved, r.current, r.unit, r.currency, locale)}</span>
+        <span>{periodText(r.periodId, locale)} · {figureName(r.metric, review.family, t)} {pair(r.saved, r.current, r.unit, r.currency, locale)}</span>
       </li>)}
       {review.conflicts.map((c) => <li key={"c" + c.kind + c.periodId + c.metric}>
         <Help label={t("冲突", "Conflict")} tag={<Tag tone="warn">{t("冲突", "Conflict")}</Tag>}>
@@ -215,7 +216,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
             : t("数据源对这一期给出了两行不同的数字，这一期不进入模型。",
               "The source reports two different rows for this period, so the model does not use it.")}</p>
         </Help>
-        <span>{periodText(c.periodId, t, locale)} · {figureName(c.metric, review.family, t)} {conflictText(c, t, locale)}</span>
+        <span>{periodText(c.periodId, locale)} · {figureName(c.metric, review.family, t)} {conflictText(c, t, locale)}</span>
       </li>)}
       {review.estimates.map((e) => <li key={"e" + e.metric + e.periodEnd}>
         <Tag>{t("预期", "Estimates")}</Tag>

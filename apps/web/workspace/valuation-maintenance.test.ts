@@ -2,9 +2,6 @@ import { describe, expect, it } from "vitest";
 import { distinct, pair, periodText, signedValue } from "./valuation-maintenance";
 import { sortedLocks } from "./valuation-queries";
 
-const zh = (chinese: string) => chinese;
-const en = (_: string, english: string) => english;
-
 describe("new evidence figures", () => {
   it("signs changes with the typographic minus and shows zero unsigned", () => {
     expect(signedValue(9.4, "USD")).toBe("+US$9.40");
@@ -26,9 +23,9 @@ describe("new evidence figures", () => {
   });
 
   it("names a statement period by its kind and end", () => {
-    expect(periodText("ttm:2026-03-31", en, "en")).toMatch(/^TTM to 31 Mar/);
-    expect(periodText("annual:2025-12-31", zh, "zh")).toBe("财年 截至 2025年12月31日");
-    expect(periodText(null, zh, "zh")).toBe("—");
+    expect(periodText("ttm:2026-03-31", "en")).toMatch(/^TTM to 31 Mar/);
+    expect(periodText("annual:2025-12-31", "zh")).toBe("财年 截至 2025年12月31日");
+    expect(periodText(null, "zh")).toBe("—");
   });
 
   it("orders and deduplicates locks", () => {
