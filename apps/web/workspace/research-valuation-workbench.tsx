@@ -327,8 +327,11 @@ function ModelEditor({
   const focusField = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (!focusField.current) return;
-    document.getElementById("assumption-" + focusField.current)?.focus();
-    focusField.current = null;
+    const replacement = document.getElementById("assumption-" + focusField.current);
+    if (replacement) {
+      replacement.focus();
+      focusField.current = null;
+    }
   });
   const residual = initial.basis.family === "residual-income";
   const earnings = initial.basis.family === "net-income";

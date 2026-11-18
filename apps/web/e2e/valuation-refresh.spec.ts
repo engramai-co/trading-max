@@ -1162,5 +1162,5 @@ test("loading and retaining a draft requires workspace consent", async ({page}) 
   await expect(entry).toHaveCount(0);
   await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
   await expect(page.locator(".mx-draft-reading")).toHaveCount(0);
-  await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(.14);
+  await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] strong")).toContainText("170.00");
 });
