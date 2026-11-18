@@ -92,7 +92,7 @@ selection. Published charts are pinned to their research artifact. External
 daily charts and index charts use bounded local caches of the exact series
 already served. An expired or mismatched identity yields no reading.
 
-Financials & business and Expectations & events open with a collapsed earnings
+Financials & business and Estimates & events open with a collapsed earnings
 brief, ahead of their first section, when a held or research-list company has a
 published reading matching the reported results and dated consensus estimates
 on the page. The background writer excludes intraday updates and deduplicates
