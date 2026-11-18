@@ -13,26 +13,29 @@ import Link from "../link";
 import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
 import { verifiedLines } from "./chat-reply";
-import { chatContext, displayTurns } from "./evidence";
+import { chatContext, displayTurns, sourceLabel } from "./evidence";
 
 // getRandomValues is available on loopback and existing HTTP workspaces.
 function makeConversationId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 const transport = new DefaultChatTransport({
-  api: "/api/backend/assistant/chat",
+  api: "/api/backend/assistant/chat?format=references",
   prepareSendMessagesRequest: ({ id, messages, body }) => ({
     body: { ...body, id, trigger: "submit-message", messages: messages.slice(-1) },
   }),
 });
+function unverifiedNotice(t: ReturnType<typeof useCopy>) {
+  return t("无法核实这次回复。", "This reply could not be verified.");
+}
 function ChatAnswer({ message, pending }: { message: UIMessage; pending: boolean }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   if (pending) return null;
   const lines = verifiedLines(message, locale, timeZone);
-  if (!lines.length) return <p className="mx-assistant-note">{t("无法核实这次回复。", "This reply could not be verified.")}</p>;
+  if (!lines.length) return <p className="mx-assistant-note">{unverifiedNotice(t)}</p>;
   return lines.map((line, i) => <p className="mx-reading-line" key={i}>{line.text}{" "}
-    {line.evidence ? <EvidenceLink evidence={line.evidence}/> : <span className="mx-reading-source">{t("推断", "Inference")}</span>}
+    {line.evidence ? <EvidenceLink evidence={line.evidence}/> : <span className="mx-reading-source">{sourceLabel(null, t)}</span>}
   </p>);
 }
 function errorLabel(code: string, t: ReturnType<typeof useCopy>) {
@@ -70,7 +73,10 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
       void client.invalidateQueries({ queryKey: ["assistant-conversations"] });
       const reply = displayTurns(completed).at(-1);
       if (!isAbort && !isError && !isDisconnect && reply?.role === "assistant") {
-        setAnnouncement(verifiedLines(reply, locale, timeZone).map(line => line.text).join(" "));
+        const lines = verifiedLines(reply, locale, timeZone);
+        setAnnouncement(lines.length
+          ? lines.map(line => line.text + " " + sourceLabel(line.evidence, t)).join(" ")
+          : unverifiedNotice(t));
       }
     },
   });

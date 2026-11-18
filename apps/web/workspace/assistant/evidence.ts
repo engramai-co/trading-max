@@ -12,6 +12,12 @@ export const sourceWords = {
 export type Evidence = components["schemas"]["ReadingEvidence"];
 export type Reading = components["schemas"]["RoleReading"];
 
+export function sourceLabel(evidence: Evidence | null, t: (zh: string, en: string) => string) {
+  if (evidence?.source === "publisher" && evidence.publisher) return evidence.publisher;
+  const [zh, en] = sourceWords[evidence?.source ?? "inference"];
+  return t(zh, en);
+}
+
 const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],

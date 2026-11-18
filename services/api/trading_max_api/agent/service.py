@@ -40,6 +40,7 @@ SDK_VERSION = 6
 RUN_TIMEOUT_SECONDS = 300.0
 CONVERSATION_SCOPE = "workspace"
 CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+ChatFormat = Literal["prose", "references"]
 PageHint = Literal[
     "overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"
 ]
@@ -236,7 +237,7 @@ class AssistantService:
             return {"ready": True, "code": None, "provider": None, "model": None}
         return await self.check_ready()
 
-    async def chat(self, request: Request) -> Response:
+    async def chat(self, request: Request, response_format: ChatFormat = "prose") -> Response:
         try:
             body = await request.json() if await request.body() else None
         except ValueError:
@@ -247,12 +248,18 @@ class AssistantService:
         context = _context(body, request)
         self.claim(conversation_id)
         try:
-            return await self._run(request, conversation_id, context)
+            return await self._run(request, conversation_id, context, response_format)
         except BaseException:
             self.release(conversation_id)
             raise
 
-    async def _run(self, request: Request, conversation_id: str, context: ChatContext) -> Response:
+    async def _run(
+        self,
+        request: Request,
+        conversation_id: str,
+        context: ChatContext,
+        response_format: ChatFormat,
+    ) -> Response:
         try:
             bound = await self.bind_model()
         except AssistantUnavailable as exc:
@@ -293,7 +300,7 @@ class AssistantService:
                     ticker=context.ticker,
                     lens=context.lens,
                 )
-                + SIDEBAR_FORMAT
+                + (SIDEBAR_FORMAT if response_format == "references" else "")
                 + (
                     f"\nContinue the {context.role} reading for this object: {context.object}."
                     if context.role
