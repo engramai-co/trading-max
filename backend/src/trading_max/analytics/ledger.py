@@ -282,7 +282,7 @@ def transaction_marker_rows(
         if isin:
             isin_aliases[isin] = canonical
 
-    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    grouped: dict[tuple[str, str, str | None], dict[str, Any]] = {}
     for account, transactions in account_transactions.items():
         for _, row in transactions.iterrows():
             action = row.get("Action")
@@ -305,7 +305,7 @@ def transaction_marker_rows(
             timestamp = row.get("Time")
             if not isinstance(timestamp, pd.Timestamp) or pd.isna(timestamp):
                 continue
-            key = (ticker, timestamp.strftime("%Y-%m-%d"))
+            key = (ticker, timestamp.strftime("%Y-%m-%d"), explicit_listing)
             marker = grouped.setdefault(
                 key,
                 {

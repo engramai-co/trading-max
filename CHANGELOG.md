@@ -19,6 +19,7 @@ All notable public Trading Max releases are recorded here.
 - Estimates & events opens with ratings and targets on the 12-month price chart. Targets use the chart currency and account for share splits. Announcements after the latest close keep their dates, and the upside appears when both dated amounts have a verified share basis. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
 
 ### Fixed
+- Research charts and MaxAI key moments show a broker fill on its traded listing. Older trade markers appear only when the snapshot identifies one matching listing.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
 
 ## [1.54.0] - 2026-11-18
