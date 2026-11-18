@@ -809,8 +809,8 @@ def _history_input(
         return None
     as_of = _iso(broker.get("generated_at_utc")) or manifest.created_at.isoformat()
     try:
-        daily, intraday = load_history(read.deps.store, manifest)
         math_scope = _math_scope(scope)
+        daily, intraday = load_history(read.deps.store, manifest, scope=math_scope)
         intraday = _intraday_window(intraday, daily, as_of, range_name, math_scope)
         if not (scope == "broker_total" and include_total_accounts):
             daily = scope_points(daily, math_scope)

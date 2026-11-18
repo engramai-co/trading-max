@@ -197,7 +197,7 @@ def _retained_analytics(
     run = manifest.run_id
     broker = store.read_json(run, "account/broker_snapshot_metrics.json")
     try:
-        nav = daily_nav(store, run, broker["accounts"], scope=scope)
+        nav = daily_nav(store, manifest, broker["accounts"], scope=scope)
     except FileNotFoundError:
         raise HTTPException(404, "Cited account history unavailable") from None
     risk = projection == "risk"
@@ -472,7 +472,12 @@ def dashboard_history(
     if retained:
         response.headers["X-History-Retained"] = "1"
     reader = "retained_history_reader" if retained else "history_reader"
-    return app_service(request, reader).read(manifest, range, scope)
+    try:
+        return app_service(request, reader).read(manifest, range, scope)
+    except FileNotFoundError:
+        if retained:
+            raise HTTPException(404, "Cited account history unavailable") from None
+        raise
 
 
 @router.get(

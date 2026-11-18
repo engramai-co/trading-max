@@ -871,3 +871,27 @@ for (const view of ["holdings","money","returns","risk"] as const) {
     expect(bad).toEqual([]);
   });
 }
+
+test("archived ISA Money charts and exact rows survive an unavailable Invest ledger", async ({request, isMobile}) => {
+  const runId = process.env.TM_RETAINED_ISA_ONLY_RUN;
+  test.skip(!runId, "Use an archived synthetic publication with an intact ISA ledger and missing Invest ledger.");
+  const path = "/api/backend/dashboard/history?";
+  const query = new URLSearchParams({runId:runId!, range:isMobile ? "1M" : "ALL", scope:"isa", retained:"1"});
+  const exact = path + query + "&page=1";
+  const chart = path + query;
+  const first = await request.get(isMobile ? exact : chart);
+  const second = await request.get(isMobile ? chart : exact);
+  expect([first.status(),second.status()]).toEqual([200,200]);
+  const rows = await (isMobile ? first : second).json();
+  const prepared = await (isMobile ? second : first).json();
+  expect(rows.runId).toBe(runId);
+  expect(prepared.runId).toBe(runId);
+  expect(rows.total).toBe(prepared.sourceCount);
+  expect(rows.total).toBeGreaterThan(1);
+  expect(rows.points[0]).toEqual(prepared.history.points[0]);
+  expect(rows.points[0].isa).toBeGreaterThan(0);
+  expect(rows.points[0]).not.toHaveProperty("invest");
+  query.set("scope","total");
+  expect((await request.get(path + query)).status()).toBe(404);
+  expect((await request.get(path + query + "&page=1")).status()).toBe(404);
+});

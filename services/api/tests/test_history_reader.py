@@ -59,7 +59,7 @@ def indexed(tmp_path, monkeypatch):
     ]
     calls = []
 
-    def load(_store, manifest):
+    def load(_store, manifest, *, scope=None):
         calls.append(manifest.run_id)
         return daily, rows + ([point("2026-09-18T12:30Z", 111)] if manifest.run_id != "one" else [])
 
@@ -389,6 +389,67 @@ def test_retained_positions_match_live_worker_amounts(
         assert client.get(path, params={"run_id": run, "detail": "summary"}).status_code == 404
 
 
+def test_retained_history_indexes_only_the_selected_ledger(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    store = ArtifactStore(tmp_path / "state")
+    run = typed_fixture(research_root, store).run_id
+    typed_fixture(research_root, store)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=False))
+    original = app.state.store.read_text
+    original_json = app.state.store.read_json
+    reads = []
+
+    def selected_json(run_id, key):
+        if run_id == run and key.endswith("cash_flows_a.json"):
+            pytest.fail("ISA Money opened the Invest flow history")
+        return original_json(run_id, key)
+
+    def missing_invest(run_id, key):
+        reads.append(key)
+        if run == run_id and key.endswith("daily_nav_a.csv"):
+            raise FileNotFoundError(key)
+        return original(run_id, key)
+
+    monkeypatch.setattr(app.state.store, "read_text", missing_invest)
+    monkeypatch.setattr(app.state.store, "read_json", selected_json)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        path = "/v1/dashboard/history"
+        params = {"range": "ALL", "run_id": run}
+        response = client.get(path, params={**params, "scope": "isa"})
+        assert response.status_code == 200
+        assert response.headers["X-History-Retained"] == "1"
+        assert response.json()["nav"] and all(
+            row.get("isa") is not None for row in response.json()["nav"]
+        )
+        assert set(reads) == {"account/nav/daily_nav_b.csv"}
+        for scope in ("total", "household", "invest"):
+            assert client.get(path, params={**params, "scope": scope}).status_code == 404
+        assert client.get(path, params={**params, "scope": "isa"}).json() == response.json()
+        assert client.get(path, params={"range": "ALL", "scope": "total"}).status_code == 200
+
+
+def test_retained_household_requires_its_published_cfd_ledger(tmp_path, monkeypatch):
+    from services.api.tests.assistant_fixture import publication
+
+    store = ArtifactStore(tmp_path / "state")
+    run = publication(store).run_id
+    publication(store)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=False))
+    original = app.state.store.read_text
+
+    def missing_cfd(run_id, key):
+        if run == run_id and key.endswith("daily_nav_c.csv"):
+            raise FileNotFoundError(key)
+        return original(run_id, key)
+
+    monkeypatch.setattr(app.state.store, "read_text", missing_cfd)
+    with TestClient(app) as client:
+        path = "/v1/dashboard/history"
+        for scope, expected in [("total", 200), ("household", 404), ("cfd", 404)]:
+            assert client.get(path, params={"run_id": run, "scope": scope}).status_code == expected
+
+
 def test_archived_money_revisions_do_not_evict_live_history(
     research_root, tmp_path, typed_fixture, monkeypatch
 ):
@@ -406,9 +467,9 @@ def test_archived_money_revisions_do_not_evict_live_history(
         builds = []
         load = module.load_history
 
-        def record_build(store, manifest):
+        def record_build(store, manifest, *, scope=None):
             builds.append(manifest.run_id)
-            return load(store, manifest)
+            return load(store, manifest, scope=scope)
 
         monkeypatch.setattr(module, "load_history", record_build)
         assert client.get(endpoint, params={"run_id": runs[-1]}).is_success

@@ -125,6 +125,41 @@ def test_envelope_and_evidence_id(publication, function, args, field):
     assert len(json.dumps(result).encode()) <= tools.MAX_RESULT_BYTES
 
 
+def test_isa_attribution_reads_its_own_ledger_from_a_retained_publication(publication, monkeypatch):
+    from services.api.trading_max_api.agent.attribution_role import (
+        AttributionContext,
+        selected_money,
+    )
+
+    store, manifest, deps = publication
+    publish_fixture(store, invest_total=1100)
+    args = AttributionContext(
+        scope="isa",
+        benchmark="VOO",
+        view="money",
+        range="ALL",
+        start="2026-02-03T12:00:00Z",
+        end=AS_OF,
+    )
+    expected = _call(deps, selected_money, args)
+    assert expected["status"] == "ok" and expected["data"]["pnl"] == -80
+    raw = store.read_text
+
+    def missing_invest(run_id, key):
+        if run_id == manifest.run_id and key.endswith("daily_nav_a.csv"):
+            raise FileNotFoundError(key)
+        return raw(run_id, key)
+
+    monkeypatch.setattr(store, "read_text", missing_invest)
+    assert _call(deps, selected_money, args) == expected
+    assert (
+        _call(deps, tools.period_performance, tools.PeriodArgs(scope="broker_total", range="ALL"))[
+            "status"
+        ]
+        == "unavailable"
+    )
+
+
 def test_scope_pin_and_broker_position_reconciliation(publication):
     store, manifest, deps = publication
     next_manifest = publish_fixture(store, invest_total=2000, with_cfd=False)

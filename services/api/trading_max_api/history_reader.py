@@ -37,6 +37,7 @@ _KEYS = (
     "account/nav/cash_flows_b.json",
 )
 _BROKER_KEY = "account/broker_snapshot_metrics.json"
+_CFD_SOURCES = {_KEYS[2], "account/cfd_metrics.json", "account/cfd_ledger.json"}
 _APPLICATION_ID = 0x544D4801
 
 
@@ -53,10 +54,19 @@ class HistorySnapshot(ApiModel):
 
 
 def daily_nav(
-    store: ArtifactStore, run: str, accounts: dict, *, scope: HistoryScope | None = None
+    store: ArtifactStore,
+    manifest: SnapshotManifest,
+    accounts: dict,
+    *,
+    scope: HistoryScope | None = None,
 ) -> list[NavPoint]:
+    run = manifest.run_id
     c_text = None
-    if scope in (None, "cfd", "household"):
+    if scope == "cfd" or (
+        scope == "household" and any(ref.key in _CFD_SOURCES for ref in manifest.artifacts)
+    ):
+        c_text = store.read_text(run, _KEYS[2])
+    elif scope is None:
         with suppress(FileNotFoundError):
             c_text = store.read_text(run, _KEYS[2])
     daily = nav_series(
@@ -70,11 +80,13 @@ def daily_nav(
 
 
 def load_history(
-    store: ArtifactStore, manifest: SnapshotManifest
+    store: ArtifactStore, manifest: SnapshotManifest, *, scope: HistoryScope | None = None
 ) -> tuple[list[NavPoint], list[NavPoint]]:
     """Use the existing accounting projection without opening research or review artifacts."""
     run = manifest.run_id
-    daily = daily_nav(store, run, store.read_json(run, _BROKER_KEY)["accounts"])
+    daily = daily_nav(store, manifest, store.read_json(run, _BROKER_KEY)["accounts"], scope=scope)
+    if scope == "cfd":
+        return daily, []
     raw = None
     for key in _KEYS[3:5]:
         try:
@@ -83,12 +95,15 @@ def load_history(
         except (FileNotFoundError, TypeError, ValueError):
             pass
     flows = {}
+    account = scope if scope in ("invest", "isa") else None
     for profile, key in zip(("invest", "isa"), _KEYS[5:], strict=True):
+        if account is not None and profile != account:
+            continue
         with suppress(FileNotFoundError, TypeError, ValueError):
             flows[profile] = store.read_json(run, key)
     return (
         daily,
-        [NavPoint.model_validate(p) for p in intraday_nav_points(raw, flows)],
+        [NavPoint.model_validate(p) for p in intraday_nav_points(raw, flows, account=account)],
     )
 
 
@@ -104,6 +119,7 @@ class HistoryReader:
         self, store: ArtifactStore, *, byte_limit: int = 64 * 1024 * 1024, retained: bool = False
     ):
         self.store = store
+        self.retained = retained
         namespace = "retained-history-query-cache-v1" if retained else "history-query-cache-v1"
         self.path = store.data_root / "runtime" / namespace / "index.sqlite3"
         self.byte_limit = byte_limit
@@ -232,10 +248,21 @@ class HistoryReader:
     def read(
         self, manifest: SnapshotManifest, range_name: HistoryRange, scope: HistoryScope
     ) -> HistorySnapshot:
-        references = sorted(
-            (a.key, a.sha256) for a in manifest.artifacts if a.key in (*_KEYS, _BROKER_KEY)
-        )
-        revision = hashlib.sha256(json.dumps([3, references]).encode()).hexdigest()
+        projection = scope if self.retained else None
+        keys = {_BROKER_KEY, *_KEYS}
+        if projection == "household":
+            keys.update(_CFD_SOURCES)
+        elif projection == "cfd":
+            keys = {_BROKER_KEY, _KEYS[2]}
+        elif projection is not None:
+            keys.discard(_KEYS[2])
+            if projection == "isa":
+                keys.difference_update((_KEYS[0], _KEYS[5]))
+            elif projection == "invest":
+                keys.difference_update((_KEYS[1], _KEYS[6]))
+        references = sorted((a.key, a.sha256) for a in manifest.artifacts if a.key in keys)
+        identity = [3, references, projection] if self.retained else [3, references]
+        revision = hashlib.sha256(json.dumps(identity).encode()).hexdigest()
         broker = self.store.read_json(manifest.run_id, _BROKER_KEY)
         live = None
         with suppress(FileNotFoundError, TypeError, ValueError):
@@ -247,7 +274,7 @@ class HistoryReader:
         try:
             with self._lock, closing(self._connect()) as con:
                 if not con.execute("SELECT 1 FROM datasets WHERE id=?", (revision,)).fetchone():
-                    daily, intraday = load_history(self.store, manifest)
+                    daily, intraday = load_history(self.store, manifest, scope=projection)
                     self._populate(con, revision, daily, intraday)
                 with con:
                     con.execute(
@@ -268,7 +295,7 @@ class HistoryReader:
             logging.getLogger(__name__).warning(
                 "History query index unavailable; reading immutable source"
             )
-            daily, intraday = load_history(self.store, manifest)
+            daily, intraday = load_history(self.store, manifest, scope=projection)
             intraday = project_intraday(
                 intraday, daily, as_of=as_of, range_name=range_name, scope=scope
             )

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from trading_max.portfolio_math import period_return
 
 from ..portfolio_cashflows import CashFlowTimeline
@@ -265,6 +267,8 @@ def nav_series(
 def intraday_nav_points(
     payload: JsonObject | None,
     cash_flows: dict[str, JsonObject] | None = None,
+    *,
+    account: Literal["invest", "isa"] | None = None,
 ) -> list[JsonObject]:
     """Project unified valuations, retaining provenance and native precision."""
 
@@ -285,6 +289,8 @@ def intraday_nav_points(
         total = nullable_number(raw.get("total_value_gbp"))
         if (invest is None and isa is None) or total is None:
             continue
+        if (account == "invest" and invest is None) or (account == "isa" and isa is None):
+            continue
         invest_flow = (
             flows["invest"].at(raw.get("invest_observed_at") or observed)
             if invest is not None
@@ -299,6 +305,7 @@ def intraday_nav_points(
         total_flow = (
             sum(selected_flows) if all(flow is not None for flow in selected_flows) else None
         )
+        selected_flow = {"invest": invest_flow, "isa": isa_flow, None: total_flow}[account]
         points.append(
             {
                 "date": str(observed),
@@ -312,7 +319,7 @@ def intraday_nav_points(
                 "investModelValueGbp": nullable_number(raw.get("invest_model_value_gbp")),
                 "isaModelValueGbp": nullable_number(raw.get("isa_model_value_gbp")),
                 "flowStatus": "verified"
-                if total_flow is not None
+                if selected_flow is not None
                 else str(raw.get("flow_status") or "unverified"),
                 "investNetContributionsGbp": invest_flow,
                 "isaNetContributionsGbp": isa_flow,
