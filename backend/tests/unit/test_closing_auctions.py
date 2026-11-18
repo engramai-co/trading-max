@@ -46,18 +46,22 @@ def test_verified_cash_session_cutoffs(mic, product, earliest, latest):
     exchange = market_calendar(mic, 2026, 2026)
     first = datetime.fromisoformat(f"{day}T{earliest}").replace(tzinfo=exchange.tz)
     last = datetime.fromisoformat(f"{day}T{latest}").replace(tzinfo=exchange.tz)
-    assert headline_session(mic, first - timedelta(microseconds=1), product) == (day, None)
+    meta = {"segment": "prime market" if product == "EQUITY" else "ETF2"} if mic == "XWBO" else {}
+    assert headline_session(mic, first - timedelta(microseconds=1), product, **meta) == (day, None)
     flag = "closing_auction_window" if first < last else None
     for stamp in (first, first + (last - first) / 2, last):
-        assert headline_session(mic, stamp, product) == (day, flag)
-    assert headline_session(mic, last + timedelta(microseconds=1), product) == ("2026-11-16", None)
+        assert headline_session(mic, stamp, product, **meta) == (day, flag)
+    assert headline_session(mic, last + timedelta(microseconds=1), product, **meta) == (
+        "2026-11-16",
+        None,
+    )
 
 
 def test_missing_product_or_schedule_only_joins_an_unambiguous_day():
     def local(hour, minute):
         return datetime(2026, 1, 30, hour, minute, tzinfo=ZoneInfo("Europe/Vienna"))
 
-    assert headline_session("XWBO", local(17, 31), None) == ("2026-01-30", None)
+    assert headline_session("XWBO", local(12, 0), None) == ("2026-01-30", None)
     assert headline_session("XWBO", local(17, 33), None) == (None, None)
     assert headline_session("XWBO", local(17, 36), None) == ("2026-02-02", None)
     assert headline_session("UNKNOWN", local(12, 0), "EQUITY") == (None, None)
@@ -87,9 +91,43 @@ def test_shortened_session_uses_its_own_uncross(mic, kind, day, next_day, earlie
     cal = market_calendar(mic, int(day[:4]), int(day[:4]))
     first = datetime.fromisoformat(f"{day}T{earliest}").replace(tzinfo=cal.tz)
     last = datetime.fromisoformat(f"{day}T{latest}").replace(tzinfo=cal.tz)
-    assert headline_session(mic, first - timedelta(seconds=1), kind) == (day, None)
-    assert headline_session(mic, first + (last - first) / 2, kind) == (
+    meta = {"segment": "ETF2"} if mic == "XWBO" else {}
+    assert headline_session(mic, first - timedelta(seconds=1), kind, **meta) == (day, None)
+    assert headline_session(mic, first + (last - first) / 2, kind, **meta) == (
         day,
         "closing_auction_window" if first < last else None,
     )
-    assert headline_session(mic, last + timedelta(seconds=1), kind) == (next_day, None)
+    assert headline_session(mic, last + timedelta(seconds=1), kind, **meta) == (next_day, None)
+
+
+def test_vienna_global_market_and_unidentified_segment():
+    stamp = datetime(2026, 1, 30, 17, 33, tzinfo=ZoneInfo("Europe/Vienna"))
+    assert headline_session("XWBO", stamp, "EQUITY") == (None, None)
+    assert headline_session("XWBO", stamp, "EQUITY", segment="global market") == (
+        "2026-02-02",
+        None,
+    )
+    assert headline_session("XWBO", stamp, "EQUITY", segment="prime market") == ("2026-01-30", None)
+
+
+@pytest.mark.parametrize(
+    ("product", "segment", "hour", "minute"),
+    [
+        ("EQUITY", "global market", 17, 32),
+        ("EQUITY", "prime market", 17, 35),
+        ("ETF", "ETF2", 17, 32),
+        ("ETF", "FOAO", 13, 30),
+        ("EQUITY", "standard market auction", 13, 30),
+    ],
+)
+def test_vienna_verified_segments_disclose_the_random_uncross(product, segment, hour, minute):
+    first = datetime(2026, 1, 30, hour, minute, tzinfo=ZoneInfo("Europe/Vienna"))
+    for seconds, expected in (
+        (-1, ("2026-01-30", None)),
+        (15, ("2026-01-30", "closing_auction_window")),
+        (31, ("2026-02-02", None)),
+    ):
+        assert (
+            headline_session("XWBO", first + timedelta(seconds=seconds), product, segment=segment)
+            == expected
+        )
