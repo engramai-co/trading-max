@@ -1,0 +1,190 @@
+{
+  "status": "partial",
+  "data": {
+    "timezone": "Europe/London",
+    "start": "2026-11-25",
+    "end": "2026-11-30",
+    "news_basis": "Headlines are dated leads. A price move's cause is unverified.",
+    "items": [
+      {
+        "kind": "dividend_pay",
+        "title_en": "Dividend payment date",
+        "title_zh": "派息日",
+        "date": "2026-11-30",
+        "end_date": null,
+        "instant": null,
+        "ticker": "ALFA",
+        "publisher": "Yahoo Finance",
+        "source_url": "https://finance.yahoo.com/quote/ALFA/",
+        "evidence_id": "ev_db5b9d03a99aa2f2",
+        "local_date": "2026-11-30",
+        "local_time": null
+      },
+      {
+        "kind": "news",
+        "title_en": "Synthetic release",
+        "title_zh": "Synthetic release",
+        "date": "2026-11-26",
+        "end_date": null,
+        "instant": "2026-11-26T00:30:10+00:00",
+        "ticker": "ALFA",
+        "publisher": "Fixture Press",
+        "source_url": "https://example.org/article",
+        "provider_id": "provider-article",
+        "role": "lead",
+        "reference": "provider-article",
+        "tickers": [
+          "ALFA"
+        ],
+        "evidence_id": "ev_7ceebc05c1212adc",
+        "local_date": "2026-11-26",
+        "local_time": "2026-11-26T00:30:10+00:00"
+      },
+      {
+        "kind": "ex_dividend",
+        "title_en": "Ex-dividend date",
+        "title_zh": "除息日",
+        "date": "2026-11-26",
+        "end_date": null,
+        "instant": null,
+        "ticker": "ALFA",
+        "publisher": "Yahoo Finance",
+        "source_url": "https://finance.yahoo.com/quote/ALFA/",
+        "evidence_id": "ev_0a01c8574c0c6eba",
+        "local_date": "2026-11-26",
+        "local_time": null
+      },
+      {
+        "kind": "own_trade",
+        "title_en": "Broker fill",
+        "title_zh": "账户成交",
+        "date": "2026-11-25",
+        "end_date": null,
+        "instant": "2026-11-25T13:00:00+00:00",
+        "ticker": "ALFA",
+        "publisher": "Trading 212",
+        "source_url": null,
+        "account": "invest",
+        "listing_verified": false,
+        "side": "buy",
+        "quantity": 1.0,
+        "amount": null,
+        "currency": null,
+        "reference": "0",
+        "evidence_id": "ev_a90d3232221a31e1",
+        "local_date": "2026-11-25",
+        "local_time": "2026-11-25T13:00:00+00:00"
+      },
+      {
+        "kind": "rating_change",
+        "title_en": "Analyst rating update",
+        "title_zh": "分析师评级变动",
+        "date": "2026-11-25",
+        "end_date": null,
+        "instant": "2026-11-25T11:53:22+00:00",
+        "ticker": "ALFA",
+        "publisher": "Yahoo Finance",
+        "source_url": "https://finance.yahoo.com/quote/ALFA/",
+        "firm": "Fixture Broker",
+        "action": "down",
+        "from_grade": null,
+        "to_grade": "neutral",
+        "evidence_id": "ev_2505e794387d398b",
+        "local_date": "2026-11-25",
+        "local_time": "2026-11-25T11:53:22+00:00"
+      },
+      {
+        "kind": "filing",
+        "title_en": "Synthetic disclosure",
+        "title_zh": "监管披露",
+        "date": "2026-11-25",
+        "end_date": null,
+        "instant": null,
+        "ticker": "ALFA",
+        "publisher": "SEC",
+        "source_url": "https://example.org/filing",
+        "form": "10-Q",
+        "reference": null,
+        "evidence_id": "ev_edece3755b7bc111",
+        "local_date": "2026-11-25",
+        "local_time": null
+      },
+      {
+        "kind": "earnings",
+        "title_en": "Earnings",
+        "title_zh": "业绩公布",
+        "date": "2026-11-25",
+        "end_date": null,
+        "instant": null,
+        "ticker": "ALFA",
+        "publisher": "Yahoo Finance",
+        "source_url": "https://finance.yahoo.com/quote/ALFA/",
+        "research_event_id": "1d3b62b37e0562d1ead7",
+        "status": "reported",
+        "estimated_eps": 1.2,
+        "actual_eps": 1.0,
+        "fiscal_period": "2026-09-30",
+        "source_as_of": "2026-11-26T00:00:00Z",
+        "currency": "USD",
+        "unit": "per_share",
+        "evidence_id": "ev_56ffc1a51faf5f4e",
+        "local_date": "2026-11-25",
+        "local_time": null
+      },
+      {
+        "kind": "dividend",
+        "title_en": "Dividend",
+        "title_zh": "股息",
+        "date": "2026-11-25",
+        "end_date": null,
+        "instant": null,
+        "ticker": "ALFA",
+        "publisher": "Yahoo Finance",
+        "source_url": "https://finance.yahoo.com/quote/ALFA/",
+        "amount": 1.5,
+        "currency": "USD",
+        "unit": "per_share",
+        "basis": "provider-adjusted-per-share",
+        "evidence_id": "ev_8a3b7b15ba46ad0c",
+        "local_date": "2026-11-25",
+        "local_time": null
+      }
+    ],
+    "total_items": 8,
+    "next_cursor": null
+  },
+  "snapshot_id": "20261118T090301-463319Z-0d944786",
+  "scope": "invest",
+  "sources": [
+    {
+      "source_id": "src_8c90b6cd37dd27a2",
+      "as_of": "2026-11-18T09:03:01.460159+00:00"
+    },
+    {
+      "source_id": "src_b02b302aecd4b90c",
+      "as_of": "2026-11-18T09:03:01.458676+00:00"
+    },
+    {
+      "source_id": "src_f9c00d7a5691c26a",
+      "as_of": "2026-11-18T09:03:01.461868+00:00"
+    },
+    {
+      "source_id": "src_5bd09f12afac0d4c",
+      "as_of": "2026-11-18T09:03:01.459624+00:00"
+    },
+    {
+      "source_id": "src_7541a11bba083a55",
+      "as_of": "2026-11-18T09:03:01.458220+00:00"
+    },
+    {
+      "source_id": "src_3fc3cf6c36a68180",
+      "as_of": "2026-11-18T09:03:01.459905+00:00"
+    }
+  ],
+  "quality": {
+    "issues": [
+      "fundamentals_unavailable"
+    ]
+  },
+  "evidence_id": "ev_70176b4973c0d70c"
+}

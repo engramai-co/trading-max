@@ -106,15 +106,16 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
         {keys.map((key) => {
           const scenario = preview.scenarios[key];
           const staged = beforeDraft && stagedScenarios.includes(key);
-          const mainUpside = staged ? beforeDraft.scenarios[key].upside : scenario.upside;
+          const displayed = staged ? beforeDraft.scenarios[key] : scenario;
+          const floor = " · " + t("按零计", "Zero floor");
           return <button type="button" key={key} aria-pressed={selected === key} data-hover={hovered === key || undefined}
             onClick={() => onSelect(key)}
             onPointerEnter={() => light(key)} onPointerLeave={() => light(null)}
             onFocus={() => light(key)} onBlur={() => light(null)}>
-            <span>{name(key)}</span>
-            <strong>{currency(staged ? beforeDraft.scenarios[key].value : scenario.value, preview.basis.currency, 2)}</strong>
-            <span className={`mx-${tone(mainUpside)}`}>{percent(mainUpside, true, 2)}</span>
-            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {pendingScenarios.includes(key) ? "…" : `${currency(scenario.value, preview.basis.currency, 2)} (${percent(scenario.upside, true, 2)})`}</span>}
+            <span>{name(key)}{displayed.equityFloorAdjustment > 0 && floor}</span>
+            <strong>{currency(displayed.value, preview.basis.currency, 2)}</strong>
+            <span className={`mx-${tone(displayed.upside)}`}>{percent(displayed.upside, true, 2)}</span>
+            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {pendingScenarios.includes(key) ? "…" : `${currency(scenario.value, preview.basis.currency, 2)} (${percent(scenario.upside, true, 2)})${scenario.equityFloorAdjustment > 0 ? floor : ""}`}</span>}
           </button>;
         })}
       </div>

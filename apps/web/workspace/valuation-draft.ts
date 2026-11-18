@@ -31,6 +31,8 @@ export function reverseDraftBlock(preview: Preview): string | null {
 }
 
 const draftBlockMessages = {
+  "listed-share-unit-unverified": ["上市股数口径未核实", "Share unit unverified for this listing"],
+  "receipt-ratio-unverified": ["存托凭证换股比例未核实", "Ordinary shares per receipt unverified"],
   "currency-conversion-unavailable": ["缺少报表币种到报价币种的汇率", "The reporting-to-quote exchange rate is missing"],
   "opening-cash-required-for-burn": ["估算融资所需的期初现金余额缺失", "Opening cash is missing for the financing calculation"],
   "positive-common-equity-and-common-income-required": ["需要同期普通股净利润与正的普通股净资产", "Common earnings and positive common equity are required for the same period"],

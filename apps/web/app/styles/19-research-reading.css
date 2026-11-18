@@ -64,7 +64,7 @@
 }
 .mx-valuation-readout {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr)) minmax(min-content, 1fr);
 }
 .mx-valuation-readout > .mx-metric {
   min-width: 0;
@@ -75,11 +75,38 @@
   border: 0;
   padding-inline-start: 0;
 }
+.mx-valuation-readout > .mx-metric:last-child {
+  padding-inline-end: 0;
+}
+.mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
+  flex-wrap: nowrap;
+}
 .mx-valuation-readout .mx-number {
   font-size: clamp(18px, 2.3cqi, 28px);
 }
 .mx-valuation-readout .mx-metric-note {
   min-height: 1lh;
+}
+/* Keep the source line while the preview is pending. The disclosure wraps in its own column. */
+.mx-valuation-source {
+  display: block;
+  min-height: 1lh;
+}
+/* A compact readout can lend width to the translated note before it needs another line. */
+.mx-valuation-readout .mx-valuation-floor {
+  inline-size: max-content;
+  max-inline-size: 40cqi;
+}
+.mx-valuation-floor[data-label]::before {
+  visibility: hidden;
+  content: attr(data-label);
+}
+.mx-valuation-floor[data-label]:not([data-pending]) {
+  block-size: 0;
+  overflow: hidden;
+}
+.mx-valuation-readout > .mx-metric:last-child .mx-metric-note {
+  min-height: 2lh;
 }
 .mx-reverse-feedback {
   display: grid;
@@ -91,8 +118,12 @@
 .mx-reverse-status[data-settled]:not(:focus-within) {
   visibility: hidden;
 }
-.mx-reverse-status {
+.mx-reverse-status,
+.mx-valuation-floor {
   display: block;
+}
+.mx-financial-table .mx-valuation-floor {
+  white-space: normal;
 }
 .mx-valuation-readout .mx-metric-change {
   white-space: nowrap;
@@ -241,8 +272,15 @@
   .mx-compact-records abbr {
     text-decoration: none;
   }
+}
+/* A side panel can leave the readout as little room as a phone viewport. */
+@container research-reading (max-width: 39rem) {
   .mx-valuation-readout {
     grid-template-columns: minmax(0, 1fr);
+  }
+  .mx-valuation-readout .mx-valuation-floor {
+    inline-size: auto;
+    max-inline-size: none;
   }
   .mx-valuation-readout > .mx-metric {
     display: grid;
@@ -260,7 +298,6 @@
   /* Reserve the wrapped reverse label and its help control before the model arrives. */
   .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
     min-height: 2lh;
-    flex-wrap: nowrap;
   }
   .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-note {
     min-height: 2lh;
@@ -277,6 +314,8 @@
     margin: 0;
     font-size: 18px;
   }
+}
+@media (max-width: 767px) {
   .mx-reading-sections .mx-table {
     width: max-content;
     min-width: 100%;

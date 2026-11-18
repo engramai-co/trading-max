@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import shutil
 import subprocess
@@ -72,14 +73,13 @@ def git(*arguments: str, check: bool = True) -> str:
         cwd=ROOT,
         check=check,
         capture_output=True,
-        text=True,
     )
-    return result.stdout
+    return os.fsdecode(result.stdout)
 
 
 def historical_paths() -> set[str]:
-    output = git("log", "--all", "--name-only", "--pretty=format:")
-    return {line.strip() for line in output.splitlines() if line.strip()}
+    output = git("log", "--all", "--name-only", "-z", "--pretty=format:")
+    return {path for path in output.split("\0") if path}
 
 
 def path_violations() -> list[str]:
@@ -94,6 +94,9 @@ def path_violations() -> list[str]:
             failures.append(f"{path}: private legacy research exists in history")
             continue
         if path.startswith(ALLOWED_DATA_PREFIXES):
+            continue
+        # This Next.js API route handler is source code, not runtime data.
+        if path == "apps/web/app/api/backend/snapshots/[runId]/events/upcoming/route.ts":
             continue
         if any(component in BLOCKED_COMPONENTS for component in PurePosixPath(path).parts):
             failures.append(f"{path}: runtime or generated material exists in history")

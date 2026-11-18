@@ -28,7 +28,17 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
-  if (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.event === "dividend")) {
+  if (ref.tool === "news_and_events" && ref.arguments?.event === "own_trade") {
+    const args = ref.arguments;
+    if (!args.snapshotId || !args.eventId || !["invest", "isa"].includes(args.scope) ||
+        !["buy", "sell"].includes(args.side) || !args.date || !args.ticker) return null;
+    const query = new URLSearchParams({
+      account:args.scope === "invest" ? "A" : "B",
+      decision:[args.date, args.side, args.ticker].join("."), snapshotId:args.snapshotId,
+    });
+    return "/review?" + query;
+  }
+  if (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.eventId && ref.arguments.snapshotId)) {
     const args = ref.arguments ?? {};
     if (args.url) return safeUrl(args.url) ?? null;
     if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {

@@ -226,9 +226,12 @@ export function ValuationWorkbench({
   const block = reason ?? (preview && reverseDraftBlock(preview));
 
   const blockedMessage = block && draftBlockMessage(block, t, "complete-ttm-currency-and-share-count-required");
+  const shareReason = reason === "listed-share-unit-unverified" || reason === "receipt-ratio-unverified"
+    ? blockedMessage ?? undefined : undefined;
 
   return <ResearchReading parameter="valuationView" sections={editor ? valuationSections : valuationSections.slice(0, 2)}>
     <ValuationReadout data={data} preview={preview} reading={currentReading}
+      withheldReason={preview ? undefined : shareReason}
       retry={query.isError ? query.refetch : undefined} refreshing={query.isFetching} />
     <div id="research-history">
       <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}

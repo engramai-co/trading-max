@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { profileFreshFor, useWorkspaceProfile, workspaceProfileKey } from "../profile";
+import { profileFreshFor, useWorkspaceProfile, workspaceProfileKey, workspaceProfileQuery } from "../profile";
 import { api } from "../data";
 import { assistantSettingsChange, assistantSettingsKey, assistantStatusKey } from "../assistant-settings";
 import type { AssistantSettings } from "@/lib/types";
@@ -61,7 +61,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     enabled: checkStatus, staleTime: statusFreshFor, retry: false,
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
-  const refetchProfile = profile.refetch;
+  const consentDenied = optedIn === false || status.data?.code === "assistant_disabled" || status.data?.code === "assistant_consent_required";
+  // Keep the local draft hidden through an outage or an unresolved profile.
+  // Only a confirmed loss of consent discards it.
+  const suspended = !ready && (waitingForConsent || !consentDenied);
   const confirmConsent = useCallback(async () => {
     const revision = ++nextRevision.current;
     setExternalRevision(revision);
@@ -72,11 +75,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       client.cancelQueries({queryKey:workspaceProfileKey, exact:true}),
     ]);
     if (revision !== nextRevision.current) return;
-    const fresh = await refetchProfile();
-    if (revision !== nextRevision.current || !fresh.isSuccess) return;
+    // Bypass the cached profile and use the workspace client's bounded retry for this check.
+    const fresh = await client.query({...workspaceProfileQuery, staleTime:0}).catch(() => null);
+    if (revision !== nextRevision.current || typeof fresh?.assistantEnabled !== "boolean") return;
     setConfirmedRevision(revision);
     void client.invalidateQueries({queryKey:assistantSettingsKey, exact:true});
-  }, [client, refetchProfile]);
+  }, [client]);
   const revalidate = useCallback(() => {
     if (waitingForConsent) {
       if (!profile.isFetching) void confirmConsent();
@@ -102,10 +106,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", visible);
     };
   }, [revalidate, confirmConsent]);
-  const close = useCallback(() => {
-    setOpen(false);
-    requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-assistant-trigger]")?.focus({ preventScroll: true }));
-  }, []);
+  const close = useCallback(() => setOpen(false), []);
   const toggle = useCallback(() => { if (open) close(); else { revalidate(); setOpen(true); } }, [open, close, revalidate]);
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
@@ -125,7 +126,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, suspended: waitingForConsent, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && !consentDenied, pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }
