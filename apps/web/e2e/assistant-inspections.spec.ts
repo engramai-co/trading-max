@@ -722,8 +722,8 @@ test("same-page Returns citations take precedence over a brush and follow browse
   await expect(card).toContainText("2026-01-05 – 2026-01-16");
 });
 
-for (const view of ["returns", "money", "risk"] as const) {
-test(`a missing endpoint in the updated phone ${view} reading restores its range control`, async ({page,isMobile})=>{
+for (const [view, singlePoint] of [["returns", false], ["money", false], ["risk", false], ["risk", true]] as const) {
+test(`a missing endpoint in the updated phone ${view} reading restores ${singlePoint ? "the Risk tab with one point" : "its range control"}`, async ({page,isMobile})=>{
   test.skip(!isMobile);
   await page.setViewportSize({width:390,height:844});
   const calls=await setup(page,"en",false);
@@ -731,7 +731,8 @@ test(`a missing endpoint in the updated phone ${view} reading restores its range
   await page.route("**/api/backend/health",route=>route.fulfill({json:{service:"trading_max-api",status:"ok",latestRunId:id}}));
   await page.route("**/dashboard/lens/analytics?**",route=>{
     const data=backendFixture(new URL(route.request().url())) as DashboardLens;
-    return route.fulfill({json:{...data,runId:id,nav:id===runId?data.nav:data.nav?.slice(0,-1)}});
+    const updatedNav = singlePoint ? data.nav?.slice(0,1) : data.nav?.slice(0,-1);
+    return route.fulfill({json:{...data,runId:id,nav:id===runId?data.nav:updatedNav}});
   });
   if (view === "money") {
     await page.route("**/dashboard/history?**", route => {
@@ -757,11 +758,13 @@ test(`a missing endpoint in the updated phone ${view} reading restores its range
   await expect(sheet.getByRole("status")).toHaveText("Cited interval unavailable");
   await expect(sheet.getByRole("button",{name:"Close reading"})).toBeFocused();
   expect(calls.some(c=>c.snapshotId===id)).toBe(false);
-  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-"+view+"-updated-endpoint-unavailable.png")});
+  const shotName = "phone-"+view+(singlePoint ? "-one-point" : "");
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,shotName+"-updated-endpoint-unavailable.png")});
   await page.keyboard.press("Escape");
   await expect(sheet).toHaveCount(0);
-  await expect(trigger).toBeFocused();
-  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-"+view+"-dismissed-focus.png")});
+  if (singlePoint) await expect(trigger).toHaveCount(0);
+  await expect(singlePoint ? page.getByRole("tab", {name:"Risk profile", selected:true}) : trigger).toBeFocused();
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,shotName+"-dismissed-focus.png")});
 });
 }
 

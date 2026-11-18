@@ -6,7 +6,7 @@ import { deepestDrawdown } from "@/lib/portfolio/drawdown-episodes";
 import { ReturnGrid } from "./performance-return-grid";
 import { DrawdownReading, drawdownMarks } from "./drawdown-reading";
 import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";
@@ -39,7 +39,7 @@ import {
 } from "./foundation";
 import { useAssistant } from "./assistant/context";
 import { PageInspection } from "./assistant/inspection-entry";
-import type { ReactNode, RefObject } from "react";
+import type { ReactNode } from "react";
 import { Narrative } from "./narrative";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
@@ -91,6 +91,11 @@ export function PerformanceContent({
   const {locale, timeZone} = useLocale();
   const [selectionRange,setSelectionRange] = useState<{start:string; end:string; identity:string; snapshotId:string} | null>(null);
   const rangeTrigger = useRef<HTMLButtonElement>(null);
+  const riskTab = useRef<HTMLButtonElement>(null);
+  const bindRiskRangeTrigger = useCallback((button: HTMLButtonElement | null) => {
+    // An updated history can remove Read range while its reading sheet is open.
+    rangeTrigger.current = button ?? riskTab.current;
+  }, []);
   const [phoneRange,setPhoneRange] = useState<string | null>(null);
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const start = params.get("returnFrom"), end = params.get("returnTo");
@@ -349,7 +354,7 @@ export function PerformanceContent({
           options={[
             { value: "money", label: t("资金与盈亏", "Money & P&L") },
             { value: "returns", label: t("收益对比", "Return comparison") },
-            { value: "risk", label: t("风险诊断", "Risk profile") },
+            { value: "risk", label: t("风险诊断", "Risk profile"), ref: riskTab },
           ]}
         />
         <span className="mx-freshness-group">
@@ -374,7 +379,7 @@ export function PerformanceContent({
         </Notice>
       ) : view === "risk" ? (
         <div className="mx-data-body mx-performance-risk" aria-busy={waiting || undefined}>
-          <RiskDashboard onBrush={brush} rangeTrigger={rangeTrigger} inspection={inspection} data={runtime.status === "ready" ? data : undefined} scope={scope}
+          <RiskDashboard onBrush={brush} rangeTrigger={bindRiskRangeTrigger} inspection={inspection} data={runtime.status === "ready" ? data : undefined} scope={scope}
             unavailable={unavailable} retry={usesAnalytics ? summary.refetch : undefined} />
         </div>
       ) : (
@@ -628,7 +633,7 @@ function RiskReadings({ rows, scope, pending }: { rows: NavPoint[]; scope: Scope
 
 function RiskDashboard({ data, scope, unavailable, retry, onBrush, rangeTrigger, inspection }: {
   onBrush?: (start:string,end:string)=>void;
-  rangeTrigger: RefObject<HTMLButtonElement | null>;
+  rangeTrigger: (button: HTMLButtonElement | null) => void;
   inspection:ReactNode;
   data?: DashboardLens;
   scope: Scope;
