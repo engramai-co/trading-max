@@ -1,0 +1,206 @@
+/* A saved valuation compared with new evidence, and assumptions the reader locked. */
+/* A portal target in a header row: an empty slot adds no gap. */
+.mx-slot {
+  display: contents;
+}
+.mx-evidence {
+  margin: 16px 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--mx-border);
+  font-size: 12px;
+  scroll-margin-block: 96px;
+}
+.mx-evidence:focus {
+  outline: none;
+}
+.mx-evidence:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 4px;
+}
+.mx-evidence-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.mx-evidence-heading h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mx-evidence-close {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  margin-inline-start: auto;
+  padding: 0;
+  color: var(--mx-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.mx-evidence-close:hover {
+  color: var(--mx-ink);
+  background: var(--mx-soft);
+}
+.mx-evidence-close:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 2px;
+}
+.mx-evidence-walk {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+  transition: opacity 150ms var(--mx-ease);
+}
+.mx-evidence[aria-busy="true"] .mx-evidence-walk {
+  opacity: .55;
+}
+.mx-evidence-walk :is(th, td) {
+  padding: 5px 0 5px 12px;
+  text-align: right;
+  font-weight: 400;
+  white-space: nowrap;
+}
+.mx-evidence-walk thead :is(th, td) {
+  padding-top: 0;
+  color: var(--mx-muted);
+}
+.mx-evidence-walk th[scope="row"] {
+  padding-left: 0;
+  text-align: left;
+  color: var(--mx-muted);
+  white-space: normal;
+}
+.mx-evidence-walk td[data-selected],
+.mx-evidence-walk thead th[data-selected] {
+  font-weight: 600;
+  color: var(--mx-ink);
+}
+.mx-evidence-walk tr[data-kind="sub"] th[scope="row"] {
+  padding-left: 12px;
+  color: var(--mx-warning);
+}
+.mx-evidence-walk tr[data-kind="sub"] td {
+  color: var(--mx-muted);
+}
+.mx-evidence-walk tr[data-kind="total"] :is(th, td) {
+  border-top: 1px solid var(--mx-border);
+  color: var(--mx-ink);
+}
+.mx-evidence-notes {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-evidence-notes:empty {
+  display: none;
+}
+.mx-evidence-notes li {
+  display: block;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.mx-evidence-notes li > :is(.mx-tag-help, .mx-tag) {
+  margin-inline-end: 6px;
+  vertical-align: baseline;
+}
+.mx-evidence-muted,
+.mx-evidence-empty {
+  color: var(--mx-muted);
+}
+.mx-evidence-empty {
+  margin: 8px 0 0;
+}
+.mx-evidence-detail {
+  margin-top: 8px;
+  max-width: 640px;
+}
+.mx-evidence-detail summary {
+  cursor: pointer;
+}
+.mx-evidence-detail .mx-facts > div {
+  padding: 6px 0;
+}
+.mx-evidence-detail .mx-facts dd {
+  font-weight: 400;
+}
+.mx-evidence-locks {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.mx-assumption-edit {
+  column-gap: 6px;
+}
+.mx-assumption-edit > label {
+  margin-inline-end: auto;
+}
+.mx-assumption-edit[data-locked] input {
+  color: var(--mx-muted);
+}
+/* Row buttons in the picker are full-width rows; the lock is an icon beside the field. */
+.mx-assumption-picker .mx-lock {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--mx-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.mx-assumption-picker .mx-lock:hover {
+  color: var(--mx-ink);
+  border-color: var(--mx-border);
+}
+.mx-assumption-picker .mx-lock[aria-pressed="true"] {
+  color: var(--mx-brand);
+}
+.mx-assumption-picker .mx-lock:focus-visible {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 2px;
+}
+.mx-assumption-picker .mx-lock:disabled {
+  opacity: .55;
+  cursor: default;
+}
+.mx-lock-mark {
+  margin-inline-start: 4px;
+  color: var(--mx-muted);
+  vertical-align: -1px;
+}
+@media (max-width: 767px) {
+  .mx-assumption-picker .mx-lock,
+  .mx-evidence-close {
+    width: 44px;
+    height: 44px;
+  }
+  .mx-evidence-walk :is(th, td) {
+    padding-left: 6px;
+  }
+}
+@media (min-width: 768px) {
+  .mx-evidence-walk {
+    width: auto;
+  }
+  .mx-evidence-walk th[scope="row"] {
+    padding-right: 20px;
+    white-space: nowrap;
+  }
+  .mx-evidence-walk :is(td, thead th) {
+    min-width: 112px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-evidence-walk {
+    transition: none;
+  }
+}

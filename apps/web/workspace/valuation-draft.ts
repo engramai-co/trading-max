@@ -44,6 +44,7 @@ const draftBlockMessages = {
   "company-model-not-applicable": ["此证券不适用公司估值模型", "Company valuation does not apply to this security"],
   "complete-ttm-currency-and-share-count-required": ["此模型缺少完整同期报表、报价或上市股数", "Matching statements, a quote and verified listing shares are required"],
   "valuation-inputs-unavailable": ["缺少所选证券的估值输入", "Valuation inputs are missing for this security"],
+  "valuation-inputs-locked": ["所有假设都已锁定", "Every assumption is locked"],
 } as const;
 
 export function draftBlockMessage(code: string, t: (zh: string, en: string) => string, fallback?: DraftBlockCode) {

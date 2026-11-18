@@ -11,7 +11,7 @@ import {
   Textarea,
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
-import { ArrowClockwise } from "@phosphor-icons/react";
+import { ArrowClockwise, LockSimple, LockSimpleOpen } from "@phosphor-icons/react";
 import {
   keepPreviousData,
   useMutation,
@@ -26,6 +26,7 @@ import type { DraftActions, DraftView } from "./valuation-draft-editor";
 import { useAssistant } from "./assistant/context";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
+import { EvidenceReview, type InputField } from "./valuation-maintenance";
 import { quoteValue } from "./financial-values";
 import {
   ApiError,
@@ -67,9 +68,12 @@ import {
   editorIdentity,
   loadedValuationQuery,
   previewRequest,
+  sortedLocks,
   valuationDefaultsQuery,
+  valuationMaintenanceQuery,
   valuationPreviewQuery,
   workbenchState,
+  type LockedInput,
 } from "./valuation-queries";
 
 type DraftModule = typeof import("./valuation-draft-editor");
@@ -79,6 +83,8 @@ const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
 type EditorValues = { inputs: Scenarios; references: NonNullable<Preview["references"]> };
 type ManualChanges = { fields: Record<string, Partial<ScenarioInput>>; references: EditorValues["references"] };
+const fieldOf = Object.fromEntries(Object.entries(inputKey).map(([field, key]) => [key, field])) as
+  Record<keyof ScenarioInput, InputField>;
 
 function initialValues(preview: Preview, changes?: ManualChanges): EditorValues {
   const inputs = Object.fromEntries(keys.map(key => [key, { ...preview.scenarios[key].inputs, ...changes?.fields[key] }]));
@@ -223,6 +229,8 @@ export function ValuationWorkbench({
   }, [enabled]);
   const draftModule = enabled ? module : null;
   const [draftAction, setDraftAction] = useState<HTMLSpanElement | null>(null);
+  // Comparing a saved version with new evidence is deterministic: it needs no MaxAI consent.
+  const [evidenceAction, setEvidenceAction] = useState<HTMLSpanElement | null>(null);
   const block = reason ?? (preview && reverseDraftBlock(preview));
 
   const blockedMessage = block && draftBlockMessage(block, t, "complete-ttm-currency-and-share-count-required");
@@ -244,6 +252,7 @@ export function ValuationWorkbench({
       <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
         id="valuation-assumptions" className="mx-model-inputs" help={methodology}
         action={<Group gap="xs">
+          {editor && <span ref={setEvidenceAction} className="mx-slot" />}
           {enabled && <span ref={setDraftAction}>
             {!editor && block && <Button variant="default" size="compact-xs" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
           </span>}
@@ -255,6 +264,7 @@ export function ValuationWorkbench({
           <ModelEditor key={reload + editorIdentity(editor)}
             requestedFamily={family} currentBasis={state.view === "editor" && !query.isError ? state.preview.id : null}
             draftAction={!switching && draftModule ? draftAction : null} draftModule={draftModule} defaultBlock={block ?? null}
+            evidenceAction={!switching ? evidenceAction : null}
             recovered={recovered?.id === editor.id ? recovered.changes : undefined}
             reloadBasis={async changes => {
               const result = await query.refetch();
@@ -288,7 +298,7 @@ export function ValuationWorkbench({
 }
 
 function ModelEditor({
-  draftAction, draftModule, defaultBlock, publication,
+  draftAction, draftModule, defaultBlock, publication, evidenceAction,
   output,
   referencePanel,
   methodology,
@@ -308,6 +318,8 @@ function ModelEditor({
   draftAction: HTMLSpanElement | null;
   draftModule: DraftModule | null;
   defaultBlock: string | null;
+  /** The header slot for comparing the saved version this editor opened with new evidence. */
+  evidenceAction: HTMLSpanElement | null;
   output: HTMLDivElement | null;
   referencePanel: HTMLDivElement | null;
   methodology?: string;
@@ -335,6 +347,18 @@ function ModelEditor({
       : 5
     : initial.horizon;
   const [inputs, setInputs] = useState<Scenarios>(() => initialValues(initial, recovered).inputs);
+  // Locked assumptions stay as saved until the reader unlocks them; MaxAI never proposes them.
+  const openedLocks = initial.savedModel?.lockedInputs ?? [];
+  const [locked, setLocked] = useState<LockedInput[]>(() => sortedLocks(openedLocks));
+  const lockKey = JSON.stringify(sortedLocks(locked));
+  const isLocked = (scenario: string, key: keyof ScenarioInput) =>
+    locked.some((lock) => lock.scenario === scenario && inputKey[lock.field] === key);
+  // A version saved here becomes the one new evidence is compared with, without reloading the editor.
+  const [savedHere, setSavedHere] = useState<NonNullable<Preview["savedModel"]>>();
+  const savedModel = savedHere ?? initial.savedModel;
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const focusReview = useRef(false);
+  const evidenceToggle = useRef<HTMLButtonElement>(null);
   const actions = useRef<DraftActions>(null);
   const [drafting, setDrafting] = useState(emptyReview);
   const { draft } = drafting;
@@ -398,24 +422,39 @@ function ModelEditor({
   const busy =
     invalidInput || refreshing || query.isFetching || request !== liveFingerprint;
   const familySelection = requestedFamily ? "override" : initial.familySelection ?? "automatic";
-  const [savedVersion, setSavedVersion] = useState<{fingerprint:string; selection:string}>();
-  const saved = savedVersion?.fingerprint === liveFingerprint && savedVersion.selection === familySelection;
+  const [savedVersion, setSavedVersion] = useState<{fingerprint:string; selection:string; locks:string}>();
+  const saved = savedVersion?.fingerprint === liveFingerprint && savedVersion.selection === familySelection &&
+    savedVersion.locks === lockKey;
   const dirty = Boolean(draft) || saveOpen || invalidInput || !saved && (
-    draftValue !== null || liveFingerprint !== JSON.stringify(previewRequest(initial)));
+    draftValue !== null || liveFingerprint !== JSON.stringify(previewRequest(initial)) ||
+    lockKey !== JSON.stringify(sortedLocks(openedLocks)));
   useBuildNavigationGuard(dirty);
   useLayoutEffect(() => {
     onDirty(dirty);
     return () => onDirty(false);
   }, [dirty, onDirty]);
+  const review = useQuery(valuationMaintenanceQuery(initial, savedModel?.id, debounced, locked,
+    reviewOpen && !invalidInput));
+  useLayoutEffect(() => {
+    if (!reviewOpen || !focusReview.current) return;
+    focusReview.current = false;
+    document.getElementById("valuation-evidence")?.focus();
+  }, [reviewOpen]);
   const save = useMutation({
-    mutationFn: (payload: typeof liveRequest & { familySelection: string; reason: string; draftReview?: DraftReview }) =>
+    mutationFn: (payload: typeof liveRequest & { familySelection: string; reason: string; draftReview?: DraftReview;
+      lockedInputs: LockedInput[] }) =>
       api(
         `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
         jsonRequest("POST", payload),
       ),
-    onSuccess: async (_result, payload) => {
+    onSuccess: async (journal, payload) => {
+      const version = (journal as { models?: { id: string; savedAt: string; preview: { id: string };
+        lockedInputs?: LockedInput[] }[] }).models?.[0];
+      if (version) setSavedHere({ id: version.id, savedAt: version.savedAt, previewId: version.preview.id,
+        lockedInputs: version.lockedInputs ?? [] });
       setSavedVersion({
         selection:payload.familySelection,
+        locks:JSON.stringify(payload.lockedInputs),
         fingerprint:JSON.stringify({
           family: payload.family,
           formulaVersion: payload.formulaVersion,
@@ -575,6 +614,17 @@ function ModelEditor({
       scale: 1,
       suffix: "",
     });
+  const describe = (field: InputField, value: number | null | undefined) => {
+    const spec = fields.find((item) => item.key === inputKey[field]);
+    const label = spec?.label ?? field;
+    if (value == null || !spec) return { label, text: "—" };
+    return { label, text: number(value * spec.scale, spec.key === "rampYears" ? 0 : 2) + spec.suffix };
+  };
+  const toggleLock = (scenario: string, key: keyof ScenarioInput) => {
+    setLocked((previous) => isLocked(scenario, key)
+      ? previous.filter((lock) => !(lock.scenario === scenario && inputKey[lock.field] === key))
+      : sortedLocks([...previous, { scenario: scenario as LockedInput["scenario"], field: fieldOf[key] }]));
+  };
   const base = result.scenarios.base;
 
 
@@ -600,7 +650,13 @@ function ModelEditor({
   return (
     <>
       {draftModule && <draftModule.DraftController initial={initial} requestedFamily={requestedFamily} horizon={horizon}
-        inputs={inputs} publication={publication} currentBasis={currentBasis} actions={actions} onChange={setDrafting} />}
+        inputs={inputs} locked={locked} publication={publication} currentBasis={currentBasis} actions={actions}
+        onChange={setDrafting} />}
+      {evidenceAction && savedModel && createPortal(<Button ref={evidenceToggle} variant="default" size="compact-xs"
+        aria-expanded={reviewOpen} aria-controls="valuation-evidence"
+        onClick={() => { focusReview.current = !reviewOpen; setReviewOpen(!reviewOpen); }}>
+        {t("看新证据", "See new evidence")}
+      </Button>, evidenceAction)}
       {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
         {t("放弃草稿", "Discard draft")}
       </Button> : <Button variant="default" size="compact-xs"
@@ -665,7 +721,11 @@ function ModelEditor({
                 </Button>
               </div>
             )}
-            {initialAtHorizon &&
+            {reviewOpen && savedModel && <EvidenceReview review={review.data} error={review.error}
+              pending={review.isFetching} retry={() => void review.refetch()} selected={selected}
+              currency={result.basis.currency} describe={describe}
+              close={() => { setReviewOpen(false); evidenceToggle.current?.focus(); }} />}
+            {!reviewOpen && initialAtHorizon &&
               !busy &&
               !query.isError &&
               inputs[selected] &&
@@ -760,7 +820,8 @@ function ModelEditor({
               <Button
                 variant="light"
                 size="xs"
-                disabled={estimateGrowth == null || estimateGrowth < -0.8 || estimateGrowth > 2}
+                disabled={estimateGrowth == null || estimateGrowth < -0.8 || estimateGrowth > 2 ||
+                  isLocked(selected, "revenueCagr")}
                 onClick={() => {
                   if (estimateGrowth == null) return;
                   const p = draft?.result.proposals.find(p => p.scenario === selected && p.field === "revenue_cagr");
@@ -819,14 +880,18 @@ function ModelEditor({
                     }
                   }} />;
               }
+              const fieldLocked = isLocked(selected, field.key);
+              const lockMark = fieldLocked && <><LockSimple className="mx-lock-mark" size={12} aria-hidden="true" />
+                <span className="sr-only">{t("已锁定", "Locked")}</span></>;
               return field.key === activeField ? (
                 // The selected row is the input; its label names the field once.
-                <div key={field.key} className="mx-assumption-edit">
-                  <label htmlFor={"assumption-" + field.key}>{field.label}</label>
+                <div key={field.key} className="mx-assumption-edit" data-locked={fieldLocked || undefined}>
+                  <label id={"assumption-label-" + field.key} htmlFor={"assumption-" + field.key}>{field.label}</label>
                   <NumberInput
                     key={selected + field.key}
                     id={"assumption-" + field.key}
                     size="xs"
+                    readOnly={fieldLocked}
                     value={draftValue ?? Number(((inputs[selected][field.key] ?? 0) * field.scale).toFixed(3))}
                     error={
                       invalidInput
@@ -834,6 +899,7 @@ function ModelEditor({
                         : undefined
                     }
                     onChange={(v) => {
+                      if (fieldLocked) return;
                       setDraftValue(v);
                       const value = numeric(v);
                       setInvalidInput(value == null || value < field.min || value > field.max);
@@ -856,6 +922,12 @@ function ModelEditor({
                     decimalScale={field.key === "rampYears" ? 0 : 2}
                     suffix={field.suffix}
                   />
+                  <button type="button" className="mx-lock" aria-pressed={fieldLocked}
+                    aria-label={t("锁定", "Lock")} aria-describedby={"assumption-label-" + field.key}
+                    disabled={invalidInput}
+                    onClick={() => toggleLock(selected, field.key)}>
+                    {fieldLocked ? <LockSimple size={14} aria-hidden="true" /> : <LockSimpleOpen size={14} aria-hidden="true" />}
+                  </button>
                 </div>
               ) : (
                 <button
@@ -872,6 +944,7 @@ function ModelEditor({
                   <strong>
                     {number((inputs[selected][field.key] ?? 0) * field.scale, 2)}
                     {field.suffix}
+                    {lockMark}
                   </strong>
                 </button>
               );
@@ -904,6 +977,7 @@ function ModelEditor({
               setEditingProposal(null);
               setInputs(Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])));
               setReferences(initial.references ?? []);
+              setLocked(sortedLocks(openedLocks));
             }}
           >
             {t("重置假设", "Reset assumptions")}
@@ -1003,7 +1077,8 @@ function ModelEditor({
             {t("取消", "Cancel")}
           </Button>
           <Button
-            onClick={() => save.mutate({ ...liveRequest, familySelection, reason, draftReview: draft?.review })}
+            onClick={() => save.mutate({ ...liveRequest, familySelection, reason, draftReview: draft?.review,
+              lockedInputs: sortedLocks(locked) })}
             loading={save.isPending}
             disabled={busy || query.isError || staleDraft || Boolean(drafting.phase)}
           >
