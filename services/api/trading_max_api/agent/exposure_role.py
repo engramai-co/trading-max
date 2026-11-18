@@ -3,7 +3,7 @@
 from datetime import datetime, timedelta
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from trading_max.analytics.exposure_history import _countries
 from trading_max.infrastructure.acwi_weights import AcwiWeights
 from trading_max.infrastructure.sector_universe import GICS_SECTORS, SECTOR_ALIASES
@@ -17,6 +17,18 @@ from .roles import PageRole, RoleContext, RoleTools
 class ExposureContext(RoleContext):
     dimension: Literal["country", "sector", "gics", "company"]
     category: str = Field(min_length=1, max_length=180)
+    group: Literal["tail", "unresolved"] | None = None
+
+    @model_validator(mode="after")
+    def grouped_category(self):
+        if (
+            self.group
+            and self.category != self.group
+            or self.group == "unresolved"
+            and self.dimension != "company"
+        ):
+            raise ValueError("Invalid grouped allocation")
+        return self
 
 
 def _category(dimension, row):
@@ -28,21 +40,41 @@ def _category(dimension, row):
 
 
 def _find(read, tool, args, context):
+    expected = (
+        _countries().get(context.category.lower(), context.category)
+        if context.dimension == "country"
+        else context.category
+    )
+    rows = []
     while True:
         result = read.read(tool, args)
         data = result.get("data") or {}
-        for row in data.get("items", []):
-            expected = (
-                _countries().get(context.category.lower(), context.category)
-                if context.dimension == "country"
-                else context.category
-            )
-            if _category(context.dimension, row) == expected:
-                return row, result
+        page = data.get("items", [])
+        if context.group:
+            rows.extend(page)
+        else:
+            for row in page:
+                if _category(context.dimension, row) == expected:
+                    return row, result
         cursor = data.get("next_cursor")
         if cursor is None:
-            return None, result
+            break
         args = args.model_copy(update={"cursor": cursor})
+    # Dated company tables keep only the top forty. A truncated table cannot
+    # establish the complete residual or the full group outside the leading twelve.
+    if not context.group or data.get("company_limit") and len(rows) >= data["company_limit"]:
+        return None, result
+    members = rows[12:] if context.group == "tail" else rows
+    if not members or any(row["weight_fraction"] is None for row in members):
+        return None, result
+    weight = sum(row["weight_fraction"] for row in members)
+    if context.group == "unresolved":
+        weight = 1 - weight
+        if weight <= 0 or (
+            tool is tools.lookthrough_exposure and not data.get("non_security_value_gbp")
+        ):
+            return None, result
+    return {"weight_fraction": weight}, result
 
 
 def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
@@ -55,19 +87,24 @@ def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
         if source and args.dimension in {"country", "sector"}
         else None
     )
-    value = None
+    names = [args.category]
+    if args.group == "tail" and weights:
+        raw = read.read(tools.LOOKTHROUGH) or {}
+        rows, _, _ = tools._exposure_reading(raw, args.dimension)
+        names = [row["name"] for row in rows[12:]]
+    values = []
     if isinstance(weights, AcwiWeights):
         codes = _countries()
-        code = codes.get(args.category.lower(), args.category)
-        matched = [
-            weight
-            for name, weight in weights.locations.items()
-            if codes.get(name.lower(), name) == code
-        ]
-        value = sum(matched) if matched else None
+        by_code = {}
+        for name, weight in weights.locations.items():
+            code = codes.get(name.lower(), name)
+            by_code[code] = by_code.get(code, 0) + weight
+        values = [by_code.get(codes.get(name.lower(), name)) for name in names]
     elif isinstance(weights, WorldSectorWeights):
-        code = GICS_SECTORS.get(SECTOR_ALIASES.get(args.category, args.category))
-        value = weights.sectors[code].weight if code in weights.sectors else None
+        for name in names:
+            code = GICS_SECTORS.get(SECTOR_ALIASES.get(name, name))
+            values.append(weights.sectors[code].weight if code in weights.sectors else None)
+    value = sum(values) if values and all(value is not None for value in values) else None
     if (
         value is None
         or not ctx.deps.manifest
@@ -93,6 +130,7 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
         "dimension": context.dimension,
         "category": context.category,
         "snapshotId": read.deps.snapshot_id,
+        **({"group": context.group} if context.group else {}),
     }
 
     def observation(section, zh, en, result=current, tool="lookthrough_exposure", **window):
@@ -118,11 +156,17 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
     if prior and prior["weight_fraction"] is not None:
         stamp = history["data"]["observation_date"]
         previous = prior["weight_fraction"]
+        group_zh = " 两次均按当时的前十二项以外计算。" if context.group == "tail" else ""
+        group_en = (
+            " Both weights group the categories outside that date’s top twelve."
+            if context.group == "tail"
+            else ""
+        )
         facts.append(
             observation(
                 "history",
-                f"{stamp} 占比 {previous:.2%}，此后变化 {(weight - previous) * 100:+.2f} 个百分点。",
-                f"The weight was {previous:.2%} on {stamp}, a change of {(weight - previous) * 100:+.2f} pp since then.",
+                f"{stamp} 占比 {previous:.2%}，此后变化 {(weight - previous) * 100:+.2f} 个百分点。{group_zh}",
+                f"The weight was {previous:.2%} on {stamp}, a change of {(weight - previous) * 100:+.2f} pp since then.{group_en}",
                 history,
                 "dated_exposure",
                 on_or_before=cutoff,

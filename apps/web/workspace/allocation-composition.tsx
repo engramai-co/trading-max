@@ -16,6 +16,7 @@ export type AllocationSlice = {
   weight: number | null;
   fullName?: string;
   category?: string;
+  group?: "tail" | "unresolved";
   directValue?: number;
   indirectValue?: number;
 };
@@ -43,6 +44,7 @@ export function AllocationComposition({ rows, companies = false, remainder, onIn
     const rest = rows.slice(12);
     const grouped = rest.length ? [...visible, {
       name: companies ? t("其余公司", "Other companies") : t("其余分类", "Other categories"),
+      category: "tail", group: "tail" as const,
       value: rest.every((row) => row.value !== null)
         ? rest.reduce((sum, row) => sum + row.value!, 0) : null,
       weight: rest.every((row) => row.weight !== null)
@@ -54,6 +56,7 @@ export function AllocationComposition({ rows, companies = false, remainder, onIn
     }] : visible;
     return remainder ? [...grouped, {
       name: t("未穿透与其他资产", "Unresolved & other assets"),
+      category: "unresolved", group: "unresolved" as const,
       ...remainder,
     }] : grouped;
   }, [rows, t, companies, remainder]);

@@ -58,6 +58,7 @@ export function evidenceHref(ref: Evidence) {
     params.set("view","lookthrough");
     if (a.dimension) params.set("dimension",a.dimension);
     if (a.category) params.set("category",a.category);
+    if (a.group) params.set("group", a.group);
   }
   if (path === "/sectors") {
     params.set("market",ref.tool==="global_map" ? "global" : a.market ?? "global");

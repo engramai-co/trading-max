@@ -18,7 +18,7 @@ import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { LookthroughData, LookthroughPosition } from "@/lib/types";
 import { EvidenceTable, usePaginationLabels } from "./evidence-table";
-import { AllocationComposition } from "./allocation-composition";
+import { AllocationComposition, type AllocationSlice } from "./allocation-composition";
 import { companyAllocation } from "./company-allocation";
 import { currency, number, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -208,9 +208,10 @@ function Exposure({
   const params = useSearchParams();
   const dimensionsByKey = {company: "companies", country:"countries", sector:"sectors", gics:"gics"} as const;
   const linkedDimension = params?.get("dimension") as keyof typeof dimensionsByKey;
-  const [choice, setChoice] = useState<{category: string; name:string} | null>(() => {
+  const [choice, setChoice] = useState<{category: string; name:string; group?: AllocationSlice["group"]} | null>(() => {
     const category=params?.get("category");
-    return category && dimensionsByKey[linkedDimension] ? {category,name:category} : null;
+    const group=params?.get("group");
+    return category && dimensionsByKey[linkedDimension] ? {category,name:category,...(group==="tail" || group==="unresolved" ? {group} : {})} : null;
   });
   const [view, setView] = useState<
     "companies" | "countries" | "sectors" | "gics" | "sources"
@@ -361,10 +362,10 @@ function Exposure({
       ? countryLabel(str(r.country))
       : className(str(r.subIndustry ?? r.name ?? r.industry ?? r.label)) || "—";
   const dimension = view === "companies" ? "company" : view === "sectors" ? "sector" : view === "countries" ? "country" : "gics";
-  const inspect = (row: {name: string; category?: string}) => setChoice(row.category ? {name:row.name,category:row.category} : null);
+  const inspect = (row: Pick<AllocationSlice,"name"|"category"|"group">) => setChoice(row.category ? {name:row.name,category:row.category,group:row.group} : null);
   const categoryKey = (row: Record<string,unknown>) => str(row.country ?? row.subIndustry ?? row.industry ?? row.name);
   const role = <PageInspection role="exposure" object={choice?.name ?? t("穿透配置","Look-through allocation")}
-    context={choice ? {dimension,category:choice.category} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
+    context={choice ? {dimension,category:choice.category,...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
   const changeChart = (value: string) => {setChoice(null); setChart(value);};
   const top = companyComposition.rows.slice(0, 3);
   const concentration = top.reduce((sum, row) => sum + (row.weight ?? 0), 0);

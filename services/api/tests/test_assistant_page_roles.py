@@ -240,3 +240,59 @@ def test_sidebar_validates_page_scope_range_benchmark_and_snapshot(tmp_path):
     ):
         with pytest.raises(HTTPException, match="assistant_context_invalid"):
             _context({"context": {**origin, **mismatch}}, request)
+
+
+def test_grouped_allocations_use_complete_members_and_dated_comparison(tmp_path):
+    from services.api.tests.assistant_fixture import publication
+    from services.api.trading_max_api.agent import tools
+    from services.api.trading_max_api.agent.deps import AssistantDepsFactory
+    from services.api.trading_max_api.artifacts import ArtifactStore
+
+    store = ArtifactStore(tmp_path)
+    names = [f"Region {n}" for n in range(14)]
+    rows = [{"country": name, "valueGbp": 100, "allocationPct": 0.05} for name in names]
+    data = {
+        "available": True,
+        "brokerAsOf": STAMP,
+        "countryAllocation": rows,
+        "positions": [
+            {"name": "Holding", "ticker": "TEST", "allocationPct": 0.9, "valueGbp": 1800}
+        ],
+        "investedValueGbp": 2000,
+        "nonSecurityValueGbp": 200,
+    }
+    prior = {
+        **data,
+        "brokerAsOf": "2026-01-01T16:00:00Z",
+        "countryAllocation": [{**row, "allocationPct": 0.04} for row in rows],
+    }
+    publication(
+        store,
+        extra_artifacts={
+            tools.LOOKTHROUGH: data,
+            "account/exposure_history/2026-01-01.json": prior,
+        },
+    )
+    weights = AcwiWeights(
+        as_of=date(2026, 2, 2),
+        fetched_at=datetime(2026, 2, 3, tzinfo=UTC),
+        locations=dict.fromkeys(names, 0.02),
+        method=METHOD,
+    )
+    deps = replace(
+        AssistantDepsFactory(store).for_run(),
+        page_sources=replace(inputs(), weights=lambda dimension: weights),
+    )
+    role = role_registry()["exposure"]
+    read = RoleTools.pinned(deps, role.allowed_tools)
+    context = role.context_schema(dimension="country", category="tail", group="tail")
+    facts = {line.section: line for line in role.facts(read, context)}
+    assert "10.00%" in facts["current"].en
+    assert "8.00%" in facts["history"].en and "+2.00 pp" in facts["history"].en
+    assert "4.00%" in facts["benchmark"].en and "+6.00 pp" in facts["benchmark"].en
+    assert facts["history"].evidence.arguments["group"] == "tail"
+    context = role.context_schema(dimension="company", category="unresolved", group="unresolved")
+    facts = {line.section: line for line in role.facts(read, context)}
+    assert "10.00%" in facts["current"].en
+    assert "10.00%" in facts["history"].en
+    assert "benchmark" not in facts
