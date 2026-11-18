@@ -5,6 +5,7 @@ import {
   orderedStatement,
   relativeToPrice,
   sensitivityPoints,
+  shortForecastPeriod,
 } from "./research-display";
 
 describe("research display semantics", () => {
@@ -13,6 +14,18 @@ describe("research display semantics", () => {
     expect(impliedGrowthLabel(null, "above-80%")).toBe("> 80%");
     expect(impliedGrowthLabel(0.22, null)).toBe("22.0%");
     expect(impliedGrowthLabel(null, null)).toBe("—");
+  });
+  it("names a quarter from its provider fiscal year end and preserves ambiguous dates", () => {
+    const fiscalPeriods = [
+      { period: "0q", endDate: "2026-12-26" },
+      { period: "+1q", endDate: "2027-03-27" },
+      { period: "0y", endDate: "2027-09-25" },
+    ];
+    expect(shortForecastPeriod({ fiscalPeriods }, "0q")).toBe("FY27 Q1");
+    expect(shortForecastPeriod({ fiscalPeriods }, "+1q")).toBe("FY27 Q2");
+    expect(shortForecastPeriod({ fiscalPeriods }, "0y")).toBe("FY27");
+    expect(shortForecastPeriod({ fiscalPeriods: fiscalPeriods.slice(0, 1) }, "0q")).toBe("2026-12-26");
+    expect(shortForecastPeriod({}, "0q")).toBeNull();
   });
   it("compares fiscal years separately from quarters and preserves unknown periods", () => {
     const rows = [

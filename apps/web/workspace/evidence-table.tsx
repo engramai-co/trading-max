@@ -30,6 +30,7 @@ export function EvidenceTable<T>({
   rowHeaderIndex = 0,
   totalRows,
   showCount = true,
+  compactRecords = false,
 }: {
   rows: T[];
   columns: EvidenceColumn<T>[];
@@ -39,6 +40,7 @@ export function EvidenceTable<T>({
   totalRows?: number;
   /** False when the surrounding layout already states the count, such as a disclosure summary. */
   showCount?: boolean;
+  compactRecords?: boolean;
 }) {
   const t = useCopy();
   const paginationLabels = usePaginationLabels();
@@ -47,10 +49,11 @@ export function EvidenceTable<T>({
   const current = Math.min(page, pages);
   if (!rows.length)
     return <Empty title={t("没有符合条件的记录", "No matching records")} />;
+  const pageRows = rows.slice((current - 1) * pageSize, current * pageSize);
   return (
     <>
       <div
-        className="mx-table-wrap"
+        className={"mx-table-wrap" + (compactRecords ? " mx-wide-records" : "")}
         tabIndex={0}
         role="region"
         aria-label={label}
@@ -74,8 +77,7 @@ export function EvidenceTable<T>({
             </tr>
           </thead>
           <tbody>
-            {rows
-              .slice((current - 1) * pageSize, current * pageSize)
+            {pageRows
               .map((row, i) => (
                 <tr key={(current - 1) * pageSize + i}>
                   {columns.map((c, j) =>
@@ -101,6 +103,11 @@ export function EvidenceTable<T>({
           </tbody>
         </table>
       </div>
+      {compactRecords && <div className="mx-compact-records" aria-label={label} role="region">
+        {pageRows.map((row, i) => <dl key={i}>{columns.map((col) => <div key={col.label}>
+          <dt>{col.label}</dt><dd>{col.value(row)}</dd>
+        </div>)}</dl>)}
+      </div>}
       {pages > 1 && (
         <nav aria-label={t("记录分页", "Record pages")}>
           <Pagination total={pages} value={current} onChange={setPage} withEdges mt="md" getControlProps={paginationLabels} />

@@ -1,11 +1,28 @@
 import { numeric } from "@/lib/numeric";
-import { object, percent, str, type Json } from "@/workspace/data";
+import { object, objects, percent, str, type Json } from "@/workspace/data";
 
 /** The solver returns sentinel values outside its search bounds, not estimates. */
 export function impliedGrowthLabel(value: unknown, bound: unknown) {
   if (bound === "above-80%") return "> 80%";
   if (bound === "below--30%") return "< −30%";
   return percent(value);
+}
+
+/** Use the provider's fiscal year end for quarters, including 52/53-week years.
+ * Without a matching year end, retain the actual period end. */
+export function shortForecastPeriod(analyst: Json, value: unknown) {
+  const periods = objects(analyst.fiscalPeriods);
+  const end = str(periods.find((row) => row.period === value)?.endDate).slice(0, 10);
+  if (!end || !Number.isFinite(Date.parse(end))) return null;
+  if (str(value).endsWith("y")) return "FY" + end.slice(2, 4);
+  for (const year of periods.filter((row) => str(row.period).endsWith("y"))) {
+    const yearEnd = str(year.endDate).slice(0, 10);
+    const days = (Date.parse(yearEnd) - Date.parse(end)) / 86400000;
+    const quarters = Math.round(days / 91.31);
+    if (quarters >= 0 && quarters <= 3 && Math.abs(days - quarters * 91.31) < 12)
+      return "FY" + yearEnd.slice(2, 4) + " Q" + (4 - quarters);
+  }
+  return end;
 }
 
 /** Keep quarter and fiscal-year estimates separate; they are different durations. */

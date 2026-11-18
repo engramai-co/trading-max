@@ -1,3 +1,4 @@
+import type { operations } from "@/lib/api-schema";
 import { researchLensKey } from "@/lib/dashboard-query";
 import type { ResearchLensSnapshot, ResearchPriceSeries } from "@/lib/types";
 import { queryOptions } from "@tanstack/react-query";
@@ -31,7 +32,7 @@ export function researchPriceQuery(
   ticker: string,
   revision?: string | null,
   interval = "1d",
-  window?: string,
+  window?: NonNullable<operations["research_prices_v1_research__ticker__prices_get"]["parameters"]["query"]>["window"],
 ) {
   return queryOptions({
     queryKey: ["workspace-prices", ticker, interval, window ?? "MAX", revision],
