@@ -39,7 +39,8 @@ export function CitedResearchEvent() {
   });
   const row = !result.isFetching && !result.isError && result.data;
   const details = row && kind === "dividend" ? [
-    dividendAmount(row.amount, row.currency, row.unit, locale), dividendBasis(row.basis, locale),
+    dividendAmount(row.amount, row.currency, row.unit, locale) ?? t("每股金额暂无数据","Amount per share unavailable"),
+    dividendBasis(row.basis, locale),
   ].filter(Boolean).join(" · ") : "";
   const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : t("股息", "Dividend");
   return <Page title={t("研究", "Research")}><section data-reading-event=""><Panel title={ticker + " · " + title}>

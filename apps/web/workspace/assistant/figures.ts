@@ -97,7 +97,6 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   if (historical && (row.kind !== "dividend" || !str(row.ticker) || !str(output.snapshot_id))) return null;
   let detail = "";
   if (historical && ["amount", "currency", "unit"].includes(field.field)) {
-    if (!/^[A-Z]{3}$/.test(str(row.currency)) || row.unit !== "per_share") return null;
     detail = dividendAmount(row.amount, row.currency, row.unit, locale) ?? "";
     if (!detail) return null;
   } else if (historical && field.field === "basis") {
@@ -152,6 +151,7 @@ function researchField(row: NonNullable<ReturnType<typeof resolveField>>, locale
 }
 function formatField(tool: string, row: NonNullable<ReturnType<typeof resolveField>>, locale: Locale) {
   const { field, parent, group, value } = row;
+  if (tool === "news_and_events") return null;
   if (tool === "read_research_lens" && field === "value") return researchField(row, locale);
   if (field === "date" && dateText(value)) return [word(labels.date, locale), dateText(value)];
   if (tool === "data_freshness" && group === "items" && field === "state") {

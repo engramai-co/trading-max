@@ -24,9 +24,12 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       if (!source) return [];
       if (["upcoming_events","news_and_events"].includes(source.ref.tool) && pointer.startsWith("/data/items/")) {
         const observation = calendarObservation(source.ref, source.output, pointer, locale, timeZone);
-        if (!observation) return [];
-        result.push(observation);
-        continue;
+        if (observation) {
+          result.push(observation);
+          continue;
+        }
+        // Other historical events can be handled by their page renderer below.
+        if (source.ref.tool === "upcoming_events") return [];
       }
       const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone);
       if (!text) return [];

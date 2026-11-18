@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { dividendAmount } from "@/lib/dividend-disclosure";
 import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
 import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText } from "./evidence";
@@ -239,5 +240,15 @@ it("renders the published amount and retained disclosure from news_and_events", 
     expect(Object.fromEntries(new URL(evidenceHref(line.evidence!)!, "http://localhost").searchParams)).toMatchObject({
       event:"dividend", ticker:row.ticker, snapshotId:historicalDividend.snapshot_id, calendarEventId:row.evidence_id,
     });
+  }
+});
+
+it("withholds historical amounts with missing currency or units in the reply and its destination", () => {
+  const row = historicalDividend.data.items[0];
+  for (const changes of [{currency:null},{unit:null}]) {
+    const incomplete = {...row,...changes};
+    const output = {...historicalDividend, data:{...historicalDividend.data,items:[incomplete]}};
+    expect(verifiedLines(fieldReply("news_and_events",output,"/data/items/0/amount"))).toEqual([]);
+    expect(dividendAmount(incomplete.amount,incomplete.currency,incomplete.unit,"en")).toBeNull();
   }
 });

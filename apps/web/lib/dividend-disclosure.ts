@@ -2,10 +2,9 @@ import type { Locale } from "@/components/locale-provider";
 
 export function dividendAmount(amount: unknown, currency: unknown, unit: unknown, locale: Locale) {
   if (typeof amount !== "number" || !Number.isFinite(amount)) return null;
-  const code = typeof currency === "string" ? currency : "";
+  if (typeof currency !== "string" || !/^[A-Z]{3}$/.test(currency) || unit !== "per_share") return null;
   const perShare = locale === "zh" ? "每股" : "per share";
-  const label = unit === "per_share" ? perShare : typeof unit === "string" ? unit : "";
-  return [code, String(amount), label].filter(Boolean).join(" ");
+  return [currency, String(amount), perShare].join(" ");
 }
 
 export function dividendBasis(basis: unknown, locale: Locale) {
