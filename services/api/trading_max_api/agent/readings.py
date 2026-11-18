@@ -113,6 +113,21 @@ class ReadingService:
             yield ReadingEvent(type="empty")
             return
         saved = self.cached(role, context, None if latest else version, scheduled=scheduled)
+        if cached_only and not latest and role.refresh_cached_facts:
+            saved = self.cached(role, context, version, scheduled=True) or saved
+        if saved and not latest and role.refresh_cached_facts:
+            facts = await asyncio.to_thread(role.facts, tools, context)
+            by_section = {fact.section: fact for fact in facts}
+            if not all(line.section in by_section for line in saved.lines):
+                yield ReadingEvent(type="empty")
+                return
+            saved = saved.model_copy(
+                update={
+                    "as_of": deps.manifest.created_at,
+                    "snapshot_id": deps.snapshot_id,
+                    "lines": [by_section[line.section] for line in saved.lines],
+                }
+            )
         if saved:
             yield ReadingEvent(type="result", reading=saved)
             return

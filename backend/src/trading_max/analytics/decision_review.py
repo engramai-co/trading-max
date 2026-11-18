@@ -37,9 +37,10 @@ import numpy as np
 import pandas as pd
 
 from trading_max.analytics.decision_prices import SecurityPrices
+from trading_max.analytics.review_evidence import HoldingMove
 from trading_max.research.calendar import market_calendar
 
-CALCULATION_VERSION = "decisions-v5"
+CALCULATION_VERSION = "decisions-v6"
 HORIZON_DAYS = 20
 MAX_DECISIONS = 2_000
 MAX_ROUND_TRIPS = 500
@@ -212,6 +213,7 @@ def build_decision_review(
     prices: Mapping[str, SecurityPrices],
     *,
     campaigns: Sequence[Mapping[str, Any]] = (),
+    holding_moves: Sequence[HoldingMove] = (),
     unpriced: Sequence[str] = (),
     as_of: pd.Timestamp,
     market: pd.Series | None = None,
@@ -259,6 +261,39 @@ def build_decision_review(
     means = (running["purchase_value"] / running["purchases"]).where(
         running["missing_purchase"] == 0
     )
+    # An untraded fall is an observation, never a broker fill. Measure a hypothetical
+    # purchase at that close using only this account's purchases through that day.
+    identities = {}
+    for identity, security in prices.items():
+        identities.setdefault(security.ticker, []).append(identity)
+    for move in holding_moves:
+        candidates = identities.get(move.ticker, [])
+        if move.change >= 0 or len(candidates) != 1 or candidates[0] not in means.index.levels[0]:
+            continue
+        identity = candidates[0]
+        security = prices[identity]
+        day = pd.Timestamp(move.date)
+        prior = means.loc[identity]
+        prior = prior[pd.to_datetime(prior.index) <= day]
+        if prior.empty or pd.isna(prior.iloc[-1]) or day not in security.final_days:
+            continue
+        basis = float(prior.iloc[-1])
+        after = security.closes_after(day)
+        if basis <= 0 or not len(after):
+            continue
+        move.average_purchase_gbp = _round(basis)
+        start = int(security.closes.index.get_loc(day))
+        close = float(security.closes.iloc[start])
+        for field, end in (
+            (
+                "hypothetical_horizon_gbp",
+                after[HORIZON_DAYS - 1] if len(after) >= HORIZON_DAYS else None,
+            ),
+            ("hypothetical_to_date_gbp", security.final_days[-1]),
+        ):
+            if end is not None and end > day and end in security.final_days:
+                change, _ = _window(security, start, close, end)
+                setattr(move, field, _round(basis * change) if change is not None else None)
     decisions: list[dict[str, Any]] = []
     round_trips: list[dict[str, Any]] = []
     unscored = 0
@@ -375,6 +410,8 @@ def build_decision_review(
                     "kind": "T" if traded_both else side[0].upper(),
                     "quantity": _round(shares, 6),
                     "amount_gbp": _round(amount),
+                    "execution_price_gbp": _round(amount / shares, 4) if shares > 0 else None,
+                    "listing": security.symbol,
                     "return_horizon": _round(horizon_return, 6),
                     "effect_horizon_gbp": None
                     if horizon_return is None
@@ -402,6 +439,13 @@ def build_decision_review(
                     "hindsight_to_date": hindsight_latest,
                 }
             )
+    baskets: dict[str, set[str]] = {}
+    for row in decisions:
+        if row["side"] == "buy":
+            baskets.setdefault(row["date"], set()).add(row["listing"])
+    for row in decisions:
+        if row["side"] == "buy" and len(baskets[row["date"]]) > 1:
+            row["basket_buy"] = True
     decisions.sort(key=lambda row: (row["date"], row["ticker"], row["side"]))
     round_trips.sort(key=lambda row: (row["date"], row["ticker"]))
     prices_by_ticker = {security.ticker: security for security in prices.values()}

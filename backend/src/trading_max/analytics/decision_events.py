@@ -248,6 +248,18 @@ def attach_decision_events(
             counts[kind] = counts.get(kind, 0) + 1
             kept.append(event)
         row["events"] = sorted(kept[:MAX_EVENTS], key=lambda event: event["date"])
+    # Mark every recorded purchase we can match to an already-loaded earnings
+    # history, including purchases outside the short lists. Unknown stays unknown.
+    for row in decisions:
+        history = loaded.get(row.get("listing"))
+        if row.get("side") != "buy" or history is None:
+            continue
+        end = (date.fromisoformat(row["date"]) + timedelta(days=7)).isoformat()
+        if any(
+            event.get("kind") == "earnings" and row["date"] < str(event.get("date")) <= end
+            for event in history
+        ):
+            row["before_earnings"] = True
     return len(loaded)
 
 

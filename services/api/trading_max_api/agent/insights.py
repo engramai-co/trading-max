@@ -396,6 +396,21 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                     "ticker": ticker,
                     "date": day,
                     "side": side,
+                    **(
+                        {
+                            "listing": _text(row.get("listing"), 32),
+                            "name": _text(row.get("name"), 160),
+                            "execution_price_gbp": _number(row.get("execution_price_gbp")),
+                            "security_return": _number(row.get(f"return_{suffix}"))
+                            if usable
+                            else None,
+                            "market_return": _number(row.get(f"market_return_{suffix}"))
+                            if usable
+                            else None,
+                        }
+                        if args.decision_date
+                        else {}
+                    ),
                     "horizon": horizon,
                     "observed_days": observed,
                     "effect_gbp": effect,

@@ -1374,6 +1374,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         holding_fx_split,
         price_key_moments,
     )
+    from .review_patterns import review_patterns
 
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
@@ -1391,6 +1392,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (holding_fx_split, 5),
         (dated_exposure, 5),
         (decision_timing_and_habits, 8),
+        (review_patterns, 8),
         (price_key_moments, 8),
         (news_and_events, 8),
         (upcoming_events, 8),

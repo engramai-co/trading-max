@@ -1390,6 +1390,8 @@ class TradeDecision(ApiModel):
     observed_days: int | None = None
     #: Whether the HORIZON_DAYS window has closed and is scored; absent on older artifacts.
     horizon_complete: bool | None = None
+    before_earnings: bool | None = None
+    basket_buy: bool | None = None
     #: Present on the decisions the review lists: events from a week before to the horizon.
     events: list[DecisionEvent] | None = None
 

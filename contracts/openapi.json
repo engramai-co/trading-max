@@ -6505,6 +6505,17 @@
             ],
             "title": "Effect Gbp"
           },
+          "execution_price_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Price Gbp"
+          },
           "hindsight": {
             "anyOf": [
               {
@@ -6518,6 +6529,39 @@
           "horizon": {
             "title": "Horizon",
             "type": "string"
+          },
+          "listing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing"
+          },
+          "market_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Return"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
           },
           "observed_days": {
             "anyOf": [
@@ -6533,6 +6577,17 @@
           "scope": {
             "title": "Scope",
             "type": "string"
+          },
+          "security_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Return"
           },
           "side": {
             "title": "Side",
@@ -10697,6 +10752,17 @@
       "HoldingMove": {
         "additionalProperties": false,
         "properties": {
+          "averagePurchaseGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagepurchasegbp"
+          },
           "basis": {
             "anyOf": [
               {
@@ -10720,6 +10786,28 @@
             "format": "date",
             "title": "Date",
             "type": "string"
+          },
+          "hypotheticalHorizonGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypotheticalhorizongbp"
+          },
+          "hypotheticalToDateGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypotheticaltodategbp"
           },
           "priorReturns": {
             "anyOf": [
@@ -23446,6 +23534,28 @@
           "amountGbp": {
             "title": "Amountgbp",
             "type": "number"
+          },
+          "basketBuy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basketbuy"
+          },
+          "beforeEarnings": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beforeearnings"
           },
           "date": {
             "title": "Date",

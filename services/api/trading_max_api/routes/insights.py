@@ -118,6 +118,11 @@ class Timing(BaseModel):
 
 
 class DecisionTiming(BaseModel):
+    listing: str | None = None
+    name: str | None = None
+    execution_price_gbp: float | None = None
+    security_return: float | None = None
+    market_return: float | None = None
     scope: str
     ticker: str
     date: str

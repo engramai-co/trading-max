@@ -3604,13 +3604,23 @@ export interface components {
             date: string;
             /** Effect Gbp */
             effect_gbp: number | null;
+            /** Execution Price Gbp */
+            execution_price_gbp?: number | null;
             hindsight: components["schemas"]["Timing"] | null;
             /** Horizon */
             horizon: string;
+            /** Listing */
+            listing?: string | null;
+            /** Market Return */
+            market_return?: number | null;
+            /** Name */
+            name?: string | null;
             /** Observed Days */
             observed_days: number | null;
             /** Scope */
             scope: string;
+            /** Security Return */
+            security_return?: number | null;
             /** Side */
             side: string;
             /** Ticker */
@@ -4904,6 +4914,8 @@ export interface components {
         };
         /** HoldingMove */
         HoldingMove: {
+            /** Averagepurchasegbp */
+            averagePurchaseGbp?: number | null;
             /** Basis */
             basis?: ("volatility" | "short_history") | null;
             /** Change */
@@ -4913,6 +4925,10 @@ export interface components {
              * Format: date
              */
             date: string;
+            /** Hypotheticalhorizongbp */
+            hypotheticalHorizonGbp?: number | null;
+            /** Hypotheticaltodategbp */
+            hypotheticalToDateGbp?: number | null;
             /** Priorreturns */
             priorReturns?: number | null;
             /** Quotecurrency */
@@ -9196,6 +9212,10 @@ export interface components {
         TradeDecision: {
             /** Amountgbp */
             amountGbp: number;
+            /** Basketbuy */
+            basketBuy?: boolean | null;
+            /** Beforeearnings */
+            beforeEarnings?: boolean | null;
             /** Date */
             date: string;
             /** Dividendhorizongbp */

@@ -383,6 +383,7 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
             "on_or_before": "2026-02-03",
         },
         "holding_fx_split": {"scope": "invest", "period": "open_position"},
+        "review_patterns": {"scope": "invest"},
         "decision_timing_and_habits": {"scope": "invest"},
         "price_key_moments": {
             "scope": "invest",

@@ -113,6 +113,9 @@ class PageRole:
     publication_targets: Callable[[JobRecord, RoleTools], list[BriefTarget]] | None = None
     data_version: Callable[[RoleTools, Any], str] | None = None
 
+    # Reuse the model’s section order while repricing a running outcome from the pinned data.
+    refresh_cached_facts: bool = False
+
     @property
     def is_digest(self) -> bool:
         return bool(self.scheduled or self.publication_targets or self.weekly_fold)
@@ -124,4 +127,6 @@ class PageRole:
 def role_registry() -> dict[str, PageRole]:
     from .overview_roles import OVERVIEW_ROLES
 
-    return {role.id: role for role in OVERVIEW_ROLES}
+    from .review_roles import REVIEW_ROLES
+
+    return {role.id: role for role in (*OVERVIEW_ROLES, *REVIEW_ROLES)}

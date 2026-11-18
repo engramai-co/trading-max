@@ -87,6 +87,9 @@ class HoldingMove(DomainModel):
     basis: Literal["volatility", "short_history"] | None = None
     prior_returns: int | None = None
     threshold: float | None = None
+    average_purchase_gbp: float | None = None
+    hypothetical_horizon_gbp: float | None = None
+    hypothetical_to_date_gbp: float | None = None
 
 
 class CashSpan(DomainModel):
