@@ -76,12 +76,13 @@ def _valuation_preview(
     request: Request,
     inputs: ValuationPreviewRequest | None = None,
     requested_family: Family | None = None,
+    manifest: SnapshotManifest | None = None,
     *,
     legacy: bool = False,
 ) -> ValuationPreview:
     default_source = "user-input"
     research = app_service(request, "research")
-    manifest = latest_or_503(request)
+    manifest = manifest or latest_or_503(request)
     lens = research.lens_snapshot(ticker, "valuation", manifest)
     facts, context = lens.financial_facts, lens.context
     if not facts or not context or not lens.valuation:
@@ -303,7 +304,22 @@ def research_note_update(
 def research_model_save(
     ticker: str, body: ResearchModelSaveRequest, request: Request
 ) -> ResearchJournal:
-    inputs = ValuationPreviewRequest.model_validate(body.model_dump(exclude={"reason"}))
+    if body.draft_review:
+        journal = app_service(request, "research_journal")
+        # Serialise a draft's parent check with all journal saves, including manual ones.
+        with journal.lock:
+            try:
+                return journal.save_reviewed(
+                    ticker,
+                    body,
+                    app_service(request, "valuation_drafts"),
+                    lambda inputs: _valuation_preview(ticker, request, inputs),
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+    inputs = ValuationPreviewRequest.model_validate(
+        body.model_dump(exclude={"reason", "draft_review"})
+    )
     # The published client sends only its five operating controls. Family-aware
     # clients can also call this shared save route and identify their contract.
     legacy = not ({"family", "formula_version"} & body.model_fields_set) and all(

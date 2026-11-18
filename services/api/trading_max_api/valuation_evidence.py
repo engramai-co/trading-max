@@ -19,6 +19,7 @@ from trading_max.research.facts import (
 )
 from trading_max.research.valuation_basis import (
     EXCLUDED_ASSETS,
+    Family,
     classify,
     listing_shares,
     period_choice,
@@ -449,6 +450,7 @@ def freeze_valuation_evidence(
     *,
     snapshots: SnapshotReader,
     estimate_reader: EstimateReader | None = None,
+    selected_family: Family | None = None,
 ) -> FrozenValuationEvidence:
     """Read only public artifacts for one exact listing and snapshot. No live fallback."""
     binding = EvidenceBinding.model_validate(binding.model_dump(mode="json"))
@@ -496,7 +498,7 @@ def freeze_valuation_evidence(
     stored = valuation.data.get("assumptions") or {} if valuation else {}
     valuation_currency = valuation.data.get("currency") if valuation else None
     aligned = quoted is not None and valuation_currency == quoted
-    family = stored.get("family") or classify(binding.ticker, "", raw)[0]
+    family = selected_family or stored.get("family") or classify(binding.ticker, "", raw)[0]
     ttm, selected = statement_basis(facts, family, binding.listing)
     metrics_for_basis = {Metric.REVENUE: "revenue"}
     if family == "cash-flow":

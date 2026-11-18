@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import uuid
+from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -19,6 +20,13 @@ from trading_max.research.valuation_preview import (
 
 from .dashboard_models import ValuationRow
 from .valuation_assumptions import _atomic_write
+from .valuation_drafts import (
+    DraftAudit,
+    DraftReview,
+    ValuationDraftStore,
+    basis_digest,
+    verify_decisions,
+)
 
 
 class ResearchNoteInput(DomainModel):
@@ -56,9 +64,11 @@ class SavedResearchModel(DomainModel):
     saved_at: datetime
     preview: ValuationPreview
     reason: str = ""
+    draft_audit: DraftAudit | None = None
 
 
 class ResearchModelSaveRequest(ValuationPreviewRequest):
+    draft_review: DraftReview | None = None
     reason: str = Field(default="", max_length=4000)
 
 
@@ -161,16 +171,63 @@ class ResearchJournalStore:
             self._save(state)
             return state
 
-    def save_model(self, model: ValuationPreview, reason: str = "") -> ResearchJournal:
+    def save_reviewed(
+        self,
+        ticker: str,
+        body: ResearchModelSaveRequest,
+        drafts: ValuationDraftStore,
+        calculate: Callable[[ValuationPreviewRequest], ValuationPreview],
+    ) -> ResearchJournal:
+        with self.lock:
+            review = body.draft_review
+            state = self.load(ticker)
+            digest = fingerprint(body.model_dump(mode="json"))
+            for saved in state.models:
+                audit = saved.draft_audit
+                if audit and audit.review.id == review.id:
+                    if audit.request_digest != digest:
+                        raise ValueError("valuation-draft-review-required")
+                    return state  # the response to an earlier successful save may have been lost
+            draft = drafts.get(review.id)
+            parent = state.models[0].id if state.models else None
+            if (
+                draft.evidence.binding.ticker != ticker.upper()
+                or draft.parent_model_id != parent
+                or draft.horizon != body.horizon
+                or draft.formula_version != body.formula_version
+                or draft.evidence.family != body.family
+            ):
+                raise ValueError("valuation-draft-review-required")
+            verify_decisions(draft, review, body.scenarios)
+            result = calculate(
+                ValuationPreviewRequest.model_validate(
+                    body.model_dump(exclude={"reason", "draft_review"})
+                )
+            )
+            if not result.scenarios or basis_digest(result.basis) != draft.basis_digest:
+                raise ValueError("valuation-draft-review-required")
+            return self.save_model(
+                result, body.reason, DraftAudit(draft=draft, review=review, request_digest=digest)
+            )
+
+    def save_model(
+        self, model: ValuationPreview, reason: str = "", audit: DraftAudit | None = None
+    ) -> ResearchJournal:
         with self.lock:
             state = self.load(model.basis.ticker)
             reason = reason.strip()
             model_id = fingerprint([model.id, reason]) if reason else model.id
+            if audit:
+                model_id = fingerprint([model_id, str(audit.review.id)])
             if not any(m.id == model_id for m in state.models):
                 state.models.insert(
                     0,
                     SavedResearchModel(
-                        id=model_id, saved_at=datetime.now(UTC), preview=model, reason=reason
+                        id=model_id,
+                        saved_at=datetime.now(UTC),
+                        preview=model,
+                        reason=reason,
+                        draft_audit=audit,
                     ),
                 )
                 self._save(state)
