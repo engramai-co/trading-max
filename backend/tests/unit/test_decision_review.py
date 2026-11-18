@@ -1183,3 +1183,47 @@ def test_untraded_fall_uses_only_prior_purchases_and_final_matching_windows():
     assert drop.hypothetical_horizon_gbp == 50
     assert drop.hypothetical_to_date_gbp == -40
     assert pending.hypothetical_to_date_gbp is None
+
+
+@pytest.mark.parametrize("missing", ["close", "fx"])
+def test_pre_trade_close_requires_an_observed_bar_and_its_published_fx(missing):
+    dates = pd.bdate_range("2026-02-02", "2026-02-18")
+    quotes = pd.Series(127.5, index=dates)
+    rates = pd.Series(1.25, index=dates)
+    absent = pd.Timestamp("2026-02-05")
+    if missing == "close":
+        quotes = quotes.drop(absent)
+    else:
+        rates = rates.drop(absent)
+    review = _review_from_quotes(
+        [_usd_fill("2026-02-06T02:00:00Z", "Market buy", 1, 102)],
+        {"NVDA": quotes},
+        viewed="2026-02-18",
+        rates=rates,
+    )
+    row = review["decisions"][0]
+    assert (row["prior_close_date"], row["prior_close_gbp"]) == ("2026-02-04", 102)
+    assert pd.Timestamp(row["first_fill_at"]) == pd.Timestamp("2026-02-06T02:00:00Z")
+
+
+def test_basket_counts_net_ledger_purchases_with_an_unpriced_member():
+    trades = _trade_columns(
+        pd.DataFrame(
+            [
+                _fill("2026-02-02T14:00:00Z", "Market buy", 1, 100),
+                _fill("2026-02-02T15:00:00Z", "Market buy", 3, 300, "AMD"),
+                _fill("2026-02-02T16:00:00Z", "Market sell", 2, 180, "AMD"),
+            ]
+        )
+    )
+    key = trades["SecurityIdentity"].iloc[0]
+    prices = _closes("2026-02-02", [100, 102, 110])
+    review = build_decision_review(
+        trades, {key: SecurityPrices(key, "NVDA", "NVDA", "NVDA", prices)}, as_of=prices.index[-1]
+    )
+    basket = [r for r in review["decisions"] if r.get("basket_buy")]
+    assert {r["ticker"] for r in basket} == {"AMD", "NVDA"}
+    missing = next(r for r in basket if r["ticker"] == "AMD")
+    assert missing["quantity"] == 1 and missing["amount_gbp"] == 100
+    assert missing.get("effect_to_date_gbp") is None and missing.get("unpriced")
+    assert review["coverage"]["scored"] == 1

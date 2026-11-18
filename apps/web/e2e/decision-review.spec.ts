@@ -853,9 +853,10 @@ test.describe("review assistant", () => {
               tool,
               evidenceId: "ev_synthetic",
               arguments: {
-                scope: "invest",
-                horizon: "to_date",
-                ticker: "SYNB",
+                ...(digest ? { habit: section } : {}),
+                scope: digest ? "broker_total" : "invest",
+                horizon: digest ? "20_sessions" : "to_date",
+                ticker: digest ? "" : "SYNB",
                 side: "buy",
                 decision_date: "2026-09-02",
               },
@@ -910,7 +911,11 @@ test.describe("review assistant", () => {
             });
         }
         await capture("habits");
-        await chooseHabit.click();
+        if (mobile) {
+          await page.locator(".mx-habit-line .mx-reading-source").first().click();
+          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(page.locator(".mx-review-filter")).toBeFocused();
+        } else await chooseHabit.click();
         const filtered = page.locator(".mx-review-filter");
         await expect(filtered).toBeVisible();
         await expect(page.locator(".mx-review-expand-head > button")).toHaveCount(1);
@@ -1073,4 +1078,38 @@ test.describe("review assistant", () => {
     await expect(page.locator(".mx-review-filter,.mx-digest,.mx-habit-list")).toHaveCount(0);
     expect(requests).toEqual([]);
   });
+});
+
+test("review keeps the painted timeline in place when consent resolves", async ({page}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({benchmark:0.03, events:true}));
+  let resolve!: () => void;
+  const delayed = new Promise<void>(done => { resolve = done; });
+  await page.route("**/api/backend/assistant/status", async route => {
+    await delayed; await route.fulfill({json:{ready:true}});
+  });
+  await page.goto("/review");
+  await expect(page.locator(".mx-review-money,.mx-review-lead").first()).toBeVisible();
+  const timeline = page.getByRole("heading", {name:/每笔决定/}).first();
+  const before = await timeline.count() && await timeline.isVisible() ? (await timeline.boundingBox())!.y : null;
+  resolve();
+  await expect(page.locator(".mx-digest").first()).toBeVisible();
+  await expect(timeline).toBeVisible();
+  if (before !== null) expect(Math.abs((await timeline.boundingBox())!.y - before)).toBeLessThan(2);
+});
+
+test("the ranked arrow and reading fallback lead to the selected twin", async ({page},info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({benchmark:0.02,events:false,twin:true}));
+  await page.route("**/api/backend/assistant/status",route=>route.fulfill({json:{ready:true}}));
+  await page.route("**/api/backend/assistant/roles/*/reading",route=>route.fulfill({contentType:"application/x-ndjson",body:'{"type":"error","code":"assistant_unavailable"}\n'}));
+  await page.goto("/review?account=A&reviewWindow=to_date");
+  const row = panel(page,"代价最大").locator(".mx-review-expand-head").filter({hasText:"SYND.AS"});
+  await expect(row.getByRole("link")).toHaveAttribute("href",/reviewOrdinal=1/);
+  await row.getByRole("button").click();
+  const fallback = (info.project.name === "mobile" ? page.getByRole("dialog") : page.locator(".mx-inline-reading")).getByRole("link",{name:/查看这笔决定/});
+  await expect(fallback).toHaveAttribute("href",/reviewOrdinal=1/);
+  await fallback.click();
+  await expect(page.locator(".mx-decision-focus")).toContainText("£120");
+  await expect(page.locator(".mx-decision-focus").getByRole("link").first()).toBeFocused();
 });

@@ -118,3 +118,12 @@ it("reads quotation currency from the same research dataset and normalised valua
   const [valuation] = verifiedLines(fieldReply("read_valuation_evidence",{data:{items:[row]}},"/data/items/0/value"));
   expect(valuation.text).toContain("£1.2500/share");
 });
+
+it("opens the earnings and ratings sections from their own evidence", () => {
+  for (const section of ["events","ratings"]) {
+    const href = evidenceHref({evidenceId:"ev_source",tool:"news_and_events",source:section === "events" ? "financials" : "analysts",arguments:{ticker:"TEST",lens:"analyst",analystView:section}});
+    const url = new URL(href!, "http://localhost");
+    expect(url.searchParams.get("analystView")).toBe(section);
+    expect(url.hash).toBe("#research-" + section);
+  }
+});

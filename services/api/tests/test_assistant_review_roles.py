@@ -236,3 +236,85 @@ def test_habit_cache_reprices_running_outcome_and_waits_for_material_changes(tmp
     assert "£12.00" in cached.lines[0].variants["to_date"].en and len(calls) == 1
     row["horizon_complete"] = False
     assert asyncio.run(run(publish(), cached_only=True))[-1].type == "empty"
+
+
+def test_pre_trade_leads_respect_the_earliest_fill_in_utc(tmp_path):
+    from zoneinfo import ZoneInfo
+
+    _, publish, row, _ = setup_review(tmp_path)
+    row["first_fill_at"] = "2026-02-03T02:00:00Z"
+    deps = publish()
+    items = [
+        {"date": "2026-02-02", "title": "Date only, order uncertain"},
+        {"instant": "2026-02-03T01:00:00Z", "title": "Verified before the fill"},
+        {"instant": "2026-02-03T03:00:00Z", "title": "Later than the fill"},
+    ]
+    for i, item in enumerate(items):
+        item.update(publisher="Synthetic", url=f"https://example.org/synthetic/{i}")
+    artifact = deps.store.immutable_artifacts.put_json(
+        key=NEWS_KEY, payload={"securities": {"TEST": {"items": items}}}
+    ).ref
+    deps = replace(deps, manifest=republish(deps.store, {NEWS_KEY: artifact}))
+    role = role_registry()["decision"]
+    context = DecisionContext(
+        scope="invest",
+        page_scope="invest",
+        ticker="TEST",
+        side="buy",
+        decision_date=row["date"],
+        horizon="20_sessions",
+    )
+    for zone in ("Europe/London", "America/New_York"):
+        pinned = RoleTools.pinned(replace(deps, timezone=ZoneInfo(zone)), role.allowed_tools)
+        lines = role.facts(pinned, context)
+        assert any("Verified before the fill" in line.en for line in lines)
+        assert all(
+            "Later than the fill" not in line.en and "order uncertain" not in line.en
+            for line in lines
+        )
+
+
+def test_mixed_untraded_falls_are_labelled_as_a_net_hypothetical_result(tmp_path):
+    _, publish, _, _ = setup_review(tmp_path)
+    deps = publish()
+    moves = [
+        {
+            "change": -0.12,
+            "ticker": "TEST",
+            "date": f"2026-02-0{i}",
+            "hypotheticalHorizonGbp": value,
+        }
+        for i, value in enumerate((15, -7), 1)
+    ]
+    ref = deps.store.immutable_artifacts.put_json(
+        key=EVIDENCE, payload={"accounts": {"A": {"coverage": "complete", "holdingMoves": moves}}}
+    ).ref
+    deps = replace(deps, manifest=republish(deps.store, {EVIDENCE: ref}))
+    role = role_registry()["habits"]
+    facts = role.facts(RoleTools.pinned(deps, role.allowed_tools), HabitsContext(scope="invest"))
+    line = next(f for f in facts if f.section == "untraded_fall")
+    assert "In hindsight" in line.en and "net hypothetical" in line.en and "£8.00" in line.en
+    assert "事后" in line.zh and "净" in line.zh and "£8.00" in line.zh
+
+
+def test_earnings_and_ratings_each_cite_their_research_section(tmp_path):
+    _, publish, row, _ = setup_review(tmp_path)
+    role = role_registry()["decision"]
+    context = DecisionContext(
+        scope="invest",
+        page_scope="invest",
+        ticker="TEST",
+        side="buy",
+        decision_date=row["date"],
+        horizon="20_sessions",
+    )
+    facts = role.facts(RoleTools.pinned(publish(), role.allowed_tools), context)
+    assert len(facts) <= 4
+    by_section = {line.section: line for line in facts}
+    for kind, source, target in (
+        ("earnings", "financials", "events"),
+        ("rating_change", "analysts", "ratings"),
+    ):
+        ref = by_section[kind].evidence
+        assert ref.source == source and ref.arguments.get("analystView") == target
+    assert by_section["headline"].evidence.source == "publisher"
