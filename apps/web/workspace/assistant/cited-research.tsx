@@ -27,7 +27,8 @@ export default function CitedResearch() {
   const ref: Evidence = {tool, evidenceId:params.get("evidenceId") || "", source:"market", arguments:Object.fromEntries(params)};
   const field = params.get("field");
   const figure = data && field ? researchFigure(ref,object(data.output),field,locale,timeZone) : null;
-  const text = data && field ? renderToolField(tool,object(data.output),field,locale,timeZone,figure) : null;
+  const calendarRow = (tool === "news_and_events" || tool === "upcoming_events") && field?.startsWith("/data/items/");
+  const text = calendarRow ? figure?.text : data && field ? renderToolField(tool,object(data.output),field,locale,timeZone,figure) : null;
   const story = tool === "research_headline" && data ? object(object(data.output).data) : {};
   const urlSource = safeUrl(str(story.url));
   return <Page title={t("研究","Research")}><Panel title={t("引用的研究记录","Cited research observation") + " · " + ticker}>

@@ -530,6 +530,8 @@ test("a selected-session early close reopens the bound market and retained row",
   await page.goto("/research?" + new URLSearchParams({ticker:"MARKET",evidence:"upcoming_events",evidenceId:output.evidence_id,
     start:args.start,end:args.end,snapshotId:output.snapshot_id,field:"/data/items/0/date",market:args.market,
     eventTicker:args.ticker,eventId:row.evidence_id,timezone:output.data.timezone}));
-  await expect(page.getByText(/XNYS early close.*27 Nov 2026/)).toBeVisible();
+  const observation = page.getByText(/XNYS early close.*27 Nov 2026/);
+  await expect(observation).toBeVisible();
+  expect((await observation.textContent())?.match(/limited coverage/g)).toHaveLength(1);
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css",path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-retained-early-close.png")});
 });
