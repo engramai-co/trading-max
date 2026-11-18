@@ -17,6 +17,7 @@ class PinnedListing:
     held: FundListingIdentity | None = None
     price_row: dict | None = None
     fund_bars: bool = False
+    quote_unit: str = ""
 
     @property
     def symbol(self):

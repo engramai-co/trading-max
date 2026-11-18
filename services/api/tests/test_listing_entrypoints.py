@@ -121,7 +121,33 @@ def test_new_york_price_history_cannot_join_historical_london_timeline(bound, mo
     assert (previous.run_id, "SYN") not in observed
 
 
-def test_london_watchlist_cannot_displace_an_exact_new_york_price_row(bound):
+@pytest.mark.parametrize("exchange_on_bars", [True, False])
+def test_london_watchlist_cannot_displace_an_exact_new_york_price_row(bound, exchange_on_bars):
+    app, initial, _ = bound
+    watch(app, "SYN.L", "LSE")
+    publish(
+        app,
+        **{
+            tools.MARKET: {
+                "technical": {"rows": [{"ticker": "SYN", "exchange": "NYQ", "currency": "USD"}]}
+            },
+            tools.TECHNICAL: {
+                "rows": [
+                    raw_row(app, initial, "SYN", exchange="NYQ" if exchange_on_bars else ""),
+                    raw_row(app, initial, "SYN.L", exchange="LSE"),
+                ]
+            },
+        },
+    )
+    result = TestClient(app).get("/v1/research/SYN/prices")
+    assert (result.status_code, result.json()["ticker"], result.json()["exchangeCalendar"]) == (
+        200,
+        "SYN",
+        "XNYS",
+    )
+
+
+def test_overview_does_not_replace_an_explicitly_requested_published_listing(bound):
     app, initial, _ = bound
     watch(app, "SYN.L", "LSE")
     publish(
@@ -135,12 +161,8 @@ def test_london_watchlist_cannot_displace_an_exact_new_york_price_row(bound):
             }
         },
     )
-    result = TestClient(app).get("/v1/research/SYN/prices")
-    assert (result.status_code, result.json()["ticker"], result.json()["exchangeCalendar"]) == (
-        200,
-        "SYN",
-        "XNYS",
-    )
+    selected = TestClient(app).get("/v1/research?ticker=SYN").json()["selected"]
+    assert selected["ticker"] == selected["technical"]["ticker"] == "SYN"
 
 
 @pytest.mark.parametrize("stored_watch_symbol", ["SYN.L", "SYN"])
@@ -254,21 +276,28 @@ def test_wrong_same_venue_symbol_cannot_be_cached_as_decision_history(tmp_path):
         assert completed.empty, completed["Close"].tolist()
 
 
-def test_selected_original_quote_unit_for_bar_dividends(bound):
+@pytest.mark.parametrize(
+    ("bar_unit", "quote_unit", "expected"),
+    [("GBP", "USD", "GBP"), ("GBp", "USD", "GBp"), ("", "GBp", "GBp"), ("", "USD", "")],
+)
+def test_selected_original_quote_unit_for_bar_dividends(bound, bar_unit, quote_unit, expected):
     app, initial, _ = bound
     ticker = "SYN.L"
-    row = raw_row(app, initial, ticker, exchange="LSE", currency="GBP")
+    row = raw_row(app, initial, ticker, exchange="LSE", currency=bar_unit)
     row["price_series"][-1]["dividend"] = 1.2
     publish(
         app,
         **{
             tools.TECHNICAL: {"rows": [row]},
+            tools.FUNDAMENTALS: {
+                "rows": [{"ticker": ticker, "currency": "GBp", "metrics": {"exchange": "LSE"}}]
+            },
             tools.MARKET: {
                 "technical": {
                     "rows": [
                         {
                             "ticker": ticker,
-                            "currency": "USD",
+                            "currency": quote_unit,
                             "price": 25,
                             "exchange": "LSE",
                         }
@@ -278,13 +307,9 @@ def test_selected_original_quote_unit_for_bar_dividends(bound):
         },
     )
     response = TestClient(app).get(f"/v1/research/{ticker}/prices")
-    if response.status_code == 200:
-        assert (response.json()["currency"], response.json()["events"][-1]["currency"]) == (
-            "GBP",
-            "GBP",
-        )
-    else:
-        assert response.status_code == 404
+    assert response.status_code == 200
+    assert response.json()["currency"] == expected
+    assert response.json()["events"][-1]["currency"] == expected
 
 
 def test_valuations_tool_does_not_return_conflicting_stored_listing_quote(bound):

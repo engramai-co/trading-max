@@ -1037,7 +1037,7 @@ class ResearchLedger:
             generated_at=manifest.created_at,
             market=market,
             technical=(
-                {**technical, "currency": technical.get("currency") or market.get("currency") or ""}
+                {**technical, "currency": technical.get("currency") or pinned.quote_unit}
                 if technical and market
                 else technical
             ),
@@ -1932,7 +1932,7 @@ class ResearchLedger:
         if payload.technical and market:
             payload.technical = {
                 **payload.technical,
-                "currency": payload.technical.get("currency") or market.get("currency") or "",
+                "currency": payload.technical.get("currency") or pinned.quote_unit,
             }
         if view == "ledger" and detail == "documents":
             financial_row = event_row("financials", _financials_rows) or {}
@@ -2431,10 +2431,12 @@ class ResearchLedger:
                 self.pin_listing, manifest=manifest, exchanges=self.watchlist.listing_exchanges()
             ),
         )
-        requested_ticker = self.pin_listing(ticker, manifest).symbol if ticker else None
+        pin = self.pin_listing(ticker, manifest) if ticker else None
+        requested_ticker = pin.symbol if pin else None
         selected_ticker = (
             requested_ticker
-            if requested_ticker and any(item.ticker == requested_ticker for item in instruments)
+            if pin
+            and (pin.price_row or any(item.ticker == requested_ticker for item in instruments))
             else next(
                 (item.ticker for item in instruments if item.held),
                 instruments[0].ticker if instruments else None,
@@ -2467,33 +2469,6 @@ class ResearchLedger:
         listing = self.held_fund(requested, manifest, exchanges)
         route = listing.ticker if listing else self._route_ticker(requested, exchanges)
         technicals = self._published_technicals(manifest)
-        exact = exact_row(technicals.get("rows") or [], requested)
-        if (
-            route != requested
-            and exact
-            and resolve_venue(
-                requested, *row_claims(requested, exact), VenueClaim("symbol", route, route)
-            ).conflict
-        ):
-            route, listing = requested, None
-        reference = us_fund(route)
-        technical = _find(technicals.get("rows") or [], route)
-        fund_price = self._fund_price(manifest, route, listing, with_points=True)
-        source = fund_price or (None if listing or reference else technical)
-        published = str((source or {}).get("ticker") or route).upper()
-        aliases = {route} if route != requested else set()
-        if published != route and _canonical_ticker(published) == _canonical_ticker(route):
-            # The historic BASE / BASE.L spelling is safe only with independent
-            # London evidence on the observed row or its own watchlist entry.
-            evidence = resolve_venue(
-                published, *exchanges.get(published, ()), *row_claims(published, source)
-            )
-            if evidence.venues == {"XLON"}:
-                aliases.add(published)
-        claims = []
-        for symbol in dict.fromkeys((requested, route, published)):
-            claims.extend(exchanges.get(symbol, ()))
-            claims.append(VenueClaim("symbol", symbol, symbol))
         fundamentals = self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows)
         markets = self._cached_rows(
             manifest, CURRENT_MARKET_KEY, _market_rows_with_claims, fallback_key=LEGACY_MARKET_KEY
@@ -2504,16 +2479,60 @@ class ResearchLedger:
             if _artifact(manifest, key)
             for row in self._cached_rows(manifest, key, _fundamentals_rows)
         ]
-        for symbol in dict.fromkeys((requested, route, published)):
+
+        def evidence_for(symbol):
+            claims = []
+            units = []
+            fundamental = exact_row(fundamentals, symbol) or {}
+            unit = fundamental.get("currency") or (fundamental.get("metrics") or {}).get("currency")
+            if unit:
+                units.append(unit)
             for row in (
                 exact_row(technicals.get("rows") or [], symbol),
-                exact_row(fundamentals, symbol),
+                fundamental,
                 *(row for row in fund_rows if row.get("ticker") == symbol),
             ):
                 if row:
                     claims.extend(row_claims(symbol, row))
             if market := exact_row(markets, symbol):
                 claims.extend(market["_venue_claims"])
+                if market.get("currency"):
+                    units.append(market["currency"])
+            return claims, units
+
+        if route != requested:
+            exact_claims, _ = evidence_for(requested)
+            if resolve_venue(
+                requested,
+                *exact_claims,
+                VenueClaim("symbol", route, route),
+                *exchanges.get(route, ()),
+            ).conflict:
+                route, listing = requested, None
+        reference = us_fund(route)
+        technical = _find(technicals.get("rows") or [], route)
+        fund_price = self._fund_price(manifest, route, listing, with_points=True)
+        source = fund_price or (None if listing or reference else technical)
+        published = str((source or {}).get("ticker") or route).upper()
+        aliases = {route} if route != requested else set()
+        if published != route and _canonical_ticker(published) == _canonical_ticker(route):
+            # The historic BASE / BASE.L spelling is safe only with independent
+            # London evidence on the observed row or its own watchlist entry.
+            evidence = resolve_venue(
+                published, *exchanges.get(published, ()), *evidence_for(published)[0]
+            )
+            if evidence.venues == {"XLON"}:
+                aliases.add(published)
+        claims = []
+        for symbol in dict.fromkeys((requested, route, published)):
+            claims.extend(exchanges.get(symbol, ()))
+            claims.append(VenueClaim("symbol", symbol, symbol))
+        units = {}
+        for symbol in dict.fromkeys((requested, route, published)):
+            observed, quote_units = evidence_for(symbol)
+            claims.extend(observed)
+            for unit in quote_units:
+                units[major_quote_unit(unit)] = unit
         if listing:
             claims.extend(row_claims(listing.ticker, {"mic": listing.mic}))
             claims.append(watchlist_claim(listing.ticker, listing.exchange))
@@ -2528,6 +2547,8 @@ class ResearchLedger:
             listing,
             source,
             bool(fund_price),
+            (source or {}).get("currency")
+            or (next(iter(units.values())) if len(units) == 1 else ""),
         )
 
     def bind_price_series(self):
@@ -2653,14 +2674,7 @@ class ResearchLedger:
             if isinstance(point, dict)
         ]
         as_of = str(source.get("as_of") or raw.get("as_of") or "")
-        market = (
-            {}
-            if fund_price
-            else next(
-                (row for row in self._market_rows(manifest) if row.get("ticker") == bar_ticker), {}
-            )
-        )
-        currency = str(source.get("currency") or market.get("currency") or "")
+        currency = pinned.quote_unit
         all_markers, unresolved = self.trade_markers(manifest, pinned.symbol, currency)
         exchange = source.get("exchange")
         series = ResearchPriceSeries(
