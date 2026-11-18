@@ -535,6 +535,25 @@ def test_macro_uses_last_success_before_cancellation_tiebreak(order):
     assert status() == "provisional"
 
 
+def publish_headlines(store, feeds):
+    data = {
+        events.NEWS_KEY: {
+            "securities": {t: {"items": rows, "as_of": "2026-11-26"} for t, rows in feeds.items()}
+        },
+        "account/broker_snapshot_metrics.json": {
+            "accounts": {"A": {"positions": [{"ticker": t} for t in feeds]}}
+        },
+    }
+    store.publish_typed(
+        scope="research",
+        source="synthetic",
+        artifacts=[
+            store.immutable_artifacts.put_json(key=key, payload=value)
+            for key, value in data.items()
+        ],
+    )
+
+
 def test_news_merges_shared_urls_and_provider_ids_across_holdings(tmp_path):
     store = ArtifactStore(tmp_path)
 
@@ -552,22 +571,7 @@ def test_news_merges_shared_urls_and_provider_ids_across_holdings(tmp_path):
         "BETA": [headline("b", "syndicated"), headline("unrelated", "other")],
         "GAMMA": [headline("b", "original")],
     }
-    data = {
-        events.NEWS_KEY: {
-            "securities": {t: {"items": rows, "as_of": "2026-11-26"} for t, rows in feeds.items()}
-        },
-        "account/broker_snapshot_metrics.json": {
-            "accounts": {"A": {"positions": [{"ticker": t} for t in feeds]}}
-        },
-    }
-    store.publish_typed(
-        scope="research",
-        source="synthetic",
-        artifacts=[
-            store.immutable_artifacts.put_json(key=key, payload=value)
-            for key, value in data.items()
-        ],
-    )
+    publish_headlines(store, feeds)
     result = events.event_data(
         AssistantDepsFactory(store).for_run(), args("invest"), upcoming=False
     )
@@ -585,3 +589,43 @@ def test_news_merges_shared_urls_and_provider_ids_across_holdings(tmp_path):
             if r["kind"] == "news" and r["source_url"] != "https://example.org/other"
         ]
         assert same["evidence_id"] == evidence and same["tickers"] == [ticker]
+
+
+@pytest.mark.parametrize("timed_ticker", ["ALFA", "BETA"])
+def test_timed_headline_sets_the_merged_articles_local_date(tmp_path, timed_ticker):
+    store = ArtifactStore(tmp_path)
+    date_only = {
+        "id": "synthetic-article",
+        "url": "https://example.org/date-only",
+        "title": "Date-only copy",
+        "publisher": "Fixture Press",
+        "date": "2026-11-18",
+    }
+    timed = {
+        **date_only,
+        "url": "https://example.org/timed",
+        "title": "Timed copy",
+        "instant": "2026-11-18T00:30:00Z",
+    }
+    publish_headlines(
+        store, {t: [timed if t == timed_ticker else date_only] for t in ("ALFA", "BETA")}
+    )
+
+    def news(day, timezone, ticker=None):
+        deps = AssistantDepsFactory(store).for_run(timezone=timezone)
+        query = events.EventArgs(scope="invest", start=day, end=day, ticker=ticker)
+        result = events.event_data(deps, query, upcoming=False)
+        return [r for r in result["data"]["items"] if r["kind"] == "news"]
+
+    (ny,) = news("2026-11-17", "America/New_York")
+    assert (ny["local_time"], ny["title_en"], ny["source_url"]) == (
+        "2026-11-17T19:30:00-05:00",
+        timed["title"],
+        timed["url"],
+    )
+    assert ny["tickers"] == ["ALFA", "BETA"]
+    assert news("2026-11-18", "America/New_York") == []
+    (london,) = news("2026-11-18", "Europe/London")
+    (single,) = news("2026-11-17", "America/New_York", timed_ticker)
+    assert london["evidence_id"] == ny["evidence_id"] == single["evidence_id"]
+    assert single["tickers"] == [timed_ticker]
