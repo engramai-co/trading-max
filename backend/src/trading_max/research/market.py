@@ -258,9 +258,6 @@ class MarketResearchService:
                 )
                 if fund:
                     identified_funds.add(ticker)
-                    if not provider_type:
-                        frame = frame.copy()
-                        frame.attrs["asset_type"] = "ETF"
                 adr = None if fund else self.adr_loader(ticker, frame, requested_period)
                 technical_rows.append(
                     analyze_ticker(

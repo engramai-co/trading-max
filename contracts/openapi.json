@@ -23458,6 +23458,24 @@
             "title": "Exchange",
             "type": "string"
           },
+          "exchangeSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "openfigi",
+                  "yahoo",
+                  "mic",
+                  "market",
+                  "name"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchangesource"
+          },
           "figi": {
             "title": "Figi",
             "type": "string"
@@ -26706,6 +26724,24 @@
           "exchange": {
             "title": "Exchange",
             "type": "string"
+          },
+          "exchangeSource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "openfigi",
+                  "yahoo",
+                  "mic",
+                  "market",
+                  "name"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exchangesource"
           },
           "figi": {
             "title": "Figi",

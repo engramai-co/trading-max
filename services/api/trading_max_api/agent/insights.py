@@ -13,9 +13,9 @@ from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPA
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
-from trading_max.research.calendar import listing_calendar
 from trading_max.research.held_funds import FUND_PRICES_KEY
 from trading_max.research.news import NEWS_KEY
+from trading_max.research.venues import VenueConflict
 
 from ..dashboard import benchmark_series
 from ..dashboard_models import ResearchPriceSeries
@@ -484,8 +484,10 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
+    ticker = (series.published_bar_ticker or series.ticker) if series else args.ticker
+
     def listing_row(key):
-        return _ticker_row(read.read(key), args.ticker) or {}
+        return _ticker_row(read.read(key), ticker) or {}
 
     analyst = _mapped(listing_row(ANALYST).get("analyst"))
     if analyst:
@@ -515,12 +517,13 @@ def dated_events(
         issues.append("filings_unavailable")
     for row in _rows(filing_evidence.get("filings")):
         add(row.get("date"), "filing", row.get("accession") or row.get("id"))
+    fundamental = listing_row(FUNDAMENTALS)
     extra_events, extra_keys, extra_issues = listing_moment_events(
         read,
         args,
         series.exchange_calendar if series else calendar,
         _mapped(listing_row(EARNINGS).get("calendar")),
-        _mapped(listing_row(FUNDAMENTALS).get("metrics")),
+        _mapped(fundamental.get("metrics") or fundamental.get("info")),
         filing_evidence,
         series=series,
     )
@@ -532,7 +535,7 @@ def dated_events(
     if series is not None and series.published_series_id:
         markers, unresolved = series.trade_markers, series.unresolved_trade_accounts
     elif read.deps.listing_markers and read.deps.manifest:
-        markers, unresolved = read.deps.listing_markers(read.deps.manifest, args.ticker, currency)
+        markers, unresolved = read.deps.listing_markers(read.deps.manifest, ticker, currency)
     else:
         markers, unresolved = [], None
     if unresolved is None:
@@ -638,6 +641,12 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
             return read.missing("published_daily_bars_unavailable")
         try:
             series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+        except VenueConflict:
+            return read.result(
+                "unavailable",
+                reason="published_daily_bars_unavailable",
+                issues=["listing_calendar_unavailable"],
+            )
         except (FileNotFoundError, SnapshotIntegrityError, ValueError):
             return read.missing("published_daily_bars_unavailable")
         series_id = series.published_series_id
@@ -656,10 +665,10 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     bars = [p.model_dump(mode="json") for p in series.points]
     events, keys, issues = dated_events(
         read,
-        args.model_copy(update={"ticker": listing}),
+        args,
         codes,
         series,
-        calendar=series.exchange_calendar or listing_calendar(listing, None, series.timezone),
+        calendar=series.exchange_calendar,
         currency=series.currency,
     )
     moments = selected_moments(bars, events, args)

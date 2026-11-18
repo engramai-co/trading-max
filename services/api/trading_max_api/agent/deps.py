@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel
 from pydantic_ai import ModelRetry
+from trading_max.research.venues import VenueClaim
 
 from ..dashboard_models import ResearchPriceSeries, ResearchTradeMarker
 from ..index_models import IndexHistory
@@ -35,8 +36,8 @@ def bind_arguments(
     supplied: dict[str, Any], bound: dict[str, Any], schema: type[BaseModel] | None = None
 ) -> dict[str, Any]:
     supplied = supplied.copy()
-    for name, field in schema.model_fields.items() if schema else ():
-        wire = field.validation_alias
+    for name, model_field in schema.model_fields.items() if schema else ():
+        wire = model_field.validation_alias
         if isinstance(wire, str) and wire != name and name in supplied:
             value = supplied.pop(name)
             if wire in supplied and (
@@ -84,6 +85,8 @@ class AssistantDeps:
     index_history: Callable[[str, str], IndexHistory | None] | None = None
     role_bindings: ToolBindings | None = None
 
+    listing_exchanges: dict[str, tuple[VenueClaim, ...]] = field(default_factory=dict)
+
     def bound_evidence(self, tool: str) -> dict[str, str | None]:
         """Use string identifiers in links, retaining null to clear an unselected filter."""
         if self.role_bindings is None:
@@ -111,7 +114,9 @@ class AssistantDepsFactory:
     listing_markers: MarkerReader | None = None
     observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
     index_history: Callable[[str, str], IndexHistory | None] | None = None
-    bind_price_series: Callable[[], PublishedPriceReader] | None = None
+    bind_price_series: (
+        Callable[[], tuple[PublishedPriceReader, dict[str, tuple[VenueClaim, ...]]]] | None
+    ) = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
@@ -120,16 +125,18 @@ class AssistantDepsFactory:
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
         price_series = None
+        exchanges = {}
         if self.bind_price_series is not None:
             # An unreadable watchlist prevents safe chart routing for this run.
             # The other tools read their own immutable snapshot artifacts.
             with suppress(OSError, ValueError):
-                price_series = self.bind_price_series()
+                price_series, exchanges = self.bind_price_series()
         return AssistantDeps(
             index_history=self.index_history,
             observed_prices=self.observed_prices,
             listing_markers=self.listing_markers,
             price_series=price_series,
+            listing_exchanges=exchanges,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

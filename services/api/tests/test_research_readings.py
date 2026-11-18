@@ -416,7 +416,11 @@ def test_chat_cannot_retarget_a_research_moment(tmp_path, extra):
             tool.name: set(tool.parameters_json_schema["properties"])
             for tool in info.function_tools
         }
-        assert free == {"price_key_moments": set(), "research_headline": {"reference"}}
+        assert free == {
+            "price_key_moments": set(),
+            "research_headline": {"reference"},
+            "upcoming_events": {"limit", "cursor"},
+        }
         async for chunk in stream(messages, info):
             yield chunk
 
@@ -836,6 +840,9 @@ def test_selected_moment_binds_official_calendar_to_its_listing_and_day(tmp_path
         factory.store,
         extra_artifacts={
             tools.TECHNICAL: batch,
+            tools.FUNDAMENTALS: {
+                "rows": [{"ticker": "TEST", "metrics": {"fullExchangeName": "LSE"}}]
+            },
             MACRO_KEY: {"sources": {"official": {"events": releases}}},
         },
     )

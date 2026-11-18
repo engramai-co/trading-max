@@ -60,6 +60,7 @@ def test_history_coverage_marks_short_requested_period_without_backfill() -> Non
 
 def test_history_carries_provider_currency_and_normalizes_pence(monkeypatch):
     from trading_max.research.technical import history
+    from trading_max.research.venues import resolve_venue, row_claims
 
     original = synthetic_bars(80)
 
@@ -68,7 +69,11 @@ def test_history_carries_provider_currency_and_normalizes_pence(monkeypatch):
             return original.copy()
 
         def get_history_metadata(self):
-            return {"currency": "GBp"}
+            return {
+                "currency": "GBp",
+                "exchangeName": "LSE",
+                "fullExchangeName": "Unverified local segment",
+            }
 
     monkeypatch.setattr("trading_max.research.technical.yf.Ticker", lambda _ticker: Security())
     bars = history("SYNTHETIC.L")
@@ -76,7 +81,10 @@ def test_history_carries_provider_currency_and_normalizes_pence(monkeypatch):
     assert bars["Close"].iloc[-1] == original["Close"].iloc[-1] / 100
     assert bars["Volume"].equals(original["Volume"])
     benchmarks = dict.fromkeys(("SPY", "QQQ", "SOXX"), bars["Close"])
-    assert analyze_ticker("SYNTHETIC.L", "SYNTHETIC.L", bars, benchmarks).currency == "GBP"
+    published = analyze_ticker("SYNTHETIC.L", "SYNTHETIC.L", bars, benchmarks)
+    assert published.currency == "GBP"
+    venue = resolve_venue("SYNTHETIC.L", *row_claims("SYNTHETIC.L", published.model_dump()))
+    assert venue.venues == {"XLON"} and venue.calendar is None
     bars.attrs.clear()
     assert analyze_ticker("UNKNOWN", "UNKNOWN", bars, benchmarks).currency == ""
 

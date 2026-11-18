@@ -14,12 +14,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import ValidationError
 from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFReading
+from trading_max.infrastructure.alpaca_market_prices import ALPACA_SIP
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.reference.security_master import SecurityDescriptor
 from trading_max.reference.venues import venue_mic
-from trading_max.research.calendar import listing_calendar, listing_venues, session_schedule
+from trading_max.research.calendar import session_schedule
 from trading_max.research.facts import (
     DatasetClock,
     QuoteSnapshot,
@@ -30,13 +31,14 @@ from trading_max.research.facts import (
     make_quote,
     number,
 )
-from trading_max.research.fund_references import US_MARKETS, fund_peers, us_fund, us_fund_listing
+from trading_max.research.fund_references import fund_peers, us_fund, us_fund_listing
 from trading_max.research.held_funds import (
     FUND_PRICE_DIRECTORY_KEY,
     FUND_PRICES_KEY,
     SECURITY_MASTER_KEY,
     FundListingIdentity,
     held_fund_positions,
+    observed_product,
 )
 from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
@@ -44,6 +46,14 @@ from trading_max.research.trailing_pe import TrailingPeHistory
 from trading_max.research.valuation_basis import (
     classify,
     share_unit,
+)
+from trading_max.research.venues import (
+    VenueClaim,
+    VenueConflict,
+    provider_claim,
+    resolve_venue,
+    row_claims,
+    watchlist_claim,
 )
 
 from .artifacts import ArtifactStore
@@ -596,21 +606,10 @@ def _enrich_fundamentals(
 
 @dataclass(frozen=True)
 class PriceListing:
+    requested: str
     ticker: str
-    venues: frozenset[str]
     fund: FundListingIdentity | None
-
-    def verify(self, series: ResearchPriceSeries, *, live=False) -> ResearchPriceSeries:
-        symbol = series.published_bar_ticker or series.ticker
-        reported = (
-            series.quote_exchange or series.published_bar_exchange or series.exchange_calendar
-        )
-        observed = listing_venues(None if live else symbol, reported)
-        if _canonical_ticker(symbol) != _canonical_ticker(self.ticker) or (
-            self.venues and self.venues.isdisjoint(observed)
-        ):
-            raise FileNotFoundError(f"unverified price listing for {self.ticker}")
-        return series
+    exchanges: dict[str, tuple[VenueClaim, ...]]
 
 
 class ResearchLedger:
@@ -728,7 +727,9 @@ class ResearchLedger:
         fundamentals = self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows)
         enriched = []
         for row in rows:
-            fundamental = _find(fundamentals, str(row.get("ticker", ""))) or {}
+            fundamental = next(
+                (f for f in fundamentals if f.get("ticker") == row.get("ticker")), {}
+            )
             metrics = fundamental.get("metrics") or fundamental.get("info") or {}
             quote_currency = str(fundamental.get("currency") or metrics.get("currency") or "")
             quote_currency, quote_divisor = major_quote_unit(quote_currency)
@@ -754,7 +755,9 @@ class ResearchLedger:
             )
         return enriched
 
-    def _route_ticker(self, ticker: str, exchanges: dict[str, str] | None = None) -> str:
+    def _route_ticker(
+        self, ticker: str, exchanges: dict[str, tuple[VenueClaim, ...]] | None = None
+    ) -> str:
         """Keep exchange-qualified watchlist identities in links and responses."""
         ticker = ticker.strip().upper()
         if us_fund(ticker):
@@ -764,7 +767,10 @@ class ResearchLedger:
         if ticker in exchanges:
             return ticker
         matches = [
-            symbol for symbol in exchanges if _canonical_ticker(symbol) == _canonical_ticker(ticker)
+            symbol
+            for symbol in exchanges
+            if _canonical_ticker(symbol) == _canonical_ticker(ticker)
+            and not resolve_venue(ticker, VenueClaim("symbol", symbol), *exchanges[symbol]).conflict
         ]
         return matches[0] if len(matches) == 1 else ticker
 
@@ -907,7 +913,7 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> list[ResearchEvent]:
-        ticker = _canonical_ticker(ticker)
+        ticker = ticker.strip().upper()
         raw = self._read_optional(manifest, "research/earnings.json")
         companies = raw.get("companies", {})
         if not companies and isinstance(raw.get("rows"), list):
@@ -915,8 +921,7 @@ class ResearchLedger:
                 (
                     row
                     for row in raw["rows"]
-                    if isinstance(row, dict)
-                    and _canonical_ticker(str(row.get("ticker") or "")) == ticker
+                    if isinstance(row, dict) and str(row.get("ticker") or "").upper() == ticker
                 ),
                 None,
             )
@@ -1023,9 +1028,17 @@ class ResearchLedger:
         ticker: str,
         manifest: SnapshotManifest,
     ) -> ResearchTickerSnapshot:
-        if listing := self.held_fund(ticker, manifest):
+        ticker = ticker.strip().upper()
+        exchanges = self.watchlist.listing_exchanges()
+        if listing := self.held_fund(ticker, manifest, exchanges):
             lens = self._fund_lens(
-                listing.ticker, "technical", manifest, detail="full", listing=listing
+                ticker,
+                listing.ticker,
+                "technical",
+                manifest,
+                exchanges,
+                detail="full",
+                listing=listing,
             )
             return ResearchTickerSnapshot(
                 ticker=listing.ticker,
@@ -1033,7 +1046,7 @@ class ResearchLedger:
                 generated_at=manifest.created_at,
                 market=lens.market,
                 technical=lens.technical.model_dump() if lens.technical else None,
-                fundamentals={"metrics": {"quoteType": "ETF"}},
+                fundamentals={"metrics": {"quoteType": lens.context.asset_type}},
                 portfolio_impact=self.portfolio_impact(listing.ticker, manifest),
             )
         ticker = self._route_ticker(ticker)
@@ -1268,19 +1281,31 @@ class ResearchLedger:
         return self._fund_cache.get_or_compute(manifest.run_id, load)
 
     def held_fund(
-        self, ticker: str, manifest: SnapshotManifest, exchanges: dict[str, str] | None = None
+        self,
+        ticker: str,
+        manifest: SnapshotManifest,
+        exchanges: dict[str, tuple[VenueClaim, ...]] | None = None,
     ) -> FundListingIdentity | None:
         ticker = ticker.strip().upper()
         funds = self._held_funds(manifest)
-        exact = [listing for listing in funds if listing.ticker == ticker]
-        if exact or "." in ticker or us_fund(ticker):
-            return exact[0] if len(exact) == 1 else None
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
-        if exchanges.get(ticker, "").upper() in {"US", "NYSE", "NASDAQ", "NMS", "NYQ"}:
-            return None
-        aliases = [listing for listing in funds if listing.symbol == ticker]
-        return aliases[0] if len(aliases) == 1 else None
+        exact = [listing for listing in funds if listing.ticker == ticker]
+        candidates = exact
+        if not exact and "." not in ticker and not us_fund(ticker):
+            candidates = [listing for listing in funds if listing.symbol == ticker]
+        matches = [
+            listing
+            for listing in candidates
+            if not resolve_venue(
+                ticker,
+                *exchanges.get(ticker, ()),
+                *row_claims(listing.ticker, {"mic": listing.mic}),
+                watchlist_claim(listing.ticker, listing.exchange),
+                *exchanges.get(listing.ticker, ()),
+            ).conflict
+        ]
+        return matches[0] if len(matches) == 1 else None
 
     @staticmethod
     def fund_reading(listing: FundListingIdentity, etfs: list[ETFReading]) -> ETFReading | None:
@@ -1476,9 +1501,11 @@ class ResearchLedger:
 
     def _fund_lens(
         self,
+        requested: str,
         ticker: str,
         view: ResearchLensName,
         manifest: SnapshotManifest,
+        exchanges: dict[str, tuple[VenueClaim, ...]],
         *,
         detail: str,
         listing: FundListingIdentity | None = None,
@@ -1499,6 +1526,23 @@ class ResearchLedger:
         isin = (listing.isin if listing else None) or (reading.isin if reading else None)
         peers = fund_peers(isin)
         peer = peers[0] if peers else None
+        exact = next(
+            (
+                row
+                for row in self._cached_rows(
+                    manifest, "research/fundamentals.json", _fundamentals_rows
+                )
+                if row.get("ticker") == ticker
+            ),
+            {},
+        )
+        exact_metrics = exact.get("metrics") or exact.get("info") or {}
+        asset_type = observed_product(
+            (price or {}).get("asset_type"),
+            exact_metrics.get("quoteType"),
+            "ETF" if reference or reading else None,
+            fund=True,
+        )
         options_ticker = (
             ticker
             if reference or (listing and us_fund_listing(listing))
@@ -1519,7 +1563,7 @@ class ResearchLedger:
                 "currency": "USD",
             }
         metrics = {
-            "quoteType": "ETF",
+            "quoteType": asset_type,
             "isin": isin,
             "exchangeTimezoneName": price["timezone"]
             if price
@@ -1544,7 +1588,21 @@ class ResearchLedger:
             )
             if calendar is not None:
                 fundamental["earningsCalendar"] = calendar
-        quote = make_quote(ticker, market or {}, fundamental)
+        claims = [
+            *exchanges.get(requested, ()),
+            *exchanges.get(ticker, ()),
+            *row_claims(ticker, price or {}, exact_metrics),
+        ]
+        if listing:
+            claims.extend(
+                (VenueClaim("mic", listing.mic), watchlist_claim(ticker, listing.exchange))
+            )
+        if reference:
+            claims.append(provider_claim(reference.exchange, ticker))
+        venue = resolve_venue(requested, *claims)
+        if venue.conflict:
+            market = price = None
+        quote = make_quote(ticker, market or {}, fundamental, venue=venue)
         previous = number(price.get("previous_close")) if price else None
         if (
             quote.change is None
@@ -1554,14 +1612,12 @@ class ResearchLedger:
         ):
             quote.change = quote.price - previous
             quote.change_pct = quote.change / previous
-        if listing and not price:
+        if listing and not price and not venue.conflict:
             position = next(iter(self._held_funds(manifest)[listing].values()))["positions"][0]
             currency, _ = major_quote_unit(str(position.get("price_currency") or ""))
             quote.currency = currency or quote.currency
             quote.listing = broker_listing(position.get("broker_ticker")) or quote.listing
-        quote.schedule = session_schedule(
-            listing_calendar(ticker, quote.exchange, quote.timezone), datetime.now(UTC)
-        )
+        quote.schedule = session_schedule(venue.calendar, datetime.now(UTC))
         technical = None
         technical_summary = None
         datasets = []
@@ -1602,7 +1658,7 @@ class ResearchLedger:
             technical_summary=technical_summary,
             context=ResearchContext(
                 quote=quote,
-                asset_type="ETF",
+                asset_type=asset_type if asset_type != "CONFLICT" else "UNKNOWN",
                 datasets=datasets,
                 capabilities=[
                     ResearchCapability(task="overview", state="available"),
@@ -1649,12 +1705,16 @@ class ResearchLedger:
         history into the response.
         """
 
-        listing = self.held_fund(ticker, manifest)
+        requested = ticker.upper()
+        exchanges = self.watchlist.listing_exchanges()
+        listing = self.held_fund(ticker, manifest, exchanges)
         if listing:
-            return self._fund_lens(listing.ticker, view, manifest, listing=listing, detail=detail)
-        ticker = self._route_ticker(ticker)
+            return self._fund_lens(
+                requested, listing.ticker, view, manifest, exchanges, listing=listing, detail=detail
+            )
+        ticker = self._route_ticker(ticker, exchanges)
         if us_fund(ticker):
-            return self._fund_lens(ticker, view, manifest, detail=detail)
+            return self._fund_lens(requested, ticker, view, manifest, exchanges, detail=detail)
 
         def find_listing(rows, symbol):
             row = _find(rows, symbol)
@@ -1694,20 +1754,24 @@ class ResearchLedger:
                 and find_etf(self._published_etfs(manifest), ticker) is not None
             )
         )
-        if is_fund and asset_type not in {"ETF", "MUTUALFUND"}:
-            asset_type = "ETF"
+        if is_fund:
+            asset_type = observed_product(
+                asset_type, (fund_price or {}).get("asset_type"), fund=True
+            )
+            if asset_type == "CONFLICT":
+                asset_type = "UNKNOWN"
         peers = fund_peers(metrics.get("isin") or (fund_price or {}).get("isin"))
         peer = peers[0] if peers else None
-        exchange = str(metrics.get("exchange") or (fund_price or {}).get("exchange") or "").upper()
+        venue = resolve_venue(
+            requested,
+            *exchanges.get(requested, ()),
+            *exchanges.get(ticker, ()),
+            *row_claims(ticker, fund_price or {}, metrics),
+            *row_claims((market or {}).get("ticker") or ticker, market or {}),
+        )
         fund_options_ticker = (
             ticker
-            if asset_type == "ETF"
-            and "." not in ticker
-            and (
-                exchange in US_MARKETS
-                or (metrics.get("exchangeTimezoneName") or (fund_price or {}).get("timezone"))
-                == "America/New_York"
-            )
+            if asset_type == "ETF" and venue.us_listing
             else peer.fund.ticker
             if peer
             else None
@@ -1804,12 +1868,10 @@ class ResearchLedger:
                     intervals=["1d"] if task == "technical" else [],
                 )
             )
-        quote = make_quote(ticker, market or {}, fundamental)
+        quote = make_quote(ticker, market or {}, fundamental, venue=venue)
         # Sessions of the quote's exchange, so clients name closes and late
         # prices with its holidays and early closes.
-        quote.schedule = session_schedule(
-            listing_calendar(quote.ticker, quote.exchange, quote.timezone), datetime.now(UTC)
-        )
+        quote.schedule = session_schedule(venue.calendar, datetime.now(UTC))
         payload.context = ResearchContext(
             quote=quote,
             asset_type=asset_type,
@@ -2581,14 +2643,17 @@ class ResearchLedger:
                 )
             ):
                 continue
-            series = self.published_price_series(symbol, manifest, limit=limit)
+            series = self.listing_prices(
+                PriceListing(ticker, symbol, None, {}), manifest, limit=limit
+            )
             if series.published_series_id == identity:
                 return series
         raise FileNotFoundError("cited chart unavailable")
 
     def bind_price_series(self):
         """Freeze the chart's routing aliases before a snapshot-bound assistant run."""
-        return partial(self.price_series, exchanges=self.watchlist.listing_exchanges())
+        exchanges = self.watchlist.listing_exchanges()
+        return partial(self.price_series, exchanges=exchanges), exchanges
 
     def price_series(
         self,
@@ -2596,23 +2661,81 @@ class ResearchLedger:
         manifest: SnapshotManifest,
         *,
         limit: int = 504,
-        exchanges: dict[str, str] | None = None,
+        exchanges: dict[str, tuple[VenueClaim, ...]] | None = None,
     ) -> ResearchPriceSeries:
         selected = self.price_listing(ticker, manifest, exchanges)
-        return selected.verify(self.published_price_series(selected.ticker, manifest, limit=limit))
+        return self.listing_prices(selected, manifest, limit=limit)
+
+    def listing_prices(self, selected, manifest, *, limit):
+        series = self._published_price_series(selected.ticker, manifest, limit=limit)
+        venue = self.price_venue(selected, series, manifest)
+        series.exchange_calendar = venue.calendar
+        return series
 
     def price_listing(self, ticker, manifest, exchanges=None) -> PriceListing:
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
         ticker = ticker.strip().upper()
         fund = self.held_fund(ticker, manifest, exchanges)
-        requested = listing_venues(ticker, None)
-        resolved = (
-            fund.ticker if fund else ticker if requested else self._route_ticker(ticker, exchanges)
+        resolved = fund.ticker if fund else self._route_ticker(ticker, exchanges)
+        return PriceListing(ticker, resolved, fund, exchanges)
+
+    def price_venue(self, selected: PriceListing, series, manifest):
+        """Validate the original request against the observed row, including exact fundamentals."""
+        requested, listing = selected.requested, selected.fund
+        reference = us_fund(selected.ticker) if not listing else None
+        published = series.published_bar_ticker or series.ticker
+        if _canonical_ticker(published) != _canonical_ticker(selected.ticker):
+            raise VenueConflict(f"unexpected price symbol for {requested}")
+        # A request echo cannot establish a provider observation. Older live charts
+        # may carry only the exchange or session, independently of the routed ticker.
+        observed_symbol = series.published_bar_ticker
+        claims = [
+            *series.venue_claims,
+            *row_claims(
+                observed_symbol,
+                {
+                    "mic": series.published_bar_mic,
+                    "exchange": series.published_bar_exchange or series.quote_exchange,
+                },
+            ),
+        ]
+        if series.source == ALPACA_SIP:
+            claims.append(VenueClaim("region", "US", published))
+        observed = resolve_venue(
+            observed_symbol, *(c._replace(listing=observed_symbol) for c in claims)
         )
-        exchange = fund.mic if fund else exchanges.get(resolved)
-        venues = requested or listing_venues(resolved, exchange)
-        return PriceListing(resolved, venues, fund)
+        expected = resolve_venue(requested, *selected.exchanges.get(requested, ()))
+        if expected.venues and not observed.venues:
+            raise VenueConflict(f"unverified price listing for {requested}")
+        for ticker in {requested, published, series.ticker}:
+            claims.append(VenueClaim("symbol", ticker, ticker))
+            claims.extend(selected.exchanges.get(ticker, ()))
+            for key in ("research/fundamentals.json", FUND_PRICE_DIRECTORY_KEY):
+                for row in self._cached_rows(manifest, key, _fundamentals_rows):
+                    if str(row.get("ticker") or "").upper() == ticker.upper():
+                        claims.extend(
+                            row_claims(ticker, row, row.get("metrics") or row.get("info"))
+                        )
+            if not series.published_series_id:
+                technical = self._published_technicals(manifest)
+                for row in technical.get("rows", []):
+                    if row.get("ticker") == ticker:
+                        claims.extend(row_claims(ticker, row))
+        if listing:
+            claims.extend(row_claims(listing.ticker, {"mic": listing.mic}))
+            claims.append(watchlist_claim(listing.ticker, listing.exchange))
+        if reference:
+            claims.append(provider_claim(reference.exchange, published))
+        venue = resolve_venue(requested, *claims)
+        if venue.conflict or (
+            series.exchange_calendar
+            and venue.calendar
+            and series.exchange_calendar != venue.calendar
+        ):
+            raise VenueConflict(f"incompatible venue claims for {requested}")
+        series.venue_claims = tuple(claims)
+        return venue
 
     def _published_technicals(self, manifest: SnapshotManifest) -> JsonObject:
         key = "research/technical.json"
@@ -2677,7 +2800,7 @@ class ResearchLedger:
             (manifest.run_id, "trade_markers", ticker, currency), load
         )
 
-    def published_price_series(
+    def _published_price_series(
         self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
     ) -> ResearchPriceSeries:
         """Read a chart's resolved ticker entirely from the pinned publication."""
@@ -2708,22 +2831,30 @@ class ResearchLedger:
             if isinstance(point, dict)
         ]
         as_of = str(source.get("as_of") or raw.get("as_of") or "")
-        market = {} if fund_price else _find(self._market_rows(manifest), ticker) or {}
+        market = (
+            {}
+            if fund_price
+            else next(
+                (row for row in self._market_rows(manifest) if row.get("ticker") == bar_ticker), {}
+            )
+        )
         currency = str(
             source.get("currency")
             if fund_price
             else market.get("currency") or source.get("currency") or ""
         )
         all_markers, unresolved = self.trade_markers(manifest, bar_ticker, currency)
-        exchange = str(source.get("mic") or source.get("exchange") or "").strip() or None
+        exchange = source.get("exchange")
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
             timezone=source.get("timezone") or None,
-            published_bar_asset_type=str(source.get("asset_type") or ("ETF" if fund_price else ""))
-            or None,
+            published_bar_asset_type=source.get("asset_type"),
+            published_fund_row=bool(fund_price),
+            venue_claims=row_claims(bar_ticker, source),
+            published_bar_mic=source.get("mic"),
+            published_bar_segment=source.get("market_segment"),
             published_bar_exchange=exchange,
-            exchange_calendar=listing_calendar(bar_ticker, exchange, source.get("timezone")),
             published_series_id=published_price_series_id(artifact.sha256, ticker)
             if artifact
             else None,

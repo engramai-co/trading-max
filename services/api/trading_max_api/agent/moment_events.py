@@ -2,9 +2,10 @@
 
 from datetime import datetime
 
-from trading_max.research.calendar import listing_calendar
 from trading_max.research.closing_auctions import headline_session
+from trading_max.research.held_funds import observed_product
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
+from trading_max.research.venues import resolve_venue, row_claims
 
 from .events import headline_stories, listed_dividends, listed_headlines
 from .tools import EARNINGS, FINANCIALS, FUNDAMENTALS, _mapped, _Read, _rows
@@ -16,13 +17,34 @@ def listing_moment_events(
     keys = []
     issues = []
     events = []
-    ticker = args.ticker
+    ticker = (series.published_bar_ticker or series.ticker) if series else args.ticker
     if calendar:
         keys.append(EARNINGS)
     if metrics:
         keys.append(FUNDAMENTALS)
     if not calendar:
         issues.append("security_calendar_unavailable")
+
+    def feed(key):
+        return _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
+
+    news = feed(NEWS_KEY)
+    status = feed(NEWS_STATUS_KEY)
+    claims = [
+        *(series.venue_claims if series else ()),
+        *row_claims(
+            ticker,
+            {"mic": series.published_bar_mic, "exchange": series.published_bar_exchange}
+            if series
+            else {},
+            metrics,
+        ),
+    ]
+    for source in (news, status, calendar, evidence):
+        claims.extend(row_claims(ticker, source))
+    venue = resolve_venue(args.ticker, *claims)
+    if venue.conflict:
+        return [], keys, ["listing_calendar_unavailable"]
     dividend_status = _mapped(_mapped(evidence.get("status")).get("dividends")).get("state")
     if not isinstance(evidence.get("dividends"), list) or dividend_status in {"failed", "missing"}:
         issues.append("dividends_unavailable")
@@ -58,32 +80,33 @@ def listing_moment_events(
                 )
                 distribution_days.add(day)
 
-    exchange = exchange_calendar
-    if not (series and (series.published_bar_exchange or series.quote_exchange)) and metrics.get(
-        "fullExchangeName"
-    ):
-        exchange = listing_calendar(
-            ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
-        )
-    asset_type = series.published_bar_asset_type if series else None
-    if not asset_type or asset_type.upper() == "UNKNOWN":
-        asset_type = metrics.get("quoteType")
-    headlines, news_keys, news_issues = headline_events(read, args, exchange, evidence, asset_type)
-    return [*events, *headlines], [*keys, *news_keys], [*issues, *news_issues]
+    product = observed_product(
+        series.published_bar_asset_type if series else None,
+        metrics.get("quoteType"),
+        fund=bool(series and series.published_fund_row),
+    )
+    segments = {
+        str(v).strip().lower()
+        for v in (series.published_bar_segment if series else None, metrics.get("marketSegment"))
+        if v
+    }
+    segment = next(iter(segments)) if len(segments) == 1 else None
+    exchange = venue.calendar if series else exchange_calendar
+    stories, news_keys, news_issues = _published_stories(ticker, evidence, news, status)
+    headlines, timing_issues = _timed_headlines(args, stories, exchange, product, segment)
+    return [*events, *headlines], [*keys, *news_keys], [*issues, *news_issues, *timing_issues]
 
 
 def moment_stories(read, ticker, evidence):
-    keys, issues = [], []
-
     def feed(key):
         return _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
 
-    news = feed(NEWS_KEY)
-    status = feed(NEWS_STATUS_KEY)
-    if news:
-        keys.append(NEWS_KEY)
-    if status:
-        keys.append(NEWS_STATUS_KEY)
+    return _published_stories(ticker, evidence, feed(NEWS_KEY), feed(NEWS_STATUS_KEY))
+
+
+def _published_stories(ticker, evidence, news, status):
+    keys = [key for key, row in ((NEWS_KEY, news), (NEWS_STATUS_KEY, status)) if row]
+    issues = []
     status = {**news, **status}
     if not isinstance(news.get("items"), list) or not status.get("as_of"):
         issues.append("security_news_unavailable")
@@ -96,13 +119,20 @@ def moment_stories(read, ticker, evidence):
     return headline_stories(rows, raw_rows), keys, issues
 
 
-def headline_events(read, args, exchange, evidence, asset_type=None):
+def headline_events(read, args, exchange, evidence):
     stories, keys, issues = moment_stories(read, args.ticker, evidence)
-    events = []
+    events, timing_issues = _timed_headlines(args, stories, exchange)
+    return events, keys, [*issues, *timing_issues]
+
+
+def _timed_headlines(args, stories, exchange, asset_type=None, segment=None):
+    events, issues = [], []
     for row in stories:
         published = row["date"]
         day, timing = (
-            headline_session(exchange, datetime.fromisoformat(row["instant"]), asset_type)
+            headline_session(
+                exchange, datetime.fromisoformat(row["instant"]), asset_type, segment=segment
+            )
             if row["instant"]
             else (published, None)
         )
@@ -115,4 +145,4 @@ def headline_events(read, args, exchange, evidence, asset_type=None):
             if day != published:
                 event["publication_date"] = published
             events.append(event)
-    return events, keys, issues
+    return events, issues

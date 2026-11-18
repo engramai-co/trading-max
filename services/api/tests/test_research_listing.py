@@ -19,7 +19,7 @@ from services.api.tests.test_assistant_insights import (
 )
 
 
-@pytest.mark.parametrize("source", ["live", "unverified-alias"])
+@pytest.mark.parametrize("source", ["live", "live-without-venue", "unverified-alias"])
 def test_london_route_rejects_unverified_or_foreign_prices(bound, monkeypatch, source):
     app, manifest, _ = bound
     store = app.state.store
@@ -40,7 +40,7 @@ def test_london_route_rejects_unverified_or_foreign_prices(bound, monkeypatch, s
             raise ValueError("missing synthetic chart")
         return ResearchPriceSeries(
             ticker="TEST.L",
-            exchange_calendar="XNYS",
+            exchange_calendar="XNYS" if source == "live" else None,
             currency="USD",
             available_sessions=5,
             as_of=DATES[-1],
@@ -49,7 +49,8 @@ def test_london_route_rejects_unverified_or_foreign_prices(bound, monkeypatch, s
 
     monkeypatch.setattr(app.state.security_prices, "get", live)
     response = TestClient(app).get(
-        "/v1/research/TEST.L/prices", params={"interval": "60m" if source == "live" else "1d"}
+        "/v1/research/TEST.L/prices",
+        params={"interval": "1d" if source == "unverified-alias" else "60m"},
     )
     assert response.status_code == 404
     assert not app.state.research._observed_prices
@@ -113,6 +114,10 @@ def test_observed_fund_distribution_qualifies_as_a_moment(bound):
     observed = series.model_copy(
         update={
             "ticker": "FUND.L",
+            "exchange_calendar": "XLON",
+            "published_bar_exchange": "LSE",
+            "published_bar_mic": "XLON",
+            "venue_claims": (),
             "published_series_id": None,
             "published_bar_ticker": None,
             "events": [{"date": day + "T00:00:00+00:00", "kind": "dividend", "value": 0.2}],

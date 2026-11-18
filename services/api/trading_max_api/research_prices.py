@@ -13,9 +13,9 @@ import yfinance as yf
 from trading_max.infrastructure.alpaca_http import AlpacaDataError
 from trading_max.infrastructure.alpaca_market_prices import ALPACA_SIP, NY, AlpacaMarketPrices
 from trading_max.infrastructure.singleflight import SingleFlightCache
-from trading_max.research.calendar import calendar_name
 from trading_max.research.facts import fingerprint
 from trading_max.research.technical import price_series
+from trading_max.research.venues import VenueConflict, resolve_venue, row_claims
 
 from .dashboard_models import ResearchPriceSeries
 from .valuation_assumptions import _atomic_write
@@ -105,7 +105,7 @@ class SecurityPriceHistory:
             return 0 <= age < (300 if interval != "1wk" else 3600)
 
         def load() -> ResearchPriceSeries:
-            path = self.root / (fingerprint([ticker, cache_interval]) + ".json")
+            path = self.root / (fingerprint(["listing-venue-v2", ticker, cache_interval]) + ".json")
             with suppress(OSError, ValueError, KeyError):
                 saved = ResearchPriceSeries.model_validate_json(path.read_text())
                 if fresh(saved):
@@ -140,6 +140,16 @@ class SecurityPriceHistory:
         if frame.empty:
             raise ValueError("requested-interval-unavailable")
         metadata = proxy.get_history_metadata() or {}
+        published = str(metadata.get("symbol") or ticker).upper()
+        exchange = metadata.get("exchangeName")
+        claims = tuple(
+            claim
+            for claim in row_claims(published, metadata)
+            if metadata.get("symbol") or claim.source != "symbol"
+        )
+        venue = resolve_venue(ticker, *claims)
+        if venue.conflict or published != ticker:
+            raise VenueConflict("public history belongs to a different listing")
         code = str(metadata.get("currency") or "")
         if code in {"GBp", "GBX"}:
             frame[["Open", "High", "Low", "Close"]] *= 0.01
@@ -186,11 +196,24 @@ class SecurityPriceHistory:
             actual_interval=interval,
             quote_exchange=metadata.get("exchangeName"),
             timezone=metadata.get("exchangeTimezoneName"),
-            exchange_calendar=calendar_name(metadata.get("exchangeName")),
+            venue_claims=claims,
+            published_bar_ticker=metadata.get("symbol"),
+            published_bar_exchange=exchange or metadata.get("fullExchangeName"),
+            published_bar_mic=next(iter(venue.venues)) if len(venue.venues) == 1 else None,
+            exchange_calendar=venue.calendar,
             fetched_at=datetime.now(UTC).isoformat(),
             events=events,
         )
-        _atomic_write(path, result.model_dump(mode="json"))
+        _atomic_write(
+            path,
+            {
+                **result.model_dump(mode="json"),
+                "venue_claims": claims,
+                "published_bar_ticker": result.published_bar_ticker,
+                "published_bar_exchange": result.published_bar_exchange,
+                "published_bar_mic": result.published_bar_mic,
+            },
+        )
         return result
 
 

@@ -19,7 +19,8 @@ from pydantic import Field
 from trading_max.domain import DomainModel
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import SessionSchedule
-from trading_max.research.listing import quote_listing
+from trading_max.research.listing import resolved_quote_listing
+from trading_max.research.venues import VenueResolution, resolve_venue, row_claims
 
 DataState = Literal["available", "missing", "notApplicable", "unsupported", "stale", "invalid"]
 
@@ -521,7 +522,11 @@ def build_financial_facts(
 
 
 def make_quote(
-    ticker: str, market: Mapping[str, Any], fundamental: Mapping[str, Any]
+    ticker: str,
+    market: Mapping[str, Any],
+    fundamental: Mapping[str, Any],
+    *,
+    venue: VenueResolution | None = None,
 ) -> QuoteSnapshot:
     metrics = fundamental.get("metrics") or {}
     raw_unit = str(fundamental.get("currency") or market.get("currency") or "") or None
@@ -562,8 +567,10 @@ def make_quote(
         delay_minutes=int(metrics["exchangeDataDelayedBy"])
         if number(metrics.get("exchangeDataDelayedBy")) is not None
         else None,
-        listing=quote_listing(
-            ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
+        listing=resolved_quote_listing(
+            ticker,
+            venue or resolve_venue(ticker, *row_claims(ticker, market, metrics)),
+            metrics.get("fullExchangeName") or metrics.get("exchange"),
         ),
     )
 
