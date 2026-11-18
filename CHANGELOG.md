@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.55.0] - 2026-11-18
+
 ### Added
 - The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
 - The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
