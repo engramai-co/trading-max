@@ -170,7 +170,9 @@ def _valuation_lens(symbol: str = "TEST", unit: str = "USD") -> ResearchLensSnap
             ]
         }
     )[0]
-    quote = make_quote(symbol, {"spot": 25}, {"currency": unit, "metrics": EXCHANGES[symbol]})
+    quote = make_quote(
+        symbol, {"spot": 25, "currency": currency}, {"currency": unit, "metrics": EXCHANGES[symbol]}
+    )
     return ResearchLensSnapshot(
         ticker=symbol,
         view="valuation",

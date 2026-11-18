@@ -262,3 +262,112 @@ def test_bar_units_remain_scoped_to_each_listing_in_one_publication(bound):
             expected_unit,
             dividend if expected_unit else None,
         )
+
+
+@pytest.mark.parametrize(
+    ("unit", "venue", "spot"),
+    [
+        ("EUR", {}, None),
+        ("USD", {"exchange": "LSE"}, None),
+        ("GBP", {"exchange": "LSE"}, 90),
+        ("GBp", {"exchange": "LSE"}, 0.90),
+        ("", {}, None),
+    ],
+)
+def test_verified_legacy_compact_quote_keeps_its_unit_and_observation(bound, unit, venue, spot):
+    app, initial, _ = bound
+    ticker = "SYN.L"
+    watch(app, ticker, "LSE")
+    day = DATES[-2]
+    publish(
+        app,
+        **{
+            tools.TECHNICAL: {"rows": [technical(app, initial, "SYN", "LSE", price=31)]},
+            tools.MARKET: {
+                "technical": {
+                    "rows": [
+                        {
+                            "ticker": "SYN",
+                            "yf_ticker": "SYN",
+                            "currency": unit,
+                            "price": 90,
+                            "as_of": day,
+                            **venue,
+                        }
+                    ]
+                }
+            },
+            tools.FUNDAMENTALS: {
+                "rows": [
+                    {
+                        "ticker": ticker,
+                        "currency": "GBp",
+                        "metrics": {
+                            "symbol": ticker,
+                            "exchange": "LSE",
+                            "regularMarketTime": 1_700_000_000,
+                            "regularMarketPreviousClose": 80,
+                            "quoteType": "EQUITY",
+                        },
+                    }
+                ]
+            },
+        },
+    )
+    client = TestClient(app)
+    chart = client.get(f"/v1/research/{ticker}/prices").json()
+    assert (chart["exchangeCalendar"], chart["currency"]) == ("XLON", "GBP")
+    lens = client.get(f"/v1/research/{ticker}/lens/technical").json()
+    quote = lens["context"]["quote"]
+    assert quote["price"] == spot
+    assert quote["asOf"] == (day if spot is not None else None)
+    assert quote["session"] == "unknown"
+    if spot is None:
+        assert not (lens["market"] or {}).get("spot")
+        assert quote["change"] is None
+    else:
+        assert quote["currency"] == lens["market"]["currency"] == "GBP"
+        assert lens["market"]["spot"] == spot
+        assert quote["change"] == pytest.approx(spot - 0.80)
+
+
+@pytest.mark.parametrize(
+    ("compact_price", "compact_day", "expected"),
+    [
+        (31, DATES[-1], 31),
+        (90, DATES[-1], None),
+        (31, DATES[-2], None),
+    ],
+)
+def test_legacy_compact_usd_default_needs_the_matching_technical_observation(
+    bound, compact_price, compact_day, expected
+):
+    app, manifest, _ = bound
+    ticker = "SYN.L"
+    watch(app, ticker, "LSE")
+    publish(
+        app,
+        **{
+            tools.TECHNICAL: {"rows": [technical(app, manifest, ticker, "LSE", unit="", price=31)]},
+            tools.MARKET: {
+                "technical": {
+                    "rows": [
+                        {
+                            "ticker": ticker,
+                            "currency": "USD",
+                            "price": compact_price,
+                            "as_of": compact_day,
+                        }
+                    ]
+                }
+            },
+            tools.FUNDAMENTALS: {
+                "rows": [{"ticker": ticker, "currency": "GBp", "metrics": {"exchange": "LSE"}}]
+            },
+        },
+    )
+    lens = TestClient(app).get(f"/v1/research/{ticker}/lens/technical").json()
+    assert lens["market"]["spot"] == lens["context"]["quote"]["price"] == expected
+    if expected is not None:
+        assert lens["context"]["quote"]["currency"] == "GBP"
+        assert lens["context"]["quote"]["asOf"] == compact_day

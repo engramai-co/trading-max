@@ -458,14 +458,6 @@ def freeze_valuation_evidence(
     if venue.conflict:
         return FrozenValuationEvidence(binding=binding, eligibility="unknown", rows=())
     quote = make_quote(binding.ticker, market.data if market else {}, data, venue=venue)
-    if quote.session != "regular":
-        # A fallback price and timestamp must come from the same public row.
-        quote = make_quote(
-            binding.ticker,
-            market.data if market else {},
-            {**data, "metrics": {**metrics, "regularMarketTime": None}},
-            venue=venue,
-        )
     if quote.listing is not None and quote.listing != binding.listing:
         raise EvidenceScopeError("quote listing mismatch")
     if quote.listing is None:

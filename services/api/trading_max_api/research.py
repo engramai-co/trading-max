@@ -200,7 +200,11 @@ def _market_rows(raw: JsonObject, *, with_claims=False) -> list[JsonObject]:
                 "ticker": str(row.get("ticker") or ""),
                 "currency": str(row.get("currency") or ""),
                 "spot": row.get("price"),
-                **({"_venue_claims": row_claims(row.get("ticker"), row)} if with_claims else {}),
+                **(
+                    {"_venue_claims": row_claims(row.get("ticker"), row), "_technical_quote": True}
+                    if with_claims
+                    else {}
+                ),
                 "held": False,
                 "asOf": row.get("as_of") or raw.get("as_of"),
             }
@@ -682,9 +686,7 @@ class ResearchLedger:
             _market_rows_with_claims,
             fallback_key=LEGACY_MARKET_KEY,
         )
-        # Compact quote metadata lives in fundamentals. Older technical batches
-        # defaulted to USD; the provider's explicit quote currency takes precedence.
-        # Do not load financial statements, options or the full research bundle.
+        # Fundamentals describe the targets. The compact observation supplies its own price unit.
         fundamentals = self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows)
         enriched = []
         for row in rows:
@@ -694,10 +696,35 @@ class ResearchLedger:
             metrics = fundamental.get("metrics") or fundamental.get("info") or {}
             quote_currency = str(fundamental.get("currency") or metrics.get("currency") or "")
             quote_currency, quote_divisor = major_quote_unit(quote_currency)
+            unit = row.get("currency") or ""
+            spot = number(row.get("spot"))
+            if (
+                row.get("_technical_quote")
+                and unit == "USD"
+                and quote_currency not in {"", "USD"}
+                and spot is not None
+                and not any(c.source not in {"identity", "symbol"} for c in row["_venue_claims"])
+            ):
+                # Older technical publishers normalised to major units and defaulted the
+                # compact currency to USD. Match the original unitless publication first.
+                bar = exact_row(
+                    self._published_technicals(manifest).get("rows") or [], row["ticker"]
+                )
+                if (
+                    bar
+                    and not bar.get("currency")
+                    and number(bar.get("price")) == spot
+                    and (not row.get("asOf") or row["asOf"] == bar.get("as_of"))
+                ):
+                    unit = quote_currency
+            currency, divisor = major_quote_unit(unit)
+            compatible = not quote_currency or currency == quote_currency
             enriched.append(
                 {
-                    **{key: value for key, value in row.items() if key != "_venue_claims"},
-                    "currency": quote_currency or row.get("currency") or "",
+                    **{key: value for key, value in row.items() if not key.startswith("_")},
+                    "currency": currency,
+                    "spot": spot / divisor if spot is not None and compatible else None,
+                    **({"quoteUnit": unit} if divisor != 1 else {}),
                     **{
                         target: (
                             metrics[source] / quote_divisor
@@ -715,6 +742,15 @@ class ResearchLedger:
                 }
             )
         return enriched
+
+    def _listing_market(self, manifest, pinned):
+        row = pinned.published_row(self._market_rows(manifest))
+        if row and row["ticker"] != pinned.symbol:
+            # A bare archive key is usable only on its verified bar's currency basis.
+            currency, _ = major_quote_unit(pinned.quote_unit)
+            if not currency or currency != row["currency"]:
+                return None
+        return row
 
     def _route_ticker(
         self, ticker: str, exchanges: dict[str, tuple[VenueClaim, ...]] | None = None
@@ -1007,7 +1043,7 @@ class ResearchLedger:
                 fundamentals={"metrics": {"quoteType": lens.context.asset_type}},
                 portfolio_impact=self.portfolio_impact(listing.ticker, manifest),
             )
-        market = pinned.published_row(self._market_rows(manifest))
+        market = self._listing_market(manifest, pinned)
         technical = exact_row(
             self._cached_rows(manifest, "research/technical.json", project_technical_rows),
             pinned.ticker,
@@ -1641,7 +1677,7 @@ class ResearchLedger:
             )
         if pinned.held or us_fund(ticker):
             return self._fund_lens(pinned, view, manifest, detail=detail)
-        market = pinned.published_row(self._market_rows(manifest))
+        market = self._listing_market(manifest, pinned)
         payload = ResearchLensSnapshot(
             ticker=ticker,
             view=view,
@@ -2072,7 +2108,7 @@ class ResearchLedger:
                     else None
                 )
             else:
-                market = pinned.published_row(self._market_rows(manifest))
+                market = self._listing_market(manifest, pinned)
                 technical = exact_row(
                     self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                     pinned.ticker,
