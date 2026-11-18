@@ -97,6 +97,16 @@ def test_unknown_region_does_not_enter_a_provider_namespace():
     assert not resolve_venue("SYN", VenueClaim("region", "LSE")).venues
 
 
+def test_security_master_and_quote_symbols_use_the_provider_venue_mapping():
+    from trading_max.reference.venues import listing_mic, local_venue_symbol, venue_mic
+
+    assert venue_mic("VAN") == "XTSX"
+    assert local_venue_symbol("SYN.V", listing_mic("TSX Venture Exchange", "XTSX")) == "SYN"
+    assert local_venue_symbol("SYN.V", "XTSE") == "SYN.V"
+    assert listing_mic("NasdaqGS", "XNCM") is None
+    assert listing_mic("Nasdaq", "XNGS") == "XNGS"
+
+
 @pytest.mark.parametrize(
     ("symbol", "claims", "expected", "conflict", "calendar"),
     [

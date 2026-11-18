@@ -1355,3 +1355,118 @@ def test_catalog_share_type_requires_the_quoted_listing(
         )
     assert shares == expected_shares
     assert value == pytest.approx(2000 / expected_shares)
+
+
+def _nasdaq_catalog(*entities):
+    from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
+
+    records = [
+        {
+            "entityId": f"synthetic-equity-{index}",
+            "canonicalTicker": MATURE.ticker,
+            "entityName": "Synthetic Company",
+            "providerSecurityType": "Common Stock",
+            "listings": [
+                {"ticker": MATURE.ticker, "exchange": venue, "source": "synthetic"}
+                for venue in venues
+            ],
+            "source": "synthetic",
+        }
+        for index, venues in enumerate(entities)
+    ]
+    return CatalogSecurityMaster(SecurityMasterCatalog.model_validate({"records": records}))
+
+
+@pytest.mark.parametrize("reader", ["batch", "retained_preview", "retained_evidence"])
+@pytest.mark.parametrize(
+    ("entities", "filed", "quote_venue", "expected_shares"),
+    [
+        ((["XNAS"],), False, "NasdaqGS", 100),
+        ((["NasdaqGS"],), False, "Nasdaq", 100),
+        ((["NasdaqCM"],), False, "NasdaqGS", None),
+        ((["XNAS", "NasdaqCM"],), False, "NasdaqGS", None),
+        ((["XNAS"], ["XNAS"]), False, "NasdaqGS", None),
+        ((["XNAS"],), False, "Nasdaq", 100),
+        ((["NasdaqGS", "NasdaqCM"],), False, "Nasdaq", None),
+        ((["XNAS"], ["XNAS"]), False, "Nasdaq", None),
+        (None, False, "Nasdaq", None),
+        (None, True, "Nasdaq", 100),
+    ],
+    ids=[
+        "operating-mic-catalog",
+        "tier-catalog",
+        "other-tier",
+        "two-tiers",
+        "two-entities",
+        "operating-mic-quote",
+        "operating-mic-quote-conflicting-tiers",
+        "operating-mic-quote-duplicate-entity",
+        "operating-mic-quote-without-evidence",
+        "operating-mic-quote-filed-unit",
+    ],
+)
+def test_nasdaq_operating_mic_and_listing_tier_share_one_unit(
+    tmp_path, reader, entities, filed, quote_venue, expected_shares
+):
+    issuer = MATURE
+    catalog = _nasdaq_catalog(*entities) if entities else None
+    store = ArtifactStore(tmp_path)
+    batch = {}
+
+    def inject(batches):
+        if catalog:
+            batches["reference/security_master.json"] = catalog.catalog.model_dump(mode="json")
+        batches["research/fundamentals.json"]["rows"][0]["metrics"]["fullExchangeName"] = (
+            quote_venue
+        )
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Ordinary Shares Number", **dict.fromkeys(dates, 100)}
+        ]
+        if filed:
+            raw["evidence"] = {
+                "listedShareUnits": {issuer.listing: "ordinary"},
+                "shareUnitFiling": "https://issuer.invalid/cover",
+            }
+        if reader == "batch":
+            batch.update(_batch_row(batches, issuer, security_master=catalog))
+        else:
+            # Earlier batches recorded the operating MIC for every Nasdaq tier, so
+            # it does not say which listing the stored unit belonged to.
+            batches["research/valuation.json"]["rows"][0]["assumptions"].update(
+                family="cash-flow", shareUnit="ordinary", listing="US:SYNM", shareUnitVenue="XNAS"
+            )
+
+    binding = _publish(store, issuer, inject=inject)
+    if reader == "batch":
+        if expected_shares is None:
+            assert batch["ev5"] is None
+            assert "listed-share-unit-unverified" in batch["model_warnings"]
+        else:
+            assert batch["ev5"] > 0
+            assert batch["assumptions"]["shareUnit"] == "ordinary"
+            assert batch["assumptions"]["sharesOutstanding"] == expected_shares
+            # The batch records the observed tier, or the operating MIC when only it was quoted.
+            assert batch["assumptions"]["shareUnitVenue"] == (
+                "XNGS" if quote_venue == "NasdaqGS" else "XNAS"
+            )
+    if reader == "retained_evidence":
+        frozen = freeze_valuation_evidence(binding, snapshots=store)
+        basis = ValuationEvidenceTools(binding, frozen).get_valuation_basis().basis
+        assert (basis.shares if basis else None) == expected_shares
+        return
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = store
+    app.state.research = ResearchLedger(store, WatchlistStore(tmp_path))
+    app.state.research_journal = SimpleNamespace()
+    body = _request().model_dump(mode="json", exclude={"citations"})
+    with TestClient(app) as client:
+        response = client.post(f"/v2/research/{issuer.ticker}/valuation-preview", json=body)
+    if expected_shares is None:
+        assert response.status_code == 422
+        assert response.json()["detail"] == "listed-share-unit-unverified"
+    else:
+        assert response.status_code == 200, response.text
+        assert response.json()["basis"]["shares"] == expected_shares

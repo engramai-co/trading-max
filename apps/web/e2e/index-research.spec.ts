@@ -38,7 +38,8 @@ const shell = {
   instruments: [{ ticker: "SYNF.L", name: "Synthetic tracker", exchange: "LSE", held: true, isFund: true, watchlisted: true, status: "ready" }],
 };
 
-async function exercise(page: Page, baseURL: string, name: string) {
+const publishedSeriesId = "f".repeat(20);
+async function indexFixture(page: Page, baseURL: string) {
   const origin = new URL(baseURL).origin;
   await page.clock.install({ time: new Date(stamp) });
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
@@ -77,13 +78,17 @@ async function exercise(page: Page, baseURL: string, name: string) {
       ],
     } });
     if (path.endsWith("/history")) return route.fulfill({ json: {
-      index, range: url.searchParams.get("range"), state: "available", sourceInterval: "1d", displayInterval: "1d",
+      index, range: url.searchParams.get("range"), state: "available", sourceInterval: "1d", displayInterval: "1d", publishedSeriesId,
       points: path.includes("second") ? points.map(({ at, value }) => ({ at, value: value + 20 })) : points,
       gaps: [],
     } });
     if (path === "/securities/search") return route.fulfill({ json: { source: "registry", query: "SYNX", results: [] } });
     return route.fulfill({ json: {} });
   });
+}
+
+async function exercise(page: Page, baseURL: string, name: string) {
+  await indexFixture(page, baseURL);
   await page.goto(new URL("/research?ticker=SYNF.L&view=tracking", baseURL).href);
   await expect(page.getByRole("region", { name: "累计跟踪差" })).toBeVisible();
   await expect(page.getByRole("region", { name: "滚动一年跟踪误差" })).toBeVisible();
@@ -138,6 +143,47 @@ async function exercise(page: Page, baseURL: string, name: string) {
 test("a fund benchmark opens an index with private exposure, constituents and chart tools", async ({ page, baseURL }, info) => {
   await page.setViewportSize({ width: info.project.name === "mobile" ? 390 : 1440, height: 900 });
   await exercise(page, baseURL!, info.project.name);
+});
+
+test("the index opening card and key moment keep the selected index series", async ({ page, baseURL, isMobile }) => {
+  await indexFixture(page, baseURL!);
+  await page.route("**/api/backend/profile",route => route.fulfill({json:{accountLabels:{},assistantEnabled:true}}));
+  const date = points[10].at.slice(0, 10);
+  const reads: string[] = [];
+  await page.route("**/api/backend/assistant/**", route => {
+    const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/status")) return route.fulfill({ json: { ready: true } });
+    if (url.pathname.includes("/key-moments/")) {
+      const q = url.searchParams;
+      expect(q.get("index_id")).toBe(index.id);
+      expect(q.get("published_series_id")).toBe(publishedSeriesId);
+      return route.fulfill({ json: { data: { published_series_id: publishedSeriesId, start:q.get("start"), end:q.get("end"), items:[{date}] } } });
+    }
+    if (!url.pathname.endsWith("/reading")) return route.fulfill({ json: {} });
+    const role = url.pathname.split("/").at(-2)!;
+    const body = route.request().postDataJSON();
+    expect(body).toMatchObject({ snapshotId:shell.status.runId, context: { index_id:index.id, ticker:index.symbol, published_series_id:publishedSeriesId } });
+    if (role === "key-moment") expect(body.context.date).toBe(date);
+    reads.push(role);
+    const evidence = {source:"market", tool:"research_position", evidenceId:"ev_index", arguments:{index:index.id}};
+    const reading = {role, version:shell.status.runId, snapshotId:shell.status.runId, asOf:stamp,
+      lines: [{zh:"指数点位", en:"Index level", evidence}, {zh:"同期变动", en:"Period change", evidence}]};
+    return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({type:"result", reading})+"\n"});
+  });
+  const path = "/research?type=index&index=" + index.id;
+  await page.goto(path);
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator(".mx-assistant-opening .mx-reading-line")).toHaveCount(2);
+  expect(reads).toEqual(["your-position"]);
+  await page.goto(path + "&view=price");
+  const track = page.locator(".mx-track-moment");
+  await expect(track.locator("time")).toHaveAttribute("datetime", date);
+  expect(reads).toEqual(["your-position"]);
+  await track.click();
+  const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
+  await expect(card.locator(".mx-reading-line")).toHaveCount(2);
+  expect(reads).toEqual(["your-position", "key-moment"]);
+  await expect(page.locator(".mx-earnings-brief")).toHaveCount(0);
 });
 
 test("the index research lenses fit WebKit at the app width", async ({ baseURL }, info) => {

@@ -1,4 +1,7 @@
 "use client";
+import { useMediaQuery } from "@mantine/hooks";
+import { markerHeadroom } from "./assistant/marker-layout";
+import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
@@ -46,11 +49,13 @@ const fullSelectStyles = { input: { height: 44, minHeight: 44 } };
 export function PriceHistory({
   ticker,
   runId,
+  snapshotId,
   context,
   compactChart = false,
 }: {
   ticker: string;
   runId: string;
+  snapshotId?: string;
   technical?: boolean;
   context?: ResearchLensSnapshot;
   compactChart?: boolean;
@@ -85,14 +90,15 @@ export function PriceHistory({
   const fullButton = useRef<HTMLButtonElement>(null);
   const [inlineHeight, setInlineHeight] = useState(550);
   const query = useQuery(researchPriceQuery(ticker, runId, interval));
-  const current = query.data && !query.isPlaceholderData
+  const listingUnavailable = query.error instanceof ApiError && query.error.status === 404 &&
+    query.error.message === "security-price-history-unavailable";
+  const current = !listingUnavailable && query.data && !query.isPlaceholderData
     ? { data: query.data, ticker, interval, range, updatedAt: query.dataUpdatedAt } : undefined;
   const retained = useRetainedResult(current, (a, b) => a.data === b.data &&
     a.ticker === b.ticker && a.interval === b.interval && a.range === b.range && a.updatedAt === b.updatedAt);
-  const shown = previousForIdentity(retained, retained?.ticker, ticker);
-  const listingUnavailable = query.error instanceof ApiError && query.error.status === 404 &&
-    query.error.message === "security-price-history-unavailable";
-  const priceData = listingUnavailable ? undefined : shown?.data;
+  // A listing refusal also clears an earlier chart and its moment controls.
+  const shown = listingUnavailable ? undefined : previousForIdentity(retained, retained?.ticker, ticker);
+  const priceData = shown?.data;
   const unit = priceData?.currency;
   const priceFigure = (value: unknown, digits = 2) => quoteValue(value, unit, { style: "figure", digits });
   const displayedRange = shown?.range ?? range;
@@ -176,7 +182,26 @@ export function PriceHistory({
   const eventQuery = useQuery({ ...researchLensQuery(ticker, "analyst", runId), enabled: full || eventTrack === true, retry: false });
   const earnings = objects(object(eventQuery.data?.analyst ?? context?.analyst).earningsEvents).filter((e) => visibleDays.has(str(e.date).slice(0, 10)));
   const days = priceEventDays(markers, corporate, earnings);
-  const showEvents = eventTrack ?? (full || markers.length > 0);
+  const [chartZoom, setChartZoom] = useState<{key: string; start: number; end: number}>();
+  const visibleZoom = chartZoom?.key === zoomKey ? chartZoom : savedZoom();
+  const span = Math.max(0, slotDates.length - 1);
+  const low = Math.round(span * visibleZoom.start / 100), high = Math.round(span * visibleZoom.end / 100);
+  const seriesId = priceData?.publishedSeriesId || priceData?.observedSeriesId;
+  const published = current && actualInterval === "1d" && seriesId && eventTrack !== false;
+  const moments = useKeyMoments(published ? {ticker: priceData!.ticker, published_series_id: seriesId} : null,
+    slotDates[low]?.slice(0, 10), slotDates[high]?.slice(0, 10), priceData?.snapshotId ?? snapshotId);
+  const showEvents = eventTrack ?? (full || markers.length > 0 || moments.items.length > 0);
+  const desktop = useMediaQuery("(min-width: 768px)");
+  const headroom = desktop && showEvents && moments.items.length ? markerHeadroom : 0;
+  const baseHeight = full ? Math.max(450, typeof window === "undefined" ? 650 : window.innerHeight - 280)
+    : (compactChart ? 260 : 410) + (rsi ? 125 : 0) + (macd ? 125 : 0);
+
+  const momentPoints = moments.items.flatMap(m => {
+    const index = slotDates.indexOf(m.date);
+    const point = slots[index]?.bar;
+    const high = point && (candle ? bars[slots[index].index][3] : plottedCloses[index]);
+    return high == null ? [] : [{date: m.date, category: m.date, high}];
+  });
   const labels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   const shownAverages = averages ? (["sma20", "sma50", "sma200"] as const).filter((key) => averagePeriods.includes(key.slice(3))) : [];
   // Each average keeps its stroke: ink solid, grey dashed, ink dotted.
@@ -355,7 +380,7 @@ export function PriceHistory({
       ) : query.isPending && !priceData ? (
         <Pending shape="chart" height={300} label={t("正在读取价格记录…", "Loading price records…")} />
       ) : query.isError && !priceData ? (
-        <QueryError retry={query.refetch} />
+        <QueryError error={query.error} retry={query.refetch} />
       ) : !priceData || !points.length ? (
         <Empty
           title={t("当前区间没有行情", "No price history in this range")}
@@ -443,6 +468,7 @@ export function PriceHistory({
               read: (index, context) => readPrice(index, context?.grid),
               marks: readMarks,
             }}
+            overlay={showEvents && moments.items.length > 0 && <MomentOverlay chart={chart} moments={moments} points={momentPoints} />}
             controller={chart}
             onZoom={(instance) => {
               const current = (
@@ -451,6 +477,7 @@ export function PriceHistory({
                   | undefined
               )?.[0];
               if (current?.start != null && current.end != null) {
+                setChartZoom({key: zoomKey, start: current.start, end: current.end});
                 try {
                   sessionStorage.setItem(
                     zoomKey,
@@ -462,16 +489,7 @@ export function PriceHistory({
               }
             }}
             label={`${ticker} · ${t("价格、成交量和技术指标", "Price, volume and indicators")}`}
-            height={
-              full
-                ? Math.max(
-                    450,
-                    typeof window === "undefined"
-                      ? 650
-                      : window.innerHeight - 280,
-                  )
-                : (compactChart ? 260 : 410) + (rsi ? 125 : 0) + (macd ? 125 : 0)
-            }
+            height={baseHeight}
             option={(c) => {
               const panes = [
                 "price",
@@ -637,8 +655,8 @@ export function PriceHistory({
                 grid: positions.map((p) => ({
                   left: 64,
                   right: 24,
-                  top: p.top + "%",
-                  height: p.height + "%",
+                  top: headroom ? headroom + (baseHeight - headroom) * p.top / 100 : p.top + "%",
+                  height: headroom ? (baseHeight - headroom) * p.height / 100 : p.height + "%",
                 })),
                 axisPointer: { link: [{ xAxisIndex: "all" }] },
                 xAxis: panes.map((_, i) => ({
@@ -732,7 +750,8 @@ export function PriceHistory({
                 : formatDateSpan(points[0].date, points.at(-1)!.date, locale)}
             </span>
           </div>
-          {showEvents && <PriceEventTrack
+          {moments.coverage}
+          {showEvents && <PriceEventTrack moments={moments}
             days={full || eventTrack === true ? days : days.filter((day) => day.marker)}
             openEarnings={(event) => update({ view: "analyst", analystView: "events", eventId: event.id, eventDate: event.date, chart: null })}
           />}

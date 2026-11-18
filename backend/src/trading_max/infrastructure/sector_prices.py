@@ -62,6 +62,8 @@ class SparkSeries:
     mic: str | None = None
     exchange_name: str | None = None
     full_exchange_name: str | None = None
+    provider_symbol: str | None = None
+    currency: str | None = None
 
 
 def _yahoo_get(url: str, params: dict[str, str], timeout: float) -> SparkResponse:

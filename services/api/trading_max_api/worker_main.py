@@ -77,6 +77,7 @@ def _run_typed_worker(settings: Settings) -> None:
 
     runtime = TypedWorkerRuntime(
         store.data_root,
+        assistant_enabled=lambda: preferences.get_profile().assistant_enabled,
         estimate_history=EstimateHistory(database),
         broker_profiles_loader=broker_profiles_loader(preferences),
         intraday_interval_seconds=settings.intraday_interval_seconds,

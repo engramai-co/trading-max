@@ -251,6 +251,9 @@ _MARKETS = {
 _NAMES = _codes(
     {
         "XNAS": "NASDAQ",
+        "XNYS": "NEWYORKSTOCKEXCHANGE",
+        "XMAD": "MADRID",
+        "XKRX": "KOSPI",
         "ARCX": "ARCA",
         "XASE": "AMEX NYSEMKT",
         "BATS": "CBOEBZX BZX",
@@ -361,6 +364,12 @@ class VenueResolution:
     venues: frozenset[str]
     conflict: bool = False
     calendar: str | None = None
+
+    @property
+    def mic(self) -> str | None:
+        if len(self.venues) == 1:
+            return next(iter(self.venues))
+        return "XNAS" if self.venues == _NASDAQ else None
 
     @property
     def us_listing(self) -> bool:

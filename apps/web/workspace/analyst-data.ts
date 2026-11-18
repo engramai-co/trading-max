@@ -135,6 +135,34 @@ export function estimateChange90(row: Json | undefined) {
   return now != null && before != null && before > 0 ? now / before - 1 : null;
 }
 
+/** The smallest round step of 1, 2, 2.5 or 5 times a power of ten that covers a raw step. */
+function roundStep(raw: number) {
+  const power = 10 ** Math.floor(Math.log10(raw));
+  const unit = raw / power;
+  return (unit <= 1 ? 1 : unit <= 2 ? 2 : unit <= 2.5 ? 2.5 : unit <= 5 ? 5 : 10) * power;
+}
+
+/**
+ * The value axis of an estimate's revisions. It spans at least 4% of the estimate, so a revision
+ * of a tenth of a per cent stays a small move, and more when the estimates move further. The ends
+ * and ticks fall on round steps. Estimates close to zero keep a span of at least 0.01.
+ */
+export function revisionAxis(values: Array<number | null | undefined>) {
+  const shown = values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (!shown.length) return null;
+  const low = Math.min(...shown), high = Math.max(...shown);
+  const middle = (low + high) / 2;
+  const half = Math.max(((high - low) / 2) * 1.2, Math.abs(middle) * 0.02, 0.005);
+  const step = roundStep(half / 2);
+  const places = Math.max(0, Math.ceil(-Math.log10(step)) + 1);
+  const round = (value: number) => Number(value.toFixed(places));
+  return {
+    min: round(Math.floor(round((middle - half) / step)) * step),
+    max: round(Math.ceil(round((middle + half) / step)) * step),
+    interval: step,
+  };
+}
+
 /** The lens's conclusion: consensus, target, estimate direction, and the next report. */
 export function analystVerdict(analyst: Json, price: unknown, today: string) {
   const summary = ratingSummary(objects(analyst.recommendations));

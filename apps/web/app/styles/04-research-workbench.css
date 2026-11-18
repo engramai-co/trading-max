@@ -362,6 +362,13 @@
   flex-direction: column;
   gap: 20px;
 }
+/* The selected lens's panel keeps the column's spacing between its notices and the reading. */
+.mx-research-lens {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
 .mx-security-header {
   display: flex;
   justify-content: space-between;

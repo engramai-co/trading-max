@@ -19,7 +19,7 @@ from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, nav_number, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
-from trading_max.research.venues import VenueConflict, row_claims
+from trading_max.research.venues import VenueConflict
 
 from ..dashboard import benchmark_series
 from ..dashboard_models import ResearchPriceSeries
@@ -30,7 +30,7 @@ from ..research import published_price_series_id
 from ..research_listing import PinnedListing
 from .deps import AssistantDeps
 from .events import prior_decision_events
-from .moment_events import listing_moment_events
+from .moment_events import headline_events, listing_moment_events
 from .tools import (
     ANALYST,
     BROKER,
@@ -113,15 +113,19 @@ class ReviewArgs(Scoped, Paged):
 
 
 class MomentsArgs(Scoped):
+    index_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{1,64}$")] | None = None
     ticker: Ticker
     start: CalendarDay
     end: CalendarDay
+    date: CalendarDay | None = None
     published_series_id: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{20}$")] | None = None
 
     @model_validator(mode="after")
     def ordered(self):
         if self.end < self.start:
             raise ValueError("The range end must be on or after the start.")
+        if self.date and not self.start <= self.date <= self.end:
+            raise ValueError("The selected date must be inside the chart range.")
         return self
 
 
@@ -534,7 +538,13 @@ TRADE_MARKERS = "account/trade_markers.json"
 
 
 def dated_events(
-    read: _Read, args: MomentsArgs, codes: set[str], series: ResearchPriceSeries
+    read: _Read,
+    args: MomentsArgs,
+    codes: set[str],
+    series: ResearchPriceSeries | None = None,
+    *,
+    calendar=None,
+    currency="",
 ) -> tuple[list[dict], list[str], list[str]]:
     """Dated evidence for the selected listing. Extra sources can supply the same event rows."""
     events = []
@@ -547,18 +557,12 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
-    ticker = series.published_bar_ticker or args.ticker
-    claims = (
-        *series.venue_claims,
-        *row_claims(
-            ticker,
-            {
-                "mic": series.published_bar_mic,
-                "exchange": series.published_bar_exchange,
-            },
-        ),
+    pinned = (
+        PinnedListing.from_price_series(args.ticker, series)
+        if series
+        else read.deps.selected_listing(args.ticker)
     )
-    pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker, ticker))
+    ticker = pinned.symbol
     source_rows = {}
     for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS):
         raw = read.read(key)
@@ -606,9 +610,9 @@ def dated_events(
         add(row.get("date"), "filing", row.get("accession") or row.get("id"))
     fundamental = listing_row(FUNDAMENTALS)
     extra_events, extra_keys, extra_issues = listing_moment_events(
-        read,
         args,
         series,
+        calendar,
         _mapped(listing_row(EARNINGS).get("calendar")),
         _mapped(fundamental.get("metrics") or fundamental.get("info")),
         filing_evidence,
@@ -620,16 +624,21 @@ def dated_events(
     scopes = {CODE_SCOPE[code] for code in codes}
     if not scopes & {"invest", "isa"}:
         return [*events, *extra_events], keys, issues
-    if series.unresolved_trade_accounts is None:
+    if series is not None and series.published_series_id:
+        markers, unresolved = series.trade_markers, series.unresolved_trade_accounts
+    elif read.deps.listing_markers and read.deps.manifest:
+        markers, unresolved = read.deps.listing_markers(read.deps.manifest, ticker, currency)
+    else:
+        markers, unresolved = [], None
+    if unresolved is None:
         issues.append("trade_markers_unavailable")
         return [*events, *extra_events], keys, issues
     keys.append(TRADE_MARKERS)
     if any(
-        args.start <= day <= args.end and accounts & scopes
-        for day, accounts in series.unresolved_trade_accounts.items()
+        args.start <= day <= args.end and accounts & scopes for day, accounts in unresolved.items()
     ):
         issues.append("trade_listing_unresolved")
-    for row in series.trade_markers:
+    for row in markers:
         # The chart resolves listing identity. Limit its marker to the authorised accounts.
         kinds = {"B" if f.side == "buy" else "S" for f in row.fills if f.account in scopes}
         kinds.update(
@@ -641,59 +650,138 @@ def dated_events(
     return [*events, *extra_events], keys, issues
 
 
+def selected_moments(bars, events, args: MomentsArgs) -> list[dict]:
+    candidates = key_moments(bars, events, args.start, args.end)
+    return [item for item in candidates if item["date"] == args.date] if args.date else candidates
+
+
+def following_sessions(bars, moments, day):
+    if not day or not moments:
+        return []
+    selected = next((i for i, row in enumerate(bars) if row["date"] == day), None)
+    if selected is None or not (base := _number(bars[selected].get("close"))) or base <= 0:
+        return []
+    following = bars[selected + 1 :]
+    return [
+        {"start": day, "date": row["date"], "sessions": i, "return_fraction": close / base - 1}
+        for i, row in enumerate(following, 1)
+        if i in {1, 2, 3, 4, 5, 20, 63, len(following)}
+        and (close := _number(row.get("close"))) is not None
+    ]
+
+
 def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     read = _Read(deps, "price_key_moments", args, args.scope)
     codes = read.account_codes(args.scope)
-    if deps.price_series is None or deps.manifest is None:
-        return read.missing("published_daily_bars_unavailable")
-    try:
-        series = deps.price_series(args.ticker, deps.manifest, limit=2000)
-    except VenueConflict:
-        return read.result(
-            "unavailable",
-            reason="published_daily_bars_unavailable",
-            issues=["listing_calendar_unavailable"],
+    if args.index_id:
+        history = (
+            deps.index_history(args.index_id, args.published_series_id)
+            if deps.index_history and args.published_series_id
+            else None
         )
-    except (FileNotFoundError, SnapshotIntegrityError, ValueError):
-        return read.missing("published_daily_bars_unavailable")
-    series_id = series.published_series_id
-    key = next(
-        (
+        if (
+            not history
+            or history.display_interval != "1d"
+            or (history.index.symbol or "INDEX") != args.ticker
+        ):
+            return read.missing("displayed_index_series_unavailable")
+        bars = [{"date": p.at.date().isoformat(), "close": p.value} for p in history.points]
+        if history.index.kind == "etf-price":
+            events, keys, issues = dated_events(
+                read, args, codes, calendar=history.index.calendar, currency=history.currency or ""
+            )
+        else:
+            events, keys, issues = (
+                headline_events(read, args, history.index.calendar)
+                if history.index.symbol
+                else ([], [], [])
+            )
+        if history.state != "available":
+            issues.append("index_history_" + history.state)
+        moments = selected_moments(bars, events, args)
+        return read.result(
+            "partial" if issues else "ok",
+            data={
+                "ticker": args.ticker,
+                "start": args.start,
+                "end": args.end,
+                "interval": "1d",
+                "basis": "observed_index_series",
+                "index_range": history.range,
+                "published_series_id": args.published_series_id,
+                "items": moments,
+                "following": following_sessions(bars, moments, args.date),
+                "adjustment": "index-level"
+                if history.index.kind != "etf-price"
+                else "provider-close",
+            },
+            keys=[NEWS_KEY, *keys],
+            issues=issues,
+        )
+    observed = (
+        deps.observed_prices(deps.snapshot_id, args.ticker, args.published_series_id)
+        if (deps.observed_prices and deps.snapshot_id and args.published_series_id)
+        else None
+    )
+    if observed:
+        series = observed
+        series_id = args.published_series_id
+        listing = series.ticker
+        price_keys = []
+    else:
+        if deps.price_series is None or deps.manifest is None:
+            return read.missing("published_daily_bars_unavailable")
+        try:
+            series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+        except VenueConflict:
+            return read.result(
+                "unavailable",
+                reason="published_daily_bars_unavailable",
+                issues=["listing_calendar_unavailable"],
+            )
+        except (FileNotFoundError, SnapshotIntegrityError, ValueError):
+            return read.missing("published_daily_bars_unavailable")
+        series_id = series.published_series_id
+        price_keys = [
             key
             for key in (FUND_PRICES_KEY, TECHNICAL)
             if (ref := read.ref(key))
             and published_price_series_id(ref.sha256, series.ticker) == series_id
-        ),
-        None,
-    )
-    if not key or not series.points or not series.published_bar_ticker:
-        return read.missing("published_daily_bars_unavailable")
+        ]
+        listing = series.published_bar_ticker
+        if not price_keys or not series.points or not listing:
+            return read.missing("published_daily_bars_unavailable")
     read = replace(read, evidence_context=series_id)
     if args.published_series_id and args.published_series_id != series_id:
-        return read.missing("displayed_price_series_mismatch", keys=[key])
+        return read.missing("displayed_price_series_mismatch", keys=price_keys)
     bars = [p.model_dump(mode="json") for p in series.points]
     events, keys, issues = dated_events(
         read,
         args,
         codes,
         series,
+        calendar=series.exchange_calendar,
+        currency=series.currency,
     )
-    moments = key_moments(bars, events, args.start, args.end)
+    moments = selected_moments(bars, events, args)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)
     if not has_bars:
-        return read.missing("no_visible_daily_bars", keys=[key])
+        return read.missing("no_visible_daily_bars", keys=price_keys)
     result = read.result(
         "partial" if issues else "ok",
         data={
             "ticker": series.ticker,
+            "listing": listing,
             "start": args.start,
             "end": args.end,
             "interval": "1d",
-            "basis": "published_daily_closes",
+            "basis": "observed_daily_closes" if observed else "published_daily_closes",
             "published_series_id": series_id,
             "items": moments,
+            "adjustment": series.adjustment,
+            "following": following_sessions(bars, moments, args.date),
         },
-        keys=[key, *keys],
+        keys=[*price_keys, *keys],
         issues=issues,
     )
 

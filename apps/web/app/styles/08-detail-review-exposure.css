@@ -430,13 +430,17 @@ button.mx-text-link {
   width: 160px;
 }
 
+/* Ratings are not price moves: one neutral scale, darkest for strong buy, wherever they are drawn. */
+.mx-expectations,
+.mx-rating-history {
+  --mx-rating-0: var(--mx-muted);
+  --mx-rating-1: color-mix(in srgb, var(--mx-muted) 85%, var(--mx-surface));
+  --mx-rating-2: color-mix(in srgb, var(--mx-muted) 70%, var(--mx-surface));
+  --mx-rating-3: color-mix(in srgb, var(--mx-muted) 55%, var(--mx-surface));
+  --mx-rating-4: color-mix(in srgb, var(--mx-muted) 40%, var(--mx-surface));
+}
 /* Consensus and target context share one reading surface. */
 .mx-expectations {
-  --mx-rating-0: var(--mx-up);
-  --mx-rating-1: var(--mx-chart-2);
-  --mx-rating-2: var(--mx-warning);
-  --mx-rating-3: var(--mx-chart-1);
-  --mx-rating-4: var(--mx-down);
   container-type: inline-size;
 }
 .mx-expectations-grid {
@@ -515,6 +519,62 @@ button.mx-text-link {
   height: 100%;
   display: block;
   border-radius: inherit;
+}
+/* Each month's ratings as one compact bar, its total at the end, as the current distribution reads. */
+.mx-rating-history {
+  margin: 0;
+}
+.mx-rating-history-rows {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 0;
+  max-width: 640px;
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) max-content;
+  gap: 10px 12px;
+}
+/* Every month shares the columns, so the bars start together after the longest month. */
+.mx-rating-history-rows li {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
+  font-size: 12px;
+}
+.mx-rating-history-rows strong {
+  font-weight: 550;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.mx-rating-history-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.mx-rating-history-bar > span {
+  min-width: 2px;
+}
+.mx-rating-history-key {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-size: 11px;
+  color: var(--mx-muted);
+}
+.mx-rating-history-key li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.mx-rating-history-key span {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
 }
 .mx-target-context {
   min-width: 0;

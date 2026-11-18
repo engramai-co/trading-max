@@ -512,3 +512,18 @@ with official_reader() as read:
     print(len(parse(source, read(source.url), today)))
 PY
 ```
+
+## Research citations and comparisons
+
+Research citations carry the publication ID, chart identity and selected session or
+event. The read-only citation route checks snapshot retention before resolving
+the original tool result. A missing publication or evicted observed chart has
+an explicit unavailable state. Published daily charts retain their exchange
+time zone. For a selected session the tool reports subsequent adjusted moves
+on the first five observed sessions, at 20 and 63 sessions when available, and
+through the last observed close. Each observation carries both dates.
+
+Sector comparisons use the listing’s GICS classification and the corresponding
+MSCI World USD price index. Only common USD sessions enter the comparison.
+Analyst publications retain like-for-like consensus changes for the same fiscal
+period, currency and metric, dated at both observations.

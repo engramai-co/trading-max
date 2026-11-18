@@ -138,7 +138,7 @@ test.describe("primary chart reading", () => {
       const track = chartPanel.getByRole("region", { name: "Event timeline" });
       await expect(track.getByRole("button", { name: / B$/ })).toBeVisible();
       await expect(track.getByRole("button", { name: / S$/ })).toBeVisible();
-      const marker = track.getByRole("button", { name: / T \+2$/ });
+      const marker = track.getByRole("button", { name: / · T \(\+2\)$/ });
       await marker.focus();
       await page.keyboard.press("Enter");
       await expect(marker).toHaveAttribute("aria-expanded", "true");
@@ -188,8 +188,8 @@ test.describe("primary chart reading", () => {
           await mockPrices(page);
           await page.goto("/research?ticker=AAPL&view=technical");
           const track = page.getByRole("region", { name: en ? "Event timeline" : "事件时间轴" });
-          const marker = track.getByRole("button", { name: / T \+4$/ });
-          await expect(marker).toHaveAccessibleName((await marker.innerText()).replace(/\s+/g, " ").trim());
+          const marker = track.getByRole("button", { name: / · T \(\+4\)$/ });
+          await expect(marker).toHaveAccessibleName(/ · T \(\+4\)$/);
           await marker.focus();
           await page.keyboard.press("Enter");
           const rows = track.getByRole("listitem");

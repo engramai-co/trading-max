@@ -5,7 +5,7 @@ import { formatCalendarDate } from "@/ui/formatters";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Drawer, Group, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Legend, Plot } from "./charts";
 import { compact, compactTick, number, percent } from "@/workspace/data";
 import { useChartColours } from "@/ui/charts/palette";
@@ -38,6 +38,7 @@ export function FinancialWorkbench({
   ticker = data.ticker,
   revision,
   preview = false,
+  earningsBrief,
 }: {
   data: ResearchLensSnapshot;
   initialMode?: string;
@@ -45,6 +46,8 @@ export function FinancialWorkbench({
   ticker?: string;
   revision?: string | null;
   preview?: boolean;
+  /** The earnings brief opens the page, ahead of the reporting-period controls. */
+  earningsBrief?: ReactNode;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -54,9 +57,12 @@ export function FinancialWorkbench({
   const facts = data.financialFacts;
   if (!facts?.periods?.length)
     return (
-      <Panel>
-        <Empty title={t("暂无可用财报", "No financial statements available")} />
-      </Panel>
+      <>
+        {earningsBrief}
+        <Panel>
+          <Empty title={t("暂无可用财报", "No financial statements available")} />
+        </Panel>
+      </>
     );
   // Segments read the same parameter and keep an annual view when TTM is selected.
   const frequency = [
@@ -206,6 +212,8 @@ export function FinancialWorkbench({
         parameter="financialMode"
         initial={initialMode}
         before={
+          <>
+          {earningsBrief}
           <div className="mx-research-context-toolbar">
           <Group gap="xs">
             <Segments
@@ -235,6 +243,7 @@ export function FinancialWorkbench({
             />
           </Group>
           </div>
+          </>
         }
       >
       {!period ? (

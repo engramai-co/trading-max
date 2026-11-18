@@ -21,6 +21,7 @@ from trading_max.application.research_stages import (
     ValuationArtifactStage,
 )
 from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotStore
+from trading_max.reference.msci_world_sectors import WORLD_INDUSTRY_INDICES
 from trading_max.research.fundamentals import YFinanceResearchService
 from trading_max.research.held_funds import FUND_PRICE_DIRECTORY_KEY, FUND_PRICES_KEY
 from trading_max.research.market import MarketResearchService
@@ -70,7 +71,7 @@ def _context(*artifact_ids: str) -> StageContext:
 class _CountingService:
     def __init__(self) -> None:
         self.calls = 0
-        self.history_periods: list[str] = []
+        self.history_periods: dict[str, str] = {}
         self.service = MarketResearchService(
             history_loader=self._load_history,
             options_loader=lambda ticker, yf_ticker, spot: (_ for _ in ()).throw(
@@ -80,7 +81,7 @@ class _CountingService:
         )
 
     def _load_history(self, ticker: str, period: str) -> pd.DataFrame:
-        self.history_periods.append(period)
+        self.history_periods[ticker] = period
         return _history(ticker, period)
 
     def run(self, tickers):
@@ -88,14 +89,24 @@ class _CountingService:
         return self.service.run(tickers)
 
 
-def test_research_stages_use_one_immutable_market_input(tmp_path) -> None:
+@pytest.mark.parametrize("enabled", [True, False])
+def test_research_stages_use_one_immutable_market_input(tmp_path, enabled) -> None:
     artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
     provider = _CountingService()
 
+    provider.service.assistant_enabled = lambda: enabled
     market = MarketSnapshotStage(artifacts, provider)
     market_result = market.run(_context())
     assert provider.calls == 1
-    assert set(provider.history_periods) == {"max"}
+    sector_symbols = {s.symbol for s in WORLD_INDUSTRY_INDICES if s.level == "sector"}
+    assert {symbol for symbol, period in provider.history_periods.items() if period == "6mo"} == (
+        sector_symbols if enabled else set()
+    )
+    assert all(
+        period == "max"
+        for symbol, period in provider.history_periods.items()
+        if symbol not in sector_symbols
+    )
     market_ref = market_result.artifacts[0]
     assert market_ref.key == "research/market_snapshot.json"
     nav_csv = artifacts.put_bytes(

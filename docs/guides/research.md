@@ -3,16 +3,20 @@
 [Documentation](../README.md) · [Data conventions](data-and-metrics.md)
 
 Research works independently of your portfolio refresh. Start from a holding
-or choose **Search** (the magnifier) on the research page. Enter a ticker or
-name and press Return; fuzzy matching proposes up to three listings, and
-matching indices appear as you type. Open a result, confirm the ticker and
-exchange, then choose **Add to research list**. Similar names can refer to
-different listings.
+or open **Search** (the magnifier at the top of every page, or ⌘K / Ctrl K).
+Stocks, funds and indices in your research list open directly. For any other
+listing, choose **Find in all securities**, or search from the research list
+itself: fuzzy matching proposes up to three listings, and matching indices
+appear as you type. Open a result, confirm the ticker and exchange, then choose
+**Add to research list**. Similar names can refer to different listings.
 
 The list's pin keeps the list beside the workspace on a wide screen. It pins
 the list layout, not the selected company. **Compare** opens a company
 comparison, and the ··· menu changes a category or removes an entry from the
 research list. Holdings always stay in the list.
+
+With the keyboard, the arrow keys, Home and End move between the views below;
+Enter or Space opens the one in focus.
 
 ## Choose the question first
 

@@ -53,7 +53,7 @@ import { useIndexCatalog } from "./market-indices-data";
 import { useListedIndices } from "./listed-indices";
 import { NavigationGroup, NavigationHint, NavigationIcon } from "./navigation-group";
 import {
-  highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
+  findsSecurity, highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
   type SearchIndex, type SearchResult,
 } from "./command-search";
 
@@ -256,7 +256,20 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     pathname === "/research" ? (onIndexPage ? indexName(params.get("index") ?? "") : params.get("ticker")) : null,
     active?.label,
   ));
-  const results = [
+  const researchIcon = navigation.find((page) => page.href === "/research")?.icon ?? MagnifyingGlass;
+  const findText = query.trim();
+  // On Research the address keeps its view, filters and everything else, and gains only the text
+  // to find: the page opens its finder over itself and drops the text again, so closing the finder
+  // leaves the page as it was. Elsewhere, and from a cited reading, which has no finder, Research
+  // opens with the finder.
+  const onResearch = pathname === "/research" && !params.has("evidence");
+  const findQuery = new URLSearchParams(onResearch ? routeSearch : "");
+  findQuery.set("find", findText);
+  const results: Array<Omit<SearchResult, "group"> & {
+    group: SearchResult["group"] | "holdings" | "securities";
+    Icon: typeof MagnifyingGlass;
+    replace?: boolean;
+  }> = [
     ...searchWorkspace({ query, pages, instruments: directory.data?.instruments ?? [], indices, recent, currentTicker, locale })
       .map((item) => ({ ...item, Icon: navigation.find((page) => page.href === item.href.split("?")[0])?.icon ?? MagnifyingGlass })),
     ...(match
@@ -271,20 +284,36 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           },
         ]
       : []),
+    // A security outside the research list: the research finder searches every listing for it.
+    ...(findsSecurity(findText, directory.data?.instruments ?? [])
+      ? [
+          {
+            href: "/research?" + findQuery,
+            label: t("在全部证券中查找", "Find in all securities") + " “" + findText + "”",
+            detail: undefined,
+            group: "securities" as const,
+            Icon: researchIcon,
+            replace: onResearch,
+          },
+        ]
+      : []),
   ];
   const selectedIndex = Math.min(index, Math.max(0, results.length - 1));
   const groups = {
     recent: t("最近访问", "Recent"), pages: t("页面", "Pages"), research: t("研究清单", "Research list"),
-    indices: t("指数", "Indices"), holdings: t("持仓", "Holdings"),
+    indices: t("指数", "Indices"), holdings: t("持仓", "Holdings"), securities: t("全部证券", "All securities"),
   };
   useEffect(() => {
     if (searchOpen) resultsRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
   }, [selectedIndex, query, searchOpen, results.length]);
-  function navigate(href: string) {
+  function navigate(href: string, replace = false) {
     restoreSearchFocus.current = false;
     setSearchOpen(false);
     const route = presentationLink(actualPathname, href);
     if (route.separate) window.open(route.href, "_blank", "noopener");
+    // Only the address of the current page changes: no navigation, scroll, remount or history entry.
+    // A fresh state, as the route helpers write, lets the router read the new address.
+    else if (replace) window.history.replaceState(null, "", route.href);
     else if (!navigateBuild?.(route.href)) router.push(route.href);
   }
   const brand = (
@@ -556,7 +585,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               }
               if (event.key === "Enter" && results[selectedIndex]) {
                 event.preventDefault();
-                navigate(results[selectedIndex].href);
+                navigate(results[selectedIndex].href, results[selectedIndex].replace);
               }
             }}
           />
@@ -577,7 +606,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
                 className="mx-command-result"
                 data-active={i === selectedIndex || undefined}
                 onMouseDown={(event) => event.preventDefault()}
-                onClick={() => navigate(item.href)}
+                onClick={() => navigate(item.href, item.replace)}
                 onFocus={() => setIndex(i)}
               >
                 <item.Icon size={20} aria-hidden="true" />

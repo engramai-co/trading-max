@@ -5,8 +5,14 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { LineSeriesOption } from "echarts";
-import { useState } from "react";
+import type { ECharts } from "echarts";
+import { markerHeadroom } from "./assistant/marker-layout";
+import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
+import { PositionReading } from "./assistant/research-entry";
 import { quoteUnit, quoteValue } from "./financial-values";
+import { useRouteState } from "./route-state";
+import { PriceEventTrack } from "./research-price-events";
+import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent, formatReadingTime } from "@/ui/formatters";
@@ -84,14 +90,16 @@ export function indexLogDomain(series: (number | null)[][]) {
   };
 }
 
-export function ResearchIndexChart({ index, catalogue, preview = false, demonstration = false }: {
-  index: IndexIdentity; catalogue: IndexIdentity[]; preview?: boolean; demonstration?: boolean;
+export function ResearchIndexChart({ index, catalogue, snapshotId, preview = false, demonstration = false }: {
+  index: IndexIdentity; catalogue: IndexIdentity[]; snapshotId?: string; preview?: boolean; demonstration?: boolean;
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const colours = useChartColours();
   const phone = useMediaQuery("(max-width: 48em)");
-  const [range, setRange] = useState<IndexRange>(index.ranges.includes("1Y") ? "1Y" : index.ranges.at(-1) ?? "3M");
+  const { params } = useRouteState();
+  const requestedRange = params.get("indexRange");
+  const [range, setRange] = useState<IndexRange>(index.ranges.find(r => r === requestedRange) ?? (index.ranges.includes("1Y") ? "1Y" : index.ranges.at(-1) ?? "3M"));
   const [log, setLog] = useState(false);
   const [compare, setCompare] = useState<string[]>([]);
   const period = preview ? "3M" : range;
@@ -163,6 +171,14 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
     gap: (i: number) => primary[Math.round(i)] == null,
     observationCount: positions.length,
   };
+  const chart = useRef<ECharts | null>(null);
+  const security = !demonstration && history?.publishedSeriesId
+    ? {ticker: index.symbol || "INDEX", index_id: index.id, published_series_id: history.publishedSeriesId} : null;
+  const moments = useKeyMoments(!preview && daily ? security : null, dates[0]?.slice(0, 10), dates.at(-1)?.slice(0, 10) ?? "", snapshotId);
+  const momentPoints = moments.items.flatMap(moment => {
+    const i = dates.findIndex(d => d.slice(0, 10) === moment.date);
+    return primary[i] == null ? [] : [{date: moment.date, category: dates[i], high: primary[i]}];
+  });
   const tools = !preview && hasRange;
   const logarithmic = log && ["1Y", "3Y", "5Y", "MAX"].includes(period);
   const logDomain = logarithmic ? indexLogDomain(values) : {};
@@ -177,6 +193,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
         "Index levels are the provider’s closing or intraday readings, in the unit shown above the chart. Drawdown and rolling volatility use the plotted readings; dotted lines bridge missing ones.",
       )}</DataBasis>
     </>}>
+      {preview && security && <PositionReading security={security} name={labels[0]} snapshotId={snapshotId} />}
       {tools && <div className="mx-index-research-chart-tools">
         <Segments label={t("时间范围", "Range")} value={period}
           options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
@@ -209,7 +226,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
               && <small className="mx-index-research-caveat">{t("部分对比没有相同频率的历史。", "Some comparisons lack history at the same interval.")}</small>}
             {comparisons.length > 0 && !comparing &&
               <small className="mx-index-research-caveat">{t("对比序列没有足够的共同日期。", "The comparison series have too few shared dates.")}</small>}
-            <Plot height={phone ? 235 : preview ? 276 : 330} label={label}
+            <Plot controller={chart} overlay={moments.items.length > 0 && <MomentOverlay chart={chart} moments={moments} points={momentPoints} name={labels[0]} />} height={phone ? 235 : preview ? 276 : 330} label={label}
               readout={readout}
               option={(colours) => {
                 const inks = [colours.brand, colours.text, colours.axis];
@@ -220,7 +237,7 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
                 }));
                 return {
                   animation: false,
-                  grid: { left: 64, right: 15, top: comparing ? 40 : 17, bottom: 30 },
+                  grid: { left: 64, right: 15, top: (comparing ? 40 : 17) + (!phone && moments.items.length ? markerHeadroom : 0), bottom: 30 },
                   legend: comparing ? { top: 2, left: "center", show: true, data: labels,
                     textStyle: { color: colours.text } } : undefined,
                   xAxis: { type: "category", data: dates, boundaryGap: false,
@@ -236,6 +253,8 @@ export function ResearchIndexChart({ index, catalogue, preview = false, demonstr
                 };
               }}
             />
+            {moments.coverage}
+            {moments.items.length > 0 && <PriceEventTrack days={[]} moments={moments} />}
             {!preview && (daily || weekly) && <div className="mx-index-research-risk">
               <RiskChart dates={dates} values={drawdown} title={t("回撤", "Drawdown")} signed />
               <RiskChart dates={dates} values={volatility} title={t("滚动波动率 · 20 点", "Rolling volatility · 20 bars")} />

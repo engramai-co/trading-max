@@ -48,6 +48,7 @@ function ReadingContent({ card, children }: ReadingContainerProps) {
 }
 function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
+  const { open } = useAssistant();
   const trigger = useRef(document.activeElement);
   const closeButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -61,6 +62,8 @@ function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef }: R
       if (element.isConnected && (!dialog || dialog.contains(element))) element.focus({preventScroll:true});
     });
   }
+  // The full-screen sidebar owns the phone screen; the sheet returns when it closes.
+  if (open) return null;
   return <Drawer opened onClose={dismiss} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title + " · " + card.object}</span>}
     returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{ref:closeButton,"aria-label":t("关闭解读", "Close reading")}}
     classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>
@@ -84,7 +87,7 @@ export function AnchoredReading({ card, onClose, children }: ReadingContainerPro
   return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>
     <ReadingContent card={card}>{children}</ReadingContent></div>;
 }
-export function DigestRow({ storageKey, header, headline, summary, children }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; children: ReactNode }) {
+export function DigestRow({ storageKey, header, headline, summary, summarySource, children }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; summarySource?: ReactNode; children: ReactNode }) {
   const { ready } = useAssistant();
   const id = useId();
   const [open, setOpen] = useState(() => { try { return localStorage.getItem("tm-reading-" + storageKey) === "open"; } catch { return false; } });
@@ -94,6 +97,6 @@ export function DigestRow({ storageKey, header, headline, summary, children }: {
     try { localStorage.setItem("tm-reading-" + storageKey, open ? "closed" : "open"); } catch {}
   }
   return <section className="mx-digest"><div className="mx-digest-head"><span aria-hidden="true">✦</span>{header}
-    <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><CaretDown size={16} /></button></div>
+    <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><CaretDown size={16} /></button>{!open && summarySource}</div>
     <div id={id} hidden={!open}>{children}</div></section>;
 }

@@ -1,6 +1,7 @@
 import { dividendAmount, dividendBasis } from "@/lib/dividend-disclosure";
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { Locale } from "@/components/locale-provider";
+import type { ResearchFigure } from "./research-figures";
 import { formatPageField, type ToolField } from "./page-figures";
 import type { Evidence } from "./evidence";
 import { formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
@@ -108,15 +109,22 @@ const historicalSources: Record<string, Evidence["source"]> = {
 
 export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
   if (output.status !== "ok" && output.status !== "partial") return null;
+  const savedRow = ref.arguments?.eventId;
+  if (savedRow) {
+    const index = objects(object(output.data).items).findIndex(row => row.evidence_id === savedRow);
+    if (index < 0) return null;
+    pointer = pointer.replace(/^\/data\/items\/\d+\//, "/data/items/" + index + "/");
+  }
   const field = resolveField(output, pointer);
   if (!field || field.group !== "items") return null;
   const row = field.parent;
-  const historical = ref.tool === "news_and_events";
   const kind = citedEventKind(str(row.kind));
-  if (historical && (!str(row.ticker) || !str(output.snapshot_id))) return null;
-  if (historical && !kind && !Object.hasOwn(historicalSources, str(row.kind))) return null;
+  const accountOrMarket = ["own_trade","holiday","half_day"].includes(str(row.kind));
+  const historical = ref.tool === "news_and_events";
+  if (!kind && !accountOrMarket && !(historical && Object.hasOwn(historicalSources, str(row.kind)))) return null;
+  if (historical && (!str(output.snapshot_id) || (!accountOrMarket && kind !== "macro" && !str(row.ticker)))) return null;
   const dividend = historical && kind === "dividend";
-  if (historical && !dividend && !(["date", "local_date", "end_date", "instant", "local_time"].includes(field.field) && dateText(field.value))) return null;
+  if (historical && !kind && !accountOrMarket && !(["date", "local_date", "end_date", "instant", "local_time"].includes(field.field) && dateText(field.value))) return null;
   let detail = "";
   if (dividend && ["amount", "currency", "unit"].includes(field.field)) {
     detail = dividendAmount(row.amount, row.currency, row.unit, locale) ?? "";
@@ -142,13 +150,25 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  if (kind && kind !== "rating_change") {
-    source = kind === "earnings" ? "financials" : "disclosure";
+  if (historical && (row.kind === "filing" || row.kind === "rating_change") && row.source_url) {
+    args.url = str(row.source_url);
+    source = historicalSources[str(row.kind)];
+  } else if (kind && kind !== "macro") {
+    source = kind === "earnings" ? "financials" : kind === "rating_change" ? "analysts" : "disclosure";
     args.holdingTicker = ticker;
     args.event = kind === "ex_dividend" ? "exDividend" : kind;
     if (kind === "earnings" && !row.research_event_id) args.event = "earningsWindow";
     if (row.research_event_id) args.researchEventId = str(row.research_event_id);
     if (row.end_date) args.endDate = str(row.end_date);
+  } else if (row.kind === "macro" && (ref.arguments?.market || ref.arguments?.rowCitation || ref.tool === "news_and_events")) {
+    args.holdingTicker = "MARKET";
+    args.event = "macro";
+  } else if (accountOrMarket && !(historical && row.kind === "own_trade" && ["buy","sell"].includes(str(row.side)))) {
+    const data = object(output.data);
+    source = row.kind === "own_trade" ? "broker" : "calendar";
+    Object.assign(args, ref.arguments, {rowCitation:"1",field:pointer,event:str(row.kind),eventId:str(row.evidence_id),
+      ticker:ticker || "MARKET",eventTicker:str(ref.arguments?.ticker),start:str(data.start),end:str(data.end),
+      timezone:str(data.timezone) || timeZone, scope:str(output.scope)});
   } else if (historical) {
     args.event = str(row.kind);
     source = historicalSources[args.event];
@@ -222,7 +242,7 @@ function formatField(tool: string, row: NonNullable<ReturnType<typeof resolveFie
 }
 
 /** Every displayed word of a factual line comes from trusted copy or the cited output. */
-export function renderToolField(tool: string, output: Json, pointer: string, locale: Locale, timeZone: string) {
+export function renderToolField(tool: string, output: Json, pointer: string, locale: Locale, timeZone: string, research?: ResearchFigure | null) {
   const status = str(output.status);
   if (!Object.hasOwn(statusWords, status)) return null;
   const data = object(output.data);
@@ -233,6 +253,7 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   if (pointer === "/status") return status === "ok" && limited ? limitedText : word(statusWords[status], locale);
   if (status !== "ok" && status !== "partial") return null;
   if (pointer === "/data/coverage" && coverage) return limited ? limitedText : word(["Complete coverage", "覆盖完整"], locale);
+  if (research !== undefined) return research ? [research.text, limited ? limitedText : ""].filter(Boolean).join(" · ") : null;
   if (tool === "review_patterns" || tool === "decision_timing_and_habits") return renderReviewField(tool, output, pointer, locale);
   const row = resolveField(output, pointer);
   if (!row || (row.group === "twr" && row.parent.status !== "ok")) return null;

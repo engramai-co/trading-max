@@ -30,7 +30,7 @@ export function AssistantEntry() {
   </button>;
 }
 export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }: { overlay: boolean; page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
-  const { open, close, ready, pending, suspended, code } = useAssistant();
+  const { open, close, ready, pending, suspended, code, handoff } = useAssistant();
   const t = useCopy();
   // A new opening requires confirmation. An already visible thread can keep its
   // draft editable while readiness refreshes. A consent signal immediately clears ready.
@@ -47,6 +47,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
     return () => { window.removeEventListener("keydown", escape); if (overlay) document.body.style.overflow = previous; };
   }, [close, open, overlay, searchOpen]);
   const wasOpen = useRef(false);
+  const focusedHandoff = useRef(0);
   const needsOpeningFocus = useRef(false);
   const [composer, setComposer] = useState<HTMLTextAreaElement | null>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -60,6 +61,11 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
     wasOpen.current = open;
     if (!ready && !pending && !suspended) lastControl.current = null;
     if (!open || searchOpen) return;
+    if (handoff && handoff.sequence !== focusedHandoff.current && showThread && focusAssistantControl(composer)) {
+      focusedHandoff.current = handoff.sequence;
+      needsOpeningFocus.current = false;
+      return;
+    }
     const active = document.activeElement;
     // An explicit open can precede the lazy composer. A non-modal panel leaves background focus alone.
     if (!needsOpeningFocus.current && !overlay && active && active !== document.body && !panel.current?.contains(active)) return;
@@ -67,7 +73,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
     if (needsOpeningFocus.current && showThread && !composer && !lastControl.current) return;
     const dismiss = panel.current?.querySelectorAll<HTMLElement>("[data-assistant-dismiss]") ?? [];
     if (focusAssistantControl(lastControl.current, composer, ...dismiss)) needsOpeningFocus.current = false;
-  }, [open, overlay, pending, ready, suspended, searchOpen, composer, showThread]);
+  }, [open, overlay, pending, ready, suspended, searchOpen, composer, showThread, handoff]);
   if (thread === "unvisited" && !open) return null;
   return <div ref={panel} id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     onKeyDown={overlay && !searchOpen ? cyclePanelTab : undefined}

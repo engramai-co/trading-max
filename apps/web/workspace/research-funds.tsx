@@ -394,7 +394,7 @@ function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: b
         ].join(" · ");
         return [label, rank
           ? <span className="mx-etf-evidence" key={key} title={title}>
-            {t("第 {value} 分位", "Percentile {value}").replace("{value}", number(rank.percentile, 2))}
+            {"P" + number(rank.percentile, 0)}
             <small>· {rank.count}{rank.count === 1 ? t(" 只", " fund") : t(" 只", " funds")}</small>
           </span>
           : "—"];

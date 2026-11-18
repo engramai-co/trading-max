@@ -21,7 +21,17 @@ class UpcomingQuery(EventArgs):
 
 
 class UpcomingItem(BaseModel):
-    kind: Literal["macro", "earnings", "ex_dividend", "dividend_pay", "holiday", "half_day"]
+    kind: Literal[
+        "macro",
+        "earnings",
+        "ex_dividend",
+        "dividend_pay",
+        "dividend",
+        "rating_change",
+        "filing",
+        "holiday",
+        "half_day",
+    ]
     evidence_id: str
     research_event_id: str | None = None
     date: str
@@ -99,7 +109,9 @@ def upcoming(
         raise HTTPException(422, str(exc)) from None
 
 
-CitedKind = Literal["earnings", "ex_dividend", "dividend_pay", "dividend", "rating_change"]
+CitedKind = Literal[
+    "earnings", "ex_dividend", "dividend_pay", "dividend", "rating_change", "filing", "macro"
+]
 
 
 class CitedHoldingEvent(UpcomingItem):

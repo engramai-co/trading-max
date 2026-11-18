@@ -176,13 +176,6 @@
 .mx-valuation-readout .mx-metric-change {
   white-space: nowrap;
 }
-.mx-reading-sections .mx-expectations {
-  --mx-rating-0: var(--mx-muted);
-  --mx-rating-1: color-mix(in srgb, var(--mx-muted) 85%, var(--mx-surface));
-  --mx-rating-2: color-mix(in srgb, var(--mx-muted) 70%, var(--mx-surface));
-  --mx-rating-3: color-mix(in srgb, var(--mx-muted) 55%, var(--mx-surface));
-  --mx-rating-4: color-mix(in srgb, var(--mx-muted) 40%, var(--mx-surface));
-}
 .mx-target-key {
   margin-inline-start: 8px;
   font-size: inherit;
