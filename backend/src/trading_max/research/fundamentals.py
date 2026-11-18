@@ -21,6 +21,7 @@ from yfinance.exceptions import YFException
 from trading_max.domain import DomainModel
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.facts import build_financial_facts
+from trading_max.research.venues import resolve_venue, row_claims
 
 JsonObject = dict[str, Any]
 InfoLoader = Callable[[str], Mapping[str, Any]]
@@ -339,6 +340,13 @@ class YFinanceResearchService:
                     missing[ticker] = "provider-no-data"
                     warnings.append(f"{ticker}: Yahoo Finance returned no fundamentals")
                     continue
+                # Preserve identity even on a conflict so downstream joins cannot silently
+                # use another listing or infer a schedule from the remaining evidence.
+                for key in ("symbol", "mic", "exchange", "exchangeName", "marketSegment"):
+                    if info.get(key):
+                        metrics[key] = _json_safe(info[key])
+                if resolve_venue(ticker, *row_claims(ticker, {}, metrics)).conflict:
+                    warnings.append(f"{ticker}: conflicting provider listing evidence")
                 rows.append(
                     {
                         "ticker": ticker,

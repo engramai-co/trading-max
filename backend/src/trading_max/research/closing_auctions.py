@@ -177,7 +177,7 @@ def headline_session(
         product = str(asset_type or "").strip().upper()
         if product in {"ETF", "EQUITY"}:
             windows = [rule.etf or rule.equity] if product == "ETF" else [rule.equity]
-        elif not product or product == "UNKNOWN":
+        elif not product or product in {"UNKNOWN", "FUND"}:
             windows = [rule.equity, rule.etf or rule.equity]
         else:
             return None, None
