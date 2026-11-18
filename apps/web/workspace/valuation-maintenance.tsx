@@ -167,7 +167,8 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
       (review.saved.spotSource !== review.current.spotSource || review.current.spotSource === "broker"
         ? " · " + [review.saved.spotSource, review.current.spotSource].map((s) => s === "broker" ? t("券商", "Broker") : t("行情", "Quote")).join(" → ")
         : "")],
-    ...(reporting && (reporting !== currency || review.saved.reportingCurrency !== reporting) ? [[t("汇率", "Exchange rate"),
+    ...(reporting && (reporting !== currency || (review.saved.reportingCurrency != null &&
+      review.saved.reportingCurrency !== reporting)) ? [[t("汇率", "Exchange rate"),
       review.fxSeparated
         ? reporting + " → " + currency + " " + number(review.saved.fxRate, 5) + " → " + number(review.current.fxRate, 5)
         : (review.saved.reportingCurrency ?? "—") + " → " + reporting + t("，汇率随报表一起计入新财务基数", "; the rate moves with the statements")] as [string, string]] : []),
