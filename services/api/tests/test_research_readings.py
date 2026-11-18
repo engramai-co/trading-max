@@ -51,6 +51,7 @@ def analyst(eps=1.25, stamp=AS_OF):
                             "currency": "USD",
                             "actualEps": 1.2,
                             "estimatedEps": 1.15,
+                            "surprisePct": 1.2 / 1.15 - 1,
                         },
                     ],
                     "earningsEstimate": [
@@ -231,7 +232,12 @@ def test_earnings_publications_follow_material_changes_and_exclude_retained_resu
     asyncio.run(writer.write(record, role, targets[0]))
 
     async def cached(deps):
-        return [e async for e in service.events(role, context, deps, cached_only=True, latest=True)]
+        return [
+            e
+            async for e in service.events(
+                role, context, deps, cached_only=True, latest=True, match_data_version=True
+            )
+        ]
 
     assert asyncio.run(cached(deps))[-1].reading.snapshot_id == deps.snapshot_id
     publish(stamp="2026-02-04T00:00:00Z")

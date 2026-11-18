@@ -98,6 +98,7 @@ class ReadingService:
         scheduled: bool = False,
         cached_only: bool = False,
         latest: bool = False,
+        match_data_version: bool = False,
         permitted: Callable[[], bool] = lambda: True,
         reserve: Callable[[], bool] = lambda: True,
     ) -> AsyncIterator[ReadingEvent]:
@@ -109,8 +110,8 @@ class ReadingService:
         version = deps.snapshot_id
         # A material-data digest belongs to the displayed statements or estimates.
         # A scheduled digest for a previous revision cannot describe a new result.
-        material = bool(role.data_version and version)
-        if material:
+        material = role.data_version is not None and (not latest or match_data_version)
+        if material and version:
             version = await asyncio.to_thread(role.data_version, tools, context)
         if (not latest or material) and not version:
             yield ReadingEvent(type="empty")

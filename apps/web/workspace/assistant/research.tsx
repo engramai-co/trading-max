@@ -24,21 +24,25 @@ export function useResearchOrigin(ticker: string, lens: string, snapshotId?: str
   }, [ticker, lens, snapshotId, search]);
 }
 
-export function PositionReading({ security, snapshotId, name }: { security: PriceObject; snapshotId?: string; name?: string }) {
+type PositionProps = { security: PriceObject; snapshotId?: string; name?: string };
+export function PositionReading(props: PositionProps) {
+  const { ready, open } = useAssistant();
+  return ready && open && props.snapshotId ? <OpenPositionReading {...props} /> : null;
+}
+function OpenPositionReading({ security, snapshotId, name }: PositionProps) {
   const t = useCopy();
-  const { open, ready } = useAssistant();
-  const result = useRoleReading({ role: "your-position", context: security, snapshotId }, open && !!snapshotId);
+  const result = useRoleReading({ role: "your-position", context: security, snapshotId }, true);
   const origin = useResearchOrigin(security.ticker, "overview", snapshotId);
   const { ticker, published_series_id, index_id } = security;
   const context = useMemo(() => ({ticker, published_series_id, ...(index_id ? {index_id} : {})}), [ticker, published_series_id, index_id]);
-  const card = useMemo(() => ready && (result.data || result.isFetching) ? {
+  const card = useMemo(() => (result.data || result.isFetching) ? {
     role: "your-position", title: t("与我相关", "Your position"), object: name || security.ticker,
     questions: [t("这段时间价格如何变化？", "How did the price change?"),
       t("有哪些已核实的事件？", "Which dated events can be verified?"),
       t("与同期市场相比呢？", "How does it compare with the market?")],
     context, origin, reading: result.data,
     status: result.isFetching ? t("正在读取行情与成交记录…", "Reading prices and trade records…") : undefined,
-  } : null, [ready, result.data, result.isFetching, t, name, security.ticker, context, origin]);
+  } : null, [result.data, result.isFetching, t, name, security.ticker, context, origin]);
   usePageRole(card);
   return null;
 }

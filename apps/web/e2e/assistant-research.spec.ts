@@ -91,7 +91,15 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await track.click(); await expect(card.locator(".mx-reading-line")).toHaveCount(2);
     expect(reads.filter(r=>r==="key-moment")).toHaveLength(1);
     await card.locator(".mx-reading-actions button").first().click();
-    await expect(page.locator(".mx-assistant-composer textarea")).not.toHaveValue("");
+    const composer = page.locator(".mx-assistant-composer textarea");
+    await expect(composer).not.toHaveValue("");
+    await page.route("**/api/backend/assistant/chat", route => route.fulfill({status:503, json:{code:"assistant_unavailable"}}));
+    const submitted = page.waitForRequest(request => request.url().endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    const handoff = (await submitted).postDataJSON().context;
+    expect(handoff).toMatchObject({page:"research", role:"key-moment", scope:"broker_total", ticker:"SYNT", lens:"technical",
+      snapshotId:snapshot, object:{ticker:"SYNT", published_series_id:series, date:day}});
+    expect(handoff.object.start <= day && day <= handoff.object.end).toBe(true);
     await page.goto("/research?ticker=SYNT&view=analyst");
     const digest=page.locator(".mx-earnings-brief");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
