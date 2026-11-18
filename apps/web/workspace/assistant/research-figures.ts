@@ -43,15 +43,7 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     evidence: {...ref, source, arguments: {...ref.arguments, ticker:str(ref.arguments?.ticker) || ticker, field:path, ...(tool === "price_key_moments" && !ref.arguments?.date ? {unselected:"1"} : {}), snapshotId:str(output.snapshot_id) || str(ref.arguments?.snapshotId), ...args}},
   });
   if (eventsTool) {
-    const selected = /^\/data\/items\/(0|[1-9]\d?)\/(title_en|title_zh|date)$/.exec(path);
-    if (!selected) return undefined;
-    const events = objects(data.items);
-    const row = ref.arguments?.eventId ? events.find(event => event.evidence_id === ref.arguments?.eventId)
-      : events[Number(selected[1])];
-    const kind = str(row?.kind);
-    if (!row || !Object.hasOwn(eventLabels,kind) || !str(row.evidence_id)) return null;
-    const index = events.indexOf(row);
-    return calendarObservation(ref, output, "/data/items/" + index + "/" + selected[2], locale, timeZone);
+    return calendarObservation(ref, output, path, locale, timeZone);
   }
 
   function priceEvent(event: Json) {

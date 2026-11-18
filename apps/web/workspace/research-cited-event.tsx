@@ -1,5 +1,6 @@
 "use client";
 
+import { dividendAmount, dividendBasis } from "@/lib/dividend-disclosure";
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import { Button } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
@@ -37,11 +38,16 @@ export function CitedResearchEvent() {
     },
   });
   const row = !result.isFetching && !result.isError && result.data;
+  const details = row && kind === "dividend" ? [
+    dividendAmount(row.amount, row.currency, row.unit, locale) ?? t("每股金额暂无数据","Amount per share unavailable"),
+    dividendBasis(row.basis, locale),
+  ].filter(Boolean).join(" · ") : "";
   const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : kind === "dividend" || kind === "dividend_pay" ? t("股息", "Dividend") : t("引用的事件", "Cited event");
   return <Page title={t("研究", "Research")}><section data-reading-event=""><Panel title={ticker + " · " + title}>
     {result.isFetching ? <LoadingStatus label={t("正在读取引用…","Loading citation…")} /> :
       row ? <><h3>{locale === "zh" ? row.title_zh : row.title_en}</h3>
         <p>{row.instant ? formatDateTimeInTimeZone(row.instant, locale, timeZone) : [...new Set([row.date, row.end_date].filter(Boolean))].join(" – ")}</p>
+        {details && <p>{details}</p>}
         <p>{safeUrl(row.source_url ?? "") ? <a href={safeUrl(row.source_url ?? "")!} target="_blank" rel="noreferrer">{row.publisher}</a> : row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
     <Button variant="subtle" onClick={() => update({evidence:null,snapshotId:null,event:null,date:null,end:null,eventId:null,calendarEventId:null})}>
       {t("打开证券研究", "Open security research")}

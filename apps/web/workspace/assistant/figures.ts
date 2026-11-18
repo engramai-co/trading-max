@@ -1,3 +1,4 @@
+import { dividendAmount, dividendBasis } from "@/lib/dividend-disclosure";
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { Locale } from "@/components/locale-provider";
 import type { ResearchFigure } from "./research-figures";
@@ -90,9 +91,29 @@ const calendarStatuses: Record<string, Words> = {
 
 export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
   if (output.status !== "ok" && output.status !== "partial") return null;
+  const savedRow = ref.arguments?.eventId;
+  if (savedRow) {
+    const index = objects(object(output.data).items).findIndex(row => row.evidence_id === savedRow);
+    if (index < 0) return null;
+    pointer = pointer.replace(/^\/data\/items\/\d+\//, "/data/items/" + index + "/");
+  }
   const field = resolveField(output, pointer);
-  if (!field || field.group !== "items" || !["date","end_date","local_date","instant","local_time","title_en","title_zh","status"].includes(field.field)) return null;
+  if (!field || field.group !== "items") return null;
   const row = field.parent;
+  const kind = citedEventKind(str(row.kind));
+  const accountOrMarket = ["own_trade","holiday","half_day"].includes(str(row.kind));
+  if (!kind && !accountOrMarket) return null;
+  const historical = ref.tool === "news_and_events";
+  if (historical && (!str(output.snapshot_id) || (kind && kind !== "macro" && !str(row.ticker)))) return null;
+  const distribution = historical && kind === "dividend";
+  let detail = "";
+  if (distribution && ["amount", "currency", "unit"].includes(field.field)) {
+    detail = dividendAmount(row.amount, row.currency, row.unit, locale) ?? "";
+    if (!detail) return null;
+  } else if (distribution && field.field === "basis") {
+    detail = dividendBasis(row.basis, locale) ?? "";
+    if (!detail) return null;
+  } else if (!["date","end_date","local_date","instant","local_time","title_en","title_zh","status"].includes(field.field)) return null;
   const day = calendarDate(row.date);
   const title = str(row[locale === "zh" ? "title_zh" : "title_en"]);
   if (!day || !title || !row.evidence_id) return null;
@@ -105,7 +126,6 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  const kind = citedEventKind(str(row.kind));
   if (kind && kind !== "macro") {
     source = kind === "earnings" ? "financials" : kind === "rating_change" ? "analysts" : "disclosure";
     args.holdingTicker = ticker;
@@ -116,7 +136,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   } else if (row.kind === "macro" && (ref.arguments?.market || ref.arguments?.rowCitation || ref.tool === "news_and_events")) {
     args.holdingTicker = "MARKET";
     args.event = "macro";
-  } else if (["own_trade","holiday","half_day"].includes(str(row.kind))) {
+  } else if (accountOrMarket) {
     const data = object(output.data);
     source = row.kind === "own_trade" ? "broker" : "calendar";
     Object.assign(args, ref.arguments, {rowCitation:"1",field:pointer,event:str(row.kind),eventId:str(row.evidence_id),
@@ -124,7 +144,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
       timezone:str(data.timezone) || timeZone, scope:str(output.scope)});
   } else if (row.source_url) args.url = str(row.source_url);
   const limited = output.status === "partial" ? word(["limited coverage","覆盖不完整"], locale) : "";
-  return {text:[ticker || str(row.market),eventTitle,when,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
+  return {text:[ticker || str(row.market),eventTitle,when,detail,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
 }
 
 function money(value: number, unit: unknown, digits = 2) {
@@ -150,6 +170,7 @@ function researchField(row: NonNullable<ReturnType<typeof resolveField>>, locale
 }
 function formatField(tool: string, row: NonNullable<ReturnType<typeof resolveField>>, locale: Locale) {
   const { field, parent, group, value } = row;
+  if (tool === "news_and_events") return null;
   if (tool === "read_research_lens" && field === "value") return researchField(row, locale);
   if (field === "date" && dateText(value)) return [word(labels.date, locale), dateText(value)];
   if (tool === "data_freshness" && group === "items" && field === "state") {

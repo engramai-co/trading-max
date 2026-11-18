@@ -53,7 +53,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
 }) {
   const t = useCopy();
   const { timeZone, locale } = useLocale();
-  const { open, close, pageCard, handoff } = useAssistant();
+  const { open, ready, close, pageCard, handoff } = useAssistant();
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
   const [sentScope, setSentScope] = useState<string | null>(null);
@@ -81,6 +81,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
   });
   const busy = status === "submitted" || status === "streaming";
   useEffect(() => () => { void stop(); }, [stop]);
+  useEffect(() => { if (!ready) void stop(); }, [ready, stop]);
   useEffect(() => {
     if (open && !history) {
       const target = wasHistory.current ? historyButton.current : input.current;
@@ -113,7 +114,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
   };
   function send(value: string) {
     const text = value.trim();
-    if (!text || busy) return;
+    if (!text || busy || !ready) return;
     clearError();
     const origin = card.origin ?? {page, search, snapshotId:card.reading?.snapshotId ?? undefined};
     const turn = card.role ? {...chatContext(origin.page, origin.search, timeZone), role:card.role, object:card.context ?? {}, snapshotId:origin.snapshotId} : context;
@@ -160,14 +161,21 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
   useEffect(() => { backButton.current?.focus(); }, []);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
-  const conversations = useQuery({ queryKey: ["assistant-conversations"], queryFn: ({ signal }) => api<{ id: string; title: string | null }[]>("/assistant/conversations", { signal }), retry: false });
+  const { ready } = useAssistant();
+  const conversations = useQuery({ enabled: ready, queryKey: ["assistant-conversations"], queryFn: ({ signal }) => api<{ id: string; title: string | null }[]>("/assistant/conversations", { signal }), retry: false });
+  const action = useRef<AbortController | null>(null);
+  useEffect(() => () => action.current?.abort(), [ready]);
   async function act(id: string, erase: boolean) {
+    if (!ready || action.current) return;
+    const controller = new AbortController();
+    action.current = controller;
+    const {signal} = controller;
     setBusy(true); setError(false);
     try {
       const path = "/assistant/conversations/" + encodeURIComponent(id);
-      if (erase) { await api(path, { method: "DELETE" }); removed(id); await client.invalidateQueries({ queryKey: ["assistant-conversations"] }); }
-      else { const data = await api<{ messages: UIMessage[] }>(path); select(id, data.messages); }
-    } catch { setError(true); } finally { setBusy(false); }
+      if (erase) { await api(path, { method: "DELETE", signal }); removed(id); await client.invalidateQueries({ queryKey: ["assistant-conversations"] }); }
+      else { const data = await api<{ messages: UIMessage[] }>(path, {signal}); select(id, data.messages); }
+    } catch { if (!signal.aborted) setError(true); } finally { action.current = null; setBusy(false); }
   }
   return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
     <div className="mx-assistant-transcript">{conversations.data?.map(c => <div className="mx-assistant-history" key={c.id}>
