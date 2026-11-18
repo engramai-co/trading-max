@@ -1095,7 +1095,15 @@ test.describe("frozen draft review", () => {
     const delivery = new Promise<void>(resolve => { release=resolve; });
     await page.route("**/SYNT/valuation-draft", async route => {
       await delivery;
-      await route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify(draftResponse)+"\n"});
+      await route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({
+        ...draftResponse, result:{...draftResponse.result, proposals:[
+          ...draftResponse.result.proposals,
+          ...(["discount_rate","exit_fcf_multiple","share_cagr"] as const).map((field,i) => ({
+            scenario:"base", field, value:[.09,18,-.02][i], category:"template", source:"sector-template",
+            originId:"template", evidenceIds:[],
+          })),
+        ]},
+      })+"\n"});
     });
     const width = (await editor.boundingBox())!.width;
     await entry.click();

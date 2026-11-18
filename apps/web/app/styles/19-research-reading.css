@@ -162,7 +162,7 @@
   scrollbar-gutter: stable;
 }
 .mx-model-workbench:has(.mx-assumption-picker[data-reviewing]) .mx-scenario-cards button {
-  grid-template-rows: auto auto auto minmax(3em, auto);
+  grid-template-rows: auto auto auto 3lh;
   align-content: start;
 }
 .mx-draft-status:empty {
