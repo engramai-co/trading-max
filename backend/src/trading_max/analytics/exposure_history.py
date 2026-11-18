@@ -1,4 +1,4 @@
-"""Compact observations of the published Holdings look-through, dated in London."""
+"""Dated references to the published Holdings look-through, using London dates."""
 
 import json
 from datetime import date, datetime, timedelta
@@ -62,7 +62,7 @@ def retained_dates(days: list[date]) -> set[date]:
 def record_exposure(
     artifacts: ContentAddressedArtifactStore, refs: dict[str, ArtifactRef], current: ArtifactRef
 ) -> None:
-    """Add the last broker observation of a day. Snapshot GC owns superseded blobs."""
+    """Pin one published composition per London day using the existing immutable blob."""
     raw = artifacts.get_json(current.artifact_id).payload
     stamp = raw.get("brokerAsOf")
     if raw.get("available") is not True or not stamp:
@@ -75,41 +75,12 @@ def record_exposure(
         return
     day = observed.astimezone(ZoneInfo("Europe/London")).date()
     key = f"{PREFIX}{day.isoformat()}.json"
-    prior = refs.get(key)
-    if prior and prior.as_of and datetime.fromisoformat(prior.as_of) > observed:
+    if key in refs:
         return
-    compact = {
-        name: raw.get(name)
-        for name in (
-            "available",
-            "brokerAsOf",
-            "investedValueGbp",
-            "nonSecurityValueGbp",
-            "lookthroughCoveragePct",
-            "countryBasis",
-            "industryBasis",
-            "gicsSubIndustryBasis",
-        )
-    }
-    for dimension, (rows_key, name, _) in DIMENSIONS.items():
-        rows = raw.get(rows_key)
-        if not isinstance(rows, list):
-            continue
-        fields = (name, "allocationPct", "valueGbp")
-        if dimension == "company":
-            rows = exposure_rows(raw, dimension)[:TOP_COMPANIES]
-            fields += ("ticker", "isin", "directValueGbp", "indirectValueGbp")
-        elif dimension == "gics":
-            fields += ("subIndustryCode",)
-        compact[rows_key] = [{field: row.get(field) for field in fields} for row in rows]
-    refs[key] = artifacts.put_json(
-        key=key,
-        payload=compact,
-        kind="dated-exposure",
-        as_of=stamp,
-        producer_version="exposure-history-v1",
-        quality=current.quality,
-    ).ref
+    # Manifest keys are lookup names. The digest continues to identify the
+    # original look-through envelope, so even a retained snapshot or backup
+    # adds no duplicate dated blobs and never needs cross-store deletion.
+    refs[key] = current.model_copy(update={"key": key})
     dated = {date.fromisoformat(k[len(PREFIX) : -5]): k for k in refs if k.startswith(PREFIX)}
     for expired in dated.keys() - retained_dates(list(dated)):
         del refs[dated[expired]]

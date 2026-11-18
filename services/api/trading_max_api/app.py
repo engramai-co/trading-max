@@ -168,7 +168,9 @@ def create_app(
         agent=build_assistant_agent([build_assistant_toolset()]),
         store=SqliteConversationStore(assistant_database),
         bind_model=bind_assistant_model,
-        deps_for_run=AssistantDepsFactory(store=store).for_run,
+        deps_for_run=AssistantDepsFactory(
+            store=store, price_series=research.published_price_series
+        ).for_run,
         check_ready=assistant_ready,
     )
     web_entity_resolver = OpenCodeWebSearchResolver(provider_factory)

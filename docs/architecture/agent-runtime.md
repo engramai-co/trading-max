@@ -92,17 +92,21 @@ return up to 20 rows per call.
 
 | Reading | Tool | Calculation |
 | --- | --- | --- |
-| `daily-returns` | `daily_returns` | Close-to-close changes in published portfolio TWR wealth, ranked lowest first within the selected Returns range. Ties share a rank. The selected benchmark defaults to VOO. Shared chart dates apply when usable, and a missing interior close cannot turn a multi-observation interval into a daily return. CFD and household have no TWR. |
+| `daily-returns` | `daily_returns` | Close-to-close changes in published portfolio TWR wealth, ranked lowest first within the selected Returns range. Ties share a rank. The selected benchmark defaults to VOO. The interval endpoints are observations of the selected account scope. Benchmark changes require both closes. A custom range takes inclusive start and end dates. CFD and household have no TWR. |
 | `holding-fx` | `holding_fx_split` | Invest and Stocks ISA position and account amounts in GBP. The 1D and 5D readings use the Holdings contribution windows. Open-position FX matches the holdings table and drawer. |
 | `dated-exposure` | `dated_exposure` | Combined broker country, sector, GICS sub-industry or top-40 company exposure on or before the requested date. The response gives the actual observation date and earliest retained date. |
-| `decision-timing` | `decision_timing_and_habits` | Rule-based buy and sell counts, scored effects, and hindsight timing for each published decision. The default uses the completed 20-session window when available, otherwise the to-date outcome. Both horizons can also be requested explicitly. |
+| `decision-timing` | `decision_timing_and_habits` | Rule-based buy and sell counts, scored effects, and hindsight timing for each published decision. Habits use the selected horizon for the whole group and open at 20 sessions. A focused account, ticker, decision date and side opens to date if its 20-session window is incomplete. |
 | `key-moments` | `price_key_moments` | At most three unusual days with reported earnings, a rating action, a filing or an in-scope trade in the visible range. Events identify records for inspection. They do not establish causation. |
 
 The FX split uses the shares held at both ends of each measured segment. The
 local price effect converts the change in the native quote at the closing GBP
 rate. The FX effect is the remaining held-share contribution, including the
 revaluation of the opening exposure. The 5D reading sums the rounded daily
-segments for each broker listing. Cash, trading within a segment and changes
+segments for each broker listing. Paired broker split transactions establish the
+share units. An unchanged sterling cost and reciprocal change in native purchase
+price and share count can also reconcile them. Unreconciled units withhold that
+listing and its account subtotal. Daily attribution must match the current broker
+observation. Cash, trading within a segment and changes
 in share count stay outside the split. Since acquisition, the broker's own FX
 figure takes precedence. When it is absent, the native average price paid and
 closing value give the local price effect and the rest of unrealised P&L is
@@ -111,17 +115,20 @@ input withholds the split and the corresponding account subtotal.
 
 Exposure history begins with the first complete publication containing a
 dated look-through after installation of this feature. Each London date
-retains its last observed composition. The latest snapshot carries 35
+pins its first available broker composition to the original immutable look-through
+artifact. Later refreshes that day reuse the pin. The latest snapshot carries 35
 calendar days plus the last observed date in each of the past 60 months.
-Each compact publication keeps the original invested-asset denominator.
+Historical snapshots and backups keep their own pins. Dated keys reuse the
+published bytes, preserving the invested-asset denominator, eligible-equity and
+portfolio GICS coverage and each row's classification status.
 A month without a refresh has no invented month-end observation.
 
 Hindsight compares the decision's close with other completed closes in the
 same window, on the review's split-adjusted GBP basis. A delayed buy holds
 cash until entry and earns dividends after entry. A delayed sale receives
 dividends while it still holds the shares. The missed amount scales the
-difference in outcomes by that security's mean GBP order size in the same
-account through the decision date. A pending price or dividend withholds
+difference in outcomes by that security's mean GBP purchase order size in the same
+account through the decision date. A missing purchase basis withholds the sizing. A pending price or dividend withholds
 the timing comparison. Unobserved decisions contribute to the count of
 decisions and stay outside the scored denominator.
 

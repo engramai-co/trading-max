@@ -1,7 +1,7 @@
 """Each read agrees with its published page inputs and stays inside its pinned scope."""
 
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +11,7 @@ from trading_max.analytics.key_moments import key_moments
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 
 from services.api.tests.assistant_fixture import DATES, publication
+from services.api.tests.test_dashboard import _measured_day, _publish_day_attribution
 from services.api.trading_max_api.agent import insights as ins
 from services.api.trading_max_api.agent import tools
 from services.api.trading_max_api.agent.deps import AssistantDepsFactory
@@ -27,7 +28,7 @@ def bound(tmp_path):
     app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
     store = app.state.store
     manifest = publication(store)
-    return app, manifest, AssistantDepsFactory(store).for_run()
+    return app, manifest, app.state.assistant.deps_for_run(None, None)
 
 
 @pytest.mark.parametrize(
@@ -81,6 +82,11 @@ def test_invalid_dates_and_cursor_are_http_validation_errors(bound):
         ).status_code
         == 422
     )
+    for dates in ({"start": DATES[0]}, {"end": DATES[-1]}, {"start": DATES[-1], "end": DATES[0]}):
+        assert (
+            client.get(base + "/daily-returns", params={"scope": "invest", **dates}).status_code
+            == 422
+        )
     assert (
         client.get(base + "/daily-returns", params={"scope": "invest", "cursor": "80"}).status_code
         == 422
@@ -130,7 +136,7 @@ def test_position_fx_is_the_holdings_page_figure(tmp_path, research_root, typed_
     assert data["accounts"]["invest"]["fx_effect_gbp"] == -7.5
 
 
-def test_exposure_retains_last_observation_month_ends_and_recent_dates(bound):
+def test_exposure_pins_one_observation_per_london_date_and_retains_month_ends(bound):
     app, _, deps = bound
     artifacts = app.state.store.immutable_artifacts
     refs = {}
@@ -158,8 +164,19 @@ def test_exposure_retains_last_observation_month_ends_and_recent_dates(bound):
     write("2026-07-01T14:00:00Z", companies)
     write("2026-07-01T10:00:00Z", [])
     sample = artifacts.get_json(refs[PREFIX + "2026-07-01.json"].artifact_id).payload
-    assert sample["brokerAsOf"] == "2026-07-01T14:00:00Z"
-    assert len(sample["positions"]) == 40 and sample["positions"][0]["name"] == "49"
+    assert sample["brokerAsOf"] == "2026-06-30T23:10:00Z"
+    assert len(sample["positions"]) == 50
+    manifest = republish(app.state.store, refs)
+    result = (
+        TestClient(app)
+        .get(
+            f"/v1/snapshots/{manifest.run_id}/insights/dated-exposure",
+            params={"scope": "broker_total", "on_or_before": "2026-07-01", "dimension": "company"},
+        )
+        .json()["data"]
+    )
+    assert result["total_items"] == result["company_limit"] == 40
+    assert result["items"][0]["name"] == "49"
     assert ins.exposure_rows(sample, "country") == [
         {"country": "Taiwan", "valueGbp": 55, "allocationPct": 0.55}
     ]
@@ -301,18 +318,299 @@ def test_habits_count_only_decisions_with_an_observed_selected_window(bound, mon
         data = ins.review_data(deps, ins.ReviewArgs(scope="invest", **kwargs))["data"]
         return {h["side"]: h for h in data["habits"]}
 
-    result = habits()
-    assert result["buy"] == {
-        "side": "buy",
-        "decisions": 3,
-        "evaluated": 2,
-        "favourable": 1,
-        "adverse": 0,
-        "unchanged": 1,
-        "favourable_fraction": 0.5,
-        "effect_gbp": 8,
-    }
-    assert result["sell"]["effect_gbp"] == -3
-    assert habits(horizon="20_sessions")["sell"]["effect_gbp"] is None
+    assert habits()["buy"]["evaluated"] == 1
+    assert habits()["sell"]["effect_gbp"] is None
     assert habits(horizon="to_date")["buy"]["effect_gbp"] == 10
-    assert habits(since=DATES[2])["buy"]["favourable_fraction"] == 0
+    assert habits(since=DATES[2], horizon="to_date")["buy"]["favourable_fraction"] == 0
+
+
+def republish(store, replacements):
+    refs = {r.key: r for r in store.immutable_snapshots.latest().manifest.artifacts}
+    store.immutable_snapshots.publish(
+        scope="all", source="synthetic", artifacts={**refs, **replacements}.values()
+    )
+    return store.latest_manifest()
+
+
+@pytest.mark.parametrize("custom", [False, True])
+def test_daily_ranks_use_scoped_observations_and_chart_dates(
+    bound, custom, research_root, typed_fixture
+):
+    app, manifest, _ = bound
+    store = app.state.store
+    key = tools.HISTORY_KEYS[2]
+    sunday = store.read_text(manifest.run_id, key) + "2026-02-01,20,100,100,-80\n"
+    published = {ref.key: ref for ref in store.immutable_snapshots.latest().manifest.artifacts}
+    benchmarks = store.read_json(manifest.run_id, tools.TECHNICAL)["benchmark_series"]
+    full = typed_fixture(research_root, store)
+    technical = store.read_json(full.run_id, tools.TECHNICAL)
+    technical["benchmark_series"] = benchmarks
+    manifest = republish(
+        store,
+        {
+            **{k: published[k] for k in tools.HISTORY_KEYS[:2]},
+            key: store.immutable_artifacts.put_bytes(
+                key=key, content=sunday.encode(), media_type="text/csv"
+            ),
+            tools.TECHNICAL: store.immutable_artifacts.put_json(
+                key=tools.TECHNICAL, payload=technical
+            ),
+        },
+    )
+    dates = DATES[2:4] if custom else DATES
+    response = TestClient(app).get(
+        "/v1/dashboard/lens/analytics", params={"range": "ALL", "scope": "invest"}
+    )
+    assert response.status_code == 200, response.text
+    lens = response.json()
+    assert lens["runId"] == manifest.run_id
+    chart = benchmark_comparison(
+        [p for p in lens["nav"] if dates[0] <= p["date"] <= dates[-1]],
+        "invest",
+        lens["benchmarkSeries"],
+        ["VOO"],
+    )
+    opts = {"start": dates[0], "end": dates[-1]} if custom else {}
+    response = TestClient(app).get(
+        f"/v1/snapshots/{manifest.run_id}/insights/daily-returns",
+        params={"scope": "invest", "range": "ALL", **opts},
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["total_items"] == len(dates) - 1
+    assert [r["date"] for r in reversed(data["items"])] == dates[1:]
+    for i, row in enumerate(reversed(data["items"])):
+        a, b = chart["points"][i : i + 2]
+        assert (row["from_date"], row["date"]) == (a["date"], b["date"])
+        assert row["return_fraction"] == period_return(a["investTwr"], b["investTwr"])
+        assert row["benchmark_return_fractions"]["VOO"] == period_return(
+            *chart["comparisons"][0]["values"][i : i + 2]
+        )
+    monday = next(r for r in data["items"] if r["date"] == "2026-02-02")
+    assert monday["return_fraction"] == pytest.approx(1.10 / 1.05 - 1)
+
+
+def test_daily_fx_withholds_stale_broker_observation(tmp_path, research_root, typed_fixture):
+    store = ArtifactStore(tmp_path / "state")
+    typed_fixture(research_root, store)
+    stale = _measured_day([("BE", "BE_US_EQ", "5", "990", "1000")])
+    stale["accounts"]["A"]["as_of"] = "2026-08-01T14:00:00Z"
+    stale["accounts"]["A"]["contributions"][0].update(fx_effect_gbp=10, local_price_effect_gbp=0)
+    _publish_day_attribution(store, stale)
+    assert (
+        next(h for h in build_dashboard_data(store)["holdings"] if h["ticker"] == "BE")[
+            "dayChangeGbp"
+        ]
+        is None
+    )
+    data = ins.fx_data(
+        AssistantDepsFactory(store).for_run(), ins.FXArgs(scope="invest", period="1D")
+    )
+    assert data["status"] == "unavailable"
+
+
+def test_habit_default_and_focused_decision_match_review(bound):
+    app, _, _ = bound
+    store = app.state.store
+    rows = [
+        {
+            "date": DATES[0],
+            "ticker": "TEST",
+            "side": "buy",
+            "observed_days": 21,
+            "horizon_complete": True,
+            "effect_horizon_gbp": -15,
+            "effect_to_date_gbp": -20,
+        },
+        {
+            "date": DATES[-1],
+            "ticker": "TEST",
+            "side": "buy",
+            "observed_days": 1,
+            "horizon_complete": False,
+            "effect_to_date_gbp": 10,
+        },
+    ]
+    key = tools.DECISIONS
+    manifest = republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_json(
+                key=key,
+                payload={
+                    "accounts": {
+                        "A": {"status": "available", "as_of": DATES[-1], "decisions": rows}
+                    }
+                },
+            )
+        },
+    )
+
+    def result(**args):
+        response = TestClient(app).get(
+            f"/v1/snapshots/{manifest.run_id}/insights/decision-timing",
+            params={"scope": "invest", **args},
+        )
+        assert response.status_code == 200, response.text
+        data = response.json()["data"]
+        buy = data["habits"][0]
+        return data["horizon"], buy["effect_gbp"], buy["evaluated"]
+
+    assert result() == ("20_sessions", -15, 1)
+    assert result(horizon="to_date") == ("to_date", -10, 2)
+    assert result(ticker="TEST", decision_date=DATES[-1], side="buy") == ("to_date", 10, 1)
+
+
+def test_aliased_listing_moments_match_returned_chart_identity(bound):
+    app, manifest, _ = bound
+    store = app.state.store
+    changes = {}
+    for key in (tools.TECHNICAL, tools.ANALYST):
+        raw = store.read_json(manifest.run_id, key)
+        raw["rows"][0]["ticker"] = "SYN.L"
+        changes[key] = store.immutable_artifacts.put_json(key=key, payload=raw)
+    manifest = republish(store, changes)
+    series = TestClient(app).get("/v1/research/SYN/prices").json()
+    assert len(series["points"]) == 5 and series["ticker"] == "SYN"
+    response = TestClient(app).get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={
+            "ticker": series["ticker"],
+            "published_series_id": series["publishedSeriesId"],
+            "scope": "isa",
+            "start": DATES[0],
+            "end": DATES[-1],
+        },
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data is not None
+    assert data["published_series_id"] == series["publishedSeriesId"]
+    assert data["items"][0]["events"][0]["reference"] == "synthetic-report"
+
+
+def test_dated_gics_reports_holdings_classification_and_row_status(
+    tmp_path, research_root, typed_fixture
+):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = app.state.store
+    manifest = typed_fixture(research_root, store)
+    artifacts = store.immutable_artifacts
+    raw = store.read_json(manifest.run_id, tools.LOOKTHROUGH)
+    raw.update(
+        available=True,
+        brokerAsOf=DATES[-1] + "T17:00:00Z",
+        lookthroughCoveragePct=1,
+        gicsCoveragePct=0.2,
+        gicsPortfolioCoveragePct=0.15,
+        gicsSubIndustryAllocation=[
+            {
+                "subIndustry": "Software",
+                "subIndustryCode": "45103010",
+                "classificationStatus": "classified",
+                "valueGbp": 15,
+                "allocationPct": 0.15,
+            },
+            {
+                "subIndustry": "Unknown",
+                "classificationStatus": "pending-identity",
+                "valueGbp": 60,
+                "allocationPct": 0.6,
+            },
+            {
+                "subIndustry": "Other",
+                "classificationStatus": "not-applicable",
+                "valueGbp": 25,
+                "allocationPct": 0.25,
+            },
+        ],
+    )
+    refs = {}
+    current = artifacts.put_json(key=tools.LOOKTHROUGH, payload=raw)
+    record_exposure(artifacts, refs, current.ref)
+    manifest = republish(store, {tools.LOOKTHROUGH: current, **refs})
+    holdings = build_dashboard_data(store, manifest)["lookthrough"]
+    response = TestClient(app).get(
+        f"/v1/snapshots/{manifest.run_id}/insights/dated-exposure",
+        params={"scope": "broker_total", "dimension": "gics", "on_or_before": DATES[-1]},
+    )
+    reading = response.json()
+    assert reading["status"] == "partial"
+    assert (
+        reading["data"]["lookthrough_coverage_fraction"] == holdings["lookthroughCoveragePct"] == 1
+    )
+    assert reading["data"]["gics_coverage_fraction"] == holdings["gicsCoveragePct"] == 0.2
+    assert reading["data"]["gics_portfolio_coverage_fraction"] == 0.15
+    assert {row["classification_status"] for row in reading["data"]["items"]} == {
+        "classified",
+        "pending-identity",
+        "not-applicable",
+    }
+
+
+def test_exposure_storage_coalesces_repeated_publications_and_preserves_pins(tmp_path):
+    import sqlite3
+
+    from trading_max.backup_repository import BackupRepository
+    from trading_max.storage_budget import usage
+
+    store = ArtifactStore(tmp_path / "state")
+    sqlite3.connect(store.data_root / "trading_max.db").close()
+    artifacts = store.immutable_artifacts
+    refs = {}
+    first = None
+    backup = BackupRepository(tmp_path / "backup")
+    country = [
+        {"country": f"Country {i}", "valueGbp": i, "allocationPct": i / 10000} for i in range(150)
+    ]
+    gics = [
+        {
+            "subIndustry": f"Industry {i}",
+            "valueGbp": i,
+            "allocationPct": i / 10000,
+            "classificationStatus": "classified",
+        }
+        for i in range(163)
+    ]
+
+    source_bytes = 0
+    early_ids = []
+    for day in range(120):
+        for observation in range(4):
+            stamp = datetime(2026, 1, 1, 8, tzinfo=UTC) + timedelta(days=day, hours=observation)
+            raw = {
+                "available": True,
+                "brokerAsOf": stamp.isoformat(),
+                "countryAllocation": country,
+                "gicsSubIndustryAllocation": gics,
+            }
+            current = artifacts.put_json(key=tools.LOOKTHROUGH, payload=raw)
+            source_bytes += current.path.stat().st_blocks * 512
+            record_exposure(artifacts, refs, current.ref)
+            key = f"{PREFIX}{stamp.date().isoformat()}.json"
+            if day == 0:
+                early_ids.append(refs[key].artifact_id)
+            snapshot = store.immutable_snapshots.publish(
+                scope="all",
+                source="synthetic",
+                artifacts=[current, *refs.values()],
+                created_at=stamp,
+            )
+            if first is None:
+                first = snapshot.manifest.run_id
+                receipt = backup.create(store.data_root)
+    assert len(set(early_ids)) == 1
+    assert len(refs) == 37
+    assert usage({"artifacts": artifacts.root})["allocatedBytes"] == source_bytes
+    # Include all 480 immutable manifests, even the ones outside the latest window.
+    assert usage({"state": store.data_root})["allocatedBytes"] - source_bytes < 12 * 1024 * 1024
+    assert store.read_json(first, PREFIX + "2026-01-01.json")["brokerAsOf"].startswith(
+        "2026-01-01T08"
+    )
+    assert PREFIX + "2026-01-01.json" not in refs
+    restored_root = tmp_path / "restored"
+    assert backup.restore(receipt["id"], restored_root)["snapshotRunId"] == first
+    restored = ArtifactStore(restored_root)
+    assert restored.read_json(first, PREFIX + "2026-01-01.json") == store.read_json(
+        first, PREFIX + "2026-01-01.json"
+    )

@@ -10,18 +10,23 @@ from typing import Annotated, Literal
 from pydantic import AfterValidator, StringConstraints, model_validator
 from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES, exposure_rows
 from trading_max.analytics.key_moments import key_moments
+from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, nav_number, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
 
 from ..dashboard import _benchmark_series
-from ..projections.day_change import within_trading_days
-from ..research import _canonical_ticker, published_price_series_id
+from ..projections.day_change import measures_broker_observation, within_trading_days
+from ..projections.nav import nav_series
+from ..research import _canonical_ticker, _find, published_price_series_id
 from .deps import AssistantDeps
 from .tools import (
     ANALYST,
+    BROKER,
     CODE_SCOPE,
     DECISIONS,
     FINANCIALS,
+    HISTORY_KEYS,
+    LIVE,
     TECHNICAL,
     Context,
     ExposureArgs,
@@ -30,7 +35,7 @@ from .tools import (
     PageRange,
     Scoped,
     Ticker,
-    _history_input,
+    _broker,
     _iso,
     _mapped,
     _math_scope,
@@ -39,7 +44,6 @@ from .tools import (
     _Read,
     _rows,
     _text,
-    _ticker_row,
 )
 
 
@@ -54,7 +58,15 @@ type CalendarDay = Annotated[
 
 class DailyArgs(Scoped, Paged):
     range: PageRange = "3M"
+    start: CalendarDay | None = None
+    end: CalendarDay | None = None
     benchmark: Literal["VOO", "QQQ", "VT", "ALL"] = "VOO"
+
+    @model_validator(mode="after")
+    def ordered_window(self):
+        if bool(self.start) != bool(self.end) or (self.start and self.end < self.start):
+            raise ValueError("A custom range requires ordered start and end dates.")
+        return self
 
 
 class FXArgs(Scoped, Paged):
@@ -69,6 +81,16 @@ class ReviewArgs(Scoped, Paged):
     horizon: Literal["20_sessions", "to_date", "decision_default"] = "decision_default"
     ticker: Ticker | None = None
     since: CalendarDay | None = None
+    decision_date: CalendarDay | None = None
+    side: Literal["buy", "sell"] | None = None
+
+    @model_validator(mode="after")
+    def focused_decision(self):
+        if (self.side or self.decision_date) and not (
+            self.side and self.decision_date and self.ticker and self.scope in {"invest", "isa"}
+        ):
+            raise ValueError("A focused decision needs an account, ticker, date and side.")
+        return self
 
 
 class MomentsArgs(Scoped):
@@ -86,41 +108,60 @@ class MomentsArgs(Scoped):
 
 def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
     read = _Read(deps, "daily_returns", args, args.scope)
-    read.account_codes(args.scope)
+    requested = read.account_codes(args.scope)
     scope = _math_scope(args.scope)
     if scope in {"household", "cfd"}:
         return read.result("not_applicable", reason="cfd_proxy_has_no_twr")
     # The Returns page opens a 3M daily chart when entered with the money view's 1D range.
     window = "3M" if args.range == "1D" else args.range
-    loaded = _history_input(read, args.scope, window)
-    if loaded is None:
-        return read.missing("history_unavailable")
-    source, keys = loaded
-    daily = in_range([p for p in source.get("nav", []) if not p.get("intraday")], window)
-    nav = [p for p in daily if nav_number(p, scope) is not None]
+    if args.start:
+        window = "ALL"
+    broker = read.read(BROKER) or {}
+    accounts = _mapped(broker.get("accounts"))
+    codes = requested & accounts.keys()
+    keys = [BROKER, *(HISTORY_KEYS["AB".index(c)] for c in sorted(codes))]
+    if not codes:
+        return read.missing("history_unavailable", keys=keys)
+    try:
+        # Use the dashboard's NAV construction, scoped before it carries other
+        # accounts forward. A CFD-only or ISA-only date cannot create an Invest close.
+        daily = nav_series(
+            *(
+                deps.store.read_text(deps.snapshot_id, HISTORY_KEYS[i]) if code in codes else ""
+                for i, code in enumerate("AB")
+            )
+        )
+    except (FileNotFoundError, SnapshotIntegrityError, KeyError, TypeError, ValueError):
+        return read.missing("history_unavailable", keys=keys)
+    daily = in_range(daily, window)
+    if args.start:
+        daily = [p for p in daily if args.start <= p["date"] <= args.end]
     raw = read.read(TECHNICAL) or {}
     names = ["VOO", "QQQ", "VT"] if args.benchmark == "ALL" else [args.benchmark]
-    comparison = benchmark_comparison(nav, scope, _benchmark_series(raw), names)
-    points = comparison["points"]
-    adjacent = {(a["date"], b["date"]) for a, b in pairwise(daily)}
+    comparison = benchmark_comparison(daily, scope, _benchmark_series(raw), names)
+    aligned = {
+        line["name"]: dict(
+            zip((p["date"] for p in comparison["points"]), line["values"], strict=True)
+        )
+        for line in comparison["comparisons"]
+    }
     issues = ["some_benchmarks_unavailable"] if comparison["missing"] else []
     if comparison["comparisons"] and (
         not raw.get("benchmark_currency") or not raw.get("benchmark_return_basis")
     ):
         issues.append("benchmark_basis_not_published")
     rows = []
-    for i, (a, b) in enumerate(pairwise(points)):
-        if (a["date"], b["date"]) not in adjacent:
-            issues.append("non_daily_intervals_omitted")
-            continue
+    for a, b in pairwise(daily):
         value = period_return(nav_number(a, scope, "Twr"), nav_number(b, scope, "Twr"))
         if value is None:
             issues.append("daily_twr_missing")
             continue
         benchmarks = {
-            line["name"]: period_return(line["values"][i], line["values"][i + 1])
-            for line in comparison["comparisons"]
+            name: period_return(values.get(a["date"]), values.get(b["date"]))
+            for name, values in aligned.items()
         }
+        if any(value is None for value in benchmarks.values()):
+            issues.append("benchmark_daily_endpoints_missing")
         rows.append(
             {
                 "date": b["date"],
@@ -158,6 +199,7 @@ def fx_data(deps: AssistantDeps, args: FXArgs) -> Json:
     if "C" in codes:
         return read.result("not_applicable", reason="broker_positions_only")
     rows, issues, coverage = [], [], {}
+    incomplete_scopes = set()
     if args.period == "open_position":
         positions, keys, issues = _position_rows(read, args.scope, observed_accounts=coverage)
         for row in positions:
@@ -182,8 +224,21 @@ def fx_data(deps: AssistantDeps, args: FXArgs) -> Json:
         )
         keys = [key]
         accounts = _mapped(within_trading_days(read.read(key) or {}).get("accounts"))
+        broker_accounts = {}
+        if args.period == "1D":
+            _, live, broker = _broker(read)
+            keys.extend([BROKER, *([LIVE] if live else [])])
+            broker_accounts = _mapped(broker.get("accounts"))
         for code in sorted(codes):
             account = _mapped(accounts.get(code))
+            if args.period == "1D" and not measures_broker_observation(
+                account, _mapped(broker_accounts.get(code))
+            ):
+                issues.append(f"{CODE_SCOPE[code]}_broker_observation_mismatch")
+                continue
+            if account.get("unreconciled_instruments"):
+                issues.append("share_units_unreconciled")
+                incomplete_scopes.add(CODE_SCOPE[code])
             if not isinstance(account.get("contributions"), list):
                 issues.append(f"{CODE_SCOPE[code]}_attribution_missing")
                 continue
@@ -205,12 +260,18 @@ def fx_data(deps: AssistantDeps, args: FXArgs) -> Json:
                 for row in _rows(account["contributions"])
             )
     if not coverage:
-        return read.missing("position_attribution_unavailable", keys=keys)
+        return read.result(
+            "unavailable", reason="position_attribution_unavailable", keys=keys, issues=issues
+        )
     for scope, account in coverage.items():
         tracked = [r for r in rows if r["scope"] == scope]
         for field in ("contribution_gbp", "local_price_effect_gbp", "fx_effect_gbp"):
             values = [r[field] for r in tracked]
-            account[field] = round(sum(values), 2) if all(v is not None for v in values) else None
+            account[field] = (
+                round(sum(values), 2)
+                if scope not in incomplete_scopes and all(v is not None for v in values)
+                else None
+            )
             if account[field] is None:
                 issues.append("position_split_incomplete")
     return read.page(
@@ -251,6 +312,7 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
     rows_key, name, basis = DIMENSIONS[args.dimension]
     if not isinstance(raw.get(rows_key), list):
         return read.missing("exposure_dimension_unavailable", keys=[key])
+    ranked = exposure_rows(raw, args.dimension)
     rows = [
         {
             "name": _text(row.get(name), 512),
@@ -261,12 +323,32 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
                 if args.dimension == "company"
                 else {}
             ),
-            **({"code": _text(row.get("subIndustryCode"), 16)} if args.dimension == "gics" else {}),
+            **(
+                {
+                    "code": _text(row.get("subIndustryCode"), 16),
+                    "classification_status": _text(row.get("classificationStatus"), 32),
+                }
+                if args.dimension == "gics"
+                else {}
+            ),
         }
-        for row in exposure_rows(raw, args.dimension)
+        for row in (ranked[:TOP_COMPANIES] if args.dimension == "company" else ranked)
     ]
     coverage = _number(raw.get("lookthroughCoveragePct"))
     issues = ["lookthrough_incomplete"] if coverage is None or coverage < 0.99995 else []
+    gics = {}
+    if args.dimension == "gics":
+        classification = _number(raw.get("gicsCoveragePct"))
+        gics = {
+            "gics_coverage_fraction": classification,
+            "gics_portfolio_coverage_fraction": _number(raw.get("gicsPortfolioCoveragePct")),
+        }
+        if (
+            classification is None
+            or classification < 0.99995
+            or any(r["classification_status"] is None for r in rows)
+        ):
+            issues.append("gics_classification_incomplete")
     if (ref := read.ref(key)) and ref.warnings:
         issues.append("source_reported_warnings")
     return read.page(
@@ -281,6 +363,7 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
             "dimension": args.dimension,
             "basis": raw.get(basis) if basis else "direct_and_fund_constituents",
             "lookthrough_coverage_fraction": coverage,
+            **gics,
             "invested_value_gbp": _number(raw.get("investedValueGbp")),
             "company_limit": TOP_COMPANIES if args.dimension == "company" else None,
         },
@@ -296,6 +379,7 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
         return read.result("not_applicable", reason="broker_decisions_only")
     accounts = _mapped((read.read(DECISIONS) or {}).get("accounts"))
     rows, issues, as_of = [], [], {}
+    horizon = "20_sessions" if args.horizon == "decision_default" else args.horizon
     for code in sorted(codes):
         account = _mapped(accounts.get(code))
         if account.get("status") != "available":
@@ -312,9 +396,11 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             complete = row.get("horizon_complete")
             if complete is None:
                 complete = row.get("effect_horizon_gbp") is not None
-            horizon = args.horizon
-            if horizon == "decision_default":
-                horizon = "20_sessions" if complete else "to_date"
+            if args.decision_date:
+                if (day, side) != (args.decision_date, args.side):
+                    continue
+                if args.horizon == "decision_default":
+                    horizon = "20_sessions" if complete else "to_date"
             observed = _number(row.get("observed_days"))
             usable = (
                 complete
@@ -374,10 +460,10 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
         args,
         {
             "currency": "GBP",
-            "horizon": args.horizon,
+            "horizon": horizon,
             "as_of": as_of,
             "habits": habits,
-            "order_size_basis": "mean_security_order_through_decision_in_account",
+            "order_size_basis": "mean_security_purchase_order_through_decision_in_account",
         },
         keys=[DECISIONS],
         issues=issues,
@@ -401,7 +487,9 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
-    analyst = _mapped((_ticker_row(read.read(ANALYST), args.ticker) or {}).get("analyst"))
+    analyst = _mapped(
+        (_find(_rows((read.read(ANALYST) or {}).get("rows")), args.ticker) or {}).get("analyst")
+    )
     if analyst:
         keys.append(ANALYST)
     if not isinstance(analyst.get("earningsEvents"), list):
@@ -419,7 +507,11 @@ def dated_events(
         if not stamp and epoch is not None and 0 <= epoch < 253402300800:
             stamp = datetime.fromtimestamp(epoch, UTC).date().isoformat()
         add(stamp, "rating_change", row.get("Firm") or row.get("firm"))
-    financials = _mapped((_ticker_row(read.read(FINANCIALS), args.ticker) or {}).get("financials"))
+    financials = _mapped(
+        (_find(_rows((read.read(FINANCIALS) or {}).get("rows")), args.ticker) or {}).get(
+            "financials"
+        )
+    )
     filing_evidence = _mapped(financials.get("evidence"))
     filing_rows = filing_evidence.get("filings")
     if isinstance(filing_rows, list):
@@ -458,17 +550,30 @@ def dated_events(
 def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     read = _Read(deps, "price_key_moments", args, args.scope)
     codes = read.account_codes(args.scope)
-    fund = _ticker_row(read.read(FUND_PRICES_KEY), args.ticker)
-    key = FUND_PRICES_KEY if fund else TECHNICAL
-    row = fund or _ticker_row(read.read(TECHNICAL), args.ticker)
-    ref = read.ref(key)
-    if ref is None or not row or not _rows(row.get("price_series")):
-        return read.missing("published_daily_bars_unavailable", keys=[key])
-    series_id = published_price_series_id(ref.sha256, args.ticker)
+    if deps.price_series is None or deps.manifest is None:
+        return read.missing("published_daily_bars_unavailable")
+    try:
+        series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+    except (FileNotFoundError, SnapshotIntegrityError, ValueError):
+        return read.missing("published_daily_bars_unavailable")
+    series_id = series.published_series_id
+    key = next(
+        (
+            key
+            for key in (FUND_PRICES_KEY, TECHNICAL)
+            if (ref := read.ref(key))
+            and published_price_series_id(ref.sha256, series.ticker) == series_id
+        ),
+        None,
+    )
+    if not key or not series.points:
+        return read.missing("published_daily_bars_unavailable")
     if args.published_series_id and args.published_series_id != series_id:
         return read.missing("displayed_price_series_mismatch", keys=[key])
-    bars = _rows(row["price_series"])
-    events, keys, issues = dated_events(read, args, codes)
+    bars = [p.model_dump(mode="json") for p in series.points]
+    events, keys, issues = dated_events(
+        read, args.model_copy(update={"ticker": series.ticker}), codes
+    )
     moments = key_moments(bars, events, args.start, args.end)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)
     if not has_bars:
@@ -476,7 +581,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     return read.result(
         "partial" if issues else "ok",
         data={
-            "ticker": args.ticker,
+            "ticker": series.ticker,
             "start": args.start,
             "end": args.end,
             "interval": "1d",

@@ -128,6 +128,16 @@ def _match(
     return candidate
 
 
+def measures_broker_observation(entry: Mapping[str, Any], account: Mapping[str, Any]) -> bool:
+    observed = _moment(account.get("fetched_at") or account.get("fetched_at_utc"))
+    return (
+        observed is not None
+        and _moment(entry.get("as_of")) == observed
+        and _moment(account.get("positions_observed_at") or observed) == observed
+        and account.get("positions_status") in (None, "verified")
+    )
+
+
 def holding_day_changes(
     attribution: Any,
     accounts: Mapping[str, JsonObject],
@@ -165,10 +175,11 @@ def holding_day_changes(
             or _moment(entry.get("as_of")) != observed
         ):
             continue
+        # A totals overlay can retain positions from a different broker observation.
+        if not measures_broker_observation(entry, account):
+            result[str(code)] = [None] * len(account.get("positions") or [])
+            continue
         since = _moment(entry.get("since"))
-        # A fresh totals overlay may retain earlier positions after a broker
-        # reconciliation failure. Its new timestamp cannot date those prices.
-        positions_observed = _moment(account.get("positions_observed_at") or observed)
         rows = _contributions(entry)
         by_instrument: defaultdict[str, list[_Contribution]] = defaultdict(list)
         by_ticker: defaultdict[str, list[_Contribution]] = defaultdict(list)
@@ -193,7 +204,6 @@ def holding_day_changes(
             if (
                 listing_calendar is not None
                 and since is not None
-                and positions_observed == observed
                 and isinstance(position, Mapping)
                 and (row is None or row.amount == 0)
                 and (name := listing_calendar(position)) is not None

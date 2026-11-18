@@ -88,6 +88,7 @@ class ExposureRow(BaseModel):
     ticker: str | None = None
     isin: str | None = None
     code: str | None = None
+    classification_status: str | None = None
 
 
 class ExposureStart(BaseModel):
@@ -101,6 +102,8 @@ class DatedExposure(Page[ExposureRow], ExposureStart):
     currency: str
     dimension: str
     basis: str | None
+    gics_coverage_fraction: float | None = None
+    gics_portfolio_coverage_fraction: float | None = None
     lookthrough_coverage_fraction: float | None
     invested_value_gbp: float | None
     company_limit: int | None

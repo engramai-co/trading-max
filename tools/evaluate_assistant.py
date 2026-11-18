@@ -70,6 +70,8 @@ from services.api.trading_max_api.llm_routing import (
 )
 from services.api.trading_max_api.models import AssistantReasoning
 from services.api.trading_max_api.oauth import OAuthCredentialVault
+from services.api.trading_max_api.research import ResearchLedger
+from services.api.trading_max_api.watchlist import WatchlistStore
 from tools.assistant_eval_cases import SCENARIOS, Scenario, Tool, fixture_store
 from tools.assistant_eval_checks import (
     DETERMINISTIC,
@@ -84,7 +86,10 @@ from tools.assistant_eval_checks import (
 async def run_turn(
     scenario: Scenario, *, store: ArtifactStore, agent: Agent, model: Model, reasoning: str | None
 ) -> Turn:
-    deps = AssistantDepsFactory(store, allowed_scopes=scenario.scopes).for_run(scenario.page)
+    chart = ResearchLedger(store, WatchlistStore(store.data_root))
+    deps = AssistantDepsFactory(
+        store, allowed_scopes=scenario.scopes, price_series=chart.published_price_series
+    ).for_run(scenario.page)
     deps = replace(deps, captured_at=STALE_NOW)
     history: list[ModelMessage] = []
     for user, assistant in scenario.history:
