@@ -2,7 +2,7 @@
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { profileFreshFor, useWorkspaceProfile, workspaceProfileKey } from "../profile";
+import { profileFreshFor, useWorkspaceProfile, workspaceProfileKey, workspaceProfileQuery } from "../profile";
 import { api } from "../data";
 import { assistantSettingsChange, assistantSettingsKey, assistantStatusKey } from "../assistant-settings";
 import type { AssistantSettings } from "@/lib/types";
@@ -61,7 +61,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     enabled: checkStatus, staleTime: statusFreshFor, retry: false,
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
-  const refetchProfile = profile.refetch;
   const confirmConsent = useCallback(async () => {
     const revision = ++nextRevision.current;
     setExternalRevision(revision);
@@ -72,11 +71,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       client.cancelQueries({queryKey:workspaceProfileKey, exact:true}),
     ]);
     if (revision !== nextRevision.current) return;
-    const fresh = await refetchProfile();
-    if (revision !== nextRevision.current || !fresh.isSuccess) return;
+    // Bypass the cached profile and use the workspace client's bounded retry for this check.
+    const fresh = await client.query({...workspaceProfileQuery, staleTime:0}).catch(() => null);
+    if (revision !== nextRevision.current || typeof fresh?.assistantEnabled !== "boolean") return;
     setConfirmedRevision(revision);
     void client.invalidateQueries({queryKey:assistantSettingsKey, exact:true});
-  }, [client, refetchProfile]);
+  }, [client]);
   const revalidate = useCallback(() => {
     if (waitingForConsent) {
       if (!profile.isFetching) void confirmConsent();

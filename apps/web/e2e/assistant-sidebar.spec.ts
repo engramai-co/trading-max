@@ -552,7 +552,8 @@ test("cross-tab withdrawal suspends cached readings and History while the profil
   }
 });
 
-test("a newer consent signal keeps active streams cancelled until that profile confirms", async ({page,context}) => {
+for (const recovery of ["automatic retry", "focus after retry exhaustion"] as const) test(
+  "a newer consent signal keeps the draft private until profile recovery: " + recovery, async ({page,context}, info) => {
   await fixtures(page);
   await page.addInitScript(() => {
     localStorage.setItem("trading_max-locale","en");
@@ -610,17 +611,32 @@ test("a newer consent signal keeps active streams cancelled until that profile c
     await signal("second");
     await expect.poll(() => profiles.length).toBe(2);
     profiles[0](200);
+    await page.bringToFront();
     profiles[1](503);
-    await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
-    await expect(draft).toBeHidden();
-    expect(requests).toEqual([]);
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect.poll(() => profiles.length).toBe(3);
+    await expect(draft).toBeHidden();
+    const form = panel.locator("form.mx-assistant-composer");
+    await form.evaluate(form => (form as HTMLFormElement).requestSubmit());
     expect(requests).toEqual([]);
-    profiles[2](200);
+    if (recovery === "focus after retry exhaustion") {
+      profiles[2](503);
+      await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+      await expect(draft).toBeHidden();
+      await form.evaluate(form => (form as HTMLFormElement).requestSubmit());
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect.poll(() => profiles.length).toBe(4);
+      expect(requests).toEqual([]);
+      profiles[3](200);
+    } else {
+      profiles[2](200);
+    }
     await expect(draft).toHaveValue("Keep this unsent question");
     await expect(draft).toBeFocused();
+    await page.keyboard.type(" for later");
+    await expect(draft).toHaveValue("Keep this unsent question for later");
     expect(requests[0]).toBe("/api/backend/assistant/status");
+    const shots = process.env.ASSISTANT_SCREENSHOTS;
+    if (shots && recovery === "automatic retry") await page.screenshot({path:join(shots,info.project.name+"-profile-retry-draft.png")});
   } finally {
     releaseStreams();
     for (const resolve of profiles) resolve(200);
