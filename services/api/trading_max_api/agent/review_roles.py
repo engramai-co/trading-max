@@ -1,6 +1,6 @@
 """Decision-time evidence, subsequent outcomes and cached readings of trading habits."""
 
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal
 
 from pydantic import Field
@@ -129,7 +129,7 @@ def decision_facts(read: RoleTools, context: DecisionContext):
             f"Hindsight comparison {en}: the best close or average purchase size is unavailable.",
         )
     last = line("hindsight", *hindsight, result, "review", "decision_timing_and_habits", **ref)
-    before = prior_events(read, context, row.get("listing"))
+    before = prior_events(read, context, row.get("listing"), row.get("first_fill_at"))
     if not before:
         before.append(
             line(
@@ -145,22 +145,46 @@ def decision_facts(read: RoleTools, context: DecisionContext):
     return [*before, after, last]
 
 
-def prior_events(read: RoleTools, context: DecisionContext, listing: str | None):
-    # Date-only fills cannot establish the order of a release and a same-day trade.
+def before_fill(item, cutoff: datetime) -> bool:
+    if item.get("instant"):
+        stamp = datetime.fromisoformat(item["instant"])
+        return stamp.tzinfo is not None and stamp < cutoff
+    # An archive date carries no publisher zone. Its latest possible day end is
+    # midnight in UTC−12; a reader's timezone cannot establish an earlier publication.
+    day = date.fromisoformat(item["date"])
+    latest_end = datetime.combine(day, time.min, UTC) + timedelta(hours=36)
+    return latest_end <= cutoff
+
+
+def prior_events(
+    read: RoleTools, context: DecisionContext, listing: str | None, first_fill: str | None
+):
     day = date.fromisoformat(context.decision_date)
     if not listing or day <= date.min + timedelta(days=8):
         return []
+    cutoff = datetime.fromisoformat(first_fill) if first_fill else None
+    cutoff = (
+        cutoff.astimezone(UTC) if cutoff and cutoff.tzinfo else datetime.combine(day, time.min, UTC)
+    )
+    start = cutoff - timedelta(days=7)
     arguments = {
         "scope": context.scope,
         "ticker": listing,
-        "start": (day - timedelta(days=7)).isoformat(),
-        "end": (day - timedelta(days=1)).isoformat(),
+        "start": (start.date() - timedelta(days=1)).isoformat(),
+        "end": (cutoff.date() + timedelta(days=1)).isoformat(),
     }
     latest = {}
     cursor = 0
     while True:
         page = read.read(news_and_events, EventArgs(**arguments, cursor=cursor, limit=20))
         for item in (page.get("data") or {}).get("items", []):
+            if not before_fill(item, cutoff):
+                continue
+            if item.get("instant"):
+                if datetime.fromisoformat(item["instant"]) < start:
+                    continue
+            elif date.fromisoformat(item["date"]) < start.date():
+                continue
             kind = item["kind"]
             if kind in {"news", "rating_change"} or (
                 kind == "earnings" and item.get("status") == "reported"

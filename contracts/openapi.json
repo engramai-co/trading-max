@@ -6505,6 +6505,17 @@
             ],
             "title": "Effect Gbp"
           },
+          "first_fill_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Fill At"
+          },
           "hindsight": {
             "anyOf": [
               {

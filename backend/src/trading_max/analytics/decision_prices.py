@@ -100,6 +100,9 @@ class SecurityPrices:
     listing_currency: str | None = None
     market_frame: pd.DataFrame | None = field(default=None, compare=False, repr=False)
 
+    # Genuine provider closes with a verified GBP conversion; accounting series can carry values.
+    observed_closes_gbp: pd.Series | None = field(default=None, compare=False, repr=False)
+
     @property
     def quoted(self) -> pd.DatetimeIndex:
         """The days in closes that are the listing's sessions."""
@@ -550,6 +553,7 @@ def resolve_decision_prices(
         )
     # Each currency's final rate on every day, NaN while one is pending.
     calendar_days = pd.date_range(start_day, end_day, freq="D")
+    published_rates = {"USD": usd_rates}
     final_fx = {"USD": final_rate_on(usd_rates, calendar_days, now)}
     for code in cash_fx.columns:
         if code in {"GBP", "USD"}:
@@ -557,6 +561,13 @@ def resolve_decision_prices(
         with suppress(Exception):
             rates = final_rates(history_loader, f"GBP{code}=X", start_day, end_day, now)
             final_fx[code] = final_rate_on(rates, calendar_days, now)
+            published_rates[code] = rates
+    observed_fx = {
+        code: values.where(
+            ~_rate_due(calendar_days) | calendar_days.isin(published_rates[code].dropna().index)
+        )
+        for code, values in final_fx.items()
+    }
     resolved: dict[str, SecurityPrices] = {}
     unpriced: list[str] = []
     for identity, rows in fills.groupby("SecurityIdentity", sort=True):
@@ -648,6 +659,9 @@ def resolve_decision_prices(
             pending_days=pending if len(pending) else None,
             listing_currency=mode,
             market_frame=frame,
+            observed_closes_gbp=_at_final_rates(best[2], mode, observed_fx)
+            .reindex(values.index)
+            .dropna(),
         )
         if memo is not None:
             memo[identity] = best[1]

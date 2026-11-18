@@ -405,6 +405,7 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                         {
                             "listing": _text(row.get("listing"), 32),
                             "name": _text(row.get("name"), 160),
+                            "first_fill_at": _iso(row.get("first_fill_at")),
                             "prior_close_date": _iso(row.get("prior_close_date")),
                             "prior_close_gbp": _number(row.get("prior_close_gbp")),
                             "settled_per_share_gbp": _number(row.get("settled_per_share_gbp")),

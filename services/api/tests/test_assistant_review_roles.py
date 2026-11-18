@@ -29,6 +29,7 @@ def setup_review(tmp_path):
         "listing": "TEST",
         "side": "buy",
         "kind": "B",
+        "first_fill_at": "2026-02-03T14:00:00+00:00",
         "settled_per_share_gbp": 40.0,
         "before_earnings": True,
         "basket_buy": True,

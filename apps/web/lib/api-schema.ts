@@ -3604,6 +3604,8 @@ export interface components {
             date: string;
             /** Effect Gbp */
             effect_gbp: number | null;
+            /** First Fill At */
+            first_fill_at?: string | null;
             hindsight: components["schemas"]["Timing"] | null;
             /** Horizon */
             horizon: string;

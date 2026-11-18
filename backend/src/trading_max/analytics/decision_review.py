@@ -383,9 +383,13 @@ def build_decision_review(
                 if horizon_return is not None:
                     ending = _market_close(market, sessions, horizon_day)
                     market_horizon = None if ending is None else ending / opening - 1.0
-        prior_index = quoted.searchsorted(stamp, side="left") - 1
-        prior_day = quoted[prior_index] if prior_index >= 0 else None
-        prior_close = _on_day(security.closes, prior_day) if prior_day in final else None
+        observed_closes = security.observed_closes_gbp
+        if observed_closes is None:
+            observed_closes = security.closes.reindex(final).dropna()
+        prior_index = observed_closes.index.searchsorted(stamp, side="left") - 1
+        prior_day = observed_closes.index[prior_index] if prior_index >= 0 else None
+        prior_close = float(observed_closes.iloc[prior_index]) if prior_day is not None else None
+        first_fill = day_rows["Time"].min()
         for side, (amount, shares) in legs.items():
             if not amount:
                 unscored += 1
@@ -413,6 +417,7 @@ def build_decision_review(
                     "kind": "T" if traded_both else side[0].upper(),
                     "quantity": _round(shares, 6),
                     "amount_gbp": _round(amount),
+                    "first_fill_at": first_fill.isoformat() if pd.notna(first_fill) else None,
                     "prior_close_gbp": _round(prior_close, 4),
                     "prior_close_date": prior_day.date().isoformat()
                     if prior_close is not None

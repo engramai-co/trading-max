@@ -39,6 +39,7 @@
           "listing": "TEST",
           "ordinal": 0,
           "name": null,
+          "first_fill_at": "2026-02-03T14:00:00+00:00",
           "prior_close_date": null,
           "prior_close_gbp": null,
           "settled_per_share_gbp": 40.0,
