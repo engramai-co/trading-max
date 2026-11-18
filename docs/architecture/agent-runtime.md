@@ -284,12 +284,14 @@ the tool and its checked arguments.
 
 A restating role receives numbered source sentences instead of observations. The
 model chooses two to four of them, or the only one, and restates each in Chinese.
-The role's check accepts a restatement only when it is substantive Chinese on one
-line: no links, markup or other scripts, no copied English, and only Latin-script
-words from its own sentence. Each quantity is read whole, with its sign,
-percentage, scale (such as 万, 亿 or billion), currency and Chinese numerals, and
-must equal a quantity its sentence states. A quantity the check cannot read is
-rejected, and the reader can retry. The English line stays the source sentence.
+The role's check fails closed. It accepts a restatement only when it is
+substantive Chinese on one line: no links, markup or other scripts, and Latin
+script only for names its sentence writes verbatim (a sentence in title case names
+nothing). Each quantity is read whole, with its sign, percentage, scale (such as
+万, 亿 or billion) and currency, and must equal a quantity its sentence states; a
+bare $, ¥ or 元 names no currency. Numerals or numbers the check cannot read
+exactly are rejected, and the reader can retry. The English line stays the source
+sentence.
 The Research Overview company summary uses this mode with `company_profile`. It
 cites each line as a disclosure with the sentence's position and a fingerprint of
 its text, and keys its cache by a digest of the description and the version of
