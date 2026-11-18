@@ -4,6 +4,7 @@ import { quoteValue } from "./financial-values";
 
 import { CloseButton, Popover } from "@mantine/core";
 import { ArrowUpRight } from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
 import {
   type Dispatch,
   type ReactNode,
@@ -19,9 +20,10 @@ import {
 } from "react";
 import type { EChartsType as ECharts } from "echarts/core";
 import { useLocale } from "@/components/locale-provider";
+import type { components } from "@/lib/api-schema";
 import type { AccountCode, DashboardLens } from "@/lib/types";
-import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
-import { currency, percent, tone } from "@/workspace/data";
+import { formatCalendarDate, formatDateSpan, formatReadingTime } from "@/ui/formatters";
+import { api, currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
 import { readingHtml, readingText, type Reading } from "./chart-readout";
 import { EvidenceTable } from "./evidence-table";
@@ -41,6 +43,7 @@ type ClosedTrade = NonNullable<AccountDecisions["closedTrades"]>[number];
 type RoundTrip = NonNullable<AccountDecisions["roundTrips"]>[number];
 type DecisionEvent = NonNullable<TradeDecision["events"]>[number];
 export type Horizon = "horizon" | "date";
+type ModelVersionAt = components["schemas"]["ModelVersionAt"];
 type Copy = (zh: string, en: string) => string;
 
 export function signedMoney(value: number | null | undefined, digits = 0) {
@@ -802,6 +805,30 @@ export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; d
 }
 
 /**
+ * The valuation version saved by the end of a decision's day (the broker's UTC trade day), opened in
+ * the research journal. With no version saved by then, nothing shows.
+ */
+export function ModelAtDecision({ row }: { row: Pick<TradeDecision, "ticker" | "date"> }) {
+  const { locale, timeZone } = useLocale();
+  const { data } = useQuery({
+    queryKey: ["model-version-at", row.ticker, row.date],
+    queryFn: ({ signal }) => api<ModelVersionAt>(
+      `/research/${encodeURIComponent(row.ticker)}/models/as-of?day=${row.date}`, { signal }),
+    staleTime: 60_000,
+    retry: false,
+  });
+  const model = data?.model;
+  if (!model) return null;
+  const day = formatReadingTime(model.savedAt, locale, timeZone, "day");
+  return (
+    <Link className="mx-text-link mx-decision-model"
+      href={`/research?ticker=${encodeURIComponent(row.ticker)}&view=ledger&notebook=models&model=${encodeURIComponent(model.id)}`}>
+      {locale === "zh" ? `当时的估值模型 · ${day}保存` : `Valuation model at the time · saved ${day}`}
+    </Link>
+  );
+}
+
+/**
  * Every decision by date and outcome. A decision a link or a pick names leads the panel with its
  * context, and focus moves to it once each time one is named.
  */
@@ -891,6 +918,7 @@ export function DecisionTimelinePanel({
               }}
             />
           )}
+          <ModelAtDecision row={focus} />
         </div>
       )}
       <DecisionTimeline rows={rows} horizon={horizon} days={days} focus={focus} onPick={onPick} accountOf={accountOf} />

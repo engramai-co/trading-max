@@ -328,6 +328,26 @@ test.describe("a link to one decision", () => {
     await expect(help).toBeFocused();
   });
 
+  test("names the valuation model saved by the end of the decision's day and opens it in the journal", async ({ page }, info) => {
+    const days: string[] = [];
+    await page.route("**/api/backend/research/SYND.AS/models/as-of*", (route) => {
+      days.push(new URL(route.request().url()).searchParams.get("day") ?? "");
+      return route.fulfill({ json: { day: "2026-10-14", model: {
+        id: "synthetic-version", savedAt: "2026-10-13T16:20:00Z", family: "cash-flow", horizon: 5, currency: "EUR",
+      } } });
+    });
+    await page.goto(sale);
+    const card = page.locator(".mx-decision-focus");
+    const model = card.getByRole("link", { name: /^当时的估值模型/ });
+    await expect(model).toHaveText("当时的估值模型 · 10月13日保存");
+    await expect(model).toHaveAttribute("href", "/research?ticker=SYND.AS&view=ledger&notebook=models&model=synthetic-version");
+    expect(days).toEqual(["2026-10-14"]);
+    // The decision keeps focus; the link follows it in the reading order.
+    await expect(card.getByRole("link", { name: /Synthetic Delta/ })).toBeFocused();
+    const dir = process.env.VALUATION_ALERTS_SCREENSHOTS_DIR;
+    if (dir) await card.screenshot({ path: dir + "/" + info.project.name + "-review-model.png" });
+  });
+
   test("a failed refetch and its recovery leave focus and the horizon where the reader put them", async ({ page }) => {
     await page.goto(sale);
     const row = page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Delta/ });
