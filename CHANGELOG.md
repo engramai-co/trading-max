@@ -10,6 +10,7 @@ All notable public Trading Max releases are recorded here.
 
 ### Fixed
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
+- Live alerts compare prices and thresholds in the same unit, including London prices quoted in pence. Decision review and research history check the listing before using archived prices.
 - Research charts, their technical readings and the assistant’s dated events follow the same listing. Conflicting provider symbols or venues withhold the affected reading. Distributions on the chart can qualify as key moments. Timed headlines follow the published closing auction for their listing. A headline published while the auction can still close at random is marked on that session.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.
 - The first day of a chart range can qualify as a key moment when the previous session’s close is available.
