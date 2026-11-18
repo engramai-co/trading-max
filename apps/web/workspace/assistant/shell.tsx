@@ -32,15 +32,18 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
     if (overlay) document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", escape); if (overlay) document.body.style.overflow = previous; };
   }, [close, open, overlay, searchOpen]);
+  const wasOpen = useRef(false);
   const panel = useRef<HTMLDivElement>(null);
   const lastControl = useRef<HTMLElement>(null);
   const gateClose = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
+    const opening = open && !wasOpen.current;
+    wasOpen.current = open;
     if (!ready && !pending && !suspended) lastControl.current = null;
     if (!open || searchOpen) return;
     const active = document.activeElement;
-    // A non-modal desktop panel may revalidate while the reader is working elsewhere.
-    if (active && active !== document.body && !panel.current?.contains(active) && !active.matches("[data-assistant-trigger]")) return;
+    // Explicit opens take focus. A passive desktop refresh respects focus elsewhere.
+    if (!opening && active && active !== document.body && !panel.current?.contains(active) && !active.matches("[data-assistant-trigger]")) return;
     if (pending || !ready) {
       gateClose.current?.focus({preventScroll:true});
     } else if (lastControl.current?.isConnected) {

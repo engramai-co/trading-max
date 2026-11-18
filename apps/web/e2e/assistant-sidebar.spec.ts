@@ -628,7 +628,7 @@ test("a newer consent signal keeps active streams cancelled until that profile c
   }
 });
 
-for (const outcome of ["draft", "history button", "reopened draft", "changed settings", "withdrawn"] as const) {
+for (const outcome of ["draft", "history button", "reopened draft", "Control+j", "Meta+j", "changed settings", "withdrawn"] as const) {
   test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
@@ -642,9 +642,15 @@ for (const outcome of ["draft", "history button", "reopened draft", "changed set
     const control = outcome === "history button" ? panel.getByRole("button", {name:"Conversation history"}) : draft;
     await control.focus();
     await expect(control).toBeFocused();
-    if (outcome === "reopened draft") {
+    const shortcut = outcome === "Control+j" || outcome === "Meta+j";
+    if (shortcut || outcome === "reopened draft") {
       await page.keyboard.press("Escape");
-      await expect(panel).toBeHidden();
+      await expect(page.locator("[data-assistant-trigger]")).toBeFocused();
+      if (shortcut) {
+        const skip = page.getByRole("link", {name:"Skip to content"});
+        await skip.focus();
+        await expect(skip).toBeFocused();
+      }
     }
 
     let release!: () => void;
@@ -655,13 +661,15 @@ for (const outcome of ["draft", "history button", "reopened draft", "changed set
       await route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
     });
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
-    if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
+    if (shortcut) await page.keyboard.press(outcome);
+    else if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
     else if (outcome === "changed settings") await page.evaluate(() => window.dispatchEvent(
       new StorageEvent("storage",{key:"trading_max-assistant-settings-revision",newValue:"2"})));
     else if (outcome === "withdrawn") await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     else await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     try {
       await expect(panel.getByText("Checking connection…")).toBeVisible();
+      if (shortcut) await expect.soft(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused({timeout:1000});
       await expect.soft(panel.locator(":focus"), "focus during the check").toHaveCount(1, {timeout:1000});
       if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-checking-focus.png")});
       for (const key of ["Tab", "Shift+Tab"]) {
