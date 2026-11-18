@@ -324,6 +324,8 @@ for (const locale of ["en", "zh"] as const) {
       await page.goto("/analytics?view=returns&range=3M&benchmark=QQQ");
       const plot = page.locator("[data-tm-chart-ready=true]").first();
       await expect(plot).toBeVisible();
+      const chart = page.locator('[aria-roledescription="' + t("交互图表", "Interactive chart") + '"]').first();
+      await expect(chart).toHaveAccessibleDescription(locale === "zh" ? /拖动选择归因区间/ : /Drag to select an attribution range/);
       if (isMobile)
         await page
           .getByRole("group", { name: t("绩效区间", "Performance range") })
@@ -520,7 +522,8 @@ test("phone range opens the reading for the satisfying publication", async ({pag
     return route.fulfill({ json: { ...(backendFixture(url) as object), runId: "revised" } });
   });
   await page.goto("/analytics?view=returns&range=3M&benchmark=QQQ");
-  await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
+  const chart = page.locator('[aria-roledescription="Interactive chart"]').first();
+  await expect(chart).toHaveAccessibleDescription(/Drag to select an attribution range/);
   await page.getByRole("group",{name:"Performance range"}).getByRole("button",{name:"YTD",exact:true}).click();
   await expect(page.locator(".mx-reading-sheet")).toContainText("time-weighted");
   expect(calls.filter(c=>c.role==="attribution")).toMatchObject([{snapshotId:"revised",context:{range:"YTD",scope:"broker_total"}}]);
