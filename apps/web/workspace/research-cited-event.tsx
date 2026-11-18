@@ -1,5 +1,6 @@
 "use client";
 
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import { Button } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
@@ -9,7 +10,7 @@ import { readApi, safeUrl } from "./data";
 import { Empty, LoadingStatus, Page, Panel, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
 
-type PublishedEvent = components["schemas"]["UpcomingItem"];
+type PublishedEvent = components["schemas"]["CitedHoldingEvent"];
 
 /** Reopen a single published event even if the ticker has left the current research list. */
 export function CitedResearchEvent() {
@@ -18,15 +19,15 @@ export function CitedResearchEvent() {
   const t = useCopy();
   const ticker = params.get("ticker") ?? "";
   const snapshot = params.get("snapshotId") ?? "";
-  const event = params.get("event") ?? "";
-  const kind = event === "exDividend" ? "ex_dividend" : event === "earningsWindow" ? "earnings" : event;
+  const kind = citedEventKind(params.get("event"));
   const rowId = params.get("calendarEventId") ?? (params.get("evidence") !== "read_research_lens" ? params.get("eventId") : null);
   const researchId = params.get("eventId");
-  const valid = /^[a-zA-Z0-9_-]{1,100}$/.test(snapshot) && !!ticker && !!(rowId || researchId);
+  const valid = /^[a-zA-Z0-9_-]{1,100}$/.test(snapshot) && !!kind && !!ticker && !!(rowId || researchId);
   const result = useQuery({
     queryKey:["cited-research-event",snapshot,ticker,kind,rowId,researchId],
     enabled:valid, staleTime:0, gcTime:0, retry:false,
     queryFn: async ({signal}) => {
+      if (!kind) return null;
       const query = new URLSearchParams({ticker,kind});
       if (rowId) query.set("eventId", rowId);
       else if (researchId) query.set("researchEventId", researchId);
@@ -36,7 +37,7 @@ export function CitedResearchEvent() {
     },
   });
   const row = !result.isFetching && !result.isError && result.data;
-  const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : t("引用的事件","Cited event");
+  const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : kind === "dividend" || kind === "dividend_pay" ? t("股息", "Dividend") : t("引用的事件", "Cited event");
   return <Page title={t("研究", "Research")}><section data-reading-event=""><Panel title={ticker + " · " + title}>
     {result.isFetching ? <LoadingStatus label={t("正在读取引用…","Loading citation…")} /> :
       row ? <><h3>{locale === "zh" ? row.title_zh : row.title_en}</h3>

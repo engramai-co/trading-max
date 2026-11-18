@@ -1,3 +1,4 @@
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { Locale } from "@/components/locale-provider";
 import type { ResearchFigure } from "./research-figures";
 import type { Evidence } from "./evidence";
@@ -104,10 +105,12 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  if (["earnings","ex_dividend","dividend","dividend_pay","rating_change","filing"].includes(str(row.kind))) {
-    source = row.kind === "earnings" ? "financials" : row.kind === "rating_change" ? "analysts" : "disclosure";
+  const kind = citedEventKind(str(row.kind));
+  if (kind && kind !== "macro") {
+    source = kind === "earnings" ? "financials" : kind === "rating_change" ? "analysts" : "disclosure";
     args.holdingTicker = ticker;
-    args.event = row.kind === "ex_dividend" ? "exDividend" : row.kind === "earnings" ? row.research_event_id ? "earnings" : "earningsWindow" : str(row.kind);
+    args.event = kind === "ex_dividend" ? "exDividend" : kind;
+    if (kind === "earnings" && !row.research_event_id) args.event = "earningsWindow";
     if (row.research_event_id) args.researchEventId = str(row.research_event_id);
     if (row.end_date) args.endDate = str(row.end_date);
   } else if (row.kind === "macro" && (ref.arguments?.market || ref.arguments?.rowCitation || ref.tool === "news_and_events")) {

@@ -129,6 +129,10 @@ def listed_dividends(ticker, cal, metrics, evidence):
         stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
         if stamp:
             yield _security_entry(ticker, kind, en, zh, stamp[:10])
+    yield from _reported_dividends(ticker, evidence)
+
+
+def _reported_dividends(ticker, evidence):
     for r in _rows(evidence.get("dividends")):
         yield _security_entry(
             ticker,
@@ -513,6 +517,9 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     read = _Read(deps, "upcoming_events", args, args.scope)
     if kind == "macro" and ticker == "MARKET":
         entries = _macros(read.read(MACRO_KEY) or {}, "0001-01-01", "9999-12-31", [])
+    elif kind == "dividend":
+        financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
+        entries = _reported_dividends(ticker, financials.get("evidence", {}))
     else:
         data = {
             key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS)

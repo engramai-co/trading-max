@@ -2,6 +2,7 @@
 import dynamic from "next/dynamic";
 import { useEarningsBrief, PositionReading } from "./assistant/research-entry";
 
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import { researchShellKey } from "@/lib/dashboard-query";
 import type {
   ResearchLensSnapshot,
@@ -105,8 +106,7 @@ const CitedResearch = dynamic(() => import("./assistant/cited-research"));
 
 export function ResearchWorkspace() {
   const { params } = useRouteState();
-  if (["read_research_lens", "upcoming_events", "news_and_events"].includes(params.get("evidence") ?? "") &&
-      ["earnings", "earningsWindow", "exDividend", "ex_dividend", "dividend_pay", "dividend", "macro", "rating_change", "filing"].includes(params.get("event") ?? "")) {
+  if (["read_research_lens", "upcoming_events", "news_and_events"].includes(params.get("evidence") ?? "") && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }
   if ((params.has("snapshotId") || params.has("unavailable")) && params.has("evidenceId")) return <CitedResearch/>;
