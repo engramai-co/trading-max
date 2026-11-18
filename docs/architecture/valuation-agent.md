@@ -148,3 +148,37 @@ assumptions when Settings allows them to be shared, otherwise from the
 sector templates, and proposes only the fields the model selects. Its
 record carries the prompt version `valuation-maintenance-v1`. Preserve the
 workspace backup from before the first save with locks for a downgrade.
+
+## Notices of new evidence
+
+Notices of new evidence are off until the reader turns on the Notices switch
+under Settings, Update schedule. With it on, `GET /v1/valuation/evidence-notices`
+compares the newest saved version of each security in the research list with
+the latest publication, using the calculations behind See new evidence:
+
+- a statement basis other than the saved period, which is how a new report
+  arrives;
+- a restatement of the saved period;
+- fiscal-year consensus that has moved by at least one step from the value
+  recorded at the save: 5% of the saved EPS, or two percentage points of
+  revenue growth. Each further step counts again.
+
+Each piece of evidence has a stable key. Opening See new evidence records the
+keys it settles (`POST /v1/valuation/evidence-notices/{ticker}/seen`), so the same
+report or move is announced once, however many publications repeat it. A
+version saved afterwards starts without a notice. Company guidance has no
+source in the research data; it shows through new statements and consensus
+revisions. A security whose comparison cannot run has no notice.
+
+A dot marks a notice in the research list, beside See new evidence and in the
+journal's model versions. Notices are computed on request on this machine.
+They never draft, contact a model or save a version, and the only state they
+keep is the keys the reader has opened, in `evidence-notices.json` in the
+workspace.
+
+## The model saved for a decision
+
+Review links a selected decision to the newest valuation version saved by the
+end of its day (`GET /v1/research/{ticker}/models/as-of?day=`), and the link
+opens that version in the journal. A decision's day is the broker's UTC trade
+day, which has no time, so a version saved later that day is included.

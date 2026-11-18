@@ -7,6 +7,8 @@ All notable public Trading Max releases are recorded here.
 ### Added
 - A saved valuation model offers See new evidence under Adjust assumptions. It shows how each scenario value moved from the saved version to the current proposal in three parts: the new financial base from the latest statements, the current price and exchange rate, and changed assumptions. A restated figure of the saved period, statements that disagree with each other and revised consensus are listed beside it. The review works without MaxAI and saves nothing.
 - Lock an assumption beside its field to keep it as saved. Locks are saved with the model version, and MaxAI drafts never propose a locked field.
+- Optional notices of new evidence for saved valuation models, off until turned on under Settings, Update schedule. A dot in the research list, beside See new evidence and in the journal's model versions marks a model whose statements have a newer period or a restatement, or whose consensus has moved a full step since it was saved. Each piece of evidence is announced once, and opening See new evidence settles it. Notices are computed on this machine and never draft, contact a model or save.
+- Review links a selected decision to the valuation model saved by the end of that day.
 
 ### Changed
 - With a saved model, MaxAI drafts start from the saved assumptions and propose only the fields that the evidence supports changing.
