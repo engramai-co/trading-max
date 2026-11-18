@@ -401,3 +401,20 @@
     overflow-x: auto;
   }
 }
+/* MaxAI's Chinese summary trigger sits flush under the English description. */
+.mx-summary-trigger {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mx-brand);
+  font: inherit;
+  cursor: pointer;
+}
+@media (max-width: 767px) {
+  .mx-summary-trigger {
+    min-height: 44px;
+  }
+}

@@ -29,12 +29,13 @@ export function useAssistant() {
   return value;
 }
 /** Register a memoised opening card while its page or lens is mounted. */
-export function usePageRole(card: RoleCard | null) {
+export function usePageRole(card: RoleCard | null, register = true) {
   const { setPageCard } = useAssistant();
   useEffect(() => {
+    if (!register) return;
     setPageCard(card);
     return () => setPageCard(null);
-  }, [setPageCard, card]);
+  }, [setPageCard, card, register]);
 }
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);

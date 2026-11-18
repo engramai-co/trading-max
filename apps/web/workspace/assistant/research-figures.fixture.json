@@ -234,5 +234,35 @@
       "issues": []
     },
     "evidence_id": "ev_0ab4e1382b210b60"
+  },
+  "company_profile": {
+    "status": "ok",
+    "data": {
+      "ticker": "TEST",
+      "language": "en",
+      "sentences": [
+        "Synthetic Issuer Inc. designs and sells synthetic widgets in 12 markets.",
+        "The company also offers Widget Cloud, a subscription service.",
+        "It was founded in 1999 and is headquartered in Exampleton."
+      ],
+      "version": "126e3d94464c3f9625076226c9e63a94c8c798f6057bc76b00342f4464122fd2",
+      "as_of": null
+    },
+    "snapshot_id": "20261118T212500-438300Z-579524e4",
+    "scope": "public_research",
+    "bound_arguments": {
+      "snapshotId": "20261118T212500-438300Z-579524e4",
+      "ticker": "TEST"
+    },
+    "sources": [
+      {
+        "source_id": "src_b8021531d87364c8",
+        "as_of": "2026-02-03T17:00:00Z"
+      }
+    ],
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_d4032a9f603a29ce"
   }
 }

@@ -6,6 +6,8 @@ import { ArrowRight } from "@phosphor-icons/react";
 import { useState } from "react";
 import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { nextEarningsDate } from "./analyst-data";
+import { useAssistant } from "./assistant/context";
+import { PageInspection } from "./assistant/inspection-entry";
 import { industryName } from "./exposure-names";
 import { Bento, Facts, Metric, Panel, useCopy } from "./foundation";
 import Link from "./link";
@@ -35,7 +37,9 @@ export function CompanyOverview({
   const t = useCopy(),
     { update } = useRouteState("push");
   const { locale } = useLocale();
+  const { ready } = useAssistant();
   const [expanded, setExpanded] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const facts = context?.financialFacts ?? data.financialFacts;
   const period =
     facts?.periods?.find((p) => p.id === facts.latestTtm) ??
@@ -63,6 +67,8 @@ export function CompanyOverview({
   const summary = str(info.longBusinessSummary);
   const excerpt = summary.split(/(?<=\.)\s+(?=[A-Z])/).slice(0, 2).join(" ");
   const expandable = excerpt.length < summary.length;
+  // With MaxAI on, the provider's English description can be restated in Chinese.
+  const offerSummary = ready && locale === "zh" && Boolean(summary) && Boolean(data.runId);
   return (
     <Bento className="mx-overview-bento">
       {period && (
@@ -168,6 +174,23 @@ export function CompanyOverview({
                 {summary}
               </p>
             ))}
+          {offerSummary && (
+            <button type="button" className="mx-summary-trigger" aria-expanded={summaryOpen}
+              onClick={() => setSummaryOpen(!summaryOpen)}>
+              ✦ {t("中文摘要", "Chinese summary")}
+            </button>
+          )}
+          {offerSummary && summaryOpen && (
+            <PageInspection
+              role="company-summary"
+              object={data.ticker}
+              context={{ ticker: data.ticker }}
+              snapshotId={data.runId}
+              search={new URLSearchParams({ ticker: data.ticker, view: "overview", scope: "broker_total" }).toString()}
+              register={false}
+              onClose={() => setSummaryOpen(false)}
+            />
+          )}
         </Panel>
         <Panel
           bare

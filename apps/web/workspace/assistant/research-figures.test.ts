@@ -4,7 +4,7 @@ import { verifiedLines } from "./chat-reply";
 import { evidenceHref } from "./evidence";
 import results from "./research-figures.fixture.json";
 
-// Outputs recorded by running all four research tools on test_research_readings' synthetic publication.
+// Outputs recorded by running the research tools on test_research_readings' synthetic publication.
 type Tool = keyof typeof results;
 function message(tool: Tool, field: string, line?: string): UIMessage {
   const output = results[tool];
@@ -26,6 +26,7 @@ describe("research follow-up citations", () => {
     ["research_earnings","/data/report/surprise","+4.35%","eventId=report"],
     ["research_earnings","/data/estimates/0/mean","$1.25/share","analystView=forecast"],
     ["research_headline","/data/title","Related headline · Issuer publishes outlook","evidence=research_headline"],
+    ["company_profile","/data/sentences/1","The company also offers Widget Cloud, a subscription service.","evidence=company_profile"],
   ] as const)("renders the actual %s field %s and opens its source", (tool, field, expected, href) => {
     const [line] = verifiedLines(message(tool,field));
     expect(line.text).toContain(expected);

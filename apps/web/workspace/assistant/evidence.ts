@@ -26,6 +26,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
   research_position: ["/research", "market"], price_key_moments: ["/research", "technical"],
   research_earnings: ["/research", "financials"], research_headline: ["/research", "publisher"],
+  company_profile: ["/research", "disclosure"],
   selected_exposure: ["/holdings","exposure"], selected_daily: ["/analytics","account"],
   selected_fx: ["/analytics","holdings"], sector_headline: ["/sectors","publisher"],
   selected_money: ["/analytics","account"], daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],

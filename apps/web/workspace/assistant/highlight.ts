@@ -14,6 +14,7 @@ const targets: Record<string, string> = {
   market_sector: ".mx-sector-detail", global_map: ".mx-global-panel", update_issue: ".mx-health-hero",
   recent_decisions: ".mx-review-page", read_research_lens: ".mx-research-content",
   read_valuation_evidence: ".mx-research-content", data_freshness: ".mx-health-symbol",
+  company_profile: ".mx-business-description, .mx-business-excerpt",
 };
 export function useEvidenceHighlight(pathname: string, search: string) {
   useEffect(() => {

@@ -32,7 +32,7 @@ function basisName(basis: unknown, locale: Locale) {
 export function researchFigure(ref: Evidence, output: Json, path: string, locale: Locale, timeZone: string): ResearchFigure | null | undefined {
   const { tool } = ref;
   const eventsTool = tool === "news_and_events" || tool === "upcoming_events";
-  if (!eventsTool && !["research_position", "price_key_moments", "research_earnings", "research_headline"].includes(tool)) return undefined;
+  if (!eventsTool && !["research_position", "price_key_moments", "research_earnings", "research_headline", "company_profile"].includes(tool)) return undefined;
   if (path === "/status" || path === "/data/coverage") return undefined;
   const data = object(output.data);
   const ticker = str(data.listing) || str(data.ticker) || str(ref.arguments?.ticker);
@@ -44,6 +44,12 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
   });
   if (eventsTool) {
     return calendarObservation(ref, output, path, locale, timeZone);
+  }
+  if (tool === "company_profile") {
+    // A sentence of the company's own English description, quoted as written.
+    const match = /^\/data\/sentences\/(0|[1-9]\d?)$/.exec(path);
+    const sentence = match && Array.isArray(data.sentences) ? str(data.sentences[Number(match[1])]) : "";
+    return sentence ? figure([sentence], "disclosure", {lens:"overview", sentence:match![1]}) : null;
   }
 
   function priceEvent(event: Json) {

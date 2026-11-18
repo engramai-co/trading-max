@@ -539,3 +539,106 @@ test("a selected-session early close reopens the bound market and retained row",
   expect((await observation.textContent())?.match(/limited coverage/g)).toHaveLength(1);
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css",path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-retained-early-close.png")});
 });
+
+const description = "Synthetic Issuer Inc. designs and sells synthetic widgets in 12 markets. " +
+  "The company also offers Widget Cloud, a subscription service. It was founded in 1999 and is headquartered in Exampleton.";
+const restated = [
+  ["Synthetic Issuer Inc. 在 12 个市场设计并销售合成小部件。", "Synthetic Issuer Inc. designs and sells synthetic widgets in 12 markets.", "0"],
+  ["公司还提供订阅服务 Widget Cloud。", "The company also offers Widget Cloud, a subscription service.", "1"],
+];
+const profile = async (page: Page, ready = true) => {
+  const reads = await fixtures(page, ready);
+  const summaries: unknown[] = [];
+  await page.route("**/api/backend/research/SYNT/lens/overview**", route => {
+    const overview = backendFixture(new URL(base + "/lens/overview", route.request().url())) as Record<string, unknown>;
+    return route.fulfill({json:{...overview, fundamentals:{metrics:{quoteType:"EQUITY", longBusinessSummary:description}}}});
+  });
+  await page.route("**/api/backend/assistant/roles/company-summary/reading", route => {
+    summaries.push(route.request().postDataJSON());
+    return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result", reading:{
+      role:"company-summary", snapshotId:snapshot, version:"synthetic-profile", asOf:"2026-01-30T20:00:00Z",
+      lines:restated.map(([zh, en, sentence]) => ({zh, en, evidence:{source:"disclosure", tool:"company_profile", evidenceId:"ev_profile",
+        arguments:{ticker:"SYNT", lens:"overview", sentence, snapshotId:snapshot}}})),
+    }}) + "\n"});
+  });
+  return {reads, summaries};
+};
+
+for (const theme of ["light", "dark"] as const) {
+  test(`a Chinese summary restates the company's English description, ${theme}`, async ({page, isMobile}, info) => {
+    await page.emulateMedia({colorScheme:theme, reducedMotion:"reduce"});
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+    const {reads, summaries} = await profile(page);
+    await page.goto("/research?ticker=SYNT");
+    const english = page.locator(".mx-business-excerpt");
+    await expect(english).toHaveAttribute("lang", "en");
+    const trigger = page.getByRole("button", {name:"✦ 中文摘要"});
+    await expect(trigger).toHaveAttribute("aria-expanded", "false");
+    // Nothing is written until the summary is asked for.
+    expect(summaries).toEqual([]);
+    if (process.env.ASSISTANT_SCREENSHOTS) {
+      await trigger.scrollIntoViewIfNeeded();
+      await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, [info.project.name, "zh", theme, "company-summary-offer"].join("-") + ".png")});
+    }
+    await trigger.click();
+    const reading = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading");
+    await expect(reading.locator(".mx-reading-line")).toHaveCount(2);
+    await expect(reading.locator(".mx-reading-line").first()).toContainText("在 12 个市场设计并销售");
+    const sources = reading.locator(".mx-reading-source");
+    await expect(sources).toHaveText(["披露", "披露"]);
+    await expect(sources.first()).toHaveAttribute("href", "/research?ticker=SYNT&view=overview&evidence=company_profile");
+    await expect(reading.getByRole("button", {name:"主要产品和服务有哪些？"})).toBeVisible();
+    expect(summaries).toEqual([{context:{ticker:"SYNT"}, snapshotId:snapshot}]);
+    expect((await new AxeBuilder({page}).include(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading").analyze()).violations).toEqual([]);
+    if (!isMobile) await reading.scrollIntoViewIfNeeded();
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, [info.project.name, "zh", theme, "company-summary"].join("-") + ".png")});
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(isMobile ? 390 : 1440);
+    if (isMobile) {
+      await page.getByRole("button", {name:"关闭解读"}).click();
+      await expect(reading).toHaveCount(0);
+    } else {
+      await trigger.click();
+      await expect(reading).toHaveCount(0);
+      await trigger.click();
+      // The source word returns to the English description it restates.
+      await sources.first().click();
+      await expect(english).toHaveAttribute("data-assistant-evidence", "");
+    }
+    expect(reads).toEqual([]);
+  });
+}
+
+test("the overview offers no summary in English", async ({page}, info) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const {summaries} = await profile(page);
+  await page.goto("/research?ticker=SYNT");
+  await expect(page.locator(".mx-business-excerpt")).toBeVisible();
+  await expect(page.locator(".mx-summary-trigger")).toHaveCount(0);
+  expect(summaries).toEqual([]);
+  if (process.env.ASSISTANT_SCREENSHOTS) {
+    await page.locator(".mx-business-excerpt").scrollIntoViewIfNeeded();
+    await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-en-light-company-description.png")});
+  }
+});
+
+test("with MaxAI off the overview is unchanged and loads no summary", async ({page}, info) => {
+  const assets: Promise<string>[] = [];
+  page.on("response", r => {
+    if (/\.(js|css)(?:\?|$)/.test(r.url()) && r.ok()) assets.push(r.text().catch(() => ""));
+  });
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+  const {summaries} = await profile(page, false);
+  const requests: string[] = [];
+  page.on("request", r => { if (r.url().includes("/assistant/")) requests.push(r.url()); });
+  await page.goto("/research?ticker=SYNT");
+  await expect(page.locator(".mx-business-excerpt")).toBeVisible();
+  await expect(page.locator(".mx-summary-trigger")).toHaveCount(0);
+  expect(summaries).toEqual([]); expect(requests).toEqual([]);
+  const downloaded = (await Promise.all(assets)).join("");
+  expect(downloaded.includes("Which products and services does it list?")).toBe(false);
+  if (process.env.ASSISTANT_SCREENSHOTS) {
+    await page.locator(".mx-business-excerpt").scrollIntoViewIfNeeded();
+    await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-zh-light-maxai-off.png")});
+  }
+});
+
