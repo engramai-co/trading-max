@@ -10,7 +10,7 @@ from trading_max.research.listing import broker_listing
 
 from .artifacts import ArtifactStore
 from .models import SnapshotManifest
-from .projections.broker import overlay_live_broker_snapshot
+from .projections.broker import overlay_live_broker_snapshot, positions_observed_at
 from .projections.day_change import holding_day_changes
 from .projections.listings import HoldingListingCalendars
 from .projections.nav import intraday_nav_points, latest_daily_return, latest_twr, nav_series
@@ -551,6 +551,11 @@ def build_dashboard_data(
     return {
         "generatedAt": updated,
         "brokerAsOf": str(broker.get("generated_at_utc") or ""),
+        "positionAsOf": {
+            code: stamp
+            for code in account_codes
+            if (stamp := positions_observed_at(broker["accounts"][code]))
+        },
         "researchAsOf": research_as_of,
         "totalValueGbp": total_value,
         "householdTotalValueGbp": (

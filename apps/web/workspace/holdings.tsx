@@ -109,8 +109,9 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
-  const accountStamp = (holding: Holding) => positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf
-    ?? (holding.account === "A" || holding.account === "B" ? positionData?.positionAsOf?.[holding.account] : undefined);
+  const accountStamp = (holding: Holding) => positionData?.positionAsOf && (holding.account === "A" || holding.account === "B")
+    ? positionData.positionAsOf[holding.account]
+    : positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf;
   const snapshotBasis = (holding: Holding) => {
     const at = accountStamp(holding);
     return <small className="mx-holding-quote-basis">{t("券商快照", "Broker snapshot")} · {at
@@ -179,7 +180,7 @@ function Positions() {
                 ]}
               />
               <span className="mx-freshness-group">
-                <Freshness date={query.data?.brokerAsOf} />
+                <Freshness date={summary?.asOf ?? query.data?.brokerAsOf} />
                 {failure && <UpdateFailure {...failure} />}
               </span>
             </div>

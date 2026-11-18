@@ -46,6 +46,7 @@ from ..etf_snapshot import read_etf_detail, read_etf_portfolio
 from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
 from ..history_reader import HistorySnapshot, daily_nav
 from ..models import HealthResponse, ReadinessResponse, SnapshotManifest
+from ..projections.broker import positions_observed_at
 from ..projections.day_change import within_trading_days
 from .dependencies import app_service, latest_or_503
 
@@ -264,11 +265,15 @@ def _retained_holdings(store, manifest, view, account):
     total = sum((accounts[code].get("total_value_gbp") or 0) for code in investable)
     return DashboardLensSnapshot(
         **base,
-        broker_as_of=broker.get("generated_at_utc") or "",
+        broker_as_of=(
+            accounts.get(account, {}).get("fetched_at")
+            or accounts.get(account, {}).get("fetched_at_utc")
+            or ""
+        )
+        if account
+        else broker.get("generated_at_utc") or "",
         position_as_of={
-            code: stamp
-            for code in selected
-            if (stamp := accounts[code].get("fetched_at") or accounts[code].get("fetched_at_utc"))
+            code: stamp for code in selected if (stamp := positions_observed_at(accounts[code]))
         },
         holdings=published_positions(store, run, broker, selected, total, lookthrough),
         total_invested_gbp=sum(accounts[c].get("investments_value_gbp") or 0 for c in selected),
@@ -572,6 +577,7 @@ def dashboard_lens(
     if view == "holdings-positions":
         return DashboardLensSnapshot(
             **base,
+            position_as_of=dashboard_data.position_as_of,
             accounts=[item for item in dashboard_data.accounts if item.is_investable],
             total_value_gbp=dashboard_data.total_value_gbp,
             total_cash_gbp=dashboard_data.total_cash_gbp,

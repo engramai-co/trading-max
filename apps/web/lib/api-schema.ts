@@ -3471,6 +3471,10 @@ export interface components {
             /** Options */
             options: components["schemas"]["OptionSnapshot"][];
             policy: components["schemas"]["PolicySummary"];
+            /** Positionasof */
+            positionAsOf?: {
+                [key: string]: string;
+            };
             /** Researchasof */
             researchAsOf: string;
             /** Risk */
