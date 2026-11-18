@@ -119,7 +119,7 @@ export function sameDecision(row: DecisionRef, other: DecisionRef) {
  * React keys for a list of decisions: the day, side and ticker, and the account where a list spans two.
  * A lone decision's key never depends on its display name, context line or place in the list, so a
  * name correction or a refetch keeps its row and focus. Only when that repeats, as for two securities
- * sharing a ticker, does the key add the security's name, then its order among exact repeats.
+ * sharing a ticker, does the key include its published ordinal. Older callers fall back to name and occurrence.
  */
 export function decisionKeys(rows: Array<DecisionRef & { name: string; account?: string }>) {
   const tuple = (row: DecisionRef & { account?: string }) => [row.account ?? "", row.date, row.side, row.ticker].join("\u0000");
@@ -128,6 +128,7 @@ export function decisionKeys(rows: Array<DecisionRef & { name: string; account?:
   const seen = new Map<string, number>();
   return rows.map((row) => {
     const key = tuple(row);
+    if (row.reviewOrdinal != null) return key + "\u0000" + row.reviewOrdinal;
     if (counts.get(key) === 1) return key;
     const named = key + "\u0000" + row.name;
     const repeat = seen.get(named) ?? 0;

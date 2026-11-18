@@ -164,7 +164,7 @@ export function ReviewHabits({
         page: "review",
         search: new URLSearchParams({
           account: scope,
-          reviewWindow: toolHorizon(horizon),
+          reviewWindow: toolHorizon(horizon), snapshotId: snapshot,
           ...(habit ? { habit } : {}),
         }).toString(),
         snapshotId: snapshot,
@@ -280,7 +280,7 @@ export function DecisionReading({
           account: row.account,
           decision: [row.date, row.side, row.ticker].join("."),
           reviewOrdinal: String(context.ordinal),
-          reviewWindow: context.horizon,
+          reviewWindow: context.horizon, snapshotId: snapshot,
           ...(habit ? { habit } : {}),
         }).toString(),
         snapshotId: snapshot,
@@ -307,7 +307,7 @@ export function DecisionReading({
           ))}
           <ReadingStatus run={run} />
           {(run.state === "error" || run.state === "empty") && (
-            <Link className="mx-text-link" href={decisionHref(row.account, row, true)} onNavigate={onClose}>
+            <Link className="mx-text-link" href={decisionHref(row.account, row, {snapshot, horizon, habit})} onNavigate={onClose}>
               {t("查看这笔决定", "View this decision")} →
             </Link>
           )}

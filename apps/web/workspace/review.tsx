@@ -2,7 +2,7 @@
 
 import { ArrowRight } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
-import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateSpan } from "@/ui/formatters";
 import { usePublicationFailure } from "@/ui/publication-provider";
@@ -80,6 +80,19 @@ const FallTimeline = dynamic(() => import("./assistant/review-falls").then(modul
 
 const ACCOUNT_REVIEW_SELECTION = { detail: "summary" as const };
 
+function HabitsSpace() {
+  const [expanded] = useState(() => {
+    try { return localStorage.getItem("tm-reading-review-habits") === "open"; }
+    catch { return false; }
+  });
+  return <div className="mx-review-habits-space" data-expanded={expanded || undefined} aria-hidden="true" />;
+}
+
+function focusHabitFilter(button: HTMLButtonElement | null) {
+  button?.focus({ preventScroll: true });
+  button?.scrollIntoView({ block: "center", behavior: "instant" });
+}
+
 /**
  * One review for every account: the scope beside the title, then what the decisions did, each
  * decision on a timeline, the ones that helped and cost the most, and the recent record. A single
@@ -93,15 +106,19 @@ export function ReviewWorkspace() {
   const { params, update } = useRouteState("push");
   const scope = reviewScope(params.get("account"));
   const all = scope === "all";
-  const overview = useDashboardLens("review", undefined, all);
-  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all, ACCOUNT_REVIEW_SELECTION);
+  const snapshotId = params.get("snapshotId");
+  const selectionForLens = useMemo(() => snapshotId ? {snapshotId} : undefined, [snapshotId]);
+  const accountSelection = useMemo(() => ({...ACCOUNT_REVIEW_SELECTION, ...selectionForLens}), [selectionForLens]);
+  const overview = useDashboardLens("review", undefined, all, selectionForLens);
+  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all, accountSelection);
   const query = all ? overview : single;
   const current = useMemo(
     () => query.data && { scope, data: query.data, updatedAt: query.dataUpdatedAt },
     [scope, query.data, query.dataUpdatedAt],
   );
   // Another scope keeps showing the last one until its own review arrives.
-  const result = useRetainedResult(current);
+  const retained = useRetainedResult(current);
+  const result = snapshotId && retained?.data.runId !== snapshotId ? undefined : retained;
   const publicationFailure = usePublicationFailure(result?.updatedAt ?? 0);
   const failure = query.isError && result ? { updatedAt: result.updatedAt, retry: query.refetch } : publicationFailure;
   // Horizon choices live here, keyed by account and decision, so they outlive the panels that use them.
@@ -117,7 +134,7 @@ export function ReviewWorkspace() {
   const reference = parseDecisionParam(params.get("decision"));
   const ordinal = params.get("reviewOrdinal");
   // A cited decision can disambiguate two listings with the same ticker on one day.
-  const focus = shown === "all" || shown === "C" ? undefined : ready && ordinal && /^\d{1,4}$/.test(ordinal) && reference
+  const focus = shown === "all" || shown === "C" ? undefined : ordinal && /^\d{1,4}$/.test(ordinal) && reference
     ? ledgerRows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(ready ? ledgerRows : rows,reference);
   const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
   const requestedHorizon = ready ? params.get("reviewWindow") : null;
@@ -132,20 +149,21 @@ export function ReviewWorkspace() {
   const closeReading = () => {setSelection(null); selected?.trigger.focus({preventScroll:true});};
   const readingId = useId();
   const expansion: DecisionExpansion | undefined = ready && shown !== "C" && data ? {
-    selected:selected?.row ?? null,location:selected?.location ?? null,id:readingId,
+    snapshot: data.runId, horizon, habit, selected:selected?.row ?? null,location:selected?.location ?? null,id:readingId,
     toggle:(row,location,trigger) => setSelection(selected?.row === row && selected.location === location ? null : {row,location,trigger}),
     reading:selected && <div id={readingId}><DecisionReading key={readingId + selected.location + horizonScope(selected.row.account, selected.row) + horizon + data.runId}
       snapshot={data.runId} scope={shown} row={selected.row} horizon={horizon} habit={habit} onClose={closeReading}/></div>,
   } : undefined;
   const filterButton = useRef<HTMLButtonElement>(null);
-  const [focusFilter, setFocusFilter] = useState<{ habit: Habit | null } | null>(null);
-  useEffect(() => {
-    if (focusFilter && focusFilter.habit === habit) {
-      filterButton.current?.focus();
-      setFocusFilter(null);
+  const focusFilter = useRef<Habit | null>(null);
+  const attachFilter = useCallback((button: HTMLButtonElement | null) => {
+    filterButton.current = button;
+    if (button && habit && focusFilter.current === habit) {
+      focusFilter.current = null;
+      focusHabitFilter(button);
     }
-  }, [focusFilter, habit]);
-  const filterChip = habit ? <button ref={filterButton} type="button" className="mx-review-filter" onClick={() => {setSelection(null);update({habit:null});}}>
+  }, [habit]);
+  const filterChip = habit ? <button ref={attachFilter} type="button" className="mx-review-filter" onClick={() => {setSelection(null);update({habit:null, snapshotId: null});}}>
     {t("只看","Only")} · {t(habitLabels[habit][0],habitLabels[habit][1])} <span aria-hidden="true">×</span><span className="sr-only">{t("清除筛选","Clear filter")}</span></button> : undefined;
   const reviews = shown === "all"
     ? (["A", "B"] as const).map((code) => data?.decisionReviews?.[code])
@@ -159,7 +177,7 @@ export function ReviewWorkspace() {
     <Page
       className="mx-review-page"
       title={t("投资复盘", "Investment review")}
-      nav={<ScopeSwitch value={scope} onChange={(value) => update({ account: value === "all" ? null : value, decision: null, habit:null, reviewWindow:null })} />}
+      nav={<ScopeSwitch value={scope} onChange={(value) => update({ account: value === "all" ? null : value, decision: null, reviewOrdinal: null, snapshotId: null, habit:null, reviewWindow:null })} />}
       actions={
         <span className="mx-freshness-group">
           {available && <HorizonSwitch horizon={horizon} days={days} onChange={value => {choose(value); if (requestedHorizon) update({reviewWindow:null});}} />}
@@ -186,7 +204,7 @@ export function ReviewWorkspace() {
                 {shown === "all" ? (
                   <ReviewAccounts
                     horizon={horizon}
-                    onOpen={(code) => update({ account: code, decision: null })}
+                    onOpen={(code) => update({ account: code, decision: null, reviewOrdinal: null, snapshotId: null })}
                     accounts={(["A", "B"] as const).map((code) => ({
                       code,
                       rows: rows.filter((row) => row.account === code),
@@ -198,18 +216,24 @@ export function ReviewWorkspace() {
                   <AccountMoney data={data} />
                 )}
               </ReviewLead>
-              {(!available || !readinessPending) && <Suspense fallback={null}>
               {available ? (
                 <>
-                  {ready && <ReviewHabits key={shown+data.runId} snapshot={data.runId} scope={shown} horizon={horizon} habit={habit} active={!selected}
-                    onSelect={(value, options) => {
-                      setSelection(null);
-                      if (options.focusFilter) setFocusFilter({ habit: value });
-                      update({
-                        habit: value, decision: null, reviewOrdinal: null,
-                        ...(options.citation ? { evidence: "review_patterns", reviewWindow: toolHorizon(horizon) } : {}),
-                      });
-                    }} />}
+                  {ready ? (
+                    <Suspense fallback={<HabitsSpace />}>
+                      <ReviewHabits key={shown + data.runId} snapshot={data.runId} scope={shown}
+                        horizon={horizon} habit={habit} active={!selected} onSelect={(value, options) => {
+                          setSelection(null);
+                          if (options.focusFilter) {
+                            if (value === habit) requestAnimationFrame(() => focusHabitFilter(filterButton.current));
+                            else focusFilter.current = value;
+                          }
+                          update({
+                            habit: value, decision: null, reviewOrdinal: null,
+                            ...(options.citation ? { evidence: "review_patterns", reviewWindow: toolHorizon(horizon), snapshotId: data.runId } : {}),
+                          });
+                        }} />
+                    </Suspense>
+                  ) : readinessPending && data.reviewHabitsConsented ? <HabitsSpace /> : null}
                   {habit === "untraded_fall" ? <FallTimeline moves={falls} horizon={horizon} action={filterChip}/> : <DecisionTimelinePanel
                     action={filterChip}
                     rows={filtered}
@@ -218,9 +242,9 @@ export function ReviewWorkspace() {
                     focus={focus && ((!habit && focus.unpriced) || filtered.includes(focus as ScopedDecision)) ? focus : undefined}
                     onClear={() => {
                       release();
-                      update({ decision: null, reviewOrdinal: null });
+                      update({ decision: null, reviewOrdinal: null, snapshotId: null });
                     }}
-                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row), reviewOrdinal:ready && row.reviewOrdinal != null ? String(row.reviewOrdinal) : null })}
+                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row), reviewOrdinal:row.reviewOrdinal != null ? String(row.reviewOrdinal) : null })}
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}
                     unpriced={[...new Set(reviews.flatMap((review) => review?.coverage?.unpricedTickers ?? []))]}
                   />}
@@ -246,7 +270,6 @@ export function ReviewWorkspace() {
                 showAccount={shown === "all"}
               />
               {shown !== "all" && <AccountAnalysis key={shown} data={data} code={shown} />}
-              </Suspense>}
             </>
           )}
         </div>

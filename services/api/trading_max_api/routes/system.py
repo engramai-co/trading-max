@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from datetime import UTC, date, datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -20,6 +21,7 @@ from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.research.calendars.refresh import MACRO_KEY, MACRO_STATUS_KEY
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
+from ..assistant_settings import ASSISTANT_CONSENT_REVISION
 from ..dashboard_models import (
     AccountCode,
     AccountDecisions,
@@ -354,6 +356,9 @@ def dashboard_lens(
     account: AccountCode | None = None,
     range: HistoryRange | None = None,
     scope: HistoryScope | None = None,
+    snapshot_id: str | None = Query(
+        default=None, alias="snapshotId", max_length=128, pattern=r"^[a-zA-Z0-9_-]+$"
+    ),
     detail: Literal["full", "summary"] = Query(
         default="full",
         description=(
@@ -365,7 +370,11 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
-    manifest = latest_or_503(request)
+    if snapshot_id and view not in {"review", "account-analysis"}:
+        raise HTTPException(
+            status_code=422, detail="The snapshot selection applies to review lenses."
+        )
+    manifest = snapshot(snapshot_id, request) if snapshot_id else latest_or_503(request)
     dashboard_data = request.app.state.cached_dashboard(
         manifest, include_history=detail != "summary"
     )
@@ -472,6 +481,17 @@ def dashboard_lens(
             benchmark_series=_benchmark_series_for_nav(dashboard_data),
             policy=dashboard_data.policy,
         )
+    if view == "review" or (view == "account-analysis" and account != "C"):
+        # Reserve the habits row with the first review response, without checking credentials.
+        try:
+            preferences = app_service(request, "settings_repository").get_assistant_preferences()
+            base["review_habits_consented"] = (
+                preferences.enabled
+                and preferences.accepted_consent_revision == ASSISTANT_CONSENT_REVISION
+            )
+        except sqlite3.Error:
+            pass  # A preferences failure must not delay or hide published decisions.
+
     if view == "review":
         # The review needs each account's verdict, how many decisions still wait for
         # a close, and every decision for its timeline.

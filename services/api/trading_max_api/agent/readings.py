@@ -121,6 +121,7 @@ class ReadingService:
             saved = self.cached(role, context, version, scheduled=True) or saved
         if saved and not latest and role.refresh_cached_facts:
             facts = await asyncio.to_thread(role.facts, tools, context)
+            tools.attach_evidence(facts)
             by_section = {fact.section: fact for fact in facts}
             if not all(line.section in by_section for line in saved.lines):
                 yield ReadingEvent(type="empty")

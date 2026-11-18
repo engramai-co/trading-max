@@ -2,6 +2,7 @@ import type { UIMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import outputs from "./__fixtures__/review-tools.json";
 import { verifiedLines } from "./chat-reply";
+import { evidenceHref } from "./evidence";
 import { renderToolField } from "./figures";
 
 describe("sidebar fields from the review tools", () => {
@@ -26,6 +27,21 @@ describe("sidebar fields from the review tools", () => {
     expect(render("/data/items/0/market_return")).toContain("Matched S&P 500 return in GBP · +3.0%");
     expect(render("/data/items/0/prior_close_gbp")).toBeNull();
     expect(render("/data/items/2/security_return")).toBeNull();
+  });
+
+  it("reopens the selected decision from a follow-up that supplied no tool arguments", () => {
+    const [line] = verifiedLines({
+      id: "answer", role: "assistant", parts: [
+        { type: "dynamic-tool", toolName: decisionTool, toolCallId: "d", state: "output-available",
+          input: {}, output: outputs.decision },
+        { type: "text", text: "{{/data/items/0/hindsight/missed_gbp}} [ev_decision]\n{{history}} [inference]" },
+      ],
+    });
+    const opened = new URL(evidenceHref(line.evidence!)!, "https://example.org");
+    expect(opened.pathname).toBe("/review");
+    expect(Object.fromEntries(opened.searchParams)).toMatchObject({
+      account: "A", decision: "2026-02-03.buy.TEST", reviewOrdinal: "0", reviewWindow: "20_sessions", snapshotId: "synthetic",
+    });
   });
 
   it("binds the no-trade sign, coverage and window to the selected group", () => {
@@ -70,7 +86,10 @@ describe("sidebar fields from the review tools", () => {
     const pointer = "{{/data/groups/basket_buy/effect_gbp}}";
     const fact = verifiedLines(reply(pointer))[0];
     expect(fact.text).toContain("£9.00");
-    expect(fact.evidence?.arguments).toMatchObject({ scope: "invest", horizon: "to_date", habit: "basket_buy" });
+    expect(fact.evidence?.arguments).toMatchObject({ scope: "invest", horizon: "to_date", habitSection: "basket_buy" });
+    const opened = new URL(evidenceHref(fact.evidence!)!, "https://example.org");
+    expect(opened.searchParams.get("habit")).toBe("basket_buy");
+    expect(opened.searchParams.get("reviewWindow")).toBe("to_date");
     expect(verifiedLines(reply("£300 " + pointer))).toEqual([]);
     expect(verifiedLines(reply("{{/data/groups/unknown/effect_gbp}}"))).toEqual([]);
   });

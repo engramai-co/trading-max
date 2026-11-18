@@ -5626,6 +5626,11 @@
               }
             ]
           },
+          "reviewHabitsConsented": {
+            "default": false,
+            "title": "Reviewhabitsconsented",
+            "type": "boolean"
+          },
           "reviewSummaries": {
             "items": {
               "$ref": "#/components/schemas/OverviewReviewSummary"
@@ -6606,6 +6611,20 @@
               }
             ],
             "title": "Prior Close Gbp"
+          },
+          "prior_events": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PriorDecisionEvent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Events"
           },
           "scope": {
             "title": "Scope",
@@ -16440,6 +16459,77 @@
           "sma200"
         ],
         "title": "PriceSeriesPoint",
+        "type": "object"
+      },
+      "PriorDecisionEvent": {
+        "properties": {
+          "firm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm"
+          },
+          "kind": {
+            "enum": [
+              "earnings",
+              "rating_change",
+              "news"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "local_date": {
+            "title": "Local Date",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "title_en": {
+            "title": "Title En",
+            "type": "string"
+          },
+          "title_zh": {
+            "title": "Title Zh",
+            "type": "string"
+          },
+          "to_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Grade"
+          }
+        },
+        "required": [
+          "kind",
+          "local_date",
+          "title_en",
+          "title_zh",
+          "publisher"
+        ],
+        "title": "PriorDecisionEvent",
         "type": "object"
       },
       "ProjectionYear": {
@@ -27081,6 +27171,24 @@
             }
           },
           {
+            "in": "query",
+            "name": "snapshotId",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 128,
+                  "pattern": "^[a-zA-Z0-9_-]+$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Snapshotid"
+            }
+          },
+          {
             "description": "summary returns the page projection without NAV and intraday history; interactive clients and agents should use it and read history from /v1/dashboard/history. full (the compatible default) also embeds the complete history, which grows with every snapshot and can reach many megabytes on a long-running installation.",
             "in": "query",
             "name": "detail",
@@ -31679,6 +31787,24 @@
                 }
               ],
               "title": "Side"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ordinal",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMaximum": 2000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ordinal"
             }
           }
         ],

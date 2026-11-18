@@ -28,7 +28,7 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       let evidence = source.ref;
       const review = reviewFieldLocation(evidence.tool, source.output, pointer);
       if (review) {
-        evidence = {...evidence, arguments:{...evidence.arguments, ...review}};
+        evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, ...review}, source.output)};
       } else if (evidence.tool === "period_performance" && pointer === "/data/period_pnl_gbp") {
         const data = object(source.output.data);
         evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, metric:"period_pnl_gbp",

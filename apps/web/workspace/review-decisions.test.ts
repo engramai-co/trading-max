@@ -470,6 +470,10 @@ describe("keys for a list of decisions", () => {
     const keys = decisionKeys([delta, twin, delta, row("buy", "MU", 1, 2)]);
     expect(new Set(keys).size).toBe(4);
     expect(decisionKeys([delta, twin])).toEqual(keys.slice(0, 2));
+    const identified = [{ ...delta, reviewOrdinal: 0 }, { ...twin, reviewOrdinal: 1 }];
+    const published = decisionKeys(identified);
+    expect(decisionKeys([{ ...identified[1], name: "Corrected" }])).toEqual([published[1]]);
+
   });
 
   it("keeps the same decision in two accounts apart", () => {

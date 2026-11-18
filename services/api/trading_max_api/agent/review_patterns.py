@@ -17,6 +17,7 @@ Scope = Literal["broker_total", "invest", "isa"]
 class HabitArgs(Args):
     scope: Scope
     horizon: Horizon = "20_sessions"
+    habit: Habit | None = None
 
 
 def review_patterns(ctx: Context, args: HabitArgs) -> dict:
@@ -101,6 +102,8 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
         return read.missing("decision_history_unavailable", keys=[DECISIONS, EVIDENCE])
     summaries = {}
     for key, group in groups.items():
+        if args.habit is not None and key != args.habit:
+            continue
         effects = [money for money, _ in group if money is not None]
         returns = [value for money, value in group if money is not None and value is not None]
         summaries[key] = {

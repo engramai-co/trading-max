@@ -128,6 +128,16 @@ it("opens the earnings and ratings sections from their own evidence", () => {
   }
 });
 
+it.each(["events", "ratings"])("opens the selected listing’s %s section from a decision", section => {
+  const href = evidenceHref({evidenceId: "ev_decision", tool: "decision_timing_and_habits",
+    source: section === "events" ? "financials" : "analysts",
+    arguments: {ticker: "TEST", listing: "TEST.L", lens: "analyst", analystView: section}});
+  const opened = new URL(href!, "https://example.org");
+  expect(opened.pathname).toBe("/research");
+  expect(opened.searchParams.get("ticker")).toBe("TEST.L");
+  expect(opened.hash).toBe("#research-" + section);
+});
+
 it.each([
   ["en", "Technical data", "Stale", "Earnings data", "Missing"],
   ["zh", "技术指标", "已过时", "业绩数据", "缺失"],

@@ -9,7 +9,7 @@ from datetime import UTC, date, datetime
 from itertools import pairwise
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, StringConstraints, model_validator
+from pydantic import AfterValidator, Field, StringConstraints, model_validator
 from trading_max.analytics.exposure_history import DIMENSIONS, PREFIX, TOP_COMPANIES
 from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
@@ -23,6 +23,7 @@ from ..projections.nav import nav_series
 from ..projections.values import csv_rows
 from ..research import published_price_series_id
 from .deps import AssistantDeps
+from .events import NEWS_KEY, prior_decision_events
 from .tools import (
     ANALYST,
     BROKER,
@@ -88,10 +89,11 @@ class ReviewArgs(Scoped, Paged):
     since: CalendarDay | None = None
     decision_date: CalendarDay | None = None
     side: Literal["buy", "sell"] | None = None
+    ordinal: int | None = Field(default=None, ge=0, lt=2000)
 
     @model_validator(mode="after")
     def focused_decision(self):
-        if (self.side or self.decision_date) and not (
+        if (self.side or self.decision_date or self.ordinal is not None) and not (
             self.side and self.decision_date and self.ticker and self.scope in {"invest", "isa"}
         ):
             raise ValueError("A focused decision needs an account, ticker, date and side.")
@@ -374,14 +376,18 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                 continue
             if (args.since and day < args.since) or (args.ticker and ticker.upper() != args.ticker):
                 continue
+            if args.decision_date and (day, side) != (args.decision_date, args.side):
+                continue
+            identity = (day, ticker, side)
+            ordinal = ordinals[identity]
+            ordinals[identity] += 1
+            if args.ordinal is not None and ordinal != args.ordinal:
+                continue
             complete = row.get("horizon_complete")
             if complete is None:
                 complete = row.get("effect_horizon_gbp") is not None
-            if args.decision_date:
-                if (day, side) != (args.decision_date, args.side):
-                    continue
-                if args.horizon == "decision_default":
-                    horizon = "20_sessions" if complete else "to_date"
+            if args.decision_date and args.horizon == "decision_default":
+                horizon = "20_sessions" if complete else "to_date"
             observed = _number(row.get("observed_days"))
             usable = (
                 complete
@@ -393,12 +399,11 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             suffix = "horizon" if horizon == "20_sessions" else "to_date"
             effect = _number(row.get(f"effect_{suffix}_gbp")) if usable else None
             timing = _mapped(row.get(f"hindsight_{suffix}")) if effect is not None else {}
-            identity = (day, ticker, side)
             rows.append(
                 {
                     "scope": CODE_SCOPE[code],
                     "ticker": ticker,
-                    "ordinal": ordinals[identity],
+                    "ordinal": ordinal,
                     "date": day,
                     "side": side,
                     **(
@@ -434,11 +439,19 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                     else None,
                 }
             )
-            ordinals[identity] += 1
             if effect is not None and not timing:
                 issues.append("hindsight_timing_unavailable")
     if not as_of:
         return read.missing("decision_history_unavailable", keys=[DECISIONS])
+    keys = [DECISIONS]
+    if args.ordinal is not None and rows:
+        # A selected decision can expose only its own listing's verified pre-trade evidence.
+        row = rows[0]
+        row["prior_events"] = prior_decision_events(
+            read, row["listing"], row["date"], row["first_fill_at"]
+        )
+        keys.extend([ANALYST, FINANCIALS, NEWS_KEY])
+        read = replace(read, evidence_context=deps.timezone.key)
     habits = []
     for side in ("buy", "sell"):
         group = [row for row in rows if row["side"] == side]
@@ -467,7 +480,7 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             "habits": habits,
             "order_size_basis": "mean_security_purchase_order_through_decision_in_account",
         },
-        keys=[DECISIONS],
+        keys=keys,
         issues=issues,
     )
 

@@ -2,13 +2,14 @@ import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { components } from "../lib/api-schema";
+import { backendFixture } from "../tests/loading/fixtures";
 
 // Two synthetic accounts. Invest has two scored decisions and three young ones a link can open; Stocks ISA, when
 // present, has a buy that helped more than any in Invest and a sale that cost. Between fetches only their context changes.
 const asOf = "2026-10-20T12:00:00Z";
 type Context = {
   benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean;
-  renamed?: boolean; observations?: boolean; cluster?: boolean; empty?: boolean; isa?: boolean;
+  habitsConsented?: boolean; unpricedBasket?: boolean; renamed?: boolean; observations?: boolean; cluster?: boolean; empty?: boolean; isa?: boolean;
 };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
@@ -112,6 +113,10 @@ async function serve(page: Page, context: () => Context) {
     // Invest also made two same-day round trips, and sold one holding below its best close.
     const review = (rows: unknown[], trips = false) => ({
       status: "available", asOf, horizonDays: 20, observingCount: 1, decisions: rows,
+      ...(current.unpricedBasket && trips ? { unpricedBasketBuys: [{
+        date: "2026-09-02", side: "buy", ticker: "UNPRICED", name: "Unpriced listing", amountGbp: 140,
+        quantity: 2, kind: "B", unpriced: true, basketBuy: true,
+      }] } : {}),
       ...(trips ? {
         roundTripSummary: { count: 2, favourable: 1, resultGbp: 12, ranged: 2, rangeGbp: 40, rangedResultGbp: 12 },
         roundTrips: [
@@ -123,7 +128,7 @@ async function serve(page: Page, context: () => Context) {
     });
     if (path.includes("/dashboard/lens/")) return current.failing ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: {
       runId: "synthetic-decision-context", brokerAsOf: asOf, reviewAsOf: asOf,
-      totalValueGbp: 2000, totalCashGbp: 100, holdings: [], nav: [],
+      reviewHabitsConsented: current.habitsConsented, totalValueGbp: 2000, totalCashGbp: 100, holdings: [], nav: [],
       accounts: [{ code: "A", isInvestable: true, totalValueGbp: 2000 }],
       // Enough of the account review for its highlights: a realized gain and a loss to open.
       selectedAccountReview: current.empty ? null : { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
@@ -709,10 +714,13 @@ test.describe("the review across accounts", () => {
     await expect(day.locator(".mx-journal-act")).toHaveText("卖出 2 笔");
     const twins = day.getByRole("link", { name: /SYND\.AS/ });
     await expect(twins).toHaveCount(2);
-    // Both name the same link, which opens the normal review rather than guess between them.
-    for (const twin of await twins.all()) {
-      await expect(twin).toHaveAttribute("href", "/review?account=A&decision=2026-10-14.sell.SYND.AS");
+    for (const [ordinal, twin] of (await twins.all()).entries()) {
+      await expect(twin).toHaveAttribute("href", "/review?account=A&decision=2026-10-14.sell.SYND.AS&reviewOrdinal=" + ordinal);
     }
+    await twins.nth(1).click();
+    const focus = page.locator(".mx-decision-focus").getByRole("link");
+    await expect(focus).toContainText("£120");
+    await expect(focus).toBeFocused();
     expect(warnings).toEqual([]);
   });
 });
@@ -830,8 +838,8 @@ test.describe("review assistant", () => {
                   ],
                   [
                     "untraded_fall",
-                    "持仓大跌当天没加仓 1 次，错过约 £14。",
-                    "One untraded fall, about £14 in missed gains.",
+                    "持仓大跌当天没加仓 1 次。事后看，假设加仓的净收益约 £14。",
+                    "One untraded fall. In hindsight, the net hypothetical gain was about £14.",
                   ],
                   ["basket_buy", "同一天买入多只 2 次，合计 £80。", "Two same-day basket buys gained £80."],
                 ]
@@ -915,6 +923,8 @@ test.describe("review assistant", () => {
           await page.locator(".mx-habit-line .mx-reading-source").first().click();
           await expect(page.getByRole("dialog")).toHaveCount(0);
           await expect(page.locator(".mx-review-filter")).toBeFocused();
+          await expect(page.locator(".mx-review-filter")).toBeInViewport({ ratio: 1 });
+          await capture("habit-citation");
         } else await chooseHabit.click();
         const filtered = page.locator(".mx-review-filter");
         await expect(filtered).toBeVisible();
@@ -949,7 +959,7 @@ test.describe("review assistant", () => {
         await question.click();
         const composer = page.locator("#mx-assistant-panel textarea");
         await expect(composer).toHaveValue(wording);
-        const sent = page.waitForRequest((r) => r.url().endsWith("/assistant/chat"));
+        const sent = page.waitForRequest((r) => new URL(r.url()).pathname.endsWith("/assistant/chat"));
         await composer.press("Enter");
         expect((await sent).postDataJSON().context).toMatchObject({
           page: "review",
@@ -1080,23 +1090,42 @@ test.describe("review assistant", () => {
   });
 });
 
-test("review keeps the painted timeline in place when consent resolves", async ({page}) => {
-  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
-  await serve(page, () => ({benchmark:0.03, events:true}));
-  let resolve!: () => void;
-  const delayed = new Promise<void>(done => { resolve = done; });
-  await page.route("**/api/backend/assistant/status", async route => {
-    await delayed; await route.fulfill({json:{ready:true}});
+for (const expanded of [false, true]) {
+  test(`the timeline stays in place while status and the ${expanded ? "expanded" : "collapsed"} habits brief resolve`, async ({ page }) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+    await serve(page, () => ({ benchmark: 0.03, events: true, habitsConsented: true }));
+    if (expanded) await page.addInitScript(() => localStorage.setItem("tm-reading-review-habits", "open"));
+    let consent!: () => void, publish!: () => void;
+    const status = new Promise<void>(resolve => { consent = resolve; });
+    const publication = new Promise<void>(resolve => { publish = resolve; });
+    await page.route("**/api/backend/assistant/status", async route => {
+      await status;
+      await route.fulfill({ json: { ready: true } });
+    });
+    await page.route("**/api/backend/assistant/roles/habits/reading", async route => {
+      await publication;
+      const line = { section: "basket_buy", zh: "同一天买入多只", en: "Same-day basket buys",
+        evidence: { tool: "review_patterns", source: "review", evidenceId: "ev_brief", arguments: {habit: "basket_buy"} } };
+      await route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify({
+        type: "result", reading: { role: "habits", asOf, lines: [line] },
+      }) + "\n" });
+    });
+    await page.goto("/review");
+    await expect(page.locator(".mx-review-lead")).toBeVisible();
+    const timeline = page.getByRole("heading", { name: /每笔决定/ }).first();
+    await expect(timeline).toBeVisible();
+    await expect(page.locator(".mx-digest")).toHaveCount(0);
+    const top = (await timeline.boundingBox())!.y;
+    consent();
+    await expect(page.locator(".mx-digest")).toBeVisible();
+    expect(Math.abs((await timeline.boundingBox())!.y - top)).toBeLessThan(2);
+    publish();
+    const displayedLine = expanded && page.viewportSize()!.width >= 768
+      ? page.locator(".mx-habit-line > button") : page.locator(".mx-digest-summary");
+    await expect(displayedLine).toHaveText("同一天买入多只");
+    expect(Math.abs((await timeline.boundingBox())!.y - top)).toBeLessThan(2);
   });
-  await page.goto("/review");
-  await expect(page.locator(".mx-review-money,.mx-review-lead").first()).toBeVisible();
-  const timeline = page.getByRole("heading", {name:/每笔决定/}).first();
-  const before = await timeline.count() && await timeline.isVisible() ? (await timeline.boundingBox())!.y : null;
-  resolve();
-  await expect(page.locator(".mx-digest").first()).toBeVisible();
-  await expect(timeline).toBeVisible();
-  if (before !== null) expect(Math.abs((await timeline.boundingBox())!.y - before)).toBeLessThan(2);
-});
+}
 
 test("the ranked arrow and reading fallback lead to the selected twin", async ({page},info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
@@ -1109,7 +1138,94 @@ test("the ranked arrow and reading fallback lead to the selected twin", async ({
   await row.getByRole("button").click();
   const fallback = (info.project.name === "mobile" ? page.getByRole("dialog") : page.locator(".mx-inline-reading")).getByRole("link",{name:/查看这笔决定/});
   await expect(fallback).toHaveAttribute("href",/reviewOrdinal=1/);
+  await expect(fallback).toHaveAttribute("href", /snapshotId=synthetic-decision-context/);
+  const originalSnapshot = page.waitForRequest(r => r.url().includes("/dashboard/lens/account-analysis") &&
+    new URL(r.url()).searchParams.get("snapshotId") === "synthetic-decision-context");
   await fallback.click();
+  await originalSnapshot;
   await expect(page.locator(".mx-decision-focus")).toContainText("£120");
   await expect(page.locator(".mx-decision-focus").getByRole("link").first()).toBeFocused();
+  if (process.env.REVIEW_SCREENSHOTS) {
+    await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-selected-twin.png")});
+  }
+  await page.goBack();
+  await row.getByRole("link").click();
+  await expect(page.locator(".mx-decision-focus")).toContainText("£120");
+  await row.getByRole("button").click();
+  const reading = info.project.name === "mobile" ? page.getByRole("dialog") : page.locator(".mx-inline-reading");
+  await reading.locator(".mx-reading-actions button").first().click();
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await page.locator("#mx-assistant-panel textarea").press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({scope:"invest", object:{ordinal:1, ticker:"SYND.AS"}});
+});
+
+test("a phone citation focuses a newly loaded fall timeline", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile" || !process.env.PLAYWRIGHT_BASE_URL, "Requires a phone and isolated build.");
+  await serve(page, () => ({ benchmark: 0.02, events: false, observations: true }));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({ json: { ready: true } }));
+  await page.route("**/api/backend/assistant/roles/habits/reading", route => {
+    const line = {section: "untraded_fall", zh: "持仓大跌当天没加仓", en: "Large falls without a trade",
+      evidence: {tool: "review_patterns", source: "review", evidenceId: "ev_falls", arguments: {habitSection: "untraded_fall"}}};
+    return route.fulfill({contentType: "application/x-ndjson", body: JSON.stringify({
+      type: "result", reading: {role: "habits", asOf, lines: [line]},
+    }) + "\n"});
+  });
+  await page.goto("/review");
+  await page.locator(".mx-phone-habits").click();
+  await page.getByRole("dialog").getByRole("link", {name: "复盘"}).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".mx-review-filter")).toBeFocused();
+  await expect(page.locator(".mx-review-filter")).toBeInViewport({ratio: 1});
+  await expect(panel(page, "事后错过的收益")).toContainText("£14");
+});
+
+test("basket review includes unpriced purchases and discloses their missing outcome", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({ benchmark: 0.02, events: false, unpricedBasket: true }));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
+  await page.goto("/review?account=A&habit=basket_buy");
+  const purchase = page.locator(".mx-journal-chips button").filter({hasText:"UNPRICED"});
+  await expect(purchase).toContainText("行情缺失，未计入");
+  await expect(purchase).toContainText("£140");
+  await page.locator(".mx-review-filter").click();
+  await expect(purchase).toHaveCount(0);
+});
+
+test("earnings and rating source words open their own research sections", async ({ page }, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({ benchmark: 0.03, events: true }));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
+  await page.route("**/api/backend/research/**", route => {
+    const url = new URL(route.request().url());
+    let data = backendFixture(url);
+    if (url.pathname.endsWith("/lens/analyst")) {
+      url.pathname = url.pathname.replace(/analyst$/, "overview");
+      data = { ...Object(backendFixture(url)), view: "analyst", analyst: { earningsEvents: [], upgradesDowngrades: [] } };
+    }
+    return route.fulfill({json: data ?? {}});
+  });
+  await page.route("**/api/backend/assistant/roles/decision/reading", route => {
+    const lines = [["财报", "financials", "events"], ["评级", "analysts", "ratings"], ["消息", "publisher", ""]]
+      .map(([zh, source, section]) => ({ section: section || "headline", zh, en: zh,
+        evidence: { tool: "decision_timing_and_habits", evidenceId: "ev_selected", source,
+          publisher: source === "publisher" ? "Synthetic Wire" : undefined,
+          arguments: {scope:"invest", ticker:"SYNB", listing:"SYNT", lens:"analyst", analystView:section,
+            ...(source === "publisher" ? {url:"https://example.org/synthetic"} : {})} }}));
+    return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({
+      type:"result",reading:{role:"decision",asOf,lines},
+    }) + "\n"});
+  });
+  for (const [word, section, heading] of [["财报", "events", "财报事件"], ["分析师", "ratings", "机构行动"]]) {
+    await page.goto("/review?account=A");
+    await panel(page, "帮你最多").getByRole("button", {name:/SYNB/}).click();
+    await expect(page.getByRole("link", {name:"Synthetic Wire"})).toHaveAttribute("href", "https://example.org/synthetic");
+    await page.getByRole("link", {name:word, exact:true}).click();
+    await expect(page).toHaveURL(new RegExp("ticker=SYNT.*analystView=" + section + ".*#research-" + section));
+    const anchor = page.locator("#research-" + section);
+    await expect(anchor).toHaveAttribute("data-assistant-evidence", "");
+    await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeInViewport({ratio:1});
+    if (process.env.REVIEW_SCREENSHOTS) {
+      await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-" + section + "-citation.png")});
+    }
+  }
 });

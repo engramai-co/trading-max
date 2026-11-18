@@ -362,6 +362,27 @@ a.mx-journal-act:focus-visible,
 .mx-habit-line[data-selected] {
   background: var(--mx-brand-soft);
 }
+/* The consented layout arrives with the review, independently of credential checks and the brief. */
+.mx-review-body {
+  --mx-habits-head-height: 66px;
+}
+.mx-review-habits-space,
+.mx-review-body > .mx-digest {
+  min-block-size: var(--mx-habits-head-height);
+}
+@media (min-width: 768px) {
+  .mx-review-habits-space[data-expanded] {
+    min-block-size: calc(var(--mx-habits-head-height) + 12rem);
+  }
+  .mx-review-body > .mx-digest > div:not(.mx-digest-head):not([hidden]) {
+    min-block-size: 12rem;
+  }
+}
+@media (max-width: 767px) {
+  .mx-review-body {
+    --mx-habits-head-height: max(70px, calc(2lh + 30px));
+  }
+}
 .mx-phone-habits {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;

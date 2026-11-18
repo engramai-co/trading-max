@@ -29,18 +29,22 @@ const lensWords: Record<string, Evidence["source"]> = { technical: "technical", 
 export function evidenceHref(ref: Evidence) {
   const entry = destinations[ref.tool];
   if (!entry) return null;
-  const [path] = entry;
-  const params = new URLSearchParams();
   const a = ref.arguments ?? {};
-  if (ref.tool === "news_and_events" && a.url && /^https:\/\//i.test(a.url)) {
+  const decisionEvent = ref.tool === "decision_timing_and_habits" && a.lens === "analyst" && Boolean(a.listing);
+  const path = decisionEvent ? "/research" : entry[0];
+  const params = new URLSearchParams();
+  const eventSource = decisionEvent || ref.tool === "news_and_events";
+  if (eventSource && a.url && /^https:\/\//i.test(a.url)) {
     try { const url = new URL(a.url); if (!url.username && !url.password) return url.href; } catch {}
   }
   if (path === "/review") {
+    if (a.snapshotId) params.set("snapshotId", a.snapshotId);
     if (a.scope === "invest" || a.scope === "isa") params.set("account", a.scope === "invest" ? "A" : "B");
     if (a.ticker && a.side && a.decision_date) params.set("decision",[a.decision_date,a.side,a.ticker].join("."));
     if (a.ordinal && /^\d+$/.test(a.ordinal)) params.set("reviewOrdinal",a.ordinal);
     if (a.horizon === "20_sessions" || a.horizon === "to_date") params.set("reviewWindow",a.horizon);
-    if (a.habit) params.set("habit",a.habit);
+    const habit = a.habit || a.habitSection;
+    if (habit) params.set("habit", habit);
   }
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
@@ -63,7 +67,8 @@ export function evidenceHref(ref: Evidence) {
   if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
-    if (a.ticker) params.set("ticker", a.ticker);
+    const ticker = decisionEvent ? a.listing : a.ticker;
+    if (ticker) params.set("ticker", ticker);
     if (["earnings", "earningsWindow", "exDividend"].includes(a.event)) {
       params.set("event", a.event);
       if (a.date) params.set("date", a.date);
@@ -72,7 +77,7 @@ export function evidenceHref(ref: Evidence) {
     }
     params.set("view", ref.tool === "read_valuation_evidence" ? "valuation" : a.lens || "overview");
   }
-  if (ref.tool === "news_and_events" && a.lens === "analyst" && ["ratings","events"].includes(a.analystView)) {
+  if (eventSource && a.lens === "analyst" && ["ratings","events"].includes(a.analystView)) {
     params.set("analystView", a.analystView);
     params.set("evidence",ref.tool);
     return path + "?" + params + "#research-" + a.analystView;

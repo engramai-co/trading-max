@@ -11,6 +11,7 @@ from trading_max.analytics.account_review import build_account_review
 from services.api.trading_max_api import app as app_module
 from services.api.trading_max_api.app import create_app
 from services.api.trading_max_api.artifacts import ArtifactStore
+from services.api.trading_max_api.assistant_settings import ASSISTANT_CONSENT_REVISION
 from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
 from services.api.trading_max_api.models import SecuritySearchResult
@@ -336,6 +337,36 @@ def test_account_review_lens_states_when_the_review_was_built(
     assert "reviewAsOf" not in isa.json()
 
 
+def test_review_lens_reserves_habits_only_with_current_consent(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    root = tmp_path / "runtime"
+    typed_fixture(research_root, ArtifactStore(root))
+    app = create_app(Settings(data_root=root), credential_store=InMemoryCredentialStore())
+    with TestClient(app) as client:
+        repository = app.state.settings_repository
+        preferences = repository.get_assistant_preferences()
+        for enabled, revision, expected in [
+            (False, ASSISTANT_CONSENT_REVISION, False),
+            (True, ASSISTANT_CONSENT_REVISION - 1, False),
+            (True, ASSISTANT_CONSENT_REVISION, True),
+        ]:
+            selected = preferences.model_copy(
+                update={"enabled": enabled, "accepted_consent_revision": revision}
+            )
+            monkeypatch.setattr(
+                repository, "get_assistant_preferences", lambda current=selected: current
+            )
+            for view in ("review", "account-analysis?account=A", "account-analysis?account=B"):
+                response = client.get(f"/v1/dashboard/lens/{view}")
+                assert response.status_code == 200
+                assert response.json().get("reviewHabitsConsented", False) is expected
+        assert (
+            "reviewHabitsConsented"
+            not in client.get("/v1/dashboard/lens/account-analysis?account=C").json()
+        )
+
+
 def test_review_lens_counts_observing_decisions_before_keeping_the_latest(
     research_root: Path,
     tmp_path: Path,
@@ -368,7 +399,7 @@ def test_review_lens_counts_observing_decisions_before_keeping_the_latest(
         kind="account_decisions",
         producer_version="test",
     )
-    store.immutable_snapshots.publish(
+    current = store.immutable_snapshots.publish(
         scope="live",
         source="test",
         artifacts=[*previous.manifest.artifacts, decisions],
@@ -384,6 +415,17 @@ def test_review_lens_counts_observing_decisions_before_keeping_the_latest(
     with TestClient(app) as client:
         index = client.get("/v1/dashboard/lens/review").json()["decisionReviews"]["A"]
         account = client.get("/v1/dashboard/lens/account-analysis?account=A").json()
+        pinned = client.get(
+            "/v1/dashboard/lens/review", params={"snapshotId": previous.manifest.run_id}
+        )
+        assert pinned.status_code == 200 and pinned.json()["runId"] == previous.manifest.run_id
+        assert not pinned.json().get("decisionReviews", {}).get("A", {}).get("decisions")
+        chosen = client.get(
+            "/v1/dashboard/lens/account-analysis",
+            params={"account": "A", "snapshotId": current.manifest.run_id},
+        )
+        assert chosen.json()["selectedAccountDecisions"] == account["selectedAccountDecisions"]
+        assert client.get("/v1/dashboard/lens/review?snapshotId=absent").status_code == 404
 
     # The review carries every decision for its timeline and counts those still observing.
     assert index["observingCount"] == 12

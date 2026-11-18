@@ -107,7 +107,7 @@ export function reviewFieldLocation(tool: string, output: Json, pointer: string)
   const data = object(output.data);
   if (tool === "review_patterns") {
     const habit = habitPath.exec(pointer)?.[1];
-    return habit ? { scope: str(output.scope), horizon: str(data.horizon), habit } : null;
+    return habit ? { scope: str(output.scope), horizon: str(data.horizon), habit, habitSection: habit } : null;
   }
   if (tool !== "decision_timing_and_habits") return null;
   const index = decisionPath.exec(pointer)?.[1];

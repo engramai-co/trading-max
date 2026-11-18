@@ -1488,6 +1488,8 @@ class DashboardLensSnapshot(ApiModel):
     #: When the selected account review was built. Its figures are as of this
     #: moment, which can be hours older than broker_as_of.
     review_as_of: str | None = None
+    # Layout hint for review clients. Tool and reading access still requires live readiness.
+    review_habits_consented: bool = False
     selected_cfd_review: CfdAccountReview | None = None
     selected_account_report: dict[str, Any] | None = None
     selected_account_decisions: AccountDecisions | None = None

@@ -34,10 +34,10 @@
         {
           "scope": "invest",
           "ticker": "TEST",
+          "ordinal": 0,
           "date": "2026-02-03",
           "side": "buy",
           "listing": "TEST",
-          "ordinal": 0,
           "name": null,
           "first_fill_at": "2026-02-03T14:00:00+00:00",
           "prior_close_date": null,
@@ -54,7 +54,35 @@
             "best_close_gbp": null,
             "average_order_gbp": 200.0,
             "missed_gbp": 12.0
-          }
+          },
+          "prior_events": [
+            {
+              "kind": "earnings",
+              "title_en": "Earnings",
+              "title_zh": "业绩公布",
+              "publisher": "Yahoo Finance",
+              "source_url": "https://finance.yahoo.com/quote/TEST/",
+              "local_date": "2026-01-29"
+            },
+            {
+              "kind": "rating_change",
+              "firm": "Synthetic Research",
+              "to_grade": "Neutral",
+              "title_en": "Analyst rating update",
+              "title_zh": "分析师评级变动",
+              "publisher": "Yahoo Finance",
+              "source_url": "https://finance.yahoo.com/quote/TEST/",
+              "local_date": "2026-01-30"
+            },
+            {
+              "kind": "news",
+              "title_en": "Prior headline",
+              "title_zh": "Prior headline",
+              "publisher": "Synthetic Wire",
+              "source_url": "https://example.org/2026-02-02",
+              "local_date": "2026-02-02"
+            }
+          ]
         }
       ],
       "total_items": 1,
@@ -71,7 +99,17 @@
     "quality": {
       "issues": []
     },
-    "evidence_id": "ev_decision"
+    "evidence_id": "ev_decision",
+    "bound_arguments": {
+      "snapshotId": "synthetic",
+      "scope": "invest",
+      "horizon": "20_sessions",
+      "ticker": "TEST",
+      "decision_date": "2026-02-03",
+      "side": "buy",
+      "ordinal": "0",
+      "since": null
+    }
   },
   "habits": {
     "status": "ok",
@@ -118,6 +156,12 @@
     "quality": {
       "issues": []
     },
-    "evidence_id": "ev_habits"
+    "evidence_id": "ev_habits",
+    "bound_arguments": {
+      "snapshotId": "synthetic",
+      "scope": "invest",
+      "horizon": "to_date",
+      "habit": null
+    }
   }
 }

@@ -6,6 +6,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+from pydantic_ai import ModelRetry
 from pydantic_ai.models.test import TestModel
 from trading_max.analytics.decision_review import CALCULATION_VERSION
 from trading_max.research.news import NEWS_KEY
@@ -13,8 +15,8 @@ from trading_max.research.news import NEWS_KEY
 from services.api.tests.test_assistant_insights import republish
 from services.api.tests.test_assistant_readings import job, sample
 from services.api.trading_max_api.agent import tools
-from services.api.trading_max_api.agent.insights import ReviewArgs, decision_timing_and_habits
-from services.api.trading_max_api.agent.review_patterns import EVIDENCE, HabitArgs, review_patterns
+from services.api.trading_max_api.agent.insights import decision_timing_and_habits
+from services.api.trading_max_api.agent.review_patterns import EVIDENCE, review_patterns
 from services.api.trading_max_api.agent.review_roles import DecisionContext, HabitsContext, targets
 from services.api.trading_max_api.agent.roles import RoleTools, role_registry
 from services.api.trading_max_api.agent.service import BoundModel
@@ -124,7 +126,19 @@ def setup_review(tmp_path):
 
 def test_sidebar_fixture_matches_the_completed_review_tools(tmp_path):
     _, publish, row, _ = setup_review(tmp_path)
-    read = RoleTools.pinned(publish(), frozenset({"decision_timing_and_habits", "review_patterns"}))
+    deps = publish()
+    context = DecisionContext(
+        scope="invest",
+        page_scope="invest",
+        ticker="TEST",
+        decision_date=row["date"],
+        side="buy",
+        horizon="20_sessions",
+    )
+    decision = role_registry()["decision"].reader(deps, context)
+    habits = role_registry()["habits"].reader(
+        deps, HabitsContext(scope="invest", horizon="to_date")
+    )
     expected = json.loads(
         (
             Path(__file__).resolve().parents[3]
@@ -132,19 +146,14 @@ def test_sidebar_fixture_matches_the_completed_review_tools(tmp_path):
         ).read_text()
     )
     results = {
-        "decision": read.read(
-            decision_timing_and_habits,
-            ReviewArgs(
-                scope="invest",
-                ticker="TEST",
-                decision_date=row["date"],
-                side="buy",
-                horizon="20_sessions",
-            ),
-        ),
-        "habits": read.read(review_patterns, HabitArgs(scope="invest", horizon="to_date")),
+        "decision": decision.read(decision_timing_and_habits, {}),
+        "habits": habits.read(review_patterns, {}),
     }
     for name, result in results.items():
+        assert result["bound_arguments"] == {
+            **expected[name]["bound_arguments"],
+            "snapshotId": deps.snapshot_id,
+        }
         assert all(
             result[key] == expected[name][key] for key in ("status", "scope", "data", "quality")
         )
@@ -162,7 +171,7 @@ def test_decision_uses_dated_lead_and_hindsight_label_through_test_model(tmp_pat
         side="buy",
         decision_date="2026-02-03",
     )
-    facts = role.facts(RoleTools.pinned(deps, role.allowed_tools), context)
+    facts = role.facts(role.reader(deps, context), context)
 
     async def bind():
         return BoundModel(TestModel(custom_output_args={"indices": list(range(len(facts)))}), {})
@@ -194,7 +203,8 @@ def test_decision_uses_dated_lead_and_hindsight_label_through_test_model(tmp_pat
     )
     assert (
         role.facts(
-            RoleTools.pinned(deps, role.allowed_tools), context.model_copy(update={"scope": "isa"})
+            role.reader(deps, context.model_copy(update={"scope": "isa"})),
+            context.model_copy(update={"scope": "isa"}),
         )
         == []
     )
@@ -237,6 +247,8 @@ def test_habit_cache_reprices_running_outcome_and_waits_for_material_changes(tmp
     cached = asyncio.run(run(changed, cached_only=True))[-1].reading
     assert cached.snapshot_id == changed.snapshot_id and cached.version == result.version
     assert "£12.00" in cached.lines[0].variants["to_date"].en and len(calls) == 1
+    assert cached.lines[0].evidence.arguments["snapshotId"] == changed.snapshot_id
+    assert cached.lines[0].variants["to_date"].evidence.arguments["horizon"] == "to_date"
     row["horizon_complete"] = False
     assert asyncio.run(run(publish(), cached_only=True))[-1].type == "empty"
 
@@ -268,7 +280,7 @@ def test_pre_trade_leads_respect_the_earliest_fill_in_utc(tmp_path):
         horizon="20_sessions",
     )
     for zone in ("Europe/London", "America/New_York"):
-        pinned = RoleTools.pinned(replace(deps, timezone=ZoneInfo(zone)), role.allowed_tools)
+        pinned = role.reader(replace(deps, timezone=ZoneInfo(zone)), context)
         lines = role.facts(pinned, context)
         assert any("Verified before the fill" in line.en for line in lines)
         assert all(
@@ -294,7 +306,8 @@ def test_mixed_untraded_falls_are_labelled_as_a_net_hypothetical_result(tmp_path
     ).ref
     deps = replace(deps, manifest=republish(deps.store, {EVIDENCE: ref}))
     role = role_registry()["habits"]
-    facts = role.facts(RoleTools.pinned(deps, role.allowed_tools), HabitsContext(scope="invest"))
+    context = HabitsContext(scope="invest")
+    facts = role.facts(role.reader(deps, context), context)
     line = next(f for f in facts if f.section == "untraded_fall")
     assert "In hindsight" in line.en and "net hypothetical" in line.en and "£8.00" in line.en
     assert "事后" in line.zh and "净" in line.zh and "£8.00" in line.zh
@@ -311,7 +324,7 @@ def test_earnings_and_ratings_each_cite_their_research_section(tmp_path):
         decision_date=row["date"],
         horizon="20_sessions",
     )
-    facts = role.facts(RoleTools.pinned(publish(), role.allowed_tools), context)
+    facts = role.facts(role.reader(publish(), context), context)
     assert len(facts) <= 4
     by_section = {line.section: line for line in facts}
     for kind, source, target in (
@@ -321,3 +334,62 @@ def test_earnings_and_ratings_each_cite_their_research_section(tmp_path):
         ref = by_section[kind].evidence
         assert ref.source == source and ref.arguments.get("analystView") == target
     assert by_section["headline"].evidence.source == "publisher"
+
+
+def test_decision_and_habit_followups_can_only_read_the_selected_object(tmp_path):
+    _, publish, row, _ = setup_review(tmp_path)
+    deps = publish()
+    data = {
+        "accounts": {
+            "A": {
+                "status": "available",
+                "calculation_version": CALCULATION_VERSION,
+                "decisions": [row, {**row, "listing": "SECOND", "settled_per_share_gbp": 80}],
+                "unpriced_basket_buys": [
+                    {
+                        **{k: row[k] for k in ("ticker", "date", "side")},
+                        "unpriced": True,
+                        "basket_buy": True,
+                    }
+                ],
+            }
+        }
+    }
+    ref = deps.store.immutable_artifacts.put_json(key=tools.DECISIONS, payload=data).ref
+    deps = replace(deps, manifest=republish(deps.store, {tools.DECISIONS: ref}))
+    selection = DecisionContext(
+        scope="invest",
+        page_scope="broker_total",
+        ticker="TEST",
+        decision_date=row["date"],
+        side="buy",
+        ordinal=1,
+        horizon="20_sessions",
+    )
+    reader = role_registry()["decision"].reader(deps, selection)
+    (selected,) = reader.read(decision_timing_and_habits, {})["data"]["items"]
+    assert selected["listing"] == "SECOND" and selected["settled_per_share_gbp"] == 80
+    assert selected["prior_events"] == []
+    for override in [
+        {"ordinal": 0},
+        {"scope": "isa"},
+        {"horizon": "to_date"},
+        {"ticker": "SECOND"},
+        {"decision_date": "2026-02-04"},
+        {"side": "sell"},
+        {"since": row["date"]},
+    ]:
+        with pytest.raises(ModelRetry):
+            reader.read(decision_timing_and_habits, override)
+    habits = role_registry()["habits"].reader(
+        deps, HabitsContext(scope="invest", horizon="to_date", habit="basket_buy")
+    )
+    groups = habits.read(review_patterns, {})["data"]["groups"]
+    assert set(groups) == {"basket_buy"}
+    assert groups["basket_buy"]["count"] == 3 and groups["basket_buy"]["evaluated"] == 2
+    with pytest.raises(ModelRetry):
+        habits.read(review_patterns, {"habit": "untraded_fall"})
+    with pytest.raises(ModelRetry):
+        habits.read(review_patterns, {"horizon": "20_sessions"})
+    with pytest.raises(ValueError):
+        reader.read(review_patterns, {})

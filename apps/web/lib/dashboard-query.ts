@@ -1,7 +1,7 @@
 import type { HistorySelection } from "@/lib/portfolio/prepared";
 import type { AccountCode, DashboardLensName } from "@/lib/types";
 
-export type DashboardSelection = { range?: string; scope?: string; detail?: "summary" | "full" };
+export type DashboardSelection = { snapshotId?: string; range?: string; scope?: string; detail?: "summary" | "full" };
 
 export function dashboardLensLatestKey(
   view: DashboardLensName,

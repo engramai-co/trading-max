@@ -27,6 +27,7 @@ import {
   signedMoney,
   verdictWord,
 } from "./review-decisions";
+import { toolHorizon, type Habit } from "./review-patterns";
 type Evidence = components["schemas"]["InvestmentReviewEvidence"];
 type FillEffect = components["schemas"]["FillEffect"];
 type HoldingMove = components["schemas"]["HoldingMove"];
@@ -39,7 +40,9 @@ export type DecisionAccount = "A" | "B";
 export type ReviewScope = "all" | AccountCode;
 export type ScopedDecision = TradeDecision & { account: DecisionAccount };
 
-export type DecisionExpansion = {
+type DecisionLinkContext = { snapshot: string; horizon: Horizon; habit: Habit | null };
+
+export type DecisionExpansion = DecisionLinkContext & {
   selected: ScopedDecision | null;
   location: "extremes" | "recent" | null;
   reading: ReactNode;
@@ -63,10 +66,19 @@ export function reviewScope(value: string | null | undefined, fallback: ReviewSc
 }
 
 /** Where a decision opens: its account's review, led by that decision. */
-export function decisionHref(account: DecisionAccount, row: Pick<TradeDecision, "date" | "side" | "ticker" | "reviewOrdinal" | "unpriced">, identify = false) {
+export function decisionHref(
+  account: DecisionAccount,
+  row: Pick<TradeDecision, "date" | "side" | "ticker" | "reviewOrdinal" | "unpriced">,
+  context?: DecisionLinkContext,
+) {
   const query = new URLSearchParams({ account, decision: decisionParam(row) });
-  if (identify && row.reviewOrdinal != null) query.set("reviewOrdinal", String(row.reviewOrdinal));
-  if (identify && row.unpriced) query.set("habit", "basket_buy");
+  if (row.reviewOrdinal != null) query.set("reviewOrdinal", String(row.reviewOrdinal));
+  if (context) {
+    query.set("snapshotId", context.snapshot);
+    query.set("reviewWindow", toolHorizon(context.horizon));
+    if (context.habit) query.set("habit", context.habit);
+  }
+  if (row.unpriced) query.set("habit", "basket_buy");
   return "/review?" + query;
 }
 
@@ -332,7 +344,7 @@ export function DecisionExtremes({ rows, horizon, showAccount, expansion }: { ro
     const keys = decisionKeys(items);
     return items.length ? items.map((row, index) => (
       <DecisionLine key={keys[index]} row={row} horizon={horizon} expansion={expansion}
-        account={showAccount ? accountName(profile, row.account) : undefined} href={decisionHref(row.account, row, Boolean(expansion))} />
+        account={showAccount ? accountName(profile, row.account) : undefined} href={decisionHref(row.account, row, expansion)} />
     )) : <p className="mx-review-empty">{empty}</p>;
   };
   return (
@@ -415,7 +427,7 @@ function JournalItem({ entry, showAccount, expansion }: { entry: JournalEntry; s
     );
     const change = single?.returnToDate;
     figure = effect == null
-      ? <span className="mx-muted">{entry.rows.every(observing) ? t("观察中", "Observing") : "—"}</span>
+      ? <span className="mx-muted">{entry.rows.every(row => !row.unpriced && observing(row)) ? t("观察中", "Observing") : "—"}</span>
       : (
         <>
           <span className={"mx-" + effectTone(effect)}>{signedMoney(effect)}</span>

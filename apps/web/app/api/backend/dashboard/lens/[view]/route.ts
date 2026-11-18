@@ -41,6 +41,13 @@ export async function GET(
     if (value && !values.has(value)) return NextResponse.json({ detail: `unknown ${key}` }, { status: 400 });
     if (value) forwarded.set(key, value);
   }
+  const snapshot = params.get("snapshotId");
+  if (snapshot) {
+    if (!["review", "account-analysis"].includes(view) || !/^[a-zA-Z0-9_-]{1,128}$/.test(snapshot)) {
+      return NextResponse.json({ detail: "invalid review snapshot" }, { status: 400 });
+    }
+    forwarded.set("snapshotId", snapshot);
+  }
   const selection = Object.fromEntries([...forwarded].filter(([key]) => key !== "account")) as DashboardSelection;
   const key = dashboardLensLatestKey(view as DashboardLensName, (account || undefined) as AccountCode | undefined,
     Object.keys(selection).length ? selection : undefined);

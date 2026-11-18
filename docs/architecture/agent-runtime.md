@@ -304,8 +304,16 @@ language or benchmark needs no further model call.
 ## Decision review
 
 Opening a buy or sell reads its account, date, side, ticker and selected horizon
-from the same published review. Earlier results, rating changes and dated
-headlines use the resolved listing and the earliest broker fill in the decision.
+from the same published review. Follow-ups bind those fields and the listing ordinal
+to the original snapshot. The decision tool returns only that row and its verified
+pre-trade events. Review citations reopen the original publication, including
+when a newer snapshot has different listings under the same ticker. A habit follow-up binds the account, horizon and selected habit.
+Earnings and rating citations open their respective sections for the resolved
+listing. Dated news links to its publisher. The review lens carries the saved
+consent state to reserve the habits row before the live credential check
+finishes. The timeline and journal render as soon as their snapshot arrives.
+Earlier results, rating changes and headlines use the earliest broker fill in
+the decision.
 An exact publication instant must precede that fill in UTC. For an unzoned
 archive date, even its latest possible publication must precede the fill.
 Older records with date-only fills use the start of the UTC business day.

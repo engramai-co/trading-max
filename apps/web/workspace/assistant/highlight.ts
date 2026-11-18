@@ -13,8 +13,11 @@ export function useEvidenceHighlight(pathname: string, search: string) {
   useEffect(() => {
     const params = new URLSearchParams(search);
     const tool = params.get("evidence");
-    const selector = tool === "read_research_lens" && ["earnings","earningsWindow","exDividend"].includes(params.get("event") ?? "")
-      ? "[data-reading-event]" : tool === "period_performance" && params.has("moneyFrom") ? "[data-period-net-pnl]" : tool && targets[tool];
+    const analystView = params.get("analystView");
+    const analystAnchor = (tool === "news_and_events" || tool === "decision_timing_and_habits") &&
+      (analystView === "events" || analystView === "ratings") ? "#research-" + analystView : null;
+    const selector = analystAnchor ?? (tool === "read_research_lens" && ["earnings","earningsWindow","exDividend"].includes(params.get("event") ?? "")
+      ? "[data-reading-event]" : tool === "period_performance" && params.has("moneyFrom") ? "[data-period-net-pnl]" : tool && targets[tool]);
     const main = document.getElementById("main-content");
     if (!selector || !main) return;
     let target: HTMLElement | null = null;
@@ -25,7 +28,7 @@ export function useEvidenceHighlight(pathname: string, search: string) {
       if (!target) return false;
       observer?.disconnect();
       target.setAttribute("data-assistant-evidence", "");
-      target.scrollIntoView({ block: "center", behavior: "instant" });
+      target.scrollIntoView({ block: analystAnchor ? "start" : "center", behavior: "instant" });
       clear = setTimeout(() => target?.removeAttribute("data-assistant-evidence"), 2800);
       return true;
     }

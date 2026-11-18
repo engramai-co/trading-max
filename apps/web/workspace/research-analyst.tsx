@@ -57,7 +57,7 @@ export function AnalystView({
       {section === "events" ? (
         <div data-reading-event=""><EarningsEvents data={data} /></div>
       ) : !data.analyst ? (
-        <Panel>
+        <Panel id={section === "ratings" ? "research-ratings" : undefined}>
           <Empty title={t("暂无分析师覆盖", "No analyst coverage")} />
         </Panel>
       ) : section === "ratings" ? (
@@ -573,6 +573,7 @@ function RatingsAndActions({ data }: { data: ResearchLensSnapshot }) {
         </Panel>
       )}
       <Panel
+        id="research-ratings"
         title={t("机构行动", "Analyst actions")}
         action={
           <Group gap="xs">
@@ -651,7 +652,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
         3 * 86400000,
   );
   return (
-    <Panel title={t("财报事件", "Earnings events")}>
+    <Panel id="research-events" title={t("财报事件", "Earnings events")}>
       {!rows.length ? (
         <Empty
           title={
