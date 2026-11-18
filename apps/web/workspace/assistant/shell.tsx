@@ -1,6 +1,5 @@
 "use client";
 
-import { useMediaQuery } from "@mantine/hooks";
 import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { X } from "@phosphor-icons/react";
@@ -29,12 +28,11 @@ export function AssistantEntry() {
     <span aria-hidden="true">✦</span> {ASSISTANT_NAME} <kbd>⌘J</kbd>
   </button>;
 }
-export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
+export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }: { overlay: boolean; page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
   const { open, close, ready, pending, suspended, code } = useAssistant();
   const t = useCopy();
   const [visited, setVisited] = useState(false);
   if (open && ready && !pending && !visited) setVisited(true);
-  const overlay = useMediaQuery("(max-width: 1199px)");
   useEffect(() => {
     if (!open || searchOpen) return;
     function escape(e: KeyboardEvent) { if (e.key === "Escape" && !e.defaultPrevented && !e.isComposing) { e.preventDefault(); close(); } }
@@ -59,14 +57,14 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
     if (!ready && !pending && !suspended) lastControl.current = null;
     if (!open || searchOpen) return;
     const active = document.activeElement;
-    // An explicit open can precede the lazy composer. After that, respect focus outside the panel.
-    if (!needsOpeningFocus.current && active && active !== document.body && !panel.current?.contains(active)) return;
+    // An explicit open can precede the lazy composer. A non-modal panel leaves background focus alone.
+    if (!needsOpeningFocus.current && !overlay && active && active !== document.body && !panel.current?.contains(active)) return;
     const target = pending || !ready ? gateClose.current : lastControl.current?.isConnected ? lastControl.current : composer;
     if (target?.isConnected) {
       needsOpeningFocus.current = false;
       if (target !== active) target.focus({preventScroll:true});
     }
-  }, [open, pending, ready, suspended, searchOpen, composer]);
+  }, [open, overlay, pending, ready, suspended, searchOpen, composer]);
   if (!visited && !open) return null;
   return <div ref={panel} id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     onKeyDown={overlay && !searchOpen ? cyclePanelTab : undefined}

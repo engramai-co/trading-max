@@ -644,6 +644,28 @@ for (const recovery of ["automatic retry", "focus after retry exhaustion"] as co
   }
 });
 
+test("narrowing the workspace moves outside focus into the assistant dialog", async ({page}, info) => {
+  await page.setViewportSize({width:1440, height:900});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel.getByRole("textbox", {name:"Message"})).toBeFocused();
+  const skip = page.getByRole("link", {name:"Skip to content"});
+  await skip.focus();
+  await expect(skip).toBeFocused();
+
+  await page.setViewportSize({width:1100, height:900});
+  await expect(panel).toHaveRole("dialog");
+  await expect(panel).toHaveAttribute("aria-modal", "true");
+  await expect(panel.locator(":focus")).toHaveCount(1);
+  await expect(page.locator(".mx-skip")).toHaveJSProperty("inert", true);
+  await page.keyboard.press("Tab");
+  await expect(panel.locator(":focus")).toHaveCount(1);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-focus-after-narrowing.png")});
+});
+
 for (const transition of ["reopening", "delayed overlay activation", "readiness revalidation"] as const) {
   test("typing continues in the draft after " + transition, async ({page}, info) => {
     await fixtures(page);
