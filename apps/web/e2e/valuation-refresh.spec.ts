@@ -1280,10 +1280,13 @@ test("cold disabled valuation stays dormant and cross-tab withdrawal clears shel
   });
   try {
     await other.goto("/settings?tab=assistant");
+    const checkingConsent = page.waitForRequest(request =>
+      hold && new URL(request.url()).pathname === "/api/backend/profile");
     await other.getByRole("button",{name:"Withdraw consent"}).click();
+    await checkingConsent;
     await page.bringToFront();
     await expect(panel).toContainText("Checking connection");
-    await expect(panel.locator("textarea")).toHaveCount(0);
+    await expect(panel.locator("textarea")).toBeHidden();
     await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
     await expect(page.locator(".mx-draft-reading")).toHaveCount(0);
   } finally {
@@ -1291,6 +1294,7 @@ test("cold disabled valuation stays dormant and cross-tab withdrawal clears shel
     await other.close();
   }
   await expect(panel.getByRole("link",{name:"Open Settings"})).toBeVisible();
+  await expect(panel.locator("textarea")).toHaveCount(0);
   await panel.getByRole("button",{name:"Close sidebar"}).click();
   await expect(growth).toHaveValue("14%");
   await expect(entry).toHaveCount(0);
