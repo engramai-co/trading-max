@@ -685,7 +685,7 @@ function SecurityResearchWorkspace() {
                       {displayTab === "valuation" && !isFund && (
                         <ValuationWorkbench key={displayData.ticker} data={displayData} revision={revision} price={price} />
                       )}
-                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && earnings.before}
+                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && earnings}
                       {displayTab === "fundamentals" &&
                         (isFund ? (
                           <FundWorkbench
@@ -718,10 +718,9 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView earningsBrief={tab === "analyst" ? earnings.before : null} key={ticker} data={displayData} revision={revision} price={price} />
+                        <AnalystView earningsBrief={tab === "analyst" ? earnings : null} key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
-                      {displayTab === tab && earnings.after}
                       {displayTab === "ledger" && (
                         <>
                           <ResearchNotebook key={ticker} data={displayData} fund={isFund} />

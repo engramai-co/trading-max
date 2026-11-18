@@ -2030,6 +2030,14 @@ class ResearchLedger:
                 ticker,
             )
             payload.analyst = analyst_row.get("analyst") if analyst_row else None
+            # Reserve the reading row from this publication, including on the
+            # lightweight Financials response that drops the full analyst data.
+            if view in {"fundamentals", "analyst"} and not is_fund and analyst_row:
+                inputs = payload.analyst or {}
+                payload.earnings_brief_eligible = analyst_row.get("ticker") == ticker and any(
+                    inputs.get(key)
+                    for key in ("earningsEvents", "earningsEstimate", "revenueEstimate")
+                )
             if payload.analyst:
                 payload.analyst = {
                     **payload.analyst,

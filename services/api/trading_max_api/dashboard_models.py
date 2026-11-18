@@ -1177,6 +1177,7 @@ class ResearchLensSnapshot(ApiModel):
     options: OptionSnapshot | None = None
     options_peer: USFundPeer | None = None
     fundamentals: dict[str, Any] | None = None
+    earnings_brief_eligible: bool = False
     analyst: dict[str, Any] | None = None
     financials: dict[str, Any] | None = None
     latest_event: ResearchEvent | None = None

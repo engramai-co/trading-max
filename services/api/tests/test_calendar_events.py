@@ -752,3 +752,19 @@ def test_bound_market_calendar_row_reopens_with_the_original_arguments(tmp_path)
         .status_code
         == 404
     )
+
+
+def test_earnings_eligibility_survives_the_financials_summary(tmp_path):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    publish(app.state.store)
+    client = TestClient(app)
+    summary = client.get("/v1/research/ALFA/lens/fundamentals?detail=summary").json()
+    assert summary["analyst"] is None
+    assert summary["earningsBriefEligible"] is True
+    assert client.get("/v1/research/ALFA/lens/analyst").json()["earningsBriefEligible"] is True
+    assert (
+        client.get("/v1/research/BETA/lens/fundamentals?detail=summary").json()[
+            "earningsBriefEligible"
+        ]
+        is False
+    )
