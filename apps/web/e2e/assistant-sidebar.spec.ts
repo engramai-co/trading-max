@@ -894,16 +894,8 @@ test("a historical dividend in chat reopens its published amount and basis", asy
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
 });
 
-test("mixed historical event replies retain their published dates and citations", async ({page}, info) => {
-  await fixtures(page);
-  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+async function streamHistoricalEventReplies(page: Page, turns: string[][]) {
   const items = historicalEvents.data.items;
-  // Each turn selects up to four observations from the same eight-row tool result.
-  const turns = [
-    ["news", "earnings", "ex_dividend", "dividend"],
-    ["earnings", "dividend", "ex_dividend", "dividend_pay"],
-    ["news", "rating_change", "filing", "own_trade"],
-  ];
   let next = 0;
   await page.route("**/api/backend/assistant/chat*", route => {
     const id = "historical-" + next;
@@ -917,6 +909,19 @@ test("mixed historical event replies retain their published dates and citations"
     return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
       body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n"});
   });
+}
+
+test("mixed historical event replies retain their published dates and citations", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const items = historicalEvents.data.items;
+  // Each turn selects up to four observations from the same eight-row tool result.
+  const turns = [
+    ["news", "earnings", "ex_dividend", "dividend"],
+    ["earnings", "dividend", "ex_dividend", "dividend_pay"],
+    ["news", "rating_change", "filing", "own_trade"],
+  ];
+  await streamHistoricalEventReplies(page, turns);
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   const input = page.getByRole("textbox",{name:"Message"});
@@ -1014,4 +1019,40 @@ test("narrowing restores Message when the remembered Send button is disabled", a
     await page.keyboard.type(" typing");
     await expect(draft).toHaveValue("Continue typing");
   } finally { release(200); }
+});
+
+test("a Broker citation opens the retained decision and reports expiry", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await streamHistoricalEventReplies(page, [["own_trade", "earnings"]]);
+  const trade = historicalEvents.data.items.find(row => row.kind === "own_trade")!;
+  const snapshot = historicalEvents.snapshot_id;
+  let state: "available" | "missing" | "expired" = "available";
+  const requests: (string | null)[] = [];
+  await page.route("**/api/backend/dashboard/lens/account-analysis?**", route => {
+    const run = new URL(route.request().url()).searchParams.get("runId");
+    requests.push(run);
+    if (run === snapshot && state === "expired") return route.fulfill({status:404, json:{detail:"snapshot not found"}});
+    const decision = {date:trade.date,ticker:trade.ticker,side:trade.side,kind:"B",amountGbp:125,
+      name:run === snapshot ? "Original synthetic fill" : "Replacement synthetic fill",observedDays:2,events:[]};
+    return route.fulfill({json:{runId:run ?? "newer",accounts:[],holdings:[],nav:[],brokerAsOf:trade.date,
+      selectedAccountDecisions:{status:"available",asOf:trade.date,decisions:state === "missing" ? [] : [decision]}}});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const draft = page.getByRole("textbox", {name:"Message"});
+  await expect(draft).toBeFocused();
+  await page.keyboard.type("When was the purchase?");
+  await page.getByRole("button", {name:"Send"}).click();
+  await page.locator(".mx-turn-assistant").getByRole("link", {name:"Broker"}).click();
+  await expect(page).toHaveURL(url => url.pathname === "/review" && url.searchParams.get("snapshotId") === snapshot);
+  await expect.poll(() => requests[0]).toBe(snapshot);
+  await expect(page.locator(".mx-decision-focus")).toContainText("Original synthetic fill");
+  for (const outcome of ["missing", "expired"] as const) {
+    state = outcome;
+    await page.reload();
+    await expect(page.getByText(outcome === "expired" ? "Cited publication unavailable" : "Cited decision unavailable")).toBeVisible();
+    await expect(page.locator(".mx-decision-focus")).toHaveCount(0);
+  }
+  expect(requests.every(run => run === snapshot)).toBe(true);
 });

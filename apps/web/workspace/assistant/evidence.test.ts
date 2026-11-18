@@ -290,3 +290,10 @@ it("resolves each published historical event date to its source in mixed replies
     });
   }
 });
+
+it("withholds Broker links without an investing account and a decision identity", () => {
+  const args = {scope:"invest", side:"buy", date:"2026-11-25", ticker:"ALFA", event:"own_trade", eventId:"ev_trade", snapshotId:"original"};
+  for (const missing of [{scope:"broker_total"}, {scope:"cfd"}, {side:""}, {date:""}, {ticker:""}, {eventId:""}, {snapshotId:""}]) {
+    expect(evidenceHref({tool:"news_and_events", source:"broker", evidenceId:"ev_source", arguments:{...args,...missing}})).toBeNull();
+  }
+});
