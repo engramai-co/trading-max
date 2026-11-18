@@ -591,6 +591,17 @@ test("cited Returns and Holdings reopen their selection and disclose expiry",asy
   }
 });
 
+test("a sector citation reopens the selected sector in its publication", async ({page}) => {
+  const calls = await setup(page, "en", false);
+  await page.goto("/sectors?market=us&sector=2");
+  const link = page.locator(".mx-inline-reading:visible, .mx-reading-sheet:visible").getByRole("link", {name:"Market"}).first();
+  await link.click();
+  await expect.poll(() => calls.at(-1)).toMatchObject({
+    role:"market-sector", snapshotId:runId, context:{market:"us",sector:"2",observed:stamp},
+  });
+  await expect(page.getByRole("button",{name:"What is my exposure?"})).toBeEnabled();
+});
+
 test("Japan market citation reopens its observed inspection and discloses a replaced board",async ({page,isMobile})=>{
   const calls = await setup(page,"en",false);
   await page.goto("/sectors?market=global");
@@ -603,8 +614,20 @@ test("Japan market citation reopens its observed inspection and discloses a repl
   const url = (await link.getAttribute("href"))!;
   expect(Object.fromEntries(new URL(url,"http://localhost").searchParams)).toMatchObject({region:"jp", observed:stamp, snapshotId:runId});
   await link.click();
+  await expect(page).toHaveURL(new RegExp("region=jp"));
+  await expect.poll(()=>calls.at(-1)).toMatchObject({role:"market-map",snapshotId:runId});
   await expect(page.locator(".mx-global-inspection")).toContainText("Japan");
   await expect(page.locator(".mx-map-reading")).toContainText("MSCI ACWI");
+  // Re-enter the citation through browser history while the market board is still available.
+  await page.goBack();
+  await expect(page).toHaveURL(/sectors\?market=global$/);
+  await page.route("**/assistant/roles/market-map/reading", route =>
+    route.request().postDataJSON().snapshotId === runId
+      ? route.fulfill({status:404,json:{detail:{code:"assistant_snapshot_missing"}}})
+      : route.fallback());
+  await page.goForward();
+  await expect(page).toHaveURL(/region=jp/);
+  await expect(page.getByText("Cited publication unavailable",{exact:true})).toBeVisible();
   await page.goto(url.replace(encodeURIComponent(stamp),"2025-01-01T00%3A00%3A00Z"));
   await expect(page.getByText("Cited market observation unavailable",{exact:true})).toBeVisible();
 });

@@ -137,14 +137,16 @@ export function Inspection({
     (lines) => setPartial({ key, lines }),
   );
   const client = useQueryClient();
+  const expired = query.error?.message === "assistant_snapshot_missing";
   const reading = useMemo(() => {
+    if (expired) return null;
     if (role !== "market-map") return query.data;
     if (!market || !query.data || !showMapLine) return null;
     const lines = query.data.lines.flatMap((line) =>
       line.variants?.[market] ? [{ ...line, ...line.variants[market] }] : [],
     );
     return lines.length ? { ...query.data, lines: lines.slice(0, 1) } : null;
-  }, [role, market, query.data, showMapLine]);
+  }, [expired, role, market, query.data, showMapLine]);
   const hasContext = Boolean(context);
   const page = {
     exposure: "holdings",
@@ -161,7 +163,7 @@ export function Inspection({
     }),
     [page, request, snapshotId, query.data?.snapshotId],
   );
-  const bound = Boolean(origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading));
+  const bound = !expired && Boolean(origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading));
   const card = useMemo<RoleCard>(
     () => ({
       role: hasContext && bound ? role : "",
@@ -181,7 +183,7 @@ export function Inspection({
   usePageRole(card);
   if (!context) return null;
   if (role === "market-map") {
-    if (portal && snapshotId && query.error?.message === "assistant_snapshot_missing") return createPortal(<p role="status">{t("引用的数据版本暂不可用","Cited publication unavailable")}</p>, portal);
+    if (portal && snapshotId && expired) return createPortal(<p role="status">{t("引用的数据版本暂不可用","Cited publication unavailable")}</p>, portal);
     const line = reading?.lines[0];
     return portal && line
       ? createPortal(
@@ -237,7 +239,7 @@ export function Inspection({
               : stopped === key
                 ? t("已停止。", "Stopped.")
                 : query.isError
-                  ? query.error?.message === "assistant_snapshot_missing" ? t("引用的数据版本暂不可用","Cited publication unavailable") : t("暂时无法读取。", "Reading unavailable.")
+                  ? expired ? t("引用的数据版本暂不可用","Cited publication unavailable") : t("暂时无法读取。", "Reading unavailable.")
                   : t("可核实的记录不足。", "Too few verified observations.")}
           </span>
           {query.isFetching ? (

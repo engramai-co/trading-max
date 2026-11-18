@@ -48,6 +48,9 @@ export function useRoleReading(request: ReadingRequest, enabled: boolean, onLine
     queryKey: ["assistant-reading", request],
     queryFn: ({ signal }) => fetchReading(request, signal, undefined, onLines),
     enabled: assistant.ready && enabled, refetchInterval: request.latest && request.cachedOnly ? 30_000 : false,
-    refetchIntervalInBackground: false, staleTime: request.latest ? 60_000 : Infinity, retry: false,
+    refetchIntervalInBackground: false,
+    // A saved reading can outlive the publication that supports its citation.
+    refetchOnMount: request.snapshotId ? "always" : true,
+    staleTime: request.latest ? 60_000 : Infinity, retry: false,
   });
 }
