@@ -59,6 +59,7 @@ from .dashboard_models import (
     ResearchLensSnapshot,
     ResearchShell,
 )
+from .evidence_notices import EvidenceNoticeStore
 from .flow_diagnostics import SnapshotFlowDiagnostics
 from .history_reader import HistoryReader
 from .index_depth import IndexDepth
@@ -90,6 +91,8 @@ from .routes.sectors import router as sectors_router
 from .routes.settings import router as settings_router
 from .routes.system import router as system_router
 from .routes.valuation_draft import router as valuation_draft_router
+from .routes.valuation_maintenance import router as valuation_maintenance_router
+from .routes.valuation_notices import router as valuation_notices_router
 from .scheduler import NightlyScheduler
 from .sector_monitor import SectorMonitor
 from .security_entity_resolution import OpenCodeWebSearchResolver
@@ -659,6 +662,7 @@ def create_app(
     )
     app.state.market_prices = market_prices
     app.state.research_journal = ResearchJournalStore(settings.data_root)
+    app.state.evidence_notices = EvidenceNoticeStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
     app.state.valuation_drafts = ValuationDraftStore(settings.data_root)
     app.state.assistant = assistant
@@ -688,6 +692,8 @@ def create_app(
     app.include_router(operations_router)
     app.include_router(research_router)
     app.include_router(valuation_draft_router)
+    app.include_router(valuation_maintenance_router)
+    app.include_router(valuation_notices_router)
     app.include_router(sectors_router)
     app.include_router(indices_router)
     app.include_router(assistant_router)

@@ -3,7 +3,9 @@
 import type { ResearchShell } from "@/lib/types";
 import { ActionIcon, Checkbox, Group, Select, TextInput } from "@mantine/core";
 import { MagnifyingGlass, PushPin } from "@phosphor-icons/react";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { evidenceNoticesQuery } from "./evidence-notices";
 import { Instrument, useCopy } from "./foundation";
 import Link from "./link";
 import {
@@ -116,6 +118,7 @@ export function UniverseList({
 }) {
   const t = useCopy();
   const listed = useListedIndices();
+  const notices = useQuery(evidenceNoticesQuery).data?.notices;
   const isIndexCategory = category === "indices";
   const query = filter.trim();
   const showIndices = !heldOnly && (category === "all" || isIndexCategory);
@@ -186,6 +189,9 @@ export function UniverseList({
             onClick={() => onSelect(i.ticker)}
           >
             <Instrument ticker={i.ticker} name={i.name} small />
+            {notices?.some((notice) => notice.ticker === i.ticker.toUpperCase()) && (
+              <span className="mx-evidence-dot" role="img" aria-label={t("有新证据", "New evidence")} />
+            )}
             {i.held && (
               <span
                 className="mx-status-dot"

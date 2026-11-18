@@ -1,0 +1,31 @@
+/* New evidence for a saved valuation model, and the model a reviewed decision was made with. */
+/* A research-threshold mark: a 6px warning dot beside what it concerns. */
+.mx-evidence-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-inline-start: 6px;
+  border-radius: 50%;
+  background: var(--mx-warning);
+  flex-shrink: 0;
+}
+.mx-watchlist-item .mx-evidence-dot {
+  margin-inline-start: 0;
+}
+/* Under the decision's row, aligned with its text. */
+.mx-decision-model {
+  grid-column: 1 / -1;
+  justify-self: start;
+  margin: -6px 0 14px 16px;
+  font-size: 12px;
+}
+@media (pointer: coarse) {
+  .mx-decision-model {
+    position: relative;
+  }
+  .mx-decision-model::after {
+    content: "";
+    position: absolute;
+    inset: -12px -8px;
+  }
+}

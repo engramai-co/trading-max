@@ -8,6 +8,7 @@ import {
   loadedValuationQuery,
   previewRequest,
   valuationDefaultsQuery,
+  valuationMaintenanceQuery,
   valuationPreviewQuery,
   workbenchState,
   type PreviewRequest,
@@ -237,4 +238,32 @@ it("isolates family defaults and replays the chosen formula and family", () => {
     family: "residual-income", formulaVersion: "statement-equity-v2", horizon: 10,
   });
   expect(editorIdentity(bank)).not.toEqual(editorIdentity(cash));
+});
+
+it("compares a saved version again after a new publication, never showing the earlier comparison meanwhile", async () => {
+  // The comparison service names the evidence of whichever publication is the latest.
+  const service = { run: "run-1", requests: 0 };
+  vi.stubGlobal("fetch", vi.fn(async () => {
+    service.requests += 1;
+    return Response.json({ modelId: "saved-version", evidenceKeys: ["consensusEps:" + service.run] });
+  }));
+  const client = createQueryClient();
+  const opened = preview(spot100);
+  const compare = (request: PreviewRequest, publication: string) =>
+    valuationMaintenanceQuery(opened, "saved-version", request, [], publication, true);
+  const review = new QueryObserver(client, compare(previewRequest(opened), "run-1"));
+  const stop = review.subscribe(() => {});
+  await vi.waitFor(() => expect(review.getCurrentResult().data?.evidenceKeys).toEqual(["consensusEps:run-1"]));
+  // An edit keeps the comparison on screen while the next one is made.
+  review.setOptions(compare(edited(0.2), "run-1"));
+  expect(review.getCurrentResult()).toMatchObject({ isPlaceholderData: true, data: { evidenceKeys: ["consensusEps:run-1"] } });
+  await vi.waitFor(() => expect(review.getCurrentResult().isPlaceholderData).toBe(false));
+  // A new publication with the same inputs is compared again, and the earlier comparison is not shown meanwhile.
+  service.run = "run-2";
+  review.setOptions(compare(edited(0.2), "run-2"));
+  expect(review.getCurrentResult()).toMatchObject({ data: undefined, isPlaceholderData: false, isFetching: true });
+  await vi.waitFor(() => expect(review.getCurrentResult().data?.evidenceKeys).toEqual(["consensusEps:run-2"]));
+  expect(service.requests).toBe(3);
+  stop();
+  client.clear();
 });

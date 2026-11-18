@@ -28,6 +28,12 @@ export function refreshPublicationQueries(client: QueryClient, runId: string) {
         return status === "error" || (view === "overview" || view === "ledger") && snapshot?.runId !== runId;
       }
       if (kind === "workspace-prices") return status === "error";
+      // Notices compare saved valuation versions with the latest publication. Switched off,
+      // they read nothing, so a new publication has nothing to refresh.
+      if (kind === "evidence-notices") {
+        const notices = data as { enabled?: boolean; runId?: string | null } | undefined;
+        return status === "error" || (notices?.enabled === true && notices.runId !== runId);
+      }
       return false;
     },
   }, { cancelRefetch: false });

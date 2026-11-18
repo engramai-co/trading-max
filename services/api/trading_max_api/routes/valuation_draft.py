@@ -18,7 +18,12 @@ from trading_max.research.valuation_evidence import (
     Metric,
     ValuationEvidenceTools,
 )
-from trading_max.research.valuation_preview import ScenarioInputs, ValuationPreviewRequest, preview
+from trading_max.research.valuation_preview import (
+    ScenarioInputs,
+    ValuationPreviewRequest,
+    locked_set,
+    preview,
+)
 
 from ..agent.runtime import error_code
 from ..agent.service import AssistantUnavailable
@@ -135,6 +140,8 @@ def _prepare(request, ticker, body, share_saved, progress):
         annual_revenue_growth=growth,
         basis=public,
     )
+    # An editor opened from a saved version reviews new evidence against it.
+    maintenance = view.default_source == "saved-model"
     runner = DraftAgent(
         frozen,
         templates,
@@ -144,6 +151,9 @@ def _prepare(request, ticker, body, share_saved, progress):
         body.horizon,
         progress,
         view.family_selection,
+        locked=frozenset((item.scenario, item.field) for item in body.locked_inputs),
+        baseline=saved if maintenance else None,
+        maintenance=maintenance,
     )
     parent = models[0].id if models else None
     return runner, view, parent, manifest
@@ -256,6 +266,10 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                     review_basis=view.basis,
                     parent_model_id=parent,
                     original=body.scenarios,
+                    prompt_version="valuation-maintenance-v1"
+                    if runner.maintenance
+                    else "valuation-draft-v1",
+                    locked_inputs=locked_set(body.locked_inputs),
                 )
 
         def deliver(record):

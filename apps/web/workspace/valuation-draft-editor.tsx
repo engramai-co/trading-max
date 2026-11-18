@@ -10,6 +10,7 @@ import { jsonRequest, number } from "./data";
 import { useCopy } from "./foundation";
 import type { Preview, ScenarioInput } from "./research-facts";
 import { draftBlockMessage, inputKey, type Decision, type DraftEvent, type DraftState, type Proposal } from "./valuation-draft";
+import type { LockedInput } from "./valuation-queries";
 
 import { newReview, readDraft } from "./valuation-draft-stream";
 
@@ -18,6 +19,8 @@ type Context = {
   requestedFamily?: Preview["basis"]["family"];
   horizon: number;
   inputs: Record<string, ScenarioInput>;
+  /** Fields MaxAI receives no candidate for. */
+  locked: LockedInput[];
   publication?: string | null;
   currentBasis: string | null;
 };
@@ -29,10 +32,10 @@ export type DraftActions = {
   decide: (proposal: Proposal, decision: Decision) => void;
 };
 
-export function DraftController({initial, requestedFamily, horizon, inputs, publication, currentBasis, actions, onChange}:
+export function DraftController({initial, requestedFamily, horizon, inputs, locked, publication, currentBasis, actions, onChange}:
   Context & {actions: Ref<DraftActions>; onChange: (view: DraftView) => void}) {
   const basis = JSON.stringify([initial.id, horizon, requestedFamily]);
-  const runKey = JSON.stringify([basis, publication, currentBasis, inputs]);
+  const runKey = JSON.stringify([basis, publication, currentBasis, inputs, locked]);
   const controller = useRef<AbortController | null>(null);
   const [run, setRun] = useState<{ key: string; phase: DraftEvent["phase"] } | null>(null);
   const [failure, setFailure] = useState<{key: string; code: string} | null>(null);
@@ -55,7 +58,7 @@ export function DraftController({initial, requestedFamily, horizon, inputs, publ
     setRun({ key: runKey, phase: "preparing" });
     try {
       const response = await fetch(`/api/backend/research/${encodeURIComponent(initial.basis.ticker)}/valuation-draft`, {
-        ...jsonRequest("POST", { previewId: initial.id, horizon, requestedFamily, scenarios: inputs }),
+        ...jsonRequest("POST", { previewId: initial.id, horizon, requestedFamily, scenarios: inputs, lockedInputs: locked }),
         signal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       });
       const result = await readDraft(response, phase => {

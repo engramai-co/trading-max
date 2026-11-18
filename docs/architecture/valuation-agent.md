@@ -97,3 +97,97 @@ inputs. Drafts never select an overview baseline.
 Previously saved models remain readable. Manual versions keep their existing
 journal format. A reviewed version adds an audit record, so preserve the
 workspace backup from before the first reviewed save for a downgrade.
+
+## Reviewing new evidence
+
+An editor opened from a saved version offers See new evidence. The editor posts
+its current proposal to `/v2/research/{ticker}/valuation-maintenance` with the
+saved model ID. The service replays the saved assumptions on four bases, in
+this order, so the parts add up to the proposal exactly:
+
+1. the saved version's own frozen basis;
+2. the latest statements at the saved price and exchange rate (new financial base);
+3. the current price and exchange rate (price and FX);
+4. the proposed assumptions on the current basis (changed assumptions).
+
+Every value comes from the desk's projection with the saved formula version
+and the editor's horizon. Price changes a value only through financed
+dilution; the exchange rate rescales statement amounts. When the reporting
+currency changes, the rate moves with the statements. A different quote
+currency withholds the comparison.
+
+The saved period is compared with the current statements for the same
+period. A changed figure is a restatement: the response lists it, and the
+walk measures its effect within the new financial base. The share count is
+compared when it came from the balance sheet. A quoted share count stays as
+saved; a switch to the balance-sheet count belongs to the new financial base.
+Each figure the statements still report is compared on its own. When one is
+missing, the review lists the restatements it found, names the missing
+figure and withholds their combined effect. A period that has left the
+statements, or statements in another reporting currency, cannot be checked,
+and the review says which. Conflicts are four quarters that differ from the
+fiscal year ending on the same day by more than 0.5%, and provider rows that
+disagree in the basis period, in the fiscal year it is checked against or in
+a newer period the model skipped. Earnings follow the basis: common earnings
+when reported, otherwise net income. The model uses the documented period and
+never blends the two sources.
+
+Fiscal-year EPS consensus at the save time comes from the estimate archive
+and is compared with the latest observation for the same year end and
+currency. Each version records the revenue-growth consensus it was saved
+against, apart from the references its assumptions may inherit from an
+earlier version. A version saved before that record is compared with its
+consensus references or reviewed evidence. The comparison reads no provider,
+contacts no model and writes nothing.
+
+The reader can lock individual scenario assumptions. A locked field stays as
+saved until the reader unlocks it, and versions record their locks. A
+version without locks keeps the earlier journal format. Draft requests carry
+the editor's locks: MaxAI receives no candidate for a locked field, and
+saving rejects a record that proposes one. A draft from an editor opened
+from a saved version is a maintenance run. It starts from the saved
+assumptions when Settings allows them to be shared, otherwise from the
+sector templates, and proposes only the fields the model selects. Its
+record carries the prompt version `valuation-maintenance-v1`. Preserve the
+workspace backup from before the first save with locks for a downgrade.
+
+## Notices of new evidence
+
+Notices of new evidence are off until the reader turns on the Notices switch
+under Settings, Update schedule. With it on, `GET /v1/valuation/evidence-notices`
+compares each security's newest saved version with the latest publication,
+using the calculations behind See new evidence:
+
+- statements that end after the saved period, which is how a new report
+  arrives; an older or unreadable basis, as after an incomplete publication,
+  is not announced;
+- a restatement of the saved period;
+- fiscal-year consensus that has moved by at least one step from the value
+  recorded at the save: 5% of the saved EPS, or two percentage points of
+  revenue growth. Each further step counts again.
+
+Each piece of evidence has a stable key, and the comparison behind See new
+evidence names the keys it shows. Opening it records those keys
+(`POST /v1/valuation/evidence-notices/{ticker}/seen`), so the same report or move
+is announced once, however many publications repeat it. Evidence that arrives
+after a comparison was made stays announced until a comparison shows it.
+Reopened after a new publication, or with a notice that names evidence its
+last comparison does not show, See new evidence compares again; the earlier
+comparison is not shown meanwhile. A version saved afterwards starts without a
+notice. Company guidance has no source in the research data; it shows through
+new statements and consensus revisions. A security whose comparison cannot run
+has no notice. An open page fetches its notices again when a new publication
+arrives.
+
+A dot marks a notice in the research list, beside See new evidence and in the
+journal's model versions. Notices are computed on request on this machine.
+They never draft, contact a model or save a version, and the only state they
+keep is the keys the reader has opened, in `evidence-notices.json` in the
+workspace.
+
+## The model saved for a decision
+
+Review links a selected decision to the newest valuation version saved by the
+end of its day (`GET /v1/research/{ticker}/models/as-of?day=`), and the link
+opens that version in the journal. A decision's day is the broker's UTC trade
+day, which has no time, so a version saved later that day is included.
