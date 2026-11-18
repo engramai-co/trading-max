@@ -27,9 +27,12 @@ async function analystFixture(page: Page) {
   } }));
 }
 
-/** Wide readings start with the index closed; these cases navigate with it open. */
+/** Wide readings start with the index closed; these cases navigate with it pinned. */
 async function openSectionIndex(page: Page) {
-  await page.addInitScript(() => localStorage.setItem("mx-research-index-open", "true"));
+  await page.addInitScript(() => {
+    localStorage.setItem("mx-research-index-open", "true");
+    localStorage.setItem("mx-research-index-pinned", "true");
+  });
 }
 
 test.describe("research section navigation", () => {
@@ -445,11 +448,13 @@ test.describe("research section navigation", () => {
 test.describe("research section index", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
 
-  test("a wide reading keeps the index closed until the reader opens it", async ({ page, isMobile }) => {
+  test("a wide index floats over the reading until the reader pins it", async ({ page, isMobile }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await page.goto("/research?ticker=AAPL&view=technical");
     const index = page.getByRole("navigation", { name: "On this page" });
     const toggle = page.getByRole("button", { name: "Sections on this page" });
+    const pin = page.getByRole("button", { name: "Pin sections" });
+    const reading = page.locator(".mx-reading-sections");
     if (isMobile) {
       // Phones keep the index as the sticky strip.
       await expect(index.getByRole("link", { name: "Seasonality" })).toBeVisible();
@@ -458,11 +463,26 @@ test.describe("research section index", () => {
     }
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(index).toBeHidden();
+    await expect(pin).toHaveCount(0);
+    const width = (await reading.boundingBox())!.width;
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    // Floating: the reading keeps its width and the faint index sits above it.
+    await expect(pin).toHaveAttribute("aria-pressed", "false");
+    expect((await reading.boundingBox())!.width).toBe(width);
+    await toggle.evaluate((element) => (element as HTMLElement).blur());
+    await page.mouse.move(10, 600);
+    await expect.poll(() => index.evaluate((element) => getComputedStyle(element).opacity)).toBe("0.55");
     await index.getByRole("link", { name: "Seasonality" }).click();
     await expect(page.locator("#research-seasonality h2").first()).toBeFocused();
+    // Pinned: the index takes its own column and the reading narrows.
+    await pin.click();
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
+    await expect.poll(async () => (await reading.boundingBox())!.width).toBeLessThan(width);
     await page.reload();
+    await expect(pin).toHaveAttribute("aria-pressed", "true");
     await expect(index.getByRole("link", { name: "Seasonality" })).toBeVisible();
+    await pin.click();
+    await expect.poll(async () => (await reading.boundingBox())!.width).toBe(width);
   });
 });

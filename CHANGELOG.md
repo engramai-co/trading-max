@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.63.2] - 2026-11-18
+
+### Changed
+- On wide screens, the research section index opens as a floating panel above the reading, which keeps its full width. Its text stays faint until you point at it. Pin it to give it its own column. Trading Max remembers both choices.
+
 ## [1.63.1] - 2026-11-18
 
 ### Changed
