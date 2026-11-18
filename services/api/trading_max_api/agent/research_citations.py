@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai import ModelRetry
 
 from . import insights, research_tools
-from .events import EventArgs, event_data
+from .events import EventArgs, ReleaseMarket, event_data
 from .research_roles import MomentContext, PriceContext, SecurityContext
 from .roles import ReadingLine, RoleTools, role_registry
 from .tools import Ticker
@@ -38,6 +38,7 @@ class CitationQuery(BaseModel):
     event: str | None = Field(default=None, max_length=48)
     scope: Literal["broker_total", "invest", "isa", "household", "cfd"] = "broker_total"
     timezone: str = Field(default="Europe/London", max_length=128)
+    market: ReleaseMarket | None = None
     eventTicker: Ticker | None = None
     limit: int = Field(default=10, ge=1, le=20)
     cursor: int = Field(default=0, ge=0, le=10000000)
@@ -68,6 +69,7 @@ def resolve_citation(request: Request, ticker: Ticker, query: CitationQuery) -> 
                 start=query.start,
                 end=query.end,
                 ticker=query.eventTicker,
+                market=query.market,
                 limit=query.limit,
                 cursor=query.cursor,
             )

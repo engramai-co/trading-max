@@ -110,7 +110,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   if (!kind && !accountOrMarket && !(historical && Object.hasOwn(historicalSources, str(row.kind)))) return null;
   if (historical && (!str(output.snapshot_id) || (!accountOrMarket && kind !== "macro" && !str(row.ticker)))) return null;
   const dividend = historical && kind === "dividend";
-  if (historical && !dividend && !(["date", "local_date", "end_date", "instant", "local_time"].includes(field.field) && dateText(field.value))) return null;
+  if (historical && !kind && !accountOrMarket && !(["date", "local_date", "end_date", "instant", "local_time"].includes(field.field) && dateText(field.value))) return null;
   let detail = "";
   if (dividend && ["amount", "currency", "unit"].includes(field.field)) {
     detail = dividendAmount(row.amount, row.currency, row.unit, locale) ?? "";
@@ -136,7 +136,10 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  if (kind && kind !== "macro") {
+  if (historical && (row.kind === "filing" || row.kind === "rating_change") && row.source_url) {
+    args.url = str(row.source_url);
+    source = historicalSources[str(row.kind)];
+  } else if (kind && kind !== "macro") {
     source = kind === "earnings" ? "financials" : kind === "rating_change" ? "analysts" : "disclosure";
     args.holdingTicker = ticker;
     args.event = kind === "ex_dividend" ? "exDividend" : kind;

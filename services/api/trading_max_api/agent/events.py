@@ -58,8 +58,11 @@ MARKET_ZONES = {
 }
 
 
+ReleaseMarket = Literal["US", "GB", "EA", "JP", "HK", "KR"]
+
+
 class EventArgs(Scoped, Paged):
-    market: Literal["US", "GB", "EA", "JP", "HK", "KR"] | None = Field(
+    market: ReleaseMarket | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
     start: Day

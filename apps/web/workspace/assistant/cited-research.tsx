@@ -16,7 +16,7 @@ export default function CitedResearch() {
   const ticker = params.get("ticker") || "MARKET";
   const tool = params.get("evidence") || "";
   const query = new URLSearchParams({tool});
-  for (const key of ["snapshotId","series","date","start","end","evidenceId","eventId","event","index","scope","timezone","eventTicker","limit","cursor","reference","observation","unselected"]) {
+  for (const key of ["snapshotId","series","date","start","end","evidenceId","eventId","event","index","scope","timezone","eventTicker","market","limit","cursor","reference","observation","unselected"]) {
     const value = params.get(key);
     if (value) query.set(key,value);
   }

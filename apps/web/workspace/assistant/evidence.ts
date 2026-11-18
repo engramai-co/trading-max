@@ -95,7 +95,7 @@ export function evidenceHref(ref: Evidence): string | null {
       params.set("evidence",ref.tool);
       params.set("evidenceId",ref.evidenceId);
       if (a.published_series_id) params.set("series",a.published_series_id);
-      for (const key of ["date","start","end","eventId","event","field","timezone","eventTicker","limit","cursor","reference","observation","unselected"]) {
+      for (const key of ["date","start","end","eventId","event","field","timezone","eventTicker","market","limit","cursor","reference","observation","unselected"]) {
         if (a[key]) params.set(key,a[key]);
       }
       if (a.date) params.set("eventDate",a.date);

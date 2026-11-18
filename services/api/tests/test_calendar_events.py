@@ -718,3 +718,37 @@ def test_cited_holding_event_returns_the_original_single_row(tmp_path, ticker, k
         assert response.status_code == 200
         assert response.json() == cited
         assert client.get(path, params=query | {"event_id": "ev_missing"}).status_code == 404
+
+
+def test_bound_market_calendar_row_reopens_with_the_original_arguments(tmp_path):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    publish(app.state.store)
+    deps = app.state.assistant.deps_for_run("research", "Europe/London")
+    day = "2026-11-27"
+    args = events.EventArgs(ticker="ALFA", market="US", start=day, end=day, scope="broker_total")
+    response = events.event_data(deps, args, upcoming=True)
+    rows = response["data"]["items"]
+    assert any(row["kind"] == "half_day" for row in rows), rows
+    row = next(row for row in rows if row["kind"] == "half_day")
+    params = {
+        "tool": "upcoming_events",
+        "scope": args.scope,
+        "start": day,
+        "end": day,
+        "timezone": "Europe/London",
+        "eventTicker": "ALFA",
+        "eventId": row["evidence_id"],
+        "market": "US",
+        "event": "half_day",
+        "evidenceId": response["evidence_id"],
+        "snapshotId": deps.snapshot_id,
+    }
+    reopened = TestClient(app).get("/v1/research/MARKET/citation", params=params)
+    assert reopened.status_code == 200, (reopened.status_code, row["date"], row["market"])
+    assert reopened.json()["output"]["data"]["items"] == rows
+    assert (
+        TestClient(app)
+        .get("/v1/research/MARKET/citation", params={**params, "market": "GB"})
+        .status_code
+        == 404
+    )
