@@ -324,7 +324,8 @@ def build_decision_review(
         }
         start = _close_on(security.closes, pd.Timestamp(day)) if security else None
         basket_buy = (identity, day) in basket_members.index
-        if security is None or start is None or start[1] <= 0:
+        unsettled_basket = basket_buy and not np.isfinite(day_rows["AmountGBP"]).all()
+        if security is None or start is None or start[1] <= 0 or unsettled_basket:
             unscored += len(legs)
             if basket_buy:
                 amount, shares = legs["buy"]

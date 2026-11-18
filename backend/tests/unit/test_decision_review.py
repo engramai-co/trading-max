@@ -1219,8 +1219,8 @@ def test_pre_trade_close_requires_an_observed_bar_and_its_published_fx(missing):
     assert pd.Timestamp(row["first_fill_at"]) == pd.Timestamp("2026-02-06T02:00:00Z")
 
 
-@pytest.mark.parametrize("settlement", [True, False])
-def test_basket_counts_net_ledger_purchases_with_an_unpriced_member(settlement):
+@pytest.mark.parametrize(("settlement", "quoted"), [(True, False), (False, False), (False, True)])
+def test_basket_counts_net_ledger_purchases_with_an_unpriced_member(settlement, quoted):
     trades = _trade_columns(
         pd.DataFrame(
             [
@@ -1234,9 +1234,11 @@ def test_basket_counts_net_ledger_purchases_with_an_unpriced_member(settlement):
         trades.loc[trades["Ticker"] == "AMD", "TotalGBP"] = float("nan")
     key = trades["SecurityIdentity"].iloc[0]
     prices = _closes("2026-02-02", [100, 102, 110])
-    review = build_decision_review(
-        trades, {key: SecurityPrices(key, "NVDA", "NVDA", "NVDA", prices)}, as_of=prices.index[-1]
-    )
+    listings = {key: SecurityPrices(key, "NVDA", "NVDA", "NVDA", prices)}
+    if quoted:
+        amd = trades["SecurityIdentity"].iloc[1]
+        listings[amd] = SecurityPrices(amd, "AMD", "AMD", "AMD", prices)
+    review = build_decision_review(trades, listings, as_of=prices.index[-1])
     basket = [r for r in review["decisions"] if r.get("basket_buy")] + review[
         "unpriced_basket_buys"
     ]
