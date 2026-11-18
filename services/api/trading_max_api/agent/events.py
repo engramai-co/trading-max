@@ -51,7 +51,7 @@ class EventArgs(Scoped, Paged):
     @model_validator(mode="after")
     def window(self):
         days = (date.fromisoformat(self.end) - date.fromisoformat(self.start)).days
-        if self.start < "1900-01-01" or self.end > "2200-12-31":
+        if self.start <= date.min.isoformat() or self.end >= date.max.isoformat():
             raise ValueError("Dates are outside the supported calendar range.")
         if not 0 <= days <= 365:
             raise ValueError("Choose an ordered window of at most 366 calendar days.")
@@ -119,7 +119,8 @@ def _public(ticker, data, upcoming):
             status=e.get("status"),
             estimated_eps=_number(e.get("estimatedEps")),
             actual_eps=_number(e.get("actualEps")),
-            currency=analyst.get("reportingCurrency"),
+            # A company's filing currency can differ from the EPS series for a listing.
+            currency=e.get("currency") or e.get("epsCurrency"),
             unit="per_share",
         )
     cal = data[EARNINGS].get(ticker, {}).get("calendar", {})
@@ -192,14 +193,14 @@ def _public(ticker, data, upcoming):
     seen = set()
     for row in [*headlines, *_rows(evidence.get("news"))]:
         url_value = web_url(row.get("url"))
-        if not url_value or url_value in seen:
+        if not url_value or url_value in seen or not (row.get("publisher") or row.get("source")):
             continue
         seen.add(url_value)
         yield add(
             "news",
             row.get("title"),
             row.get("title") or "",
-            row.get("instant") or row.get("publishedAt"),
+            row.get("instant") or row.get("publishedAt") or row.get("date"),
             url=url_value,
             publisher=row.get("publisher") or row.get("source"),
             role="lead",
@@ -210,7 +211,7 @@ def _market_days(names, start, end, issues):
     for name in sorted(names):
         try:
             cal = market_calendar(name, start.year, end.year)
-        except (CalendarError, ValueError):
+        except (CalendarError, ValueError, OverflowError):
             issues.append("exchange_calendar_unavailable")
             continue
         early = {v.date() for v in cal.early_closes}
@@ -404,7 +405,15 @@ def event_data(deps, args, *, upcoming):
             issues.append("analyst_events_unavailable")
         if not data[EARNINGS].get(ticker, {}).get("calendar"):
             issues.append("security_calendar_unavailable")
-        entries.extend(_public(ticker, data, upcoming))
+        for entry in _public(ticker, data, upcoming):
+            if (
+                entry
+                and entry["kind"] == "earnings"
+                and any(entry.get(k) is not None for k in ("estimated_eps", "actual_eps"))
+                and not entry.get("currency")
+            ):
+                issues.append("earnings_currency_unavailable")
+            entries.append(entry)
     if upcoming:
         macro = read.read(MACRO_KEY)
         keys.append(MACRO_KEY)
@@ -429,7 +438,9 @@ def event_data(deps, args, *, upcoming):
         names = set()
         for ticker in symbols:
             row = technical.get(ticker) or funds.get(ticker, {})
-            calendar = listing_calendar(ticker, row.get("exchange"), row.get("timezone"))
+            calendar = (
+                listing_calendar(ticker, row.get("exchange"), row.get("timezone")) if row else None
+            )
             if calendar:
                 names.add(calendar)
             else:
@@ -451,8 +462,6 @@ def event_data(deps, args, *, upcoming):
     entries = [r for r in entries if r and r["kind"] != "news"] + list(headlines.values())
     rows = {}
     for row in entries:
-        if not row:
-            continue
         local = (
             datetime.fromisoformat(row["instant"]).astimezone(deps.timezone)
             if row.get("instant")
@@ -470,13 +479,24 @@ def event_data(deps, args, *, upcoming):
         }
     ordered = sorted(
         rows.values(),
-        key=lambda r: (r["local_date"], r["local_time"] or "", r["kind"], r["evidence_id"]),
+        key=lambda r: (
+            r["local_date"],
+            datetime.fromisoformat(r["instant"]).astimezone(UTC).isoformat()
+            if r["instant"]
+            else "",
+            r["kind"],
+            r["evidence_id"],
+        ),
         reverse=not upcoming,
     )
     metadata = {"timezone": deps.timezone.key, "start": args.start, "end": args.end}
     if not upcoming:
         metadata["news_basis"] = "Headlines are dated leads. A price move's cause is unverified."
-    return read.page(ordered, args, metadata, keys=keys, issues=issues)
+    if not any(read.ref(key) for key in keys):
+        return read.missing("event_sources_unavailable")
+    page = read.page(ordered, args, metadata, keys=keys, issues=issues)
+    page["evidence_id"] = _short_id("ev_", [page["evidence_id"], deps.timezone.key])
+    return page
 
 
 def news_and_events(ctx: Context, args: EventArgs) -> Json:

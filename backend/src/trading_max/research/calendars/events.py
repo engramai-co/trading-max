@@ -22,6 +22,7 @@ class CalendarEvent(BaseModel):
     timezone: str
     status: Literal["provisional", "finalised", "cancelled", "postponed"]
     source_url: str
+    time_source_url: str | None = None
     credit: str
 
 
@@ -36,6 +37,7 @@ def event(
     end=None,
     status="finalised",
     url=None,
+    time_source_url=None,
 ) -> CalendarEvent:
     digest = sha256(
         f"{source.market}|{source.publisher}|{identity or (en, day)}".encode()
@@ -52,6 +54,7 @@ def event(
         timezone=source.zone,
         status=status,
         source_url=url or source.url,
+        time_source_url=time_source_url,
         credit=source.credit,
     )
 

@@ -178,7 +178,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               {source.asOf ? formatDateTime(source.asOf, locale, timeZone) : t("暂无数据", "No observations")}
               {source.failedSources > 0 && <Tag tone="warn">{source.failedSources === 1
                 ? t("1 个来源更新失败", "1 source refresh failed")
-                : t(`${source.failedSources} 个来源更新失败`, `${source.failedSources} source refreshes failed`)}</Tag>}
+                : t("{count} 个来源更新失败", "{count} source refreshes failed").replace("{count}", String(source.failedSources))}</Tag>}
             </Group>,
           ])} />
         </details>

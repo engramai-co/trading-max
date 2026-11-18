@@ -17,7 +17,7 @@ from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
 
 
-def publish(store, headline="Synthetic release"):
+def publish(store, headline="Synthetic release", *, eps_currency="USD"):
     raw = {
         "title": headline,
         "publisher": "Fixture Press",
@@ -43,6 +43,7 @@ def publish(store, headline="Synthetic release"):
                                 "status": "reported",
                                 "estimatedEps": 1.2,
                                 "actualEps": 1.0,
+                                "currency": eps_currency,
                             }
                         ],
                         "reportingCurrency": "USD",
@@ -179,9 +180,14 @@ def test_news_and_trades_are_snapshot_and_account_bound(tmp_path):
     store = ArtifactStore(tmp_path)
     old = publish(store)
     deps = AssistantDepsFactory(store).for_run(timezone="America/New_York")
-    publish(store, "Newer synthetic headline")
+    publish(store, "Newer synthetic headline", eps_currency=None)
     result = events.event_data(deps, args("invest"), upcoming=False)
     rows = result["data"]["items"]
+    revised = events.event_data(
+        AssistantDepsFactory(store).for_run(), args("invest"), upcoming=False
+    )
+    assert next(r for r in revised["data"]["items"] if r["kind"] == "earnings")["currency"] is None
+    assert "earnings_currency_unavailable" in revised["quality"]["issues"]
     assert result["snapshot_id"] == old.run_id and "leads" in result["data"]["news_basis"]
     assert all(row["evidence_id"].startswith("ev_") for row in rows)
     (headline,) = [r for r in rows if r["kind"] == "news"]

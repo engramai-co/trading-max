@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import ModelRetry
 
 from ..agent.events import EventArgs, event_data
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/v1/snapshots/{run_id}/events", tags=["events"])
 
 class UpcomingQuery(EventArgs):
     model_config = ConfigDict(strict=False)
-    timezone: str = "Europe/London"
+    timezone: str = Field(default="Europe/London", max_length=128)
 
 
 class UpcomingItem(BaseModel):
@@ -33,6 +33,7 @@ class UpcomingItem(BaseModel):
     title_en: str
     title_zh: str
     source_url: str | None = None
+    time_source_url: str | None = None
     source_as_of: str | None = None
     credit: str | None = None
     status: str | None = None

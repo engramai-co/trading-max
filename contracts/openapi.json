@@ -22526,6 +22526,17 @@
             ],
             "title": "Ticker"
           },
+          "time_source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Source Url"
+          },
           "timezone": {
             "anyOf": [
               {
@@ -29249,6 +29260,7 @@
             "required": false,
             "schema": {
               "default": "Europe/London",
+              "maxLength": 128,
               "title": "Timezone",
               "type": "string"
             }

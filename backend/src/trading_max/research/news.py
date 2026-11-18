@@ -1,7 +1,7 @@
 """Store only Yahoo-compatible headline metadata for the requested listings."""
 
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlsplit
 
 import yfinance as yf
@@ -44,8 +44,10 @@ def headline(row):
             if isinstance(raw, int)
             else datetime.fromisoformat(raw)
         )
-        if instant.utcoffset() is None:
-            return None
+        day = instant.date().isoformat()
+        # A publisher may supply only a local calendar date. Preserve that
+        # precision without assigning a timezone to an unzoned wall clock.
+        exact = instant.isoformat() if instant.utcoffset() is not None else None
     except (TypeError, ValueError, OSError, OverflowError):
         return None
     link = (
@@ -60,7 +62,8 @@ def headline(row):
         "title": title.strip()[:320],
         "publisher": publisher[:160],
         "url": link,
-        "instant": instant.isoformat(),
+        "date": day,
+        "instant": exact,
         "id": str(content.get("id") or row.get("uuid") or link)[:2048],
     }
 
@@ -117,12 +120,20 @@ def refresh_news(
             by_url = {
                 r["url"]: r
                 for r in [*old.get("items", []), *fresh]
-                if datetime.fromisoformat(r["instant"]) >= now - timedelta(days=365)
+                if date.fromisoformat(r.get("date") or r["instant"][:10])
+                >= now.date() - timedelta(days=365)
             }
             by_id = {h["id"]: h for h in by_url.values()}
             saved[ticker] = {
                 "items": sorted(
-                    by_id.values(), key=lambda r: datetime.fromisoformat(r["instant"]), reverse=True
+                    by_id.values(),
+                    key=lambda r: (
+                        r.get("date") or r["instant"][:10],
+                        datetime.fromisoformat(r["instant"]).astimezone(UTC).isoformat()
+                        if r.get("instant")
+                        else "",
+                    ),
+                    reverse=True,
                 )[:500],
                 "checked_at": now.isoformat(),
                 "as_of": observed,
