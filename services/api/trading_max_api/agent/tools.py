@@ -14,7 +14,7 @@ from typing import Annotated, Any, Literal, cast
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.toolsets import FunctionToolset
-from trading_max.analytics.exposure_history import DIMENSIONS, exposure_rows
+from trading_max.analytics.exposure_history import DIMENSIONS, TOP_COMPANIES, exposure_rows
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import (
     HistoryInput,
@@ -580,10 +580,13 @@ def position_detail(ctx: Context, args: PositionArgs) -> Json:
     return read.page(matches, args, {"value_currency": "GBP"}, keys=keys, issues=issues)
 
 
-def _exposure_reading(raw: Json, dimension: str) -> tuple[list[Json], Json, list[str]]:
+def _exposure_reading(
+    raw: Json, dimension: str, *, dated: bool = False
+) -> tuple[list[Json], Json, list[str]]:
     _, name_key, _ = DIMENSIONS[dimension]
     rows = []
-    for row in exposure_rows(raw, dimension):
+    ranked = exposure_rows(raw, dimension)
+    for row in ranked[:TOP_COMPANIES] if dated and dimension == "company" else ranked:
         item = {
             "name": _text(row.get(name_key), 512),
             "value_gbp": _number(row.get("valueGbp")),
@@ -593,9 +596,12 @@ def _exposure_reading(raw: Json, dimension: str) -> tuple[list[Json], Json, list
             item.update(
                 ticker=_text(row.get("ticker"), 64),
                 isin=_text(row.get("isin"), 64),
-                direct_value_gbp=_number(row.get("directValueGbp")),
-                indirect_value_gbp=_number(row.get("indirectValueGbp")),
             )
+            if not dated:
+                item.update(
+                    direct_value_gbp=_number(row.get("directValueGbp")),
+                    indirect_value_gbp=_number(row.get("indirectValueGbp")),
+                )
         if dimension == "gics":
             item.update(
                 code=_text(row.get("subIndustryCode"), 16),
@@ -621,7 +627,7 @@ def _exposure_reading(raw: Json, dimension: str) -> tuple[list[Json], Json, list
 
 
 def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
-    """Read published broker-wide country, sector or underlying company exposures.
+    """Read published broker-wide country, sector, GICS sub-industry or underlying company exposures.
     Only broker_total has this projection. Weights are fractions of invested GBP,
     with unclassified and non-security exposure shown separately.
     """

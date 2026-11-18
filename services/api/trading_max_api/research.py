@@ -6,6 +6,7 @@ import threading
 from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, date, datetime
+from functools import partial
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -671,18 +672,17 @@ class ResearchLedger:
             )
         return enriched
 
-    def _route_ticker(self, ticker: str) -> str:
+    def _route_ticker(self, ticker: str, exchanges: dict[str, str] | None = None) -> str:
         """Keep exchange-qualified watchlist identities in links and responses."""
         ticker = ticker.strip().upper()
         if us_fund(ticker):
             return ticker
-        items = self.watchlist.items()
-        if any(item.ticker == ticker for item in items):
+        if exchanges is None:
+            exchanges = self.watchlist.listing_exchanges()
+        if ticker in exchanges:
             return ticker
         matches = [
-            item.ticker
-            for item in items
-            if _canonical_ticker(item.ticker) == _canonical_ticker(ticker)
+            symbol for symbol in exchanges if _canonical_ticker(symbol) == _canonical_ticker(ticker)
         ]
         return matches[0] if len(matches) == 1 else ticker
 
@@ -1185,17 +1185,17 @@ class ResearchLedger:
 
         return self._fund_cache.get_or_compute(manifest.run_id, load)
 
-    def held_fund(self, ticker: str, manifest: SnapshotManifest) -> FundListingIdentity | None:
+    def held_fund(
+        self, ticker: str, manifest: SnapshotManifest, exchanges: dict[str, str] | None = None
+    ) -> FundListingIdentity | None:
         ticker = ticker.strip().upper()
         funds = self._held_funds(manifest)
         exact = [listing for listing in funds if listing.ticker == ticker]
         if exact or "." in ticker or us_fund(ticker):
             return exact[0] if len(exact) == 1 else None
-        if any(
-            item.ticker == ticker
-            and item.exchange.upper() in {"US", "NYSE", "NASDAQ", "NMS", "NYQ"}
-            for item in self.watchlist.items()
-        ):
+        if exchanges is None:
+            exchanges = self.watchlist.listing_exchanges()
+        if exchanges.get(ticker, "").upper() in {"US", "NYSE", "NASDAQ", "NMS", "NYQ"}:
             return None
         aliases = [listing for listing in funds if listing.symbol == ticker]
         return aliases[0] if len(aliases) == 1 else None
@@ -2416,15 +2416,22 @@ class ResearchLedger:
             alerts=self.alerts(selected_ticker, manifest),
         )
 
+    def bind_price_series(self):
+        """Freeze the chart's routing aliases before a snapshot-bound assistant run."""
+        return partial(self.price_series, exchanges=self.watchlist.listing_exchanges())
+
     def price_series(
         self,
         ticker: str,
         manifest: SnapshotManifest,
         *,
         limit: int = 504,
+        exchanges: dict[str, str] | None = None,
     ) -> ResearchPriceSeries:
-        listing = self.held_fund(ticker, manifest)
-        ticker = listing.ticker if listing else self._route_ticker(ticker)
+        if exchanges is None:
+            exchanges = self.watchlist.listing_exchanges()
+        listing = self.held_fund(ticker, manifest, exchanges)
+        ticker = listing.ticker if listing else self._route_ticker(ticker, exchanges)
         return self.published_price_series(ticker, manifest, limit=limit)
 
     def published_price_series(

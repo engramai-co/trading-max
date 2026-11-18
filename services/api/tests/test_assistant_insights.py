@@ -6,6 +6,7 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from pydantic_ai import ModelRetry
+from trading_max.analytics.day_attribution import update_day_attribution
 from trading_max.analytics.exposure_history import (
     PREFIX,
     exposure_rows,
@@ -416,6 +417,43 @@ def test_daily_fx_withholds_stale_broker_observation(tmp_path, research_root, ty
     assert data["status"] == "unavailable"
 
 
+def test_ambiguous_legacy_share_change_withholds_holdings_line_and_fx_account_subtotal(
+    tmp_path, research_root, typed_fixture
+):
+    store = ArtifactStore(tmp_path / "state")
+    typed_fixture(research_root, store)
+
+    def observed(hour, quantity, value):
+        return {
+            "A": {
+                "fetched_at": f"2026-08-01T{hour}:00:00Z",
+                "positions": [
+                    {
+                        "ticker": "BE",
+                        "broker_ticker": "BE_US_EQ",
+                        "quantity": quantity,
+                        "current_value_gbp": value,
+                    }
+                ],
+            }
+        }
+
+    before, _ = update_day_attribution(None, observed(10, 10, 800))
+    _, day = update_day_attribution(
+        before.model_dump(mode="json", by_alias=False), observed(19, 20, 700)
+    )
+    _publish_day_attribution(store, day.model_dump(mode="json", by_alias=False))
+    holdings = build_dashboard_data(store)["holdings"]
+    assert next(h["dayChangeGbp"] for h in holdings if h["ticker"] == "BE") is None
+    reading = ins.fx_data(
+        AssistantDepsFactory(store).for_run(), ins.FXArgs(scope="invest", period="1D")
+    )
+    assert reading["status"] == "partial"
+    assert reading["data"]["items"] == []
+    for field in ("contribution_gbp", "local_price_effect_gbp", "fx_effect_gbp"):
+        assert reading["data"]["accounts"]["invest"][field] is None
+
+
 def test_habit_default_and_focused_decision_match_review(bound):
     app, _, _ = bound
     store = app.state.store
@@ -501,6 +539,25 @@ def test_aliased_listing_moments_match_returned_chart_identity(bound, watchliste
     assert data is not None
     assert data["published_series_id"] == series["publishedSeriesId"]
     assert data["items"][0]["events"][0]["reference"] == "synthetic-report"
+    if watchlisted:
+        deps = app.state.assistant.deps_for_run(None, None)
+        app.state.watchlist.add(
+            SecuritySearchResult(
+                ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+            )
+        )
+        args = ins.MomentsArgs(
+            ticker="SYN",
+            scope="isa",
+            start=DATES[0],
+            end=DATES[-1],
+            published_series_id=series["publishedSeriesId"],
+        )
+        pinned = ins.moments_data(deps, args)
+        assert pinned["data"]["ticker"] == "SYN.L"
+        assert pinned["data"]["published_series_id"] == series["publishedSeriesId"]
+        new_run = ins.moments_data(app.state.assistant.deps_for_run(None, None), args)
+        assert new_run["quality"]["reason_code"] == "displayed_price_series_mismatch"
 
 
 def test_dated_gics_reports_holdings_classification_and_row_status(

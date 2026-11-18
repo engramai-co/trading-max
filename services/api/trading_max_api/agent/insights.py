@@ -194,7 +194,7 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
         args,
         {
             "currency": "GBP",
-            "basis": "published_daily_twr_wealth",
+            "basis": "published_daily_twr",
             "range": window,
             "window_start": daily[0]["date"],
             "window_end": daily[-1]["date"],
@@ -326,9 +326,7 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
     rows_key, _, basis = DIMENSIONS[args.dimension]
     if not isinstance(raw.get(rows_key), list):
         return read.missing("exposure_dimension_unavailable", keys=[key])
-    rows, coverage, issues = _exposure_reading(raw, args.dimension)
-    if args.dimension == "company":
-        rows = rows[:TOP_COMPANIES]
+    rows, coverage, issues = _exposure_reading(raw, args.dimension, dated=True)
     if (ref := read.ref(key)) and ref.warnings:
         issues.append("source_reported_warnings")
     return read.page(
