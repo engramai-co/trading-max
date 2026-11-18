@@ -24,7 +24,6 @@ from .valuation_drafts import (
     DraftAudit,
     DraftReview,
     ValuationDraftStore,
-    basis_digest,
     verify_decisions,
 )
 
@@ -187,6 +186,7 @@ class ResearchJournalStore:
                 if audit and audit.review.id == review.id:
                     if audit.request_digest != digest:
                         raise ValueError("valuation-draft-review-required")
+                    drafts.discard(review.id)
                     return state  # the response to an earlier successful save may have been lost
             draft = drafts.get(review.id)
             parent = state.models[0].id if state.models else None
@@ -204,11 +204,13 @@ class ResearchJournalStore:
                     body.model_dump(exclude={"reason", "draft_review"})
                 )
             )
-            if not result.scenarios or basis_digest(result.basis) != draft.basis_digest:
+            if not result.scenarios or result.basis != draft.review_basis:
                 raise ValueError("valuation-draft-review-required")
-            return self.save_model(
+            saved = self.save_model(
                 result, body.reason, DraftAudit(draft=draft, review=review, request_digest=digest)
             )
+            drafts.discard(review.id)
+            return saved
 
     def save_model(
         self, model: ValuationPreview, reason: str = "", audit: DraftAudit | None = None

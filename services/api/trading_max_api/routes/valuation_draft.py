@@ -10,7 +10,7 @@ import anyio
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic_ai.exceptions import RunTimedOut
 from starlette.responses import StreamingResponse
-from trading_max.research.fundamentals import _sector_profile
+from trading_max.research.fundamentals import sector_profile_by_label
 from trading_max.research.statement_valuation import scenario_template_inputs
 from trading_max.research.valuation_evidence import (
     EvidenceBinding,
@@ -27,12 +27,12 @@ from ..valuation_drafts import (
     DraftEvent,
     DraftInput,
     DraftRecord,
+    TemplateInputs,
     ValuationDraftStore,
-    basis_digest,
 )
 from ..valuation_evidence import freeze_valuation_evidence
 from .dependencies import app_service, latest_or_503, require_write_auth
-from .research import _valuation_preview
+from .valuation_preview import family_valuation_preview
 
 router = APIRouter(tags=["research"])
 TIMEOUT = 90
@@ -42,7 +42,7 @@ def _prepare(request, ticker, body, share_saved, progress):
     manifest = latest_or_503(request)
     journal = app_service(request, "research_journal")
     with journal.lock:
-        view = _valuation_preview(
+        view = family_valuation_preview(
             ticker, request, requested_family=body.requested_family, manifest=manifest
         )
         models = journal.load(ticker).models
@@ -68,9 +68,9 @@ def _prepare(request, ticker, body, share_saved, progress):
     )
     frozen = frozen.model_copy(update={"formula_version": view.formula_version})
     public = ValuationEvidenceTools(binding, frozen).get_valuation_basis().basis
-    if public is None or not public.revenue:
+    if public is None or public.revenue == 0:
         raise ValueError("valuation-evidence-unavailable")
-    profile, _ = _sector_profile(str(lens.valuation.assumptions.get("profile") or ""), "")
+    profile = sector_profile_by_label(lens.valuation.assumptions.get("profile"))
     cost = next(
         (
             row.value
@@ -89,7 +89,26 @@ def _prepare(request, ticker, body, share_saved, progress):
     )
     if share_saved and saved is None and view.default_source == "configured-scenarios":
         saved = {k: v.inputs for k, v in view.scenarios.items()}
-    runner = DraftAgent(frozen, templates, saved, body.horizon, progress)
+    template_inputs = TemplateInputs(
+        profile=profile.label,
+        growth_cap=profile.growth_cap,
+        margin_cap=profile.margin_cap,
+        profile_discount=profile.discount,
+        exit_multiple=profile.exit_multiple,
+        share_cagr=profile.share_cagr,
+        effective_discount_rate=cost,
+        annual_revenue_growth=growth,
+        basis=public,
+    )
+    runner = DraftAgent(
+        frozen,
+        templates,
+        template_inputs,
+        saved,
+        prior.id if prior and share_saved else None,
+        body.horizon,
+        progress,
+    )
     parent = models[0].id if models else None
     return runner, view, parent
 
@@ -115,8 +134,10 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
     ):
         raise HTTPException(status_code=403, detail="assistant_consent_required")
 
+    revision = prefs.revision
+
     def check_preferences():
-        if preferences.get_assistant_preferences().revision != prefs.revision:
+        if preferences.get_assistant_preferences().revision != revision:
             raise ValueError("valuation-draft-settings-changed")
 
     async def stream():
@@ -155,7 +176,7 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
                 def current():
                     with journal.lock:
-                        latest = _valuation_preview(
+                        latest = family_valuation_preview(
                             ticker, request, requested_family=body.requested_family
                         )
                         parents = journal.load(ticker).models
@@ -165,19 +186,16 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
                 if not await asyncio.to_thread(current):
                     raise ValueError("valuation-draft-review-required")
-                drafts.put(
-                    DraftRecord(
-                        result=result,
-                        evidence=runner.frozen,
-                        public_evaluation_id=runner.evaluation_id,
-                        formula_version=view.formula_version,
-                        horizon=body.horizon,
-                        basis_digest=basis_digest(view.basis),
-                        parent_model_id=parent,
-                        original=body.scenarios,
-                    )
+                return DraftRecord(
+                    result=result,
+                    evidence=runner.frozen,
+                    public_evaluation_id=runner.evaluation_id,
+                    formula_version=view.formula_version,
+                    horizon=body.horizon,
+                    review_basis=view.basis,
+                    parent_model_id=parent,
+                    original=body.scenarios,
                 )
-                return result
 
         task = asyncio.create_task(generate())
         try:
@@ -190,7 +208,10 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                     phase = await asyncio.wait_for(events.get(), timeout=0.5)
                 if not task.done():
                     yield line(phase)
-            yield line("complete", result=task.result())
+            record = task.result()
+            check_preferences()
+            drafts.put(record)
+            yield line("complete", result=record.result)
         except Exception as exc:
             code = _failure(exc)
             yield line("error", code=code)

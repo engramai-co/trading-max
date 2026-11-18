@@ -7,7 +7,7 @@ from threading import Lock
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field, FiniteFloat
+from pydantic import Field, FiniteFloat, model_validator
 from trading_max.domain import DomainModel
 from trading_max.research.facts import fingerprint
 from trading_max.research.valuation_basis import Family
@@ -16,6 +16,7 @@ from trading_max.research.valuation_evidence import (
     EvidenceId,
     EvidenceItem,
     FrozenValuationEvidence,
+    Metric,
     Scenario,
 )
 from trading_max.research.valuation_preview import (
@@ -48,20 +49,86 @@ class DraftInput(DomainModel):
     scenarios: dict[Scenario, ScenarioInputs] = Field(min_length=3, max_length=3)
 
 
+class TemplateInputs(DomainModel):
+    profile: str
+    growth_cap: float
+    margin_cap: float
+    profile_discount: float
+    exit_multiple: float
+    share_cagr: float
+    effective_discount_rate: float
+    annual_revenue_growth: float | None
+    basis: FrozenValuationBasis
+
+
+class TemplateOrigin(DomainModel):
+    source: Literal["sector-template"] = "sector-template"
+    inputs: TemplateInputs
+    scenarios: dict[Scenario, ScenarioInputs]
+    evidence_ids: tuple[EvidenceId, ...] = Field(min_length=1)
+
+
+class SavedOrigin(DomainModel):
+    source: Literal["saved-assumption"] = "saved-assumption"
+    model_id: str | None
+    scenarios: dict[Scenario, ScenarioInputs]
+
+
+DraftOrigin = TemplateOrigin | SavedOrigin
+
+
 class Proposal(DomainModel):
     scenario: Scenario
     field: Assumption
     value: FiniteFloat
     category: Category
     source: Source
+    origin_id: str | None = None
     evidence_ids: tuple[EvidenceId, ...] = ()
 
 
 class DraftResult(DomainModel):
     id: UUID
     proposals: list[Proposal]
+    origins: dict[str, DraftOrigin]
     # Only cited rows appear in the review interface.
     evidence: dict[EvidenceId, EvidenceItem]
+
+    @model_validator(mode="after")
+    def resolve_values(self):
+        for key, origin in self.origins.items():
+            if key != fingerprint(origin.model_dump(mode="json")):
+                raise ValueError("valuation-draft-origin-invalid")
+            if isinstance(origin, TemplateOrigin) and not self.evidence.keys() >= set(
+                origin.evidence_ids
+            ):
+                raise ValueError("valuation-draft-origin-evidence-missing")
+        for p in self.proposals:
+            if p.source in {"sector-template", "saved-assumption"}:
+                origin = self.origins.get(p.origin_id)
+                if not origin or origin.source != p.source or p.scenario not in origin.scenarios:
+                    raise ValueError("valuation-draft-origin-missing")
+                value = getattr(origin.scenarios[p.scenario], p.field)
+            else:
+                rows = [self.evidence.get(key) for key in p.evidence_ids]
+                if not rows or any(row is None or row.state != "available" for row in rows):
+                    raise ValueError("valuation-draft-proposal-evidence-missing")
+                if p.source in {"common-roe", "statement-margin"}:
+                    if (
+                        len(rows) != 2
+                        or rows[1].value <= 0
+                        or rows[1].metric
+                        != (Metric.BOOK if p.source == "common-roe" else Metric.REVENUE)
+                    ):
+                        raise ValueError("valuation-draft-ratio-invalid")
+                    value = rows[0].value / rows[1].value
+                else:
+                    if len(rows) != 1:
+                        raise ValueError("valuation-draft-source-invalid")
+                    value = rows[0].value
+            if value != p.value:
+                raise ValueError("valuation-draft-proposal-value-mismatch")
+        return self
 
 
 class DraftEvent(DomainModel):
@@ -85,7 +152,7 @@ class DraftRecord(DomainModel):
     prompt_version: Literal["valuation-draft-v1"] = "valuation-draft-v1"
     formula_version: FormulaVersion
     horizon: Literal[5, 10]
-    basis_digest: str
+    review_basis: FrozenValuationBasis
     parent_model_id: str | None
     original: dict[Scenario, ScenarioInputs]
     public_evaluation_id: str
@@ -102,24 +169,25 @@ class DraftAudit(DomainModel):
     request_digest: str
 
 
-def basis_digest(basis: FrozenValuationBasis) -> str:
-    # Include the actual desk mark and timestamp, FX, shares, evidence and statement hash.
-    return fingerprint(basis.model_dump(mode="json"))
-
-
 class ValuationDraftStore:
     """Bound pending proposals independently of the journal. Saving copies their audit record."""
 
     def __init__(self, state_root: Path):
         self.root = state_root / "valuation-drafts"
         self.running = Lock()
+        self._files = Lock()
 
     def put(self, record: DraftRecord) -> None:
-        _atomic_write(self.root / f"{record.result.id}.json", record.model_dump(mode="json"))
-        for stale in sorted(
-            self.root.glob("*.json"), key=lambda p: p.stat().st_mtime_ns, reverse=True
-        )[16:]:
-            stale.unlink(missing_ok=True)
+        with self._files:
+            _atomic_write(self.root / f"{record.result.id}.json", record.model_dump(mode="json"))
+            for stale in sorted(
+                self.root.glob("*.json"), key=lambda p: p.stat().st_mtime_ns, reverse=True
+            )[16:]:
+                stale.unlink(missing_ok=True)
+
+    def discard(self, draft_id: UUID) -> None:
+        with self._files:
+            (self.root / f"{draft_id}.json").unlink(missing_ok=True)
 
     def get(self, draft_id: UUID) -> DraftRecord:
         try:

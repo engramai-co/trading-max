@@ -98,12 +98,20 @@ def desk(tmp_path, monkeypatch):
         yield client, state, prefs, transcript
 
 
-def inputs(client):
-    res = client.get(PATH + "/valuation-preview")
+def inputs(client, requested_family=None):
+    res = client.get(
+        PATH.replace("/v1/", "/v2/") + "/valuation-preview",
+        params={"family": requested_family} if requested_family else {},
+    )
     assert res.is_success, res.text
     view = res.json()
     scenarios = {s: v["inputs"] for s, v in view["scenarios"].items()}
-    return view, {"previewId": view["id"], "horizon": 5, "scenarios": scenarios}
+    return view, {
+        "previewId": view["id"],
+        "requestedFamily": requested_family,
+        "horizon": 5,
+        "scenarios": scenarios,
+    }
 
 
 def post(client, body):
@@ -162,6 +170,7 @@ def test_draft_review_saves_only_accepted_fields_and_retries_once(desk):
         assert model["draftAudit"]["review"]["decisions"] == decisions
         assert model["preview"]["scenarios"]["base"]["inputs"]["revenueCagr"] == chosen["value"]
         assert model["preview"]["scenarios"]["bear"]["inputs"]["discountRate"] == 0.538945
+    assert not list(state.valuation_drafts.root.glob("*.json"))
     save["reason"] = "changed after save"
     assert client.post(PATH + "/models", json=save).status_code == 409
 
@@ -254,8 +263,9 @@ def test_gates_limits_timeout_and_stale_editor(desk, monkeypatch):
     assert not state.valuation_drafts.root.exists()
 
 
+@pytest.mark.parametrize("override", [False, True])
 @pytest.mark.parametrize("family", ["residual-income", "net-income"])
-def test_draft_fields_follow_the_selected_engine(desk, family):
+def test_draft_fields_follow_the_selected_engine(desk, family, override):
     client, state, _, transcript = desk
 
     def add_family(batches):
@@ -267,10 +277,12 @@ def test_draft_fields_follow_the_selected_engine(desk, family):
         row["quarterlyBalanceSheet"] = [
             {"index": "Common Stock Equity", **dict.fromkeys(dates, 2000)}
         ]
-        batches["research/valuation.json"]["rows"][0]["assumptions"]["family"] = family
+        batches["research/valuation.json"]["rows"][0]["assumptions"]["family"] = (
+            "cash-flow" if override else family
+        )
 
     _publish(state.store, MATURE, inject=add_family)
-    _, body = inputs(client)
+    _, body = inputs(client, family if override else None)
     pick = (
         "base.initial_roe.common-roe"
         if family == "residual-income"
@@ -394,3 +406,222 @@ def test_save_rechecks_fx_shares_and_statements(desk, change):
         and response.json()["detail"] == "valuation-draft-review-required"
     )
     assert client.get(PATH + "/journal").json()["models"] == []
+
+
+def test_every_proposal_resolves_to_a_frozen_source(desk):
+    from pydantic import ValidationError
+
+    from services.api.trading_max_api.valuation_drafts import DraftResult
+
+    client, _, _, _ = desk
+    _, body = inputs(client)
+    result = post(client, body)[-1]["result"]
+    for p in result["proposals"]:
+        if p["source"] == "sector-template":
+            origin = result["origins"][p["originId"]]
+            assert origin["source"] == "sector-template" and origin["inputs"]["profile"]
+            assert origin["inputs"]["effectiveDiscountRate"] > 0
+            assert origin["evidenceIds"] and set(origin["evidenceIds"]) <= result["evidence"].keys()
+        else:
+            assert p["evidenceIds"] and set(p["evidenceIds"]) <= result["evidence"].keys()
+    # A persisted record cannot silently replace the field's frozen value.
+    next(p for p in result["proposals"] if p["source"] == "sector-template")["value"] = 0.573232
+    with pytest.raises(ValidationError):
+        DraftResult.model_validate(result)
+
+
+def test_saved_source_records_respect_the_privacy_switch(desk):
+    client, state, prefs, transcript = desk
+    view, body = inputs(client)
+    body["scenarios"]["base"]["discountRate"] = 0.345678
+    journal = client.post(
+        PATH + "/models",
+        json={
+            "scenarios": body["scenarios"],
+            "formulaVersion": view["formulaVersion"],
+            "reason": "private reason",
+        },
+    ).json()
+    _, body = inputs(client)
+
+    async def bind():
+        return BoundModel(
+            selecting(
+                transcript,
+                ["base.discount_rate.saved-assumption"]
+                if prefs.share_valuation_assumptions
+                else [],
+            ),
+            {},
+        )
+
+    state.assistant.bind_model = bind
+    for shared in (True, False):
+        prefs.share_valuation_assumptions = shared
+        result = post(client, body)[-1]["result"]
+        origins = [r for r in result["origins"].values() if r["source"] == "saved-assumption"]
+        assert bool(origins) is shared
+        if shared:
+            assert origins[0]["modelId"] == journal["models"][0]["id"]
+            assert origins[0]["scenarios"]["base"]["discountRate"] == 0.345678
+        assert ("0.345678" in json.dumps(transcript)) == shared
+        assert "private reason" not in json.dumps(result) + json.dumps(transcript)
+
+
+def test_reopen_exact_hardware_template(desk):
+    client, state, _, _ = desk
+
+    def hardware(batches):
+        batches["research/valuation.json"]["rows"][0]["assumptions"]["profile"] = "hardware"
+
+    _publish(state.store, replace(MATURE, industry="Computer Hardware"), inject=hardware)
+    view, body = inputs(client)
+    result = post(client, body)[-1]["result"]
+    p = next(
+        p
+        for p in result["proposals"]
+        if p["field"] == "exit_fcf_multiple" and p["scenario"] == "base"
+    )
+    assert p["value"] == 16
+    assert view["scenarios"]["base"]["inputs"]["exitFcfMultiple"] == 16
+
+
+def test_permission_revocation_during_final_basis_read(desk, monkeypatch):
+    client, state, prefs, _ = desk
+    _, body = inputs(client)
+    reader = state.research.held_position
+    count = 0
+
+    def revoke(*args):
+        nonlocal count
+        count += 1
+        if count == 2:
+            state.settings_repository.get_assistant_preferences = lambda: SimpleNamespace(
+                **{**vars(prefs), "revision": 2, "share_valuation_assumptions": False}
+            )
+        return reader(*args)
+
+    monkeypatch.setattr(state.research, "held_position", revoke)
+    assert post(client, body)[-1].get("code") == "valuation-draft-settings-changed"
+    assert not list(state.valuation_drafts.root.glob("*.json"))
+
+
+def test_withheld_reverse_reading_can_still_propose_values(desk, monkeypatch):
+    from trading_max.research.valuation_evidence import ValuationEvidenceTools
+
+    client, _, _, transcript = desk
+    _, body = inputs(client)
+    evaluate = ValuationEvidenceTools.evaluate_valuation
+    monkeypatch.setattr(
+        ValuationEvidenceTools,
+        "evaluate_valuation",
+        lambda self, req: evaluate(self, req).model_copy(update={"reverse_dcf": None}),
+    )
+    assert post(client, body)[-1]["phase"] == "complete"
+    assert transcript[-1]["reverse"] is None
+
+
+def test_family_aware_contract_without_revenue_and_explicit_override(desk):
+    client, state, _, transcript = desk
+
+    def bank(batches):
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw.pop("incomeStatement", None)
+        raw["quarterlyIncomeStatement"] = [
+            {"index": "Net Income Common Stockholders", **dict.fromkeys(dates, 100)}
+        ]
+        raw["quarterlyBalanceSheet"] = [
+            {"index": "Common Stock Equity", **dict.fromkeys(dates, 2000)}
+        ]
+        batches["research/valuation.json"]["rows"][0]["assumptions"]["family"] = "residual-income"
+
+    _publish(state.store, MATURE, inject=bank)
+
+    async def bind():
+        return BoundModel(selecting(transcript, []), {})
+
+    state.assistant.bind_model = bind
+    view, body = inputs(client)
+    assert view["basis"]["revenue"] is None and view["basis"]["family"] == "residual-income"
+    assert post(client, body)[-1]["phase"] == "complete"
+    # Requesting a family that needs revenue must fail before contacting the model.
+    assert (
+        client.get(
+            "/v2/research/SYNM/valuation-preview", params={"family": "cash-flow"}
+        ).status_code
+        == 422
+    )
+
+
+def test_ambiguous_receipt_requires_a_new_verified_share_basis(desk):
+    client, state, _, transcript = desk
+    _, body = inputs(client)
+
+    def ambiguous(batches):
+        stored = batches["research/valuation.json"]["rows"][0]["assumptions"]
+        stored.pop("shareUnit")
+        stored["isAdr"] = True
+
+    _publish(state.store, MATURE, inject=ambiguous)
+    assert client.get("/v2/research/SYNM/valuation-preview").status_code == 422
+    assert post(client, body)[-1]["code"] == "valuation-evidence-unavailable"
+    assert not transcript and not list(state.valuation_drafts.root.glob("*.json"))
+
+
+def test_pending_capacity_excludes_previously_saved_reviews(desk):
+    from uuid import UUID, uuid4
+
+    client, state, _, _ = desk
+    view, body = inputs(client)
+    result = post(client, body)[-1]["result"]
+    pending = state.valuation_drafts
+    record = pending.get(UUID(result["id"]))
+    decisions = {s: {} for s in body["scenarios"]}
+    for p in result["proposals"]:
+        decisions[p["scenario"]][p["field"]] = "unreviewed"
+    parent = None
+    for _ in range(17):
+        staged = record.model_copy(
+            update={
+                "result": record.result.model_copy(update={"id": uuid4()}),
+                "parent_model_id": parent,
+            }
+        )
+        pending.put(staged)
+        save = {
+            "family": "cash-flow",
+            "formulaVersion": view["formulaVersion"],
+            "scenarios": body["scenarios"],
+            "draftReview": {"id": str(staged.result.id), "decisions": decisions},
+        }
+        response = client.post(PATH + "/models", json=save)
+        assert response.status_code == 200, response.text
+        parent = response.json()["models"][0]["id"]
+    assert [p.stem for p in pending.root.glob("*.json")] == [result["id"]]
+    assert client.post(PATH + "/models", json=save).status_code == 200
+    for _ in range(17):
+        pending.put(
+            record.model_copy(update={"result": record.result.model_copy(update={"id": uuid4()})})
+        )
+    assert len(list(pending.root.glob("*.json"))) == 16
+
+
+@pytest.mark.parametrize(
+    "industry",
+    [
+        "Semiconductors",
+        "Data Infrastructure",
+        "Computer Hardware",
+        "Power",
+        "Banks",
+        "Retail",
+        "Unclassified",
+    ],
+)
+def test_each_published_profile_identifier_reopens_the_same_template(industry):
+    from trading_max.research.fundamentals import _sector_profile, sector_profile_by_label
+
+    profile, key = _sector_profile("", industry)
+    assert sector_profile_by_label(key) == profile
+    assert sector_profile_by_label(profile.label) == profile

@@ -907,6 +907,77 @@ def _net_debt(
     return None
 
 
+_SECTOR_PROFILES = {
+    "semiconductor": _SectorProfile(
+        "semiconductors",
+        growth_cap=0.35,
+        margin_cap=0.22,
+        discount=0.115,
+        exit_multiple=18.0,
+        share_cagr=0.01,
+    ),
+    "software": _SectorProfile(
+        "software",
+        growth_cap=0.4,
+        margin_cap=0.3,
+        discount=0.105,
+        exit_multiple=25.0,
+        share_cagr=0.015,
+    ),
+    "hardware": _SectorProfile(
+        "hardware",
+        growth_cap=0.3,
+        margin_cap=0.18,
+        discount=0.11,
+        exit_multiple=16.0,
+        share_cagr=0.01,
+    ),
+    "power": _SectorProfile(
+        "power-industrial",
+        growth_cap=0.4,
+        margin_cap=0.2,
+        discount=0.1,
+        exit_multiple=20.0,
+        share_cagr=0.005,
+    ),
+    "financial": _SectorProfile(
+        "financial",
+        growth_cap=0.2,
+        margin_cap=0.15,
+        discount=0.12,
+        exit_multiple=12.0,
+        share_cagr=0.005,
+        method="analyst",
+    ),
+    "consumer": _SectorProfile(
+        "consumer-internet",
+        growth_cap=0.35,
+        margin_cap=0.28,
+        discount=0.11,
+        exit_multiple=22.0,
+        share_cagr=0.01,
+    ),
+    "default": _SectorProfile(
+        "default",
+        growth_cap=0.35,
+        margin_cap=0.25,
+        discount=0.12,
+        exit_multiple=18.0,
+        share_cagr=0.01,
+    ),
+}
+
+
+def sector_profile_by_label(label: str | None) -> _SectorProfile:
+    """Reopen the template selected when the statement valuation was published."""
+    # Older summaries stored the classification key and statement rows store profile.label.
+    if label in _SECTOR_PROFILES:
+        return _SECTOR_PROFILES[label]
+    return next(
+        (p for p in _SECTOR_PROFILES.values() if p.label == label), _SECTOR_PROFILES["default"]
+    )
+
+
 def _sector_profile(sector: str, industry: str) -> tuple[_SectorProfile, str]:
     text = f"{sector} {industry}".upper()
     if any(
@@ -918,17 +989,7 @@ def _sector_profile(sector: str, industry: str) -> tuple[_SectorProfile, str]:
             "ELECTRONIC COMPONENTS",
         )
     ):
-        return (
-            _SectorProfile(
-                "semiconductors",
-                growth_cap=0.35,
-                margin_cap=0.22,
-                discount=0.115,
-                exit_multiple=18.0,
-                share_cagr=0.01,
-            ),
-            "semiconductor",
-        )
+        return sector_profile_by_label("semiconductor"), "semiconductor"
     if any(
         token in text
         for token in (
@@ -938,17 +999,7 @@ def _sector_profile(sector: str, industry: str) -> tuple[_SectorProfile, str]:
             "DATA INFRASTRUCTURE",
         )
     ):
-        return (
-            _SectorProfile(
-                "software",
-                growth_cap=0.40,
-                margin_cap=0.30,
-                discount=0.105,
-                exit_multiple=25.0,
-                share_cagr=0.015,
-            ),
-            "software",
-        )
+        return sector_profile_by_label("software"), "software"
     if any(
         token in text
         for token in (
@@ -958,17 +1009,7 @@ def _sector_profile(sector: str, industry: str) -> tuple[_SectorProfile, str]:
             "TECHNOLOGY HARDWARE",
         )
     ):
-        return (
-            _SectorProfile(
-                "hardware",
-                growth_cap=0.30,
-                margin_cap=0.18,
-                discount=0.11,
-                exit_multiple=16.0,
-                share_cagr=0.01,
-            ),
-            "hardware",
-        )
+        return sector_profile_by_label("hardware"), "hardware"
     if any(
         token in text
         for token in (
@@ -978,17 +1019,7 @@ def _sector_profile(sector: str, industry: str) -> tuple[_SectorProfile, str]:
             "ENGINEERING & CONSTRUCTION",
         )
     ):
-        return (
-            _SectorProfile(
-                "power-industrial",
-                growth_cap=0.40,
-                margin_cap=0.20,
-                discount=0.10,
-                exit_multiple=20.0,
-                share_cagr=0.005,
-            ),
-            "power",
-        )
+        return sector_profile_by_label("power"), "power"
     if any(
         token in text
         for token in (
@@ -998,41 +1029,10 @@ def _sector_profile(sector: str, industry: str) -> tuple[_SectorProfile, str]:
             "FINANCIAL SERVICES",
         )
     ):
-        return (
-            _SectorProfile(
-                "financial",
-                growth_cap=0.20,
-                margin_cap=0.15,
-                discount=0.12,
-                exit_multiple=12.0,
-                share_cagr=0.005,
-                method="analyst",
-            ),
-            "financial",
-        )
+        return sector_profile_by_label("financial"), "financial"
     if any(token in text for token in ("CONSUMER", "RETAIL", "ENTERTAINMENT", "MEDIA")):
-        return (
-            _SectorProfile(
-                "consumer-internet",
-                growth_cap=0.35,
-                margin_cap=0.28,
-                discount=0.11,
-                exit_multiple=22.0,
-                share_cagr=0.01,
-            ),
-            "consumer",
-        )
-    return (
-        _SectorProfile(
-            "default",
-            growth_cap=0.35,
-            margin_cap=0.25,
-            discount=0.12,
-            exit_multiple=18.0,
-            share_cagr=0.01,
-        ),
-        "default",
-    )
+        return sector_profile_by_label("consumer"), "consumer"
+    return sector_profile_by_label("default"), "default"
 
 
 def _company_cost_of_equity(

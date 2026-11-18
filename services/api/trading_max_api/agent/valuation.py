@@ -12,6 +12,7 @@ from pydantic_ai import Agent, DeferredToolRequests, UsageLimits
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from trading_max.domain import DomainModel
+from trading_max.research.facts import fingerprint
 from trading_max.research.statement_valuation import annualised_change
 from trading_max.research.valuation_evidence import (
     MAX_EVIDENCE_BYTES,
@@ -26,7 +27,7 @@ from trading_max.research.valuation_evidence import (
 )
 from trading_max.research.valuation_preview import LEGACY_VERSION, ScenarioInputs
 
-from ..valuation_drafts import DraftResult, Proposal
+from ..valuation_drafts import DraftResult, Proposal, SavedOrigin, TemplateInputs, TemplateOrigin
 
 LIMITS = UsageLimits(request_limit=7, tool_calls_limit=6, total_tokens_limit=80_000)
 INSTRUCTIONS = """Draft valuation assumptions for this listing. Read get_valuation_basis first.
@@ -68,7 +69,9 @@ class DraftAgent:
         self,
         frozen: FrozenValuationEvidence,
         defaults: dict[Scenario, ScenarioInputs],
+        template_inputs: TemplateInputs,
         saved: dict[Scenario, ScenarioInputs] | None,
+        saved_model_id: str | None,
         horizon: Literal[5, 10],
         progress: Callable[[str], None],
     ):
@@ -100,6 +103,23 @@ class DraftAgent:
         rows = [r for r in frozen.rows if r.state == "available"]
         basis = {r.metric: r for r in rows if r.group == EvidenceGroup.BASIS}
 
+        template = TemplateOrigin(
+            inputs=template_inputs,
+            scenarios=defaults,
+            evidence_ids=tuple(
+                r.id
+                for r in rows
+                if r.group == EvidenceGroup.BASIS
+                or r.metric == Metric.COST_OF_EQUITY
+                or (r.metric == Metric.REVENUE and r.period.kind == "annual")
+            ),
+        )
+        origins = [template]
+        if saved:
+            origins.append(SavedOrigin(model_id=saved_model_id, scenarios=saved))
+        self.origins = {fingerprint(origin.model_dump(mode="json")): origin for origin in origins}
+        origin_ids = {origin.source: key for key, origin in self.origins.items()}
+
         def add(scenario, field, value, category, source, group, evidence=()):
             if value is None:
                 return
@@ -116,6 +136,7 @@ class DraftAgent:
                 value=value,
                 category=category,
                 source=source,
+                origin_id=origin_ids.get(source),
                 evidence_ids=tuple(r.id for r in evidence),
             )
             self.groups[key] = group
@@ -200,6 +221,16 @@ class DraftAgent:
                     for r in self.frozen.rows
                     if r.group == group
                 ],
+                **(
+                    {
+                        "origins": {
+                            key: origin.model_dump(mode="json", exclude_none=True)
+                            for key, origin in self.origins.items()
+                        }
+                    }
+                    if group == EvidenceGroup.BASIS
+                    else {}
+                ),
                 "candidates": {k: p.model_dump(mode="json") for k, p in candidates.items()},
             }
         )
@@ -253,7 +284,9 @@ class DraftAgent:
                     s: {"perShare": p.value, "terminalFraction": p.terminal_contribution}
                     for s, p in result.projections.items()
                 },
-                "reverse": result.reverse_dcf.model_dump(mode="json"),
+                "reverse": result.reverse_dcf.model_dump(mode="json")
+                if result.reverse_dcf
+                else None,
             }
         )
 
@@ -308,7 +341,13 @@ class DraftAgent:
         ):
             raise ValueError("valuation-draft-proposal-invalid")
         cited = {i for proposal in self.proposals for i in proposal.evidence_ids}
+        selected = {p.origin_id for p in self.proposals if p.origin_id}
+        origins = {key: self.origins[key] for key in selected}
+        for origin in origins.values():
+            if isinstance(origin, TemplateOrigin):
+                cited.update(origin.evidence_ids)
         return DraftResult(
+            origins=origins,
             id=uuid4(),
             proposals=self.proposals,
             evidence={row.id: row for row in self.frozen.rows if row.id in cited},
