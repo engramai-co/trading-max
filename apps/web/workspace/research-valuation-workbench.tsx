@@ -18,11 +18,12 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
-import { DraftEvidence, DraftStatus, ProposalRow, useDraftPreferences, useValuationDraft } from "./valuation-draft-editor";
+import type { DraftActions, DraftView } from "./valuation-draft-editor";
+import { useAssistantEnabled } from "./profile";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import {
@@ -70,6 +71,9 @@ import {
   valuationPreviewQuery,
   workbenchState,
 } from "./valuation-queries";
+
+type DraftModule = typeof import("./valuation-draft-editor");
+const emptyReview: DraftView = {draft:null, error:null, stale:false, phase:null};
 
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
@@ -195,7 +199,15 @@ export function ValuationWorkbench({
     />
   );
   const reason = query.error instanceof ApiError && query.error.status === 422 ? query.error.message : null;
-  const prefs = useDraftPreferences();
+  const enabled = useAssistantEnabled();
+  const [module, setModule] = useState<DraftModule | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    void import("./valuation-draft-editor").then(next => { if (active) setModule(next); });
+    return () => { active = false; };
+  }, [enabled]);
+  const draftModule = enabled ? module : null;
   const [draftAction, setDraftAction] = useState<HTMLSpanElement | null>(null);
   const block = reason ?? (preview && reverseDraftBlock(preview));
 
@@ -215,7 +227,7 @@ export function ValuationWorkbench({
       <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
         id="valuation-assumptions" className="mx-model-inputs" help={methodology}
         action={<Group gap="xs">
-          {prefs.enabled && <span ref={setDraftAction}>
+          {enabled && <span ref={setDraftAction}>
             {!editor && block && <Button variant="default" size="compact-xs" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
           </span>}
           {editor && <Button className="mx-model-jump" component="a" href="#valuation-results"
@@ -225,7 +237,7 @@ export function ValuationWorkbench({
         {editor ? <div className="mx-model-fields" inert={switching}>
           <ModelEditor key={reload + editorIdentity(editor)}
             requestedFamily={family} currentBasis={state.view === "editor" && !query.isError ? state.preview.id : null}
-            draftAction={!switching ? draftAction : null} prefs={prefs} defaultBlock={block ?? null}
+            draftAction={!switching && draftModule ? draftAction : null} draftModule={draftModule} defaultBlock={block ?? null}
             recovered={recovered?.id === editor.id ? recovered.changes : undefined}
             reloadBasis={async changes => {
               const result = await query.refetch();
@@ -249,7 +261,7 @@ export function ValuationWorkbench({
         ]} /> : state.view === "error" ? (
           reason ? <div id="valuation-draft-block"><Empty title={blockedMessage} /></div> : <QueryError error={query.error} retry={query.refetch} />
         ) : <Pending />}
-        {reverseOnly && prefs.enabled && block && <p id="valuation-draft-block" className="mx-draft-status">{blockedMessage}</p>}
+        {reverseOnly && enabled && block && <p id="valuation-draft-block" className="mx-draft-status">{blockedMessage}</p>}
       </Panel>
       {editor && <div className="mx-model-reference-grid" ref={setReference} inert={switching} />}
       {!preview && state.view === "error" && <ModelAlternatives data={data} financial={family === "residual-income"} />}
@@ -259,7 +271,7 @@ export function ValuationWorkbench({
 }
 
 function ModelEditor({
-  draftAction, prefs, defaultBlock,
+  draftAction, draftModule, defaultBlock,
   output,
   referencePanel,
   methodology,
@@ -276,7 +288,7 @@ function ModelEditor({
   onRetry,
 }: {
   draftAction: HTMLSpanElement | null;
-  prefs: ReturnType<typeof useDraftPreferences>;
+  draftModule: DraftModule | null;
   defaultBlock: string | null;
   output: HTMLDivElement | null;
   referencePanel: HTMLDivElement | null;
@@ -305,7 +317,8 @@ function ModelEditor({
       : 5
     : initial.horizon;
   const [inputs, setInputs] = useState<Scenarios>(() => initialValues(initial, recovered).inputs);
-  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs, data.runId, prefs, currentBasis);
+  const actions = useRef<DraftActions>(null);
+  const [drafting, setDrafting] = useState(emptyReview);
   const { draft } = drafting;
   const [editingProposal, setEditingProposal] = useState<string | null>(null);
   const focusField = useRef<string | null>(null);
@@ -390,7 +403,7 @@ function ModelEditor({
         }),
       );
       setSaveOpen(false);
-      drafting.reset();
+      actions.current?.reset();
       if (payload.draftReview) await client.invalidateQueries({ queryKey: ["valuation-workbench", initial.basis.ticker] });
       await client.invalidateQueries({
         queryKey: ["workspace-valuation-assumptions"],
@@ -425,8 +438,19 @@ function ModelEditor({
     setDraftValue(null);
     setInvalidInput(false);
     setEditingProposal(null);
-    drafting.reset();
+    actions.current?.reset();
     save.reset();
+  }
+  // Keep the deterministic editor mounted when Settings withdraws consent.
+  if (!draftModule && drafting !== emptyReview) {
+    if (draft) {
+      const manual = unstageAccepted();
+      setInputs(manual.inputs);
+      setReferences(manual.references);
+      setEditingProposal(null);
+      setSaveOpen(false);
+    }
+    setDrafting(emptyReview);
   }
   function reloadForReview() {
     const manual = unstageAccepted();
@@ -542,16 +566,18 @@ function ModelEditor({
   }, [initial, result, editedBase, sourceLabel, stale, busy, onReading]);
   return (
     <>
+      {draftModule && <draftModule.DraftController initial={initial} requestedFamily={requestedFamily} horizon={horizon}
+        inputs={inputs} publication={revision ?? data.runId} currentBasis={currentBasis} actions={actions} onChange={setDrafting} />}
       {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
         {t("放弃草稿", "Discard draft")}
       </Button> : <Button variant="default" size="compact-xs"
         aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
         disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
-        onClick={() => { if (drafting.phase) drafting.cancel(); else { setEditingProposal(null); void drafting.start(result); } }}>
+        onClick={() => { if (drafting.phase) actions.current?.cancel(); else { setEditingProposal(null); void actions.current?.start(result); } }}>
         {drafting.phase ? t("取消起草", "Cancel draft") : initial.defaultSource === "saved-model"
           ? t("✦ 看新证据", "✦ Review new evidence") : t("✦ 起草", "✦ Draft")}
       </Button>, draftAction)}
-      {drafting.enabled && draftBlock && <p className="mx-draft-status" id="valuation-draft-block">{draftBlockMessage(draftBlock, t, "complete-ttm-currency-and-share-count-required")}</p>}
+      {draftModule && draftBlock && <p className="mx-draft-status" id="valuation-draft-block">{draftBlockMessage(draftBlock, t, "complete-ttm-currency-and-share-count-required")}</p>}
       {output && createPortal(
           <Panel
             title={t("情景估值", "Scenario valuation")}
@@ -679,7 +705,7 @@ function ModelEditor({
           {draft && !drafting.phase && <p className="mx-draft-status" role="status">{changes.length ?
             t("{changes} 处改动 · 已接受 {accepted}", "{changes} proposed · {accepted} accepted").replace("{changes}", String(changes.length)).replace("{accepted}", String(accepted)) :
             t("此次起草保留了当前假设。", "The draft retains the current assumptions.")}</p>}
-          <DraftStatus phase={drafting.phase} error={failedBlock ? null : drafting.error} />
+          {draftModule && <draftModule.DraftStatus phase={drafting.phase} error={failedBlock ? null : drafting.error} />}
           {reReview}
           <Segments
             label={t("编辑情景", "Edit scenario")}
@@ -707,7 +733,7 @@ function ModelEditor({
                 onClick={() => {
                   if (estimateGrowth == null) return;
                   const p = draft?.result.proposals.find(p => p.scenario === selected && p.field === "revenue_cagr");
-                  if (p) drafting.decide(p, "edited");
+                  if (p) actions.current?.decide(p, "edited");
                   setInputs((v) => ({
                     ...v,
                     [selected]: { ...v[selected], revenueCagr: estimateGrowth },
@@ -743,13 +769,13 @@ function ModelEditor({
               const p = draft?.result.proposals.find(p => p.scenario === selected && inputKey[p.field] === field.key);
               const decision = p && draft?.review.decisions[selected][p.field];
               const old = draft?.before.scenarios[selected].inputs[field.key];
-              if (draft && p && p.value !== old && decision !== "rejected" && decision !== "edited" &&
+              if (draftModule && draft && p && p.value !== old && decision !== "rejected" && decision !== "edited" &&
                 editingProposal !== selected + field.key) {
-                return <ProposalRow key={field.key} draft={draft} proposal={p} label={field.label} scale={field.scale} suffix={field.suffix} disabled={staleDraft}
+                return <draftModule.ProposalRow key={field.key} draft={draft} proposal={p} label={field.label} scale={field.scale} suffix={field.suffix} disabled={staleDraft}
                   edit={() => { focusField.current = field.key; setActiveField(field.key); setEditingProposal(selected + field.key); setDraftValue(null); setInvalidInput(false); }}
                   decide={next => {
                     if (next === "rejected") focusField.current = field.key;
-                    drafting.decide(p, next);
+                    actions.current?.decide(p, next);
                     setDraftValue(null);
                     setInvalidInput(false);
                     setInputs(prev => ({ ...prev, [selected]: { ...prev[selected], [field.key]: next === "accepted" ? p.value : old } }));
@@ -780,7 +806,7 @@ function ModelEditor({
                       const value = numeric(v);
                       setInvalidInput(value == null || value < field.min || value > field.max);
                       if (value != null && value >= field.min && value <= field.max) {
-                        if (p) drafting.decide(p, "edited");
+                        if (p) actions.current?.decide(p, "edited");
                         setInputs((previous) => ({
                           ...previous,
                           [selected]: {
@@ -821,7 +847,7 @@ function ModelEditor({
           </div>
           <details className="mx-model-sources" id="valuation-assumption-sources">
             <summary>{t("参数依据", "Assumption sources")}</summary>
-            {draft && <DraftEvidence draft={draft} />}
+            {draftModule && draft && <draftModule.DraftEvidence draft={draft} />}
             <Facts
               rows={fields.map((field) => {
                 const ref = references.find((r) => r.scenario === selected);
@@ -842,7 +868,7 @@ function ModelEditor({
             onClick={() => {
               setDraftValue(null);
               setInvalidInput(false);
-              drafting.reset();
+              actions.current?.reset();
               setEditingProposal(null);
               setInputs(Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])));
               setReferences(initial.references ?? []);

@@ -856,9 +856,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
     await synthetic(page, false);
-    await page.route("**/api/backend/settings/assistant", route => route.fulfill({json: {
-      enabled: true, consentRevision: 2, acceptedConsentRevision: 2, revision: 1,
-    }}));
+    await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
     await page.route("**/SYNT/valuation-preview*", async route => {
       const body = route.request().method() === "POST" ? route.request().postDataJSON() : null;
       const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", true, body?.scenarios ?? {});
@@ -916,9 +914,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await page.emulateMedia({colorScheme:scheme, reducedMotion:"reduce"});
     await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
     await synthetic(page, false);
-    await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
-      enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
-    }}));
+    await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
     let withheld = false;
     let runs = 0;
     await page.route("**/SYNT/valuation-preview*", route => {
@@ -970,9 +966,7 @@ test("a missing valuation basis disables drafting without starting a run", async
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   await synthetic(page, false);
-  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
-    enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
-  }}));
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
   await page.route("**/SYNT/valuation-preview*", route => route.fulfill({status:422,json:{detail:"complete-ttm-currency-and-share-count-required"}}));
   let runs = 0;
   await page.route("**/SYNT/valuation-draft", route => { runs++; return route.abort(); });
@@ -987,9 +981,7 @@ test("cancel a valuation draft and discard a late proposal", async ({ page }) =>
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   await synthetic(page, false);
-  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
-    enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
-  }}));
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
   let release!: () => void;
   const delayed = new Promise<void>(resolve => { release = resolve; });
   await page.route("**/SYNT/valuation-draft", async route => {
@@ -1009,9 +1001,7 @@ test("cancel a valuation draft and discard a late proposal", async ({ page }) =>
 async function reviewDraft(page: Page) {
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   const state = await synthetic(page, false);
-  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
-    enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
-  }}));
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
   let calls = 0;
   await page.route("**/SYNT/valuation-draft", route => { calls++; return route.fulfill({
     contentType:"application/x-ndjson", body:JSON.stringify(draftResponse)+"\n",
@@ -1096,4 +1086,48 @@ test.describe("frozen draft review", () => {
     await expect(page.locator(".mx-scenario-cards button[aria-pressed=true]")).toContainText("+95.00%");
     await expect(page.getByLabel(/Scenario valuations relative to current price.*Base.*Draft/i)).toBeAttached();
   });
+});
+
+test("loading and retaining a draft requires workspace consent", async ({page}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const state = await synthetic(page, false);
+  let enabled = false;
+  const scripts: Promise<string>[] = [];
+  const requests: string[] = [];
+  page.on("response", response => {
+    if (response.request().resourceType() === "script")
+      scripts.push(response.text().catch(() => ""));
+  });
+  page.on("request", request => { requests.push(request.url()); });
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:enabled}}));
+  await page.route("**/SYNT/valuation-draft", route => route.fulfill({
+    contentType:"application/x-ndjson", body:JSON.stringify(draftResponse)+"\n",
+  }));
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const entry = editor.getByRole("button", {name:"✦ Draft", exact:true});
+  const growth = editor.getByLabel("Revenue growth · years 1–5", {exact:true});
+  await expect(growth).toHaveValue("10%");
+  const hasDraftCode = async () => (await Promise.all(scripts)).some(s => s.includes("Divides common earnings by common equity"));
+  expect(await hasDraftCode()).toBe(false);
+  expect(requests.filter(url => /settings\/assistant|valuation-draft/.test(url))).toEqual([]);
+  await expect(entry).toHaveCount(0);
+  await growth.fill("14");
+  await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(.14);
+  async function consent(value: boolean) {
+    enabled = value;
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage", {key:"trading_max-assistant-settings-revision"})));
+  }
+  await consent(true);
+  await entry.click();
+  expect(await hasDraftCode()).toBe(true);
+  await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
+  await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+  await consent(false);
+  await expect(growth).toHaveValue("14%");
+  await expect(entry).toHaveCount(0);
+  await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+  await expect(page.locator(".mx-draft-reading")).toHaveCount(0);
+  await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(.14);
 });

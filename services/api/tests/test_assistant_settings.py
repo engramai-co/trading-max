@@ -245,8 +245,10 @@ def test_resolver_has_no_environment_fallback_and_reports_missing_or_unavailable
             assert "synthetic" not in str(error.value)
 
         check_error("assistant_disabled")
+        assert not repository.get_profile().assistant_enabled
         _register(repository, "openai", "gpt-5.6-luna", base_url="https://rejected.invalid")
         preferences = _enable(repository, "openai/gpt-5.6-luna")
+        assert repository.get_profile().assistant_enabled
         check_error("provider_not_configured")
         check_error("credential_store_unavailable", _UnavailableStore())
 
@@ -265,6 +267,7 @@ def test_resolver_has_no_environment_fallback_and_reports_missing_or_unavailable
         with repository.database.transaction() as connection:
             connection.execute("UPDATE assistant_preferences SET accepted_consent_revision = 999")
         check_error("assistant_consent_required")
+        assert not repository.get_profile().assistant_enabled
         with repository.database.transaction() as connection:
             connection.execute(
                 "UPDATE assistant_preferences SET accepted_consent_revision = ?, route = 'unknown/model'",

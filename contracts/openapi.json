@@ -24641,6 +24641,11 @@
             "title": "Accountlabels",
             "type": "object"
           },
+          "assistantEnabled": {
+            "default": false,
+            "title": "Assistantenabled",
+            "type": "boolean"
+          },
           "avatarColor": {
             "title": "Avatarcolor",
             "type": "string"

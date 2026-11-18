@@ -3,11 +3,12 @@
 import { Button, Group, Modal, NativeSelect, Stack, Switch } from "@mantine/core";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import type { AssistantSettings, AssistantUpdate } from "@/lib/types";
+import type { AssistantSettings, AssistantUpdate, UserProfile } from "@/lib/types";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import { api, ApiError, jsonRequest } from "./data";
 import { Notice, Panel, Pending, QueryError, useCopy } from "./foundation";
-import { ASSISTANT_NAME, assistantSettingsKey, connectedAssistantModels, DISCLOSURE_REVISION } from "./assistant-settings";
+import { workspaceProfileKey } from "./profile";
+import { ASSISTANT_NAME, assistantSettingsChange, assistantSettingsKey, connectedAssistantModels, DISCLOSURE_REVISION } from "./assistant-settings";
 
 const path = "/settings/assistant";
 const actionKey = [...assistantSettingsKey, "action"];
@@ -51,8 +52,12 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
     mutationKey: actionKey,
     mutationFn: (change: AssistantUpdate) => api<AssistantSettings>(path, jsonRequest("PUT", change)),
     onSuccess: async (next) => {
-      await client.cancelQueries({ queryKey: assistantSettingsKey, exact: true });
+      await Promise.all([assistantSettingsKey, workspaceProfileKey].map(queryKey => client.cancelQueries({queryKey, exact:true})));
       client.setQueryData(assistantSettingsKey, next);
+      client.setQueryData<UserProfile>(workspaceProfileKey, previous => previous && ({
+        ...previous, assistantEnabled:next.enabled && next.acceptedConsentRevision === next.consentRevision,
+      }));
+      try { localStorage.setItem(assistantSettingsChange, String(next.revision)); } catch { /* Restricted browser storage. */ }
       setDialog(null);
     },
     onError: (error) => {

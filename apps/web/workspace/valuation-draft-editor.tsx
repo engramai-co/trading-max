@@ -1,34 +1,36 @@
 "use client";
 
 import { Check, X } from "@phosphor-icons/react";
-import { useQuery } from "@tanstack/react-query";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import type { components } from "@/lib/api-schema";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
-import { assistantSettingsKey, DISCLOSURE_REVISION } from "./assistant-settings";
 import { metricNames } from "./research-facts";
-import { api, jsonRequest, number } from "./data";
+import { jsonRequest, number } from "./data";
 import { useCopy } from "./foundation";
 import type { Preview, ScenarioInput } from "./research-facts";
 import { draftBlockMessage, inputKey, newReview, readDraft, type Decision, type DraftEvent, type DraftState, type Proposal } from "./valuation-draft";
 
-export function useDraftPreferences() {
-  const prefs = useQuery({
-    queryKey: assistantSettingsKey,
-    queryFn: ({ signal }) => api<components["schemas"]["AssistantSettingsResponse"]>("/settings/assistant", { signal }),
-    retry: false,
-  }).data;
-  const enabled = Boolean(prefs?.enabled && prefs.consentRevision >= DISCLOSURE_REVISION && prefs.acceptedConsentRevision === prefs.consentRevision);
-  return {enabled, revision: prefs?.revision};
-}
+type Context = {
+  initial: Preview;
+  requestedFamily?: Preview["basis"]["family"];
+  horizon: number;
+  inputs: Record<string, ScenarioInput>;
+  publication?: string | null;
+  currentBasis: string | null;
+};
+export type DraftView = {draft: DraftState | null; error: string | null; phase: DraftEvent["phase"] | null; stale: boolean};
+export type DraftActions = {
+  start: (before: Preview) => Promise<void>;
+  cancel: () => void;
+  reset: () => void;
+  decide: (proposal: Proposal, decision: Decision) => void;
+};
 
-export function useValuationDraft(initial: Preview, requestedFamily: Preview["basis"]["family"] | undefined,
-  horizon: number, inputs: Record<string, ScenarioInput>, publication: string | null | undefined,
-  prefs: ReturnType<typeof useDraftPreferences>, currentBasis: string | null) {
-  const {enabled} = prefs;
+export function DraftController({initial, requestedFamily, horizon, inputs, publication, currentBasis, actions, onChange}:
+  Context & {actions: Ref<DraftActions>; onChange: (view: DraftView) => void}) {
   const basis = JSON.stringify([initial.id, horizon, requestedFamily]);
-  const runKey = JSON.stringify([basis, publication, currentBasis, inputs, enabled, prefs.revision]);
+  const runKey = JSON.stringify([basis, publication, currentBasis, inputs]);
   const controller = useRef<AbortController | null>(null);
   const [run, setRun] = useState<{ key: string; phase: DraftEvent["phase"] } | null>(null);
   const [failure, setFailure] = useState<{key: string; code: string} | null>(null);
@@ -41,7 +43,7 @@ export function useValuationDraft(initial: Preview, requestedFamily: Preview["ba
     setRun(null);
   };
   async function start(before: Preview) {
-    if (draft || !enabled || controller.current && !controller.current.signal.aborted) return;
+    if (draft || controller.current && !controller.current.signal.aborted) return;
     const request = new AbortController();
     controller.current = request;
     setFailure(null);
@@ -86,9 +88,11 @@ export function useValuationDraft(initial: Preview, requestedFamily: Preview["ba
     setDraft(null);
     setFailure(null);
   }
-  return { enabled, draft, error, phase: run?.key === runKey ? run.phase : null,
-    stale: Boolean(draft && (draft.basis !== basis || draft.result.snapshotId !== publication)) || error === "valuation-draft-review-required",
-    start, cancel, reset, decide };
+  const phase = run?.key === runKey ? run.phase : null;
+  const stale = Boolean(draft && (draft.basis !== basis || draft.result.snapshotId !== publication)) || error === "valuation-draft-review-required";
+  useImperativeHandle(actions, () => ({start, cancel, reset, decide}));
+  useLayoutEffect(() => { onChange({draft, error, phase, stale}); }, [draft, error, phase, stale, onChange]);
+  return null;
 }
 
 const phases = {
