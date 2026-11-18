@@ -217,6 +217,10 @@
     border: 0;
     border-block-start: 1px solid var(--mx-border);
   }
+  /* A wrapped label must not enlarge its row to match the number's baseline. */
+  .mx-valuation-readout > .mx-metric:nth-child(2) {
+    align-items: center;
+  }
   /* Reserve the wrapped reverse label and its help control before the model arrives. */
   .mx-valuation-readout > .mx-metric:nth-child(2) .mx-metric-label {
     min-height: 2lh;

@@ -701,13 +701,13 @@ for (const locale of ["en", "zh"] as const) {
   for (const scheme of ["light", "dark"] as const) {
     test(`delayed zero-revenue reading reserves space · ${locale} · ${scheme}`, async ({ page, isMobile }, info) => {
       test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
-      if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+      await page.setViewportSize({ width: 390, height: 844 });
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
       await synthetic(page, false);
       let release!: () => void;
       const gate = new Promise<void>(resolve => { release = resolve; });
-      let value: number | null = 132_000_123.45;
+      let value: number | null = 1_149_132_000_123.45;
       await page.route("**/SYNT/valuation-preview*", async route => {
         await gate;
         await route.fulfill({ json: zeroRevenue("SYNT", 100, "2026-11-04T15:40:00Z", value) });
@@ -721,13 +721,13 @@ for (const locale of ["en", "zh"] as const) {
       const label = locale === "en" ? "Year-five revenue implied by price" : "现价隐含的第五年营收";
       const row = page.locator(".mx-valuation-readout");
       const reverse = row.locator(".mx-metric").filter({ hasText: label });
-      await expect(reverse.locator(".mx-number-value")).toHaveText(/132m/);
+      await expect(reverse.locator(".mx-number-value")).toHaveText(/1,149b/);
       await expect(reverse).toContainText("15.0%");
       await expect(reverse).toContainText("15×");
       await expect(row.locator(".mx-metric").last().locator(".mx-number-value")).toHaveText("—");
       expect(Math.abs((await history.boundingBox())!.y - top)).toBeLessThan(1);
       const detail = page.locator("#valuation-assumptions");
-      await expect(detail).toContainText("132,000,123.45");
+      await expect(detail).toContainText("1,149,132,000,123.45");
       await expect(detail).toContainText(locale === "en" ? "Last fiscal year · 2025-12-31" : "上一财年 · 2025-12-31");
       await expect(detail).not.toContainText("annual:");
       await expect(detail).not.toContainText(locale === "en" ? "Target margin" : "目标利润率");
@@ -735,6 +735,7 @@ for (const locale of ["en", "zh"] as const) {
       await expect(page.locator("#research-sensitivity, #research-worksheet")).toHaveCount(0);
       await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      if (!isMobile) await page.setViewportSize({ width: 1440, height: 900 });
       const dir = process.env.VALUATION_QA_SCREENSHOTS_DIR;
       if (dir) await page.screenshot({ scale: "css", path: join(dir, `zero-revenue-${info.project.name}-${locale}-${scheme}.png`) });
 
