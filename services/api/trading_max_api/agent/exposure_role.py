@@ -111,7 +111,14 @@ def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
         or weights.as_of > ctx.deps.manifest.created_at.date()
     ):
         return read.missing("dated_benchmark_weight_unavailable")
-    return read.result(data={"as_of": weights.as_of.isoformat(), "weight": value})
+    return read.result(
+        data={
+            "as_of": weights.as_of.isoformat(),
+            "weight": value,
+            "dimension": args.dimension,
+            "name": args.category,
+        }
+    )
 
 
 def exposure_version(read: RoleTools, context: ExposureContext):

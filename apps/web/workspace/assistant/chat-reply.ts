@@ -1,6 +1,6 @@
 import type { UIMessage } from "ai";
 import type { Locale } from "@/components/locale-provider";
-import { object, str } from "../data";
+import { object, objects, str } from "../data";
 import { completedEvidence, type Evidence } from "./evidence";
 import { inferenceText, renderToolField } from "./figures";
 
@@ -32,6 +32,14 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       } else if (evidence.tool === "compare_benchmarks") {
         const data = object(source.output.data);
         evidence = {...evidence, arguments:{...evidence.arguments, start:str(data.start), end:str(data.end)}};
+      }
+      if (["selected_money","daily_returns","holding_fx_split","exposure_benchmark","market_sector","global_map","update_issue"].includes(evidence.tool)) {
+        evidence = {...evidence,arguments:{...evidence.arguments,metric:pointer,snapshotId:str(source.output.snapshot_id)}};
+      }
+      if (evidence.tool === "news_and_events") {
+        const match = /^\/data\/items\/(\d+)\/title_en$/.exec(pointer);
+        const item = match && objects(object(source.output.data).items)[Number(match[1])];
+        if (item) evidence={...evidence,source:"publisher",publisher:str(item.publisher),arguments:{...evidence.arguments,url:str(item.source_url)}};
       }
       result.push({text, evidence});
     }

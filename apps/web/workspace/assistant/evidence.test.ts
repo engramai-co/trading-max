@@ -1,3 +1,4 @@
+import pageOutputs from "./page-figures.fixture.json";
 import { describe, expect, it } from "vitest";
 import { verifiedLines } from "./chat-reply";
 import { chatContext, displayTurns, evidenceHref, messageEvidence } from "./evidence";
@@ -117,4 +118,31 @@ it("reads quotation currency from the same research dataset and normalised valua
   const row = {metric:"spot",unit:"perShare",state:"available",currency:"GBP",native_quote_unit:"GBp",value:1.25};
   const [valuation] = verifiedLines(fieldReply("read_valuation_evidence",{data:{items:[row]}},"/data/items/0/value"));
   expect(valuation.text).toContain("£1.2500/share");
+});
+
+describe("page readings in the sidebar", () => {
+  it.each([
+    ["selected_money","/data/pnl",["ISA","80.00","Cash-flow-adjusted net P&L"]],
+    ["exposure_benchmark","/data/weight",["MSCI ACWI (SSAC)","61.00%","2026-02-02"]],
+    ["market_sector","/data/contribution",["Information Technology","MSCI World","0.30 pp","2026-02-03"]],
+    ["global_map","/data/markets/1/move",["US","-1.00%","2026-02-03"]],
+    ["update_issue","/data/finished_at",["Update ended","17:00"]],
+    ["daily_returns","/data/worst_day/return_fraction",["Lowest observed daily return","-7.27%","2026-02-02","2026-02-03"]],
+    ["daily_returns","/data/window_benchmarks/VOO",["VOO","GBP","adjusted_price_gbp","+8.00%"]],
+  ] as const)("renders the captured %s field %s", (tool, pointer, fragments) => {
+    const output = {...pageOutputs[tool], evidence_id:"ev_local"};
+    const [line] = verifiedLines(fieldReply(tool,output,pointer));
+    for(const fragment of fragments) expect(line.text).toContain(fragment);
+    expect(line.evidence?.arguments).toMatchObject({metric:pointer,snapshotId:"synthetic-figures"});
+    expect(verifiedLines(fieldReply(tool,output,pointer),"zh")[0].text).not.toBe(line.text);
+  });
+  it("withholds a closed market value, wrong unit and unpublished benchmark",()=>{
+    for (const [tool,pointer,output] of [
+      ["global_map","/data/markets/0/move",pageOutputs.global_map],
+      ["selected_money","/data/pnl",{...pageOutputs.selected_money,data:{...pageOutputs.selected_money.data,currency:"USD"}}],
+      ["daily_returns","/data/window_benchmarks/QQQ",pageOutputs.daily_returns],
+    ] as const) {
+      expect(verifiedLines(fieldReply(tool,{...output,evidence_id:"ev_local"},pointer))).toEqual([]);
+    }
+  });
 });

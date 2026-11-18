@@ -46,6 +46,7 @@ def market_sector(ctx: tools.Context, args: SectorContext):
                 return read.result(
                     data={
                         "day": str(board.reference_date),
+                        "name": sector.name,
                         "move": sector.move,
                         "weight": sector.weight,
                         "weights_as_of": str(board.weights_as_of) if board.weights_as_of else None,
@@ -75,6 +76,7 @@ def market_sector(ctx: tools.Context, args: SectorContext):
                 return read.result(
                     data={
                         "day": board.session_date,
+                        "name": group.name,
                         "move": group.change,
                         "breadth": group.breadth.model_dump(),
                         "exposure": exposure,

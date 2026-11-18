@@ -87,6 +87,9 @@ def selected_money(ctx: tools.Context, args: AttributionContext):
     return read.result(
         data={
             "pnl": money["pnl"],
+            "start": args.start,
+            "end": args.end,
+            "currency": "GBP",
             "estimated": any(r.get("valuationSource") == "reconstructed" for r in rows),
         },
         keys=keys,
@@ -100,8 +103,8 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
         insights.DailyArgs(
             scope=context.scope,
             benchmark=context.benchmark,
-            start=context.start[:10],
-            end=context.end[:10],
+            start=chart_instant(context.start).astimezone(LONDON).date().isoformat(),
+            end=chart_instant(context.end).astimezone(LONDON).date().isoformat(),
             limit=1,
         ),
     )

@@ -1,4 +1,5 @@
 import type { Locale } from "@/components/locale-provider";
+import { formatPageField, type ToolField } from "./page-figures";
 import { formatDateTime } from "@/ui/formatters";
 import { numeric } from "@/lib/numeric";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
@@ -48,12 +49,23 @@ export function inferenceText(key: string, locale: Locale) {
   return Object.hasOwn(caveats, key) ? word(caveats[key], locale) : null;
 }
 
-function resolveField(output: Json, pointer: string) {
+function resolveField(output: Json, pointer: string): ToolField | null {
+  const data = object(output.data);
+  const fx = /^\/data\/accounts\/(invest|isa)\/(fx_effect_gbp|local_price_effect_gbp)$/.exec(pointer);
+  if (fx) {
+    const [,scope,field] = fx;
+    const parent = object(object(data.accounts)[scope]);
+    return Object.hasOwn(parent,field) ? {data,parent:{...parent,scope},group:"accounts",field,value:parent[field]} : null;
+  }
+  const benchmark = /^\/data\/window_benchmarks\/(VOO|QQQ|VT)$/.exec(pointer);
+  if (benchmark) {
+    const parent = object(data.window_benchmarks), field = benchmark[1];
+    return Object.hasOwn(parent,field) ? {data,parent,group:"window_benchmarks",field,value:parent[field]} : null;
+  }
   // The supported paths cover a summary, a typed subobject and a published row.
   const match = /^\/data\/(?:([a-z_]+)\/(?:(0|[1-9]\d{0,4})\/)?)?([a-z_]+)$/.exec(pointer);
   if (!match) return null;
   const [, group, index, field] = match;
-  const data = object(output.data);
   const section = group && Object.hasOwn(data, group) ? data[group] : undefined;
   const parent = !group ? data : index === undefined ? object(section) : Array.isArray(section) ? object(section[Number(index)]) : {};
   if (!Object.hasOwn(parent, field)) return null;
@@ -124,20 +136,26 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   if (pointer === "/data/coverage" && coverage) return limited ? limitedText : word(["Complete coverage", "覆盖完整"], locale);
   const row = resolveField(output, pointer);
   if (!row || (row.group === "twr" && row.parent.status !== "ok")) return null;
-  const formatted = formatField(tool, row, locale);
+  const pageFormat = formatPageField(tool, row, locale, str(output.scope), timeZone);
+  const formatted = pageFormat ?? formatField(tool, row, locale);
   if (!formatted) return null;
   const {parent, field} = row;
-  const date = dateText(parent.observed_at) || dateText(parent.as_of) || dateText(parent.date)
+  const pageDate = pageFormat && (tool === "market_sector" && field === "weight" ? dateText(data.weights_as_of) :
+    dateText(parent.date) || dateText(data.day) || dateText(data.finished_at));
+  const date = pageDate || dateText(parent.observed_at) || dateText(parent.as_of) || dateText(parent.date)
     || dateText(field.includes("pnl") ? parent.pnl_as_of : parent.values_as_of) || dateText(data.broker_as_of);
-  const start = dateText(object(parent.period).start) || dateText(parent.start) || dateText(data.window_start) || dateText(data.start);
-  const end = dateText(object(parent.period).end) || dateText(parent.end) || dateText(data.window_end) || dateText(data.end);
+  const fxWindow = tool === "holding_fx_split" && ["invest","isa"].includes(str(parent.scope))
+    ? object(object(data.accounts)[str(parent.scope)]) : {};
+  const datedItem = tool==="daily_returns" && (row.group==="worst_day" || row.group==="items");
+  const start = (datedItem ? dateText(parent.from_date) : "") || dateText(fxWindow.since) || dateText(parent.since) || dateText(object(parent.period).start) || dateText(parent.start) || dateText(data.window_start) || dateText(data.start);
+  const end = (datedItem ? dateText(parent.date) : tool==="holding_fx_split" ? dateText(fxWindow.as_of) || dateText(parent.as_of) : "") || dateText(object(parent.period).end) || dateText(parent.end) || dateText(data.window_end) || dateText(data.end);
   const sourceDates = objects(output.sources).map(source => dateText(source.as_of)).filter(Boolean);
   const localDate = (value: string) => value.includes("T") ? formatDateTime(value, locale, timeZone) : value;
   const period = start && end ? localDate(start) + " – " + localDate(end) : localDate(end || date) || [...new Set(sourceDates)].map(localDate).join(" / ");
   const accounts: Record<string, Words> = {invest:["Invest", "投资账户"], isa:["ISA", "ISA"], cfd:["CFD", "CFD"],
     broker_total:["All investment accounts", "全部投资账户"], household:["Household", "家庭账户"]};
   const scope = str(parent.scope) || str(output.scope);
-  const subject = [str(parent.ticker) || str(parent.name) || str(data.ticker) || str(parent.dataset), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
+  const subject = [str(parent.ticker) || str(parent.name) || (tool==="global_map" ? str(parent.market).toUpperCase() : "") || str(data.name) || str(data.ticker) || str(parent.dataset), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
     .filter(Boolean).join(" · ");
   return [subject, formatted.join(" "), period === formatted[1] ? "" : period, limited || parent.status === "partial" ? limitedText : ""].filter(Boolean).join(" · ");
 }
