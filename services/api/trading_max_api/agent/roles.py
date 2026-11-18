@@ -57,6 +57,7 @@ class LinkedObservation(ApiModel):
 
 class ReadingLine(LinkedObservation):
     section: str = ""
+    related: list[LinkedObservation] = Field(default_factory=list)
     variants: dict[str, LinkedObservation] = Field(default_factory=dict)
 
 
@@ -125,10 +126,12 @@ class RoleTools:
         if self.role is None or self.role.tool_bindings is None:
             return
         for line in facts:
-            for observation in (line, *line.variants.values()):
+            for observation in (line, *line.related, *line.variants.values()):
                 ref = observation.evidence
                 bound = self._evidence[(ref.tool, ref.evidence_id)]
-                if observation is line and bound != self.deps.bound_evidence(ref.tool):
+                if (
+                    observation is line or observation in line.related
+                ) and bound != self.deps.bound_evidence(ref.tool):
                     raise ValueError("Primary observation belongs to another selection")
                 ref.arguments = {k: v for k, v in (ref.arguments | bound).items() if v is not None}
 

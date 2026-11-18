@@ -1,6 +1,7 @@
 import type { components } from "@/lib/api-schema";
+import { formatDateTimeInTimeZone } from "@/ui/formatters";
 import type { UIMessage } from "ai";
-import { object, str, type Json } from "../data";
+import { object, safeUrl, str, type Json } from "../data";
 
 export const sourceWords = {
   account: ["账户", "Account"], broker: ["券商", "Broker"], holdings: ["持仓", "Holdings"],
@@ -22,10 +23,20 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
-  data_freshness: ["/health", "health"],
+  data_freshness: ["/health", "health"], upcoming_events: ["/health", "calendar"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
-export function evidenceHref(ref: Evidence) {
+export function evidenceHref(ref: Evidence): string | null {
+  if (ref.tool === "upcoming_events") {
+    const args = ref.arguments ?? {};
+    if (ref.source === "calendar" && args.url) return safeUrl(args.url) ?? null;
+    if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
+      return evidenceHref({...ref, tool:"read_research_lens", arguments:{
+        ticker:args.holdingTicker, lens:args.researchEventId ? "analyst" : "overview", event:args.event,
+        date:args.date, end:args.endDate, eventId:args.researchEventId,
+      }});
+    }
+  }
   const entry = destinations[ref.tool];
   if (!entry) return null;
   const [path] = entry;
@@ -40,7 +51,10 @@ export function evidenceHref(ref: Evidence) {
       params.set("snapshotId", a.snapshotId);
     }
     if (a.benchmark) params.set("benchmark", a.benchmark);
-    if (ref.tool === "compare_benchmarks" && a.snapshotId) params.set("snapshotId", a.snapshotId);
+    if (ref.tool === "compare_benchmarks") {
+      if (!a.snapshotId) return null;
+      params.set("snapshotId", a.snapshotId);
+    }
     if (ref.tool === "compare_benchmarks" && a.start && a.end) {
       params.set("returnFrom", a.start);
       params.set("returnTo", a.end);
@@ -121,4 +135,14 @@ export function chatContext(page: string, search: string, timezone: string) {
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),
   };
+}
+
+/** Cached calendar times are instants. All-day dates and provider windows keep their original precision. */
+export function observationText(line: components["schemas"]["LinkedObservation"], locale: "zh" | "en", timeZone: string) {
+  const text = line[locale];
+  const args = line.evidence.arguments;
+  if (line.evidence.tool !== "upcoming_events" || !args?.instant || !args.date || !text.startsWith(args.date)) return text;
+  const instant = new Date(args.instant);
+  if (!Number.isFinite(instant.valueOf())) return text;
+  return formatDateTimeInTimeZone(instant, locale, timeZone) + text.slice(args.date.length);
 }

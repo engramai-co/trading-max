@@ -120,6 +120,7 @@ def _public(ticker, data, upcoming):
             "Earnings",
             "业绩公布",
             e.get("instant") or e.get("date"),
+            **({"research_event_id": e["id"]} if e.get("id") else {}),
             status=e.get("status"),
             estimated_eps=_number(e.get("estimatedEps")) if currency else None,
             actual_eps=_number(e.get("actualEps")) if currency else None,
@@ -135,9 +136,9 @@ def _public(ticker, data, upcoming):
             unit="per_share",
         )
     cal = data[EARNINGS].get(ticker, {}).get("calendar", {})
-    days = sorted(
-        {v[:10] for v in (cal.get("Earnings Date") or []) if isinstance(v, str) and _stamp(v)}
-    )
+    raw_days = cal.get("Earnings Date")
+    values = raw_days if isinstance(raw_days, list) else [raw_days]
+    days = sorted({v[:10] for v in values if isinstance(v, str) and _stamp(v)})
     if days and not any(days[0] <= d <= days[-1] for d in recorded if d):
         yield add(
             "earnings",
@@ -570,6 +571,9 @@ def event_data(deps, args, *, upcoming):
         if args.start > last or first > args.end:
             continue
         identity = ["news", row["reference"]] if row["kind"] == "news" else row
+        if "research_event_id" in row:
+            # A navigation target is not part of the published event identity.
+            identity = {key: value for key, value in row.items() if key != "research_event_id"}
         evidence = _short_id("ev_", [deps.snapshot_id, identity])
         rows[evidence] = {
             **row,

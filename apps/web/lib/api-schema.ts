@@ -6490,6 +6490,8 @@ export interface components {
             /** En */
             en: string;
             evidence: components["schemas"]["ReadingEvidence"];
+            /** Related */
+            related?: components["schemas"]["LinkedObservation"][];
             /**
              * Section
              * @default
@@ -8973,6 +8975,8 @@ export interface components {
             market?: string | null;
             /** Publisher */
             publisher: string;
+            /** Research Event Id */
+            research_event_id?: string | null;
             /** Source As Of */
             source_as_of?: string | null;
             /** Source Url */

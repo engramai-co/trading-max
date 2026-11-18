@@ -16,7 +16,15 @@ async function fixtures(page: Page, ready = true) {
       lines:[line("market","market","compare_benchmarks","组合与 VOO 同期回报接近。","The portfolio tracked VOO over the shared period."),
         line("portfolio","account","period_performance","本期净盈亏 £18.40。","Period net P&L was £18.40."),
         line("events","review","recent_decisions","本周有一笔 SYNT 买入记录。","One SYNT purchase was recorded this week."),
-        line("next","financials","read_research_lens","2 月 4 日 · SYNT 财报","4 February · SYNT earnings")],
+        {...line("next","calendar","upcoming_events","2026-02-03 · JP · 消费者价格","2026-02-03 · JP · Consumer prices"),
+          evidence:{source:"calendar",tool:"upcoming_events",evidenceId:"ev_cal",arguments:{
+            date:"2026-02-03",instant:"2026-02-04T08:30:00+09:00",url:"https://example.org/calendar"}},
+          related:[
+            {...line("next","financials","upcoming_events","2026-02-04 – 2026-02-06 · SYNT 预计财报","2026-02-04 – 2026-02-06 · SYNT estimated earnings"),
+              evidence:{source:"financials",tool:"upcoming_events",evidenceId:"ev_earnings",arguments:{date:"2026-02-04",endDate:"2026-02-06",event:"earningsWindow",holdingTicker:"SYNT"}}},
+            {...line("next","disclosure","upcoming_events","2026-02-09 · SYNT 除息","2026-02-09 · SYNT ex-dividend"),
+              evidence:{source:"disclosure",tool:"upcoming_events",evidenceId:"ev_ex",arguments:{date:"2026-02-09",event:"exDividend",holdingTicker:"SYNT"}}},
+          ]}],
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
       const {scope, range, snapshotId} = route.request().postDataJSON().context;
@@ -93,7 +101,10 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
   test("brief and sidebar " + language + " " + theme, async ({ page }, info) => {
     if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
     await page.emulateMedia({colorScheme:theme,reducedMotion:"reduce"});
-    await page.addInitScript(lang => localStorage.setItem("trading_max-locale",lang),language);
+    await page.addInitScript(lang => {
+      localStorage.setItem("trading_max-locale",lang);
+      localStorage.setItem("trading_max-time-zone","Asia/Tokyo");
+    },language);
     await fixtures(page);
     await page.goto("/");
     const digest = page.locator(".mx-digest");
@@ -101,6 +112,11 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
     await expect(digest.locator(".mx-digest-summary")).toContainText("£18.40");
     await digest.locator("[aria-expanded]").click();
     await expect(digest.locator(".mx-reading-line")).toHaveCount(4);
+    const comingUp = digest.locator(".mx-digest-grid > div").last();
+    await expect(comingUp).toContainText(language === "zh" ? /2026年2月4日.*08:30/ : /4 Feb 2026.*08:30/);
+    await expect(comingUp.getByRole("link")).toHaveText(language === "zh" ? ["日历", "财报", "披露"] : ["Calendar", "Financials", "Disclosure"]);
+    await expect(comingUp.getByRole("link").first()).toHaveAttribute("href","https://example.org/calendar");
+    await expect(comingUp).toContainText("2026-02-04 – 2026-02-06");
     const shots = process.env.ASSISTANT_SCREENSHOTS;
     await digest.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
     if (shots) await page.screenshot({path:join(shots, info.project.name+"-"+language+"-"+theme+"-brief.png")});
@@ -231,7 +247,7 @@ test("cited money and ex-dividend dates open their published evidence", async ({
   await expect(page.locator(".mx-money-summary[data-assistant-evidence]")).toBeVisible();
   await page.route("**/api/backend/research/SYNT/lens/overview?**", route => {
     const data = backendFixture(new URL(route.request().url())) as Record<string,unknown>;
-    return route.fulfill({json:{...data,fundamentals:{earningsCalendar:{"Ex-Dividend Date":"2026-11-28"}}}});
+    return route.fulfill({json:{...data,fundamentals:{metrics:{exDividendDate:Date.parse("2026-11-28")/1000}}}});
   });
   await page.goto("/research?ticker=SYNT&view=overview&event=exDividend&date=2026-11-28&evidence=read_research_lens");
   await expect(page.locator("[data-reading-event]")).toContainText("2026-11-28");

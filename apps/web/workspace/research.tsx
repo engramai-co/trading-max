@@ -66,11 +66,13 @@ import { useRouteState } from "./route-state";
 
 function CitedCalendarEvent({data, kind, date, end}: {data: ResearchLensSnapshot; kind: string; date: string | null; end: string | null}) {
   const t = useCopy();
-  const calendar = object(object(data.fundamentals).earningsCalendar);
+  const fundamentals = object(data.fundamentals);
+  const calendar = object(fundamentals.earningsCalendar);
   const exDividend = kind === "exDividend";
-  const raw = exDividend ? calendar["Ex-Dividend Date"] : calendar["Earnings Date"];
+  const raw = exDividend ? calendar["Ex-Dividend Date"] ?? object(fundamentals.metrics).exDividendDate : calendar["Earnings Date"];
   const days = [...new Set((Array.isArray(raw) ? raw : [raw]).flatMap(day =>
-    typeof day === "string" && /^\d{4}-\d{2}-\d{2}/.test(day) ? [day.slice(0, 10)] : []))].sort();
+    typeof day === "string" && /^\d{4}-\d{2}-\d{2}/.test(day) ? [day.slice(0, 10)] :
+      typeof day === "number" && Number.isFinite(new Date(day * 1000).valueOf()) ? [new Date(day * 1000).toISOString().slice(0, 10)] : []))].sort();
   const dates = days.length ? [...new Set([days[0], days[days.length-1]])].join(" – ") : t("暂无可核实日期", "No verified date");
   return <section data-reading-event=""><Panel title={exDividend ? t("除息日期", "Ex-dividend date") : t("预计财报日期", "Estimated earnings date")}>
     <p>{data.ticker} · {dates}</p>

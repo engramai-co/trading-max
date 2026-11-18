@@ -15886,6 +15886,13 @@
           "evidence": {
             "$ref": "#/components/schemas/ReadingEvidence"
           },
+          "related": {
+            "items": {
+              "$ref": "#/components/schemas/LinkedObservation"
+            },
+            "title": "Related",
+            "type": "array"
+          },
           "section": {
             "default": "",
             "title": "Section",
@@ -22838,6 +22845,17 @@
           "publisher": {
             "title": "Publisher",
             "type": "string"
+          },
+          "research_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Event Id"
           },
           "source_as_of": {
             "anyOf": [

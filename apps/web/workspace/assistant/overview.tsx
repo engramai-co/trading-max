@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
 import { usePerformanceBenchmark } from "./benchmark";
-import { DigestRow, EvidenceLink, FollowUps } from "./cards";
+import { DigestRow, ObservationLine, FollowUps } from "./cards";
 import { usePageRole, type RoleCard } from "./context";
 import { fetchReading, useRoleReading } from "./reading";
 
@@ -45,9 +45,9 @@ export function OverviewBrief({ snapshot }: { snapshot: string }) {
     headline={<span>{asOf ? (t("截至 ", "As of ") + asOf) : card.object}</span>}>
     {reading ? <><div className="mx-digest-grid">
       {Object.entries(sections).map(([section, label]) => <div key={section}><h4>{t(label[0], label[1])}</h4>
-        {reading.lines.filter(line => line.section === section).map((line,i) => <p key={i} className="mx-reading-line">{t(line.zh,line.en)} <EvidenceLink evidence={line.evidence}/></p>)}
+        {reading.lines.filter(line => line.section === section).map((line,i) => <ObservationLine key={i} line={line} />)}
       </div>)}</div><FollowUps card={card} /></> : <div className="mx-brief-empty" role="status">
-      <p>{generate.isPending ? t("正在读取账户、基准与持仓日历…", "Reading accounts, benchmarks and holding calendars…") :
+      <p>{generate.isPending ? t("正在读取账户、基准与日历…", "Reading accounts, benchmarks and calendars…") :
         generate.isError || query.isError ? t("简报暂时不可用。", "The brief is unavailable.") :
         generate.isSuccess ? t("可核实的记录不足。", "There are too few verified observations.") : t("尚无已写好的简报。", "No brief has been written yet.")}</p>
       <button onClick={() => generate.isPending ? controller.current?.abort() : generate.mutate()}>{generate.isPending ? t("停止", "Stop") : t("撰写简报", "Write brief")}</button>
