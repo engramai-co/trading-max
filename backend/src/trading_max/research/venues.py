@@ -64,7 +64,9 @@ _YAHOO = _codes(
         "ARCX": "PCX NYSEARCA",
         "XASE": "ASE NYSEAMERICAN",
         "BATS": "BTS CBOEUS",
-        "OTCM": "PNK OQB OQX OTCMARKETSOTCPK OTCMARKETSOTCQB OTCMARKETSOTCQX",
+        "OTCM": "PNK OTCMARKETSOTCPK",
+        "OTCQ": "OQX OTCMARKETSOTCQX",
+        "OTCB": "OQB OTCMARKETSOTCQB",
         "XLON": "LSE",
         "XFRA": "FRA FRANKFURT",
         "XETR": "GER XETRA",
@@ -147,6 +149,18 @@ _FIGI = _codes(
     }
 )
 
+_FIGI.update(
+    {
+        "TT(TAIWANSTOCKEXCHANGE)": "XTAI",
+        "TT(TAIPEIEXCHANGE)": "ROCO",
+        "TT(TAIPEISTOCKEXCHANGE)": "ROCO",
+    }
+)
+
+# The International Order Book includes regulated-market and MTF securities.
+# https://www.londonstockexchange.com/en/our-regions/china/london-stock-connect
+_IOB = frozenset({"XLON", "XLOM"})
+
 # ISO 10383 venue identities. Nasdaq's operating MIC includes three listing tiers.
 # https://www.iso20022.org/market-identifier-codes
 _NASDAQ = frozenset({"XNMS", "XNGS", "XNCM"})
@@ -159,6 +173,9 @@ _MICS = {
         "BVMF",
         "NEOE",
         "OTCM",
+        "OTCB",
+        "OTCQ",
+        "XLOM",
         "ROCO",
         "XAMS",
         "XASE",
@@ -203,13 +220,14 @@ _MICS = {
     ]
 }
 _MICS["XNAS"] = _NASDAQ
+_MICS["OTCM"] = frozenset({"OTCB", "OTCQ", "OTCD", "PINL", "OTCM"})
 
 # Only membership in the supported markets is inferred from a composite.
 # A composite alone never identifies a trading schedule.
 _MARKETS = {
     code: frozenset(mics.split())
     for code, mics in {
-        "US": "XNYS XNGS XNMS XNCM XASE ARCX BATS BATY OTCM",
+        "US": "XNYS XNGS XNMS XNCM XASE ARCX BATS BATY OTCM OTCB OTCQ OTCD PINL",
         "GR": "XFRA XETR",
         "JP": "XTKS XOSE",
         "KS": "XKRX XKOS",
@@ -325,7 +343,7 @@ _CALENDARS["XMCE"] = "XMAD"
 
 class VenueClaim(NamedTuple):
     source: Literal[
-        "symbol", "mic", "yahoo", "fundamentals", "openfigi", "region", "market", "name"
+        "symbol", "identity", "mic", "yahoo", "fundamentals", "openfigi", "region", "market", "name"
     ]
     value: str | None
     listing: str | None = None
@@ -394,36 +412,36 @@ def yahoo_venue_metadata(metadata):
 def row_claims(listing, row, metrics=None):
     metrics = metrics or row.get("metrics") or row.get("info") or {}
     provider = row.get("provider_venue") or row.get("providerVenue") or {}
-    claims = [
-        VenueClaim("symbol", listing, listing),
-        VenueClaim("symbol", row.get("ticker"), listing),
-        VenueClaim("symbol", row.get("yf_ticker") or row.get("yfTicker"), listing),
-        VenueClaim("symbol", metrics.get("symbol"), listing),
-        VenueClaim("mic", metrics.get("mic"), listing),
-        VenueClaim("fundamentals", metrics.get("exchange"), listing),
-        VenueClaim("fundamentals", metrics.get("exchangeName"), listing),
-        VenueClaim("fundamentals", metrics.get("fullExchangeName"), listing),
-    ]
-    # New price rows keep both raw provider values. The display exchange on
-    # older publications can be a MIC, a reference name or a provider code.
-    if row.get("exchange") and row["exchange"] not in (
-        provider.get("exchangeName"),
-        provider.get("fullExchangeName"),
+    label = row.get("ticker") or listing
+    yahoo_symbol = row.get("yf_ticker") or row.get("yfTicker")
+    observed = provider.get("symbol") or row.get("symbol") or yahoo_symbol or label
+    claims = [VenueClaim("symbol", listing, listing), VenueClaim("identity", label, listing)]
+    for symbol in (yahoo_symbol, row.get("symbol"), provider.get("symbol"), metrics.get("symbol")):
+        if symbol:
+            claims.append(VenueClaim("identity", symbol, label))
+    if row.get("exchange") not in (provider.get("exchangeName"), provider.get("fullExchangeName")):
+        claims.append(provider_claim(row.get("exchange"), observed))
+    for block, owner, namespace in (
+        (row, row.get("symbol") or yahoo_symbol or label, "yahoo"),
+        (provider, observed, "yahoo"),
+        (metrics, metrics.get("symbol") or label, "fundamentals"),
     ):
-        claims.append(provider_claim(row["exchange"], listing))
-    for observed in (row, provider):
-        claims.extend(
-            (
-                VenueClaim("symbol", observed.get("symbol"), listing),
-                VenueClaim("mic", observed.get("mic"), listing),
-                VenueClaim("yahoo", observed.get("exchangeName"), listing),
-                VenueClaim("yahoo", observed.get("fullExchangeName"), listing),
+        claims.append(VenueClaim("mic", block.get("mic"), owner))
+        fields = (
+            ("exchange", "exchangeName", "fullExchangeName")
+            if block is metrics
+            else (
+                "exchangeName",
+                "fullExchangeName",
             )
         )
+        claims.extend(VenueClaim(namespace, block.get(key), owner) for key in fields)
     return tuple(claim for claim in claims if claim.value)
 
 
-def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution:
+def resolve_venue(
+    requested: str | None, *claims: VenueClaim, aliases: tuple[str, ...] = ()
+) -> VenueResolution:
     """Intersect explicit claims. Use a market default only within its own unqualified listing."""
     explicit = defaultdict(list)
     defaults = defaultdict(list)
@@ -437,6 +455,16 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
         if not code:
             continue
         owner = _code(listing or requested)
+        if source == "identity":
+            if code != owner and not {code, owner} <= {_code(requested), *map(_code, aliases)}:
+                return VenueResolution(frozenset(), conflict=True)
+            continue
+        if (source == "symbol" and code.endswith(".IL")) or (
+            source in {"yahoo", "fundamentals"} and code == "IOB"
+        ):
+            explicit[owner].append(_IOB)
+            specific = True
+            continue
         if source == "region":
             consolidated_us |= code == "US"
             if code in _MARKETS:
@@ -447,6 +475,8 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
         if source == "market":
             if code in _MARKETS:
                 defaults[owner].append(_MARKETS[code])
+            else:
+                unknown = True
             continue
         if source == "symbol":
             mic = YAHOO_MIC_BY_SUFFIX.get("." + code.rpartition(".")[2]) if "." in code else None
