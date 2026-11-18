@@ -7473,6 +7473,8 @@ export interface components {
             draftReview?: components["schemas"]["DraftReview"] | null;
             /** Family */
             family?: ("cash-flow" | "net-income" | "residual-income") | null;
+            /** Familyselection */
+            familySelection?: ("automatic" | "override") | null;
             /**
              * Formulaversion
              * @default statement-equity-v2

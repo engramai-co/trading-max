@@ -282,6 +282,36 @@ def test_gates_limits_timeout_and_stale_editor(desk, monkeypatch):
     assert not state.valuation_drafts.root.exists()
 
 
+def test_manual_family_choice_is_preserved_even_when_it_matches_the_engine(desk):
+    client, _, _, _ = desk
+    auto, body = inputs(client)
+    assert auto["familySelection"] == "automatic"
+    model = {
+        "family": "cash-flow",
+        "scenarios": body["scenarios"],
+        "formulaVersion": auto["formulaVersion"],
+    }
+    assert client.post(PATH + "/models", json=model).is_success
+    view, _ = inputs(client, "cash-flow")
+    assert view["familySelection"] == "override"
+    saved = client.post(PATH + "/models", json={**model, "familySelection": "override"}).json()
+    assert len(saved["models"]) == 2
+    assert saved["models"][0]["preview"]["familySelection"] == "override"
+    reopened, inherited = inputs(client)
+    assert reopened["familySelection"] == "override"
+    result = post(client, inherited)[-1]["result"]
+    assert result["familySelection"] == "override"
+    decisions = {k: {} for k in body["scenarios"]}
+    for proposal in result["proposals"]:
+        decisions[proposal["scenario"]][proposal["field"]] = "rejected"
+    reviewed = client.post(
+        PATH + "/models",
+        json={**model, "draftReview": {"id": result["id"], "decisions": decisions}},
+    ).json()
+    assert reviewed["models"][0]["preview"]["familySelection"] == "override"
+    assert reviewed["models"][0]["draftAudit"]["draft"]["result"]["familySelection"] == "override"
+
+
 @pytest.mark.parametrize("override", [False, True])
 @pytest.mark.parametrize("family", ["residual-income", "net-income"])
 def test_draft_fields_follow_the_selected_engine(desk, family, override):

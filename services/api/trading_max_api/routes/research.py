@@ -163,7 +163,7 @@ def research_model_save(
             except ValueError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
     inputs = ValuationPreviewRequest.model_validate(
-        body.model_dump(exclude={"reason", "draft_review"})
+        body.model_dump(exclude={"reason", "draft_review", "family_selection"})
     )
     # The published client sends only its five operating controls. Family-aware
     # clients can also call this shared save route and identify their contract.
@@ -171,7 +171,10 @@ def research_model_save(
         params.model_fields_set <= OperatingScenarioInputs.model_fields.keys()
         for params in body.scenarios.values()
     )
-    result = family_valuation_preview(ticker, request, inputs, legacy=legacy)
+    requested = inputs.family if body.family_selection == "override" else None
+    result = family_valuation_preview(
+        ticker, request, inputs, requested_family=requested, legacy=legacy
+    )
     if not result.scenarios:
         raise HTTPException(status_code=422, detail="no-valuation-range-to-save")
     return app_service(request, "research_journal").save_model(result, body.reason)

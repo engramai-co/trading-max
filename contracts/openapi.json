@@ -18705,6 +18705,21 @@
             ],
             "title": "Family"
           },
+          "familySelection": {
+            "anyOf": [
+              {
+                "enum": [
+                  "automatic",
+                  "override"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Familyselection"
+          },
           "formulaVersion": {
             "default": "statement-equity-v2",
             "enum": [

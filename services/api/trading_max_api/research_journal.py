@@ -7,6 +7,7 @@ import uuid
 from collections.abc import Callable
 from datetime import UTC, date, datetime
 from pathlib import Path
+from typing import Literal
 
 from pydantic import AnyHttpUrl, Field, field_validator
 from trading_max.domain import DomainModel
@@ -67,6 +68,7 @@ class SavedResearchModel(DomainModel):
 
 
 class ResearchModelSaveRequest(ValuationPreviewRequest):
+    family_selection: Literal["automatic", "override"] | None = None
     draft_review: DraftReview | None = None
     reason: str = Field(default="", max_length=4000)
 
@@ -203,11 +205,12 @@ class ResearchJournalStore:
             verify_decisions(draft, review, body.scenarios)
             result = calculate(
                 ValuationPreviewRequest.model_validate(
-                    body.model_dump(exclude={"reason", "draft_review"})
+                    body.model_dump(exclude={"reason", "draft_review", "family_selection"})
                 )
             )
             if not result.scenarios or result.basis != draft.review_basis:
                 raise ValueError("valuation-draft-review-required")
+            result.family_selection = draft.result.family_selection
             saved = self.save_model(
                 result, body.reason, DraftAudit(draft=draft, review=review, request_digest=digest)
             )
@@ -221,6 +224,8 @@ class ResearchJournalStore:
             state = self.load(model.basis.ticker)
             reason = reason.strip()
             model_id = fingerprint([model.id, reason]) if reason else model.id
+            if model.family_selection == "override":
+                model_id = fingerprint([model_id, "family-override"])
             if audit:
                 model_id = fingerprint([model_id, str(audit.review.id)])
             if not any(m.id == model_id for m in state.models):

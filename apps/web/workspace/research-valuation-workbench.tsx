@@ -395,7 +395,7 @@ function ModelEditor({
     mutationFn: (payload: typeof liveRequest & { reason: string; draftReview?: DraftReview }) =>
       api(
         `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
-        jsonRequest("POST", payload),
+        jsonRequest("POST", {...payload, familySelection:initial.familySelection ?? (requestedFamily ? "override" : "automatic")}),
       ),
     onSuccess: async (_result, payload) => {
       setSavedFingerprint(
