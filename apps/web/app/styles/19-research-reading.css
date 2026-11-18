@@ -247,7 +247,8 @@
 .mx-draft-status:empty {
   margin: 0;
 }
-/* A floating index grows from its button over the reading, faint until the reader points at it. */
+/* A floating index grows from its button over the reading on a solid card; its text stays faint
+   until the reader points at it. */
 @container research-reading (min-width: 921px) {
   .mx-reading-layout[data-index="float"] .mx-section-panel {
     position: absolute;
@@ -257,9 +258,7 @@
     padding: 4px 4px 8px;
     border: 1px solid var(--mx-border);
     border-radius: 12px;
-    background: color-mix(in srgb, var(--mx-surface) 76%, transparent);
-    -webkit-backdrop-filter: blur(14px) saturate(1.2);
-    backdrop-filter: blur(14px) saturate(1.2);
+    background: var(--mx-surface);
     box-shadow: 0 8px 28px rgb(17 24 39 / 10%);
   }
   .mx-reading-layout[data-index="float"] .mx-section-index {
