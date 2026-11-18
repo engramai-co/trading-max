@@ -14,6 +14,7 @@ from trading_max.research.valuation_basis import Family
 from trading_max.research.valuation_evidence import (
     Assumption,
     EvidenceId,
+    EvidenceItem,
     FrozenValuationEvidence,
     Scenario,
 )
@@ -32,6 +33,7 @@ Source = Literal[
     "consensus-growth",
     "statement-growth",
     "statement-margin",
+    "statement-shares",
     "common-roe",
     "cost-of-equity",
     "book-multiple",
@@ -60,7 +62,7 @@ class DraftResult(DomainModel):
     id: UUID
     proposals: list[Proposal]
     # Only cited rows appear in the review interface.
-    evidence: dict[EvidenceId, dict[str, str | float | None]]
+    evidence: dict[EvidenceId, EvidenceItem]
 
 
 class DraftEvent(DomainModel):

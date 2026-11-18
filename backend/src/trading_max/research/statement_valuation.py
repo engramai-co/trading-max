@@ -109,6 +109,13 @@ def freeze_basis(
     )
 
 
+def annualised_change(first: float, last: float, first_day: date, last_day: date) -> float | None:
+    years = (last_day - first_day).days / 365.25
+    if years < 0.9 or min(first, last) <= 0:
+        return None
+    return (last / first) ** (1 / years) - 1
+
+
 def annual_growth(facts: FinancialFacts) -> tuple[float | None, list[AssumptionReference]]:
     revenues = {
         o.period_id: o
@@ -122,13 +129,15 @@ def annual_growth(facts: FinancialFacts) -> tuple[float | None, list[AssumptionR
     if len(annual) < 2:
         return None, []
     first, last = annual[0], annual[-1]
-    years = (
-        date.fromisoformat(last.provider_end) - date.fromisoformat(first.provider_end)
-    ).days / 365.25
-    if years < 0.9:
-        return None, []
     a, b = revenues[first.id], revenues[last.id]
-    growth = (b.value / a.value) ** (1 / years) - 1
+    growth = annualised_change(
+        a.value,
+        b.value,
+        date.fromisoformat(first.provider_end),
+        date.fromisoformat(last.provider_end),
+    )
+    if growth is None:
+        return None, []
     return growth, [
         AssumptionReference(
             scenario=key,
@@ -150,9 +159,25 @@ def scenario_defaults(
     cost: float,
     overrides: Mapping[str, Mapping[str, Any]] | None = None,
 ):
+    growth, references = (None, []) if basis.family == "residual-income" else annual_growth(facts)
+    defaults = scenario_template_inputs(basis, profile, cost, growth, overrides)
+    if overrides or basis.family == "residual-income":
+        return defaults, []
+    for ref in references:
+        ref.value = defaults[ref.scenario].revenue_cagr
+        ref.adjustment = ref.value - growth
+    return defaults, references
+
+
+def scenario_template_inputs(
+    basis: FrozenValuationBasis,
+    profile: "_SectorProfile",
+    cost: float,
+    growth: float | None,
+    overrides: Mapping[str, Mapping[str, Any]] | None = None,
+) -> dict[str, ScenarioInputs]:
     from .fundamentals import _scenario_params
 
-    growth, references = (None, []) if basis.family == "residual-income" else annual_growth(facts)
     growth_base = max(-0.1, min(profile.growth_cap, growth)) if growth is not None else None
     margin = min(basis.start_margin, profile.margin_cap)
     if margin < 0.03:
@@ -199,12 +224,7 @@ def scenario_defaults(
                     updated[field] = specified
             params = ScenarioInputs.model_validate(updated)
         defaults[key] = params
-    if overrides or basis.family == "residual-income":
-        return defaults, []
-    for ref in references:
-        ref.value = defaults[ref.scenario].revenue_cagr
-        ref.adjustment = ref.value - growth
-    return defaults, references
+    return defaults
 
 
 def statement_row(

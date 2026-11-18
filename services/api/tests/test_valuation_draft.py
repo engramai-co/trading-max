@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
+from pydantic_ai.models.test import TestModel as OfflineModel
 
 from services.api.tests.test_valuation_evidence import MATURE, _publish
 from services.api.trading_max_api.agent.service import BoundModel
@@ -24,7 +25,7 @@ PATH = "/v1/research/SYNM"
 HEADERS = {"Authorization": "Bearer synthetic"}
 
 
-def selecting(transcript):
+def selecting(transcript, choices=None):
     def step(messages, info):
         transcript[:] = [
             p.content for m in messages for p in m.parts if isinstance(p, ToolReturnPart)
@@ -45,7 +46,9 @@ def selecting(transcript):
                     "evaluate_valuation",
                     {
                         "selection": {
-                            "candidate_ids": [
+                            "candidate_ids": choices
+                            if choices is not None
+                            else [
                                 "base.revenue_cagr.consensus-growth",
                                 "bull.target_fcf_margin.statement-margin",
                             ]
@@ -235,4 +238,117 @@ def test_gates_limits_timeout_and_stale_editor(desk, monkeypatch):
     monkeypatch.setattr(valuation_draft, "TIMEOUT", 0.025)
     assert post(client, body)[-1]["code"] == "assistant_timeout"
     assert not state.valuation_drafts.running.locked()
+    assert not state.valuation_drafts.root.exists()
+
+
+@pytest.mark.parametrize("family", ["residual-income", "net-income"])
+def test_draft_fields_follow_the_selected_engine(desk, family):
+    client, state, _, transcript = desk
+
+    def add_family(batches):
+        row = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = row["quarterlyIncomeStatement"][0].keys() - {"index"}
+        row["quarterlyIncomeStatement"].append(
+            {"index": "Net Income Common Stockholders", **dict.fromkeys(dates, 100)}
+        )
+        row["quarterlyBalanceSheet"] = [
+            {"index": "Common Stock Equity", **dict.fromkeys(dates, 2000)}
+        ]
+        batches["research/valuation.json"]["rows"][0]["assumptions"]["family"] = family
+
+    _publish(state.store, MATURE, inject=add_family)
+    _, body = inputs(client)
+    pick = (
+        "base.initial_roe.common-roe"
+        if family == "residual-income"
+        else "base.target_fcf_margin.statement-margin"
+    )
+
+    async def bind():
+        return BoundModel(selecting(transcript, [pick]), {})
+
+    state.assistant.bind_model = bind
+    result = post(client, body)[-1]["result"]
+    fields = {p["field"] for p in result["proposals"]}
+    expect = (
+        {"initial_roe", "discount_rate", "payout", "terminal_pb"}
+        if family == "residual-income"
+        else {
+            "revenue_cagr",
+            "target_fcf_margin",
+            "discount_rate",
+            "exit_fcf_multiple",
+            "share_cagr",
+            "ramp_years",
+        }
+    )
+    assert fields == expect
+    selected = next(
+        p for p in result["proposals"] if p["scenario"] == "base" and p["category"] == "derived"
+    )
+    assert selected["value"] == pytest.approx(400 / 2000 if family == "residual-income" else 400 / 4000)
+
+
+def test_only_deferred_evaluated_candidates_can_leave_the_run(desk, monkeypatch):
+    client, state, _, _ = desk
+    _, body = inputs(client)
+
+    def use_model(model):
+        async def bind():
+            return BoundModel(model, {})
+
+        state.assistant.bind_model = bind
+
+    def repeating(messages, info):
+        return ModelResponse(parts=[ToolCallPart("get_valuation_basis", {})])
+
+    for model in [
+        OfflineModel(call_tools=["get_valuation_basis"]),
+        selecting([], ["base.discount_rate.invented"]),
+        FunctionModel(repeating),
+    ]:
+        use_model(model)
+        assert post(client, body)[-1]["phase"] == "error"
+        assert not state.valuation_drafts.root.exists()
+    from services.api.trading_max_api.agent import valuation
+
+    monkeypatch.setattr(valuation, "MAX_EVIDENCE_BYTES", 48)
+    use_model(selecting([]))
+    assert post(client, body)[-1]["code"] == "assistant_limit_reached"
+    assert not state.valuation_drafts.root.exists()
+
+
+def test_closing_stream_cancels_model_and_releases_workspace(desk):
+    client, state, _, _ = desk
+    _, body = inputs(client)
+
+    async def exercise():
+        started, cancelled = asyncio.Event(), asyncio.Event()
+
+        async def block(messages, info):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.set()
+
+        async def bind():
+            return BoundModel(FunctionModel(block), {})
+
+        state.assistant.bind_model = bind
+
+        async def connected():
+            return False
+
+        request = SimpleNamespace(app=SimpleNamespace(state=state), is_disconnected=connected)
+        response = await valuation_draft.valuation_draft(
+            "SYNM", valuation_draft.DraftInput.model_validate(body), request
+        )
+        assert '"preparing"' in await anext(response.body_iterator)
+        await asyncio.wait_for(started.wait(), 3)
+        await response.body_iterator.aclose()
+        assert cancelled.is_set()
+        assert not state.valuation_drafts.running.locked()
+
+    asyncio.run(exercise())
     assert not state.valuation_drafts.root.exists()

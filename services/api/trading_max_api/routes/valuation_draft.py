@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic_ai.exceptions import RunTimedOut
 from starlette.responses import StreamingResponse
 from trading_max.research.fundamentals import _sector_profile
-from trading_max.research.statement_valuation import scenario_defaults
+from trading_max.research.statement_valuation import scenario_template_inputs
 from trading_max.research.valuation_evidence import (
     EvidenceBinding,
     EvidenceLimitError,
@@ -21,7 +21,7 @@ from trading_max.research.valuation_evidence import (
 
 from ..agent.runtime import error_code
 from ..agent.service import AssistantUnavailable
-from ..agent.valuation import DraftAgent
+from ..agent.valuation import DraftAgent, annual_change
 from ..assistant_settings import ASSISTANT_CONSENT_REVISION
 from ..valuation_drafts import (
     DraftEvent,
@@ -81,11 +81,14 @@ def _prepare(request, ticker, body, share_saved, progress):
         ),
         profile.discount,
     )
-    templates, _ = scenario_defaults(public, lens.financial_facts, profile, cost)
+    growth, _ = annual_change(frozen, Metric.REVENUE)
+    templates = scenario_template_inputs(public, profile, cost, growth)
     prior = next((m for m in models if m.preview.basis.family == frozen.family), None)
     saved = (
         {k: v.inputs for k, v in prior.preview.scenarios.items()} if share_saved and prior else None
     )
+    if share_saved and saved is None and view.default_source == "configured-scenarios":
+        saved = {k: v.inputs for k, v in view.scenarios.items()}
     runner = DraftAgent(frozen, templates, saved, body.horizon, progress)
     parent = models[0].id if models else None
     return runner, view, parent
@@ -127,7 +130,6 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
         async def generate():
             async with asyncio.timeout(TIMEOUT):
-                bound = await app_service(request, "assistant").bind_model()
                 check_preferences()
                 runner, view, parent = await asyncio.to_thread(
                     _prepare,
@@ -144,6 +146,8 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                     events.put_nowait(phase)
 
                 runner.progress = progress
+                check_preferences()
+                bound = await app_service(request, "assistant").bind_model()
                 check_preferences()
                 async with bound.model:
                     result = await runner.run(bound.model, bound.settings)
