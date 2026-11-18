@@ -22,7 +22,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
   const { open, close, ready, pending, code } = useAssistant();
   const t = useCopy();
   const [visited, setVisited] = useState(false);
-  if (open && ready && !visited) setVisited(true);
+  if (open && ready && !pending && !visited) setVisited(true);
   const overlay = useMediaQuery("(max-width: 1199px)");
   useEffect(() => {
     if (!open || searchOpen) return;
@@ -35,7 +35,8 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
   if (!visited && !open) return null;
   return <FocusTrap active={Boolean(open && overlay && !searchOpen)}><div id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
-    {ready && visited ? <Sidebar {...{ page, search, scopeLabel }} /> : <>
+    {ready && visited && <div className="mx-assistant-thread" hidden={pending}><Sidebar {...{ page, search, scopeLabel }} /></div>}
+    {(!ready || pending) && <>
       <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button onClick={close} aria-label={t("关闭侧栏","Close sidebar")}><X /></button></div>
       <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
         {!pending && <Link href="/settings?tab=assistant" prefetch={false} onClick={close} className="mx-text-link">{t("打开设置","Open Settings")} →</Link>}

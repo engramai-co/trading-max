@@ -459,3 +459,85 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
   await expect(reply.getByRole("link",{name:"Financials"})).toHaveAttribute("href",/snapshotId=saved.*calendarEventId=ev_report/);
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-calendar-followup.png")});
 });
+
+test("opening a stale session rechecks consent before exposing saved History", async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await fixtures(page);
+  let ready = true, checks = 0, historyReads = 0;
+  await page.route("**/api/backend/assistant/status", route => {
+    checks++;
+    return route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
+  });
+  await page.route("**/api/backend/assistant/conversations", route => {
+    historyReads++;
+    return route.fulfill({json:[]});
+  });
+  await page.goto("/");
+  await expect(page.locator(".mx-digest")).toBeVisible();
+  ready = false;
+  await page.clock.setFixedTime(new Date("2026-03-01T12:06:00Z"));
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant", {timeout:3000});
+  await expect(page.getByRole("button",{name:"Conversation history"})).toHaveCount(0);
+  await expect(page.locator(".mx-assistant-composer")).toHaveCount(0);
+  expect(checks).toBeGreaterThan(1);
+  expect(historyReads).toBe(0);
+});
+
+test("withdrawal in Settings closes another window's saved History", async ({page,context}, info) => {
+  await context.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await fixtures(page);
+  let enabled = true;
+  const settings = {enabled:true,revision:1,route:"openai/model-a",acceptedConsentRevision:2,consentRevision:2,acceptedDestination:"https://example.org/v1",
+    acceptedAt:"2026-01-01",backgroundBriefsEnabled:false,shareValuationAssumptions:false,providers:[],integrations:[]};
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}}));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:enabled,code:enabled ? null : "assistant_disabled"}}));
+  await page.goto("/");
+  await expect(page.locator(".mx-digest")).toBeVisible();
+  await page.locator("[data-assistant-trigger]").click();
+  await page.getByRole("button",{name:"Conversation history"}).click();
+  await expect(page.getByText("No saved conversations yet.")).toBeVisible();
+  const other = await context.newPage();
+  await fixtures(other);
+  await other.route("**/api/backend/settings/assistant", route => {
+    if (route.request().method() === "PUT") {
+      enabled = false;
+      return route.fulfill({json:{...settings,enabled:false,revision:2,acceptedConsentRevision:null,acceptedAt:null}});
+    }
+    return route.fulfill({json:settings});
+  });
+  await other.goto("/settings?tab=assistant");
+  await other.getByRole("button",{name:"Withdraw consent"}).click();
+  await expect.poll(() => enabled).toBe(false);
+  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant",{timeout:3000});
+  await expect(page.getByText("No saved conversations yet.")).toHaveCount(0);
+  await page.bringToFront();
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
+});
+
+test("returning to the window checks stale readiness while preserving an authorised draft", async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await fixtures(page);
+  let ready = true, checks = 0;
+  await page.route("**/api/backend/assistant/status", route => {
+    checks++;
+    return route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  await input.fill("Keep this draft");
+  const baseline = checks;
+  await page.clock.setFixedTime(new Date("2026-03-01T12:01:00Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect.poll(() => checks).toBeGreaterThan(baseline);
+  await expect(input).toBeVisible();
+  await expect(input).toHaveValue("Keep this draft");
+  ready = false;
+  await page.clock.setFixedTime(new Date("2026-03-01T12:02:00Z"));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant");
+  await expect(input).toHaveCount(0);
+});
