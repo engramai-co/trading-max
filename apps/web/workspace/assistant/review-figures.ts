@@ -23,9 +23,10 @@ function habitField(key: string, field: string, group: Json, t: Copy) {
   const total = group.count,
     measured = group.evaluated;
   if (!count(total) || !count(measured) || measured > total) return null;
-  const subset = t(`已计 ${measured}/${total}`, `${measured}/${total} measured`);
+  const subset = t("已计 {n}", "{n} measured").replace("{n}", `${measured}/${total}`);
   if (field === "count" || field === "evaluated") {
-    return [name, field === "count" ? t(`${total} 次`, `${total} occurrences`) : subset];
+    const unit = total === 1 ? t("次", "occurrence") : t("次", "occurrences");
+    return [name, field === "count" ? `${total} ${unit}` : subset];
   }
   const value = group[field];
   if (!finite(value) || !measured) return null;
