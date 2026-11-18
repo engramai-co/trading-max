@@ -1271,3 +1271,38 @@ test("clearing a habit by keyboard focuses the restored timeline heading", async
   await page.locator(".mx-review-filter").press("Enter");
   await expect(page.locator(".mx-decision-review h2").first()).toBeFocused();
 });
+
+for (const provider of ["ready", "unavailable"]) {
+  test("expanded English habits keep the timeline fixed beside the sidebar when " + provider, async ({page,isMobile}, info) => {
+    test.skip(isMobile, "The sidebar shares space with the desktop review.");
+    await page.addInitScript(() => {
+      localStorage.setItem("trading_max-locale","en");
+      localStorage.setItem("tm-reading-review-habits","open");
+    });
+    await serve(page, () => ({benchmark:0.02,events:true,habitsConsented:true}));
+    let resolveStatus!: () => void, resolveBrief!: () => void;
+    const status = new Promise<void>(r => resolveStatus = r);
+    const brief = new Promise<void>(r => resolveBrief = r);
+    await page.route("**/api/backend/assistant/status", async r => {await status; await r.fulfill({json:{ready:provider === "ready"}});});
+    const description = "In hindsight, the net hypothetical loss at each security’s average purchase size was about £94.52. Only four of the seven recorded purchases had a complete twenty-session outcome.";
+    await page.route("**/api/backend/assistant/roles/habits/reading", async r => {
+      await brief;
+      const lines = ["basket_buy","before_earnings","untraded_fall"].map(section => ({section, en:description, zh:description,
+        evidence:{tool:"review_patterns",source:"review",evidenceId:"ev_habit",arguments:{habitSection:section}}}));
+      await r.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({type:"result",reading:{role:"habits",asOf,lines}})+"\n"});
+    });
+    await page.goto("/review");
+    await page.locator("[data-assistant-trigger]").click();
+    await expect(page.locator("#mx-assistant-panel")).toBeVisible();
+    const heading = page.getByRole("heading",{name:/Each decision after/});
+    await expect(heading).toBeVisible();
+    const y = await heading.evaluate(node => node.getBoundingClientRect().top + scrollY);
+    const result = page.waitForResponse(r => r.url().endsWith("/assistant/status"));
+    resolveStatus(); await result;
+    resolveBrief();
+    if (provider === "ready") await expect(page.locator(".mx-habit-line")).toHaveCount(3);
+    else await expect(page.locator(".mx-digest")).toHaveCount(0);
+    expect(Math.abs(await heading.evaluate(node => node.getBoundingClientRect().top + scrollY) - y)).toBeLessThan(2);
+    if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-en-habits-sidebar-"+provider+".png")});
+  });
+}

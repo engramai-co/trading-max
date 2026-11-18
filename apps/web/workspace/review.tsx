@@ -80,12 +80,15 @@ const FallTimeline = dynamic(() => import("./assistant/review-falls").then(modul
 
 const ACCOUNT_REVIEW_SELECTION = { detail: "summary" as const };
 
-function HabitsSpace() {
+function HabitsSpace({ unavailable = false }: { unavailable?: boolean }) {
+  const t = useCopy();
   const [expanded] = useState(() => {
     try { return localStorage.getItem("tm-reading-review-habits") === "open"; }
     catch { return false; }
   });
-  return <div className="mx-review-habits-space" data-expanded={expanded || undefined} aria-hidden="true" />;
+  return <div className="mx-review-habits-space" data-expanded={expanded || undefined} aria-hidden={!unavailable || undefined}>
+    {unavailable && <><strong>{t("习惯", "Habits")}</strong><p>{t("模型暂不可用。", "The model is unavailable.")} <Link href="/settings?section=assistant">{t("助手设置", "Assistant settings")}</Link></p></>}
+  </div>;
 }
 
 function focusHabitFilter(button: HTMLButtonElement | null) {
@@ -241,7 +244,7 @@ export function ReviewWorkspace() {
                           });
                         }} />
                     </Suspense>
-                  ) : readinessPending && data.reviewHabitsConsented ? <HabitsSpace /> : null}
+                  ) : data.reviewHabitsConsented ? <HabitsSpace unavailable={!readinessPending} /> : null}
                   {habit === "untraded_fall" ? <FallTimeline moves={falls} horizon={horizon} action={filterChip}/> : <DecisionTimelinePanel
                     action={filterChip}
                     rows={filtered}
