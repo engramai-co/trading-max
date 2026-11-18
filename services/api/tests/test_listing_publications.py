@@ -221,3 +221,44 @@ def test_legacy_verified_london_feed_remains_available_to_qualified_chart(bound)
         tools._Read(deps, "price_key_moments", args, "cfd"), args, set(), series
     )
     assert {entry["kind"] for entry in entries} == {"ex_dividend", "news"}
+
+
+def test_bar_units_remain_scoped_to_each_listing_in_one_publication(bound):
+    app, manifest, _ = bound
+    listings = [
+        ("POUNDS.L", "LSE", "", "GBp", 31, 1.2, "GBP"),
+        ("PENCE.L", "LSE", "GBp", "GBP", 3100, 120, "GBp"),
+        ("DOLLARS", "NYQ", "", "USD", 48, 2, "USD"),
+        ("UNKNOWN.L", "LSE", "", None, 31, 1.2, ""),
+    ]
+    bars, fundamentals = [], []
+    for ticker, venue, unit, corroborating, price, dividend, _ in listings:
+        row = technical(app, manifest, ticker, venue, unit=unit, price=price)
+        row["price_series"][-1]["dividend"] = dividend
+        bars.append(row)
+        if corroborating:
+            fundamentals.append(
+                {
+                    "ticker": ticker,
+                    "currency": corroborating,
+                    "metrics": {"symbol": ticker, "exchange": venue},
+                }
+            )
+    publish(app, **{tools.TECHNICAL: {"rows": bars}, tools.FUNDAMENTALS: {"rows": fundamentals}})
+    client = TestClient(app)
+    for ticker, _, _, _, price, dividend, expected_unit in listings:
+        response = client.get(f"/v1/research/{ticker}/prices")
+        assert response.status_code == 200
+        chart = response.json()
+        action = chart["events"][-1]
+        assert (
+            chart["currency"],
+            chart["points"][-1]["close"],
+            action["currency"],
+            action["value"],
+        ) == (
+            expected_unit,
+            price,
+            expected_unit,
+            dividend if expected_unit else None,
+        )
