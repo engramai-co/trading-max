@@ -429,6 +429,7 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
     defaults = defaultdict(list)
     unknown = False
     specific = False
+    consolidated_us = False
     symbols = {requested, *(claim.listing for claim in claims if claim.listing)}
     suffixes = [VenueClaim("symbol", symbol, symbol) for symbol in symbols]
     for source, value, listing in (*suffixes, *claims):
@@ -437,6 +438,7 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
             continue
         owner = _code(listing or requested)
         if source == "region":
+            consolidated_us |= code == "US"
             if code in _MARKETS:
                 explicit[owner].append(_MARKETS[code])
             else:
@@ -477,4 +479,8 @@ def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution
     venues = frozenset.intersection(*groups) if groups else frozenset()
     calendars = {_CALENDARS.get(mic) for mic in venues}
     calendar = calendars.pop() if specific and not unknown and len(calendars) == 1 else None
+    # A broker US equity line or consolidated US feed identifies the regular US
+    # session unless a more specific or unrecognised venue requires its own rule.
+    if consolidated_us and venues and not specific and not unknown:
+        calendar = "XNYS"
     return VenueResolution(venues, bool(groups and not venues), calendar)

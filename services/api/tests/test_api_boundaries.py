@@ -460,6 +460,32 @@ def test_us_fund_reference_lenses_are_exact_and_do_not_leak_option_rows(
     assert chart["adjustment"] == "provider-close"
     assert chart["points"][0]["close"] == 101.0
 
+    from trading_max.infrastructure import shared_market_prices
+
+    # The close-only request may return a different symbol or a contradictory
+    # venue even when the preferred OHLC request failed for the right symbol.
+    for observed in (
+        {"symbol": "SMH", "exchangeName": "LSE"},
+        {"symbol": "SMH", "exchangeName": "NMS", "mic": "XLON"},
+        {"symbol": "OTHER", "exchangeName": "NMS"},
+    ):
+        provider_row = {
+            "meta": observed,
+            "timestamp": [int(now.timestamp())],
+            "indicators": {"quote": [{"close": [101.0]}]},
+        }
+        with monkeypatch.context() as patch:
+            response = SimpleNamespace(
+                status_code=200, json=lambda row=provider_row: {"chart": {"result": [row]}}
+            )
+            patch.setattr(shared_market_prices, "_yahoo_get", lambda *args, result=response: result)
+            patch.setattr(
+                boundary_client.app.state,
+                "market_prices",
+                shared_market_prices.SharedMarketPrices(),
+            )
+            assert boundary_client.get("/v1/research/SMH/prices?interval=60m").status_code == 404
+
     from services.api.trading_max_api.dashboard_models import ResearchPriceSeries
 
     def alpaca_etf(ticker, interval):

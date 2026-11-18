@@ -92,11 +92,20 @@ including qualified symbols. Apply a market default only when its own symbol
 has no explicit venue. A bare US request can therefore reject a different
 London listing, while a stored default on a qualified London symbol yields
 to that symbol. Nasdaq listing tiers have distinct MICs and share a schedule.
-An unknown provider code leaves timed evidence without a calendar. Conflicting
+A consolidated US feed or a broker’s US share line can supply the regular US
+session when no specific venue is known. An unknown provider code leaves
+timed evidence without a calendar. Conflicting
 verified claims make the price unavailable and withhold venue-dependent events.
 
 Yahoo suffixes, Yahoo codes and names, OpenFIGI exchange codes and ISO MICs
 have their own mappings. For example, OpenFIGI `BO` identifies B3 Soma, while
 the Yahoo suffix `.BO` identifies Bombay. Issuer domicile, quote currency and
 time zone do not identify the venue. Exchange provenance on new watchlist
-entries is optional for compatibility with older snapshots.
+entries is optional for compatibility with older snapshots. New price rows
+retain the provider symbol, MIC and both exchange names. The chart checks the
+same evidence for live OHLC, close-only history and published fund prices.
+
+The namespace references are the [OpenFIGI exchange code list](https://www.openfigi.com/about/exchange-codes),
+the [ISO 10383 MIC register](https://www.iso20022.org/market-identifier-codes)
+and [Yahoo’s listing suffixes](https://uk.help.yahoo.com/kb/SLN2310.html).
+Yahoo chart metadata supplies its exchange codes and display names.

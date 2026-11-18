@@ -15,7 +15,7 @@ from trading_max.infrastructure.alpaca_market_prices import ALPACA_SIP, NY, Alpa
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.research.facts import fingerprint
 from trading_max.research.technical import price_series
-from trading_max.research.venues import VenueConflict, resolve_venue, row_claims
+from trading_max.research.venues import VenueClaim, VenueConflict, resolve_venue, row_claims
 
 from .dashboard_models import ResearchPriceSeries
 from .valuation_assumptions import _atomic_write
@@ -62,6 +62,7 @@ class SecurityPriceHistory:
                 f"sma{n}": frame["Close"].rolling(n, min_periods=n).mean() for n in (20, 50, 200)
             }
             points = price_series(frame, averages, sessions=10_000)
+            claims = (VenueClaim("region", "US", ticker),)
             return ResearchPriceSeries(
                 ticker=ticker,
                 as_of=points[-1]["date"],
@@ -71,7 +72,8 @@ class SecurityPriceHistory:
                 requested_interval=interval,
                 actual_interval=interval,
                 timezone=NY.key,
-                exchange_calendar="XNYS",
+                venue_claims=claims,
+                exchange_calendar=resolve_venue(ticker, *claims).calendar,
                 source=ALPACA_SIP,
                 fetched_at=datetime.now(UTC).isoformat(),
             )

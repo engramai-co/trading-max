@@ -69,13 +69,4 @@ class HoldingListingCalendars:
             if isin in self.fund_isins:
                 mics = mics | self._fund_mics(isin, ticker)
             claims.extend(VenueClaim("mic", mic) for mic in mics)
-        resolved = resolve_venue(ticker, *claims)
-        if (
-            resolved.calendar is None
-            and instrument
-            and resolved.us_listing
-            and not position.get("mic")
-        ):
-            # The broker's US share line follows the consolidated US session.
-            return "XNYS"
-        return resolved.calendar
+        return resolve_venue(ticker, *claims).calendar
