@@ -1,0 +1,18 @@
+{
+  "press_release": [
+    {
+      "PressReleaseID": "5825",
+      "title": "Consumer Price Index for October 2026",
+      "startTime": "2026-11-20 00:00:00.000",
+      "hide_date": "0",
+      "status": "1"
+    },
+    {
+      "PressReleaseID": "6803",
+      "title": "Revised figures on Gross Domestic Product for 4th Quarter and whole year of 2026 : data contained in the Budget supporting documents",
+      "startTime": "2027-02-28 00:00:00.000",
+      "hide_date": "1",
+      "status": "1"
+    }
+  ]
+}

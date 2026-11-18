@@ -143,3 +143,47 @@ percentage points before comparison. Figures need a matching `[ev_…]` in
 their sentence or table row, and every evidence ID must come from this turn.
 The deterministic language and advice checks are pattern based; they are
 regression signals rather than a substitute for reviewing borderline answers.
+
+## News and scheduled events
+
+The read-only `news_and_events` tool returns dated headlines, earnings estimates
+and reports, rating changes, filings, dividends and the permitted accounts'
+broker trades. Each row identifies its evidence in the pinned publication.
+A publisher's headline is a lead. It cannot establish the cause of a price move.
+
+`upcoming_events` and `GET /v1/snapshots/{run_id}/events/upcoming` share the
+same projection. Pass `scope`, inclusive ISO dates `start` and `end`, and an
+optional exact listing ticker. The API accepts an IANA `timezone` (default
+`Europe/London`), `cursor` and `limit`. The household calendar includes the
+last scheduled research universe as well as holdings. Exchange calendars supply
+holidays and early closes for identifiable listings. All-day dates stay on their
+publisher's calendar day. Timed rows include the source instant and local time.
+An earnings window retains both ends when the provider has not set a single day.
+
+Scheduled research records Yahoo-compatible headline metadata with the shared
+Yahoo request budget. Fresh disclosure observations are reused. The rolling
+news history retains up to 500 headlines per listing for up to a year. Account
+activity stays in the published local ledger. Official-calendar requests contain
+no tickers or portfolio data. An unsuccessful refresh preserves the last
+successful rows and their original observation time. Data status shows their
+freshness and the number of failed sources.
+
+### Official macro calendars
+
+The local worker checks the following keyless release schedules at most once
+per 20 hours for a 180-day window. Calendar rows carry the publisher, original
+link, translated label, source credit and scheduling status. Coverage follows
+the publisher's announced horizon. Individual announcements can change.
+
+| Market | Sources |
+| --- | --- |
+| United States | BEA release iCalendar, Census indicator tables, Federal Reserve meeting and monthly announcements, BLS release schedules on the public FRED calendar (Central time) |
+| United Kingdom | Office for National Statistics release calendar under the Open Government Licence v3.0, Bank of England MPC dates for personal and internal non-commercial use |
+| Euro area | European Commission, Eurostat Euro indicators iCalendar (category 2, date only), European Central Bank Governing Council and statistical schedules |
+| Japan | Statistics Bureau and METI via e-Stat, Cabinet Office GDP, Bank of Japan monetary policy meetings |
+| Hong Kong | Census and Statistics Department, © Government of the Hong Kong SAR. Visible dates from its English press release index |
+| South Korea | Ministry of Data and Statistics statistical timetable, Bank of Korea policy-setting meetings and its announced 2027 schedule until the HTML table rolls over |
+
+Trading Max translates or abridges display labels. The publisher's original
+schedule is authoritative. Eurostat bears no responsibility for translations.
+Only calendar metadata and Yahoo-compatible headline metadata are stored.

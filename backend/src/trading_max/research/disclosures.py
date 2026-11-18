@@ -14,7 +14,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from datetime import UTC, date, datetime
 from html.parser import HTMLParser
 from pathlib import Path
@@ -396,7 +396,8 @@ def match_periods(raw: dict[str, Any], periods: list[dict[str, Any]]) -> list[di
 
 
 class ResearchEvidenceProvider:
-    def __init__(self, cache_root: Path) -> None:
+    def __init__(self, cache_root: Path, *, news_request=nullcontext) -> None:
+        self.news_request = news_request
         self.root = cache_root
         self.sec = SecCompanyFacts(cache_root)
         self.documents: SingleFlightCache[str, str] = SingleFlightCache(4)
@@ -670,7 +671,9 @@ class ResearchEvidenceProvider:
             result["status"]["dividends"] = {"state": "missing", "reason": type(exc).__name__}
         try:
             seen = set()
-            for row in proxy.news or []:
+            with self.news_request():
+                news_rows = proxy.news or []
+            for row in news_rows:
                 news = row.get("content") or {}
                 url = (news.get("canonicalUrl") or {}).get("url")
                 identity = (
