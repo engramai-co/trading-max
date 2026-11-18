@@ -1179,23 +1179,24 @@ test.describe("frozen draft review", () => {
   });
 });
 
-test("explicitly choosing the displayed model survives save and reopen", async ({page}) => {
+test("explicitly choosing the displayed model preserves edited saved assumptions on reopen", async ({page}, info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await synthetic(page,false);
-  let stored: string | null = null;
+  let stored = {familySelection:"automatic", scenarios:{base:{...defaults, revenueCagr:0.22}}};
   const selections: (string | null)[] = [];
   await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
   await page.route("**/SYNT/valuation-preview*", route => {
     const family = new URL(route.request().url()).searchParams.get("family");
     const body = route.request().method() === "POST" ? route.request().postDataJSON() : undefined;
     if (!body) selections.push(family);
-    const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", true, body?.scenarios ?? {});
-    return route.fulfill({json:{...p, familySelection:family ? "override" : stored ?? "automatic",
-      defaultSource:stored ? "saved-model" : p.defaultSource}});
+    const configured = {base:{...defaults, revenueCagr:0.1111}};
+    const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", true, body?.scenarios ?? (family ? configured : stored.scenarios));
+    return route.fulfill({json:{...p, familySelection:family ? "override" : stored.familySelection,
+      defaultSource:family ? "configured-scenarios" : "saved-model"}});
   });
   await page.route("**/SYNT/models", route => {
-    stored = route.request().postDataJSON().familySelection;
+    stored = route.request().postDataJSON();
     return route.fulfill({json:{models:[]}});
   });
   await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
@@ -1204,14 +1205,22 @@ test("explicitly choosing the displayed model survives save and reopen", async (
   const editor = page.locator("#valuation-assumptions");
   const select = editor.getByRole("combobox",{name:"Valuation model"});
   await expect(select).toHaveValue("Equity cash flow");
+  const growth = editor.getByLabel("Revenue growth · years 1–5", {exact:true});
+  await expect(growth).toHaveValue("22%");
+  await growth.fill("23");
   await select.click();
   await page.getByRole("option",{name:"Equity cash flow",exact:true}).click();
-  await expect.poll(() => selections).toContain("cash-flow");
+  await expect(growth).toHaveValue("23%");
   await editor.getByRole("button",{name:"Save model version",exact:true}).click();
   await page.getByRole("dialog").getByRole("button",{name:"Save version",exact:true}).click();
-  await expect.poll(() => stored).toBe("override");
+  await expect.poll(() => stored.familySelection).toBe("override");
+  expect(stored.scenarios.base.revenueCagr).toBe(0.23);
+  expect(selections).toEqual([null]);
   await page.reload();
   await expect(select).toHaveValue("Equity cash flow");
+  await expect(growth).toHaveValue("23%");
+  const dir = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
+  if (dir) await editor.screenshot({path:join(dir, `${info.project.name}-same-family-reopened.png`)});
   await editor.getByRole("button",{name:"✦ Draft",exact:true}).click();
   await expect(editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"})).toBeVisible();
   expect(selections.at(-1)).toBeNull();

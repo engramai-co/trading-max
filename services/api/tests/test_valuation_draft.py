@@ -294,8 +294,13 @@ def test_manual_family_choice_is_preserved_even_when_it_matches_the_engine(desk)
         "scenarios": body["scenarios"],
         "formulaVersion": auto["formulaVersion"],
     }
+    model["scenarios"]["base"]["revenueCagr"] = 0.22
     assert client.post(PATH + "/models", json=model).is_success
+    previous, _ = inputs(client)
     view, _ = inputs(client, "cash-flow")
+    assert view["defaultSource"] == "saved-model"
+    assert view["id"] == previous["id"]
+    assert view["scenarios"]["base"]["inputs"]["revenueCagr"] == 0.22
     assert view["familySelection"] == "override"
     saved = client.post(PATH + "/models", json={**model, "familySelection": "override"}).json()
     assert len(saved["models"]) == 2

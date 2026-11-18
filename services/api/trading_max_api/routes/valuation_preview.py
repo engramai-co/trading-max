@@ -39,7 +39,9 @@ def family_valuation_preview(
     stored = lens.valuation.assumptions
     quote = context.quote
     saved = app_service(request, "research_journal").load(ticker).models if inputs is None else []
-    latest = saved[0].preview if saved and requested_family is None else None
+    latest = saved[0].preview if saved else None
+    if latest and requested_family is not None and latest.basis.family != requested_family:
+        latest = None
     auto = stored.get("family") or classify(ticker, "", {})[0]
     family = (inputs.family if inputs else requested_family) or (
         latest.basis.family if latest else auto

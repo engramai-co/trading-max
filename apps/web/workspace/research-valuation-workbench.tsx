@@ -131,6 +131,7 @@ export function ValuationWorkbench({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const client = useQueryClient();
   const [family, setFamily] = useState<Preview["basis"]["family"]>();
   const query = useQuery(valuationDefaultsQuery(data, price, family));
   // Once this research has a preview, a failed refresh keeps it and its editor.
@@ -193,10 +194,21 @@ export function ValuationWorkbench({
         { value: "residual-income", label: t("剩余收益", "Residual income") },
       ]}
       onOptionSubmit={(value) => {
-        position.current = selector.current ? { selectorTop: selector.current.getBoundingClientRect().top } : null;
-        setDirty(false);
-        setRecovered(undefined);
-        setFamily(value as Preview["basis"]["family"]);
+        const choice = value as Preview["basis"]["family"];
+        if (choice === family) return;
+        if (choice === preview?.basis.family) {
+          // Confirming the displayed family keeps the current basis and editor. Future
+          // refreshes use the explicit family and the original preview's freshness.
+          if (query.data?.basis.family === choice && !query.isError && !query.isPlaceholderData) {
+            client.setQueryData(valuationDefaultsQuery(data, price, choice).queryKey,
+              {...query.data, familySelection:"override"}, {updatedAt:query.dataUpdatedAt});
+          }
+        } else {
+          position.current = selector.current ? { selectorTop: selector.current.getBoundingClientRect().top } : null;
+          setDirty(false);
+          setRecovered(undefined);
+        }
+        setFamily(choice);
       }}
     />
   );
@@ -382,8 +394,9 @@ function ModelEditor({
   const result = query.data ?? initial;
   const busy =
     invalidInput || refreshing || query.isFetching || request !== liveFingerprint;
-  const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
-  const saved = savedFingerprint === liveFingerprint;
+  const familySelection = requestedFamily ? "override" : initial.familySelection ?? "automatic";
+  const [savedVersion, setSavedVersion] = useState<{fingerprint:string; selection:string}>();
+  const saved = savedVersion?.fingerprint === liveFingerprint && savedVersion.selection === familySelection;
   const dirty = Boolean(draft) || saveOpen || invalidInput || !saved && (
     draftValue !== null || liveFingerprint !== JSON.stringify(previewRequest(initial)));
   useBuildNavigationGuard(dirty);
@@ -392,14 +405,15 @@ function ModelEditor({
     return () => onDirty(false);
   }, [dirty, onDirty]);
   const save = useMutation({
-    mutationFn: (payload: typeof liveRequest & { reason: string; draftReview?: DraftReview }) =>
+    mutationFn: (payload: typeof liveRequest & { familySelection: string; reason: string; draftReview?: DraftReview }) =>
       api(
         `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
-        jsonRequest("POST", {...payload, familySelection:initial.familySelection ?? (requestedFamily ? "override" : "automatic")}),
+        jsonRequest("POST", payload),
       ),
     onSuccess: async (_result, payload) => {
-      setSavedFingerprint(
-        JSON.stringify({
+      setSavedVersion({
+        selection:payload.familySelection,
+        fingerprint:JSON.stringify({
           family: payload.family,
           formulaVersion: payload.formulaVersion,
           scenarios: payload.scenarios,
@@ -407,7 +421,7 @@ function ModelEditor({
           dataVersion: payload.dataVersion,
           references: payload.references,
         }),
-      );
+      });
       setSaveOpen(false);
       actions.current?.reset();
       if (payload.draftReview) await client.invalidateQueries({ queryKey: ["valuation-workbench", initial.basis.ticker] });
@@ -987,7 +1001,7 @@ function ModelEditor({
             {t("取消", "Cancel")}
           </Button>
           <Button
-            onClick={() => save.mutate({ ...liveRequest, reason, draftReview: draft?.review })}
+            onClick={() => save.mutate({ ...liveRequest, familySelection, reason, draftReview: draft?.review })}
             loading={save.isPending}
             disabled={busy || query.isError || staleDraft || Boolean(drafting.phase)}
           >

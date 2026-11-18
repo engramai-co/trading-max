@@ -63,7 +63,7 @@ export function DraftController({initial, requestedFamily, horizon, inputs, publ
           current?.key === runKey && current.phase === phase ? current : { key: runKey, phase });
       });
       if (request.signal.aborted) return;
-      if (result.family !== initial.basis.family || result.familySelection !== (initial.familySelection ?? (requestedFamily ? "override" : "automatic")))
+      if (result.family !== initial.basis.family || result.familySelection !== (requestedFamily ? "override" : initial.familySelection ?? "automatic"))
         throw new Error("valuation-draft-review-required");
       setDraft({ result, review: newReview(result), before, basis });
     } catch (e) {
