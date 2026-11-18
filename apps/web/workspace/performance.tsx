@@ -89,7 +89,7 @@ export function PerformanceContent({
   const benchmark = benchmarkValue(params.get("benchmark")) ?? preferredBenchmark;
   const {ready} = useAssistant();
   const {locale, timeZone} = useLocale();
-  const [selectionRange,setSelectionRange] = useState<{start:string; end:string; identity:string} | null>(null);
+  const [selectionRange,setSelectionRange] = useState<{start:string; end:string; identity:string; snapshotId:string} | null>(null);
   const [phoneRange,setPhoneRange] = useState<string | null>(null);
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const start = params.get("returnFrom"), end = params.get("returnTo");
@@ -101,9 +101,10 @@ export function PerformanceContent({
   // The account review lens supplies account history but no benchmark prices.
   const usesAnalytics = !suppliedData || view === "returns";
   const citedId = params.get("snapshotId");
-  const pinnedReturns = view === "returns" && params.get("evidence") === "compare_benchmarks"
+  const inspectionCitation = Boolean(citedId && params.get("inspectFrom") && params.get("inspectTo"));
+  const pinnedLens = (view === "returns" && params.get("evidence") === "compare_benchmarks") || inspectionCitation
     ? citedId || undefined : undefined;
-  const summary = useDashboardLens("analytics", undefined, usesAnalytics, selection, pinnedReturns);
+  const summary = useDashboardLens("analytics", undefined, usesAnalytics, selection, pinnedLens);
   const incoming = usesAnalytics ? summary.data : suppliedData;
   // A cited GBP figure uses exactly the same prepared history, immutable publication and range as the tool.
   const moneyFrom = params.get("moneyFrom"), moneyTo = params.get("moneyTo");
@@ -121,10 +122,14 @@ export function PerformanceContent({
     view, updatedAt: Math.max(summary.dataUpdatedAt, historyQuery.dataUpdatedAt),
   } : undefined, [incoming, historyQuery.data, historyQuery.dataUpdatedAt, requestedRange, requestedScope, summary.dataUpdatedAt, view]);
   const reading = useReadingBoundary();
-  const retained = useRetainedResult(current, Object.is, (next, previous) => !reading.active ||
-    next.data.runId === pinnedReturns || next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope);
+  const identity = [view,requestedScope,requestedRange,benchmark,start,end,citedId].join("|");
+  const activeRange = ready && selectionRange?.identity === identity ? selectionRange : null;
+  const publicationOf = (chart: NonNullable<typeof current>) => chart.view === "money" ? chart.history?.runId : chart.data.runId;
+  const retained = useRetainedResult(current, Object.is, (next, previous) =>
+    (!activeRange || publicationOf(next) === activeRange.snapshotId) &&
+    (!reading.active || next.data.runId === pinnedLens || next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope));
   const shown = retained?.view === view && retained.scope === requestedScope &&
-    (!pinnedReturns || (!summary.isError && retained.data.runId === pinnedReturns)) && (!pinnedMoney || retained.history?.runId === pinnedMoney) ? retained : undefined;
+    (!pinnedLens || (!summary.isError && retained.data.runId === pinnedLens)) && (!pinnedMoney || (!historyQuery.isError && retained.history?.runId === pinnedMoney)) ? retained : undefined;
   const data = shown?.data;
   const scope = shown?.scope ?? requestedScope;
   const actualRange = shown?.range ?? requestedRange;
@@ -142,7 +147,7 @@ export function PerformanceContent({
   const unavailable = runtime.status === "failed"
     ? { label: t("图表暂不可用", "Chart unavailable"), retry: runtime.retry }
     : failure && !shown ? {
-      label: pinnedReturns ? t("引用的数据版本暂不可用", "Cited publication unavailable")
+      label: pinnedLens || pinnedMoney ? t("引用的数据版本暂不可用", "Cited publication unavailable")
         : view === "money" ? t("盈亏记录暂不可用", "P&L history unavailable")
         : view === "returns" ? t("收益记录暂不可用", "Return history unavailable")
           : t("风险记录暂不可用", "Risk history unavailable"),
@@ -180,21 +185,29 @@ export function PerformanceContent({
     : null;
   const returnsPoints = comparison?.points ?? [];
   const points = comparison?.points ?? availablePoints;
-  const identity = [view,scope,actualRange,data?.runId,benchmark,start,end].join("|");
-  const brush = ready ? (a:string,b:string) => {setPhoneRange(null); setSelectionRange({start:a,end:b,identity});} : undefined;
-  // A tap chooses a range before its publication is known. Pin the first matching chart.
+  const plottedId = shown && publicationOf(shown);
+  const brush = ready && plottedId && !rangeMismatch ? (a:string,b:string) => {
+    setPhoneRange(null);
+    setSelectionRange({start:a,end:b,identity,snapshotId:plottedId});
+  } : undefined;
   const phoneIdentity = [view,requestedScope,requestedRange].join("|");
-  if (phoneRange === phoneIdentity && shown && !rangeMismatch && points.length > 1) {
-    setSelectionRange({start:points[0].date,end:points.at(-1)!.date,identity});
+  if (phoneRange === phoneIdentity && plottedId && !rangeMismatch && points.length > 1) {
+    setSelectionRange({start:points[0].date,end:points.at(-1)!.date,identity,snapshotId:plottedId});
     setPhoneRange(null);
   }
   const linkedFrom = params.get("inspectFrom"), linkedTo=params.get("inspectTo");
-  const citedWindow = params.get("snapshotId")===data?.runId && linkedFrom && linkedTo && points.some(point=>point.date===linkedFrom) && points.some(point=>point.date===linkedTo) ? {start:linkedFrom,end:linkedTo} : null;
-  const selectedWindow = selectionRange?.identity===identity ? selectionRange : citedWindow;
+  const citedWindow = citedId && citedId===plottedId && linkedFrom && linkedTo
+    ? {start:linkedFrom,end:linkedTo,snapshotId:citedId} : null;
+  const selectedWindow = activeRange ?? citedWindow;
+  const endpointsPresent = selectedWindow && points.some(p=>p.date===selectedWindow.start) && points.some(p=>p.date===selectedWindow.end);
   const endpointLabel = (value:string) => value.length===10 ? value : formatDateTime(value,locale,timeZone);
-  const inspection = <PageInspection role="attribution" snapshotId={data?.runId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
-    context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
-    onClose={() => {setSelectionRange(null);setPhoneRange(null);if (citedWindow) updateRoute({inspectFrom:null,inspectTo:null});}}/>;
+  const newestId = current && publicationOf(current);
+  const inspection = selectedWindow && !endpointsPresent && shown
+    ? <p role="status">{t("引用的区间记录暂不可用","Cited interval unavailable")}</p>
+    : <PageInspection key={selectedWindow?.snapshotId} role="attribution" snapshotId={selectedWindow?.snapshotId ?? plottedId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
+      context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
+      onUpdate={activeRange && newestId && activeRange.snapshotId !== newestId ? () => setSelectionRange({...activeRange,snapshotId:newestId}) : undefined}
+      onClose={() => {setSelectionRange(null);setPhoneRange(null);if (citedWindow) updateRoute({inspectFrom:null,inspectTo:null});}}/>;
   const first = points[0],
     last = points.at(-1);
   const money = view === "money" && shown?.history ? shown.history.money : portfolioMoney(points, scope);
@@ -538,7 +551,7 @@ export function PerformanceContent({
             </div>}
           </Panel>
           {view === "returns" && shown && runtime.status === "ready" && (
-            <div className="mx-data-body" aria-busy={waiting || undefined}><ReturnGrid runId={pinnedReturns} scope={scope} selected={customRange} onSelect={(period) => {
+            <div className="mx-data-body" aria-busy={waiting || undefined}><ReturnGrid runId={pinnedLens} scope={scope} selected={customRange} onSelect={(period) => {
               update({ returnFrom: period.start, returnTo: period.end });
               document.querySelector(".mx-performance-chart")?.scrollIntoView({ block: "start" });
             }} /></div>

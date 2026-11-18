@@ -48,6 +48,7 @@ export function evidenceHref(ref: Evidence): string | null {
   const [path] = entry;
   const params = new URLSearchParams();
   const a = ref.arguments ?? {};
+  if (a.snapshotId && ["/holdings","/sectors"].includes(path)) params.set("snapshotId",a.snapshotId);
   if (ref.source === "inference") return null;
   if (ref.source === "publisher" && a.url) {
     try {const url = new URL(a.url); return ["https:","http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;} catch {return null;}
@@ -69,7 +70,7 @@ export function evidenceHref(ref: Evidence): string | null {
       if (!a.snapshotId) return null;
       params.set("snapshotId", a.snapshotId);
     }
-    if (params.get("view")==="returns" && a.start && a.end && a.start.length === 10 && a.end.length === 10) {
+    if (ref.tool === "compare_benchmarks" && a.start && a.end && a.start.length === 10 && a.end.length === 10) {
       params.set("returnFrom", a.start);
       params.set("returnTo", a.end);
     }
@@ -83,10 +84,13 @@ export function evidenceHref(ref: Evidence): string | null {
     if (a.dimension) params.set("dimension",a.dimension);
     if (a.category) params.set("category",a.category);
     if (a.group) params.set("group", a.group);
+    if (a.entityId) params.set("entityId", a.entityId);
   }
   if (path === "/sectors") {
     params.set("market",ref.tool==="global_map" ? "global" : a.market ?? "global");
     if (a.sector) {params.set("sector",a.sector); if(a.market === "global") params.set("view","sectors");}
+    if (ref.tool === "global_map" && a.market) params.set("region",a.market);
+    if (a.observed) params.set("observed",a.observed);
     if (a.grouping) params.set("grouping",a.grouping);
   }
   if (ref.tool === "update_issue" && a.job) params.set("job",a.job);
@@ -167,8 +171,11 @@ export function chatContext(page: string, search: string, timezone: string) {
 export function observationText(line: components["schemas"]["LinkedObservation"], locale: "zh" | "en", timeZone: string) {
   const text = line[locale];
   const args = line.evidence.arguments;
-  if (line.evidence.tool !== "upcoming_events" || !args?.instant || !args.date || !text.startsWith(args.date)) return text;
+  if (!args?.instant) return text;
+  const day = line.evidence.tool === "sector_headline" ? args.start
+    : line.evidence.tool === "upcoming_events" ? args.date : null;
+  if (!day || !text.startsWith(day)) return text;
   const instant = new Date(args.instant);
   if (!Number.isFinite(instant.valueOf())) return text;
-  return formatDateTimeInTimeZone(instant, locale, timeZone) + text.slice(args.date.length);
+  return formatDateTimeInTimeZone(instant, locale, timeZone) + text.slice(day.length);
 }

@@ -33,7 +33,7 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
         const data = object(source.output.data);
         evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, start:str(data.start), end:str(data.end), snapshotId:str(source.output.snapshot_id) || evidence.arguments?.snapshotId}, source.output)};
       }
-      if (["selected_exposure","selected_daily","selected_fx","sector_headline","selected_money","daily_returns","holding_fx_split","exposure_benchmark","market_sector","global_map","update_issue"].includes(evidence.tool)) {
+      if (["list_holdings","position_detail","lookthrough_exposure","dated_exposure","selected_exposure","selected_daily","selected_fx","sector_headline","selected_money","daily_returns","holding_fx_split","exposure_benchmark","market_sector","global_map","update_issue"].includes(evidence.tool)) {
         evidence = {...evidence,arguments:{...evidence.arguments,metric:pointer,snapshotId:str(source.output.snapshot_id)}};
       }
       if (["daily_returns","selected_daily"].includes(evidence.tool) && pointer.startsWith("/data/window_benchmarks/")) {

@@ -38,8 +38,8 @@ export function FollowUps({ card, onContinue }: { card: RoleCard; onContinue?: (
     onContinue?.();
     continueInSidebar(card, draft);
   }
-  return <div className="mx-reading-actions">{card.questions.map(q => <button key={q} onClick={() => handoff(q)}>{q}</button>)}
-    <button className="mx-reading-continue" onClick={() => handoff()}>{t("在右栏继续 →", "Continue in sidebar →")}</button>
+  return <div className="mx-reading-actions">{card.questions.map(q => <button key={q} disabled={card.pendingBinding} onClick={() => handoff(q)}>{q}</button>)}
+    <button disabled={card.pendingBinding} className="mx-reading-continue" onClick={() => handoff()}>{t("在右栏继续 →", "Continue in sidebar →")}</button>
   </div>;
 }
 type ReadingContainerProps = { card: RoleCard; children?: ReactNode; onClose?: () => void };
@@ -52,7 +52,10 @@ function ReadingSheet({ card, children, onClose }: ReadingContainerProps & {onCl
   function dismiss() {
     onClose();
     const element = trigger.current;
-    if (element instanceof HTMLElement) requestAnimationFrame(() => element.focus({preventScroll:true}));
+    if (element instanceof HTMLElement) requestAnimationFrame(() => {
+      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (element.isConnected && (!dialog || dialog.contains(element))) element.focus({preventScroll:true});
+    });
   }
   return <Drawer opened onClose={dismiss} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title} · {card.object}</span>}
     returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{"aria-label":t("关闭解读", "Close reading")}}

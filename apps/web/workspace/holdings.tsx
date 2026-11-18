@@ -72,7 +72,8 @@ function Positions() {
   const { locale, timeZone } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
-  const query = useDashboardLens("holdings-positions");
+  const cited = params.get("evidence") && params.get("snapshotId") || undefined;
+  const query = useDashboardLens("holdings-positions",undefined,true,undefined,cited);
   const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
   const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const account = ["A", "B"].includes(params.get("account") ?? "")
@@ -154,6 +155,7 @@ function Positions() {
       )}
     </button>
   );
+  if (cited && query.isError) return <Empty title={t("引用的数据版本暂不可用","Cited publication unavailable")} />;
   return (
     <>
           <div className="mx-panel mx-holdings-summary">

@@ -207,3 +207,28 @@ it("projects timed releases into the reader's day and preserves date-only earnin
 it("keeps a historical benchmark with no publication ID from opening today's figures", () => {
   expect(evidenceHref({tool:"compare_benchmarks",source:"market",evidenceId:"ev_old",arguments:{scope:"isa",benchmark:"VOO"}})).toBeNull();
 });
+
+it("qualifies partial daily returns with observed intervals and dates the largest move", () => {
+  const output = {status:"partial",quality:{issues:["daily_twr_missing"]},data:{
+    window_start:"2026-01-01",window_end:"2026-01-08",window_twr_fraction:0.155,
+    largest_move:{from_date:"2026-01-05",date:"2026-01-06",return_fraction:0.3},
+    observed_intervals:2,total_intervals:4,
+  }};
+  expect(verifiedLines(fieldReply("selected_daily",output,"/data/window_twr_fraction"))[0].text).toContain("2 of 4 intervals");
+  const largest = verifiedLines(fieldReply("selected_daily",output,"/data/largest_move/return_fraction"))[0].text;
+  for(const part of ["Largest observed daily move","+30.00%","2026-01-05 – 2026-01-06","2 of 4 intervals"]) expect(largest).toContain(part);
+});
+it("links the market observation and the immutable holding selection",()=>{
+  const params=(tool:string,args:Record<string,string>)=>new URL(evidenceHref({tool,source:"exposure",evidenceId:"ev_test",arguments:args})!,"https://example.org").searchParams;
+  const market=params("global_map",{market:"jp",observed:"2026-01-30T12:00:00Z",snapshotId:"older"});
+  expect(Object.fromEntries(market)).toMatchObject({market:"global",region:"jp",observed:"2026-01-30T12:00:00Z",snapshotId:"older"});
+  expect(Object.fromEntries(params("selected_exposure",{dimension:"company",category:"DUP",entityId:"issuer-2",snapshotId:"older"}))).toMatchObject({entityId:"issuer-2",snapshotId:"older"});
+});
+
+it("displays a Tokyo session headline in the reader's time zone", () => {
+  const evidence = {tool:"sector_headline",source:"publisher" as const,evidenceId:"ev_news",
+    arguments:{instant:"2026-02-02T23:30:00Z",start:"2026-02-03"}};
+  const line = {en:"2026-02-03 · TEST headline",zh:"2026-02-03 · TEST 新闻",evidence};
+  expect(observationText(line,"en","Asia/Tokyo")).toMatch(/3 Feb 2026.*08:30/);
+  expect(observationText(line,"en","Europe/London")).toMatch(/2 Feb 2026.*23:30/);
+});

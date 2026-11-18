@@ -1,8 +1,8 @@
 "use client";
 
 import { useMediaQuery } from "@mantine/hooks";
-import { usePathname } from "next/navigation";
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
@@ -105,6 +105,11 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const pathname = usePathname();
+  const params = useSearchParams();
+  const cited = params?.get("evidence") === "global_map";
+  const region = cited ? params?.get("region") : null;
+  const observed = cited ? params?.get("observed") : null;
+  const citedId = cited ? params?.get("snapshotId") ?? undefined : undefined;
   const wide = useMediaQuery("(min-width: 1180px)") ?? false;
   const [hovered, setHovered] = useState<Market | null>(null);
   const [focused, setFocused] = useState<Market | null>(null);
@@ -117,10 +122,10 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const pinned = useRef(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = hovered ?? inspection?.market ?? focused;
-  const cancelDismiss = () => {
+  const cancelDismiss = useCallback(() => {
     if (closeTimer.current != null) clearTimeout(closeTimer.current);
     closeTimer.current = null;
-  };
+  }, []);
   const close = () => {
     cancelDismiss();
     pinned.current = false;
@@ -168,7 +173,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     ];
     return parts.join(t("，", ", "));
   };
-  const inspect = (market: MapMarket, node: MapAnchor, pin = false) => {
+  const inspect = useCallback((market: MapMarket, node: MapAnchor, pin = false) => {
     const host = mapHost.current?.getBoundingClientRect();
     // The card keeps clear of the market's visible label and pin.
     const parts = Array.from(node.querySelectorAll<SVGGraphicsElement>(".mx-global-hit, .mx-global-pin"))
@@ -186,7 +191,14 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         bottom: Math.max(...parts.map((box) => box.bottom)) - host.top,
       },
     });
-  };
+  }, [cancelDismiss]);
+  const matchesCitation = !!observed && !!answer?.asOf && Date.parse(observed) === Date.parse(answer.asOf)
+    && !answer.pricesStale && !query.isError;
+  useEffect(() => {
+    if (!matchesCitation || !region || !Object.hasOwn(MAP,region)) return;
+    const node = mapHost.current?.querySelector<MapAnchor>(`.mx-global-region[data-market="${region}"]`);
+    if (node) inspect(region as MapMarket,node,true);
+  }, [matchesCitation,region,inspect]);
   useEscapeLayer(inspection != null, () => {
     // Focus inside the card goes back to the market that opened it.
     if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
@@ -234,6 +246,9 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     event.preventDefault();
     onMarket(market);
   };
+  if (cited && !query.isPending && (!matchesCitation || !region || !answer?.markets.some(row => row.market === region))) {
+    return <Empty title={t("引用的行情记录暂不可用","Cited market observation unavailable")} />;
+  }
   if (demo) return <section className="mx-panel">
     <Empty headingLevel={2} title={t("演示不包含全球行情", "Global quotes aren’t included in the demo")} />
   </section>;
@@ -261,9 +276,9 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           trigger.current?.focus();
         }
       }}>
-      <PageInspection role="market-map" object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
-        context={openingObservation ? {observed:openingObservation} : undefined} market={inspection?.market}
-        showMapLine={answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
+      <PageInspection key={cited ? JSON.stringify([citedId, observed]) : "latest"} role="market-map" snapshotId={citedId} object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
+        context={cited && matchesCitation ? {observed:observed!} : openingObservation && !cited ? {observed:openingObservation} : undefined} market={inspection?.market}
+        showMapLine={cited ? matchesCitation : answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
         portal={readingSlot}/>
       <header className="mx-global-lead">
         <div className="mx-global-heading">

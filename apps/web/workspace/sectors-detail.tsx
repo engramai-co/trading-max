@@ -9,6 +9,7 @@ import { currency, percent } from "@/workspace/data";
 import { industryName } from "./exposure-names";
 import { useCopy } from "./foundation";
 import Link from "./link";
+import { useSearchParams } from "next/navigation";
 import { PageInspection } from "./assistant/inspection-entry";
 import { changeTone, groupName } from "./sectors-map";
 import { byStanding, displaySymbol, issuerName, sessionPosition, sparkline } from "./sectors-data";
@@ -60,6 +61,8 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const params = useSearchParams();
+  const citedId = params?.get("evidence") === "market_sector" ? params.get("snapshotId") ?? undefined : undefined;
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     if (focusOnOpen) heading.current?.focus({ preventScroll: true });
@@ -76,7 +79,7 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
         <h2 ref={heading} tabIndex={-1}>{name}</h2>
         <strong className={"mx-sector-detail-change mx-" + tone}>{indexFacts && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</strong>
       </header>
-      {inspection && <PageInspection role="market-sector" object={name}
+      {inspection && <PageInspection role="market-sector" snapshotId={citedId} object={name}
         context={inspection.selected ? {market:inspection.market,observed:inspection.observed,grouping:kind,sector:group.key} : undefined}/>}
       <SectorSpark group={group} board={board} session={sessionFor(board, sessions)} omitEmpty={Boolean(indexFacts)} />
       {indexFacts ?? <>

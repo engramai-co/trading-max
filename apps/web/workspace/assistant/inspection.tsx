@@ -91,6 +91,7 @@ export type InspectionProps = {
   market?: string;
   showMapLine?: boolean;
   portal?: HTMLElement | null;
+  onUpdate?: () => void;
 };
 
 export function Inspection({
@@ -102,7 +103,7 @@ export function Inspection({
   anchored,
   market,
   showMapLine,
-  portal,
+  portal, onUpdate,
 }: InspectionProps) {
   const t = useCopy();
   const { continueInSidebar } = useAssistant();
@@ -120,7 +121,7 @@ export function Inspection({
   const [stopped, setStopped] = useState("");
   const [closed, setClosed] = useState("");
   const activeObject = JSON.stringify([
-    role,
+    role, Boolean(context),
     Object.entries(request.context).filter(([field]) => field !== "observed"),
   ]);
   const [pinned, setPinned] = useState({ object: activeObject, key });
@@ -160,10 +161,12 @@ export function Inspection({
     }),
     [page, request, snapshotId, query.data?.snapshotId],
   );
+  const bound = Boolean(origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading));
   const card = useMemo<RoleCard>(
     () => ({
-      role: hasContext && (origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading)) ? role : "",
+      role: hasContext && bound ? role : "",
       origin,
+      pendingBinding: hasContext && !bound,
       title: t(descriptor.title[0], descriptor.title[1]),
       object,
       context:
@@ -173,11 +176,12 @@ export function Inspection({
       reading,
       questions: descriptor.questions.map(([zh, en]) => t(zh, en)),
     }),
-    [hasContext, role, descriptor, object, request, reading, market, origin, t],
+    [hasContext, bound, role, descriptor, object, request, reading, market, origin, t],
   );
   usePageRole(card);
   if (!context) return null;
   if (role === "market-map") {
+    if (portal && snapshotId && query.error?.message === "assistant_snapshot_missing") return createPortal(<p role="status">{t("引用的数据版本暂不可用","Cited publication unavailable")}</p>, portal);
     const line = reading?.lines[0];
     return portal && line
       ? createPortal(
@@ -221,6 +225,7 @@ export function Inspection({
   const Container = anchored ? AnchoredReading : InlineReading;
   return (
     <Container card={card} onClose={close}>
+      {onUpdate && <button type="button" className="mx-text-link" onClick={onUpdate}>{t("解读最新记录","Read updated records")}</button>}
       {!reading ? (
         <div className="mx-inspection-status" role="status">
           {query.isFetching && partial?.key === key && (
@@ -232,7 +237,7 @@ export function Inspection({
               : stopped === key
                 ? t("已停止。", "Stopped.")
                 : query.isError
-                  ? t("暂时无法读取。", "Reading unavailable.")
+                  ? query.error?.message === "assistant_snapshot_missing" ? t("引用的数据版本暂不可用","Cited publication unavailable") : t("暂时无法读取。", "Reading unavailable.")
                   : t("可核实的记录不足。", "Too few verified observations.")}
           </span>
           {query.isFetching ? (
@@ -259,7 +264,7 @@ export function Inspection({
             </button>
           )}
         </div>
-      ) : undefined}
+      ) : <ReadingLines card={card} />}
     </Container>
   );
 }

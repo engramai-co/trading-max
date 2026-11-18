@@ -2,6 +2,8 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { navNumber, periodReturn, type Scope } from "../lib/portfolio/nav";
+import type { DashboardLens } from "../lib/types";
 import { backendFixture } from "../tests/loading/fixtures";
 
 const stamp = "2026-01-30T20:00:00Z";
@@ -19,20 +21,6 @@ const notes = {
       "The MSCI World (SWDA) weight was 28.00%.",
       "exposure",
       "exposure_benchmark",
-    ],
-  ],
-  attribution: [
-    [
-      "组合在这段区间的时间加权收益为 +1.30%。",
-      "Portfolio time-weighted return was +1.30% over this range.",
-      "account",
-      "daily_returns",
-    ],
-    [
-      "区间内缺少可核实的持股汇率拆分。",
-      "There is no verified held-share currency split for this range.",
-      "holdings",
-      "holding_fx_split",
     ],
   ],
   "market-sector": [
@@ -170,10 +158,10 @@ async function setup(
       const role = path.split("/").at(-2)!;
       const body = route.request().postDataJSON();
       calls.push({ role, ...body });
-      const evidence = (source: string, tool: string) => ({
+      const evidence = (source: string, tool: string, selection = {}) => ({
         source,
         tool,
-        arguments: body.context,
+        arguments: {...body.context, snapshotId:body.snapshotId ?? runId, ...selection},
         evidenceId: "ev_synthetic",
       });
       const lines =
@@ -195,13 +183,35 @@ async function setup(
                         m === "jp"
                           ? "Japan contributed an estimated +0.05 pp to MSCI ACWI."
                           : "The US index moved +1.20%.",
-                      evidence: evidence("market", "global_map"),
+                      evidence: evidence("market", "global_map", {market:m}),
                     },
                   ]),
                 ),
               },
             ]
-          : notes[role as keyof typeof notes].map(([zh, en, word, tool]) => ({
+          : role === "attribution" ? (() => {
+            const data = backendFixture(new URL("/api/backend/dashboard/lens/analytics",url)) as DashboardLens;
+            const {start,end,scope,view} = body.context;
+            const account: Scope = scope === "broker_total" ? "total" : scope;
+            const value = (date:string) => navNumber(data.nav?.find(p=>p.date===date),account,"Twr");
+            const change = periodReturn(value(start),value(end));
+            const formatted = new Intl.NumberFormat("en-GB",{style:"percent",minimumFractionDigits:2,maximumFractionDigits:2,signDisplay:"exceptZero"}).format(change ?? 0);
+            return [
+              change === null || view === "money" ?
+                {zh:"区间端点已选定。",en:"The chart endpoints are selected.",evidence:evidence("account","selected_money")} :
+                {zh:`组合在这段区间的时间加权收益为 ${formatted}。`,en:`Portfolio time-weighted return was ${formatted} over this range.`,evidence:evidence("account","selected_daily")},
+              {zh:"区间内缺少可核实的持股汇率拆分。",en:"There is no verified held-share currency split for this range.",evidence:evidence("holdings","selected_fx")},
+            ];
+          })() : role === "exposure" && body.context.dimension === "company" ? (() => {
+            const {lookthrough} = backendFixture(new URL("/api/backend/dashboard/lens/holdings-lookthrough",url)) as DashboardLens;
+            const position = lookthrough?.positions.find(p=>p.entityId===body.context.entityId);
+            if (position?.allocationPct == null) return [];
+            const weight = (position.allocationPct * 100).toFixed(2) + "%";
+            return [
+              {zh:`组合权重为 ${weight}。`,en:`Portfolio weight was ${weight}.`,evidence:evidence("exposure","selected_exposure")},
+              {zh:"缺少可比的历史记录。",en:"No comparable historical weight is available.",evidence:evidence("exposure","selected_exposure")},
+            ];
+          })() : notes[role as keyof typeof notes].map(([zh, en, word, tool]) => ({
               zh,
               en,
               evidence: evidence(word, tool),
@@ -519,4 +529,128 @@ test("map card tabs back to the inspected market and forward to its neighbour", 
     await page.keyboard.press("Tab");
   }
   await expect(page.locator(".mx-global-region[data-market=jp] + .mx-global-region")).toBeFocused();
+});
+
+test("an archived Money brush pins its plotted publication through handoff", async ({ page, isMobile }) => {
+  test.skip(isMobile);
+  const calls = await setup(page,"en",false);
+  await page.route("**/dashboard/history?**",route=>{
+    const url = new URL(route.request().url());
+    return route.fulfill({json:{...backendFixture(url) as object, runId:url.searchParams.get("runId")}});
+  });
+  await page.goto("/analytics?view=money&range=1M&moneyFrom=2026-01-02&moneyTo=2026-01-30&snapshotId=older&evidence=period_performance");
+  const chart = page.locator('[aria-roledescription="Interactive chart"]').first();
+  await chart.focus();
+  await chart.press("End");
+  await chart.press("Shift+ArrowLeft");
+  const card = page.locator(".mx-inline-reading").last();
+  await expect(card).toContainText("chart endpoints");
+  expect(calls.at(-1)?.snapshotId).toBe("older");
+  await card.getByRole("button",{name:"Which day moved most?"}).click();
+  const sent = page.waitForRequest(req=>req.url().includes("/assistant/chat"));
+  await page.locator(".mx-assistant-composer textarea").press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({snapshotId:"older",role:"attribution",object:calls.at(-1)?.context});
+});
+
+test("sector follow-up waits for the pinned reading",async ({page})=>{
+  await setup(page,"en",false);
+  let release!:()=>void;
+  const held = new Promise<void>(resolve=>{release=resolve;});
+  await page.route("**/assistant/roles/market-sector/reading",async route=>{await held;return route.fallback();});
+  try {
+    await page.goto("/sectors?market=us&sector=2");
+    const question=page.getByRole("button",{name:"What is my exposure?"});
+    await expect(question).toBeDisabled();
+    release();
+    await expect(question).toBeEnabled();
+    await question.click();
+    const sent=page.waitForRequest(req=>req.url().includes("/assistant/chat"));
+    await page.locator(".mx-assistant-composer textarea").press("Enter");
+    expect((await sent).postDataJSON().context).toMatchObject({snapshotId:runId,role:"market-sector",object:{market:"us",sector:"2",observed:stamp}});
+  } finally {release();}
+});
+
+test("cited Returns and Holdings reopen their selection and disclose expiry",async ({page})=>{
+  const calls=await setup(page,"en",false);
+  let expired=false;
+  await page.route("**/dashboard/lens/**",route=>{
+    const url=new URL(route.request().url());
+    if (url.searchParams.get("runId")!=="older") return route.fallback();
+    return expired ? route.fulfill({status:404,json:{}}) : route.fulfill({json:{...backendFixture(url) as object,runId:"older"}});
+  });
+  for (const [url,role,selection] of [
+    ["/analytics?view=returns&range=1M&inspectFrom=2026-01-06&inspectTo=2026-01-20&snapshotId=older&evidence=selected_daily","attribution",{start:"2026-01-06",end:"2026-01-20"}],
+    ["/holdings?view=lookthrough&dimension=company&category=SYNT&entityId=SYNT&snapshotId=older&evidence=selected_exposure","exposure",{category:"SYNT",entityId:"SYNT"}],
+  ] as const) {
+    expired=false;
+    await page.goto(url);
+    await expect.poll(()=>calls.at(-1)).toMatchObject({role,snapshotId:"older",context:selection});
+    expired=true;
+    await page.reload();
+    await expect(page.getByText("Cited publication unavailable",{exact:true})).toBeVisible();
+  }
+});
+
+test("Japan market citation reopens its observed inspection and discloses a replaced board",async ({page,isMobile})=>{
+  const calls = await setup(page,"en",false);
+  await page.goto("/sectors?market=global");
+  await expect.poll(()=>calls.filter(c=>c.role==="market-map").length).toBe(1);
+  const japan = page.locator(".mx-global-region[data-market=jp]");
+  await expect(japan).toHaveAttribute("aria-label", /Move /);
+  if (isMobile) await japan.tap();
+  else await japan.focus();
+  const link = page.locator(".mx-map-reading").getByRole("link",{name:"Market"});
+  const url = (await link.getAttribute("href"))!;
+  expect(Object.fromEntries(new URL(url,"http://localhost").searchParams)).toMatchObject({region:"jp", observed:stamp, snapshotId:runId});
+  await link.click();
+  await expect(page.locator(".mx-global-inspection")).toContainText("Japan");
+  await expect(page.locator(".mx-map-reading")).toContainText("MSCI ACWI");
+  await page.goto(url.replace(encodeURIComponent(stamp),"2025-01-01T00%3A00%3A00Z"));
+  await expect(page.getByText("Cited market observation unavailable",{exact:true})).toBeVisible();
+});
+
+test("a new publication preserves the selected phone reading until explicitly updated", async ({page,isMobile})=>{
+  test.skip(!isMobile);
+  await page.setViewportSize({width:390,height:844});
+  const calls=await setup(page,"en",false);
+  let id=runId;
+  await page.route("**/api/backend/health",route=>route.fulfill({json:{service:"trading_max-api",status:"ok",latestRunId:id}}));
+  await page.route("**/dashboard/lens/analytics?**",route=>route.fulfill({json:{...backendFixture(new URL(route.request().url())) as object,runId:id}}));
+  await page.clock.install();
+  await Promise.all([page.waitForResponse(r=>r.url().endsWith("/assistant/status")),page.goto("/analytics?view=returns&range=3M")]);
+  await expect(page.getByRole("heading",{name:"Return comparison",exact:true})).toBeAttached();
+  await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
+  await page.getByRole("button",{name:"YTD",exact:true}).click();
+  const sheet=page.getByRole("dialog");
+  await expect(sheet).toContainText("time-weighted");
+  const context=calls.at(-1)!.context;
+  id="new-publication";
+  const changed=page.waitForResponse(r=>r.url().includes("/dashboard/lens/analytics?"));
+  await page.clock.fastForward(65_000);
+  await changed;
+  await expect(sheet).toContainText("time-weighted");
+  const updated = sheet.getByRole("button",{name:"Read updated records"});
+  await expect(updated).toBeVisible();
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-reading-new-publication.png")});
+  await updated.click();
+  await expect.poll(()=>calls.at(-1)).toMatchObject({snapshotId:id,context});
+});
+
+test("company reading returns keyboard focus to the underlying detail", async ({page,isMobile})=>{
+  test.skip(!isMobile);
+  await page.setViewportSize({width:390,height:844});
+  await setup(page,"en",false);
+  await Promise.all([page.waitForResponse(r=>r.url().endsWith("/assistant/status")),page.goto("/holdings?view=lookthrough")]);
+  const trigger = page.locator("[data-assistant-trigger]");
+  await trigger.click();
+  await expect(page.locator(".mx-assistant-opening")).toBeVisible();
+  await page.getByRole("button",{name:"Close sidebar"}).click();
+  await page.locator(".mx-holding-mobile").first().click();
+  await expect(page.locator(".mx-reading-sheet")).toContainText("8.50%");
+  await expect(page.getByRole("dialog")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  const detail=page.getByRole("dialog",{name:"Underlying exposure"});
+  await expect(detail).toBeVisible();
+  await expect.poll(()=>detail.evaluate(node=>node.contains(document.activeElement))).toBe(true);
+  if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-company-detail-focus.png")});
 });

@@ -16,14 +16,16 @@ export type AllocationSlice = {
   weight: number | null;
   fullName?: string;
   category?: string;
+  entityId?: string;
   group?: "tail" | "unresolved";
   directValue?: number;
   indirectValue?: number;
 };
 
-export function AllocationComposition({ rows, companies = false, remainder, onInspect, reading }: {
+export function AllocationComposition({ rows, companies = false, remainder, initialGroup, onInspect, reading }: {
   rows: AllocationSlice[];
   companies?: boolean;
+  initialGroup?: AllocationSlice["group"];
   onInspect?: (row: AllocationSlice) => void;
   reading?: ReactNode;
   remainder?: { value: number; weight: number };
@@ -34,7 +36,6 @@ export function AllocationComposition({ rows, companies = false, remainder, onIn
   const reduced = useReducedMotion();
   const description = useId();
   const detailId = useId();
-  const [selected, setSelected] = useState(0);
   // The slice or row under the pointer or keyboard focus; the centre shows it until the pointer leaves.
   const [preview, setPreview] = useState<number | null>(null);
   const chart = useRef<ECharts | null>(null);
@@ -60,6 +61,7 @@ export function AllocationComposition({ rows, companies = false, remainder, onIn
       ...remainder,
     }] : grouped;
   }, [rows, t, companies, remainder]);
+  const [selected, setSelected] = useState(() => initialGroup ? Math.max(0,slices.findIndex(s => s.group === initialGroup)) : 0);
   const colour = (index: number) => remainder && index === slices.length - 1
     ? colours.axis : palette[index];
   const activeIndex = Math.min(selected, Math.max(0, slices.length - 1));

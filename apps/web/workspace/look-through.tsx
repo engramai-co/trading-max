@@ -180,14 +180,18 @@ function CompanyToolbar({
 
 export function Lookthrough() {
   const t = useCopy();
-  const query = useDashboardLens("holdings-lookthrough");
+  const params = useSearchParams();
+  const cited = params?.get("evidence") && params.get("snapshotId") || undefined;
+  const query = useDashboardLens("holdings-lookthrough", undefined, true, undefined, cited);
   const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
   return query.isPending ? (
     <Pending shape="holdings" label={t("正在读取穿透持仓…", "Loading look-through holdings…")} />
+  ) : cited && query.isError ? (
+    <Empty title={t("引用的数据版本暂不可用","Cited publication unavailable")} />
   ) : query.isError && !query.data ? (
     <QueryError retry={query.refetch} />
   ) : query.data?.lookthrough ? (
-    <Exposure data={query.data.lookthrough} snapshot={query.data.runId}
+    <Exposure key={cited ? params?.toString() : "latest"} data={query.data.lookthrough} snapshot={query.data.runId}
       failure={query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure} />
   ) : (
     <Empty title={t("暂无穿透记录", "No look-through records")} />
@@ -204,21 +208,27 @@ function Exposure({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const {ready} = useAssistant();
+  const {ready, open: sidebarOpen} = useAssistant();
   const params = useSearchParams();
   const dimensionsByKey = {company: "companies", country:"countries", sector:"sectors", gics:"gics"} as const;
   const linkedDimension = params?.get("dimension") as keyof typeof dimensionsByKey;
-  const [choice, setChoice] = useState<{category: string; name:string; group?: AllocationSlice["group"]} | null>(() => {
+  const linkedCompany = useMemo(() => {
+    if (linkedDimension !== "company" || !params?.get("category") || params.get("group")) return null;
+    const entity = params.get("entityId"), category = params.get("category");
+    const matches = data.positions.filter(p => entity ? p.entityId === entity : (p.isin || p.ticker || p.name) === category);
+    return matches.length === 1 ? matches[0] : null;
+  }, [data.positions,linkedDimension,params]);
+  const [choice, setChoice] = useState<{category: string; name:string; entityId?:string; group?: AllocationSlice["group"]} | null>(() => {
     const category=params?.get("category");
     const group=params?.get("group");
-    return category && dimensionsByKey[linkedDimension] ? {category,name:category,...(group==="tail" || group==="unresolved" ? {group} : {})} : null;
+    return category && dimensionsByKey[linkedDimension] ? {category,name:linkedCompany?.name ?? category,entityId:params?.get("entityId") ?? undefined,...(group==="tail" || group==="unresolved" ? {group} : {})} : null;
   });
   const [view, setView] = useState<
     "companies" | "countries" | "sectors" | "gics" | "sources"
   >(dimensionsByKey[linkedDimension] ?? "companies");
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("all");
-  const [selected, setSelected] = useState<LookthroughPosition | null>(null);
+  const [selected, setSelected] = useState<LookthroughPosition | null>(linkedCompany);
   // The first row shown, so a page-size change keeps the same rows in view.
   const [start, setStart] = useState(0);
   const [showAll, setShowAll] = useState(false);
@@ -228,7 +238,7 @@ function Exposure({
   const [sector, setSector] = useState("all");
   const [ownership, setOwnership] = useState("all");
   const [sort, setSort] = useState("total");
-  const [chart, setChart] = useState("rank");
+  const [chart, setChart] = useState(params?.get("group") ? "pie" : "rank");
   const companyComposition = useMemo(() => companyAllocation(data), [data]);
   // "Taiwan" and "Taiwan Region" are one place; filters and totals use the country code.
   const place = (name: string | null | undefined) => countryCode(name) ?? name ?? "";
@@ -362,10 +372,15 @@ function Exposure({
       ? countryLabel(str(r.country))
       : className(str(r.subIndustry ?? r.name ?? r.industry ?? r.label)) || "—";
   const dimension = view === "companies" ? "company" : view === "sectors" ? "sector" : view === "countries" ? "country" : "gics";
-  const inspect = (row: Pick<AllocationSlice,"name"|"category"|"group">) => setChoice(row.category ? {name:row.name,category:row.category,group:row.group} : null);
+  const inspect = (row: Pick<AllocationSlice,"name"|"category"|"group"|"entityId">) => setChoice(row.category ? {name:row.name,category:row.category,entityId:row.entityId,group:row.group} : null);
   const categoryKey = (row: Record<string,unknown>) => str(row.country ?? row.subIndustry ?? row.industry ?? row.name);
   const role = <PageInspection role="exposure" object={choice?.name ?? t("穿透配置","Look-through allocation")}
-    context={choice ? {dimension,category:choice.category,...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
+    context={choice ? {dimension,category:choice.category,...(choice.entityId ? {entityId:choice.entityId} : {}),...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
+  if (params?.get("snapshotId") && choice && !choice.group) {
+    const hasRecord = dimension === "company" ? !!linkedCompany || !params.get("category") || choice.category !== params.get("category")
+      : allocations.some(row => dimension === "country" ? place(categoryKey(row)) === place(choice.category) : categoryKey(row) === choice.category);
+    if (!hasRecord) return <Empty title={t("引用的配置记录暂不可用","Cited allocation unavailable")} />;
+  }
   const changeChart = (value: string) => {setChoice(null); setChart(value);};
   const top = companyComposition.rows.slice(0, 3);
   const concentration = top.reduce((sum, row) => sum + (row.weight ?? 0), 0);
@@ -515,7 +530,7 @@ function Exposure({
             {chart === "pie" && <AllocationComposition
               key={ready ? "companies" : `companies-${snapshot}`}
               companies
-              onInspect={ready ? inspect : undefined} reading={role}
+              initialGroup={choice?.group} onInspect={ready ? inspect : undefined} reading={role}
               rows={companyComposition.rows}
               remainder={companyComposition.remainder}
             />}
@@ -534,7 +549,7 @@ function Exposure({
                 <button
                   key={p.entityId || i}
                   className="mx-holding-mobile"
-                  onClick={() => {setSelected(p); if (ready) inspect({name:p.name,category:p.isin || p.ticker || p.name});}}
+                  onClick={() => {setSelected(p); if (ready) inspect({name:p.name,entityId:p.entityId || undefined,category:p.isin || p.ticker || p.name});}}
                 >
                   <div>
                     <Instrument
@@ -586,7 +601,7 @@ function Exposure({
                         <td>
                           <button
                             className="mx-table-button"
-                            onClick={() => {setSelected(p); if (ready) inspect({name:p.name,category:p.isin || p.ticker || p.name});}}
+                            onClick={() => {setSelected(p); if (ready) inspect({name:p.name,entityId:p.entityId || undefined,category:p.isin || p.ticker || p.name});}}
                           >
                             <SecurityPeek
                               ticker={p.ticker}
@@ -747,7 +762,7 @@ function Exposure({
               />
             </Group>
             {chart === "pie" && <AllocationComposition
-              onInspect={ready ? inspect : undefined} reading={role}
+              initialGroup={choice?.group} onInspect={ready ? inspect : undefined} reading={role}
               key={ready ? view : `${view}-${snapshot}`}
               rows={allocations.map((row) => ({
                 name: allocationLabel(row),category: categoryKey(row),
@@ -778,9 +793,9 @@ function Exposure({
         )}
       </Panel>
       <Narrative snapshot={snapshot} lens="hidden_exposure" page="holdings" />
-      {view === "companies" && chart !== "pie" && !selected && role}
+      {view === "companies" && chart !== "pie" && (!selected || phone) && role}
       <Drawer
-        opened={selected !== null}
+        opened={selected !== null && !(phone && (sidebarOpen || (ready && choice)))}
         onClose={() => {setSelected(null); setChoice(null);}}
         title={t("穿透后的真实敞口", "Underlying exposure")}
       >
@@ -816,7 +831,11 @@ function Exposure({
                 ["ISIN", selected.isin ?? "—"],
               ]}
             />
-            {chart !== "pie" && role}
+            {chart !== "pie" && (phone && ready ?
+              <button type="button" data-autofocus className="mx-text-link"
+                onClick={() => inspect({name:selected.name,entityId:selected.entityId || undefined,category:selected.isin || selected.ticker || selected.name})}>
+                ✦ {t("敞口","Exposure")}
+              </button> : role)}
             <Panel title={t("通过这些基金持有", "Held through these funds")}>
               {objects(selected.etfContributors).length ? (
                 objects(selected.etfContributors).map((c, i) => (

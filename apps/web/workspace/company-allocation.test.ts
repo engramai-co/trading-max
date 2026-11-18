@@ -17,7 +17,7 @@ describe("company allocation", () => {
     const positions = [position("SMALL", 1000), position("LARGE", 7000)];
     const result = companyAllocation({ positions, investedValueGbp: 10000, nonSecurityValueGbp: 2000 });
     expect(result.rows[0]).toEqual({
-      category: "LARGE", name: "LARGE", fullName: "LARGE Corporation", value: 7000, weight: 0.7,
+      entityId: "LARGE", category: "LARGE", name: "LARGE", fullName: "LARGE Corporation", value: 7000, weight: 0.7,
       directValue: 4200, indirectValue: 2800,
     });
     expect(result.remainder?.value).toBe(2000);
