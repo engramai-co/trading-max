@@ -41,7 +41,11 @@ from services.api.trading_max_api.watchlist import SecuritySearchService, Watchl
 def publication(tmp_path):
     store = ArtifactStore(tmp_path)
     manifest = publish_fixture(store)
-    deps = replace(AssistantDepsFactory(store).for_run(), captured_at=STALE_NOW)
+    research = ResearchLedger(store, WatchlistStore(tmp_path))
+    deps = replace(
+        AssistantDepsFactory(store, price_series=research.published_price_series).for_run(),
+        captured_at=STALE_NOW,
+    )
     return store, manifest, deps
 
 

@@ -3445,6 +3445,10 @@ export interface components {
             currency: string;
             /** Dimension */
             dimension: string;
+            /** Gics Coverage Fraction */
+            gics_coverage_fraction?: number | null;
+            /** Gics Portfolio Coverage Fraction */
+            gics_portfolio_coverage_fraction?: number | null;
             /** History Available From */
             history_available_from: string;
             /** Invested Value Gbp */
@@ -3880,6 +3884,8 @@ export interface components {
         };
         /** ExposureRow */
         ExposureRow: {
+            /** Classification Status */
+            classification_status?: string | null;
             /** Code */
             code?: string | null;
             /** Isin */
@@ -12829,6 +12835,8 @@ export interface operations {
                 /** @description invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy. */
                 scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
                 range?: components["schemas"]["PageRange"];
+                start?: components["schemas"]["CalendarDay"] | null;
+                end?: components["schemas"]["CalendarDay"] | null;
                 benchmark?: "VOO" | "QQQ" | "VT" | "ALL";
             };
             header?: never;
@@ -12912,6 +12920,8 @@ export interface operations {
                 horizon?: "20_sessions" | "to_date" | "decision_default";
                 ticker?: components["schemas"]["Ticker"] | null;
                 since?: components["schemas"]["CalendarDay"] | null;
+                decision_date?: components["schemas"]["CalendarDay"] | null;
+                side?: ("buy" | "sell") | null;
             };
             header?: never;
             path: {

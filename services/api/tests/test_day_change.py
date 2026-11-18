@@ -205,14 +205,19 @@ def test_pounds_only_without_an_opening_value_and_no_share_of_a_zero_opening():
     ]
 
 
-def test_new_totals_do_not_mark_earlier_retained_positions_closed():
+def test_new_totals_cannot_date_changes_or_market_closures_for_retained_positions():
     observed = "2026-11-26T17:30:00Z"
     account = {
         **_account(_position("SYN", "SYN_US_EQ"), fetched_at=observed),
         "positions_observed_at": "2026-11-25T21:00:00Z",
     }
     changes = holding_day_changes(
-        _attribution(day="2026-11-26", since="2026-11-26T13:00:00Z", as_of=observed),
+        _attribution(
+            _row("SYN", "10.00", "100.00", "SYN_US_EQ"),
+            day="2026-11-26",
+            since="2026-11-26T13:00:00Z",
+            as_of=observed,
+        ),
         {"A": account},
         listing_calendar=lambda _: "XNYS",
     )

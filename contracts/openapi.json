@@ -6094,6 +6094,28 @@
             "title": "Dimension",
             "type": "string"
           },
+          "gics_coverage_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gics Coverage Fraction"
+          },
+          "gics_portfolio_coverage_fraction": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gics Portfolio Coverage Fraction"
+          },
           "history_available_from": {
             "title": "History Available From",
             "type": "string"
@@ -7551,6 +7573,17 @@
       },
       "ExposureRow": {
         "properties": {
+          "classification_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification Status"
+          },
           "code": {
             "anyOf": [
               {
@@ -30095,6 +30128,38 @@
           },
           {
             "in": "query",
+            "name": "start",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Start"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "End"
+            }
+          },
+          {
+            "in": "query",
             "name": "benchmark",
             "required": false,
             "schema": {
@@ -30357,6 +30422,42 @@
                 }
               ],
               "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "decision_date",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/CalendarDay"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision Date"
+            }
+          },
+          {
+            "in": "query",
+            "name": "side",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "buy",
+                    "sell"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Side"
             }
           }
         ],

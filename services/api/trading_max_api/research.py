@@ -2425,6 +2425,16 @@ class ResearchLedger:
     ) -> ResearchPriceSeries:
         listing = self.held_fund(ticker, manifest)
         ticker = listing.ticker if listing else self._route_ticker(ticker)
+        return self.published_price_series(ticker, manifest, limit=limit)
+
+    def published_price_series(
+        self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
+    ) -> ResearchPriceSeries:
+        """Read a chart's resolved ticker entirely from the pinned publication."""
+        exact = [listing for listing in self._held_funds(manifest) if listing.ticker == ticker]
+        if len(exact) > 1:
+            raise FileNotFoundError(f"ambiguous published fund listing for {ticker}")
+        listing = exact[0] if exact else None
         fund_price = self._fund_price(manifest, ticker, listing, with_points=True)
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
         metadata_artifact = _artifact(manifest, "research/fundamentals.json")
