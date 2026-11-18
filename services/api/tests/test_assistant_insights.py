@@ -3,6 +3,7 @@
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
 
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from pydantic_ai import ModelRetry
@@ -14,6 +15,7 @@ from trading_max.analytics.exposure_history import (
     retained_dates,
 )
 from trading_max.analytics.key_moments import key_moments
+from trading_max.analytics.ledger import transaction_marker_rows
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 
 from services.api.tests.assistant_fixture import DATES, publication
@@ -27,6 +29,7 @@ from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
 from services.api.trading_max_api.dashboard import build_dashboard_data
+from services.api.trading_max_api.dashboard_models import ResearchTradeMarker
 from services.api.trading_max_api.history_reader import HistoryReader
 from services.api.trading_max_api.models import SecuritySearchResult
 
@@ -276,9 +279,22 @@ def test_checkable_events_filter_mixed_trades_to_the_requested_account(bound, mo
                     "date": day,
                     "kind": "T",
                     "accounts": ["invest", "isa"],
+                    "buy_quantity": 1,
+                    "sell_quantity": 1,
+                    "buy_orders": 1,
+                    "sell_orders": 1,
+                    "buy_average_price": 10,
+                    "sell_average_price": 10,
                     "fills": [
-                        {"account": "invest", "side": "buy"},
-                        {"account": "isa", "side": "sell"},
+                        {
+                            "account": account,
+                            "side": side,
+                            "at": day,
+                            "quantity": 1,
+                            "amount": 10,
+                            "currency": "GBP",
+                        }
+                        for account, side in (("invest", "buy"), ("isa", "sell"))
                     ],
                 }
             ]
@@ -288,7 +304,20 @@ def test_checkable_events_filter_mixed_trades_to_the_requested_account(bound, mo
         args = ins.MomentsArgs(scope=scope, ticker="TEST", start=DATES[0], end=day)
         reader = tools._Read(deps, "price_key_moments", args, scope)
         monkeypatch.setattr(tools._Read, "read", lambda self, key: docs.get(key))
-        events, _, issues = ins.dated_events(reader, args, reader.account_codes(scope))
+        events, _, issues = ins.dated_events(
+            reader,
+            args,
+            reader.account_codes(scope),
+            deps.price_series("TEST", deps.manifest).model_copy(
+                update={
+                    "trade_markers": [
+                        ResearchTradeMarker.model_validate(row)
+                        for row in docs[ins.TRADE_MARKERS]["rows"]
+                    ],
+                    "unresolved_trade_accounts": {},
+                }
+            ),
+        )
         assert not issues
         assert {(e["kind"], e["reference"]) for e in events} == {
             ("earnings", "e"),
@@ -601,20 +630,8 @@ def distinct_listing_events(bound, *, london_report=False):
             ]
         },
         ins.TRADE_MARKERS: {
-            "rows": [
-                {
-                    "ticker": "SYN",
-                    "date": day,
-                    "kind": "B",
-                    "accounts": ["isa"],
-                    "buy_orders": 1,
-                    "sell_orders": 0,
-                    "buy_quantity": 1,
-                    "sell_quantity": 0,
-                    "buy_average_price": 40,
-                    "sell_average_price": None,
-                }
-            ]
+            "rows": broker_markers([("SYN_US_EQ", "Market buy", 1, 40)]),
+            "calculation_version": "trade-markers-v3",
         },
     }
     manifest = republish(
@@ -630,6 +647,186 @@ def distinct_listing_events(bound, *, london_report=False):
         )
     )
     return app, f"/v1/snapshots/{manifest.run_id}/insights/key-moments"
+
+
+def broker_markers(instruments):
+    positions = [{"ticker": "SYN", "broker_ticker": "SYNl_EQ", "isin": "GB0000000001"}]
+    rows = [
+        {
+            "Ticker": instrument,
+            "ISIN": positions[0]["isin"],
+            "Action": action,
+            "Time": pd.Timestamp(f"{DATES[-1]}T12:00:00Z"),
+            "Shares": quantity,
+            "PriceN": price,
+            "TotalN": quantity * price,
+            "Currency (Total)": "GBP",
+        }
+        for instrument, action, quantity, price in instruments
+    ]
+    return transaction_marker_rows({"isa": pd.DataFrame(rows)}, positions)
+
+
+def listing_trade_readings(app, manifest, ticker):
+    client = TestClient(app)
+    chart = client.get(f"/v1/research/{ticker}/prices").json()
+    moments = client.get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={
+            "ticker": ticker,
+            "scope": "isa",
+            "start": DATES[0],
+            "end": DATES[-1],
+            "published_series_id": chart["publishedSeriesId"],
+        },
+    ).json()
+    events = [
+        e["reference"]
+        for item in moments["data"]["items"]
+        for e in item["events"]
+        if e["kind"] == "own_trade"
+    ]
+    markers = [
+        (m["ticker"], m["kind"], m["buyQuantity"], m["sellQuantity"]) for m in chart["tradeMarkers"]
+    ]
+    return markers, events
+
+
+@pytest.mark.parametrize("include_us", [False, True])
+def test_chart_and_moments_route_published_broker_fills_by_listing(bound, include_us):
+    app, _ = distinct_listing_events(bound)
+    app.state.watchlist.add(
+        SecuritySearchResult(ticker="SYN", name="US", exchange="NYSE", bloomberg_ticker="", figi="")
+    )
+    orders = [("SYNl_EQ", "Market buy", 2, 30)]
+    if include_us:
+        orders.extend([("SYN_US_EQ", "Market sell", 3, 40), ("SYN", "Market buy", 10, 5)])
+    rows = broker_markers(orders)
+    store = app.state.store
+    ref = store.immutable_artifacts.put_json(
+        key=ins.TRADE_MARKERS, payload={"rows": rows, "calculation_version": "trade-markers-v3"}
+    )
+    manifest = republish(store, {ins.TRADE_MARKERS: ref})
+    assert listing_trade_readings(app, manifest, "SYN.L") == ([("SYN.L", "B", 2, 0)], ["B"])
+    expected_us = ([("SYN", "S", 0, 3)], ["S"]) if include_us else ([], [])
+    assert listing_trade_readings(app, manifest, "SYN") == expected_us
+    assert {f["broker_ticker"] for row in rows for f in row["fills"]} == {o[0] for o in orders}
+
+
+@pytest.mark.parametrize("aggregate_only", [False, True])
+def test_legacy_marker_requires_a_unique_published_listing(bound, aggregate_only):
+    app, _ = distinct_listing_events(bound)
+    app.state.watchlist.add(
+        SecuritySearchResult(ticker="SYN", name="US", exchange="NYSE", bloomberg_ticker="", figi="")
+    )
+    store = app.state.store
+    rows = broker_markers([("SYNl_EQ", "Market buy", 2, 30)])
+    if aggregate_only:
+        rows[0].pop("fills")
+    else:
+        rows[0]["fills"][0].pop("broker_ticker", None)
+    ref = store.immutable_artifacts.put_json(
+        key=ins.TRADE_MARKERS, payload={"rows": rows, "calculation_version": "trade-markers-v1"}
+    )
+    manifest = republish(store, {ins.TRADE_MARKERS: ref})
+    assert listing_trade_readings(app, manifest, "SYN.L") == ([], [])
+    assert listing_trade_readings(app, manifest, "SYN") == ([], [])
+
+    technical = store.read_json(manifest.run_id, tools.TECHNICAL)
+    technical["rows"] = [row for row in technical["rows"] if row["ticker"] == "SYN.L"]
+    ref = store.immutable_artifacts.put_json(key=tools.TECHNICAL, payload=technical)
+    manifest = republish(store, {tools.TECHNICAL: ref})
+    assert listing_trade_readings(app, manifest, "SYN.L") == ([("SYN.L", "B", 2, 0)], ["B"])
+
+
+@pytest.mark.parametrize(("code", "ticker"), [("SYNL_EQ", "SYN.L"), ("SYN_US_EQ", "SYN")])
+def test_legacy_export_code_matches_one_published_listing(bound, code, ticker):
+    app, _ = distinct_listing_events(bound)
+    app.state.watchlist.add(
+        SecuritySearchResult(ticker="SYN", name="US", exchange="NYSE", bloomberg_ticker="", figi="")
+    )
+    store = app.state.store
+    # The original publisher uppercased the export code when a holding had no known alias.
+    rows = broker_markers([("SYNl_EQ", "Market buy", 1, 30)])
+    rows[0].pop("fills")
+    rows[0]["ticker"] = code
+    ref = store.immutable_artifacts.put_json(key=ins.TRADE_MARKERS, payload={"rows": rows})
+    broker = store.read_json(store.latest_manifest().run_id, tools.BROKER)
+    broker["accounts"]["A"]["positions"][0].update(ticker="SYN", broker_ticker="SYNl_EQ")
+    broker_ref = store.immutable_artifacts.put_json(key=tools.BROKER, payload=broker)
+    manifest = republish(store, {ins.TRADE_MARKERS: ref, tools.BROKER: broker_ref})
+    assert listing_trade_readings(app, manifest, ticker) == ([(ticker, "B", 1, 0)], ["B"])
+    other = "SYN" if ticker == "SYN.L" else "SYN.L"
+    assert listing_trade_readings(app, manifest, other) == ([], [])
+
+
+def test_legacy_marker_checks_broker_listing_even_when_only_one_chart_exists(bound):
+    app, manifest, _ = bound
+    store = app.state.store
+    technical = store.read_json(manifest.run_id, tools.TECHNICAL)
+    technical["rows"][0]["ticker"] = "SYN.L"
+    rows = broker_markers([("SYNl_EQ", "Market buy", 2, 30)])
+    rows[0].pop("fills")
+    manifest = republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_json(key=key, payload=payload)
+            for key, payload in ((tools.TECHNICAL, technical), (ins.TRADE_MARKERS, {"rows": rows}))
+        },
+    )
+    assert listing_trade_readings(app, manifest, "SYN.L") == ([("SYN.L", "B", 2, 0)], ["B"])
+
+    broker = store.read_json(manifest.run_id, tools.BROKER)
+    broker["accounts"]["A"]["positions"][0].update(ticker="SYN", broker_ticker="SYN_US_EQ")
+    ref = store.immutable_artifacts.put_json(key=tools.BROKER, payload=broker)
+    manifest = republish(store, {tools.BROKER: ref})
+    assert listing_trade_readings(app, manifest, "SYN.L") == ([], [])
+
+
+def test_mixed_publication_never_reuses_another_listings_price_or_account(bound):
+    app, _ = distinct_listing_events(bound)
+    store = app.state.store
+    # A v3 publisher can keep fills from several listings in one daily marker.
+    rows = broker_markers([("SYNl_EQ", "Market buy", 2, 30), ("SYNl_EQ", "Market sell", 1, 31)])
+    extra = broker_markers([("SYN_US_EQ", "Market buy", 3, 40)])[0]["fills"][0]
+    rows[0]["fills"].append({**extra, "account": "invest"})
+    rows[0].update(buy_orders=2, buy_quantity=5, buy_average_price=36, accounts=["isa", "invest"])
+    ref = store.immutable_artifacts.put_json(
+        key=ins.TRADE_MARKERS, payload={"rows": rows, "calculation_version": "trade-markers-v3"}
+    )
+    manifest = republish(store, {ins.TRADE_MARKERS: ref})
+    assert listing_trade_readings(app, manifest, "SYN.L") == ([("SYN.L", "T", 2, 1)], ["T"])
+    client = TestClient(app)
+    (marker,) = client.get("/v1/research/SYN.L/prices").json()["tradeMarkers"]
+    assert marker["accounts"] == ["isa"] and len(marker["fills"]) == 2
+    assert marker["buyAveragePrice"] is None and marker["sellAveragePrice"] == 31
+    events = client.get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={"scope": "invest", "ticker": "SYN.L", "start": DATES[0], "end": DATES[-1]},
+    ).json()["data"]["items"]
+    assert events == []
+
+
+def test_unresolved_fill_is_disclosed_only_in_its_own_account_and_window(bound):
+    app, _ = distinct_listing_events(bound)
+    store = app.state.store
+    rows = broker_markers([("SYN", "Market buy", 2, 30)])
+    ref = store.immutable_artifacts.put_json(
+        key=ins.TRADE_MARKERS, payload={"rows": rows, "calculation_version": "trade-markers-v3"}
+    )
+    manifest = republish(store, {ins.TRADE_MARKERS: ref})
+    client = TestClient(app)
+    for scope, end, expected in (
+        ("isa", DATES[-1], True),
+        ("invest", DATES[-1], False),
+        ("isa", DATES[-2], False),
+    ):
+        result = client.get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"scope": scope, "ticker": "SYN.L", "start": DATES[0], "end": end},
+        ).json()
+        assert result["data"]["items"] == []
+        assert ("trade_listing_unresolved" in result["quality"]["issues"]) == expected
 
 
 def test_key_moments_attach_events_only_to_their_published_listing(bound):
