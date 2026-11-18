@@ -9,6 +9,7 @@ All notable public Trading Max releases are recorded here.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
+- London chart prices, dividends and trade markers retain their supported pound or pence units. Verified London history, news and earnings dates remain available across older ticker spellings. GBP benchmarks wait for both the ETF and currency close on days when both trade.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
 - Live alerts compare prices and thresholds in the same unit, including London prices quoted in pence. Decision review and research history check the listing before using archived prices.
 - Research charts, their technical readings and the assistant’s dated events follow the same listing. Conflicting provider symbols or venues withhold the affected reading. Distributions on the chart can qualify as key moments. Timed headlines follow the published closing auction for their listing. A headline published while the auction can still close at random is marked on that session.
