@@ -69,6 +69,124 @@ test.describe("research section navigation", () => {
     }
   });
 
+  for (const filter of ["estimateFrequency=year", "forecastPeriod=%2B1q"]) {
+    test("forecast bookmark " + filter + " lands on estimates", async ({ page }) => {
+      await page.goto("/research?ticker=AAPL&view=analyst&" + filter);
+      await expect(page.locator("#research-forecast h2").first()).toBeFocused();
+    });
+  }
+
+  test("a clamped event jump stays current until the reader scrolls", async ({ page, isMobile }) => {
+    test.skip(isMobile, "The short sections both fit in a desktop viewport.");
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const nav = page.getByRole("navigation", { name: "On this page" });
+    const events = nav.getByRole("link", { name: "Earnings events" });
+    await events.click();
+    await expect(page.locator("#research-events h2")).toBeFocused();
+    await expect(events).toHaveAttribute("aria-current", "location");
+    await page.keyboard.press("Home");
+    await expect(nav.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
+  });
+
+  test("snapshot and split-adjusted firm targets use pounds alongside pound prices", async ({ page }) => {
+    await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
+      const response = await route.fetch(), data = await response.json();
+      await route.fulfill({ response, json: { ...data, context: { ...data.context,
+        quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp" } },
+        analyst: { ...lens.analyst, priceTargets: { median: 450, high: 495, low: 419 },
+          upgradesDowngrades: [{ index: days[0], firm: "Before Split", currentPriceTarget: 920 },
+            { index: days[1], firm: "On Split", currentPriceTarget: 470 }] } } });
+    });
+    await page.route("**/api/backend/research/AAPL/prices?**", (route) => route.fulfill({ json: {
+      ticker: "AAPL", currency: "GBP", events: [{ date: days[1], kind: "split", value: 2 }],
+      points: days.map((date) => ({ date, close: 4.25 })),
+    } }));
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const summary = page.locator(".mx-target-summary");
+    await expect(summary).toContainText("£4.50");
+    await expect(summary).toContainText("+5.9%");
+    const chart = page.getByRole("group", { name: /^Historical prices/ });
+    await page.locator(".mx-target-chart").scrollIntoViewIfNeeded();
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await chart.press("Home");
+    const reading = page.locator(".mx-target-chart .mx-chart-readout-values");
+    await expect(reading).toContainText("Before Split · Target 4.60");
+    await chart.press("ArrowRight");
+    await expect(reading).toContainText("On Split · Target 4.70");
+    await expect(page.locator("#research-actions")).toContainText("£9.20");
+  });
+
+  test("an older target snapshot waits for the split history before comparing it with today's quote", async ({ page }) => {
+    await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
+      const response = await route.fetch(), data = await response.json();
+      await route.fulfill({ response, json: { ...data, context: { ...data.context,
+        quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp", asOf: days[2] } },
+        analyst: { ...lens.analyst, asOf: days[0], priceTargets: { median: 900 } } } });
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/backend/research/AAPL/prices?**", async (route) => {
+      await gate;
+      await route.fulfill({ json: { ticker: "AAPL", currency: "GBP",
+        points: days.map((date) => ({ date, close: 4.25, split: date === days[1] ? 2 : 0 })) } });
+    });
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const summary = page.locator(".mx-target-summary");
+    await expect(summary).toBeVisible();
+    await expect.soft(summary).not.toContainText("+111.8%", { timeout: 500 });
+    release();
+    await expect(summary).toContainText("£4.50");
+    await expect(summary).toContainText("+5.9%");
+  });
+
+  test("target-only dates after the last close run through the snapshot date", async ({ page }) => {
+    await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...await response.json(), analyst: {
+        ...lens.analyst, asOf: "2026-10-07T12:00:00Z", upgradesDowngrades: [
+          { index: "2026-10-06", firm: "Later Research", currentPriceTarget: 110 },
+          { index: "2026-10-08", firm: "Future Research", currentPriceTarget: 200 },
+        ] } } });
+    });
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const chart = page.getByRole("group", { name: /^Historical prices/ });
+    await page.locator(".mx-target-chart").scrollIntoViewIfNeeded();
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await chart.press("End");
+    const reading = page.locator(".mx-target-chart .mx-chart-readout-values");
+    await expect(reading).toContainText("Later Research · Target 110.00");
+    await expect(reading).not.toContainText("Close");
+  });
+
+  test("revisions and the calendar keep their distinct readings", async ({ page }) => {
+    await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...await response.json(), nextEarningsDate: "2030-02-14",
+        analyst: { ...lens.analyst, epsTrend: [{ period: "0q", current: 2.6, "90daysAgo": 2 }] } } });
+    });
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const revisions = page.locator(".mx-panel").filter({ has: page.getByRole("heading", { name: "EPS estimate revisions" }) });
+    await revisions.locator("details summary").click();
+    await expect.soft(revisions).toContainText("+30.0%");
+    await expect(page.locator("#research-events")).toContainText("14 Feb 2030");
+  });
+
+  test("the price legend reserves its phone height while prices load", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "The phone label wraps.");
+    await page.setViewportSize({ width: 320, height: 844 });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/backend/research/AAPL/prices?**", async (route) => { await gate; await route.fallback(); });
+    await page.goto("/research?ticker=AAPL&view=analyst");
+    const heading = page.locator(".mx-target-chart-heading");
+    await expect(heading).toBeVisible();
+    const before = await heading.boundingBox();
+    release();
+    await expect(heading).toContainText("Firm targets");
+    await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
+    expect((await heading.boundingBox())!.height).toBe(before!.height);
+  });
+
   test("a target on a non-trading day shares the price timeline and keeps both firms", async ({ page }) => {
     await page.goto("/research?ticker=AAPL&view=analyst");
     const chart = page.getByRole("group", { name: /^Historical prices and analyst target range/ });

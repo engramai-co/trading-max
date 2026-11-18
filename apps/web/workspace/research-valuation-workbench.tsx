@@ -100,11 +100,13 @@ export function ValuationWorkbench({
       refreshing={query.isFetching}
       onRetry={query.isError ? () => void query.refetch() : undefined}
     /> : <div id="research-scenario">
-        {financial || state.view === "error" ? <ModelAlternatives data={data} financial={financial} /> : <Pending />}
-        {!financial && state.view === "error" && <Panel title={t("情景模型", "Scenario model")}>
-          <Empty title={t("当前数据不足以建立现金流模型", "Cash-flow model inputs are incomplete")} />
-          <QueryError retry={query.refetch} />
+        {!financial && <Panel title={t("情景模型", "Scenario model")}>
+          {state.view === "error" ? <>
+            <Empty title={t("当前数据不足以建立现金流模型", "Cash-flow model inputs are incomplete")} />
+            <QueryError retry={query.refetch} />
+          </> : <Pending />}
         </Panel>}
+        {(financial || state.view === "error") && <ModelAlternatives data={data} financial={financial} />}
     </div>}
   </ResearchReading>;
 }
