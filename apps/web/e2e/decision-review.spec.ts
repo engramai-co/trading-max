@@ -1200,7 +1200,11 @@ test("earnings and rating source words open their own research sections", async 
     let data = backendFixture(url);
     if (url.pathname.endsWith("/lens/analyst")) {
       url.pathname = url.pathname.replace(/analyst$/, "overview");
-      data = { ...Object(backendFixture(url)), view: "analyst", analyst: { earningsEvents: [], upgradesDowngrades: [] } };
+      data = { ...Object(backendFixture(url)), view: "analyst", analyst: {
+        earningsEvents: [{ id: "synthetic-results", date: "2026-08-28", status: "reported",
+          instant: "2026-08-28T12:00:00Z", timezone: "Europe/London" }],
+        upgradesDowngrades: [{ GradeDate: "2026-08-31", Firm: "Synthetic Research", FromGrade: "Buy", ToGrade: "Hold", Action: "down" }],
+      } };
     }
     return route.fulfill({json: data ?? {}});
   });
@@ -1224,6 +1228,7 @@ test("earnings and rating source words open their own research sections", async 
     const anchor = page.locator("#research-" + section);
     await expect(anchor).toHaveAttribute("data-assistant-evidence", "");
     await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeInViewport({ratio:1});
+    await expect(anchor).toContainText(section === "events" ? "已公布" : "Synthetic Research");
     if (process.env.REVIEW_SCREENSHOTS) {
       await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-" + section + "-citation.png")});
     }
