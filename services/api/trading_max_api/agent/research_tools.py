@@ -57,14 +57,24 @@ def last_listing_trade(read, ticker, end, currency, fallback=()):
         if read.deps.manifest and read.deps.listing_markers
         else fallback
     )
-    fills = (
-        (row.date, fill.at, fill.side)
-        for row in markers
-        if row.date <= end
-        for fill in row.fills
-        if fill.account in {"invest", "isa"}
-    )
-    return max(fills, default=None)
+    eligible = [row for row in markers if row.date <= end]
+    if not eligible:
+        return None
+    for row in sorted(eligible, key=lambda marker: marker.date, reverse=True):
+        fills = [fill for fill in row.fills if fill.account in {"invest", "isa"}]
+        archived = {
+            kind
+            for accounts, kind in row.aggregate_sides
+            if accounts and accounts <= {"invest", "isa"}
+        }
+        if archived:
+            sides = archived | {"B" if fill.side == "buy" else "S" for fill in fills}
+            side = "buy" if sides == {"B"} else "sell" if sides == {"S"} else "trade"
+            return row.date, None, side
+        if fills:
+            last = max(fills, key=lambda fill: fill.at)
+            return row.date, last.at, last.side
+    return None
 
 
 def research_position(ctx: Context, args: PositionArgs) -> dict:

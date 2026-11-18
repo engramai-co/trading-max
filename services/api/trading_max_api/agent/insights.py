@@ -529,7 +529,7 @@ def dated_events(
     scopes = {CODE_SCOPE[code] for code in codes}
     if not scopes & {"invest", "isa"}:
         return [*events, *extra_events], keys, issues
-    if series is not None:
+    if series is not None and series.published_series_id:
         markers, unresolved = series.trade_markers, series.unresolved_trade_accounts
     elif read.deps.listing_markers and read.deps.manifest:
         markers, unresolved = read.deps.listing_markers(read.deps.manifest, args.ticker, currency)
@@ -658,7 +658,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         read,
         args.model_copy(update={"ticker": listing}),
         codes,
-        None if observed else series,
+        series,
         calendar=series.exchange_calendar or listing_calendar(listing, None, series.timezone),
         currency=series.currency,
     )

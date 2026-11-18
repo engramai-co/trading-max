@@ -8,6 +8,8 @@ from services.api.tests.test_assistant_insights import (
     ResearchPriceSeries,
     SecuritySearchResult,
     _call,
+    broker_markers,
+    publish_trade_chart,
     distinct_listing_events,
     republish,
     tools,
@@ -80,3 +82,55 @@ def test_retained_chart_after_watchlist_replacement(bound):
     reopened = client.get(path, params=params)
     assert reopened.status_code == 200
     assert reopened.json()["output"]["data"] == result["data"]
+
+
+def test_archived_trade_sets_position_baseline(bound):
+    from services.api.trading_max_api.agent.research_tools import PositionArgs, research_position
+
+    (buy,) = broker_markers([("SYNl_EQ", "Market buy", 2, 25)])
+    buy.update(ticker="SYN.L", date=DATES[0])
+    buy.pop("fills")
+    app, _, chart = publish_trade_chart(bound, [buy], version="trade-markers-v1")
+    assert chart["tradeMarkers"][0]["kind"] == "B"
+    result = _call(
+        app.state.assistant.deps_for_run("research", None),
+        research_position,
+        PositionArgs(ticker="SYN.L", published_series_id=chart["publishedSeriesId"]),
+    )
+    assert (result["data"]["trade_date"], result["data"]["start"], result["data"]["side"]) == (
+        DATES[0],
+        DATES[0],
+        "buy",
+    )
+
+
+def test_observed_fund_distribution_qualifies_as_a_moment(bound):
+    from services.api.trading_max_api.agent import insights
+
+    app, manifest, _ = bound
+    series = app.state.research.price_series("TEST", manifest, limit=2000)
+    day = DATES[-1]
+    observed = series.model_copy(
+        update={
+            "ticker": "FUND.L",
+            "published_series_id": None,
+            "published_bar_ticker": None,
+            "events": [{"date": day + "T00:00:00+00:00", "kind": "dividend", "value": 0.2}],
+        }
+    )
+    chart = app.state.research.observe_prices(observed, manifest.run_id)
+    result = insights.moments_data(
+        app.state.assistant.deps_for_run("research", None),
+        insights.MomentsArgs(
+            ticker="FUND.L",
+            start=DATES[0],
+            end=day,
+            scope="broker_total",
+            published_series_id=chart.observed_series_id,
+        ),
+    )
+    assert any(
+        e["kind"] == "dividend" and e["date"] == day
+        for m in result["data"]["items"]
+        for e in m["events"]
+    )

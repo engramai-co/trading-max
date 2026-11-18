@@ -114,8 +114,8 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     if (path === "/data/change" && start && finite(data.change)) return figure([start + " – " + end,
       basisName(data.unit === "points" ? "index-level" : data.adjustment,locale) + " " + percent(data.change, true, 2)], "market", chart);
     const day = isoDay(data.trade_date);
-    if (path === "/data/trade_date" && day && ["buy", "sell"].includes(str(data.side))) {
-      return figure([day, data.side === "buy" ? t("最近一笔已核实买入", "Latest verified buy") : t("最近一笔已核实卖出", "Latest verified sell")], "broker", {...chart, date:day});
+    if (path === "/data/trade_date" && day && ["buy", "sell", "trade"].includes(str(data.side))) {
+      return figure([day, data.side === "buy" ? t("最近一笔已核实买入", "Latest verified buy") : data.side === "sell" ? t("最近一笔已核实卖出", "Latest verified sell") : t("最近已核实的成交日", "Latest verified trading day")], "broker", {...chart, date:day});
     }
     const match = /^\/data\/benchmarks\/(0|[1-9]\d?)\/(asset|benchmark)$/.exec(path);
     if (!match) return null;

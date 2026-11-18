@@ -60,9 +60,9 @@ def listing_moment_events(
     # The pinned chart itself can be the only record of a fund distribution.
     # A payment date is distinct from an ex-date, even if both fall on one day.
     distribution_days = {e["date"] for e in events if e["kind"] in {"dividend", "ex_dividend"}}
-    if series is not None and series.published_bar_ticker == ticker:
+    if series is not None and (series.published_bar_ticker or series.ticker) == ticker:
         for bar in series.events:
-            day = bar["date"]
+            day = bar["date"][:10]
             if (
                 bar["kind"] == "dividend"
                 and args.start <= day <= args.end

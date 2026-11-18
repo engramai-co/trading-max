@@ -73,7 +73,7 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
             )
         )
     if trade := data.get("trade_date"):
-        action = "买入" if data["side"] == "buy" else "卖出"
+        action = {"buy": "买入", "sell": "卖出", "trade": "成交"}[data["side"]]
         facts.append(
             observation(
                 f"最近一笔已核实成交：{trade} {action}。",
