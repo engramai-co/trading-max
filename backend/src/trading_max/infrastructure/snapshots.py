@@ -68,10 +68,10 @@ class SnapshotStore:
     @contextmanager
     def publication_lock(self):
         """Order pointer replacements and commits that require the pointer to stay current."""
-        self.snapshots_root.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True)
         # The pointer itself is replaced by rename. Lock a stable inode shared
         # by API, worker and CLI processes, including separate store instances.
-        with (self.snapshots_root / ".publication.lock").open("a+b") as handle:
+        with (self.root / ".publication.lock").open("a+b") as handle:
             if os.name == "nt":
                 import msvcrt
 
