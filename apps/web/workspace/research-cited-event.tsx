@@ -9,7 +9,7 @@ import { readApi } from "./data";
 import { Empty, LoadingStatus, Page, Panel, useCopy } from "./foundation";
 import { useRouteState } from "./route-state";
 
-type EventPage = components["schemas"]["UpcomingReading"];
+type PublishedEvent = components["schemas"]["UpcomingItem"];
 
 /** Reopen a single published event even if the ticker has left the current research list. */
 export function CitedResearchEvent() {
@@ -19,31 +19,19 @@ export function CitedResearchEvent() {
   const ticker = params.get("ticker") ?? "";
   const snapshot = params.get("snapshotId") ?? "";
   const kind = params.get("event") === "exDividend" ? "ex_dividend" : "earnings";
-  const day = params.get("date") ?? "";
-  const end = params.get("end");
   const rowId = params.get("calendarEventId");
   const researchId = params.get("eventId");
-  const stamp = Date.parse(day + "T00:00:00Z");
-  const valid = /^[a-zA-Z0-9_-]{1,100}$/.test(snapshot) && !!ticker && /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(stamp);
+  const valid = /^[a-zA-Z0-9_-]{1,100}$/.test(snapshot) && !!ticker && !!(rowId || researchId);
   const result = useQuery({
-    queryKey:["cited-research-event",snapshot,ticker,kind,day,end,rowId,researchId,timeZone],
+    queryKey:["cited-research-event",snapshot,ticker,kind,rowId,researchId],
     enabled:valid, staleTime:0, gcTime:0, retry:false,
     queryFn: async ({signal}) => {
-      // The saved day belongs to the original reader. Include adjacent days for a timezone change.
-      const dateAt = (offset: number) => new Date(stamp + offset * 86_400_000).toISOString().slice(0,10);
-      const query = new URLSearchParams({ticker,scope:"broker_total",start:dateAt(-2),end:dateAt(2),timezone:timeZone,limit:"20"});
-      let cursor: number | null = 0;
-      while (cursor !== null) {
-        query.set("cursor", String(cursor));
-        const page: EventPage = await readApi(`/publications/${snapshot}/events/upcoming?${query}`, signal);
-        if (page.snapshot_id !== snapshot) return null;
-        const found = page.data?.items.find(row => row.ticker === ticker && row.kind === kind &&
-          (rowId ? row.evidence_id === rowId : researchId ? row.research_event_id === researchId :
-            row.date === day && (row.end_date ?? row.date) === (end ?? day)));
-        if (found) return found;
-        cursor = page.data?.next_cursor ?? null;
-      }
-      return null;
+      const query = new URLSearchParams({ticker,kind});
+      if (rowId) query.set("eventId", rowId);
+      else if (researchId) query.set("researchEventId", researchId);
+      const item = await readApi<PublishedEvent>(`/publications/${snapshot}/events/upcoming?${query}`, signal);
+      return item.ticker === ticker && item.kind === kind &&
+        (rowId ? item.evidence_id === rowId : item.research_event_id === researchId) ? item : null;
     },
   });
   const row = !result.isFetching && !result.isError && result.data;
