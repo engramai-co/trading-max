@@ -253,7 +253,14 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const inspectedContribution = rows.find(({ market }) => market === inspection?.market)?.contribution;
   const inspectedStatus = quoteStatus(inspectedMove?.move, inspectedMove?.notOpen);
   return (
-    <section className="mx-global-panel" aria-labelledby="mx-global-title">
+    <section className="mx-global-panel" aria-labelledby="mx-global-title"
+      onKeyDownCapture={(event) => {
+        // The reading links render through a portal, so capture on their shared React ancestor.
+        if (event.key === "Tab" && event.shiftKey && event.target === popover.current?.querySelector("button, a")) {
+          event.preventDefault();
+          trigger.current?.focus();
+        }
+      }}>
       <PageInspection role="market-map" object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
         context={openingObservation ? {observed:openingObservation} : undefined} market={inspection?.market}
         showMapLine={answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
@@ -321,12 +328,6 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           style={placement ? { left: placement.x, top: placement.y } : { visibility: "hidden" }}
           onPointerEnter={cancelDismiss} onPointerLeave={() => {
             if (!popover.current?.contains(document.activeElement)) deferDismiss();
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "Tab" && event.shiftKey && event.target === event.currentTarget.querySelector("button, a")) {
-              event.preventDefault();
-              trigger.current?.focus();
-            }
           }}
           onFocus={cancelDismiss} onBlur={(event) => {
             if (event.relatedTarget instanceof Element &&
