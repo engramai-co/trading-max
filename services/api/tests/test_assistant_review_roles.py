@@ -387,6 +387,71 @@ def test_legacy_decision_withholds_unverified_prior_close_and_hindsight(tmp_path
     assert (basket["count"], basket["evaluated"], basket["effect_gbp"]) == (1, 1, 18)
 
 
+@pytest.mark.parametrize(
+    ("version", "change", "habit"),
+    [
+        ("decisions-v4", 0.12, None),
+        ("decisions-v4", -0.12, "untraded_fall"),
+        ("decisions-v6", 0.12, "basket_buy"),
+        ("decisions-v7", 0.12, "basket_buy"),
+    ],
+)
+def test_archived_habits_schedule_only_supported_observations(tmp_path, version, change, habit):
+    service, publish, row, _ = setup_review(tmp_path)
+    deps = publish()
+    archived = {k: v for k, v in row.items() if k not in ("basket_buy", "before_earnings")}
+    if habit == "basket_buy":
+        archived["basket_buy"] = True
+    account = {
+        "status": "available",
+        "calculation_version": version,
+        "as_of": "2026-03-06",
+        "decisions": [archived],
+    }
+    move = {"date": "2026-02-02", "ticker": "TEST", "change": change, "threshold": 0.05}
+    journal = {"coverage": "complete", "holdingMoves": [move]} if version == "decisions-v4" else {}
+    refs = {
+        key: deps.store.immutable_artifacts.put_json(key=key, payload={"accounts": {"A": data}}).ref
+        for key, data in [(tools.DECISIONS, account), (EVIDENCE, journal)]
+    }
+    deps = replace(deps, manifest=republish(deps.store, refs))
+    role = role_registry()["habits"]
+    context = HabitsContext(scope="invest")
+    reader = role.reader(deps, context)
+    scopes = {
+        target.context.scope for target in targets(job(datetime.now(UTC), deps.snapshot_id), reader)
+    }
+    assert scopes == ({"invest", "broker_total"} if habit else set())
+    report = reader.read(review_patterns, {"compare_horizons": True})
+    if habit is None:
+        assert report["status"] == "unavailable" and report["data"] is None
+        return
+    group = report["data"]["groups"]
+    assert set(group) == set(report["data"]["comparison"]["groups"]) == {habit}
+    assert group[habit]["count"] == 1
+    assert group[habit]["effect_gbp"] == (18 if habit == "basket_buy" else None)
+    assert group[habit]["evaluated"] == (1 if habit == "basket_buy" else 0)
+    selected = role.reader(deps, context.model_copy(update={"habit": "before_earnings"}))
+    assert selected.read(review_patterns, {})["status"] == "unavailable"
+
+    async def bind():
+        return BoundModel(TestModel(custom_output_args={"indices": [0]}), {})
+
+    service.assistant.bind_background_model = bind
+
+    async def scheduled():
+        return [event async for event in service.events(role, context, deps, scheduled=True)]
+
+    result = asyncio.run(scheduled())[-1]
+    assert result.type == "result"
+    (line,) = result.reading.lines
+    assert (
+        line.section == habit
+        and line.variants["to_date"].evidence.arguments["horizon"] == "to_date"
+    )
+    assert ("£18.00" if habit == "basket_buy" else "0/1 measured") in line.en
+
+
 def test_decision_and_habit_followups_can_only_read_the_selected_object(tmp_path):
     _, publish, row, _ = setup_review(tmp_path)
     deps = publish()

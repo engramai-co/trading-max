@@ -27,6 +27,10 @@ class Selection(BaseModel):
     indices: list[int] = Field(min_length=2, max_length=4)
 
 
+class SingleSelection(BaseModel):
+    indices: list[Literal[0]] = Field(min_length=1, max_length=1)
+
+
 class ReadingEvent(BaseModel):
     type: Literal["reading", "lines", "result", "error", "empty"]
     reading: RoleReading | None = None
@@ -154,7 +158,8 @@ class ReadingService:
             yield ReadingEvent(type="reading")
             facts = await asyncio.to_thread(role.facts, tools, context)
             tools.attach_evidence(facts)
-            if len(facts) < 2:
+            single = len(facts) == 1 and role.allow_single_observation
+            if len(facts) < 2 and not single:
                 yield ReadingEvent(type="empty")
                 return
             if not permitted():
@@ -168,7 +173,11 @@ class ReadingService:
             if not permitted() or not reserve():
                 yield ReadingEvent(type="error", code="assistant_disabled")
                 return
-            agent = Agent(output_type=Selection, instructions=role.prompt, retries=1)
+            agent = Agent(
+                output_type=SingleSelection if single else Selection,
+                instructions=role.prompt,
+                retries=1,
+            )
             prompt = json.dumps(
                 [
                     {"index": i, "section": fact.section, "observation": fact.en}

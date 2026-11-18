@@ -4,12 +4,15 @@ import json
 from hashlib import sha256
 from typing import Literal
 
+from trading_max.analytics.decision_review import CALCULATION_VERSION
+
 from .tools import CODE_SCOPE, DECISIONS, Args, Context, _mapped, _number, _Read, _rows
 
 EVIDENCE = "account/review_evidence.json"
 Horizon = Literal["20_sessions", "to_date"]
 Habit = Literal["before_earnings", "untraded_fall", "basket_buy"]
 Scope = Literal["broker_total", "invest", "isa"]
+HABIT_CALCULATIONS = {"decisions-v6", "decisions-v7", CALCULATION_VERSION}
 
 
 class HabitArgs(Args):
@@ -42,6 +45,7 @@ def review_patterns(ctx: Context, args: HabitArgs) -> dict:
 
 def _summarise(read, scopes, accounts, evidence, args):
     groups = {k: [] for k in ("before_earnings", "untraded_fall", "basket_buy")}
+    coverage = {key: set() for key in groups}
     revision = []
     as_of = {}
     issues = []
@@ -50,18 +54,39 @@ def _summarise(read, scopes, accounts, evidence, args):
         account = _mapped(accounts.get(code))
         decisions = _rows(account.get("decisions"))
         journal = _mapped(evidence.get(code))
-        has_habit_records = (
-            "unpriced_basket_buys" in account
-            or any("before_earnings" in row or "basket_buy" in row for row in decisions)
-            or bool(journal.get("holdingMoves"))
-        )
-        if account.get("status") != "available" or not has_habit_records:
+        if account.get("status") != "available":
             issues.append(f"{CODE_SCOPE[code]}_decisions_unavailable")
             continue
+        rows = decisions + _rows(account.get("unpriced_basket_buys"))
+        purchases = [row for row in rows if row.get("side") == "buy"]
+        moves = _rows(journal.get("holdingMoves"))
+        falls = [move for move in moves if (_number(move.get("change")) or 0) < 0]
+        if not rows and not falls:
+            continue
+        # Basket flags are sparse. The list of unpriced members also records
+        # that the account was checked, including when no basket was found.
+        if isinstance(account.get("unpriced_basket_buys"), list) or any(
+            isinstance(row.get("basket_buy"), bool) for row in purchases
+        ):
+            coverage["basket_buy"].add(code)
+        if any(isinstance(row.get("before_earnings"), bool) for row in purchases):
+            coverage["before_earnings"].add(code)
+        # A complete habit-era journal can establish a zero. Earlier journals
+        # supply individual qualifying falls, even without hypothetical outcomes.
+        if falls or (
+            account.get("calculation_version") in HABIT_CALCULATIONS
+            and journal.get("coverage") == "complete"
+            and isinstance(journal.get("holdingMoves"), list)
+        ):
+            coverage["untraded_fall"].add(code)
+        supported = [key for key in groups if code in coverage[key]]
+        if not supported:
+            continue
+        revision.append((code, supported))
         as_of[CODE_SCOPE[code]] = account.get("as_of")
-        if journal.get("coverage") != "complete":
+        if args.habit in (None, "untraded_fall") and journal.get("coverage") != "complete":
             issues.append("partial_journal")
-        for row in decisions + _rows(account.get("unpriced_basket_buys")):
+        for row in rows:
             complete = row.get("horizon_complete", row.get("effect_horizon_gbp") is not None)
             observed = row.get("observed_days")
             scored = (
@@ -79,12 +104,14 @@ def _summarise(read, scopes, accounts, evidence, args):
                     row.get("date"),
                     row.get("ticker"),
                     row.get("side"),
+                    row.get("before_earnings"),
+                    row.get("basket_buy"),
                     bool(complete),
                     row.get("return_to_date") is not None and observed != 0,
                 )
             )
             if row.get("side") == "buy":
-                if row.get("before_earnings") is None:
+                if args.habit in (None, "before_earnings") and row.get("before_earnings") is None:
                     issues.append("partial_earnings_history")
                 for key in ("before_earnings", "basket_buy"):
                     if row.get(key):
@@ -94,9 +121,7 @@ def _summarise(read, scopes, accounts, evidence, args):
                                 _number(row.get(f"return_{suffix}")) if scored else None,
                             )
                         )
-        for move in _rows(journal.get("holdingMoves")):
-            if (_number(move.get("change")) or 0) >= 0:
-                continue
+        for move in falls:
             money = _number(
                 move.get(
                     "hypotheticalHorizonGbp" if suffix == "horizon" else "hypotheticalToDateGbp"
@@ -113,11 +138,13 @@ def _summarise(read, scopes, accounts, evidence, args):
                     move.get("hypotheticalToDateGbp") is not None,
                 )
             )
-    if not revision:
-        return read.missing("decision_history_unavailable", keys=[DECISIONS, EVIDENCE])
     summaries = {}
     for key, group in groups.items():
         if args.habit is not None and key != args.habit:
+            continue
+        if len(coverage[key]) < len(scopes):
+            issues.append(f"partial_{key}_coverage")
+        if not coverage[key]:
             continue
         effects = [money for money, _ in group if money is not None]
         returns = [value for money, value in group if money is not None and value is not None]
@@ -129,6 +156,8 @@ def _summarise(read, scopes, accounts, evidence, args):
             if returns and len(returns) == len(effects)
             else None,
         }
+    if not summaries:
+        return read.missing("decision_history_unavailable", keys=[DECISIONS, EVIDENCE])
     version = sha256(json.dumps(revision, separators=(",", ":")).encode()).hexdigest()[:24]
     return read.result(
         "partial" if issues else "ok",

@@ -136,7 +136,7 @@
           "mean_return": 0.045
         }
       },
-      "revision": "a50947d98109152a974064db",
+      "revision": "a1e951ea426d27c2b9cc86dd",
       "currency": "GBP",
       "horizon": "to_date",
       "as_of": {

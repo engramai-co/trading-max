@@ -266,7 +266,8 @@ regression signals rather than a substitute for reviewing borderline answers.
 A page role declares its identifier, page, strict context schema, permitted read
 tools and editorial instructions. Its projection turns tool results from one
 immutable snapshot into bilingual observations with source references. The
-model selects and orders two to four observations. Their figures, units, dates
+model selects and orders two to four observations. A Habits brief can contain
+one observation when the publication covers a single habit. Their figures, units, dates
 and sources travel together. The browser constructs local evidence links from
 the tool and its checked arguments.
 
@@ -377,8 +378,11 @@ their combined scope. A new recorded decision, untraded fall or completed
 outcome changes the brief’s revision. The stored ordering covers both horizons.
 A later publication can update running to-date figures and their evidence from
 its pinned records without another model call. Older calculations retain their
-published habit membership and measured outcomes. A legacy publication without
-habit records cannot trigger a background habits brief.
+published habit membership and measured outcomes. The brief includes only
+habits with recorded coverage and marks partial counts across accounts.
+A qualifying fall in an older journal can supply a count even when its
+hypothetical outcome is unknown. An ordinary gain on its own does not trigger
+a background brief.
 
 - Pre-earnings buys fall in the seven calendar days before a recorded result.
   A same-day report is excluded because the sequence may be unknown.

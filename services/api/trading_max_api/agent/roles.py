@@ -161,6 +161,8 @@ class PageRole:
     refresh_cached_facts: bool = False
     tool_bindings: Callable[[Any, str | None], ToolBindings] | None = None
 
+    allow_single_observation: bool = False
+
     def bind(self, deps: AssistantDeps, context: RoleContext) -> AssistantDeps:
         selected = self.context_schema.model_validate(context.model_dump())
         bindings = (
