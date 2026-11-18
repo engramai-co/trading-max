@@ -552,7 +552,8 @@ test("cross-tab withdrawal suspends cached readings and History while the profil
   }
 });
 
-test("a newer consent signal keeps active streams cancelled until that profile confirms", async ({page,context}) => {
+for (const recovery of ["automatic retry", "focus after retry exhaustion"] as const) test(
+  "a newer consent signal keeps the draft private until profile recovery: " + recovery, async ({page,context}, info) => {
   await fixtures(page);
   await page.addInitScript(() => {
     localStorage.setItem("trading_max-locale","en");
@@ -610,23 +611,91 @@ test("a newer consent signal keeps active streams cancelled until that profile c
     await signal("second");
     await expect.poll(() => profiles.length).toBe(2);
     profiles[0](200);
+    await page.bringToFront();
     profiles[1](503);
-    await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
-    await expect(draft).toBeHidden();
-    expect(requests).toEqual([]);
-    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     await expect.poll(() => profiles.length).toBe(3);
+    await expect(draft).toBeHidden();
+    const form = panel.locator("form.mx-assistant-composer");
+    await form.evaluate(form => (form as HTMLFormElement).requestSubmit());
     expect(requests).toEqual([]);
-    profiles[2](200);
+    if (recovery === "focus after retry exhaustion") {
+      profiles[2](503);
+      await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+      await expect(draft).toBeHidden();
+      await form.evaluate(form => (form as HTMLFormElement).requestSubmit());
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await expect.poll(() => profiles.length).toBe(4);
+      expect(requests).toEqual([]);
+      profiles[3](200);
+    } else {
+      profiles[2](200);
+    }
     await expect(draft).toHaveValue("Keep this unsent question");
     await expect(draft).toBeFocused();
+    await page.keyboard.type(" for later");
+    await expect(draft).toHaveValue("Keep this unsent question for later");
     expect(requests[0]).toBe("/api/backend/assistant/status");
+    const shots = process.env.ASSISTANT_SCREENSHOTS;
+    if (shots && recovery === "automatic retry") await page.screenshot({path:join(shots,info.project.name+"-profile-retry-draft.png")});
   } finally {
     releaseStreams();
     for (const resolve of profiles) resolve(200);
     await other.close();
   }
 });
+
+for (const transition of ["reopening", "delayed overlay activation", "readiness revalidation"] as const) {
+  test("typing continues in the draft after " + transition, async ({page}, info) => {
+    await fixtures(page);
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+    if (transition === "delayed overlay activation") await page.setViewportSize({width:1440, height:900});
+    await page.goto("/");
+    await expect(page.locator(".mx-digest")).toBeVisible();
+    await page.locator("[data-assistant-trigger]").click();
+    const panel = page.locator("#mx-assistant-panel");
+    const draft = panel.getByRole("textbox", {name:"Message"});
+    await expect(draft).toBeFocused();
+    await page.keyboard.type("First");
+    await expect(draft).toHaveValue("First");
+    if (transition === "reopening") {
+      await panel.getByRole("button", {name:"Close sidebar"}).click();
+      await expect(page.locator("[data-assistant-trigger]")).toBeFocused();
+      await page.keyboard.press("Control+j");
+      await expect(draft).toBeVisible();
+    } else if (transition === "delayed overlay activation") {
+      // Activate the modal keyboard boundary after the composer has received real keystrokes.
+      await page.setViewportSize(info.project.name === "mobile" ? {width:390,height:844} : {width:1100,height:900});
+      await expect(panel).toHaveRole("dialog");
+    } else {
+      let release!: () => void;
+      const response = new Promise<void>(resolve => { release = resolve; });
+      await page.route("**/api/backend/assistant/status", async route => {
+        await response;
+        await route.fulfill({json:{ready:true, code:null}});
+      });
+      await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      try {
+        await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+      } finally { release(); }
+      await expect(draft).toBeVisible();
+    }
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => setTimeout(resolve, 0))));
+    await page.keyboard.type(" and second");
+    await expect(draft).toHaveValue("First and second");
+    const shots = process.env.ASSISTANT_SCREENSHOTS;
+    if (shots) await page.screenshot({path:join(shots, info.project.name + "-" + transition.replaceAll(" ", "-") + ".png")});
+    if (transition === "delayed overlay activation") {
+      await page.keyboard.press("Tab");
+      await expect(panel.getByRole("button", {name:"Send"})).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(panel.getByRole("button", {name:"New conversation"})).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(panel.getByRole("button", {name:"Send"})).toBeFocused();
+    }
+  });
+}
 
 for (const outcome of ["draft", "history button", "reopened draft", "Control+j", "Meta+j", "changed settings", "withdrawn"] as const) {
   test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {

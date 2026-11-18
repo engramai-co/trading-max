@@ -48,8 +48,9 @@ function failureCode(message: string) {
 function selectionKey(card: RoleCard | null) {
   return hashKey([card?.role, card?.context, card?.origin, card?.reading?.snapshotId ?? card?.origin?.snapshotId]);
 }
-function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }: {
-  page: string; search: string; scopeLabel: string; history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
+type SidebarProps = { page: string; search: string; scopeLabel: string; composerRef: (node: HTMLTextAreaElement | null) => void };
+function Thread({ page, search, scopeLabel, composerRef, initial, history, onHistory, onNew }: SidebarProps & {
+  history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
 }) {
   const t = useCopy();
   const { timeZone, locale } = useLocale();
@@ -58,7 +59,6 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
   const [sentScope, setSentScope] = useState<string | null>(null);
   const routeScope = page + search;
-  const input = useRef<HTMLTextAreaElement>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
   const wasHistory = useRef(history);
   const submitted = useRef<{text:string; card:RoleCard | null}>({text:"",card:null});
@@ -83,10 +83,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
   useEffect(() => () => { void stop(); }, [stop]);
   useEffect(() => { if (!ready) void stop(); }, [ready, stop]);
   useEffect(() => {
-    if (open && !history) {
-      const target = wasHistory.current ? historyButton.current : input.current;
-      target?.focus({ preventScroll: true });
-    }
+    if (open && wasHistory.current && !history) historyButton.current?.focus({ preventScroll: true });
     wasHistory.current = history;
   }, [open, history]);
   useEffect(() => {
@@ -145,7 +142,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
     <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
     <form className="mx-assistant-composer" onSubmit={e => { e.preventDefault(); send(draft); }}>
       <span className="mx-assistant-scope">{contextCard?.object || [context.ticker, scopeLabel].filter(Boolean).join(" · ")}</span>
-      <div><textarea ref={input} rows={2} value={draft} onChange={e => setDraft(e.target.value)} maxLength={16000}
+      <div><textarea ref={history ? null : composerRef} rows={2} value={draft} onChange={e => setDraft(e.target.value)} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(draft); } }} />
         {busy ? <button type="button" onClick={event => { event.preventDefault(); void stop(); setDraft(submitted.current.text); setContextCard(submitted.current.card); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
@@ -184,7 +181,7 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
     </div>)}{conversations.data?.length === 0 && <p>{t("暂无已保存的对话。", "No saved conversations yet.")}</p>}
     {(error || conversations.isError) && <p role="alert">{t("无法读取或更新对话。", "Could not read or update the conversation.")}</p>}</div></>;
 }
-export default function AssistantSidebar({ page, search, scopeLabel }: { page: string; search: string; scopeLabel: string }) {
+export default function AssistantSidebar(props: SidebarProps) {
   const { handoff } = useAssistant();
   const [initial, setInitial] = useState(() => ({ id: makeConversationId(), messages: [] as UIMessage[], sequence: 0 }));
   const [history, setHistory] = useState(false);
@@ -198,7 +195,7 @@ export default function AssistantSidebar({ page, search, scopeLabel }: { page: s
     return () => window.removeEventListener(conversationsErasedEvent, erased);
   }, [handoff?.sequence]);
   return <>
-    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...{page, search, scopeLabel, initial, history}} onNew={fresh} onHistory={() => setHistory(true)} /></div>
+    <div className="mx-assistant-thread" hidden={history}><Thread key={initial.id} {...props} initial={initial} history={history} onNew={fresh} onHistory={() => setHistory(true)} /></div>
     {history && <History back={() => setHistory(false)} select={(id, messages) => { setInitial({ id, messages, sequence: handoff?.sequence ?? 0 }); setHistory(false); }}
       removed={id => { if (id === initial.id) fresh(); }} />}
   </>;
