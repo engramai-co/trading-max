@@ -52,20 +52,24 @@ class HistorySnapshot(ApiModel):
     intraday_nav: list[NavPoint]
 
 
-def load_history(
-    store: ArtifactStore, manifest: SnapshotManifest
-) -> tuple[list[NavPoint], list[NavPoint]]:
-    """Use the existing accounting projection without opening research or review artifacts."""
-    run = manifest.run_id
+def daily_nav(store: ArtifactStore, run: str, accounts: dict) -> list[NavPoint]:
     c_text = None
     with suppress(FileNotFoundError):
         c_text = store.read_text(run, _KEYS[2])
-    accounts = store.read_json(run, _BROKER_KEY)["accounts"]
     daily = nav_series(
         store.read_text(run, _KEYS[0]) if "A" in accounts else "",
         store.read_text(run, _KEYS[1]) if "B" in accounts else "",
         c_text,
     )
+    return [NavPoint.model_validate(p) for p in daily]
+
+
+def load_history(
+    store: ArtifactStore, manifest: SnapshotManifest
+) -> tuple[list[NavPoint], list[NavPoint]]:
+    """Use the existing accounting projection without opening research or review artifacts."""
+    run = manifest.run_id
+    daily = daily_nav(store, run, store.read_json(run, _BROKER_KEY)["accounts"])
     raw = None
     for key in _KEYS[3:5]:
         try:
@@ -78,7 +82,7 @@ def load_history(
         with suppress(FileNotFoundError, TypeError, ValueError):
             flows[profile] = store.read_json(run, key)
     return (
-        [NavPoint.model_validate(p) for p in daily],
+        daily,
         [NavPoint.model_validate(p) for p in intraday_nav_points(raw, flows)],
     )
 
