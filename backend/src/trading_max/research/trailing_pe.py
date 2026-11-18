@@ -27,6 +27,11 @@ MAX_PERIOD_AGE = timedelta(days=180)
 # swamped the distribution. The cap keeps the growth phases and withholds
 # those; the web copy repeats this number.
 MEANINGFUL_PE_CAP = 400.0
+# Below 1x the earnings yield is over 100%: a year's earnings would exceed the
+# company's market value. Short of a one-off gain that large, it means EPS at
+# the wrong scale, such as a quarter filed in thousands and never corrected.
+# Exactly 1x and exactly 400x are kept.
+MEANINGFUL_PE_FLOOR = 1.0
 # Within one EPS reading the multiple moves only with the close, so a fivefold
 # move where a new reading starts is a break in the earnings data, not a
 # change in valuation.
@@ -39,7 +44,7 @@ NEW_YORK = ZoneInfo("America/New_York")
 DAY = timedelta(days=1)
 
 Method = Literal["annual", "fourQuarters", "derivedFourthQuarter"]
-NotMeaningful = Literal["aboveCap", "segmentJump"]
+NotMeaningful = Literal["aboveCap", "belowFloor", "segmentJump"]
 
 
 class TrailingPeEarnings(DomainModel):
@@ -81,9 +86,9 @@ class TrailingPeHistory(DomainModel):
         """Derive every multiple and the distribution from the closes and EPS.
 
         A stored series and a new one are screened alike: a multiple above
-        the cap, or a reading that opens with a fivefold jump from the previous
-        close's multiple, is withheld as not meaningful and left out of the
-        distribution.
+        the cap or below the floor, or a reading that opens with a fivefold
+        jump from the previous close's multiple, is withheld as not meaningful
+        and left out of the distribution.
         """
         # Each close with positive EPS: its reading and multiple, if it has a price.
         readings: list[tuple[int, float | None] | None] = []
@@ -119,6 +124,8 @@ class TrailingPeHistory(DomainModel):
             reason: NotMeaningful | None = None
             if value is not None and value > MEANINGFUL_PE_CAP:
                 reason = "aboveCap"
+            elif value is not None and value < MEANINGFUL_PE_FLOOR:
+                reason = "belowFloor"
             elif value is not None and point.earnings_index in jumped:
                 reason = "segmentJump"
             point.not_meaningful = reason

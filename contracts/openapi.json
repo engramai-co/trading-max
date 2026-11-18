@@ -26456,6 +26456,7 @@
               {
                 "enum": [
                   "aboveCap",
+                  "belowFloor",
                   "segmentJump"
                 ],
                 "type": "string"

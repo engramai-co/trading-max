@@ -119,12 +119,15 @@ available as separate evidence.
 The trailing P/E model screens every series it validates, so a stored series
 is served with the same rules as a new one. Each multiple is recomputed from
 its close and EPS. A multiple above `MEANINGFUL_PE_CAP` (400×, an earnings
-yield under 0.25%) is withheld as `aboveCap`. An EPS reading whose first
-multiple differs from the previous close's by more than `SEGMENT_JUMP` (five
-times) is withheld in full as `segmentJump`; earnings crossing zero already
-break the line and are not compared. Withheld points keep their close and EPS
-and carry the reason in `notMeaningful`. The distribution and the latest rank
-use only the remaining multiples.
+yield under 0.25%) is withheld as `aboveCap`, and one below
+`MEANINGFUL_PE_FLOOR` (1×, an earnings yield over 100%, in practice EPS at the
+wrong scale) as `belowFloor`; exactly 400× and exactly 1× are kept. An EPS
+reading whose first multiple differs from the previous close's by more than
+`SEGMENT_JUMP` (five times) is withheld in full as `segmentJump`; earnings
+crossing zero already break the line and are not compared. Withheld points
+keep their close and EPS and carry the reason in `notMeaningful`; the web
+names `aboveCap` and `segmentJump`, and shows `belowFloor` as Not meaningful
+alone. The distribution and the latest rank use only the remaining multiples.
 
 The EPS replay compares each filing with the values already recorded for the
 periods it repeats. If every one of them moves up by the same power of ten, at

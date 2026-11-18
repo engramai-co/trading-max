@@ -164,10 +164,13 @@ earnings windows, and nonpositive EPS leave gaps.
 
 A multiple above 400× has an earnings yield under 0.25%, which means earnings
 near zero rather than a valuation; growth phases of large listings have stayed
-below it. Such multiples are marked **Not meaningful** and left as gaps. So is
+below it. A multiple below 1× has an earnings yield over 100%, which in practice
+means EPS at the wrong scale, such as a quarter filed in thousands and never
+corrected. Such multiples are marked **Not meaningful** and left as gaps. So is
 every close of a new EPS reading that opens more than five times higher or
-lower than the previous close's multiple. Neither enters the band or the rank,
-and the reading names the reason. A filing whose repeated earlier periods are
+lower than the previous close's multiple. None of these enters the band or the
+rank, while exactly 400× and exactly 1× still count; readings above 400× and
+after a jump name the reason. A filing whose repeated earlier periods are
 all 100 or more times their filed per-share values, by the same power of ten,
 is treated as a unit error and not used. Its quarter stays unknown until a
 later filing repeats it correctly. An inferred fourth quarter keeps the

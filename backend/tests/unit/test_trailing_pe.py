@@ -600,6 +600,53 @@ def test_a_growth_phase_near_300x_stays_visible():
     assert history.distribution.samples == 80
 
 
+def test_a_quarter_left_in_thousands_is_not_meaningful_below_1x():
+    filings = [
+        _filing(
+            "2025-05-01T22:00:00Z",
+            "2025-03-31",
+            ("2024-04-01", "2024-06-30", -1),
+            ("2024-07-01", "2024-09-30", -1),
+            ("2024-10-01", "2024-12-31", -1),
+            ("2025-01-01", "2025-03-31", -1),
+        ),
+        _filing("2025-07-31T22:00:00Z", "2025-06-30", ("2025-04-01", "2025-06-30", 0.5)),
+        # Q3 in thousands, with nothing earlier to show it and no correction.
+        _filing("2025-10-30T22:00:00Z", "2025-09-30", ("2025-07-01", "2025-09-30", 1200)),
+    ]
+    history = trailing_pe_history(
+        filings, _bars("2025-05-01", "2025-11-05"), now=datetime(2025, 11, 5, 22, tzinfo=UTC)
+    )
+    # After a loss there is no multiple for the jump rule to compare with.
+    assert _at(history, "2025-10-30")[1].eps == -2.5
+    # -1 - 1 + 0.5 + 1,200 = 1,198.5, a P/E of 40 / 1,198.5 = 0.03x.
+    point, evidence = _at(history, "2025-10-31")
+    assert evidence.eps == pytest.approx(1198.5)
+    assert (point.pe, point.not_meaningful, point.close) == (None, "belowFloor", 40)
+
+
+@pytest.mark.parametrize(
+    ("eps", "reason"),
+    [
+        # 40 / 33.3 = 1.2x: low, but a valuation.
+        (33.3, None),
+        # Exactly 1x and exactly 400x are kept; only beyond them is withheld.
+        (40, None),
+        (0.1, None),
+        (40.4, "belowFloor"),
+        (0.0999, "aboveCap"),
+    ],
+)
+def test_multiples_from_1x_to_400x_inclusive_are_meaningful(eps, reason):
+    history = TrailingPeHistory.model_validate(_series((eps, 70)))
+    assert _reasons(history) == [{reason}]
+    if reason:
+        assert history.points[0].pe is None and history.distribution is None
+    else:
+        assert history.points[0].pe == pytest.approx(40 / eps)
+        assert history.distribution.samples == 70
+
+
 def test_a_fivefold_jump_where_a_reading_starts_is_not_meaningful():
     # 20x, then a reading ten times larger (2x), then back to 19x and 18x.
     history = TrailingPeHistory.model_validate(_series((2, 70), (20, 20), (2.1, 20), (2.2, 20)))

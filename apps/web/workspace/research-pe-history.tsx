@@ -231,9 +231,12 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
     ? latest?.trailing?.earningsIndex != null && (trailing?.earnings[latest.trailing.earningsIndex]?.eps ?? Infinity) <= 0
     : latest?.forward?.eps != null && latest.forward.eps <= 0;
   const withheld = isTrailing ? latest?.trailing?.notMeaningful : undefined;
+  // A multiple below 1× (belowFloor) has no wording of its own and reads Not meaningful.
   const withheldState = withheld === "aboveCap"
     ? screened(t("最新 P/E 超过 {cap}×，不适用", "The latest P/E is above {cap}× and not meaningful"))
-    : screened(t("最新 EPS 跳变超过 {jump} 倍，P/E 不适用", "The latest EPS jumped more than {jump}×; P/E is not meaningful"));
+    : withheld === "segmentJump"
+      ? screened(t("最新 EPS 跳变超过 {jump} 倍，P/E 不适用", "The latest EPS jumped more than {jump}×; P/E is not meaningful"))
+      : t("不适用", "Not meaningful");
   const supported = isTrailing ? trailing != null : true;
   const emptyReason = !supported ? t("暂不支持滚动 P/E 历史", "Trailing P/E history is unavailable")
     : !points.length ? t("历史存档尚无记录", "History archive is empty")
