@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from trading_max.analytics.etf_projection import ETFReading
 from trading_max.reference import CatalogSecurityMaster, SecurityDescriptor, is_fund_instrument
 
-from .calendar import YAHOO_MIC_BY_SUFFIX, YAHOO_SUFFIX_BY_MIC
+from .venues import YAHOO_MIC_BY_SUFFIX, YAHOO_SUFFIX_BY_MIC
 from .listing import LONDON, broker_listing
 
 FUND_PRICE_DIRECTORY_KEY = "research/fund_price_directory.json"

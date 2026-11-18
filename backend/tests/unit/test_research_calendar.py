@@ -159,10 +159,15 @@ def test_frankfurt_equity_hours_include_evenings_and_holiday_early_closes():
 def test_venue_identity_distinguishes_exchanges_with_shared_closes_and_market_composites():
     nyse = listing_venues("SYN", "UN")
     assert nyse == listing_venues("SYN", "NYQ") == {"XNYS"}
-    assert listing_venues("SYN", "UW") == listing_venues("SYN", "NasdaqGS") == {"XNAS"}
+    assert listing_venues("SYN", "UW") == listing_venues("SYN", "NasdaqGS") == {"XNGS"}
     assert nyse.isdisjoint(listing_venues("SYN", "UW"))
     assert listing_venues("SYN", "US") & nyse
     assert listing_venues("SYN.L", "LN").isdisjoint(listing_venues("SYN", "US"))
     assert listing_venues("SYN", "GF") == {"XFRA"}
     assert listing_venues("SYN", "GR") & listing_venues("SYN", "GY")
     assert not listing_venues("SYN", "unverified")
+
+
+def test_openfigi_soma_is_distinct_from_bombay():
+    assert listing_venues("SYN", "BO") == {"XSOM"}
+    assert listing_venues("SYN.BO", None) == {"XBOM"}
