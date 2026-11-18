@@ -434,8 +434,7 @@
     gap: 4px;
   }
 }
-/* Daily technical reading: the chart, its score and the diagnosis share one surface,
-   divided by hairlines rather than boxed separately. */
+/* The chart, its score and the diagnosis share one surface divided by hairlines. */
 .mx-tech-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 248px;
@@ -875,10 +874,6 @@
   margin: 4px 0 10px;
 }
 @media (max-width: 767px) {
-  /* Phones keep panels flat; the technical surface follows. */
-  .mx-tech-workspace {
-    box-shadow: none;
-  }
   .mx-assumption-picker .mx-draft-actions button {
     min-width: 44px;
     min-height: 44px;

@@ -35,7 +35,8 @@
   .mx-bento > .mx-bento-cell {
     padding: var(--mx-space-panel);
   }
-  .mx-page .mx-panel {
+  .mx-page .mx-panel,
+  .mx-tech-workspace {
     box-shadow: none;
   }
   .mx-page .mx-panel-heading {
