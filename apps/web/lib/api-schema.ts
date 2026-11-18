@@ -3714,6 +3714,13 @@ export interface components {
             /** Reason Code */
             reason_code?: string | null;
         };
+        /** EventRefreshFailure */
+        EventRefreshFailure: {
+            /** Checkedat */
+            checkedAt?: string | null;
+            /** Source */
+            source: string;
+        };
         /** EventRefreshHealth */
         EventRefreshHealth: {
             /** Asof */
@@ -3722,6 +3729,8 @@ export interface components {
             checkedAt: string | null;
             /** Failedsources */
             failedSources: number;
+            /** Failures */
+            failures?: components["schemas"]["EventRefreshFailure"][];
             /**
              * Kind
              * @enum {string}
@@ -8837,6 +8846,8 @@ export interface components {
             estimated_eps?: number | null;
             /** Evidence Id */
             evidence_id: string;
+            /** Fiscal Period */
+            fiscal_period?: string | null;
             /** Instant */
             instant?: string | null;
             /**
@@ -8844,6 +8855,8 @@ export interface components {
              * @enum {string}
              */
             kind: "macro" | "earnings" | "ex_dividend" | "dividend_pay" | "holiday" | "half_day";
+            /** Licence Url */
+            licence_url?: string | null;
             /** Local Date */
             local_date: string;
             /** Local Time */

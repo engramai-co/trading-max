@@ -7187,6 +7187,31 @@
         "title": "EventQuality",
         "type": "object"
       },
+      "EventRefreshFailure": {
+        "properties": {
+          "checkedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkedat"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "EventRefreshFailure",
+        "type": "object"
+      },
       "EventRefreshHealth": {
         "properties": {
           "asOf": {
@@ -7215,6 +7240,13 @@
           "failedSources": {
             "title": "Failedsources",
             "type": "integer"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/EventRefreshFailure"
+            },
+            "title": "Failures",
+            "type": "array"
           },
           "kind": {
             "enum": [
@@ -22485,6 +22517,17 @@
             "title": "Evidence Id",
             "type": "string"
           },
+          "fiscal_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Period"
+          },
           "instant": {
             "anyOf": [
               {
@@ -22507,6 +22550,17 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Url"
           },
           "local_date": {
             "title": "Local Date",

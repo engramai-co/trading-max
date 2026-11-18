@@ -177,24 +177,24 @@ publisher's calendar day. Timed rows include the source instant and local time.
 An earnings window retains both ends when the provider has not set a single day.
 
 Scheduled research records Yahoo-compatible headline metadata with the shared
-Yahoo request budget. Fresh disclosure observations are reused. The rolling
+Yahoo request budget. The news and disclosure loaders verify the HTTP status and ticker-stream envelope before accepting an empty result. The rolling
 news history retains up to 500 headlines per listing for up to a year. Account
 activity stays in the published local ledger. Official-calendar requests contain
 no tickers or portfolio data. An unsuccessful refresh preserves the last
 successful rows and their original observation time. Data status shows their
-freshness and the number of failed sources.
+freshness, the failed publishers and their last attempt. Headline content retains its immutable reference across metadata-only refreshes.
 
 ### Official macro calendars
 
 The local worker checks the following keyless release schedules at most once
 per 20 hours for a 180-day window. Calendar rows carry the publisher, original
-link, translated label, source credit and scheduling status. Coverage follows
+link, translated label, source credit and scheduling status. ONS provisional months retain month precision (for example, `2026-12`) in the API and assistant evidence. Coverage follows
 the publisher's announced horizon. Individual announcements can change.
 
 | Market | Sources |
 | --- | --- |
 | United States | BEA release iCalendar, Census indicator tables, Federal Reserve meeting and monthly announcements, BLS release schedules on the public FRED calendar (Central time) |
-| United Kingdom | Office for National Statistics release calendar under the Open Government Licence v3.0, Bank of England MPC dates for personal and internal non-commercial use |
+| United Kingdom | Office for National Statistics release calendar under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/), Bank of England MPC dates for personal and internal non-commercial use |
 | Euro area | European Commission, Eurostat Euro indicators iCalendar (category 2, date only), European Central Bank Governing Council and statistical schedules |
 | Japan | Statistics Bureau and METI via e-Stat, Cabinet Office GDP, Bank of Japan monetary policy meetings |
 | Hong Kong | Census and Statistics Department, © Government of the Hong Kong SAR. Visible dates from its English press release index |
@@ -203,3 +203,23 @@ the publisher's announced horizon. Individual announcements can change.
 Trading Max translates or abridges display labels. The publisher's original
 schedule is authoritative. Eurostat bears no responsibility for translations.
 Only calendar metadata and Yahoo-compatible headline metadata are stored.
+
+To check the Hong Kong TLS path, run the following from the source checkout.
+It uses the scheduled worker's verified HTTP client, reads public calendar
+metadata and prints the count of parsed events. The C&SD hostname resolves to
+rotating CDN addresses. A hostname mismatch causes one new connection to the
+same hostname. A second mismatch fails the source and preserves its last
+verified calendar.
+
+```bash
+uv run python - <<'PY'
+from datetime import date
+from trading_max.research.calendars.catalog import sources
+from trading_max.research.calendars.refresh import official_reader, parse
+
+today = date.today()
+source = next(s for s in sources(today) if s.key == "hk")
+with official_reader() as read:
+    print(len(parse(source, read(source.url), today)))
+PY
+```

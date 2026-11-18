@@ -16,8 +16,9 @@ from trading_max.analytics.review_evidence import (
     ReviewRules,
 )
 from trading_max.application.decision_stages import REVIEW_EVIDENCE_KEY
-from trading_max.research.calendars.refresh import MACRO_KEY
-from trading_max.research.news import NEWS_KEY
+from trading_max.infrastructure import SnapshotIntegrityError
+from trading_max.research.calendars.refresh import MACRO_KEY, MACRO_STATUS_KEY
+from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
 from ..dashboard_models import (
     AccountCode,
@@ -198,6 +199,49 @@ def _effective_bootstrap_error(
     return error
 
 
+def _event_health(store, latest):
+    if not latest:
+        return []
+    refs = {a.key: a for a in latest.artifacts}
+    result = []
+    for kind, key, status, collection in [
+        ("news", NEWS_KEY, NEWS_STATUS_KEY, "securities"),
+        ("macro", MACRO_KEY, MACRO_STATUS_KEY, "sources"),
+    ]:
+        ref = refs.get(status) or refs.get(key)
+        if not ref:
+            continue
+        attempts = {}
+        if ref.warnings:
+            try:
+                rows = store.read_json(latest.run_id, ref.key).get(collection, {})
+            except (FileNotFoundError, SnapshotIntegrityError, TypeError, ValueError):
+                rows = {}
+            for name in ref.warnings:
+                row = rows.get(name, {})
+                # Health is available before login. A failed news listing must
+                # never expose a holding or watchlist symbol here.
+                label = (
+                    "Yahoo Finance"
+                    if kind == "news"
+                    else (f"{row['publisher']} ({name})" if row.get("publisher") else name)
+                )
+                attempts[label] = max(attempts.get(label, ""), row.get("checked_at") or "")
+        result.append(
+            {
+                "kind": kind,
+                "checked_at": ref.generated_at,
+                "as_of": ref.data_as_of,
+                "failed_sources": len(ref.warnings),
+                "failures": [
+                    {"source": label, "checked_at": stamp or None}
+                    for label, stamp in attempts.items()
+                ],
+            }
+        )
+    return result
+
+
 @router.get("/health", response_model=HealthResponse)
 def health(request: Request) -> HealthResponse:
     store = app_service(request, "store")
@@ -221,17 +265,7 @@ def health(request: Request) -> HealthResponse:
         queue=queue_health,
         worker=worker_health,
         artifact_age_seconds=artifact_age,
-        event_refreshes=[
-            {
-                "kind": kind,
-                "checked_at": a.generated_at,
-                "as_of": a.data_as_of,
-                "failed_sources": len(a.warnings),
-            }
-            for a in (latest.artifacts if latest else [])
-            for key, kind in [(NEWS_KEY, "news"), (MACRO_KEY, "macro")]
-            if a.key == key
-        ],
+        event_refreshes=_event_health(store, latest),
     )
 
 

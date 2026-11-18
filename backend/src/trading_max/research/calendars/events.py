@@ -1,5 +1,6 @@
 """Date precision, identifiers and bilingual names for published calendar entries."""
 
+from calendar import monthrange
 from datetime import date, datetime, time
 from hashlib import sha256
 from typing import Literal
@@ -10,27 +11,39 @@ from pydantic import BaseModel
 from .catalog import CalendarSource
 
 
+def window_bounds(day, end=None):
+    """Month-precision events overlap a window without claiming a particular day."""
+    first, last = str(day), str(end or day)
+    if len(first) == 7:
+        first += "-01"
+    if len(last) == 7:
+        year, month = map(int, last.split("-"))
+        last += f"-{monthrange(year, month)[1]}"
+    return first, last
+
+
 class CalendarEvent(BaseModel):
     id: str
     market: str
     publisher: str
     title_en: str
     title_zh: str
-    date: date
-    end_date: date | None = None
+    date: date | str
+    end_date: date | str | None = None
     instant: datetime | None = None
     timezone: str
     status: Literal["provisional", "finalised", "cancelled", "postponed"]
     source_url: str
     time_source_url: str | None = None
     credit: str
+    licence_url: str | None = None
 
 
 def event(
     source: CalendarSource,
     en: str,
     zh: str,
-    day: date,
+    day: date | str,
     *,
     identity=None,
     clock: time | None = None,
@@ -56,6 +69,7 @@ def event(
         source_url=url or source.url,
         time_source_url=time_source_url,
         credit=source.credit,
+        licence_url=source.licence_url,
     )
 
 
@@ -91,6 +105,7 @@ FAMILIES = (
     ("money", "货币统计"),
     ("services", "服务业数据"),
     ("industrial activity", "工业活动"),
+    ("foreign direct investment", "外国直接投资"),
     ("population", "人口统计"),
     ("business", "企业统计"),
     ("economic sentiment", "经济景气指数"),

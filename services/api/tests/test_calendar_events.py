@@ -17,8 +17,24 @@ from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
 
 
-def publish(store, headline="Synthetic release", *, eps_currency="USD"):
+def publish(store, headline="Synthetic release", *, eps_currency="USD", markers=None):
+    from trading_max.research.analyst_evidence import earnings_events
+
+    normalised = earnings_events(
+        [
+            {
+                "Earnings Date": "2026-11-25",
+                "EPS Estimate": 1.2,
+                "Reported EPS": 1.0,
+                "EPS Currency": eps_currency,
+                "Fiscal Quarter Ending": "2026-09-30",
+            }
+        ],
+        timezone="America/New_York",
+        observed_at="2026-11-26T00:00:00Z",
+    )
     raw = {
+        "id": "provider-article",
         "title": headline,
         "publisher": "Fixture Press",
         "url": "https://example.org/article",
@@ -28,7 +44,10 @@ def publish(store, headline="Synthetic release", *, eps_currency="USD"):
         NEWS_KEY: {
             "securities": {
                 "ALFA": {"items": [raw], "as_of": "2026-11-26"},
-                "BETA": {"items": [raw], "as_of": "2026-11-26"},
+                "BETA": {
+                    "items": [{**raw, "url": raw["url"] + "?via=beta"}],
+                    "as_of": "2026-11-26",
+                },
                 "WATCH": {"items": [], "as_of": "2026-11-26"},
             }
         },
@@ -37,15 +56,7 @@ def publish(store, headline="Synthetic release", *, eps_currency="USD"):
                 {
                     "ticker": "ALFA",
                     "analyst": {
-                        "earningsEvents": [
-                            {
-                                "date": "2026-11-25",
-                                "status": "reported",
-                                "estimatedEps": 1.2,
-                                "actualEps": 1.0,
-                                "currency": eps_currency,
-                            }
-                        ],
+                        "earningsEvents": normalised,
                         "reportingCurrency": "USD",
                         "upgradesDowngrades": [
                             {
@@ -113,7 +124,9 @@ def publish(store, headline="Synthetic release", *, eps_currency="USD"):
             ]
         },
         events.MARKERS: {
-            "rows": [
+            "rows": markers
+            if markers is not None
+            else [
                 {
                     "ticker": "ALFA",
                     "fills": [
@@ -186,7 +199,8 @@ def test_news_and_trades_are_snapshot_and_account_bound(tmp_path):
     revised = events.event_data(
         AssistantDepsFactory(store).for_run(), args("invest"), upcoming=False
     )
-    assert next(r for r in revised["data"]["items"] if r["kind"] == "earnings")["currency"] is None
+    missing = next(r for r in revised["data"]["items"] if r["kind"] == "earnings")
+    assert missing["currency"] is missing["estimated_eps"] is missing["actual_eps"] is None
     assert "earnings_currency_unavailable" in revised["quality"]["issues"]
     assert result["snapshot_id"] == old.run_id and "leads" in result["data"]["news_basis"]
     assert all(row["evidence_id"].startswith("ev_") for row in rows)
@@ -199,6 +213,8 @@ def test_news_and_trades_are_snapshot_and_account_bound(tmp_path):
     (fill,) = [r for r in rows if r["kind"] == "own_trade"]
     assert fill["account"] == "invest" and fill["quantity"] == 1
     earnings = next(r for r in rows if r["kind"] == "earnings")
+    assert earnings["fiscal_period"] == "2026-09-30"
+    assert earnings["source_as_of"] == "2026-11-26T00:00:00Z"
     assert (earnings["estimated_eps"], earnings["actual_eps"], earnings["currency"]) == (
         1.2,
         1.0,
@@ -219,6 +235,7 @@ def test_news_and_trades_are_snapshot_and_account_bound(tmp_path):
     household = events.event_data(deps, args(), upcoming=False)
     (story,) = [r for r in household["data"]["items"] if r["kind"] == "news"]
     assert story["tickers"] == ["ALFA", "BETA"]
+    assert story["evidence_id"] == headline["evidence_id"]
     london = events.event_data(deps, args("isa", ticker="ALFA.L"), upcoming=False)
     assert [r["side"] for r in london["data"]["items"] if r["kind"] == "own_trade"] == ["sell"]
     with pytest.raises(ModelRetry):
@@ -257,3 +274,141 @@ def test_pinned_api_calendar_dates_and_early_close(tmp_path):
         assert {"news", "macro"} == {
             r["kind"] for r in client.get("/health").json()["eventRefreshes"]
         }
+
+
+def test_conflicting_fill_instrument_does_not_match_exact_listing(tmp_path):
+    import pandas as pd
+    from trading_max.analytics.ledger import transaction_marker_rows
+
+    tx = pd.DataFrame(
+        [
+            {
+                "Action": "Market buy",
+                "Time": pd.Timestamp("2026-11-25T10:00:00Z"),
+                "ISIN": "GB0000000001",
+                "Ticker": symbol,
+                "Shares": 1,
+                "PriceN": 10,
+                "TotalN": 10,
+                "Currency (Total)": "GBP",
+            }
+            for symbol in ["ALFA", "ALFAl_EQ"]
+        ]
+    )
+    markers = transaction_marker_rows(
+        {"invest": tx}, [{"ticker": "ALFA", "broker_ticker": "ALFA_US_EQ", "isin": "US0000000001"}]
+    )
+    store = ArtifactStore(tmp_path)
+    publish(store, markers=markers)
+    deps = AssistantDepsFactory(store).for_run()
+
+    def trades(ticker=None):
+        result = events.event_data(deps, args("invest", ticker=ticker), upcoming=False)
+        return [r for r in result["data"]["items"] if r["kind"] == "own_trade"], result["quality"][
+            "issues"
+        ]
+
+    all_rows, _ = trades()
+    assert len(all_rows) == 2
+    empty, issues = trades("ALFA")
+    assert empty == [] and "trade_listing_unresolved" in issues
+    (london,), _ = trades("ALFA.L")
+    assert london["ticker"] == "ALFA.L"
+
+
+def test_later_revision_and_cancellation_supersede_outside_window():
+    row = {
+        "date": "2026-11-20",
+        "id": "release",
+        "publisher": "ONS",
+        "title_en": "Retail",
+        "status": "finalised",
+    }
+    for status in ("cancelled", "finalised"):
+        payload = {
+            "sources": {
+                "old": {"as_of": "2026-11-17T12:00:00Z", "events": [row]},
+                "new": {
+                    "as_of": "2026-11-18T12:00:00Z",
+                    "events": [{**row, "status": status, "date": "2026-11-25"}],
+                },
+            }
+        }
+        assert events._macros(payload, "2026-11-19", "2026-11-21", []) == []
+        assert events._macros(payload, "2026-11-25", "2026-11-25", [])[0]["status"] == status
+
+
+def test_ons_month_precision_licence_and_failed_partition_reach_api_and_agent(tmp_path):
+    from datetime import UTC, date, datetime
+    from pathlib import Path
+
+    from trading_max.domain import ArtifactQuality
+    from trading_max.research.calendars.catalog import sources
+    from trading_max.research.calendars.refresh import MACRO_STATUS_KEY, refresh_calendar
+
+    fixture = (
+        Path(__file__).resolve().parents[3] / "backend/tests/fixtures/calendars/ons-precision.json"
+    )
+    publishers = [s for s in sources(date(2026, 11, 18)) if s.parser == "ons"]
+
+    def fetch(url):
+        if "type-cancelled" in url:
+            raise ValueError("unavailable")
+        return fixture.read_bytes()
+
+    clock = datetime(2026, 11, 18, 11, tzinfo=UTC)
+    calendar = refresh_calendar({}, clock, fetch, catalog=lambda _: publishers)
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = app.state.store
+    ref = store.immutable_artifacts.put_json(key=MACRO_KEY, payload=calendar)
+    diag = store.immutable_artifacts.put_json(
+        key=MACRO_STATUS_KEY,
+        payload={
+            "sources": {
+                k: {x: y for x, y in r.items() if x != "events"}
+                for k, r in calendar["sources"].items()
+            }
+        },
+        quality=ArtifactQuality(status="warning", warnings=["ons-cancelled"]),
+    )
+    manifest = store.publish_typed(scope="research", source="synthetic", artifacts=[ref, diag])
+    query = events.EventArgs(scope="invest", start="2026-12-03", end="2026-12-03")
+    direct = events.event_data(AssistantDepsFactory(store).for_run(), query, upcoming=True)
+    (agent,) = direct["data"]["items"]
+    with TestClient(app) as client:
+        result = client.get(
+            f"/v1/snapshots/{manifest.run_id}/events/upcoming",
+            params=query.model_dump(exclude_none=True),
+        ).json()
+        (api,) = result["data"]["items"]
+        (health,) = client.get("/health").json()["eventRefreshes"]
+    for reading in (agent, api):
+        assert (
+            reading["date"] == reading["local_date"] == "2026-12" and reading["local_time"] is None
+        )
+        assert reading["licence_url"].endswith("/open-government-licence/version/3/")
+    (failure,) = health["failures"]
+    assert failure == {
+        "source": "Office for National Statistics (ons-cancelled)",
+        "checkedAt": "2026-11-18T11:00:00Z",
+    }
+
+
+def test_cfd_symbol_without_a_venue_stays_in_account_chronology(tmp_path):
+    store = ArtifactStore(tmp_path)
+    rows = [
+        {
+            "symbol": "ALFA",
+            "record_type": "Order",
+            "order_status": "EXECUTED",
+            "occurred_at": "2026-11-25T10:00:00Z",
+            "units": 2,
+        }
+    ]
+    artifact = store.immutable_artifacts.put_json(key=events.CFD_LEDGER, payload={"events": rows})
+    store.publish_typed(scope="research", source="synthetic", artifacts=[artifact])
+    deps = AssistantDepsFactory(store).for_run()
+    whole = events.event_data(deps, args("cfd"), upcoming=False)
+    assert [r["ticker"] for r in whole["data"]["items"]] == ["ALFA"]
+    exact = events.event_data(deps, args("cfd", ticker="ALFA"), upcoming=False)
+    assert exact["data"]["items"] == [] and "trade_listing_unresolved" in exact["quality"]["issues"]

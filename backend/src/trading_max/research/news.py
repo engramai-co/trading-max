@@ -9,6 +9,7 @@ import yfinance as yf
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 
 NEWS_KEY = "research/security_news.json"
+NEWS_STATUS_KEY = "research/security_news_status.json"
 
 
 def web_url(value):
@@ -28,8 +29,36 @@ def web_url(value):
         return None
 
 
+def verified_news(proxy):
+    """Use yfinance's authenticated transport and inspect the original response.
+
+    The pinned get_news() turns invalid JSON and missing streams into an empty
+    list. Only an explicit successful ticker stream verifies zero articles.
+    """
+    response = proxy._data.post(
+        "https://finance.yahoo.com/xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin",
+        body={"serviceConfig": {"snippetCount": 20, "s": [proxy.ticker]}},
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if payload.get("errors") or payload.get("error"):
+        raise ValueError("Yahoo news error")
+    feed = payload["data"]["tickerStream"]
+    rows = feed["stream"]
+    if (
+        feed.get("error")
+        or not isinstance(rows, list)
+        or not all(isinstance(r, dict) for r in rows)
+    ):
+        raise ValueError("invalid Yahoo ticker stream")
+    articles = [r for r in rows if not r.get("ad")]
+    if articles and not any(headline(r) for r in articles):
+        raise ValueError("unrecognised news records")
+    return articles
+
+
 def yahoo_news(ticker):
-    return yf.Ticker(ticker).get_news(count=20, tab="news")
+    return verified_news(yf.Ticker(ticker))
 
 
 def headline(row):
@@ -64,7 +93,7 @@ def headline(row):
         "url": link,
         "date": day,
         "instant": exact,
-        "id": str(content.get("id") or row.get("uuid") or link)[:2048],
+        "id": str(content.get("id") or row.get("id") or row.get("uuid") or link)[:2048],
     }
 
 
@@ -93,6 +122,8 @@ def refresh_news(
                 evidence.get("asOf")
                 and now - datetime.fromisoformat(evidence["asOf"]) < timedelta(hours=6)
                 and isinstance(evidence.get("news"), list)
+                and evidence.get("status", {}).get("news", {}).get("state")
+                in {"verified", "missing"}
             ):
                 if (evidence.get("status", {}).get("news") or {}).get("state") == "missing":
                     raise ValueError("news fetch failed")

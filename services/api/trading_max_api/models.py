@@ -200,11 +200,17 @@ class JobRecord(ApiModel):
     stages: list[JobStageRecord] = Field(default_factory=list)
 
 
+class EventRefreshFailure(ApiModel):
+    source: str
+    checked_at: datetime | None = None
+
+
 class EventRefreshHealth(ApiModel):
     kind: Literal["news", "macro"]
     checked_at: datetime | None
     as_of: str | None
     failed_sources: int
+    failures: list[EventRefreshFailure] = Field(default_factory=list)
 
 
 class HealthResponse(ApiModel):

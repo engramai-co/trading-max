@@ -3,6 +3,7 @@
 import re
 from calendar import month_name
 from datetime import date, time
+from unicodedata import normalize
 
 from lxml import html
 
@@ -176,6 +177,43 @@ def ecb(s, root):
             )
 
 
+def _estat_labels(group, title):
+    name = normalize("NFKC", title)
+    combined = normalize("NFKC", group + " " + title)
+    stage = []
+    for token, en, zh in [
+        ("基本集計", "basic tabulation", "基本统计"),
+        ("詳細集計", "detailed tabulation", "详细统计"),
+        ("中旬速報", "mid-month preliminary", "月中初值"),
+    ]:
+        if token in combined:
+            stage.append((en, zh))
+    quarter = re.search(r"(\d{4})年(\d{1,2})[~〜](\d{1,2})月期平均", name)
+    annual = re.search(r"(\d{4})年(度?)平均", name)
+    monthly = re.search(r"(\d{1,2})月分", name)
+    year = re.search(r"(\d{4})年", name) or re.search(r"(\d{4})年", combined)
+    if quarter:
+        y, start, end = map(int, quarter.groups())
+        stage.append(
+            (f"{month_name[start]}–{month_name[end]} {y} average", f"{y}年{start}至{end}月平均")
+        )
+    elif annual:
+        stage.append(
+            (
+                f"{annual[1]} fiscal-year average" if annual[2] else f"{annual[1]} annual average",
+                annual[1] + ("财年平均" if annual[2] else "年平均"),
+            )
+        )
+    elif monthly and year and "遡及" not in name:
+        stage.append(
+            (f"{month_name[int(monthly[1])]} {year[1]}", f"{year[1]}年{int(monthly[1])}月")
+        )
+    else:
+        # Preserve uncommon publisher labels such as retrospective rebasing.
+        stage.append((title, title))
+    return ", ".join(en for en, _ in stage), "，".join(zh for _, zh in stage)
+
+
 def estat(s, root):
     for table in root.xpath("//table[@class='detail_list_table-layout']"):
         group = ""
@@ -203,10 +241,11 @@ def estat(s, root):
                 en, zh = "Industrial production (revised)", "工业生产（修正值）"
             else:
                 en, zh = "Industrial production (preliminary)", "工业生产（初值）"
+            period_en, period_zh = _estat_labels(group, text(title[0]))
             yield event(
                 s,
-                en,
-                zh,
+                f"{en} ({period_en})",
+                f"{zh}（{period_zh}）",
                 date.fromisoformat(m[1]),
                 clock=clock(m[2] or ""),
                 identity=(group, text(title[0])),

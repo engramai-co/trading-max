@@ -7,6 +7,8 @@ from urllib.parse import urljoin
 from zoneinfo import ZoneInfo
 
 from .events import event, family
+from .html import clock as parse_clock
+from .html import month as month_number
 
 
 def ical(source, content, today):
@@ -52,6 +54,29 @@ def ical(source, content, today):
         yield event(source, title, zh, day, clock=clock, status=status, identity=identity)
 
 
+def _ons_provisional(value):
+    """Read the human-published range, which can be less precise than the index."""
+    exact = re.fullmatch(r"(\d{1,2}) ([A-Za-z]+) (\d{4})(?: (\d{1,2}:\d{2}[ap]m))?", value, re.I)
+    if exact:
+        return (
+            date(int(exact[3]), month_number(exact[2]), int(exact[1])),
+            None,
+            parse_clock(exact[4] or ""),
+        )
+    months = re.fullmatch(r"([A-Za-z]+)(?: (\d{4}))?(?: to ([A-Za-z]+))? (\d{4})", value)
+    if months:
+
+        def month(name, year):
+            return f"{year}-{month_number(name):02d}"
+
+        return (
+            month(months[1], months[2] or months[4]),
+            month(months[3], months[4]) if months[3] else None,
+            None,
+        )
+    raise ValueError("unrecognised provisional ONS date")
+
+
 def ons(source, content, today):
     releases = json.loads(content)["releases"]
     if not isinstance(releases, list) or len(releases) >= 1000:
@@ -75,18 +100,24 @@ def ons(source, content, today):
             if d.get("finalised")
             else "provisional"
         )
-        # Provisional midnight dates are placeholders, and withdrawn releases
-        # have no promised clock.
+        day, end = local.date(), None
+        # A postponed flag records an earlier change. A confirmed replacement
+        # still has its published time.
         clock = (
             local.time()
-            if status == "finalised" and time.min not in (local.time(), instant.time())
+            if d.get("finalised")
+            and not d.get("cancelled")
+            and time.min not in (local.time(), instant.time())
             else None
         )
+        if not d.get("finalised") and d.get("provisional_date"):
+            day, end, clock = _ons_provisional(d["provisional_date"].strip())
         yield event(
             source,
             title,
             zh,
-            local.date(),
+            day,
+            end=end,
             clock=clock,
             status=status,
             identity=path,

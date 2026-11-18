@@ -181,6 +181,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 : t("{count} 个来源更新失败", "{count} source refreshes failed").replace("{count}", String(source.failedSources))}</Tag>}
             </Group>,
           ])} />
+          {(data.health?.eventRefreshes ?? []).flatMap((source) => (source.failures ?? []).map((failure) => (
+            <div key={source.kind + failure.source} className="mx-health-source-failure">
+              <span>{failure.source}</span>
+              {failure.checkedAt && <small><span>{t("上次尝试", "Last attempt")}</span> {formatDateTime(failure.checkedAt, locale, timeZone)}</small>}
+            </div>
+          )))}
         </details>
       )}
       <details className="mx-chart-data">

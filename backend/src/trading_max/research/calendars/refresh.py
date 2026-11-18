@@ -1,6 +1,7 @@
 """Conservatively refresh each publisher and retain its last successful schedule."""
 
 import re
+import ssl
 from contextlib import contextmanager
 from dataclasses import replace
 from datetime import date, datetime, timedelta
@@ -9,12 +10,13 @@ from io import BytesIO
 import httpx
 from pypdf import PdfReader
 
-from .catalog import sources
-from .events import event
+from .catalog import HK_URL, sources
+from .events import event, window_bounds
 from .html import month, parse_html
 from .structured import hk, ical, ons
 
 MACRO_KEY = "research/macro_calendar.json"
+MACRO_STATUS_KEY = "research/macro_calendar_status.json"
 MAX_BYTES = 5 * 1024 * 1024
 CALENDAR_HORIZON = 180
 BOK_2027 = "https://www.bok.or.kr/fileSrc/eng/62fdd6164da24b79b80ac0579a767f4a/2/4940ab9c94de45a8948fe38c67923ae9.pdf"
@@ -22,14 +24,15 @@ BOK_2027 = "https://www.bok.or.kr/fileSrc/eng/62fdd6164da24b79b80ac0579a767f4a/2
 
 @contextmanager
 def official_reader():
-    with httpx.Client(
-        timeout=httpx.Timeout(12, connect=5),
-        headers={
+    options = {
+        "timeout": httpx.Timeout(12, connect=5),
+        "headers": {
             "User-Agent": "Trading-Max-Calendar/1.0 (+https://github.com/engramai-co/trading-max)"
         },
-    ) as client:
+    }
+    with httpx.Client(**options) as client:
 
-        def fetch(url):
+        def request(client, url):
             # The verified MPB attachment redirects to a short-lived URL on the bank’s file host.
             original = httpx.URL(url)
             target = original
@@ -63,6 +66,21 @@ def official_reader():
                         buffer.extend(chunk)
                     return bytes(buffer)
             raise ValueError("calendar redirect limit")
+
+        def fetch(url):
+            try:
+                return request(client, url)
+            except httpx.ConnectError as exc:
+                cause = exc
+                while cause is not None and not isinstance(cause, ssl.SSLCertVerificationError):
+                    cause = cause.__cause__ or cause.__context__
+                # C&SD resolves to rotating CDN addresses. Retry this specific
+                # handshake failure once via fresh DNS, retaining normal SNI,
+                # CA trust and hostname verification on the same official URL.
+                if url != HK_URL or getattr(cause, "verify_code", None) != 62:
+                    raise
+                with httpx.Client(**options) as fresh:
+                    return request(fresh, url)
 
         yield fetch
 
@@ -127,6 +145,7 @@ def refresh_calendar(previous, now, fetch, *, catalog=sources):
             ):
                 supplement = BOK_2027
             return {
+                "publisher": page.publisher,
                 "checked_at": now.isoformat(),
                 "as_of": now.isoformat(),
                 "error": None,
@@ -134,11 +153,21 @@ def refresh_calendar(previous, now, fetch, *, catalog=sources):
                 "events": [
                     r.model_dump(mode="json")
                     for r in rows
-                    if (r.end_date or r.date) >= today - timedelta(days=1) and r.date <= horizon
+                    if page.parser == "ons"
+                    or (
+                        window_bounds(r.date, r.end_date)[1]
+                        >= (today - timedelta(days=1)).isoformat()
+                        and window_bounds(r.date, r.end_date)[0] <= horizon.isoformat()
+                    )
                 ],
             }
         except Exception as exc:
-            return {**old, "checked_at": now.isoformat(), "error": type(exc).__name__}
+            return {
+                **old,
+                "publisher": page.publisher,
+                "checked_at": now.isoformat(),
+                "error": type(exc).__name__,
+            }
 
     for source in catalog(today):
         saved[source.key] = refresh(source)
