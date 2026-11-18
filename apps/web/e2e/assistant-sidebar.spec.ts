@@ -2,6 +2,7 @@ import historicalDividend from "../tests/fixtures/historical-dividend.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
+import type { DashboardLens } from "../lib/types";
 import { backendFixture } from "../tests/loading/fixtures";
 import { ASSISTANT_NAME } from "../workspace/assistant-settings";
 
@@ -225,6 +226,45 @@ test("an open Overview discovers a scheduled reading without starting a model ru
   await page.clock.fastForward(65_000);
   await expect(page.locator(".mx-digest-summary")).toHaveText(/修订 [2-9]/);
 });
+test("an undated Holdings quote discloses its missing time in the sidebar and announcement", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("trading_max-locale", "en");
+    localStorage.setItem("trading_max-time-zone", "Europe/London");
+  });
+  const balanceTime = "2026-08-01T21:15:00Z";
+  const quote = {ticker:"SYN", scope:"isa", current_price:7, price_currency:"GBP", observed_at:null};
+  await page.route("**/dashboard/lens/holdings-positions*", route => {
+    const lens = backendFixture(new URL(route.request().url())) as DashboardLens;
+    return route.fulfill({json:{...lens, brokerAsOf:balanceTime, positionAsOf:{B:null},
+      holdings:[{...lens.holdings?.[0], ticker:quote.ticker, account:"B", currentPrice:quote.current_price,
+        priceCurrency:quote.price_currency, quantity:10, currentValueGbp:70}],
+      accounts:[{code:"B", isInvestable:true, totalValueGbp:70, asOf:balanceTime}]}});
+  });
+  const output = {evidence_id:"ev_quote", status:"ok", scope:"isa", sources:[{as_of:"2026-08-02T07:00:00Z"}],
+    data:{items:[quote]}};
+  const chunks = [{type:"start", messageId:"quote"}, {type:"start-step"},
+    {type:"tool-input-available", toolCallId:"quote", toolName:"position_detail", input:{args:{scope:"isa",ticker:"SYN"}}},
+    {type:"tool-output-available", toolCallId:"quote", output},
+    {type:"text-start", id:"t"}, {type:"text-delta", id:"t", delta:"{{/data/items/0/current_price}} [ev_quote]\n{{insufficient-evidence}} [inference]"},
+    {type:"text-end", id:"t"}, {type:"finish-step"}, {type:"finish", finishReason:"stop"}];
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
+    headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+    body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n",
+  }));
+  await page.goto("/holdings?account=B");
+  await expect(page.locator(".mx-holdings-summary .mx-freshness")).toContainText("22:15");
+  await expect(page.locator(".mx-holding-quote-basis:visible")).toContainText("Time unavailable");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  await input.fill("What was the unit price of SYN?");
+  await input.press("Enter");
+  const expected = "SYN · ISA · Unit price £7.0000 · Time unavailable";
+  await expect(page.locator(".mx-turn-assistant .mx-reading-line").first()).toContainText(expected);
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toContainText(expected);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-undated-quote.png")});
+});
+
 test("uncited or invented chat evidence stays out of the transcript and announcement", async ({page}) => {
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   await fixtures(page);

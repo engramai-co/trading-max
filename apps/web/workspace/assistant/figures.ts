@@ -226,7 +226,9 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   const freshness = tool === "data_freshness";
   const sourceDates = freshness ? [] : objects(output.sources).map(source => dateText(source.as_of)).filter(Boolean);
   const localDate = (value: string) => value.includes("T") ? formatDateTime(value, locale, timeZone) : value;
-  const period = start && end ? localDate(start) + " – " + localDate(end) : localDate(end || date) || [...new Set(sourceDates)].map(localDate).join(" / ");
+  const holdingPrice = (tool === "list_holdings" || tool === "position_detail") && row.group === "items" && field === "current_price";
+  const period = holdingPrice ? localDate(dateText(parent.observed_at)) || word(["Time unavailable", "时间未提供"], locale)
+    : start && end ? localDate(start) + " – " + localDate(end) : localDate(end || date) || [...new Set(sourceDates)].map(localDate).join(" / ");
   const accounts: Record<string, Words> = {invest:["Invest", "投资账户"], isa:["ISA", "ISA"], cfd:["CFD", "CFD"],
     broker_total:["All investment accounts", "全部投资账户"], household:["Household", "家庭账户"]};
   const scope = str(parent.scope) || str(output.scope);

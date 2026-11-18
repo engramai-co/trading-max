@@ -95,6 +95,18 @@ it("keeps a row's subject and native unit and uses only its selected evidence", 
   expect(pence.text).toContain("18.25 GBp");
   expect(verifiedLines(fieldReply("list_holdings", {data:{items:[{current_price:3}]}}, "/data/items/0/current_price"))).toEqual([]);
 });
+it.each(["list_holdings", "position_detail"])("%s dates a quote only from the position observation", tool => {
+  const quote = {ticker:"SYN", scope:"isa", price_currency:"GBP", current_price:7};
+  const output = {sources:[{as_of:"2026-08-02T07:00:00Z"}], data:{items:[
+    {...quote, observed_at:null},
+    {...quote, scope:"invest", observed_at:"2026-08-01T19:00:00Z"},
+  ]}};
+  const undated = fieldReply(tool, output, "/data/items/0/current_price");
+  expect(verifiedLines(undated)[0].text).toBe("SYN · ISA · Unit price £7.0000 · Time unavailable");
+  expect(verifiedLines(undated, "zh")[0].text).toBe("SYN · ISA · 单位价格 £7.0000 · 时间未提供");
+  const dated = fieldReply(tool, output, "/data/items/1/current_price");
+  expect(verifiedLines(dated)[0].text).toMatch(/SYN · Invest · Unit price £7\.0000 · .*20:00$/);
+});
 it("uses a submetric's window and refuses unavailable or ambiguous results", () => {
   const output = {data:{window_start:"2026-01-01",window_end:"2026-03-31",twr:{status:"ok",fraction:-0.125,start:"2026-03-02",end:"2026-03-30"}}};
   const message = fieldReply("period_performance", output, "/data/twr/fraction");
