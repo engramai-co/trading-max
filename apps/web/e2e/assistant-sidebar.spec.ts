@@ -371,7 +371,7 @@ for (const locale of ["zh", "en"] as const) {
     await page.locator("[data-assistant-trigger]").click();
     const input = page.locator(".mx-assistant-composer textarea");
     await input.fill(locale === "zh" ? "SYNT 的哪些数据需要更新？" : "Which SYNT datasets need an update?");
-    await input.press("Enter");
+    await page.getByRole("button", {name:locale === "zh" ? "发送" : "Send", exact:true}).click();
     const rows = page.locator(".mx-turn-assistant .mx-reading-line");
     await expect(rows.nth(0)).toContainText(locale === "zh" ? "技术指标 · 已过时" : "Technical data · Stale");
     await expect(rows.nth(1)).toContainText(locale === "zh" ? "业绩数据 · 缺失" : "Earnings data · Missing");
