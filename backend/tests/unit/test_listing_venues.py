@@ -1,7 +1,6 @@
 from itertools import combinations_with_replacement, product
 
 import pytest
-
 from trading_max.research.venues import VenueClaim, resolve_venue
 
 
