@@ -19,8 +19,11 @@ async function fixtures(page: Page, ready = true) {
         line("next","financials","read_research_lens","2 月 4 日 · SYNT 财报","4 February · SYNT earnings")],
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
-      const chunks = [{type:"start", messageId:"a1"}, {type:"start-step"}, {type:"text-start",id:"t1"},
-        {type:"text-delta",id:"t1",delta:"A synthetic reply. [inference]\nA second observation. [inference]"},{type:"text-end",id:"t1"}, {type:"finish-step"}, {type:"finish",finishReason:"stop"}];
+      const chunks = [{type:"start", messageId:"a1"}, {type:"start-step"},
+        {type:"tool-input-available",toolCallId:"p",toolName:"period_performance",input:{args:{scope:"broker_total",range:"1W"}}},
+        {type:"tool-output-available",toolCallId:"p",output:{evidence_id:"ev_period",status:"partial",data:{period_pnl_gbp:21.5,window_start:"2026-11-09",window_end:"2026-11-13",coverage:"partial"}}},
+        {type:"text-start",id:"t1"},
+        {type:"text-delta",id:"t1",delta:"{{/data/period_pnl_gbp}} [ev_period]\n{{cash-flows}} [inference]"},{type:"text-end",id:"t1"}, {type:"finish-step"}, {type:"finish",finishReason:"stop"}];
       return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"});
     }
     if (url.pathname.endsWith("/conversations")) return route.fulfill({json:[]});
@@ -56,8 +59,14 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   const body = (await sent).postDataJSON();
   expect(body.context).toMatchObject({page:"overview",role:"daily",scope:"broker_total"});
   expect(body.messages).toHaveLength(1);
-  await expect(page.locator(".mx-turn-assistant")).toContainText("A synthetic reply.");
-  await expect(page.locator("[aria-live=polite]").filter({hasText:"A synthetic reply."})).toHaveCount(1);
+  await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
+  const liveReply = page.locator("#mx-assistant-panel [aria-live=polite]");
+  await expect(liveReply).toHaveCount(1);
+  await expect(liveReply).toContainText("本期净盈亏 £21.50");
+  await expect(liveReply).toContainText("2026-11-09 – 2026-11-13");
+  await expect(liveReply).toContainText("覆盖不完整");
+  await expect(page.locator(".mx-turn-assistant")).not.toContainText("{{");
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-verified-figure.png")});
   await input.fill("Draft retained");
   if (info.project.name === "desktop") {
     const pageBox = await page.locator("#main-content").boundingBox();
@@ -71,7 +80,7 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   await expect(input).toBeHidden();
   await page.keyboard.press("Control+j");
   await expect(input).toHaveValue("Draft retained");
-  await expect(page.locator(".mx-turn-assistant")).toContainText("A synthetic reply.");
+  await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
 });
 for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as const) {
   test("brief and sidebar " + language + " " + theme, async ({ page }, info) => {
@@ -217,4 +226,35 @@ test("cited money and ex-dividend dates open their published evidence", async ({
   await page.goto("/research?ticker=SYNT&view=overview&event=exDividend&date=2026-11-28&evidence=read_research_lens");
   await expect(page.locator("[data-reading-event]")).toContainText("2026-11-28");
   await expect(page.locator("[data-reading-event]")).toContainText("除息日期");
+});
+
+test("keyboard Back from History restores focus inside the tablet sidebar", async ({page}, info) => {
+  await page.setViewportSize({width:1000,height:800});
+  await fixtures(page);
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const history = page.getByRole("button",{name:"历史对话"});
+  await history.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button",{name:"返回对话"})).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(history).toBeFocused();
+  if (info.project.name === "desktop" && process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,"history-back-focus.png")});
+});
+test("neither chat nor its live region repeats a false amount with a genuine citation", async ({page}, info) => {
+  await fixtures(page);
+  const chunks = [{type:"start",messageId:"wrong"}, {type:"start-step"},
+    {type:"tool-input-available",toolCallId:"p",toolName:"period_performance",input:{args:{scope:"broker_total",range:"1W"}}},
+    {type:"tool-output-available",toolCallId:"p",output:{evidence_id:"ev_period",status:"partial",data:{period_pnl_gbp:21.5,currency:"GBP",coverage:"partial"}}},
+    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:"Net P&L was £9,999,999 with complete coverage [ev_period]\n{{other-drivers}} [inference]"},
+    {type:"text-end",id:"t"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
+  await page.route("**/api/backend/assistant/chat", route => route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+    body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"}));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.locator(".mx-assistant-questions button").first().click();
+  await expect(page.locator(".mx-turn-assistant")).toContainText("无法核实");
+  await expect(page.locator("#mx-assistant-panel")).not.toContainText("9,999,999");
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toBeEmpty();
+  if (info.project.name === "desktop" && process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,"false-figure-withheld.png")});
 });

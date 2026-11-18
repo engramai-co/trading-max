@@ -41,7 +41,7 @@ class SyntheticDeps:
 
 def lookup_total(ctx: RunContext[SyntheticDeps]) -> dict:
     """Synthetic portfolio total."""
-    return {"status": "ok", "data": {"total": ctx.deps.total}, "evidence_id": "ev_test"}
+    return {"status": "ok", "data": {"total_value_gbp": ctx.deps.total}, "evidence_id": "ev_test"}
 
 
 def save_note(ctx: RunContext[SyntheticDeps], text: str) -> str:
@@ -66,8 +66,8 @@ def answer_after_tool(tool: str, args: str = "{}"):
         if isinstance(last, ModelRequest) and any(
             isinstance(part, ToolReturnPart) for part in last.parts
         ):
-            yield "Total is "
-            yield "1,234.50 [ev_test]."
+            yield "{{/data/total_value_gbp}} [ev_test]\n"
+            yield "{{cash-flows}} [inference]"
             return
         yield {0: DeltaToolCall(name=tool, json_args=args, tool_call_id=f"call_{len(seen)}")}
 
@@ -172,10 +172,14 @@ def test_chat_streams_a_tool_grounded_answer_and_keeps_history_on_the_server(tmp
     kinds = [chunk["type"] for chunk in chunks]
     assert "tool-input-available" in kinds and "tool-output-available" in kinds
     text = "".join(chunk.get("delta", "") for chunk in chunks if chunk["type"] == "text-delta")
-    assert text == "Total is 1,234.50 [ev_test]."
+    assert text == "{{/data/total_value_gbp}} [ev_test]\n{{cash-flows}} [inference]"
+    output = next(chunk for chunk in chunks if chunk["type"] == "tool-output-available")["output"]
+    assert output == {"status": "ok", "data": {"total_value_gbp": 1234.5}, "evidence_id": "ev_test"}
     assert any(chunk.get("type") == "data-conversation-saved" for chunk in chunks)
     instructions = seen[0][0].instructions or ""
     assert "Asia/Shanghai" in instructions and "overview page" in instructions
+    assert "{{/data/period_pnl_gbp}} [ev_1a2b]" in instructions
+    assert "{{cash-flows}} [inference]" in instructions
 
     listed = client.get("/v1/assistant/conversations").json()
     assert [row["id"] for row in listed] == ["chat1"]
@@ -193,6 +197,8 @@ def test_chat_streams_a_tool_grounded_answer_and_keeps_history_on_the_server(tmp
 
     stored = client.get("/v1/assistant/conversations/chat1").json()
     assert stored["id"] == "chat1"
+    stored_parts = [part for message in stored["messages"] for part in message["parts"]]
+    assert any(part.get("output") == output for part in stored_parts)
     assert [message["role"] for message in stored["messages"]].count("user") == 2
 
     assert client.delete("/v1/assistant/conversations/chat1").status_code == 204
