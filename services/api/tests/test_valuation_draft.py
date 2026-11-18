@@ -19,7 +19,7 @@ from services.api.trading_max_api.research import ResearchLedger
 from services.api.trading_max_api.research_journal import ResearchJournalStore
 from services.api.trading_max_api.routes import research, valuation_draft
 from services.api.trading_max_api.valuation_assumptions import ValuationAssumptionsStore
-from services.api.trading_max_api.valuation_drafts import ValuationDraftStore
+from services.api.trading_max_api.valuation_drafts import DraftResult, ValuationDraftStore
 from services.api.trading_max_api.watchlist import WatchlistStore
 
 PATH = "/v1/research/SYNM"
@@ -308,6 +308,12 @@ def test_draft_fields_follow_the_selected_engine(desk, family, override):
         }
     )
     assert fields == expect
+    if family == "residual-income":
+        reading = transcript[-1]["scenarios"]["base"]
+        assert reading["discountedTerminalPremium"] != reading["discountedTerminalValue"]
+        assert reading["terminalFraction"] == pytest.approx(
+            reading["discountedTerminalValue"] / reading["perShare"]
+        )
     selected = next(
         p for p in result["proposals"] if p["scenario"] == "base" and p["category"] == "derived"
     )
@@ -411,8 +417,6 @@ def test_save_rechecks_fx_shares_and_statements(desk, change):
 def test_every_proposal_resolves_to_a_frozen_source(desk):
     from pydantic import ValidationError
 
-    from services.api.trading_max_api.valuation_drafts import DraftResult
-
     client, _, _, _ = desk
     _, body = inputs(client)
     result = post(client, body)[-1]["result"]
@@ -424,6 +428,7 @@ def test_every_proposal_resolves_to_a_frozen_source(desk):
             assert origin["evidenceIds"] and set(origin["evidenceIds"]) <= result["evidence"].keys()
         else:
             assert p["evidenceIds"] and set(p["evidenceIds"]) <= result["evidence"].keys()
+    DraftResult.model_validate(result)
     # A persisted record cannot silently replace the field's frozen value.
     next(p for p in result["proposals"] if p["source"] == "sector-template")["value"] = 0.573232
     with pytest.raises(ValidationError):
@@ -544,7 +549,8 @@ def test_family_aware_contract_without_revenue_and_explicit_override(desk):
     state.assistant.bind_model = bind
     view, body = inputs(client)
     assert view["basis"]["revenue"] is None and view["basis"]["family"] == "residual-income"
-    assert post(client, body)[-1]["phase"] == "complete"
+    result = post(client, body)[-1]["result"]
+    DraftResult.model_validate(result)
     # Requesting a family that needs revenue must fail before contacting the model.
     assert (
         client.get(
@@ -625,3 +631,18 @@ def test_each_published_profile_identifier_reopens_the_same_template(industry):
     profile, key = _sector_profile("", industry)
     assert sector_profile_by_label(key) == profile
     assert sector_profile_by_label(profile.label) == profile
+
+
+def test_final_consent_check_cleans_up_a_revoked_pending_write(desk, monkeypatch):
+    client, state, prefs, _ = desk
+    _, body = inputs(client)
+    write = state.valuation_drafts.put
+
+    def revoke(record):
+        write(record)
+        prefs.share_valuation_assumptions = False
+        prefs.revision += 1
+
+    monkeypatch.setattr(state.valuation_drafts, "put", revoke)
+    assert post(client, body)[-1]["code"] == "valuation-draft-settings-changed"
+    assert not list(state.valuation_drafts.root.glob("*.json"))

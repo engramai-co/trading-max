@@ -281,7 +281,16 @@ class DraftAgent:
                 "evaluation_id": result.preview_id,
                 "currency": next(r.currency for r in self.frozen.rows if r.metric == Metric.SPOT),
                 "scenarios": {
-                    s: {"perShare": p.value, "terminalFraction": p.terminal_contribution}
+                    s: {
+                        "perShare": p.value,
+                        "terminalFraction": p.terminal_contribution,
+                        "discountedTerminalValue": p.terminal_present_value,
+                        **(
+                            {"discountedTerminalPremium": p.terminal_premium_present_value}
+                            if p.terminal_premium_present_value is not None
+                            else {}
+                        ),
+                    }
                     for s, p in result.projections.items()
                 },
                 "reverse": result.reverse_dcf.model_dump(mode="json")

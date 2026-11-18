@@ -142,7 +142,10 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
     async def stream():
         def line(phase, **data):
-            return DraftEvent(phase=phase, **data).model_dump_json(exclude_none=True) + "\n"
+            return (
+                DraftEvent(phase=phase, **data).model_dump_json(exclude_none=phase != "complete")
+                + "\n"
+            )
 
         if not drafts.running.acquire(blocking=False):
             yield line("error", code="assistant_busy")
@@ -211,6 +214,11 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
             record = task.result()
             check_preferences()
             drafts.put(record)
+            try:
+                check_preferences()
+            except ValueError:
+                drafts.discard(record.result.id)
+                raise
             yield line("complete", result=record.result)
         except Exception as exc:
             code = _failure(exc)
