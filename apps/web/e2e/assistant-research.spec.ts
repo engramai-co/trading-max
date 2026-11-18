@@ -93,10 +93,12 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await card.locator(".mx-reading-actions button").first().click();
     const composer = page.locator(".mx-assistant-composer textarea");
     await expect(composer).not.toHaveValue("");
-    await page.route("**/api/backend/assistant/chat", route => route.fulfill({status:503, json:{code:"assistant_unavailable"}}));
-    const submitted = page.waitForRequest(request => request.url().endsWith("/assistant/chat"));
+    await page.route("**/api/backend/assistant/chat*", route => route.fulfill({status:503, json:{code:"assistant_unavailable"}}));
+    const submitted = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
     await composer.press("Enter");
-    const handoff = (await submitted).postDataJSON().context;
+    const request = await submitted;
+    expect(new URL(request.url()).searchParams.get("format")).toBe("references");
+    const handoff = request.postDataJSON().context;
     expect(handoff).toMatchObject({page:"research", role:"key-moment", scope:"broker_total", ticker:"SYNT", lens:"technical",
       snapshotId:snapshot, object:{ticker:"SYNT", published_series_id:series, date:day}});
     expect(handoff.object.start <= day && day <= handoff.object.end).toBe(true);
