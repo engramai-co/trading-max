@@ -2,11 +2,13 @@
 
 from datetime import datetime
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator
 
 from ..index_models import GlobalMapMarket
 from ..sector_models import SectorGroupingKind, SectorMarketCode
+from ..sector_sessions import MARKETS
 from . import events, tools
 from .overview_roles import line
 from .roles import LinkedObservation, PageRole, RoleContext, RoleTools, bind_selection
@@ -103,23 +105,31 @@ def sector_headline(ctx: tools.Context, args: SectorContext):
     board = market_sector(ctx, args).get("data") or {}
     if not (ticker := board.get("news_ticker")) or not (day := board.get("day")):
         return read.missing("headline_unavailable")
-    event = events.news_and_events(
-        ctx, events.EventArgs(ticker=ticker, scope="broker_total", start=day, end=day, limit=20)
-    )
-    row = next(
-        (
-            r
-            for r in (event.get("data") or {}).get("items", [])
-            if r.get("kind") == "news"
-            and r.get("publisher")
-            and r.get("source_url")
-            and (
-                not r.get("instant")
-                or datetime.fromisoformat(r["instant"]) <= datetime.fromisoformat(args.observed)
-            )
-        ),
-        None,
-    )
+    if args.market == "global":
+        return read.missing("headline_unavailable")
+    query = events.EventArgs(ticker=ticker, scope="broker_total", start=day, end=day, limit=20)
+    zone = ZoneInfo(MARKETS[args.market].timezone)
+    while True:
+        event = events.event_data(ctx.deps, query, upcoming=False, session_zone=zone)
+        data = event.get("data") or {}
+        row = next(
+            (
+                r
+                for r in data.get("items", [])
+                if r.get("kind") == "news"
+                and r.get("publisher")
+                and r.get("source_url")
+                and (
+                    not r.get("instant")
+                    or datetime.fromisoformat(r["instant"]) <= datetime.fromisoformat(args.observed)
+                )
+            ),
+            None,
+        )
+        cursor = data.get("next_cursor")
+        if row or cursor is None:
+            break
+        query = query.model_copy(update={"cursor": cursor})
     if not row:
         return read.missing("headline_unavailable")
     return {
@@ -203,6 +213,7 @@ def sector_facts(read: RoleTools, context: SectorContext):
                 start=day,
                 end=day,
                 url=row["source_url"],
+                **({"instant": row["instant"]} if row.get("instant") else {}),
                 **context.model_dump(),
             )
             lead.evidence.publisher = row["publisher"][:80]
@@ -314,6 +325,7 @@ MARKET_ROLES = (
         SectorContext,
         "Choose one observation from each section, up to four. Keep news as a separate dated lead, never an explanation for a move.",
         sector_facts,
+        data_version=lambda reader, _: "exchange-session-v2:" + reader.deps.snapshot_id,
         tool_bindings=bind_selection("market_sector", "sector_headline"),
     ),
     PageRole(

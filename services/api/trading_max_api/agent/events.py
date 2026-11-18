@@ -477,7 +477,7 @@ def _macros(payload, start, end, issues):
     ]
 
 
-def event_data(deps, args, *, upcoming):
+def event_data(deps, args, *, upcoming, session_zone=None):
     name = "upcoming_events" if upcoming else "news_and_events"
     read = _Read(deps, name, args, args.scope)
     codes = read.account_codes(args.scope)
@@ -588,7 +588,10 @@ def event_data(deps, args, *, upcoming):
             else None
         )
         day = local.date().isoformat() if local else row["date"]
-        first, last = window_bounds(day, row.get("end_date"))
+        filter_day = (
+            local.astimezone(session_zone).date().isoformat() if local and session_zone else day
+        )
+        first, last = window_bounds(filter_day, row.get("end_date"))
         if args.start > last or first > args.end:
             continue
         identity = ["news", row["reference"]] if row["kind"] == "news" else row

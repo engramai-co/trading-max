@@ -5222,6 +5222,9 @@
             "title": "Items",
             "type": "array"
           },
+          "largest_move": {
+            "$ref": "#/components/schemas/DailyReturn"
+          },
           "next_cursor": {
             "anyOf": [
               {
@@ -5233,9 +5236,17 @@
             ],
             "title": "Next Cursor"
           },
+          "observed_intervals": {
+            "title": "Observed Intervals",
+            "type": "integer"
+          },
           "range": {
             "title": "Range",
             "type": "string"
+          },
+          "total_intervals": {
+            "title": "Total Intervals",
+            "type": "integer"
           },
           "total_items": {
             "title": "Total Items",
@@ -5282,6 +5293,9 @@
           "window_end",
           "window_twr_fraction",
           "window_benchmarks",
+          "observed_intervals",
+          "total_intervals",
+          "largest_move",
           "worst_day",
           "benchmark",
           "benchmark_currency",
@@ -6166,6 +6180,10 @@
             ],
             "title": "Company Limit"
           },
+          "company_table_truncated": {
+            "title": "Company Table Truncated",
+            "type": "boolean"
+          },
           "currency": {
             "title": "Currency",
             "type": "string"
@@ -6266,6 +6284,7 @@
           "basis",
           "lookthrough_coverage_fraction",
           "invested_value_gbp",
+          "company_table_truncated",
           "company_limit"
         ],
         "title": "DatedExposure",
@@ -7805,6 +7824,17 @@
               }
             ],
             "title": "Code"
+          },
+          "entity_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Id"
           },
           "isin": {
             "anyOf": [

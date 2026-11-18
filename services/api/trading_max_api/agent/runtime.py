@@ -108,7 +108,7 @@ items/N/value for a typed price (with currency), technical score, expiry count,
 as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
 For page readings, select selected_money /data/pnl, exposure_benchmark /data/weight,
 selected_exposure /data/current/weight_fraction or /data/previous/weight_fraction,
-selected_daily (or daily_returns) /data/window_twr_fraction, /data/worst_day/return_fraction or
+selected_daily (or daily_returns) /data/window_twr_fraction, /data/worst_day/return_fraction, /data/largest_move/return_fraction (largest absolute daily move) or
 /data/window_benchmarks/VOO (or QQQ, VT), holding_fx_split /data/accounts/isa/fx_effect_gbp
 (or invest, local_price_effect_gbp), selected_fx /data/fx_effect_gbp or /data/local_price_effect_gbp, market_sector /data/move or /data/breadth/up,
 global_map /data/markets/N/contribution or /data/markets/N/move, and update_issue

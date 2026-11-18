@@ -114,18 +114,18 @@ export function formatPageField(
         percent(value, true, 2),
       ];
     if (
-      ["items", "worst_day"].includes(group ?? "") &&
+      ["items", "worst_day", "largest_move"].includes(group ?? "") &&
       field === "return_fraction"
     )
       return [
         group === "worst_day"
           ? t("区间最低已观测日收益", "Lowest observed daily return")
-          : t("组合日收益", "Daily portfolio return"),
+          : group === "largest_move" ? t("已观测日收益中变幅最大", "Largest observed daily move") : t("组合日收益", "Daily portfolio return"),
         percent(value, true, 2),
       ];
     if (
       field === "worst_rank" &&
-      ["items", "worst_day"].includes(group ?? "") &&
+      ["items", "worst_day", "largest_move"].includes(group ?? "") &&
       Number.isSafeInteger(value) &&
       value > 0
     )

@@ -19,6 +19,7 @@ def publication(
     research_note=None,
     created_at=None,
     extra_artifacts=None,
+    extra_files=None,
 ):
     def account(code, total, ticker):
         return {
@@ -262,6 +263,7 @@ def publication(
         # synthetic publication cutoff, independently of the wall clock.
         for key in (tools.FUNDAMENTALS, tools.VALUATION):
             payloads[key]["generated_at"] = AS_OF
+    files.update(extra_files or {})
     payloads.update(extra_artifacts or {})
     backing = store.immutable_artifacts
     refs = [

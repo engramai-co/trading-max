@@ -691,6 +691,7 @@ def _exposure_reading(
         }
         if dimension == "company":
             item.update(
+                entity_id=_text(row.get("entityId"), 512),
                 ticker=_text(row.get("ticker"), 64),
                 isin=_text(row.get("isin"), 64),
             )
@@ -771,7 +772,7 @@ def _intraday_window(
         return []
     if range_name in {"ALL", "2Y"}:
         # The wire API does not accept 2Y; full data is lossless for that client range.
-        return scope_points(intraday, scope)
+        return intraday
 
     def stamp(point: NavPoint) -> datetime:
         value = datetime.fromisoformat(point.date)
@@ -792,14 +793,11 @@ def _intraday_window(
         )
     )
     start = window_start(latest, cast(HistoryRange, range_name))
-    selected = [
-        point for point in intraday if portfolio_day(point.date) >= start or point in anchors
-    ]
-    return scope_points(selected, scope)
+    return [point for point in intraday if portfolio_day(point.date) >= start or point in anchors]
 
 
 def _history_input(
-    read: _Read, scope: AccountScope, range_name: Range
+    read: _Read, scope: AccountScope, range_name: Range, *, include_total_accounts: bool = False
 ) -> tuple[HistoryInput, list[str]] | None:
     """Read the web history input without opening its mutable derived cache."""
     manifest = read.deps.manifest
@@ -814,7 +812,9 @@ def _history_input(
         daily, intraday = load_history(read.deps.store, manifest)
         math_scope = _math_scope(scope)
         intraday = _intraday_window(intraday, daily, as_of, range_name, math_scope)
-        daily = scope_points(daily, math_scope)
+        if not (scope == "broker_total" and include_total_accounts):
+            daily = scope_points(daily, math_scope)
+            intraday = scope_points(intraday, math_scope)
     except (FileNotFoundError, SnapshotIntegrityError, TypeError, ValueError, KeyError):
         return None
     keys = [BROKER, *(key for key in (LIVE,) if live)]

@@ -173,7 +173,7 @@
     }
   },
   "selected_daily": {
-    "status": "partial",
+    "status": "ok",
     "data": {
       "currency": "GBP",
       "basis": "published_daily_twr",
@@ -181,6 +181,17 @@
       "window_twr_fraction": 0.020000000000000018,
       "window_benchmarks": {
         "VOO": 0.08000000000000007
+      },
+      "observed_intervals": 4,
+      "total_intervals": 4,
+      "largest_move": {
+        "date": "2026-02-03",
+        "from_date": "2026-02-02",
+        "return_fraction": -0.07272727272727275,
+        "benchmark_return_fractions": {
+          "VOO": 0.018867924528301883
+        },
+        "worst_rank": 1
       },
       "worst_day": {
         "date": "2026-02-03",
@@ -207,8 +218,7 @@
           "worst_rank": 1
         }
       ],
-      "total_items": 4,
-      "next_cursor": 1
+      "total_items": 4
     },
     "scope": "invest",
     "quality": {
@@ -247,6 +257,7 @@
     "bound_arguments": {
       "dimension": "country",
       "category": "United States",
+      "entityId": null,
       "group": null,
       "snapshotId": "synthetic-figures"
     }

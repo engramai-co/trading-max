@@ -3238,10 +3238,15 @@ export interface components {
             currency: string;
             /** Items */
             items: components["schemas"]["DailyReturn"][];
+            largest_move: components["schemas"]["DailyReturn"];
             /** Next Cursor */
             next_cursor: number | null;
+            /** Observed Intervals */
+            observed_intervals: number;
             /** Range */
             range: string;
+            /** Total Intervals */
+            total_intervals: number;
             /** Total Items */
             total_items: number;
             /** Window Benchmarks */
@@ -3495,6 +3500,8 @@ export interface components {
             broker_as_of: string | null;
             /** Company Limit */
             company_limit: number | null;
+            /** Company Table Truncated */
+            company_table_truncated: boolean;
             /** Currency */
             currency: string;
             /** Dimension */
@@ -3979,6 +3986,8 @@ export interface components {
             classification_status?: string | null;
             /** Code */
             code?: string | null;
+            /** Entity Id */
+            entity_id?: string | null;
             /** Isin */
             isin?: string | null;
             /** Name */

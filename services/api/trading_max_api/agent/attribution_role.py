@@ -2,6 +2,7 @@
 
 import re
 from datetime import UTC, datetime
+from math import isclose
 from typing import Literal
 
 from pydantic import model_validator
@@ -50,13 +51,13 @@ def matches(since: str | None, as_of: str | None, context: AttributionContext):
     return True
 
 
-def selected_money(ctx: tools.Context, args: AttributionContext):
-    """Cash-flow-adjusted money result from the chart's full-cadence records."""
-    read = tools._Read(ctx.deps, "selected_money", args, args.scope)
+def _selected_rows(read, args, *, include_total_accounts=False):
     read.account_codes(args.scope)
-    loaded = tools._history_input(read, args.scope, args.range)
+    loaded = tools._history_input(
+        read, args.scope, args.range, include_total_accounts=include_total_accounts
+    )
     if not loaded:
-        return read.missing("history_unavailable")
+        return [], []
     source, keys = loaded
     scope = tools._math_scope(args.scope)
     if args.view == "money" or len(args.start) > 10 or len(args.end) > 10:
@@ -79,8 +80,17 @@ def selected_money(ctx: tools.Context, args: AttributionContext):
         or datetime.fromisoformat(rows[0]["date"]) != datetime.fromisoformat(args.start)
         or datetime.fromisoformat(rows[-1]["date"]) != datetime.fromisoformat(args.end)
     ):
-        return read.missing("endpoint_unavailable", keys=keys)
-    money = portfolio_money(rows, scope)
+        return [], keys
+    return rows, keys
+
+
+def selected_money(ctx: tools.Context, args: AttributionContext):
+    """Cash-flow-adjusted money result from the chart's full-cadence records."""
+    read = tools._Read(ctx.deps, "selected_money", args, args.scope)
+    rows, keys = _selected_rows(read, args)
+    if not rows:
+        return read.missing("endpoint_unavailable" if keys else "history_unavailable", keys=keys)
+    money = portfolio_money(rows, tools._math_scope(args.scope))
     return read.result(
         data={
             "pnl": money["pnl"],
@@ -112,7 +122,13 @@ def selected_daily(ctx: tools.Context, args: AttributionContext):
     data = result.get("data") or {}
     if data.get("window_start") != args.start or data.get("window_end") != args.end:
         return read.missing("daily_endpoints_unavailable")
-    return {**result, "evidence_id": read.result()["evidence_id"]}
+    # Pagination restricts the accompanying daily rows, never the summary calculation.
+    return {
+        **result,
+        "data": {k: v for k, v in data.items() if k != "next_cursor"},
+        "status": "partial" if result["quality"]["issues"] else "ok",
+        "evidence_id": read.result()["evidence_id"],
+    }
 
 
 def selected_fx(ctx: tools.Context, args: AttributionContext):
@@ -121,12 +137,32 @@ def selected_fx(ctx: tools.Context, args: AttributionContext):
     read.account_codes(args.scope)
     if len(args.start) == 10 or len(args.end) == 10:
         return read.missing("valuation_instants_unavailable")
-    if not (selected_money(ctx, args).get("data") or {}).get("start"):
+    rows, _ = _selected_rows(read, args, include_total_accounts=True)
+    if not rows:
         return read.missing("valuation_instants_unavailable")
-    expected = {"invest", "isa"} if args.scope == "broker_total" else {args.scope}
+    expected = {args.scope}
+    if args.scope == "broker_total":
+        expected = {
+            account
+            for account in ("invest", "isa")
+            if any(row.get(account) is not None for row in rows)
+        }
+        if (
+            not expected
+            or any(
+                row.get("total") is None
+                or not isclose(
+                    sum(row.get(account) or 0 for account in expected), row["total"], abs_tol=0.01
+                )
+                for row in rows
+            )
+            or any(row.get(account) is None for row in (rows[0], rows[-1]) for account in expected)
+        ):
+            return read.missing("chart_account_coverage_unavailable")
     for period in ("1D", "5D"):
+        split_scope = next(iter(expected)) if len(expected) == 1 else args.scope
         split = insights.holding_fx_split(
-            ctx, insights.FXArgs(scope=args.scope, period=period, limit=1)
+            ctx, insights.FXArgs(scope=split_scope, period=period, limit=1)
         )
         accounts = (split.get("data") or {}).get("accounts", {})
         if set(accounts) != expected or not all(
@@ -177,11 +213,17 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
         and data.get("window_end") == context.end
     ):
         if (ret := data.get("window_twr_fraction")) is not None:
+            observed_count, total = data["observed_intervals"], data["total_intervals"]
+            complete = observed_count == total
             facts.append(
                 observed(
                     "return",
-                    f"区间组合时间加权收益为 {ret:+.2%}。",
-                    f"Portfolio time-weighted return was {ret:+.2%} over this range.",
+                    f"区间组合时间加权收益为 {ret:+.2%}。"
+                    if complete
+                    else f"共 {total} 个区间，其中 {observed_count} 个可核实，已观测区间的时间加权收益为 {ret:+.2%}。",
+                    f"Portfolio time-weighted return was {ret:+.2%} over this range."
+                    if complete
+                    else f"Time-weighted return was {ret:+.2%} across the {observed_count} of {total} observed intervals.",
                 )
             )
         worst = data.get("worst_day")
@@ -294,5 +336,6 @@ ATTRIBUTION = PageRole(
     AttributionContext,
     "Select one fact from each section for the selected range. Preserve benchmark currency and basis. Price and currency effects apply only to held shares.",
     attribution_facts,
+    data_version=lambda reader, _: "intervals-v2:" + reader.deps.snapshot_id,
     tool_bindings=bind_selection("selected_daily", "selected_fx", "selected_money"),
 )

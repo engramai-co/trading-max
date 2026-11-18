@@ -164,13 +164,13 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   const formatted = pageFormat ?? formatField(tool, row, locale);
   if (!formatted) return null;
   const {parent, field} = row;
-  const pageDate = pageFormat && (tool === "market_sector" && field === "weight" ? dateText(data.weights_as_of) :
+  const pageDate = pageFormat && (tool === "sector_headline" && parent.instant ? dateText(parent.instant) : tool === "market_sector" && field === "weight" ? dateText(data.weights_as_of) :
     dateText(parent.date) || dateText(data.day) || dateText(data.finished_at));
   const date = pageDate || dateText(parent.observed_at) || dateText(parent.as_of) || dateText(parent.date)
     || dateText(field.includes("pnl") ? parent.pnl_as_of : parent.values_as_of) || dateText(data.broker_as_of);
   const fxWindow = tool === "holding_fx_split" && ["invest","isa"].includes(str(parent.scope))
     ? object(object(data.accounts)[str(parent.scope)]) : {};
-  const datedItem = (tool==="daily_returns" || tool==="selected_daily") && (row.group==="worst_day" || row.group==="items");
+  const datedItem = (tool==="daily_returns" || tool==="selected_daily") && (row.group==="worst_day" || row.group==="largest_move" || row.group==="items");
   const start = (datedItem ? dateText(parent.from_date) : "") || dateText(fxWindow.since) || dateText(parent.since) || dateText(object(parent.period).start) || dateText(parent.start) || dateText(data.window_start) || dateText(data.start);
   const end = (datedItem ? dateText(parent.date) : tool==="holding_fx_split" ? dateText(fxWindow.as_of) || dateText(parent.as_of) : "") || dateText(object(parent.period).end) || dateText(parent.end) || dateText(data.window_end) || dateText(data.end);
   const freshness = tool === "data_freshness";
@@ -182,5 +182,9 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   const scope = str(parent.scope) || str(output.scope);
   const subject = [str(parent.ticker) || str(parent.name) || (tool==="global_map" ? str(parent.market).toUpperCase() : "") || str(data.name) || str(data.ticker) || (freshness ? "" : str(parent.dataset)), Object.hasOwn(accounts, scope) ? word(accounts[scope], locale) : ""]
     .filter(Boolean).join(" · ");
-  return [subject, formatted.join(freshness ? " · " : " "), period === formatted[1] ? "" : period, limited || parent.status === "partial" ? limitedText : ""].filter(Boolean).join(" · ");
+  const {observed_intervals: observed, total_intervals: total} = data;
+  const intervalCoverage = (tool === "daily_returns" || tool === "selected_daily") &&
+    typeof observed === "number" && typeof total === "number" && observed < total
+      ? locale === "zh" ? `已观测 ${observed}/${total} 个区间` : `${observed} of ${total} intervals observed` : "";
+  return [subject, formatted.join(freshness ? " · " : " "), period === formatted[1] ? "" : period, intervalCoverage || (limited || parent.status === "partial" ? limitedText : "")].filter(Boolean).join(" · ");
 }

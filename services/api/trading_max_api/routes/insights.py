@@ -55,6 +55,9 @@ class DailyReturns(Page[DailyReturn]):
     window_end: str
     window_twr_fraction: float | None
     window_benchmarks: dict[str, float]
+    observed_intervals: int
+    total_intervals: int
+    largest_move: DailyReturn
     worst_day: DailyReturn
     benchmark: str
     benchmark_currency: str | None
@@ -85,6 +88,7 @@ class FXSplit(Page[PositionEffects]):
 
 
 class ExposureRow(BaseModel):
+    entity_id: str | None = None
     name: str | None
     value_gbp: float | None
     weight_fraction: float | None
@@ -109,6 +113,7 @@ class DatedExposure(Page[ExposureRow], ExposureStart):
     gics_portfolio_coverage_fraction: float | None = None
     lookthrough_coverage_fraction: float | None
     invested_value_gbp: float | None
+    company_table_truncated: bool
     company_limit: int | None
 
 

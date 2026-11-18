@@ -18,10 +18,13 @@ from .roles import PageRole, RoleContext, RoleTools, bind_selection
 class ExposureContext(RoleContext):
     dimension: Literal["country", "sector", "gics", "company"]
     category: str = Field(min_length=1, max_length=180)
+    entityId: str | None = Field(default=None, min_length=1, max_length=512)
     group: Literal["tail", "unresolved"] | None = None
 
     @model_validator(mode="after")
     def grouped_category(self):
+        if self.entityId and (self.dimension != "company" or self.group):
+            raise ValueError("An entity identifies one company")
         if (self.group and self.category != self.group) or (
             self.group == "unresolved" and self.dimension != "company"
         ):
@@ -37,7 +40,7 @@ def _category(dimension, row):
     return row["name"]
 
 
-def _find(ctx, tool, args, context):
+def _find(ctx, tool, args, context, *, allow_legacy=True):
     expected = (
         _countries().get(context.category.lower(), context.category)
         if context.dimension == "country"
@@ -48,19 +51,36 @@ def _find(ctx, tool, args, context):
         result = tool(ctx, args)
         data = result.get("data") or {}
         page = data.get("items", [])
-        if context.group:
-            rows.extend(page)
-        else:
-            for row in page:
-                if _category(context.dimension, row) == expected:
-                    return row, result
+        rows.extend(page)
         cursor = data.get("next_cursor")
         if cursor is None:
             break
         args = args.model_copy(update={"cursor": cursor})
-    # Dated company tables keep only the top forty. A truncated table cannot
-    # establish the complete residual or the full group outside the leading twelve.
-    if not context.group or (data.get("company_limit") and len(rows) >= data["company_limit"]):
+    truncated = data.get("company_table_truncated", False) or len(rows) != data.get("total_items")
+    if not context.group:
+        matches = [row for row in rows if _category(context.dimension, row) == expected]
+        if context.entityId:
+            exact = [row for row in rows if row.get("entity_id") == context.entityId]
+            if exact:
+                return (
+                    dict(exact[0], unique_category=len(matches) == 1) if len(exact) == 1 else None
+                ), result
+            # A fallback is valid only for a unique legacy row without its own identity.
+            legacy = [row for row in matches if not row.get("entity_id")]
+            if legacy and (not allow_legacy or len(matches) != 1):
+                return None, result
+            matches = legacy
+        if matches:
+            unique = len(matches) == 1 and not (context.dimension == "company" and truncated)
+            return (matches[0] if unique else None), result
+        if (
+            tool is insights.dated_exposure
+            and not truncated
+            and _fully_classified(rows, data, result)
+        ):
+            return {"weight_fraction": 0.0, "value_gbp": 0.0}, result
+        return None, result
+    if truncated:
         return None, result
     members = rows[12:] if context.group == "tail" else rows
     if not members or any(row["weight_fraction"] is None for row in members):
@@ -78,6 +98,20 @@ def _find(ctx, tool, args, context):
         total = data.get("invested_value_gbp")
         value = total - value if total is not None else None
     return {"weight_fraction": weight, "value_gbp": value}, result
+
+
+def _fully_classified(rows, data, result):
+    if not rows or result["quality"]["issues"]:
+        return False
+    if any(
+        not row["name"]
+        or row["name"].casefold() in {"unclassified", "unknown", "unresolved"}
+        or row.get("classification_status", "classified") != "classified"
+        or not _denominator_matches(row, data)
+        for row in rows
+    ):
+        return False
+    return isclose(sum(row["weight_fraction"] for row in rows), 1.0, abs_tol=0.00005)
 
 
 def _denominator_matches(item, data):
@@ -110,6 +144,7 @@ def _history(ctx, args, context, cutoff, current, current_data):
             insights.dated_exposure,
             insights.ExposureHistoryArgs(**args, on_or_before=day),
             context,
+            allow_legacy=current.get("unique_category", True),
         )
         data = history.get("data") or {}
         if (
@@ -219,6 +254,7 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
         "dimension": context.dimension,
         "category": context.category,
         "snapshotId": read.deps.snapshot_id,
+        **({"entityId": context.entityId} if context.entityId else {}),
         **({"group": context.group} if context.group else {}),
     }
 

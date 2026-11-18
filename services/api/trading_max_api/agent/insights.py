@@ -6,6 +6,7 @@ from bisect import bisect_left
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from itertools import pairwise
+from math import prod
 from typing import Annotated, Literal
 
 from pydantic import AfterValidator, StringConstraints, model_validator
@@ -204,8 +205,12 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
             "currency": "GBP",
             "basis": "published_daily_twr",
             "range": window,
-            "window_twr_fraction": period_return(
-                nav_number(daily[0], scope, "Twr"), nav_number(daily[-1], scope, "Twr")
+            "window_twr_fraction": (
+                prod(1 + row["return_fraction"] for row in rows) - 1
+                if len(rows) < len(daily) - 1
+                else period_return(
+                    nav_number(daily[0], scope, "Twr"), nav_number(daily[-1], scope, "Twr")
+                )
             ),
             "window_benchmarks": {
                 name: result
@@ -217,6 +222,10 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
                 )
                 is not None
             },
+            "observed_intervals": len(rows),
+            "total_intervals": len(daily) - 1,
+            # Rows are chronological. A tie at the published precision selects the earliest interval.
+            "largest_move": max(rows, key=lambda row: abs(round(row["return_fraction"], 12))),
             "worst_day": min(rows, key=lambda row: row["return_fraction"]),
             "window_start": daily[0]["date"],
             "window_end": daily[-1]["date"],
@@ -364,6 +373,8 @@ def exposure_data(deps: AssistantDeps, args: ExposureHistoryArgs) -> Json:
             "basis": raw.get(basis) if basis else "direct_and_fund_constituents",
             **coverage,
             "invested_value_gbp": _number(raw.get("investedValueGbp")),
+            "company_table_truncated": args.dimension == "company"
+            and len(raw["positions"]) > TOP_COMPANIES,
             "company_limit": TOP_COMPANIES if args.dimension == "company" else None,
         },
         keys=[key],
