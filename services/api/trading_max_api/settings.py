@@ -67,6 +67,7 @@ class AutomationPreferences:
     research_enabled: bool
     revision: int
     updated_at: datetime
+    evidence_notices_enabled: bool = False
 
     @property
     def nightly_enabled(self) -> bool:
@@ -135,6 +136,7 @@ class SettingsRepository:
             research_enabled=bool(row["research_enabled"]),
             revision=int(row["revision"]),
             updated_at=_parse_datetime(row["updated_at"]) or _now(),
+            evidence_notices_enabled=bool(row["evidence_notices_enabled"]),
         )
 
     def ensure_automation_preferences(
@@ -191,6 +193,7 @@ class SettingsRepository:
                 request.research_enabled,
                 request.nightly_enabled,
                 request.intraday_enabled,
+                request.evidence_notices_enabled,
             )
         ):
             raise ValueError("at least one automation setting must be supplied")
@@ -232,12 +235,17 @@ class SettingsRepository:
             if request.nightly_enabled is not None
             else current.research_enabled
         )
+        evidence_notices_enabled = (
+            request.evidence_notices_enabled
+            if request.evidence_notices_enabled is not None
+            else current.evidence_notices_enabled
+        )
         with self.database.transaction(immediate=True) as connection:
             updated = connection.execute(
                 """UPDATE automation_preferences
                    SET nightly_enabled = ?, intraday_enabled = ?,
                        live_enabled = ?, performance_enabled = ?, research_enabled = ?,
-                       revision = ?, updated_at = ?
+                       evidence_notices_enabled = ?, revision = ?, updated_at = ?
                    WHERE preference_id = 'local' AND revision = ?""",
                 (
                     int(research_enabled),
@@ -245,6 +253,7 @@ class SettingsRepository:
                     int(live_enabled),
                     int(performance_enabled),
                     int(research_enabled),
+                    int(evidence_notices_enabled),
                     revision,
                     updated_at,
                     current.revision,
@@ -264,6 +273,7 @@ class SettingsRepository:
                     "live_enabled": live_enabled,
                     "performance_enabled": performance_enabled,
                     "research_enabled": research_enabled,
+                    "evidence_notices_enabled": evidence_notices_enabled,
                 },
             )
         return self.get_automation_preferences()

@@ -956,6 +956,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/research/{ticker}/models/as-of": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Research Model As Of
+         * @description The newest version saved by the end of a decision's day, which is a UTC ledger day.
+         */
+        get: operations["research_model_as_of_v1_research__ticker__models_as_of_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/research/{ticker}/models/baseline": {
         parameters: {
             query?: never;
@@ -1678,6 +1698,40 @@ export interface paths {
         /** Upsert Valuation Assumptions */
         put: operations["upsert_valuation_assumptions_v1_valuation_assumptions__ticker__put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/valuation/evidence-notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Evidence Notices */
+        get: operations["evidence_notices_v1_valuation_evidence_notices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/valuation/evidence-notices/{ticker}/seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Evidence Notices Seen */
+        post: operations["evidence_notices_seen_v1_valuation_evidence_notices__ticker__seen_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2595,6 +2649,11 @@ export interface components {
         AutomationSettings: {
             /** Dailyreconciliationlocaltime */
             dailyReconciliationLocalTime: string;
+            /**
+             * Evidencenoticesenabled
+             * @default false
+             */
+            evidenceNoticesEnabled: boolean;
             /** Intradayenabled */
             intradayEnabled: boolean;
             /** Intradayintervalseconds */
@@ -2649,6 +2708,8 @@ export interface components {
         };
         /** AutomationSettingsUpdate */
         AutomationSettingsUpdate: {
+            /** Evidencenoticesenabled */
+            evidenceNoticesEnabled?: boolean | null;
             /** Expectedrevision */
             expectedRevision?: number | null;
             /** Intradayenabled */
@@ -3412,6 +3473,26 @@ export interface components {
             worstCloseDate?: string | null;
             /** Worstclosegbp */
             worstCloseGbp?: number | null;
+        };
+        /**
+         * ConsensusBaseline
+         * @description Consensus when a version was saved: the baseline later estimates are compared with.
+         */
+        ConsensusBaseline: {
+            /** Asof */
+            asOf?: string | null;
+            /**
+             * Metric
+             * @constant
+             */
+            metric: "consensusRevenueGrowth";
+            /**
+             * Periodend
+             * Format: date
+             */
+            periodEnd: string;
+            /** Value */
+            value: number;
         };
         /** ConsensusEstimate */
         ConsensusEstimate: {
@@ -4459,6 +4540,53 @@ export interface components {
             /** Field */
             field: string;
         };
+        /** EvidenceNotice */
+        EvidenceNotice: {
+            /** Items */
+            items: components["schemas"]["EvidenceNoticeItem"][];
+            /** Modelid */
+            modelId: string;
+            /**
+             * Savedat
+             * Format: date-time
+             */
+            savedAt: string;
+            /** Ticker */
+            ticker: string;
+        };
+        /** EvidenceNoticeItem */
+        EvidenceNoticeItem: {
+            /** Asof */
+            asOf?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Current */
+            current?: number | null;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "statements" | "restatement" | "estimate";
+            /** Metric */
+            metric?: ("consensusEps" | "consensusRevenueGrowth") | null;
+            /** Periodend */
+            periodEnd?: string | null;
+            /** Periodid */
+            periodId?: string | null;
+            /** Saved */
+            saved?: number | null;
+        };
+        /** EvidenceNotices */
+        EvidenceNotices: {
+            /** Enabled */
+            enabled: boolean;
+            /** Notices */
+            notices?: components["schemas"]["EvidenceNotice"][];
+            /** Runid */
+            runId?: string | null;
+        };
         /** EvidencePeriod */
         EvidencePeriod: {
             /**
@@ -4492,6 +4620,13 @@ export interface components {
             url?: string | null;
             /** Version */
             version: string;
+        };
+        /** EvidenceSeen */
+        EvidenceSeen: {
+            /** Keys */
+            keys: string[];
+            /** Modelid */
+            modelId: string;
         };
         /** ExposureRow */
         ExposureRow: {
@@ -6767,6 +6902,18 @@ export interface components {
             unit: "currency" | "perShare" | "shares" | "ratio";
             /** Value */
             value: number | null;
+        };
+        /**
+         * ModelVersionAt
+         * @description The newest version saved by the end of a day, as Review reads a decision.
+         */
+        ModelVersionAt: {
+            /**
+             * Day
+             * Format: date
+             */
+            day: string;
+            model?: components["schemas"]["SavedModelSummary"] | null;
         };
         /** Moment */
         Moment: {
@@ -9347,6 +9494,25 @@ export interface components {
              */
             savedAt: string;
         };
+        /** SavedModelSummary */
+        SavedModelSummary: {
+            /** Currency */
+            currency: string;
+            /**
+             * Family
+             * @enum {string}
+             */
+            family: "cash-flow" | "net-income" | "residual-income";
+            /** Horizon */
+            horizon: number;
+            /** Id */
+            id: string;
+            /**
+             * Savedat
+             * Format: date-time
+             */
+            savedAt: string;
+        };
         /** SavedOrigin */
         SavedOrigin: {
             /** Modelid */
@@ -9364,6 +9530,8 @@ export interface components {
         };
         /** SavedResearchModel */
         SavedResearchModel: {
+            /** Consensus */
+            consensus?: components["schemas"]["ConsensusBaseline"][] | null;
             draftAudit?: components["schemas"]["DraftAudit"] | null;
             /** Id */
             id: string;
@@ -10734,6 +10902,8 @@ export interface components {
             current: components["schemas"]["BasisPoint"];
             /** Estimates */
             estimates: components["schemas"]["EstimateChange"][];
+            /** Evidencekeys */
+            evidenceKeys?: string[];
             /**
              * Family
              * @enum {string}
@@ -13081,6 +13251,39 @@ export interface operations {
             };
         };
     };
+    research_model_as_of_v1_research__ticker__models_as_of_get: {
+        parameters: {
+            query: {
+                day: string;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ModelVersionAt"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     research_model_baseline_v1_research__ticker__models_baseline_put: {
         parameters: {
             query?: never;
@@ -14905,6 +15108,63 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ValuationAssumptionsState"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evidence_notices_v1_valuation_evidence_notices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceNotices"];
+                };
+            };
+        };
+    };
+    evidence_notices_seen_v1_valuation_evidence_notices__ticker__seen_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvidenceSeen"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceNotices"];
                 };
             };
             /** @description Validation Error */

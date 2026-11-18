@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { distinct, pair, periodText, restatementGapStatus, restatementGapText, signedValue } from "./valuation-maintenance";
+import { periodText } from "./evidence-notices";
+import { distinct, pair, restatementGapStatus, restatementGapText, signedValue } from "./valuation-maintenance";
 import { sortedLocks } from "./valuation-queries";
 
 describe("new evidence figures", () => {

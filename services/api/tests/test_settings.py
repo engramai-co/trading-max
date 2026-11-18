@@ -158,6 +158,12 @@ def test_automation_settings_persist_and_reconfigure_live_schedulers(
         assert current.json()["intradayWindowStart"] == "00:00"
         assert current.json()["intradayWindowEnd"] == "00:00"
         assert current.json()["intradayWeekdays"] == [1, 2, 3, 4, 5, 6, 7]
+        assert current.json()["evidenceNoticesEnabled"] is False
+        assert client.get("/v1/valuation/evidence-notices").json() == {
+            "enabled": False,
+            "runId": None,
+            "notices": [],
+        }
 
         unauthorized = client.put(
             "/v1/settings/automation",
@@ -206,6 +212,15 @@ def test_automation_settings_persist_and_reconfigure_live_schedulers(
         )
         assert contradictory.status_code == 409
 
+        notices = client.put(
+            "/v1/settings/automation", headers=headers, json={"evidenceNoticesEnabled": True}
+        )
+        assert notices.status_code == 200
+        assert notices.json()["evidenceNoticesEnabled"] is True
+        assert notices.json()["researchEnabled"] is False
+        listed = client.get("/v1/valuation/evidence-notices").json()
+        assert listed["enabled"] is True and listed["notices"] == []
+
     opposite_environment_defaults = Settings(
         data_root=data_root,
         api_token="secret",
@@ -221,6 +236,7 @@ def test_automation_settings_persist_and_reconfigure_live_schedulers(
         persisted = client.get("/v1/settings/automation").json()
         assert persisted["nightlyEnabled"] is False
         assert persisted["intradayEnabled"] is True
+        assert persisted["evidenceNoticesEnabled"] is True
 
 
 def test_trading212_candidate_must_be_tested_before_it_can_be_saved(

@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.0] - 2026-11-18
+
+### Added
+- Optional notices of new evidence for saved valuation models, off until turned on under Settings, Update schedule. A dot in the research list, beside See new evidence and in the journal's model versions marks a model whose statements have a newer period or a restatement, or whose consensus has moved a full step since it was saved. Each piece of evidence is announced once, and opening See new evidence settles it. Notices are computed on this machine and never draft, contact a model or save.
+- Review links a selected decision to the valuation model saved by the end of that day.
+
 ## [1.66.0] - 2026-11-18
 
 ### Added

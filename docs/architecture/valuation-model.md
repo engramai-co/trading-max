@@ -212,5 +212,7 @@ exchange rate and with the editor's current proposal. The comparison and
 locked assumptions are described in the [valuation agent](valuation-agent.md#reviewing-new-evidence)
 notes.
 
-Valuation alerts remain disabled for indicative models pending back-testing
-and calibration.
+Valuation alerts on model value against price remain disabled for indicative
+models pending back-testing and calibration. A saved version can instead say
+that new evidence has arrived; see the
+[notices of new evidence](valuation-agent.md#notices-of-new-evidence).

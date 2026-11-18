@@ -134,9 +134,11 @@ never blends the two sources.
 
 Fiscal-year EPS consensus at the save time comes from the estimate archive
 and is compared with the latest observation for the same year end and
-currency. Revenue-growth consensus is compared only when the saved version
-recorded it as a reference or in its reviewed evidence. The comparison reads
-no provider, contacts no model and writes nothing.
+currency. Each version records the revenue-growth consensus it was saved
+against, apart from the references its assumptions may inherit from an
+earlier version. A version saved before that record is compared with its
+consensus references or reviewed evidence. The comparison reads no provider,
+contacts no model and writes nothing.
 
 The reader can lock individual scenario assumptions. A locked field stays as
 saved until the reader unlocks it, and versions record their locks. A
@@ -148,3 +150,44 @@ assumptions when Settings allows them to be shared, otherwise from the
 sector templates, and proposes only the fields the model selects. Its
 record carries the prompt version `valuation-maintenance-v1`. Preserve the
 workspace backup from before the first save with locks for a downgrade.
+
+## Notices of new evidence
+
+Notices of new evidence are off until the reader turns on the Notices switch
+under Settings, Update schedule. With it on, `GET /v1/valuation/evidence-notices`
+compares each security's newest saved version with the latest publication,
+using the calculations behind See new evidence:
+
+- statements that end after the saved period, which is how a new report
+  arrives; an older or unreadable basis, as after an incomplete publication,
+  is not announced;
+- a restatement of the saved period;
+- fiscal-year consensus that has moved by at least one step from the value
+  recorded at the save: 5% of the saved EPS, or two percentage points of
+  revenue growth. Each further step counts again.
+
+Each piece of evidence has a stable key, and the comparison behind See new
+evidence names the keys it shows. Opening it records those keys
+(`POST /v1/valuation/evidence-notices/{ticker}/seen`), so the same report or move
+is announced once, however many publications repeat it. Evidence that arrives
+after a comparison was made stays announced until a comparison shows it.
+Reopened after a new publication, or with a notice that names evidence its
+last comparison does not show, See new evidence compares again; the earlier
+comparison is not shown meanwhile. A version saved afterwards starts without a
+notice. Company guidance has no source in the research data; it shows through
+new statements and consensus revisions. A security whose comparison cannot run
+has no notice. An open page fetches its notices again when a new publication
+arrives.
+
+A dot marks a notice in the research list, beside See new evidence and in the
+journal's model versions. Notices are computed on request on this machine.
+They never draft, contact a model or save a version, and the only state they
+keep is the keys the reader has opened, in `evidence-notices.json` in the
+workspace.
+
+## The model saved for a decision
+
+Review links a selected decision to the newest valuation version saved by the
+end of its day (`GET /v1/research/{ticker}/models/as-of?day=`), and the link
+opens that version in the journal. A decision's day is the broker's UTC trade
+day, which has no time, so a version saved later that day is included.
