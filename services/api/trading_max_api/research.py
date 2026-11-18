@@ -14,9 +14,11 @@ from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFReading
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.reference.quote_units import major_quote_unit
+from trading_max.reference.security_master import SecurityDescriptor
 from trading_max.research.calendar import listing_calendar, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
+    QuoteSnapshot,
     ResearchCapability,
     ResearchContext,
     build_financial_facts,
@@ -36,9 +38,9 @@ from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
 from trading_max.research.trailing_pe import TrailingPeHistory
 from trading_max.research.valuation_basis import (
+    catalog_security_type,
     classify,
-    legacy_cashflow_worksheet,
-    ordinary_share_basis,
+    share_unit,
 )
 
 from .artifacts import ArtifactStore
@@ -119,6 +121,45 @@ def _artifact(
     key: str,
 ) -> ArtifactInfo | None:
     return next((item for item in manifest.artifacts if item.key == key), None)
+
+
+def retained_share_unit(
+    read_json: Callable[[str, str], JsonObject],
+    manifest: SnapshotManifest,
+    quote: QuoteSnapshot,
+    stored: JsonObject,
+    financials: JsonObject,
+    name: str,
+) -> str | None:
+    """Read the historical listing's explicit unit, or recover its public designation."""
+    listing = quote.listing
+    if not listing or (stored.get("listing") and stored["listing"] != listing):
+        return None
+    if stored.get("isAdr"):
+        return "receipt"
+    units = (financials.get("evidence") or {}).get("listedShareUnits") or {}
+    if "shareUnit" in stored:
+        if stored.get("listing") != listing or stored["shareUnit"] != "ordinary":
+            return None
+        return share_unit(listing, units, "Ordinary Shares")
+    security_type = ""
+    ref = _artifact(manifest, SECURITY_MASTER_KEY)
+    if (
+        ref
+        and ref.size_bytes <= 16 * 1024 * 1024
+        and (not ref.generated_at or ref.generated_at <= manifest.created_at)
+    ):
+        with suppress(FileNotFoundError, ValidationError):
+            catalog = CatalogSecurityMaster(
+                SecurityMasterCatalog.model_validate(
+                    read_json(manifest.run_id, SECURITY_MASTER_KEY)
+                )
+            )
+            record = catalog.resolve(
+                SecurityDescriptor(ticker=quote.ticker, name=name, exchange=quote.exchange or "")
+            )
+            security_type = catalog_security_type(quote.ticker, record)
+    return share_unit(listing, units, security_type)
 
 
 def _kind(artifact: ArtifactInfo) -> str:
@@ -1780,15 +1821,13 @@ class ResearchLedger:
             )
             if valuation and view == "valuation" and not valuation["assumptions"].get("family"):
                 family, classification = classify(ticker, "", raw)
-                units = (raw.get("evidence") or {}).get("listedShareUnits") or {}
-                ordinary = ordinary_share_basis(
+                unit = retained_share_unit(
+                    self.store.read_json,
+                    manifest,
+                    quote,
                     valuation["assumptions"],
-                    quote.listing,
-                    filed_unit=units.get(quote.listing),
-                    legacy_worksheet=legacy_cashflow_worksheet(valuation),
-                    same_currency_equity=asset_type == "EQUITY"
-                    and payload.financial_facts is not None
-                    and valuation["currency"] == quote.currency == payload.financial_facts.currency,
+                    raw,
+                    fundamental.get("name") or "",
                 )
                 valuation = {
                     **valuation,
@@ -1797,10 +1836,9 @@ class ResearchLedger:
                         "family": family,
                         "classification": classification,
                         "issuerName": fundamental.get("name") or "",
-                        "listing": quote.listing
-                        if ordinary
-                        else valuation["assumptions"].get("listing"),
-                        "shareUnit": "ordinary" if ordinary else None,
+                        "listing": quote.listing,
+                        "shareUnit": unit,
+                        "isAdr": unit == "receipt",
                     },
                 }
             payload.valuation = valuation

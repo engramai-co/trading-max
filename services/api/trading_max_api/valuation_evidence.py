@@ -20,9 +20,7 @@ from trading_max.research.facts import (
 from trading_max.research.valuation_basis import (
     EXCLUDED_ASSETS,
     classify,
-    legacy_cashflow_worksheet,
     listing_shares,
-    ordinary_share_basis,
     period_choice,
     statement_basis,
 )
@@ -48,6 +46,7 @@ from .research import (
     _financials_rows,
     _fundamentals_rows,
     _market_rows,
+    retained_share_unit,
 )
 
 _MAX_SOURCE_BYTES = 16 * 1024 * 1024
@@ -165,7 +164,7 @@ def _read_row(
                 "isAdr": stored.get("isAdr"),
                 "listing": stored.get("listing"),
                 **({"shareUnit": stored["shareUnit"]} if "shareUnit" in stored else {}),
-                "legacyWorksheet": legacy_cashflow_worksheet(row),
+                "quotedSharesOutstanding": stored.get("quotedSharesOutstanding"),
                 "sharesOutstanding": stored.get("sharesOutstanding"),
                 "fxRate": stored.get("fxRate"),
                 "financialFactsVersion": stored.get("financialFactsVersion"),
@@ -523,22 +522,17 @@ def freeze_valuation_evidence(
             selected.get(name),
             currency=report,
         )
+    unit = retained_share_unit(
+        snapshots.read_json, manifest, quote, stored, raw, data.get("name") or ""
+    )
     shares, ratio = listing_shares(
         binding.ticker,
         binding.listing,
         data.get("name") or "",
-        _positive(stored.get("sharesOutstanding")),
+        _positive(stored.get("quotedSharesOutstanding") or stored.get("sharesOutstanding")),
         selected,
-        bool(stored.get("isAdr")),
-        ordinary_share_basis(
-            stored,
-            binding.listing,
-            filed_unit=((raw.get("evidence") or {}).get("listedShareUnits") or {}).get(
-                binding.listing
-            ),
-            legacy_worksheet=bool(stored.get("legacyWorksheet")),
-            same_currency_equity=quote_type == "EQUITY" and aligned and report == quoted,
-        ),
+        unit == "receipt",
+        unit == "ordinary",
     )
     recent = [
         period
@@ -592,8 +586,8 @@ def freeze_valuation_evidence(
         unit="perShare",
         source="yahoo-finance",
     )
-    ordinary = selected.get("ordinaryShares") if ratio else None
-    if ordinary:
+    ordinary = selected.get("ordinaryShares")
+    if shares is not None and ordinary and ordinary.value and ordinary.value > 0:
         _statement(
             capture,
             EvidenceGroup.BASIS,
@@ -603,7 +597,9 @@ def freeze_valuation_evidence(
             ordinary.model_copy(
                 update={
                     "value": shares,
-                    "formula": "ordinary shares divided by verified receipt ratio",
+                    "formula": "ordinary shares divided by verified receipt ratio"
+                    if ratio
+                    else "period-end company ordinary shares",
                     "basis": "listing-shares",
                 }
             ),

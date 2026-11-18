@@ -114,7 +114,7 @@ def _valuation_preview(
             ticker=ticker,
             spot=held["price"] if broker_spot else quote.price,
             currency=quote.currency,
-            shares=number(stored.get("sharesOutstanding")),
+            shares=number(stored.get("quotedSharesOutstanding") or stored.get("sharesOutstanding")),
             fx=number(stored.get("fxRate"))
             if lens.valuation.currency == quote.currency
             and stored.get("financialFactsVersion") in {None, facts.version}
