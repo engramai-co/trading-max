@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.63.0] - 2026-11-18
+
+### Changed
+- Research reads Price & technical and Financials & business as one page with the same section index as Expectations & events. The chart, diagnosis and seasonality follow each other, as do operating analysis, each statement, segments, ownership and dividends, and every reported row. Seasonality and every reported row load as you approach them, and existing links open the same section.
+
 ## [1.62.0] - 2026-11-18
 
 ### Added
