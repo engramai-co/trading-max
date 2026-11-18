@@ -93,6 +93,65 @@ def selected_money(ctx: tools.Context, args: AttributionContext):
     )
 
 
+def selected_daily(ctx: tools.Context, args: AttributionContext):
+    """Return daily portfolio and benchmark observations within the inspected endpoints."""
+    read = tools._Read(ctx.deps, "selected_daily", args, args.scope)
+    if len(args.start) != 10 or len(args.end) != 10:
+        return read.missing("daily_endpoints_unavailable")
+    result = insights.daily_returns(
+        ctx,
+        insights.DailyArgs(
+            scope=args.scope,
+            benchmark=args.benchmark,
+            range=args.range,
+            start=args.start,
+            end=args.end,
+            limit=1,
+        ),
+    )
+    data = result.get("data") or {}
+    if data.get("window_start") != args.start or data.get("window_end") != args.end:
+        return read.missing("daily_endpoints_unavailable")
+    return {**result, "evidence_id": read.result()["evidence_id"]}
+
+
+def selected_fx(ctx: tools.Context, args: AttributionContext):
+    """Verified held-share price and currency effects for the selected valuation instants."""
+    read = tools._Read(ctx.deps, "selected_fx", args, args.scope)
+    read.account_codes(args.scope)
+    if len(args.start) == 10 or len(args.end) == 10:
+        return read.missing("valuation_instants_unavailable")
+    expected = {"invest", "isa"} if args.scope == "broker_total" else {args.scope}
+    for period in ("1D", "5D"):
+        split = insights.holding_fx_split(
+            ctx, insights.FXArgs(scope=args.scope, period=period, limit=1)
+        )
+        accounts = (split.get("data") or {}).get("accounts", {})
+        if set(accounts) != expected or not all(
+            matches(row.get("since"), row.get("as_of"), args)
+            and row.get("fx_effect_gbp") is not None
+            and row.get("local_price_effect_gbp") is not None
+            for row in accounts.values()
+        ):
+            continue
+        return {
+            **read.result(
+                data={
+                    "currency": "GBP",
+                    "start": args.start,
+                    "end": args.end,
+                    "fx_effect_gbp": sum(row["fx_effect_gbp"] for row in accounts.values()),
+                    "local_price_effect_gbp": sum(
+                        row["local_price_effect_gbp"] for row in accounts.values()
+                    ),
+                }
+            ),
+            "quality": split["quality"],
+            "sources": split["sources"],
+        }
+    return read.missing("matching_fx_window_unavailable")
+
+
 BENCHMARK_BASES = {
     "auto_adjusted_close": ("复权收盘价", "adjusted closing prices"),
     "adjusted_price_gbp": ("复权价格", "adjusted prices"),
@@ -101,19 +160,12 @@ BENCHMARK_BASES = {
 
 def attribution_facts(read: RoleTools, context: AttributionContext):
     args = {**context.model_dump(), "snapshotId": read.deps.snapshot_id}
-    daily = read.read(
-        insights.daily_returns,
-        insights.DailyArgs(
-            scope=context.scope,
-            benchmark=context.benchmark,
-            start=chart_instant(context.start).astimezone(LONDON).date().isoformat(),
-            end=chart_instant(context.end).astimezone(LONDON).date().isoformat(),
-            limit=1,
-        ),
-    )
+    daily = read.read(selected_daily, context)
     data = daily.get("data") or {}
 
-    def observed(section, zh, en, source="account", result=daily, tool="daily_returns", **metadata):
+    def observed(
+        section, zh, en, source="account", result=daily, tool="selected_daily", **metadata
+    ):
         return line(section, zh, en, result, source, tool, metric=section, **args, **metadata)
 
     facts = []
@@ -205,42 +257,20 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                 "market",
             )
         )
-    for period in ("1D", "5D"):
-        split = read.read(
-            insights.holding_fx_split, insights.FXArgs(scope=context.scope, period=period, limit=1)
+    split = read.read(selected_fx, context)
+    if effects := split.get("data"):
+        fx, price = effects["fx_effect_gbp"], effects["local_price_effect_gbp"]
+        interval = f"{effects['start']} – {effects['end']}"
+        facts.append(
+            observed(
+                "fx",
+                f"{interval}，持股价格影响 £{price:+,.2f}，汇率影响 £{fx:+,.2f}。",
+                f"{interval}: held-share price effect was £{price:+,.2f} and currency effect was £{fx:+,.2f}.",
+                "holdings",
+                split,
+                "selected_fx",
+            )
         )
-        accounts = (split.get("data") or {}).get("accounts", {})
-        expected = {"invest", "isa"} if context.scope == "broker_total" else {context.scope}
-        if set(accounts) != expected or not all(
-            matches(row.get("since"), row.get("as_of"), context) for row in accounts.values()
-        ):
-            continue
-        windows = {
-            (chart_instant(row["since"]), chart_instant(row["as_of"])) for row in accounts.values()
-        }
-        if len(windows) != 1:
-            continue
-        if all(
-            row.get("fx_effect_gbp") is not None and row.get("local_price_effect_gbp") is not None
-            for row in accounts.values()
-        ):
-            fx = sum(row["fx_effect_gbp"] for row in accounts.values())
-            price = sum(row["local_price_effect_gbp"] for row in accounts.values())
-            since, until = next(iter(windows))
-            interval = (
-                f"{since.astimezone(LONDON).isoformat()} – {until.astimezone(LONDON).isoformat()}"
-            )
-            facts.append(
-                observed(
-                    "fx",
-                    f"{interval}，持股价格影响 £{price:+,.2f}，汇率影响 £{fx:+,.2f}。",
-                    f"{interval}: held-share price effect was £{price:+,.2f} and currency effect was £{fx:+,.2f}.",
-                    "holdings",
-                    split,
-                    "holding_fx_split",
-                )
-            )
-            break
     else:
         facts.append(
             observed(
@@ -249,7 +279,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                 "A verified held-share price and currency split is unavailable for this range.",
                 "holdings",
                 split,
-                "holding_fx_split",
+                "selected_fx",
             )
         )
     return facts
@@ -258,7 +288,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
 ATTRIBUTION = PageRole(
     "attribution",
     "analytics",
-    frozenset({"daily_returns", "holding_fx_split", "selected_money"}),
+    frozenset({"selected_daily", "selected_fx", "selected_money"}),
     AttributionContext,
     "Select one fact from each section for the selected range. Preserve benchmark currency and basis. Price and currency effects apply only to held shares.",
     attribution_facts,

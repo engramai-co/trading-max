@@ -37,7 +37,7 @@ def _category(dimension, row):
     return row["name"]
 
 
-def _find(read, tool, args, context):
+def _find(ctx, tool, args, context):
     expected = (
         _countries().get(context.category.lower(), context.category)
         if context.dimension == "country"
@@ -45,7 +45,7 @@ def _find(read, tool, args, context):
     )
     rows = []
     while True:
-        result = read.read(tool, args)
+        result = tool(ctx, args)
         data = result.get("data") or {}
         page = data.get("items", [])
         if context.group:
@@ -93,12 +93,12 @@ def _denominator_matches(item, data):
     )
 
 
-def _history(read, args, context, cutoff, current, current_data):
+def _history(ctx, args, context, cutoff, current, current_data):
     # Retained days may be sparse, and each day can have a different classification.
     days = sorted(
         {
             ref.key[len(PREFIX) : -5]
-            for ref in read.deps.manifest.artifacts
+            for ref in ctx.deps.manifest.artifacts
             if ref.key.startswith(PREFIX) and ref.key.endswith(".json")
         },
         reverse=True,
@@ -106,7 +106,7 @@ def _history(read, args, context, cutoff, current, current_data):
     eligible = [day for day in days if day <= cutoff]
     for day in eligible or [cutoff]:
         prior, history = _find(
-            read,
+            ctx,
             insights.dated_exposure,
             insights.ExposureHistoryArgs(**args, on_or_before=day),
             context,
@@ -180,13 +180,41 @@ def exposure_version(read: RoleTools, context: ExposureContext):
     return tools._short_id("exposure_", [read.deps.snapshot_id, benchmark.get("data")])
 
 
-def exposure_facts(read: RoleTools, context: ExposureContext):
-    args = {"scope": "broker_total", "dimension": context.dimension, "limit": 20}
-    item, current = _find(read, tools.lookthrough_exposure, tools.ExposureArgs(**args), context)
+def selected_exposure(ctx: tools.Context, args: ExposureContext):
+    """Only the selected allocation, its comparable dated observation and its coverage."""
+    read = tools._Read(ctx.deps, "selected_exposure", args, "broker_total")
+    query = {"scope": "broker_total", "dimension": args.dimension, "limit": 20}
+    item, current = _find(ctx, tools.lookthrough_exposure, tools.ExposureArgs(**query), args)
     data = current.get("data") or {}
     if not item or item["weight_fraction"] is None or not data.get("broker_as_of"):
-        return []
+        return read.missing("selected_allocation_unavailable")
     day = datetime.fromisoformat(data["broker_as_of"]).astimezone(LONDON).date()
+    cutoff = (day - timedelta(days=30)).isoformat()
+    prior, history = _history(ctx, query, args, cutoff, item, data)
+    previous = (
+        {"date": history["data"]["observation_date"], "weight_fraction": prior["weight_fraction"]}
+        if prior
+        else None
+    )
+    return read.result(
+        data={
+            "name": args.category,
+            "current": {"date": day.isoformat(), "weight_fraction": item["weight_fraction"]},
+            "previous": previous,
+            "cutoff": cutoff,
+            "lookthrough_coverage_fraction": data.get("lookthrough_coverage_fraction"),
+        },
+        keys=[tools.LOOKTHROUGH, *([f"{PREFIX}{previous['date']}.json"] if previous else [])],
+        issues=current["quality"]["issues"],
+    )
+
+
+def exposure_facts(read: RoleTools, context: ExposureContext):
+    current = read.read(selected_exposure, context)
+    data = current.get("data")
+    if not data:
+        return []
+    day = date.fromisoformat(data["current"]["date"])
     arguments = {
         "dimension": context.dimension,
         "category": context.category,
@@ -194,12 +222,12 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
         **({"group": context.group} if context.group else {}),
     }
 
-    def observation(section, zh, en, result=current, tool="lookthrough_exposure", **window):
+    def observation(section, zh, en, result=current, tool="selected_exposure", **window):
         return line(
             section, zh, en, result, "exposure", tool, metric=section, **arguments, **window
         )
 
-    weight = item["weight_fraction"]
+    weight = data["current"]["weight_fraction"]
     facts = [
         observation(
             "current",
@@ -207,10 +235,9 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
             f"On {day}, this accounted for {weight:.2%} of invested assets.",
         )
     ]
-    cutoff = (day - timedelta(days=30)).isoformat()
-    prior, history = _history(read, args, context, cutoff, item, data)
-    if prior and prior["weight_fraction"] is not None:
-        stamp = history["data"]["observation_date"]
+    cutoff = data["cutoff"]
+    if prior := data["previous"]:
+        stamp = prior["date"]
         previous = prior["weight_fraction"]
         group_zh = " 两次均按当时的前十二项以外计算。" if context.group == "tail" else ""
         group_en = (
@@ -223,8 +250,6 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
                 "history",
                 f"{stamp} 占比 {previous:.2%}，此后变化 {(weight - previous) * 100:+.2f} 个百分点。{group_zh}",
                 f"The weight was {previous:.2%} on {stamp}, a change of {(weight - previous) * 100:+.2f} pp since then.{group_en}",
-                history,
-                "dated_exposure",
                 on_or_before=cutoff,
                 start=stamp,
                 end=day.isoformat(),
@@ -236,8 +261,6 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
                 "history",
                 f"{cutoff} 或之前暂无这项分类的可比记录。",
                 f"No comparable weight is recorded on or before {cutoff}.",
-                history,
-                "dated_exposure",
                 on_or_before=cutoff,
                 end=day.isoformat(),
             )
@@ -278,7 +301,7 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
 EXPOSURE = PageRole(
     "exposure",
     "holdings",
-    frozenset({"lookthrough_exposure", "dated_exposure", "exposure_benchmark"}),
+    frozenset({"selected_exposure", "exposure_benchmark"}),
     ExposureContext,
     "Select one verified observation per section. Preserve the dates, coverage and distinct portfolio and benchmark bases.",
     exposure_facts,

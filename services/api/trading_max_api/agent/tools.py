@@ -230,9 +230,13 @@ class _BoundedValidator:
 
 
 PAGE_TOOLS = {
+    "selected_exposure": "holdings",
+    "selected_daily": "analytics",
+    "selected_fx": "analytics",
     "exposure_benchmark": "holdings",
     "selected_money": "analytics",
     "market_sector": "sectors",
+    "sector_headline": "sectors",
     "global_map": "sectors",
     "update_issue": "health",
 }
@@ -1377,10 +1381,10 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
 
 def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
     """Construct the fixed Trading Max tool registry for Pydantic AI."""
-    from .attribution_role import selected_money
+    from .attribution_role import selected_daily, selected_fx, selected_money
     from .diagnosis_role import update_issue
     from .events import news_and_events, upcoming_events
-    from .exposure_role import exposure_benchmark
+    from .exposure_role import exposure_benchmark, selected_exposure
     from .insights import (
         daily_returns,
         dated_exposure,
@@ -1388,7 +1392,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         holding_fx_split,
         price_key_moments,
     )
-    from .market_roles import global_map, market_sector
+    from .market_roles import global_map, market_sector, sector_headline
 
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
@@ -1410,7 +1414,11 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (news_and_events, 8),
         (upcoming_events, 8),
         (selected_money, 10),
+        (selected_daily, 10),
+        (selected_fx, 5),
+        (selected_exposure, 10),
         (market_sector, 5),
+        (sector_headline, 8),
         (global_map, 5),
         (exposure_benchmark, 5),
         (update_issue, 5),

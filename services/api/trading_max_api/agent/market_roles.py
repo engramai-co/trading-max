@@ -94,6 +94,40 @@ def market_sector(ctx: tools.Context, args: SectorContext):
     return read.missing("board_observation_changed")
 
 
+def sector_headline(ctx: tools.Context, args: SectorContext):
+    """Read the selected sector leader's published headline as of the inspected board."""
+    read = tools._Read(ctx.deps, "sector_headline", args, "market")
+    if not {"broker_total", "invest", "isa"}.issubset(ctx.deps.allowed_scopes):
+        return read.missing("headline_unavailable")
+    board = market_sector(ctx, args).get("data") or {}
+    if not (ticker := board.get("news_ticker")) or not (day := board.get("day")):
+        return read.missing("headline_unavailable")
+    event = events.news_and_events(
+        ctx, events.EventArgs(ticker=ticker, scope="broker_total", start=day, end=day, limit=20)
+    )
+    row = next(
+        (
+            r
+            for r in (event.get("data") or {}).get("items", [])
+            if r.get("kind") == "news"
+            and r.get("publisher")
+            and r.get("source_url")
+            and (
+                not r.get("instant")
+                or datetime.fromisoformat(r["instant"]) <= datetime.fromisoformat(args.observed)
+            )
+        ),
+        None,
+    )
+    if not row:
+        return read.missing("headline_unavailable")
+    return {
+        **read.result(data={"items": [row], "day": day, "ticker": ticker}),
+        "sources": event["sources"],
+        "quality": event["quality"],
+    }
+
+
 def sector_facts(read: RoleTools, context: SectorContext):
     result = read.read(market_sector, context)
     data = result.get("data") or {}
@@ -151,40 +185,24 @@ def sector_facts(read: RoleTools, context: SectorContext):
             f"对 MSCI World 的估算贡献为 {contribution * 100:+.2f} 个百分点。",
             f"Estimated contribution to MSCI World was {contribution * 100:+.2f} pp.",
         )
-    ticker = data.get("news_ticker")
-    if ticker and {"broker_total", "invest", "isa"}.issubset(read.deps.allowed_scopes):
-        event = read.read(
-            events.news_and_events,
-            events.EventArgs(ticker=ticker, scope="broker_total", start=day, end=day, limit=20),
-        )
-        row = next(
-            (
-                r
-                for r in (event.get("data") or {}).get("items", [])
-                if r.get("kind") == "news"
-                and r.get("publisher")
-                and r.get("source_url")
-                and (
-                    not r.get("instant")
-                    or datetime.fromisoformat(r["instant"])
-                    <= datetime.fromisoformat(context.observed)
-                )
-            ),
-            None,
-        )
-        if row:
+    if data.get("news_ticker"):
+        event = read.read(sector_headline, context)
+        if items := (event.get("data") or {}).get("items"):
+            row = items[0]
+            ticker = data["news_ticker"]
             lead = line(
                 "news",
                 f"{day} · {ticker} 相关新闻：{row['title_zh']}",
                 f"{day} · {ticker} headline: {row['title_en']}",
                 event,
                 "publisher",
-                "news_and_events",
+                "sector_headline",
                 ticker=ticker,
                 metric="headline",
                 start=day,
                 end=day,
                 url=row["source_url"],
+                **context.model_dump(),
             )
             lead.evidence.publisher = row["publisher"][:80]
             facts.append(lead)
@@ -216,6 +234,7 @@ def global_map(ctx: tools.Context, args: RegionalMapContext):
                     "contribution": rows.get(m.market),
                 }
                 for m in board.markets
+                if args.market is None or m.market == args.market
             ],
         }
     )
@@ -280,7 +299,7 @@ MARKET_ROLES = (
     PageRole(
         "market-sector",
         "sectors",
-        frozenset({"market_sector", "news_and_events"}),
+        frozenset({"market_sector", "sector_headline"}),
         SectorContext,
         "Choose one observation from each section, up to four. Keep news as a separate dated lead, never an explanation for a move.",
         sector_facts,
