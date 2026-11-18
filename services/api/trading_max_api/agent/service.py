@@ -285,7 +285,10 @@ class AssistantService:
         deps = self.deps_for_run(context.page, zone.key)
         if context.snapshot_id and context.snapshot_id != deps.snapshot_id:
             try:
-                deps = replace(deps, manifest=deps.store.load_manifest(context.snapshot_id))
+                deps = replace(
+                    deps,
+                    manifest=deps.store.load_manifest(context.snapshot_id, require_retained=True),
+                )
             except FileNotFoundError:
                 raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
         if context._reading:
