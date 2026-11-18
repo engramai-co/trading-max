@@ -7,18 +7,18 @@ All notable public Trading Max releases are recorded here.
 ### Added
 - Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. The sidebar reflows wide screens and fills the screen on phones.
 - Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
-### Changed
-- Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
-- Estimates & events opens with ratings and targets on the 12-month price chart. Targets share the price history’s currency and split basis, including announcements after the latest close. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
-### Added
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
-
-### Fixed
-- Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
 - The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
 - The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
 - Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
+
+### Changed
+- Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
+- Estimates & events opens with ratings and targets on the 12-month price chart. Targets use the chart currency and account for share splits. Announcements after the latest close keep their dates, and the upside appears when both dated amounts have a verified share basis. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
+
+### Fixed
+- Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
 
 ## [1.54.0] - 2026-11-18
 

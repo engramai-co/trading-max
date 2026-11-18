@@ -38,30 +38,53 @@ export function ResearchReading({ sections, parameter, children, before }: {
   const nav = useRef<HTMLElement>(null);
   const content = useRef<HTMLDivElement>(null);
 
-  const jump = useRef<{ id: string; y: number } | null>(null);
+  const ticker = params.get("ticker");
+  const pending = useRef<string | null>(null);
+  const pinned = useRef<string | null>(null);
+  const focusedHeading = useRef<HTMLElement | null>(null);
   const visitSection = useCallback((id: string) => {
     const section = document.getElementById("research-" + id);
     const heading = section?.querySelector<HTMLElement>("h2");
-    if (!section || !heading) return;
+    if (!section || !heading) return false;
+    focusedHeading.current = heading;
     heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
     section.scrollIntoView({ block: "start", behavior: "instant" });
-    jump.current = { id, y: window.scrollY };
+    pinned.current = id;
+    setActive(id);
+    return true;
   }, []);
+
+  // A route can arrive before its section (for example the model worksheet).
+  // A later preview may change the available sections without requesting another jump.
+  useEffect(() => {
+    pending.current = requested || null;
+    pinned.current = null;
+    focusedHeading.current = null;
+  }, [parameter, requested, ticker]);
 
   useEffect(() => {
     const sectionIds = ids.split(",");
-    jump.current = null;
-    if (requested && sectionIds.includes(requested)) visitSection(requested);
     let frame = 0;
+    let inputScrollY: number | null = null;
     const measure = () => {
       frame = 0;
-      // At the end of a short page, several headings can share a scroll position.
-      if (jump.current && Math.abs(window.scrollY - jump.current.y) <= 1) {
-        setActive(jump.current.id);
+      if (pending.current && sectionIds.includes(pending.current) && visitSection(pending.current)) {
+        pending.current = null;
+      }
+      if (pinned.current) {
+        // React replaces the loading heading when the editor mounts. Preserve its
+        // focus without replaying the jump if the reader stayed on that heading.
+        if (focusedHeading.current && !focusedHeading.current.isConnected && document.activeElement === document.body) {
+          const heading = document.getElementById("research-" + pinned.current)?.querySelector<HTMLElement>("h2");
+          if (heading) {
+            focusedHeading.current = heading;
+            heading.tabIndex = -1;
+            heading.focus({ preventScroll: true });
+          }
+        }
         return;
       }
-      jump.current = null;
       const present = sectionIds.map((id) => document.getElementById("research-" + id)).filter((target) => target !== null);
       if (!present.length) return;
       const threshold = parseFloat(getComputedStyle(present[0]).scrollMarginTop) + Math.min(window.innerHeight * 0.1, 80);
@@ -71,17 +94,69 @@ export function ResearchReading({ sections, parameter, children, before }: {
       setActive(current.id.slice("research-".length));
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
+    // Scroll anchoring and a shorter document can change scrollY without reader input.
+    const resumeTracking = () => {
+      pinned.current = null;
+      pending.current = null;
+      focusedHeading.current = null;
+      schedule();
+    };
+    const noteInput = (direction: number) => {
+      const y = window.scrollY;
+      const max = document.documentElement.scrollHeight - window.innerHeight;
+      // A gesture against the page boundary cannot cause a later layout scroll.
+      inputScrollY = (direction < 0 && y <= 0) || (direction > 0 && y >= max - 1) ? null : y;
+    };
+    const keyIntent = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || (event.target instanceof Element && event.target.closest("input, textarea, select, [contenteditable=true]"))) return;
+      if (["ArrowUp", "Home", "PageUp"].includes(event.key)) noteInput(-1);
+      else if (["ArrowDown", "End", "PageDown"].includes(event.key)) noteInput(1);
+      else if (event.key === " ") noteInput(event.shiftKey ? -1 : 1);
+    };
+    const wheelIntent = (event: WheelEvent) => { if (event.deltaY && !event.ctrlKey) noteInput(event.deltaY); };
+    let touchY = 0;
+    const touchStart = (event: TouchEvent) => { touchY = event.touches[0].clientY; };
+    const touchIntent = (event: TouchEvent) => {
+      const y = event.touches[0].clientY;
+      if (y !== touchY) noteInput(touchY - y);
+      touchY = y;
+    };
+    const scrollbarIntent = (event: PointerEvent) => {
+      if (event.target === document.documentElement) noteInput(0);
+    };
+    const onScroll = () => {
+      if (inputScrollY != null && inputScrollY !== window.scrollY) {
+        inputScrollY = null;
+        resumeTracking();
+      }
+      schedule();
+    };
+    const focusChanged = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || target === focusedHeading.current) return;
+      focusedHeading.current = null;
+      const section = target.closest('[id^="research-"]');
+      if (section && pinned.current && section.id !== "research-" + pinned.current) resumeTracking();
+    };
     schedule();
-    window.addEventListener("scroll", schedule, { passive: true });
+    const listeners = new AbortController();
+    const passive = { signal: listeners.signal, passive: true };
+    window.addEventListener("wheel", wheelIntent, passive);
+    window.addEventListener("touchstart", touchStart, passive);
+    window.addEventListener("touchmove", touchIntent, passive);
+    window.addEventListener("keydown", keyIntent, passive);
+    window.addEventListener("focusin", focusChanged, passive);
+    window.addEventListener("pointerdown", scrollbarIntent, passive);
+    window.addEventListener("scroll", onScroll, passive);
     const observer = new ResizeObserver(schedule);
     if (content.current) observer.observe(content.current);
     if (nav.current) observer.observe(nav.current);
     return () => {
-      window.removeEventListener("scroll", schedule);
+      listeners.abort();
       cancelAnimationFrame(frame);
       observer.disconnect();
     };
-  }, [ids, requested, visitSection]);
+  }, [ids, parameter, requested, ticker, visitSection]);
 
   useEffect(() => {
     const bar = nav.current;
@@ -102,10 +177,8 @@ export function ResearchReading({ sections, parameter, children, before }: {
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
               event.preventDefault();
-              if (requested === id) {
-                visitSection(id);
-                setActive(id);
-              } else update({ [parameter]: id });
+              if (requested === id) visitSection(id);
+              else update({ [parameter]: id });
             }}>{t(zh, en)}</a>;
         })}
       </nav>

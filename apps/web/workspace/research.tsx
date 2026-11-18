@@ -567,7 +567,7 @@ function SecurityResearchWorkspace() {
                 <Tabs
                   label={t("研究视角", "Research perspectives")}
                   value={tab === "financials" ? "fundamentals" : tab}
-                  onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null, analystView: null, valuationView: null, estimateRef: null })}
+                  onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null })}
                   options={(readOnly
                     ? (isFund ? ["overview", "technical", "tracking", "peers"] : ["overview", "technical"]) as ResearchTab[]
                     : isFund

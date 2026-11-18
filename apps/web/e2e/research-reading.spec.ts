@@ -47,7 +47,7 @@ test.describe("research section navigation", () => {
     await expect(ratings).toHaveAttribute("aria-current", "location");
     await page.goBack();
     await expect(forecast).toHaveAttribute("aria-current", "location");
-    await page.locator("#research-actions").evaluate((section) => section.scrollIntoView({ block: "start" }));
+    await page.keyboard.press("End");
     await expect(index.getByRole("link", { name: "Institutional actions" })).toHaveAttribute("aria-current", "location");
     await expect(forecast).not.toHaveAttribute("aria-current", "location");
     // The index stays operable after scrolling, including when a side panel takes space.
@@ -76,13 +76,35 @@ test.describe("research section navigation", () => {
     });
   }
 
+  test("returning from Valuation opens Ratings after a legacy forecast bookmark", async ({ page }) => {
+    await page.goto("/research?ticker=AAPL&view=analyst&forecastPeriod=%2B1q");
+    await expect(page.locator("#research-forecast h2").first()).toBeFocused();
+    await page.getByRole("tab", { name: "Valuation", exact: true }).click();
+    await expect(page.locator("#research-history")).toBeAttached();
+    await page.getByRole("tab", { name: /Estimates/ }).click();
+    await expect(page.locator("#research-ratings h2").first()).toBeFocused();
+    await expect(page.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
+  });
+
   test("a clamped event jump stays current until the reader scrolls", async ({ page, isMobile }) => {
     test.skip(isMobile, "The short sections both fit in a desktop viewport.");
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/api/backend/research/AAPL/prices?**", async (route) => { await gate; await route.fallback(); });
     await page.goto("/research?ticker=AAPL&view=analyst");
     const nav = page.getByRole("navigation", { name: "On this page" });
     const events = nav.getByRole("link", { name: "Earnings events" });
+    const ratings = page.locator("#research-ratings");
+    // Model an earlier section shrinking after a clamped jump.
+    await ratings.evaluate((section) => { section.style.paddingBottom = "80px"; });
     await events.click();
     await expect(page.locator("#research-events h2")).toBeFocused();
+    await expect(events).toHaveAttribute("aria-current", "location");
+    await page.keyboard.press("End");
+    release();
+    await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
+    await ratings.evaluate((section) => { section.style.paddingBottom = ""; });
+    await expect.poll(() => page.evaluate(() => Math.ceil(scrollY + innerHeight) >= document.documentElement.scrollHeight)).toBe(true);
     await expect(events).toHaveAttribute("aria-current", "location");
     await page.keyboard.press("Home");
     await expect(nav.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
@@ -92,7 +114,7 @@ test.describe("research section navigation", () => {
     await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
       const response = await route.fetch(), data = await response.json();
       await route.fulfill({ response, json: { ...data, context: { ...data.context,
-        quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp" } },
+        quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp", asOf: days[2] } },
         analyst: { ...lens.analyst, priceTargets: { median: 450, high: 495, low: 419 },
           upgradesDowngrades: [{ index: days[0], firm: "Before Split", currentPriceTarget: 920 },
             { index: days[1], firm: "On Split", currentPriceTarget: 470 }] } } });
@@ -116,27 +138,57 @@ test.describe("research section navigation", () => {
     await expect(page.locator("#research-actions")).toContainText("£9.20");
   });
 
-  test("an older target snapshot waits for the split history before comparing it with today's quote", async ({ page }) => {
+  for (const coverage of ["complete", "stale"] as const) {
+    test("an older target snapshot with " + coverage + " split coverage keeps dated amounts and verifies the upside", async ({ page }) => {
+      await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
+        const response = await route.fetch(), data = await response.json();
+        await route.fulfill({ response, json: { ...data, context: { ...data.context,
+          quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp", asOf: days[2] } },
+          analyst: { ...lens.analyst, asOf: days[0], priceTargets: { median: 900 } } } });
+      });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      await page.route("**/api/backend/research/AAPL/prices?**", async (route) => {
+        await gate;
+        await route.fulfill({ json: { ticker: "AAPL", currency: "GBP",
+          points: (coverage === "complete" ? days : days.slice(0, 1)).map((date) => ({
+            date, close: 4.25, split: date === days[1] ? 2 : 0,
+          })) } });
+      });
+      await page.goto("/research?ticker=AAPL&view=analyst");
+      const summary = page.locator(".mx-target-summary");
+      await expect(summary).toBeVisible();
+      await expect.soft(summary).toContainText("£9.00", { timeout: 500 });
+      await expect.soft(summary).not.toContainText("%");
+      await expect(page.locator(".mx-target-dateline")).toContainText("£4.25");
+      release();
+      await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
+      if (coverage === "complete") {
+        await expect(summary).toContainText("£4.50");
+        await expect(summary).toContainText("+5.9%");
+      } else {
+        await expect(summary).toContainText("£9.00");
+        await expect(summary).not.toContainText("%");
+        await expect(page.locator(".mx-target-dateline")).toContainText("£4.25");
+      }
+    });
+  }
+
+  test("a later confirmed split puts both older dated amounts on the chart's share basis", async ({ page }) => {
     await page.route("**/api/backend/research/AAPL/lens/analyst?**", async (route) => {
       const response = await route.fetch(), data = await response.json();
       await route.fulfill({ response, json: { ...data, context: { ...data.context,
-        quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp", asOf: days[2] } },
+        quote: { ...data.context.quote, price: 8.5, currency: "GBP", quoteUnit: "GBp", asOf: days[0] } },
         analyst: { ...lens.analyst, asOf: days[0], priceTargets: { median: 900 } } } });
     });
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    await page.route("**/api/backend/research/AAPL/prices?**", async (route) => {
-      await gate;
-      await route.fulfill({ json: { ticker: "AAPL", currency: "GBP",
-        points: days.map((date) => ({ date, close: 4.25, split: date === days[1] ? 2 : 0 })) } });
-    });
+    await page.route("**/api/backend/research/AAPL/prices?**", (route) => route.fulfill({ json: {
+      ticker: "AAPL", currency: "GBP",
+      points: days.map((date) => ({ date, close: 4.25, split: date === days[1] ? 2 : 0 })),
+    } }));
     await page.goto("/research?ticker=AAPL&view=analyst");
-    const summary = page.locator(".mx-target-summary");
-    await expect(summary).toBeVisible();
-    await expect.soft(summary).not.toContainText("+111.8%", { timeout: 500 });
-    release();
-    await expect(summary).toContainText("£4.50");
-    await expect(summary).toContainText("+5.9%");
+    await expect(page.locator(".mx-target-summary")).toContainText("£4.50");
+    await expect(page.locator(".mx-target-summary")).toContainText("+5.9%");
+    await expect(page.locator(".mx-target-dateline")).toContainText("£4.25");
   });
 
   test("target-only dates after the last close run through the snapshot date", async ({ page }) => {
@@ -171,20 +223,48 @@ test.describe("research section navigation", () => {
     await expect(page.locator("#research-events")).toContainText("14 Feb 2030");
   });
 
-  test("the price legend reserves its phone height while prices load", async ({ page, isMobile }) => {
-    test.skip(!isMobile, "The phone label wraps.");
-    await page.setViewportSize({ width: 320, height: 844 });
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    await page.route("**/api/backend/research/AAPL/prices?**", async (route) => { await gate; await route.fallback(); });
+  for (const width of [320, 390]) {
+    test("the chart and its legend reserve their phone height at " + width, async ({ page, isMobile }) => {
+      test.skip(!isMobile, "The phone label wraps.");
+      await page.setViewportSize({ width, height: 844 });
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      await page.route("**/api/backend/research/AAPL/prices?**", async (route) => { await gate; await route.fallback(); });
+      await page.goto("/research?ticker=AAPL&view=analyst");
+      const heading = page.locator(".mx-target-chart-heading");
+      await expect(heading).toBeVisible();
+      const before = await heading.boundingBox();
+      const chart = page.locator(".mx-target-chart");
+      const beforeChart = await chart.boundingBox();
+      const dateline = page.locator(".mx-target-dateline");
+      const beforePrice = await dateline.evaluate((node) => node.getBoundingClientRect().top + window.scrollY);
+      release();
+      await expect(heading).toContainText("Firm targets");
+      await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
+      expect((await heading.boundingBox())!.height).toBe(before!.height);
+      expect((await chart.boundingBox())!.height).toBe(beforeChart!.height);
+      expect(await dateline.evaluate((node) => node.getBoundingClientRect().top + window.scrollY)).toBeCloseTo(beforePrice, 0);
+    });
+  }
+
+  test("the close line connects Friday and Monday across a target-only Saturday", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" });
+    await page.route("**/api/backend/research/AAPL/prices?**", (route) => route.fulfill({ json: {
+      ticker: "AAPL", currency: "USD", points: [{ date: days[1], close: 100 }, { date: days[2], close: 120 }],
+    } }));
     await page.goto("/research?ticker=AAPL&view=analyst");
-    const heading = page.locator(".mx-target-chart-heading");
-    await expect(heading).toBeVisible();
-    const before = await heading.boundingBox();
-    release();
-    await expect(heading).toContainText("Firm targets");
-    await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
-    expect((await heading.boundingBox())!.height).toBe(before!.height);
+    const chart = page.locator(".mx-target-chart");
+    await chart.scrollIntoViewIfNeeded();
+    await expect(chart.getByRole("group", { name: /^Historical prices/ })).toHaveAttribute("data-tm-chart-ready", "true");
+    // Only the closing-price stroke uses cobalt inside the middle of the historical plot.
+    await expect.poll(() => chart.locator("canvas").first().evaluate((canvas: HTMLCanvasElement) => {
+      const x = Math.floor(canvas.width * 0.4);
+      const pixels = canvas.getContext("2d")!.getImageData(x, 0, 1, canvas.height).data;
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 2] > pixels[i] + 80 && pixels[i + 3] > 100) return true;
+      }
+      return false;
+    })).toBe(true);
   });
 
   test("a target on a non-trading day shares the price timeline and keeps both firms", async ({ page }) => {
