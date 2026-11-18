@@ -1,3 +1,4 @@
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { Locale } from "@/components/locale-provider";
 import type { Evidence } from "./evidence";
 import { formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
@@ -103,10 +104,12 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  if (row.kind === "earnings" || row.kind === "ex_dividend") {
-    source = row.kind === "earnings" ? "financials" : "disclosure";
+  const kind = citedEventKind(str(row.kind));
+  if (kind) {
+    source = kind === "earnings" ? "financials" : "disclosure";
     args.holdingTicker = ticker;
-    args.event = row.kind === "ex_dividend" ? "exDividend" : row.research_event_id ? "earnings" : "earningsWindow";
+    args.event = kind === "ex_dividend" ? "exDividend" : kind;
+    if (kind === "earnings" && !row.research_event_id) args.event = "earningsWindow";
     if (row.research_event_id) args.researchEventId = str(row.research_event_id);
     if (row.end_date) args.endDate = str(row.end_date);
   } else if (row.source_url) args.url = str(row.source_url);

@@ -1,3 +1,4 @@
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { components } from "@/lib/api-schema";
 import { formatDateTimeInTimeZone } from "@/ui/formatters";
 import type { UIMessage } from "ai";
@@ -70,7 +71,7 @@ export function evidenceHref(ref: Evidence): string | null {
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
     if (a.ticker) params.set("ticker", a.ticker);
-    if (["earnings", "earningsWindow", "exDividend"].includes(a.event)) {
+    if (citedEventKind(a.event)) {
       params.set("event", a.event);
       if (a.date) params.set("date", a.date);
       if (a.end) params.set("end", a.end);

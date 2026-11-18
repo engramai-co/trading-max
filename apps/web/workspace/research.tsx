@@ -1,5 +1,6 @@
 "use client";
 
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import { researchShellKey } from "@/lib/dashboard-query";
 import type {
   ResearchLensSnapshot,
@@ -101,7 +102,7 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
 
 export function ResearchWorkspace() {
   const { params } = useRouteState();
-  if (params.get("evidence") === "read_research_lens" && ["earnings", "earningsWindow", "exDividend"].includes(params.get("event") ?? "")) {
+  if (params.get("evidence") === "read_research_lens" && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }
   return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;

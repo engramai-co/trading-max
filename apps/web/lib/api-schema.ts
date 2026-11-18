@@ -3084,6 +3084,66 @@ export interface components {
             /** Symbol */
             symbol?: string | null;
         };
+        /** CitedHoldingEvent */
+        CitedHoldingEvent: {
+            /** Actual Eps */
+            actual_eps?: number | null;
+            /** Amount */
+            amount?: number | null;
+            /** Basis */
+            basis?: string | null;
+            /** Credit */
+            credit?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Date */
+            date: string;
+            /** End Date */
+            end_date?: string | null;
+            /** Estimated Eps */
+            estimated_eps?: number | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Fiscal Period */
+            fiscal_period?: string | null;
+            /** Instant */
+            instant?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend";
+            /** Licence Url */
+            licence_url?: string | null;
+            /** Local Date */
+            local_date: string;
+            /** Local Time */
+            local_time: string | null;
+            /** Market */
+            market?: string | null;
+            /** Publisher */
+            publisher: string;
+            /** Research Event Id */
+            research_event_id?: string | null;
+            /** Source As Of */
+            source_as_of?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Ticker */
+            ticker?: string | null;
+            /** Time Source Url */
+            time_source_url?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+            /** Title En */
+            title_en: string;
+            /** Title Zh */
+            title_zh: string;
+            /** Unit */
+            unit?: string | null;
+        };
         /** ClosedTradeReview */
         ClosedTradeReview: {
             /** Actualgbp */
@@ -12744,7 +12804,7 @@ export interface operations {
         parameters: {
             query: {
                 ticker: components["schemas"]["Ticker"];
-                kind: "earnings" | "ex_dividend";
+                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend";
                 event_id?: string | null;
                 research_event_id?: string | null;
             };
@@ -12762,7 +12822,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["UpcomingItem"];
+                    "application/json": components["schemas"]["CitedHoldingEvent"];
                 };
             };
             /** @description Validation Error */

@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
@@ -102,12 +103,13 @@ def _indexed(payload):
     return {str(r.get("ticker", "")).upper(): r for r in _rows((payload or {}).get("rows"))}
 
 
-def _public(ticker, data, upcoming):
+def _security_entry(ticker):
     url = "https://finance.yahoo.com/quote/" + quote(ticker, safe="") + "/"
+    return partial(_entry, ticker=ticker, url=url)
 
-    def add(kind, title, zh, raw, **kw):
-        return _entry(kind, title, zh, raw, ticker=ticker, url=kw.pop("url", url), **kw)
 
+def _public(ticker, data, upcoming):
+    add = _security_entry(ticker)
     analyst = data[ANALYST].get(ticker, {}).get("analyst", {})
     recorded = set()
     for e in _rows(analyst.get("earningsEvents")):
@@ -190,17 +192,7 @@ def _public(ticker, data, upcoming):
             form=r.get("form"),
             reference=r.get("accession") or r.get("id"),
         )
-    for r in _rows(evidence.get("dividends")):
-        yield add(
-            "dividend",
-            "Dividend",
-            "股息",
-            r.get("date"),
-            amount=_number(r.get("amount")),
-            currency=r.get("currency"),
-            unit="per_share",
-            basis=r.get("basis"),
-        )
+    yield from _reported_dividends(ticker, evidence)
     for row in _headline_rows(data, ticker):
         url_value = web_url(row.get("url"))
         if not url_value or not (row.get("publisher") or row.get("source")):
@@ -214,6 +206,21 @@ def _public(ticker, data, upcoming):
             publisher=row.get("publisher") or row.get("source"),
             provider_id=row.get("id") if row.get("id") != url_value else None,
             role="lead",
+        )
+
+
+def _reported_dividends(ticker, evidence):
+    add = _security_entry(ticker)
+    for r in _rows(evidence.get("dividends")):
+        yield add(
+            "dividend",
+            "Dividend",
+            "股息",
+            r.get("date"),
+            amount=_number(r.get("amount")),
+            currency=r.get("currency"),
+            unit="per_share",
+            basis=r.get("basis"),
         )
 
 
@@ -469,8 +476,13 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     """Resolve a publication's exact security event without reading the account calendar."""
     args = Scoped(scope="broker_total")
     read = _Read(deps, "upcoming_events", args, args.scope)
-    data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-    for row in _public(ticker, data, upcoming=True):
+    if kind == "dividend":
+        financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
+        rows = _reported_dividends(ticker, financials.get("evidence", {}))
+    else:
+        data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
+        rows = _public(ticker, data, upcoming=True)
+    for row in rows:
         if not row or row["kind"] != kind:
             continue
         local = (
