@@ -1,10 +1,11 @@
 """Explain a selected, published look-through allocation and its dated comparators."""
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from math import isclose
 from typing import Literal
 
 from pydantic import Field, model_validator
-from trading_max.analytics.exposure_history import _countries
+from trading_max.analytics.exposure_history import PREFIX, _countries
 from trading_max.infrastructure.acwi_weights import AcwiWeights
 from trading_max.infrastructure.sector_universe import GICS_SECTORS, SECTOR_ALIASES
 from trading_max.infrastructure.world_sector_weights import WorldSectorWeights
@@ -71,7 +72,60 @@ def _find(read, tool, args, context):
             tool is tools.lookthrough_exposure and not data.get("non_security_value_gbp")
         ):
             return None, result
-    return {"weight_fraction": weight}, result
+    values = [row["value_gbp"] for row in members]
+    value = sum(values) if all(v is not None for v in values) else None
+    if context.group == "unresolved" and value is not None:
+        total = data.get("invested_value_gbp")
+        value = total - value if total is not None else None
+    return {"weight_fraction": weight, "value_gbp": value}, result
+
+
+def _denominator_matches(item, data):
+    total = data.get("invested_value_gbp")
+    value = item.get("value_gbp")
+    weight = item.get("weight_fraction")
+    return (
+        total is not None
+        and total > 0
+        and value is not None
+        and weight is not None
+        and isclose(value / total, weight, abs_tol=max(0.01 / total, 0.00005))
+    )
+
+
+def _history(read, args, context, cutoff, current, current_data):
+    # Retained days may be sparse, and each day can have a different classification.
+    days = sorted(
+        {
+            ref.key[len(PREFIX) : -5]
+            for ref in read.deps.manifest.artifacts
+            if ref.key.startswith(PREFIX) and ref.key.endswith(".json")
+        },
+        reverse=True,
+    )
+    eligible = [day for day in days if day <= cutoff]
+    for day in eligible or [cutoff]:
+        prior, history = _find(
+            read,
+            insights.dated_exposure,
+            insights.ExposureHistoryArgs(**args, on_or_before=day),
+            context,
+        )
+        data = history.get("data") or {}
+        if (
+            prior
+            and current_data.get("basis")
+            and data.get("basis") == current_data["basis"]
+            and data.get("currency") == current_data.get("currency") == "GBP"
+            and data.get("observation_date") == day
+            and data.get("broker_as_of")
+            and datetime.fromisoformat(data["broker_as_of"]).astimezone(LONDON).date()
+            == date.fromisoformat(day)
+            and _denominator_matches(current, current_data)
+            and _denominator_matches(prior, data)
+        ):
+            return prior, history
+    return None, history
 
 
 def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
@@ -154,12 +208,7 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
         )
     ]
     cutoff = (day - timedelta(days=30)).isoformat()
-    prior, history = _find(
-        read,
-        insights.dated_exposure,
-        insights.ExposureHistoryArgs(**args, on_or_before=cutoff),
-        context,
-    )
+    prior, history = _history(read, args, context, cutoff, item, data)
     if prior and prior["weight_fraction"] is not None:
         stamp = history["data"]["observation_date"]
         previous = prior["weight_fraction"]
@@ -177,6 +226,7 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
                 history,
                 "dated_exposure",
                 on_or_before=cutoff,
+                start=stamp,
                 end=day.isoformat(),
             )
         )

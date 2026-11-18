@@ -255,6 +255,7 @@ def test_grouped_allocations_use_complete_members_and_dated_comparison(tmp_path)
         "available": True,
         "brokerAsOf": STAMP,
         "countryAllocation": rows,
+        "countryBasis": "country of risk",
         "positions": [
             {"name": "Holding", "ticker": "TEST", "allocationPct": 0.9, "valueGbp": 1800}
         ],
@@ -264,7 +265,7 @@ def test_grouped_allocations_use_complete_members_and_dated_comparison(tmp_path)
     prior = {
         **data,
         "brokerAsOf": "2026-01-01T16:00:00Z",
-        "countryAllocation": [{**row, "allocationPct": 0.04} for row in rows],
+        "countryAllocation": [{**row, "allocationPct": 0.04, "valueGbp": 80} for row in rows],
     }
     publication(
         store,
