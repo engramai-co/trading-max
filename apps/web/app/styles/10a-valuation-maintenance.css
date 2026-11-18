@@ -129,6 +129,9 @@
 .mx-evidence-detail .mx-facts dd {
   font-weight: 400;
 }
+.mx-evidence-detail .mx-facts dt {
+  flex: none;
+}
 .mx-evidence-locks {
   display: inline-flex;
   align-items: center;

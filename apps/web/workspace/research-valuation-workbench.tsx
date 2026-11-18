@@ -26,7 +26,7 @@ import type { DraftActions, DraftView } from "./valuation-draft-editor";
 import { useAssistant } from "./assistant/context";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
-import { EvidenceReview, type InputField } from "./valuation-maintenance";
+import type { InputField } from "./valuation-maintenance";
 import { quoteValue } from "./financial-values";
 import {
   ApiError,
@@ -77,6 +77,7 @@ import {
 } from "./valuation-queries";
 
 type DraftModule = typeof import("./valuation-draft-editor");
+type EvidenceModule = typeof import("./valuation-maintenance");
 const emptyReview: DraftView = {draft:null, error:null, stale:false, phase:null, cancelled:false};
 
 const keys = ["bear", "base", "bull"] as const;
@@ -359,6 +360,11 @@ function ModelEditor({
   const [reviewOpen, setReviewOpen] = useState(false);
   const focusReview = useRef(false);
   const evidenceToggle = useRef<HTMLButtonElement>(null);
+  // The review loads on first use, so it adds nothing to the research page's first paint.
+  const [evidence, setEvidence] = useState<EvidenceModule | null>(null);
+  const loadEvidence = () => {
+    if (!evidence) void import("./valuation-maintenance").then((module) => setEvidence(() => module));
+  };
   const actions = useRef<DraftActions>(null);
   const [drafting, setDrafting] = useState(emptyReview);
   const { draft } = drafting;
@@ -436,10 +442,11 @@ function ModelEditor({
   const review = useQuery(valuationMaintenanceQuery(initial, savedModel?.id, debounced, locked,
     reviewOpen && !invalidInput));
   useLayoutEffect(() => {
-    if (!reviewOpen || !focusReview.current) return;
+    const section = document.getElementById("valuation-evidence");
+    if (!reviewOpen || !focusReview.current || !section) return;
     focusReview.current = false;
-    document.getElementById("valuation-evidence")?.focus();
-  }, [reviewOpen]);
+    section.focus();
+  }, [reviewOpen, evidence]);
   const save = useMutation({
     mutationFn: (payload: typeof liveRequest & { familySelection: string; reason: string; draftReview?: DraftReview;
       lockedInputs: LockedInput[] }) =>
@@ -654,7 +661,8 @@ function ModelEditor({
         onChange={setDrafting} />}
       {evidenceAction && savedModel && createPortal(<Button ref={evidenceToggle} variant="default" size="compact-xs"
         aria-expanded={reviewOpen} aria-controls="valuation-evidence"
-        onClick={() => { focusReview.current = !reviewOpen; setReviewOpen(!reviewOpen); }}>
+        onPointerEnter={loadEvidence} onFocus={loadEvidence}
+        onClick={() => { loadEvidence(); focusReview.current = !reviewOpen; setReviewOpen(!reviewOpen); }}>
         {t("看新证据", "See new evidence")}
       </Button>, evidenceAction)}
       {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
@@ -721,10 +729,11 @@ function ModelEditor({
                 </Button>
               </div>
             )}
-            {reviewOpen && savedModel && <EvidenceReview review={review.data} error={review.error}
+            {reviewOpen && savedModel && (evidence ? <evidence.EvidenceReview review={review.data} error={review.error}
               pending={review.isFetching} retry={() => void review.refetch()} selected={selected}
               currency={result.basis.currency} describe={describe}
-              close={() => { setReviewOpen(false); evidenceToggle.current?.focus(); }} />}
+              close={() => { setReviewOpen(false); evidenceToggle.current?.focus(); }} />
+              : <Pending compact height={196} />)}
             {!reviewOpen && initialAtHorizon &&
               !busy &&
               !query.isError &&
