@@ -29,6 +29,26 @@ describe("snapshot-pinned history queries", () => {
     expect(fetchMock).toHaveBeenCalledTimes(10);
     expect(fetchMock.mock.calls.at(-1)![0]).toContain("run_id=eviction-0");
   });
+  it("keeps the live selection warm across archived chart reads", async () => {
+    fetchMock.mockImplementation(async path => response(new URL(path,"http://api").searchParams.get("run_id")!));
+    const live = selection("live-across-archives");
+    await readPreparedHistory(live);
+    for (let i=0; i<9; i++) await readPreparedHistory(selection("archived-"+i),true);
+    await readPreparedHistory(live);
+    expect(fetchMock.mock.calls.filter(([path]) => path.includes(live.runId))).toHaveLength(1);
+  });
+  it("checks retention before returning cached charts and exact rows", async () => {
+    const query = "http://localhost/?runId=prunable&retained=1";
+    let retained = true;
+    fetchMock.mockImplementation(async (_path,init) => !retained ? new Response(null,{status:404}) : init?.method === "HEAD"
+      ? new Response(null,{status:204}) : response("prunable"));
+    expect((await GET(new Request(query))).status).toBe(200);
+    expect((await GET(new Request(query+"&page=1"))).status).toBe(200);
+    expect(fetchMock.mock.calls.filter(([,init])=>init?.method !== "HEAD")).toHaveLength(1);
+    retained = false;
+    expect((await GET(new Request(query))).status).toBe(404);
+    expect((await GET(new Request(query+"&page=1"))).status).toBe(404);
+  });
   it("rejects invalid input before reading any private data", async () => {
     const at = "opening=2026-10-29T00%3A10%3A00Z";
     for (const query of [
@@ -56,10 +76,13 @@ describe("snapshot-pinned history queries", () => {
   it("serves exact pages through the same pinned cached view", async () => {
     fetchMock.mockResolvedValueOnce(response("page-revision"));
     const chart = await GET(new Request("http://localhost/?runId=page-revision"));
+    fetchMock.mockResolvedValueOnce(new Response(null,{status:204}));
     const page = await GET(new Request("http://localhost/?runId=page-revision&page=1"));
     expect((await chart.json()).runId).toBe("page-revision");
     expect(await page.json()).toMatchObject({ runId: "page-revision", total: 0, pageSize: 20, points: [] });
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({method:"HEAD"});
+    fetchMock.mockResolvedValueOnce(new Response(null,{status:404}));
+    expect((await GET(new Request("http://localhost/?runId=page-revision&page=2"))).status).toBe(404);
   });
   it("answers named openings with the exact P&L read from every observation", async () => {
     // Ten-minute syncs, each £1 up on £1,000 contributed; the 5D chart keeps one reading per 30 minutes.

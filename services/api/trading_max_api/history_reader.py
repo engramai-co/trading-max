@@ -100,9 +100,12 @@ class HistoryReader:
     from the original projection without retaining an oversized cache.
     """
 
-    def __init__(self, store: ArtifactStore, *, byte_limit: int = 64 * 1024 * 1024):
+    def __init__(
+        self, store: ArtifactStore, *, byte_limit: int = 64 * 1024 * 1024, retained: bool = False
+    ):
         self.store = store
-        self.path = store.data_root / "runtime/history-query-cache-v1/index.sqlite3"
+        namespace = "retained-history-query-cache-v1" if retained else "history-query-cache-v1"
+        self.path = store.data_root / "runtime" / namespace / "index.sqlite3"
         self.byte_limit = byte_limit
         self._lock = threading.Lock()
 

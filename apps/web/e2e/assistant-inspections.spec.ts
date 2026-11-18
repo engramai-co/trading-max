@@ -751,7 +751,7 @@ test("a missing endpoint in the updated phone reading keeps the dialog and focus
 });
 
 for (const view of ["holdings","money","returns","risk"] as const) {
-  test(`opens the cited ${view} using the retained dashboard API`, async ({page,request})=>{
+  test(`opens the cited ${view} using the retained dashboard API`, async ({page,request,isMobile})=>{
     const calls=await setup(page,"en",false);
     // The assistant is synthetic; both dashboard routes go through the actual Next and API servers.
     await page.route("**/api/backend/dashboard/**",route=>route.continue());
@@ -801,6 +801,21 @@ for (const view of ["holdings","money","returns","risk"] as const) {
     }
     if(view==="holdings") expect(data.lookthrough.countryAllocation.length).toBeGreaterThan(0);
     await expect.poll(()=>calls.at(-1)).toMatchObject({role:view==="holdings"?"exposure":"attribution",snapshotId:id});
+    if (view === "money") {
+      if (isMobile) {
+        q.set("evidence", "period_performance");
+        q.set("moneyFrom", q.get("inspectFrom")!.slice(0,10));
+        q.set("moneyTo", q.get("inspectTo")!.slice(0,10));
+        q.delete("inspectFrom");
+        q.delete("inspectTo");
+        await page.goto(path+"?"+q);
+      }
+      const exact = page.waitForRequest(r => new URL(r.url()).searchParams.has("page") && r.url().includes("/dashboard/history?"));
+      await page.getByText("View exact observations",{exact:true}).first().click();
+      const params = new URL((await exact).url()).searchParams;
+      expect(params.get("runId")).toBe(id);
+      expect(params.get("retained")).toBe("1");
+    }
     expect(bad).toEqual([]);
   });
 }

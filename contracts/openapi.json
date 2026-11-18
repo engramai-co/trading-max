@@ -26971,6 +26971,38 @@
           }
         },
         "summary": "Dashboard History"
+      },
+      "head": {
+        "description": "Validate a cached chart or exact page without loading its observations.",
+        "operationId": "history_retention_v1_dashboard_history_head",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "History Retention"
       }
     },
     "/v1/dashboard/lens/{view}": {

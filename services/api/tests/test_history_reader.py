@@ -296,3 +296,37 @@ def test_retained_risk_and_holdings_use_only_page_records(
             row for row in live_positions.get("holdings", []) if row["account"] == "B"
         ]
         assert not {"accounts", "risk", "nav", "benchmarkSeries", "lookthrough"} & positions.keys()
+
+
+def test_archived_money_revisions_do_not_evict_live_history(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    store = ArtifactStore(tmp_path / "history")
+    ledger = next(research_root.rglob("daily_nav_b.csv"))
+    original = ledger.read_text()
+    runs = []
+    for value in ("1.03", "1.05", "1.08", "1.11"):
+        ledger.write_text(original.replace(",1.02,0", f",{value},0"))
+        typed_fixture(research_root, store)
+        runs.append(store.latest_manifest().run_id)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=False))
+    with TestClient(app) as client:
+        endpoint = "/v1/dashboard/history"
+        builds = []
+        load = module.load_history
+
+        def record_build(store, manifest):
+            builds.append(manifest.run_id)
+            return load(store, manifest)
+
+        monkeypatch.setattr(module, "load_history", record_build)
+        assert client.get(endpoint, params={"run_id": runs[-1]}).is_success
+        for run in runs[:-1]:
+            assert client.get(endpoint, params={"run_id": run}).is_success
+        count = builds.count(runs[-1])
+        assert client.get(endpoint, params={"run_id": runs[-1]}).is_success
+        assert builds.count(runs[-1]) == count
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert runs[0] in store.prune_snapshots(keep_recent=1)
+        assert client.head(endpoint, params={"run_id": runs[0]}).status_code == 404
+        assert client.head(endpoint, params={"run_id": runs[-1]}).status_code == 204

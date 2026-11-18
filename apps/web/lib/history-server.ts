@@ -3,8 +3,14 @@ import { backendFetch } from "./backend";
 import { prepareHistory, type HistoryInput, type HistorySelection } from "@/lib/portfolio/prepared";
 
 type Prepared = ReturnType<typeof prepareHistory>;
-const cache = new Map<string, { value: Prepared; bytes: number; expires: number }>();
-const pending = new Map<string, Promise<Prepared>>();
+function historyCache() {
+  return {
+    entries: new Map<string, { value: Prepared; bytes: number; expires: number }>(),
+    pending: new Map<string, Promise<Prepared>>(),
+  };
+}
+const liveCache = historyCache();
+const retainedCache = historyCache();
 const BUDGET = 32 * 1024 * 1024;
 /** Enough for a reader moving between ranges and accounts, plus the prewarmed defaults. */
 const ENTRIES = 8;
@@ -14,11 +20,25 @@ export class HistoryRequestError extends Error {
 }
 
 /** Bounded process cache only; a miss reopens the same immutable snapshot. */
-export async function readPreparedHistory(selection: HistorySelection, retained = false): Promise<Prepared> {
+export async function readPreparedHistory(selection: HistorySelection, retained = false, exactPage = false): Promise<Prepared> {
+  const {entries: cache, pending} = retained ? retainedCache : liveCache;
   const key = JSON.stringify(selection);
   for (const [id, entry] of cache) if (entry.expires <= Date.now()) cache.delete(id);
   const existing = cache.get(key);
-  if (existing && !retained) { cache.delete(key); cache.set(key, existing); return existing.value; }
+  if (existing) {
+    if (retained || exactPage) {
+      const check = await backendFetch(`/v1/dashboard/history?run_id=${encodeURIComponent(selection.runId)}`, {method:"HEAD"});
+      if (!check.ok) {
+        if (check.status === 404) cache.delete(key);
+        throw new HistoryRequestError("History snapshot is unavailable", check.status);
+      }
+    }
+    if (cache.get(key) === existing) {
+      cache.delete(key);
+      cache.set(key, existing);
+    }
+    return existing.value;
+  }
   const inFlight = pending.get(key);
   if (inFlight) return inFlight;
   if (pending.size >= 4) throw new HistoryRequestError("History is busy. Please retry shortly.", 503);

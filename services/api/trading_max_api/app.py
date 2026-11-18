@@ -597,6 +597,7 @@ def create_app(
     app.state.settings = settings
     app.state.store = store
     app.state.history_reader = history_reader
+    app.state.retained_history_reader = HistoryReader(store, retained=True)
     app.state.settings_repository = preferences
     app.state.credential_store = credentials
     app.state.oauth_login = oauth_login

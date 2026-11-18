@@ -326,7 +326,11 @@ export interface paths {
         post?: never;
         delete?: never;
         options?: never;
-        head?: never;
+        /**
+         * History Retention
+         * @description Validate a cached chart or exact page without loading its observations.
+         */
+        head: operations["history_retention_v1_dashboard_history_head"];
         patch?: never;
         trace?: never;
     };
@@ -10670,6 +10674,35 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HistorySnapshot"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_retention_v1_dashboard_history_head: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

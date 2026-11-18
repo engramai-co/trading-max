@@ -496,6 +496,7 @@ export function PerformanceContent({
                 observations={view === "money" ? points : undefined}
                 pendingCashFlows={view === "money" && history.pendingCashFlows}
                 recordSource={view === "money" ? historySelection : undefined}
+                retainedRecords={Boolean(pinnedMoney)}
                 reading={timelineReading}
                 details={isIntraday ? [
                   { label: t("区间价值变化", "Value change"), values: valueChanges },
