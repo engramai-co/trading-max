@@ -18,6 +18,7 @@ from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_ben
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
 from trading_max.research.facts import fingerprint, number
 from trading_max.research.fund_references import us_fund, us_fund_listing
+from trading_max.research.listing import resolved_quote_listing
 from trading_max.research.valuation_preview import (
     AssumptionReference,
     FrozenValuationBasis,
@@ -26,7 +27,7 @@ from trading_max.research.valuation_preview import (
     ValuationPreviewRequest,
     preview,
 )
-from trading_max.research.venues import VenueConflict, row_claims
+from trading_max.research.venues import VenueConflict, resolve_venue, row_claims
 
 from ..dashboard_models import (
     PriceSeriesPoint,
@@ -56,6 +57,7 @@ from ..models import (
 )
 from ..research_funds import FundResearch, benchmark_fields, fund_research_from_snapshot
 from ..research_journal import ResearchJournal, ResearchModelSaveRequest, ResearchNoteInput
+from ..research_prices import PRICE_HISTORY_UNAVAILABLE
 from ..research_public import public_lens
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
@@ -484,7 +486,18 @@ def research_estimate_history(
     limit: Annotated[int, Query(ge=1, le=MAX_HISTORY_ROWS)] = 504,
 ) -> list[EstimateObservation]:
     """Return the latest observations for an exact ticker, oldest first."""
-    return app_service(request, "estimate_history").list(ticker, limit=limit)
+    research = app_service(request, "research")
+    manifest = research.store.latest_manifest()
+    symbol = ticker.strip().upper()
+    if manifest:
+        pinned = research.pin_listing(symbol, manifest)
+        symbol, venue = pinned.symbol, pinned.venue()
+    else:
+        venue = resolve_venue(symbol, *research.watchlist.listing_exchanges().get(symbol, ()))
+    listing = resolved_quote_listing(symbol, venue)
+    if not listing:
+        return []
+    return app_service(request, "estimate_history").list(symbol, limit=limit, listing=listing)
 
 
 @router.get(
@@ -510,7 +523,7 @@ def research_prices(
     exchanges = research.watchlist.listing_exchanges()
     pinned = research.pin_listing(ticker, manifest, exchanges=exchanges)
     if pinned.venue().conflict:
-        raise HTTPException(status_code=404, detail="published_daily_bars_unavailable")
+        raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE)
     listing = pinned.held
     # Comparison ETFs and confirmed held US ETF listings use Alpaca's price
     # chart. The typed snapshot remains the source for broker events and research.
@@ -527,7 +540,7 @@ def research_prices(
         try:
             venue = research.price_venue(pinned, series)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
         series.exchange_calendar = venue.calendar
         series.points = series.points[-limit:]
         series.coverage_start = series.points[0].date if series.points else None
@@ -547,7 +560,7 @@ def research_prices(
         try:
             published = research.price_series(ticker, manifest, limit=limit, pinned=pinned)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
         except FileNotFoundError:
             published = None
         if published:
@@ -570,7 +583,7 @@ def research_prices(
             )
             return live_window(public)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
@@ -578,13 +591,13 @@ def research_prices(
         try:
             series = app_service(request, "market_prices").history(reference.ticker)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
             series = None
         if series is None:
-            raise HTTPException(status_code=404, detail="security-price-history-unavailable")
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE)
         points = [
             PriceSeriesPoint(
                 date=datetime.fromtimestamp(stamp, UTC).date().isoformat(),
@@ -601,7 +614,7 @@ def research_prices(
             if close is not None
         ]
         if not points:
-            raise HTTPException(status_code=404, detail="security-price-history-unavailable")
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE)
         return live_window(
             ResearchPriceSeries(
                 ticker=reference.ticker,
@@ -633,7 +646,7 @@ def research_prices(
             result = security_prices.get(symbol, interval, market_etf=market_etf)
             return live_window(result)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
@@ -646,7 +659,7 @@ def research_prices(
         result.coverage_end = result.points[-1].date if result.points else None
         return price_window(result, window)
     except VenueConflict as exc:
-        raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+        raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
     except FileNotFoundError as exc:
         try:
             result = security_prices.get(
@@ -656,13 +669,11 @@ def research_prices(
             result.coverage_reason = fallback_reason
             return live_window(result)
         except VenueConflict as exc:
-            raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
         except HTTPException:
             raise
         except Exception:
-            raise HTTPException(
-                status_code=404, detail="security-price-history-unavailable"
-            ) from exc
+            raise HTTPException(status_code=404, detail=PRICE_HISTORY_UNAVAILABLE) from exc
 
 
 @router.get(

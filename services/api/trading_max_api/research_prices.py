@@ -20,6 +20,8 @@ from trading_max.research.venues import VenueClaim, VenueConflict, resolve_venue
 from .dashboard_models import ResearchPriceSeries
 from .valuation_assumptions import _atomic_write
 
+PRICE_HISTORY_UNAVAILABLE = "security-price-history-unavailable"
+
 
 class SecurityPriceHistory:
     def __init__(

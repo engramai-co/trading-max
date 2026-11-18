@@ -236,13 +236,16 @@ class EstimateHistory:
             count += 1
         return count
 
-    def list(self, ticker: str, *, limit: int) -> list[EstimateObservation]:
+    def list(
+        self, ticker: str, *, limit: int, listing: str | None = None
+    ) -> list[EstimateObservation]:
         limit = min(MAX_HISTORY_ROWS, max(1, limit))
         with self.database.read() as connection:
             rows = connection.execute(
                 "SELECT observed_at, observation_json FROM research_estimate_history WHERE ticker = ? "
+                "AND (? IS NULL OR json_extract(observation_json, '$.listing') = ?) "
                 "ORDER BY observed_at DESC, id DESC LIMIT ?",
-                (ticker.strip().upper(), limit),
+                (ticker.strip().upper(), listing, listing, limit),
             ).fetchall()
         return [
             EstimateObservation.model_validate(

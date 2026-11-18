@@ -15,7 +15,7 @@ import { comparisonFigures, fixed, readingTone, signedPercent, telling, volume }
 import { DataBasis } from "./reading-card";
 import { candleSeries, candleValues, previousCloses, priceGapConnectors, priceReading, priceSlots } from "./research-price-candles";
 import { PriceEventTrack, priceEventDays } from "./research-price-events";
-import { compactTick, number, object, objects, percent, str } from "@/workspace/data";
+import { ApiError, compactTick, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
 import { EvidenceTable } from "./evidence-table";
 import {
@@ -89,7 +89,9 @@ export function PriceHistory({
   const retained = useRetainedResult(current, (a, b) => a.data === b.data &&
     a.ticker === b.ticker && a.interval === b.interval && a.range === b.range && a.updatedAt === b.updatedAt);
   const shown = previousForIdentity(retained, retained?.ticker, ticker);
-  const priceData = shown?.data;
+  const listingUnavailable = query.error instanceof ApiError && query.error.status === 404 &&
+    query.error.message === "security-price-history-unavailable";
+  const priceData = listingUnavailable ? undefined : shown?.data;
   const displayedRange = shown?.range ?? range;
   const displayedInterval = shown?.interval ?? interval;
   const updating = Boolean(shown && !current && !query.isError);
@@ -345,7 +347,9 @@ export function PriceHistory({
   const content = (
     <>
       {tools}
-      {query.isPending && !priceData ? (
+      {listingUnavailable ? (
+        <Empty title={t("暂无此上市证券的价格记录", "Price history unavailable for this listing")} />
+      ) : query.isPending && !priceData ? (
         <Pending shape="chart" height={300} label={t("正在读取价格记录…", "Loading price records…")} />
       ) : query.isError && !priceData ? (
         <QueryError retry={query.refetch} />
