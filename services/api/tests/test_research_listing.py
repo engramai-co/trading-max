@@ -272,3 +272,89 @@ def test_research_readings_reject_foreign_analyst_and_headline_rows(bound):
         earnings.get("data"),
         news.get("data"),
     )
+
+
+def test_selected_headline_reuses_chart_venue_for_syndicated_identity(bound):
+    from trading_max.research.news import NEWS_KEY
+
+    from services.api.tests.test_pinned_listing import FRIDAY, base_row, publish, story
+    from services.api.trading_max_api.agent import research_tools
+
+    app, before, _ = bound
+    ticker = "SYN"
+    article = story(local_instant="T15:00:00Z")
+    manifest = publish(
+        app,
+        {
+            tools.TECHNICAL: {"rows": [base_row(app, before, ticker, exchange="NYQ")]},
+            NEWS_KEY: {
+                "securities": {
+                    ticker: {
+                        "as_of": FRIDAY,
+                        "items": [
+                            {**article, "mic": "XLON", "title": "London story"},
+                            {**article, "mic": "XNYS", "title": "New York story"},
+                        ],
+                    }
+                }
+            },
+        },
+    )
+    chart = app.state.research.price_series(ticker, manifest)
+    output = _call(
+        app.state.assistant.deps_for_run("research", None),
+        research_tools.research_headline,
+        research_tools.HeadlineArgs(
+            ticker=ticker,
+            date=FRIDAY,
+            reference="lead",
+            start=DATES[0],
+            end=DATES[-1],
+            published_series_id=chart.published_series_id,
+        ),
+    )
+    assert output["data"]["title"] == "New York story", output
+
+
+def test_live_chart_checks_both_legacy_exchange_fields(bound, monkeypatch):
+    app, _, _ = bound
+    result = ResearchPriceSeries(
+        ticker="SYN.L",
+        published_bar_ticker="SYN.L",
+        published_bar_exchange="LSE",
+        quote_exchange="NYQ",
+        currency="GBP",
+        available_sessions=1,
+        as_of=DATES[-1],
+        points=[],
+    )
+    monkeypatch.setattr(app.state.security_prices, "get", lambda *a, **kw: result)
+    response = TestClient(app).get("/v1/research/SYN.L/prices?interval=60m")
+    assert response.status_code == 404
+
+
+def test_warmed_alias_yields_to_verified_live_quote_after_watchlist_change(bound, monkeypatch):
+    from services.api.tests.test_pinned_listing import base_row, publish, put_watch
+
+    app, initial, _ = bound
+    bare, ticker = "SYN", "SYN.L"
+    source = base_row(app, initial, bare)
+    publish(app, {tools.TECHNICAL: {"rows": [source]}})
+    put_watch(app, ticker, "LSE")
+    put_watch(app, bare, "LSE")
+    client = TestClient(app)
+    assert client.get(f"/v1/research/{ticker}/prices").json()["publishedSeriesId"]
+    app.state.watchlist.remove(bare)
+    live = ResearchPriceSeries(
+        ticker=ticker,
+        published_bar_ticker=ticker,
+        quote_exchange="LSE",
+        currency="GBP",
+        available_sessions=len(source["price_series"]),
+        as_of=DATES[-1],
+        points=source["price_series"],
+    )
+    monkeypatch.setattr(app.state.security_prices, "get", lambda *a, **kw: live)
+    response = client.get(f"/v1/research/{ticker}/prices")
+    assert response.status_code == 200, response.text
+    assert response.json()["observedSeriesId"]

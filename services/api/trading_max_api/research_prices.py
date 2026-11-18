@@ -31,7 +31,8 @@ def verified_provider_claims(ticker: str, series: ResearchPriceSeries) -> tuple[
             symbol,
             {
                 "mic": series.published_bar_mic,
-                "exchange": series.published_bar_exchange or series.quote_exchange,
+                "exchange": series.published_bar_exchange,
+                "exchangeName": series.quote_exchange,
             },
         ),
     )

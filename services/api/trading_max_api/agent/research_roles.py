@@ -399,18 +399,7 @@ class MomentRole(PublishedResearchRole):
             if history and history.index.symbol == ticker:
                 calendar = history.index.calendar
         elif deps.manifest:
-            series = (
-                deps.observed_prices(deps.snapshot_id, ticker, context.published_series_id)
-                if deps.observed_prices
-                else None
-            )
-            if not series and deps.price_series:
-                try:
-                    published = deps.price_series(ticker, deps.manifest, limit=2)
-                    if published.published_series_id == context.published_series_id:
-                        series = published
-                except (FileNotFoundError, ValueError):
-                    pass
+            series = deps.displayed_price_series(ticker, context.published_series_id)
             if series:
                 calendar = series.exchange_calendar
                 ticker = series.published_bar_ticker or series.ticker

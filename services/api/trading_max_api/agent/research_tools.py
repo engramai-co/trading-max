@@ -376,9 +376,11 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
             return read.missing("headline_outside_selected_moment")
         ticker = selected.get("listing") or selected["ticker"]
         published = event.get("publication_date", args.date)
-    if args.published_series_id:
-        # The retained chart already verified this symbol before returning the selected headline.
-        pinned = PinnedListing(ticker, ticker, ticker, ())
+    if args.published_series_id and not args.index_id:
+        series = ctx.deps.displayed_price_series(args.ticker, args.published_series_id)
+        if not series:
+            return read.missing("displayed_price_series_mismatch")
+        pinned = PinnedListing.from_price_series(args.ticker, series)
     else:
         pinned = ctx.deps.selected_listing(ticker)
     ticker = pinned.ticker

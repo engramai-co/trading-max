@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel
 from pydantic_ai import ModelRetry
+from trading_max.infrastructure import SnapshotIntegrityError
 
 from ..dashboard_models import ResearchPriceSeries, ResearchTradeMarker
 from ..index_models import IndexHistory
@@ -86,13 +87,24 @@ class AssistantDeps:
     observed_prices: Callable[[str, str, str], ResearchPriceSeries | None] | None = None
     index_history: Callable[[str, str], IndexHistory | None] | None = None
     role_bindings: ToolBindings | None = None
-
     pin_listing: ListingReader | None = None
 
     def selected_listing(self, ticker: str) -> PinnedListing:
         if self.pin_listing and self.manifest:
             return self.pin_listing(ticker, self.manifest)
         return PinnedListing(ticker, ticker, ticker, ())
+
+    def displayed_price_series(self, ticker: str, identity: str) -> ResearchPriceSeries | None:
+        if self.observed_prices and self.snapshot_id:
+            observed = self.observed_prices(self.snapshot_id, ticker, identity)
+            if observed:
+                return observed
+        if self.price_series and self.manifest:
+            with suppress(FileNotFoundError, ValueError, SnapshotIntegrityError):
+                series = self.price_series(ticker, self.manifest, limit=2)
+                if series.published_series_id == identity:
+                    return series
+        return None
 
     def bound_evidence(self, tool: str) -> dict[str, str | None]:
         """Use string identifiers in links, retaining null to clear an unselected filter."""

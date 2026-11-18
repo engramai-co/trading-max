@@ -635,7 +635,7 @@ class ResearchLedger:
         self._row_cache: SingleFlightCache[tuple, list[JsonObject]] = SingleFlightCache(256)
         self._raw_price_cache: SingleFlightCache[str, JsonObject] = SingleFlightCache(2)
         self._observed_prices: dict[tuple[str, str, str], ResearchPriceSeries] = {}
-        self._price_series_cache: dict[tuple[str, str], ResearchPriceSeries] = {}
+        self._price_series_cache: dict[tuple[str, str, str, bool], ResearchPriceSeries] = {}
         self._history_lock = threading.RLock()
         self._history_signature: tuple[str | None, ...] | None = None
         self._history_manifests_cache: list[SnapshotManifest] = []
@@ -2770,14 +2770,14 @@ class ResearchLedger:
             raise FileNotFoundError(f"ambiguous published fund listing for {ticker}")
         fund_price = pinned.fund_bars
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
-        cache_key = (manifest.run_id, ticker)
-        if cached := self._price_series_cache.get(cache_key):
-            return _visible_price_sessions(cached, limit)
-        raw = {} if fund_price else self._published_technicals(manifest)
         source = pinned.price_row
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")
         bar_ticker = str(source["ticker"]).strip().upper()
+        cache_key = (manifest.run_id, ticker, bar_ticker, fund_price)
+        if cached := self._price_series_cache.get(cache_key):
+            return _visible_price_sessions(cached, limit)
+        raw = {} if fund_price else self._published_technicals(manifest)
         raw_points = source.get("price_series")
         all_points = [
             PriceSeriesPoint.model_validate(point)
