@@ -119,8 +119,11 @@ test.describe("option and rating charts read through the reading card", () => {
       ] } } });
     });
     await page.goto("/research?ticker=AAPL&view=analyst&analystView=ratings");
-    await page.getByText("Historical rating distribution", { exact: true }).click();
+    const history = page.locator("summary").filter({ hasText: "Historical rating distribution" });
     const chart = page.getByRole("group", { name: "Analyst counts by rating category" });
+    await expect(chart).toHaveCount(0);
+    await history.press("Enter");
+    await chart.scrollIntoViewIfNeeded();
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
     const { spoken, shown } = reading(page, chart, isMobile);
     await chart.press("End");
