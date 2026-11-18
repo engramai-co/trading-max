@@ -21,7 +21,7 @@ from trading_max.domain import DomainModel
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 from trading_max.reference import is_fund_instrument
 
-from .calendar import completed_daily_bars
+from .calendar import completed_daily_bars, frame_venue, fx_rate_due, market_calendar
 from .technical import (
     MarketDataError,
     OptionsResearchArtifact,
@@ -76,9 +76,8 @@ def _gbp_benchmark_series(
     """Return an adjusted USD benchmark from a GBP investor's perspective.
 
     ``GBPUSD=X`` is quoted as USD per GBP, so an adjusted USD close is divided
-    by the FX close. Each leg is forward-filled independently across the union
-    of their genuine sessions. This preserves FX-only weekdays without
-    inventing weekend observations or future prices.
+    by the FX close. Carry a confirmed close over that leg's holidays only.
+    A missing observation on a due session stays pending until it is published.
     """
 
     if asset_frame.empty or gbp_usd_frame.empty:
@@ -91,7 +90,28 @@ def _gbp_benchmark_series(
 
     asset = daily_close(asset_frame, "asset_usd")
     fx = daily_close(gbp_usd_frame, "usd_per_gbp")
-    aligned = pd.concat([asset, fx], axis=1, sort=True).sort_index().ffill().dropna()
+    days = asset.index.union(fx.index).sort_values()
+    span = pd.date_range(days[0], days[-1])
+    venue = frame_venue(asset_frame.attrs)
+    if venue.conflict:
+        return []
+    equity_sessions = span
+    if venue.calendar:
+        cal = market_calendar(venue.calendar, days[0].year, days[-1].year)
+        equity_sessions = cal.sessions_in_range(days[0], days[-1])
+
+    def final_observations(observed, due):
+        # Keeping each due date in the index prevents a carry across a missing close.
+        indexed = observed.reindex(observed.index.union(due).sort_values())
+        return indexed.reindex(days, method="ffill")
+
+    aligned = pd.concat(
+        [
+            final_observations(asset, equity_sessions),
+            final_observations(fx, span[fx_rate_due(span)]),
+        ],
+        axis=1,
+    ).dropna()
     aligned = aligned[(aligned["asset_usd"] > 0) & (aligned["usd_per_gbp"] > 0)]
     if aligned.empty:
         return []
@@ -200,7 +220,7 @@ class MarketResearchService:
         for symbol in ("SPY", "QQQ", "SOXX"):
             try:
                 benchmark_closes[symbol] = completed_daily_bars(
-                    histories[symbol].result(), now=now
+                    histories[symbol].result(), now=now, ticker=symbol
                 )["Close"]
             except Exception as exc:
                 benchmark_closes[symbol] = pd.Series(dtype=float, index=pd.DatetimeIndex([]))
@@ -208,7 +228,9 @@ class MarketResearchService:
                     f"{symbol}: relative benchmark unavailable ({type(exc).__name__}: {exc})"
                 )
         try:
-            gbp_usd_frame = histories["GBPUSD=X"].result()
+            gbp_usd_frame = completed_daily_bars(
+                histories["GBPUSD=X"].result(), now=now, ticker="GBPUSD=X"
+            )
         except Exception as exc:
             gbp_usd_frame = pd.DataFrame()
             warnings.append(
@@ -216,7 +238,9 @@ class MarketResearchService:
             )
         for benchmark in ("VOO", "QQQ", "VT"):
             try:
-                frame = histories[benchmark].result()
+                frame = completed_daily_bars(
+                    histories[benchmark].result(), now=now, ticker=benchmark
+                )
                 benchmark_series[benchmark] = _gbp_benchmark_series(
                     frame,
                     gbp_usd_frame,
@@ -244,9 +268,6 @@ class MarketResearchService:
                 )
                 if fund:
                     identified_funds.add(ticker)
-                    if not provider_type:
-                        frame = frame.copy()
-                        frame.attrs["asset_type"] = "ETF"
                 adr = None if fund else self.adr_loader(ticker, frame, requested_period)
                 technical_rows.append(
                     analyze_ticker(

@@ -24,6 +24,7 @@ from trading_max.reference.fund_benchmarks import london_fund_benchmark
 from trading_max.research import TaxonomyCatalog, TaxonomyWorkflowDecision
 from trading_max.research.fund_references import us_fund
 from trading_max.research.held_funds import FUND_PRICE_DIRECTORY_KEY
+from trading_max.research.venues import VenueClaim, watchlist_claims
 
 from .artifacts import ArtifactStore
 from .models import (
@@ -334,7 +335,7 @@ class WatchlistStore:
     def categories(self) -> list[WatchlistCategory]:
         return sorted(self.load().categories, key=lambda item: (item.order, item.id))
 
-    def listing_exchanges(self) -> dict[str, str]:
+    def listing_exchanges(self) -> dict[str, tuple[VenueClaim, ...]]:
         """Capture listing aliases for chart routing without changing workspace state."""
         with self._lock:
             signature = self._path_signature(self.path)
@@ -343,7 +344,12 @@ class WatchlistStore:
             state = self._cache
             if state is None or not self._cache_signature or self._cache_signature[0] != signature:
                 state = WatchlistState.model_validate_json(self.path.read_bytes())
-            return {item.ticker: item.exchange for item in state.items}
+            return {
+                item.ticker: watchlist_claims(
+                    item.ticker, item.exchange, item.bloomberg_ticker, item.exchange_source
+                )
+                for item in state.items
+            }
 
     def items(self) -> list[WatchlistItem]:
         state = self.load()
@@ -388,6 +394,7 @@ class WatchlistStore:
                 ticker=ticker,
                 name=security.name.strip() or ticker,
                 exchange=security.exchange.strip() or "US",
+                exchange_source=security.exchange_source if security.exchange.strip() else "market",
                 bloomberg_ticker=(security.bloomberg_ticker.strip() or f"{ticker} US Equity"),
                 figi=security.figi.strip(),
                 composite_figi=security.composite_figi.strip(),
@@ -444,6 +451,9 @@ class WatchlistStore:
                         ticker=ticker,
                         name=security.name.strip() or ticker,
                         exchange=security.exchange.strip() or "US",
+                        exchange_source=security.exchange_source
+                        if security.exchange.strip()
+                        else "market",
                         bloomberg_ticker=(
                             security.bloomberg_ticker.strip() or f"{ticker} US Equity"
                         ),
@@ -746,6 +756,7 @@ class SecuritySearchService:
                 ticker=item.ticker,
                 name=item.name,
                 exchange=item.exchange,
+                exchange_source=item.exchange_source,
                 bloomberg_ticker=item.bloomberg_ticker,
                 figi=item.figi,
                 composite_figi=item.composite_figi,
@@ -915,6 +926,7 @@ class SecuritySearchService:
                         ticker=ticker,
                         name=str(raw.get("name") or ticker).strip(),
                         exchange=str(raw.get("exchCode") or "US"),
+                        exchange_source="openfigi" if raw.get("exchCode") else "market",
                         bloomberg_ticker=f"{ticker} US Equity",
                         figi=figi,
                         composite_figi=composite_figi,

@@ -964,7 +964,7 @@ def test_held_fund_refresh_publishes_scored_technical_rows_without_equity_data(
         }
         assert technical_rows["BE"]["technical_score"] == 65
         technical = technical_rows["SYNFUND.L"]
-        assert technical["asset_type"] == "ETF"
+        assert not technical["asset_type"] and result["asset_type"] is None
         assert technical["technical_score"] is not None
         assert technical["price_series"] == result["price_series"]
         from services.api.trading_max_api.analysis_context import AnalysisContextBuilder

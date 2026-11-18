@@ -15,6 +15,7 @@ import { useAllocationChartColours } from "@/ui/charts/palette";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Holding } from "@/lib/types";
+import { quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
@@ -320,15 +321,11 @@ function Positions() {
                               <td className="mx-align-right">
                                 {currency(h.costGbp, "GBP", 2)}
                                 <small>
-                                  {currency(
-                                    h.dilutedCostPerShareNative,
-                                    h.dilutedCostCurrency,
-                                    2,
-                                  )}
+                                  {quoteValue(h.dilutedCostPerShareNative, h.dilutedCostCurrency)}
                                 </small>
                               </td>
                               <td className="mx-align-right">
-                                {currency(h.currentPrice, h.priceCurrency, 2)}
+                                {quoteValue(h.currentPrice, h.priceCurrency)}
                                 {snapshotBasis(h)}
                               </td>
                               <td className="mx-align-right">
@@ -454,7 +451,7 @@ function Positions() {
                           </span>
                           <span>
                             {t("报价", "Price")}{" "}
-                            {currency(h.currentPrice, h.priceCurrency, 2)}
+                            {quoteValue(h.currentPrice, h.priceCurrency)}
                             {snapshotBasis(h)}
                           </span>
                         </footer>

@@ -39,6 +39,17 @@ async function boundedBody(
  * compression. Closing the browser request aborts the backend run.
  */
 export async function proxyAssistantChat(request: Request, path = "/v1/assistant/chat"): Promise<Response> {
+  const incoming = new URL(request.url);
+  const query = new URLSearchParams();
+  for (const key of FORWARDED_QUERY) {
+    const value = incoming.searchParams.get(key);
+    if (value) query.set(key, value);
+  }
+  const suffix = query.size ? `?${query}` : "";
+  return proxyAssistantStream(request, path + suffix, "text/event-stream");
+}
+
+export async function proxyAssistantStream(request: Request, path: string, accept: string): Promise<Response> {
   if (!backendUrl()) return backendUnavailable();
   const body = await boundedBody(request, ASSISTANT_MAX_REQUEST_BYTES);
   if (body === null) {
@@ -47,19 +58,12 @@ export async function proxyAssistantChat(request: Request, path = "/v1/assistant
       { status: 413, headers: PRIVATE_JSON_HEADERS },
     );
   }
-  const incoming = new URL(request.url);
-  const query = new URLSearchParams();
-  for (const key of FORWARDED_QUERY) {
-    const value = incoming.searchParams.get(key);
-    if (value) query.set(key, value);
-  }
-  const suffix = query.size ? `?${query}` : "";
   let upstream: Response;
   try {
-    upstream = await backendFetch(path + suffix, {
+    upstream = await backendFetch(path, {
       method: "POST",
       body,
-      headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+      headers: { "Content-Type": "application/json", Accept: accept },
       signal: request.signal,
     });
   } catch (error) {

@@ -59,6 +59,9 @@ class SparkSeries:
     session_start: int | None = None
     source: str = YAHOO_SOURCE
     granularity: str | None = None
+    mic: str | None = None
+    exchange_name: str | None = None
+    full_exchange_name: str | None = None
 
 
 def _yahoo_get(url: str, params: dict[str, str], timeout: float) -> SparkResponse:

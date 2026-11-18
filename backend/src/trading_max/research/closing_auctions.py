@@ -110,8 +110,56 @@ _RULES = {
 _VERIFIED_FROM = {"XHKG": date(2019, 10, 8), "XASX": date(2025, 6, 23), "XWBO": date(2019, 5, 2)}
 
 
+# https://www.wienerborse.at/en/trading/trading-information/trading-hours/
+# https://www.wienerborse.at/uploads/u/cms/files/trading/xetra-t7-detailed-specifications-market-models.pdf
+def _vienna_windows(rule, product, segment, close_time):
+    segment = " ".join(str(segment or "").lower().split())
+    if segment in {"global market", "gmc1", "gmc2", "gmc3"}:
+        return [rule.etf] if product != "ETF" else []
+    if segment in {
+        "atx",
+        "ctp",
+        "ctd",
+        "dipc",
+        "dimc",
+        "prime market",
+        "standard market continuous",
+        "direct market continuous",
+        "direct market plus continuous",
+    }:
+        return [rule.equity] if product != "ETF" else []
+    if segment in {"etf", "etf2"} or (
+        product == "ETF" and segment == "continuous trading with auctions"
+    ):
+        return [rule.etf] if product != "EQUITY" else []
+    continuous = [rule.etf] if product == "ETF" else [rule.equity, rule.etf]
+    if segment == "continuous trading with auctions":
+        return continuous
+    # Full-day auction-only segments uncross at 13:30:00–13:30:30.
+    # No shortened auction-only schedule is registered.
+    if close_time != time(17, 30):
+        return []
+    auction = (-14_400, -14_370)
+    if segment in {
+        "auction",
+        "auction only",
+        "standard market auction",
+        "direct market auction",
+        "direct market plus auction",
+        "foao",
+        "aod",
+        "aof",
+        "aonc",
+        "dipa",
+        "dima",
+        "diqi",
+    }:
+        return [auction]
+    return [*continuous, auction]
+
+
 def headline_session(
-    name: str | None, stamp: datetime, asset_type: str | None
+    name: str | None, stamp: datetime, asset_type: str | None, *, segment: str | None = None
 ) -> tuple[str | None, str | None]:
     """Assign a timed lead to its listing's session and disclose a random closing window."""
     if name not in _RULES:
@@ -129,10 +177,18 @@ def headline_session(
         product = str(asset_type or "").strip().upper()
         if product in {"ETF", "EQUITY"}:
             windows = [rule.etf or rule.equity] if product == "ETF" else [rule.equity]
+        elif product == "FUND":
+            if rule.etf is not None and rule.etf != rule.equity:
+                return None, None
+            windows = [rule.equity]
         elif not product or product == "UNKNOWN":
             windows = [rule.equity, rule.etf or rule.equity]
         else:
             return None, None
+        if name == "XWBO":
+            windows = _vienna_windows(rule, product, segment, close.tz_convert(exchange.tz).time())
+            if not windows:
+                return None, None
         if session.date() != day:
             return session.date().isoformat(), None
         seconds = (stamp - close).total_seconds()

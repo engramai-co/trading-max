@@ -42,7 +42,7 @@ describe("option charts read through the reading card", () => {
 
     it("keys every gamma reading row with its own line's stroke (" + scheme + ")", () => {
       const series = gammaSeries(colours, gammaLines.slice(0, 4));
-      const reading = gammaReading(colours, gammaLines.slice(0, 4), 200, "en")!;
+      const reading = gammaReading(colours, gammaLines.slice(0, 4), 200, "en", "USD")!;
       const rows = [reading.primary!, ...reading.groups![0]];
       expect(rows.map((row) => row.label)).toEqual(gammaLines.slice(0, 4).map((line) => line.name));
       for (const row of rows) {
@@ -93,9 +93,9 @@ describe("option charts read through the reading card", () => {
   });
 
   it("reads one expiration without a label and names the spot as the axis does", () => {
-    const reading = gammaReading(chartColours, gammaLines.slice(0, 1), 180, "en")!;
+    const reading = gammaReading(chartColours, gammaLines.slice(0, 1), 180, "en", "USD")!;
     expect(reading).toEqual({ time: "180.00", primary: { value: "−1.235bn" } });
-    expect(gammaReading(chartColours, gammaLines.slice(0, 1), 190, "en")).toBeNull();
+    expect(gammaReading(chartColours, gammaLines.slice(0, 1), 190, "en", "USD")).toBeNull();
   });
 
   it("tells apart net gamma the axis rounds together, with the typographic minus", () => {
@@ -124,7 +124,7 @@ describe("option charts read through the reading card", () => {
     expect(payoffReading("到期标的价", 87.125, -250, "USD"))
       .toEqual({ time: "到期标的价 87.13", primary: { value: "−250.00", tone: "down" } });
     expect(payoffReading("Underlying at expiry", 100, 0.001, "USD").primary).toEqual({ value: "0.00", tone: undefined });
-    for (const reading of [gammaReading(chartColours, gammaLines, 220, "zh"), payoffReading("x", 1, 1, "USD")]) {
+    for (const reading of [gammaReading(chartColours, gammaLines, 220, "zh", "USD"), payoffReading("x", 1, 1, "USD")]) {
       expect(JSON.stringify(reading)).not.toMatch(ISO);
       expect(JSON.stringify(reading)).not.toMatch(/series\d/);
     }

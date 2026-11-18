@@ -1296,7 +1296,17 @@ def test_timed_news_requires_a_known_exchange_and_observes_early_closes(bound, m
 
     def events(calendar):
         result, _, issues = ins.dated_events(
-            read, args, set(), series.model_copy(update={"exchange_calendar": calendar})
+            read,
+            args,
+            set(),
+            series.model_copy(
+                update={
+                    "exchange_calendar": calendar,
+                    "published_bar_exchange": calendar,
+                    "published_bar_mic": None,
+                    "venue_claims": (),
+                }
+            ),
         )
         return {e["reference"]: e["date"] for e in result}, issues
 
@@ -1603,7 +1613,9 @@ def test_relative_daily_range_uses_returns_lens_calendar(bound):
 
 
 @pytest.mark.parametrize(("requested", "published"), [("SYN", "SYN.L"), ("SYN.L", "SYN")])
-@pytest.mark.parametrize(("us", "london"), [("NYSE", "LSE"), ("UN", "LN"), ("US", "LN")])
+@pytest.mark.parametrize(
+    ("us", "london"), [("NYSE", "LSE"), ("UN", "LN"), ("US", "LN"), ("US", "US")]
+)
 def test_missing_chart_cannot_borrow_a_known_other_venue(
     bound, monkeypatch, requested, published, us, london
 ):
@@ -1724,7 +1736,7 @@ def test_evening_headline_uses_observed_german_venue(bound, venue, session):
                 {
                     "ticker": ticker,
                     "metrics": {
-                        "fullExchangeName": "XETRA",
+                        "fullExchangeName": "Frankfurt" if venue == "FRA" else "XETRA",
                         "exchangeTimezoneName": "Europe/Berlin",
                     },
                 }
@@ -1753,6 +1765,8 @@ def test_evening_headline_uses_observed_german_venue(bound, venue, session):
 @pytest.mark.parametrize(
     ("symbol", "name"),
     [
+        ("SYN", "NYSE"),
+        ("SYN.L", "LSE"),
         ("SYN", "Irish"),
         ("SYN", "Taiwan"),
         ("SYN", "KSE"),
@@ -1847,7 +1861,12 @@ def test_headlines_disclose_closing_auction_uncertainty(
     args = ins.MomentsArgs(scope="invest", ticker="TEST", start=day, end=after)
     read = tools._Read(deps, "price_key_moments", args, args.scope)
     series = deps.price_series("TEST", deps.manifest).model_copy(
-        update={"exchange_calendar": mic, "published_bar_exchange": mic}
+        update={
+            "exchange_calendar": mic,
+            "published_bar_exchange": mic,
+            "venue_claims": (),
+            "published_bar_segment": "prime market" if kind == "EQUITY" else "ETF2",
+        }
     )
     news = {
         "securities": {
@@ -1884,7 +1903,21 @@ def test_headlines_disclose_closing_auction_uncertainty(
     }
 
 
-def test_pinned_fund_bars_choose_the_etf_auction_with_no_fundamentals(bound):
+@pytest.mark.parametrize(
+    ("published", "fundamental", "expected"),
+    [
+        ("ETF", None, True),
+        (None, "ETF", True),
+        (None, "MUTUALFUND", False),
+        ("ETF", "MUTUALFUND", False),
+        ("MUTUALFUND", "ETF", False),
+        (None, None, False),
+    ],
+)
+@pytest.mark.parametrize("metadata", ["metrics", "info"])
+def test_pinned_fund_auction_uses_verified_product(
+    bound, published, fundamental, expected, metadata
+):
     app, initial, _ = bound
     store = app.state.store
     day = DATES[-3]
@@ -1900,8 +1933,18 @@ def test_pinned_fund_bars_choose_the_etf_auction_with_no_fundamentals(bound):
     }
     payloads = {
         FUND_PRICES_KEY: {
-            "rows": [{"ticker": ticker, "currency": "EUR", "mic": "XWBO", "price_series": points}]
+            "rows": [
+                {
+                    "ticker": ticker,
+                    "currency": "EUR",
+                    "mic": "XWBO",
+                    "asset_type": published,
+                    "market_segment": "ETF2",
+                    "price_series": points,
+                }
+            ]
         },
+        tools.FUNDAMENTALS: {"rows": [{"ticker": ticker, metadata: {"quoteType": fundamental}}]},
         NEWS_KEY: {"securities": {ticker: {"items": [article], "as_of": day}}},
     }
     manifest = republish(
@@ -1917,6 +1960,9 @@ def test_pinned_fund_bars_choose_the_etf_auction_with_no_fundamentals(bound):
         .json()
     )
     events = [event for row in reading["data"]["items"] for event in row["events"]]
+    if not expected:
+        assert not events and "listing_calendar_unavailable" in reading["quality"]["issues"]
+        return
     assert events == [
         {
             "date": day,
@@ -1926,3 +1972,133 @@ def test_pinned_fund_bars_choose_the_etf_auction_with_no_fundamentals(bound):
             "timing": "closing_auction_window",
         }
     ]
+
+
+@pytest.mark.parametrize(
+    ("ticker", "row", "metrics"),
+    [
+        ("SYN", {"mic": "XNYS", "exchange": "LSE"}, {}),
+        ("SYN.F", {}, {"fullExchangeName": "XETRA"}),
+    ],
+)
+def test_conflicting_pinned_claims_block_chart_and_lead(bound, monkeypatch, ticker, row, metrics):
+    app, initial, _ = bound
+    store = app.state.store
+    day = DATES[-3]
+    base = store.read_json(initial.run_id, tools.TECHNICAL)["rows"][0]
+    article = {
+        "id": "lead",
+        "title": "Synthetic",
+        "publisher": "Wire",
+        "date": day,
+        "url": "https://example.test/lead",
+        "instant": day + "T18:00:00Z",
+    }
+    payloads = {
+        tools.TECHNICAL: {"rows": [{**base, "ticker": ticker, "exchange": None, **row}]},
+        tools.FUNDAMENTALS: {"rows": [{"ticker": ticker, "metrics": metrics}]},
+        NEWS_KEY: {"securities": {ticker: {"items": [article], "as_of": day}}},
+    }
+    manifest = republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in payloads.items()},
+    )
+    client = TestClient(app)
+    monkeypatch.setattr(
+        app.state.security_prices,
+        "get",
+        lambda *a, **kw: pytest.fail("conflict attempted live fallback"),
+    )
+    result = client.get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={"ticker": ticker, "scope": "cfd", "start": DATES[0], "end": DATES[-1]},
+    ).json()
+    assert "listing_calendar_unavailable" in result["quality"]["issues"]
+    from services.api.trading_max_api.agent.events import EventArgs, event_data
+
+    deps = app.state.assistant.deps_for_run(None, None)
+    for upcoming in (True, False):
+        calendar = event_data(
+            deps,
+            EventArgs(scope="cfd", ticker=ticker, start=DATES[0], end=DATES[-1]),
+            upcoming=upcoming,
+        )
+        assert "listing_calendar_unavailable" in calendar["quality"]["issues"]
+        assert not any(
+            e["kind"] in {"news", "dividend", "dividend_pay", "ex_dividend"}
+            for e in calendar["data"]["items"]
+        )
+    assert client.get(f"/v1/research/{ticker}/prices").status_code == 404
+
+
+def test_held_fund_route_preserves_original_requested_listing(bound, monkeypatch):
+    from trading_max.research.held_funds import FundListingIdentity
+
+    app, initial, _ = bound
+    store = app.state.store
+    points = store.read_json(initial.run_id, tools.TECHNICAL)["rows"][0]["price_series"]
+    key = FUND_PRICES_KEY
+    fund = FundListingIdentity("SYNTH", "XLON", "SYN", "SYN.L", "LSE")
+    monkeypatch.setattr(app.state.research, "_held_funds", lambda m: {fund: {}})
+    republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_json(
+                key=key,
+                payload={
+                    "rows": [
+                        {
+                            "ticker": "SYN.L",
+                            "isin": "SYNTH",
+                            "mic": "XLON",
+                            "exchange": "LSE",
+                            "currency": "GBP",
+                            "price_series": points,
+                        }
+                    ]
+                },
+            )
+        },
+    )
+    app.state.watchlist.add(
+        SecuritySearchResult(
+            ticker="SYN", name="Synthetic", exchange="UN", bloomberg_ticker="", figi=""
+        )
+    )
+
+    def missing(ticker, *a, **kw):
+        assert ticker == "SYN"
+        raise ValueError("no synthetic bars")
+
+    monkeypatch.setattr(app.state.security_prices, "get", missing)
+    client = TestClient(app)
+    assert client.get("/v1/research/SYN.L/prices").status_code == 200
+    assert client.get("/v1/research/SYN/prices").status_code == 404
+
+
+@pytest.mark.parametrize("upcoming", [True, False])
+def test_news_diagnostics_cannot_overwrite_the_feeds_listing(bound, upcoming):
+    from services.api.trading_max_api.agent.events import EventArgs, event_data
+
+    app, _, _ = bound
+    store = app.state.store
+    ticker = "SYN"
+    date = DATES[-3]
+    source = {"ticker": ticker, "mic": "XLON", "as_of": date, "items": []}
+    status = {"ticker": ticker, "mic": "XNYS", "as_of": date}
+    publications = {
+        NEWS_KEY: {"securities": {ticker: source}},
+        NEWS_STATUS_KEY: {"securities": {ticker: status}},
+        tools.EARNINGS: {"rows": [{"ticker": ticker, "calendar": {"Ex-Dividend Date": date}}]},
+    }
+    republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in publications.items()},
+    )
+    result = event_data(
+        app.state.assistant.deps_for_run(None, None),
+        EventArgs(scope="cfd", ticker=ticker, start=DATES[0], end=DATES[-1]),
+        upcoming=upcoming,
+    )
+    assert "listing_calendar_unavailable" in result["quality"]["issues"]
+    assert not any(row.get("ticker") == ticker for row in result["data"]["items"])

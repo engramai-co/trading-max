@@ -7,6 +7,12 @@ import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } f
 
 const zh = (text: string) => text;
 describe("QA financial value regressions", () => {
+  it.each([
+    [3100, "GBp", "£31.00"], [3100, "GBX", "£31.00"],
+    [31, "GBP", "£31.00"], [31, "USD", "US$31.00"], [31, "EUR", "€31.00"],
+  ] as const)("formats %d %s as %s", (amount, unit, expected) => {
+    expect(quoteValue(amount, unit)).toBe(expected);
+  });
   it("keeps amount, ratio and holding duration units distinct", () => {
     expect(behaviorObservation("buy_notional_during_money_drawdown_gbp", 1234.56, zh).value).toBe("£1,234.56");
     expect(behaviorObservation("best_trade_dependence", 0.123, zh).value).toBe("12.3%");
@@ -24,9 +30,9 @@ describe("QA financial value regressions", () => {
     expect(statementUnit("Diluted Average Shares")).toBe("shares");
     expect(statementUnit("Ordinary Shares Number")).toBe("shares");
     expect(statementValue(null, "Tax Rate For Calcs", true)).toBe("—");
-    expect(quoteValue(100, "GBP", "未知币种")).toBe("£100.00");
-    expect(quoteValue(100, "USD", "未知币种")).toBe("US$100.00");
-    expect(quoteValue(100, "", "未知币种")).toBe("100 · 未知币种");
+    expect(quoteValue(100, "GBP", { unknownLabel: "未知币种" })).toBe("£100.00");
+    expect(quoteValue(100, "USD", { unknownLabel: "未知币种" })).toBe("US$100.00");
+    expect(quoteValue(100, "", { unknownLabel: "未知币种" })).toBe("未知币种");
   });
   it("trims unrelated account history without deleting zeroes or internal gaps", () => {
     const rows = [

@@ -14,6 +14,9 @@ from pydantic_ai import ModelRetry
 
 from ..dashboard_models import ResearchPriceSeries
 from ..models import SnapshotManifest
+from ..research_listing import PinnedListing
+
+ListingReader = Callable[[str, SnapshotManifest], PinnedListing]
 
 AccountScope = Literal["invest", "isa", "broker_total", "household", "cfd"]
 ALL_ACCOUNT_SCOPES: frozenset[AccountScope] = frozenset(
@@ -74,6 +77,9 @@ class AssistantDeps:
     page_hint: str | None = None
     captured_at: datetime | None = None
     price_series: PublishedPriceReader | None = None
+
+    pin_listing: ListingReader | None = None
+    listing_error: str | None = None
     role_bindings: ToolBindings | None = None
 
     def bound_evidence(self, tool: str) -> dict[str, str | None]:
@@ -100,7 +106,7 @@ class AssistantDepsFactory:
     store: AssistantSnapshotSource
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
-    bind_price_series: Callable[[], PublishedPriceReader] | None = None
+    bind_price_series: Callable[[], tuple[PublishedPriceReader, ListingReader]] | None = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
@@ -109,13 +115,19 @@ class AssistantDepsFactory:
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
         price_series = None
+        pin_listing = None
+        listing_error = None
         if self.bind_price_series is not None:
             # An unreadable watchlist prevents safe chart routing for this run.
             # The other tools read their own immutable snapshot artifacts.
-            with suppress(OSError, ValueError):
-                price_series = self.bind_price_series()
+            try:
+                price_series, pin_listing = self.bind_price_series()
+            except (OSError, ValueError):
+                listing_error = "watchlist_routing_unavailable"
         return AssistantDeps(
             price_series=price_series,
+            pin_listing=pin_listing,
+            listing_error=listing_error,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

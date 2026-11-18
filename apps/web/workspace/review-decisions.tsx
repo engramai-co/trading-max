@@ -1,5 +1,7 @@
 "use client";
 
+import { quoteValue } from "./financial-values";
+
 import { CloseButton, Popover } from "@mantine/core";
 import { ArrowUpRight } from "@phosphor-icons/react";
 import {
@@ -672,8 +674,8 @@ export function RoundTrips({ data }: { data: AccountDecisions }) {
       ),
     },
     { label: t("股数", "Shares"), value: (row: RoundTrip) => row.matchedQuantity.toLocaleString(locale === "zh" ? "zh-CN" : "en-GB", { maximumFractionDigits: 4 }), numeric: true },
-    { label: t("买入均价", "Average buy"), value: (row: RoundTrip) => currency(row.buyAverageGbp, "GBP", 2), numeric: true },
-    { label: t("卖出均价", "Average sell"), value: (row: RoundTrip) => currency(row.sellAverageGbp, "GBP", 2), numeric: true },
+    { label: t("买入均价", "Average buy"), value: (row: RoundTrip) => quoteValue(row.buyAverageGbp, "GBP"), numeric: true },
+    { label: t("卖出均价", "Average sell"), value: (row: RoundTrip) => quoteValue(row.sellAverageGbp, "GBP"), numeric: true },
     { label: t("结果", "Result"), value: (row: RoundTrip) => <span className={"mx-" + tone(row.resultGbp)}>{signedMoney(row.resultGbp, 2)}</span>, numeric: true },
     { label: t("当日价差上限", "Day's range"), value: (row: RoundTrip) => (row.rangeGbp == null ? "—" : currency(row.rangeGbp, "GBP", 2)), numeric: true },
   ];

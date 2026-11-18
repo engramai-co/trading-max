@@ -1,14 +1,10 @@
 """Issuer-verified US ETF references, keyed by the UCITS share-class ISIN."""
 
-from typing import Literal
+from typing import Literal, Protocol
 
 from trading_max.domain import DomainModel
 
-from .held_funds import FundListingIdentity
-
-US_MARKETS = frozenset(
-    {"US", "XNYS", "XNAS", "ARCX", "BATS", "BZX", "NYSE", "NASDAQ", "NMS", "NYQ", "PCX"}
-)
+from .venues import VenueClaim, resolve_venue, watchlist_claim
 
 
 class USFund(DomainModel):
@@ -165,9 +161,15 @@ def fund_peers(isin: str | None) -> tuple[USFundPeer, ...]:
     return _PEERS.get((isin or "").upper(), ())
 
 
-def us_fund_listing(listing: FundListingIdentity) -> bool:
-    return listing.ticker == listing.symbol and (
-        listing.mic in US_MARKETS
-        or listing.exchange in US_MARKETS
-        or (not listing.mic and listing.isin.startswith("US"))
-    )
+class _Listing(Protocol):
+    ticker: str
+    mic: str
+    exchange: str
+
+
+def us_fund_listing(listing: _Listing) -> bool:
+    return resolve_venue(
+        listing.ticker,
+        VenueClaim("mic", listing.mic),
+        watchlist_claim(listing.ticker, listing.exchange),
+    ).us_listing

@@ -256,6 +256,7 @@ def valuation_rows(raw: JsonObject) -> list[JsonObject]:
                 "asOf": str(row.get("as_of") or raw.get("as_of") or ""),
                 "currency": str(row.get("currency") or row.get("ccy") or ""),
                 "spot": spot,
+                "spotAsOf": row.get("spot_as_of"),
                 "ev5": ev5,
                 "ev10": ev10,
                 "analystMedian": nullable_number(row.get("med")),

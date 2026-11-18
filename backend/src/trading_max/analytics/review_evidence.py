@@ -15,7 +15,6 @@ from typing import Literal
 import pandas as pd
 from pydantic import Field
 
-from trading_max.analytics.decision_prices import _rate_due
 from trading_max.analytics.historical_nav import (
     CASH_RECONCILIATION_RELATIVE_TOLERANCE,
     CASH_RECONCILIATION_TOLERANCE_GBP,
@@ -23,7 +22,7 @@ from trading_max.analytics.historical_nav import (
     _nominal_close,
 )
 from trading_max.domain import DomainModel
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import frame_venue, fx_rate_due, market_calendar
 
 SESSION_MOVE_SHARE = 0.05
 SESSION_MOVE_VOLATILITY_MULTIPLE = 2.5
@@ -162,7 +161,7 @@ def _column(frame: pd.DataFrame, name: str) -> pd.Series:
 class _ListingMarks:
     def __init__(self, listing: ReviewListing, start: pd.Timestamp, end: pd.Timestamp):
         self.listing = listing
-        calendar = listing_calendar(listing.symbol, listing.frame.attrs.get("exchange"), None)
+        calendar = frame_venue(listing.frame.attrs, listing.symbol).calendar
         equivalent = listing.quote_currency == listing.listing_currency or {
             listing.quote_currency,
             listing.listing_currency,
@@ -200,7 +199,7 @@ class _ListingMarks:
 class _FxMarks:
     def __init__(self, frames: Mapping[str, pd.DataFrame], start: pd.Timestamp, end: pd.Timestamp):
         days = pd.date_range(start, end)
-        due = days[_rate_due(days)]
+        due = days[fx_rate_due(days)]
         self.days = list(due)
         self.available_at = list(due.tz_localize("UTC") + _DAY - _TICK)
         self.rates = {code: _column(frame, "Close") for code, frame in frames.items()}

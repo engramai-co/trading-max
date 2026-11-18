@@ -19,9 +19,10 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 from trading_max.reference.quote_units import major_quote_unit
-from trading_max.research.calendar import completed_daily_bars, completed_months
+from trading_max.research.calendar import completed_daily_bars, completed_months, frame_venue
 from trading_max.research.option_terms import contract_terms, treasury_rate
 from trading_max.research.technical_scoring import technical_score
+from trading_max.research.venues import resolve_venue, row_claims, yahoo_venue_metadata
 
 
 class MarketDataError(RuntimeError):
@@ -52,6 +53,8 @@ class TechnicalResearchArtifact(DomainModel):
     year_paths: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     price_series: list[dict[str, Any]] = Field(default_factory=list)
     asset_type: str = ""
+    market_segment: str | None = None
+    provider_venue: dict[str, str] = Field(default_factory=dict)
     exchange: str = ""
     timezone: str = ""
     technical_score: int | None = Field(default=None, ge=0, le=100)
@@ -65,6 +68,7 @@ class OptionsResearchArtifact(DomainModel):
     ticker: str
     yf_ticker: str
     spot: float
+    provider_venue: dict[str, str] = Field(default_factory=dict)
     captured_at: datetime
     expiry_count: int = Field(ge=0)
     expiry_range: list[str]
@@ -273,10 +277,21 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     frame = frame[required + [c for c in ("Dividends", "Stock Splits") if c in frame]].copy()
     frame = frame[~frame.index.duplicated(keep="last")]
     metadata = security.get_history_metadata() or {}
+    published = str(metadata.get("symbol") or ticker).upper()
+    if (
+        published != ticker.upper()
+        or resolve_venue(ticker, *row_claims(published, metadata)).conflict
+    ):
+        raise MarketDataError("price provider returned conflicting listing evidence")
     quote_currency = str(metadata.get("currency") or "")
     # Provider GBp/GBX prices are pence. Normalize every OHLC column together.
     currency, divisor = major_quote_unit(quote_currency)
-    frame.attrs["exchange"] = str(metadata.get("exchangeName") or "")
+    frame.attrs["ticker"] = ticker
+    frame.attrs["provider_venue"] = yahoo_venue_metadata(metadata)
+    frame.attrs["market_segment"] = metadata.get("marketSegment")
+    frame.attrs["exchange"] = str(
+        metadata.get("exchangeName") or metadata.get("fullExchangeName") or ""
+    )
     frame.attrs["timezone"] = str(metadata.get("exchangeTimezoneName") or "")
     frame.attrs["currency"] = currency
     frame.attrs["asset_type"] = str(metadata.get("instrumentType") or "")
@@ -492,8 +507,11 @@ def analyze_ticker(
 ) -> TechnicalResearchArtifact:
     """Calculate all deterministic technical indicators for one security."""
 
+    if frame_venue(frame.attrs, yf_ticker).conflict:
+        raise MarketDataError(f"{label}: conflicting history listing")
     asset_type = str(frame.attrs.get("asset_type") or "").upper()
-    frame = completed_daily_bars(frame, now=pd.Timestamp.now(tz="UTC"))
+    frame = completed_daily_bars(frame, now=pd.Timestamp.now(tz="UTC"), ticker=yf_ticker)
+    frame.attrs["ticker"] = yf_ticker
     if frame.empty:
         raise MarketDataError(f"no completed daily bars for {label}")
     close = frame["Close"].astype(float)
@@ -638,6 +656,8 @@ def analyze_ticker(
     score, state = technical_score(metrics)
     metrics["technical_score"] = score
     metrics["technical_state"] = state
+    metrics["provider_venue"] = frame.attrs.get("provider_venue") or {}
+    metrics["market_segment"] = frame.attrs.get("market_segment")
     metrics["asset_type"] = asset_type
     metrics["exchange"] = str(frame.attrs.get("exchange") or "")
     metrics["timezone"] = str(frame.attrs.get("timezone") or "")
@@ -1000,7 +1020,20 @@ def analyze_options(
 
     security = yf.Ticker(yf_ticker)
     captured = datetime.now(UTC)
+    claims = []
+
+    def observed_underlying(raw):
+        if not isinstance(raw, Mapping) or not raw.get("symbol"):
+            raise MarketDataError(f"{label}: option underlying is unavailable")
+        claims.extend(row_claims(yf_ticker, raw))
+        if resolve_venue(yf_ticker, *claims).conflict:
+            raise MarketDataError(f"{label}: conflicting option underlying")
+        return yahoo_venue_metadata(
+            {**raw, "exchangeName": raw.get("exchangeName") or raw.get("exchange")}
+        )
+
     info = security.info
+    underlying = observed_underlying(info)
     rate = treasury_rate(captured.date().isoformat())
     raw_yield = info.get("trailingAnnualDividendYield")
     dividend_yield = (
@@ -1008,7 +1041,7 @@ def analyze_options(
     )
     terms = {
         "captured_at": captured,
-        "underlying": yf_ticker,
+        "underlying": underlying["symbol"],
         "asset_type": str(info.get("quoteType") or ""),
         "exchange": str(info.get("exchange") or ""),
         "currency": info.get("currency"),
@@ -1031,12 +1064,14 @@ def analyze_options(
     contracts: list[pd.DataFrame] = []
     for expiry_date, raw_expiry in expiries:
         chain = security.option_chain(raw_expiry)
+        expiry_underlying = observed_underlying(getattr(chain, "underlying", None))
         calls = _clean_contracts(chain.calls, "call", expiry_date, **terms)
         puts = _clean_contracts(chain.puts, "put", expiry_date, **terms)
         options = pd.concat([calls, puts], ignore_index=True)
         if options.empty:
             continue
-        expiry_rows.append(_expiry_summary(options, raw_expiry, spot, captured_at=captured))
+        summary = _expiry_summary(options, raw_expiry, spot, captured_at=captured)
+        expiry_rows.append({**summary, "provider_venue": expiry_underlying})
         options["expiry"] = raw_expiry
         contracts.append(options)
     if not contracts:
@@ -1048,7 +1083,8 @@ def analyze_options(
     profile, flip = _gamma_profile(all_options, spot)
     return OptionsResearchArtifact(
         ticker=label,
-        yf_ticker=yf_ticker,
+        yf_ticker=underlying["symbol"],
+        provider_venue=underlying,
         spot=_finite(spot, 2) or spot,
         captured_at=captured,
         currency=info.get("currency"),

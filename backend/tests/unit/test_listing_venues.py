@@ -1,0 +1,154 @@
+from itertools import combinations_with_replacement, product
+
+import pytest
+from trading_max.research.venues import VenueClaim, resolve_venue
+
+
+def test_all_pairs_of_claims_agree_conflict_or_are_missing_for_one_or_two_listings():
+    # Each column names the same venue in the source's own namespace. The two
+    # broad claims describe the whole market, so neither implies a calendar.
+    values = {
+        "symbol": ("SYN.F", "SYN.T"),
+        "mic": ("XFRA", "XTKS"),
+        "yahoo": ("FRA", "JPX"),
+        "fundamentals": ("Frankfurt", "Tokyo"),
+        "openfigi": ("GF", "JT"),
+        "name": ("Frankfurt Stock Exchange", "Tokyo Stock Exchange"),
+        "region": ("GR", "JP"),
+        "market": ("GR", "JP"),
+    }
+    markets = ({"XFRA", "XETR"}, {"XTKS", "XOSE"})
+    exact = ({"XFRA"}, {"XTKS"})
+    for left, right in combinations_with_replacement(values, 2):
+        for a, b, observed in product((0, 1, None), (0, 1, None), ("SYN", "ALIAS")):
+            entries = [(left, a, "SYN"), (right, b, observed)]
+            claims = [
+                VenueClaim(kind, values[kind][idx] if idx is not None else None, owner)
+                for kind, idx, owner in entries
+            ]
+            owners_with_evidence = {
+                owner for kind, idx, owner in entries if idx is not None and kind != "market"
+            }
+            applicable = [
+                (markets if kind in {"market", "region"} else exact)[idx]
+                for kind, idx, owner in entries
+                if idx is not None and (kind != "market" or owner not in owners_with_evidence)
+            ]
+            venues = set.intersection(*applicable) if applicable else set()
+            has_exact = any(
+                idx is not None and kind not in {"market", "region"} for kind, idx, _ in entries
+            )
+            calendar = next(iter(venues)) if venues and has_exact else None
+            for pair in (claims, claims[::-1]):
+                result = resolve_venue("SYN", *pair)
+                assert (result.venues, result.conflict, result.calendar) == (
+                    venues,
+                    bool(applicable and not venues),
+                    calendar,
+                ), pair
+
+
+def test_market_defaults_are_local_to_the_claimed_symbol_and_namespaces_are_disjoint():
+    for source, value in (
+        ("symbol", "SYN.L"),
+        ("mic", "XLON"),
+        ("yahoo", "LSE"),
+        ("fundamentals", "LSE"),
+        ("openfigi", "LN"),
+        ("name", "London"),
+    ):
+        for owner in ("SYN", "ALIAS"):
+            claim = VenueClaim(source, value, owner)
+            default = VenueClaim("market", "US", "SYN")
+            result = resolve_venue("SYN", claim, default)
+            assert result.conflict == (owner != "SYN")
+            assert result.calendar == ("XLON" if owner == "SYN" else None)
+    assert resolve_venue("SYN.L", VenueClaim("market", "US")).venues == {"XLON"}
+    assert resolve_venue("SYN.BO", VenueClaim("openfigi", "BO")).conflict
+    assert resolve_venue("SYN.BO", VenueClaim("openfigi", "IB")).venues == {"XBOM"}
+    for source in ("mic", "yahoo", "fundamentals"):
+        assert not resolve_venue("SYN", VenueClaim(source, "BO")).venues
+    assert not resolve_venue("SYN", VenueClaim("openfigi", "LSE")).venues
+
+
+def test_unknown_provider_codes_withhold_timing_on_a_qualified_listing():
+    for source in ("yahoo", "mic", "fundamentals"):
+        assert resolve_venue("SYN.L", VenueClaim(source, "UNVERIFIED")).calendar is None
+    assert resolve_venue("SYN.L", VenueClaim("market", "US")).calendar == "XLON"
+
+
+@pytest.mark.parametrize(
+    ("source", "ny", "london"),
+    [
+        ("mic", "XNYS", "XLON"),
+        ("yahoo", "NYQ", "LSE"),
+        ("fundamentals", "NYSE", "LSE"),
+        ("openfigi", "UN", "LN"),
+        ("name", "ARCA", "London"),
+    ],
+)
+def test_qualified_claim_owner_retains_its_suffix(source, ny, london):
+    assert resolve_venue("SYN", VenueClaim(source, ny, "SYN.L")).conflict
+    assert resolve_venue("SYN", VenueClaim(source, london, "SYN.L")).venues == {"XLON"}
+    assert resolve_venue("SYN", VenueClaim(source, None, "SYN.L")).venues == {"XLON"}
+
+
+def test_unknown_region_does_not_enter_a_provider_namespace():
+    assert not resolve_venue("SYN", VenueClaim("region", "LSE")).venues
+
+
+@pytest.mark.parametrize(
+    ("symbol", "claims", "expected", "conflict", "calendar"),
+    [
+        ("SYN.IL", [("mic", "XNYS")], set(), True, None),
+        ("SYN.IL", [("yahoo", "IOB"), ("mic", "XLOM")], {"XLOM"}, False, None),
+        ("SYN", [("yahoo", "OQB")], {"OTCB"}, False, None),
+        ("SYN", [("yahoo", "OQX")], {"OTCQ"}, False, None),
+        ("SYN", [("yahoo", "OQX"), ("yahoo", "OQB")], set(), True, None),
+        ("SYN.TWO", [("openfigi", "TT (Taiwan Stock Exchange)")], set(), True, None),
+        ("SYN", [("openfigi", "TT (Taipei Exchange)")], {"ROCO"}, False, None),
+        ("SYN", [("openfigi", "TT"), ("mic", "XTAI")], {"XTAI"}, False, "XTAI"),
+        ("SYN", [("region", "US"), ("mic", "XNAS"), ("yahoo", "NMS")], {"XNGS"}, False, "XNYS"),
+        ("SYN", [("region", "US"), ("yahoo", "unknown"), ("yahoo", "NMS")], {"XNGS"}, False, None),
+    ],
+)
+def test_qualified_venues_and_overlapping_markets(symbol, claims, expected, conflict, calendar):
+    from itertools import permutations
+
+    for order in permutations(claims):
+        result = resolve_venue(symbol, *(VenueClaim(*claim, symbol) for claim in order))
+        assert (result.venues, result.conflict, result.calendar) == (expected, conflict, calendar)
+
+
+@pytest.mark.parametrize(
+    ("label", "observed"),
+    [
+        ("SYN.L", "OTHER.L"),
+        ("SYN.L", "SYN"),
+        ("SYN", "SYN.L"),
+        ("SYN.L", "SYN.F"),
+    ],
+)
+def test_provider_symbol_owns_its_exchange_claims(label, observed):
+    from trading_max.research.venues import row_claims
+
+    for row in (
+        {"provider_venue": {"symbol": observed, "exchangeName": "LSE"}},
+        {"metrics": {"symbol": observed, "exchange": "LSE"}},
+        {"yf_ticker": observed, "exchange": "LSE"},
+    ):
+        claims = row_claims(label, row)
+        assert any(c.value == "LSE" and c.listing == observed for c in claims)
+        assert resolve_venue(label, *claims).conflict
+
+
+def test_joining_two_complete_observations_requires_an_authorised_symbol():
+    from trading_max.research.venues import row_claims
+
+    own = row_claims("SYN.L", {"exchange": "LSE"})
+    other = row_claims("OTHER.L", {"provider_venue": {"symbol": "OTHER.L", "exchangeName": "LSE"}})
+    legacy = row_claims("SYN", {"symbol": "SYN", "exchange": "LSE"})
+    for claims in (own + other, other + own):
+        assert resolve_venue("SYN.L", *claims).conflict
+    assert resolve_venue("SYN.L", *legacy).conflict
+    assert resolve_venue("SYN.L", *legacy, aliases=("SYN",)).venues == {"XLON"}

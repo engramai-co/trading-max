@@ -6,119 +6,18 @@ from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 
 import exchange_calendars as xcals
+import numpy as np
 import pandas as pd
 from exchange_calendars.common_holidays import ascension_day, corpus_christi, whit_monday
 from exchange_calendars.errors import CalendarError
 from exchange_calendars.exchange_calendar import HolidayCalendar
 from exchange_calendars.exchange_calendar_xfra import XFRAExchangeCalendar
-from pandas.tseries.holiday import Holiday
+from pandas.tseries.holiday import EasterMonday, GoodFriday, Holiday
 from pydantic import Field
 
 from trading_max.domain import DomainModel
-from trading_max.reference.venues import venue_mic
 
-YAHOO_SUFFIX_BY_MIC = {
-    "XLON": ".L",
-    "XAMS": ".AS",
-    "XETR": ".DE",
-    "XFRA": ".F",
-    "XBRU": ".BR",
-    "XMAD": ".MC",
-    "XSTO": ".ST",
-    "XHKG": ".HK",
-    "XTKS": ".T",
-    "XASX": ".AX",
-    "XTSE": ".TO",
-    "XPAR": ".PA",
-    "XMIL": ".MI",
-    "XSWX": ".SW",
-    "XDUB": ".IR",
-    "XKRX": ".KS",
-    "XKOS": ".KQ",
-    "XWAR": ".WA",
-    "XTAI": ".TW",
-    "XCSE": ".CO",
-    "XHEL": ".HE",
-    "XLIS": ".LS",
-    "XOSL": ".OL",
-    "XWBO": ".VI",
-    "XNYS": "",
-    "XNAS": "",
-    "ARCX": "",
-}
-YAHOO_MIC_BY_SUFFIX = {suffix: mic for mic, suffix in YAHOO_SUFFIX_BY_MIC.items() if suffix}
-
-# Yahoo codes, MICs and the verified OpenFIGI exchange codes used by watchlists.
-# https://www.openfigi.com/about/exchange-codes
-_VENUES = {
-    "XNYS": "XNYS NYQ NYSE UN",
-    "XNAS": "XNAS NMS NGM NCM NGS NASDAQ NASDAQGS NASDAQGM NASDAQCM UW UQ UR",
-    "XASE": "XASE ASE AMEX NYSEAMERICAN NYSEMKT UA",
-    "ARCX": "ARCX PCX NYSEARCA ARCA UP",
-    "BATS": "BATS BTS BZX CBOEBZX UF",
-    "BATY": "BATY",
-    "OTCM": "OTCM OTC PNK OQB OQX UV",
-    "XLON": "XLON LSE LON LONDON LONDONSTOCKEXCHANGE LN LI IOB",
-    "XFRA": "XFRA FRANKFURTSTOCKEXCHANGE FRA FRANKFURT GF",
-    "XETR": "XETR GER XETRA ETR DEUTSCHEBOERSEXETRA GY",
-    "XAMS": "XAMS AMSTERDAM AMS EURONEXTAMSTERDAM NA",
-    "XBRU": "XBRU BRUSSELS NYSEEURONEXT-EURONEXTBRUSSELS BRU EURONEXTBRUSSELS BB",
-    "XMAD": "XMAD MADRID MCE BOLSADEMADRID SQ",
-    "XSTO": "XSTO NASDAQOMXNORDIC STO STOCKHOLM SS",
-    "XHKG": "XHKG HONGKONG HKG HKEX HKSE HK",
-    "XTKS": "XTKS TOKYO JPX TYO TOKYOSTOCKEXCHANGE JT",
-    "XASX": "XASX AUSTRALIANSECURITIESEXCHANGE ASX ASX-ALLMARKETS AT",
-    "XTSE": "XTSE TORONTO TOR TSX TORONTOSTOCKEXCHANGE CT",
-    "XPAR": "XPAR PARIS NYSEEURONEXT-EURONEXTPARIS PAR EURONEXTPARIS FP",
-    "XMIL": "XMIL MILAN MIL BORSAITALIANA IM",
-    "XSWX": "XSWX SWISS SWISSEXCHANGE EBS SWX SIXSWISSEXCHANGE SE",
-    "XDUB": "XDUB IRISH IRISHSTOCKEXCHANGE-ALLMARKET DUBLIN ISE ID",
-    "XKRX": "XKRX KSE KSC KOSPI KP",
-    "XKOS": "XKOS KOE KOSDAQ KQ",
-    "XTAI": "XTAI TAIWAN TAIWANSTOCKEXCHANGE TAI TWSE",
-    "XCSE": "XCSE COPENHAGEN OMXNORDICEXCHANGECOPENHAGENA/S CPH DC",
-    "XHEL": "XHEL HELSINKI NASDAQOMXHELSINKILTD. HEL FH",
-    "XLIS": "XLIS LISBON NYSEEURONEXT-EURONEXTLISBON LIS PL",
-    "XOSL": "XOSL OSLO OSLOBORSASA OSL NO",
-    "XWBO": "XWBO VIENNA WIENERBOERSEAG VIE AV",
-    "ROCO": "ROCO TWO TPEX GRETAISECURITIESMARKET",
-    "XNSE": "XNSE NSI NSE NATIONALSTOCKEXCHANGEOFINDIA IS",
-    "XBOM": "XBOM BSE BSELTD BOMBAYSTOCKEXCHANGE BO BOM IB",
-    "XSES": "XSES SES SGX SP",
-    "XSHG": "XSHG SHH",
-    "XSHE": "XSHE SHZ",
-    "XJSE": "XJSE JNB SJ",
-    "BVMF": "BVMF SAO",
-    "XMEX": "XMEX MEX",
-    "XCNQ": "XCNQ CNQ",
-    "NEOE": "NEOE NEO",
-    "XOSE": "XOSE OSA",
-}
-EXCHANGES = {code: mic for mic, codes in _VENUES.items() for code in codes.split()}
-# Some OpenFIGI codes identify a composite. They rule out a foreign listing
-# without identifying a single venue or providing a trading calendar.
-_COMPOSITES = {
-    "US": "XNYS XNAS XASE ARCX BATS BATY OTCM",
-    "CBOE": "BATS BATY",
-    "GR": "XFRA XETR",
-    "JP": "XTKS XOSE",
-    "KS": "XKRX XKOS",
-    "KRX": "XKRX XKOS",
-    "TT": "XTAI ROCO",
-    "IN": "XNSE XBOM",
-    "CN": "XTSE XCNQ NEOE",
-    "AU": "XASX",
-    "SM": "XMAD",
-    "SW": "XSWX",
-    "CH": "XSHG XSHE",
-    "BZ": "BVMF",
-    "MM": "XMEX",
-}
-_VENUE_SETS = {code: frozenset([mic]) for code, mic in EXCHANGES.items()}
-_VENUE_SETS.update({code: frozenset(mics.split()) for code, mics in _COMPOSITES.items()})
-_CALENDARS = {mic: mic for mic in YAHOO_SUFFIX_BY_MIC}
-_CALENDARS["XKOS"] = "XKRX"
-_CALENDARS.update(dict.fromkeys(("XNYS", "XNAS", "XASE", "ARCX", "BATS"), "XNYS"))
+from .venues import VenueResolution, provider_claim, resolve_venue, row_claims, watchlist_claim
 
 # A schedule covers the recent sessions a quote or broker price can belong to
 # and the coming ones a page can stay open into.
@@ -149,30 +48,30 @@ class SessionSchedule(DomainModel):
     until: str | None = None
 
 
+def fx_rate_due(days: pd.DatetimeIndex) -> np.ndarray:
+    """Whether each day should have a daily exchange rate of its own.
+
+    None is due at weekends, on Christmas Day and New Year's Day, when the
+    currency market closes, or on Good Friday and Easter Monday, which the
+    provider can skip.
+    """
+
+    first, last = days.min(), days.max()
+    easter = GoodFriday.dates(first, last).union(EasterMonday.dates(first, last))
+    holiday = ((days.month == 12) & (days.day == 25)) | ((days.month == 1) & (days.day == 1))
+    return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
+
+
 def calendar_name(exchange: str | None) -> str | None:
-    mic = venue_mic(exchange)
-    if mic:
-        return _CALENDARS.get(mic, mic)
-    return _CALENDARS.get(EXCHANGES.get("".join(str(exchange or "").upper().split())))
+    return resolve_venue(None, provider_claim(exchange)).calendar
 
 
 def listing_venues(symbol: str | None, exchange: str | None) -> frozenset[str]:
-    """Known venues for an exact listing or market composite, independent of schedules."""
-    code = "".join(str(exchange or "").upper().split())
-    if code:
-        mic = venue_mic(exchange)
-        return frozenset([mic]) if mic else _VENUE_SETS.get(code, frozenset())
-    _, dot, suffix = str(symbol or "").strip().upper().rpartition(".")
-    mic = YAHOO_MIC_BY_SUFFIX.get(dot + suffix)
-    return frozenset([mic]) if mic else frozenset()
+    return resolve_venue(symbol, watchlist_claim(symbol, exchange)).venues
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:
-    """Resolve an observed venue or a qualified listing. Time zones span exchanges."""
-    if str(exchange or "").strip():
-        return calendar_name(exchange)
-    _, dot, suffix = str(symbol or "").strip().upper().rpartition(".")
-    return _CALENDARS.get(YAHOO_MIC_BY_SUFFIX.get(dot + suffix))
+    return resolve_venue(symbol, provider_claim(exchange)).calendar
 
 
 class _FrankfurtEquitiesCalendar(XFRAExchangeCalendar):
@@ -265,7 +164,33 @@ def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
     )
 
 
-def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFrame:
+def frame_venue(attrs, ticker=None, exchange=None):
+    """Validate observed history identity and retain verified session evidence."""
+    requested = ticker or attrs.get("ticker") or (attrs.get("provider_venue") or {}).get("symbol")
+    venue = resolve_venue(
+        requested,
+        *row_claims(requested, attrs),
+        *attrs.get("venue_claims", ()),
+        provider_claim(exchange),
+        aliases=attrs.get("venue_aliases", ()),
+    )
+    if not (
+        exchange
+        or attrs.get("exchange")
+        or attrs.get("provider_venue")
+        or any(
+            claim.source not in {"symbol", "identity"} for claim in attrs.get("venue_claims", ())
+        )
+        or attrs.get("mic")
+    ):
+        # A requested symbol alone does not attest that the fetched frame is its session.
+        return VenueResolution(venue.venues, venue.conflict)
+    return venue
+
+
+def completed_daily_bars(
+    frame: pd.DataFrame, *, now: pd.Timestamp, ticker: str | None = None
+) -> pd.DataFrame:
     """Keep daily indicators off a still-forming bar, including early-close sessions."""
     if frame.empty:
         return frame
@@ -274,7 +199,7 @@ def completed_daily_bars(frame: pd.DataFrame, *, now: pd.Timestamp) -> pd.DataFr
     today = pd.Timestamp(local.date())
     days = frame.index.tz_localize(None).normalize()
     complete = days < today
-    name = calendar_name(frame.attrs.get("exchange"))
+    name = frame_venue(frame.attrs, ticker).calendar
     if name:
         cal = market_calendar(name, today.year, today.year)
         if cal.is_session(today) and cal.session_close(today) <= now:
@@ -290,7 +215,7 @@ def completed_months(close: pd.Series, *, exchange: str | None, now: pd.Timestam
     timestamps = close.index.tz_localize(None).normalize()
     daily = pd.Series(close.to_numpy(), index=timestamps)
     monthly = daily.resample("ME").last()
-    name = calendar_name(exchange)
+    name = frame_venue(close.attrs, exchange=exchange).calendar
     if not name:
         # Legacy data with unknown exchange: final observed month stays pending.
         cutoff = min(

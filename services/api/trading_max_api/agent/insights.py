@@ -6,6 +6,7 @@ from bisect import bisect_left
 from collections import Counter
 from dataclasses import replace
 from datetime import UTC, date, datetime
+from functools import partial
 from itertools import pairwise
 from typing import Annotated, Literal
 
@@ -16,6 +17,8 @@ from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
+from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
+from trading_max.research.venues import VenueConflict, row_claims
 
 from ..dashboard import benchmark_series
 from ..dashboard_models import ResearchPriceSeries
@@ -23,8 +26,9 @@ from ..projections.day_change import measures_broker_observation, within_trading
 from ..projections.nav import nav_series
 from ..projections.values import csv_rows
 from ..research import published_price_series_id
+from ..research_listing import PinnedListing
 from .deps import AssistantDeps
-from .events import NEWS_KEY, prior_decision_events
+from .events import prior_decision_events
 from .moment_events import listing_moment_events
 from .tools import (
     ANALYST,
@@ -518,8 +522,34 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
+    ticker = series.published_bar_ticker or args.ticker
+    claims = (
+        *series.venue_claims,
+        *row_claims(
+            ticker,
+            {
+                "mic": series.published_bar_mic,
+                "exchange": series.published_bar_exchange,
+            },
+        ),
+    )
+    pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker, ticker))
+    source_rows = {}
+    for key in (ANALYST, EARNINGS, FUNDAMENTALS, FINANCIALS):
+        raw = read.read(key)
+        source_rows[key] = pinned.feed_row(partial(_ticker_row, raw)) or {}
+    news_rows = {
+        key: pinned.feed_row(_mapped((read.read(key) or {}).get("securities")).get) or {}
+        for key in (NEWS_KEY, NEWS_STATUS_KEY)
+    }
+    if not pinned.venue().venues:
+        pinned = pinned.with_event_claims(*source_rows.values(), *news_rows.values())
+
     def listing_row(key):
-        return _ticker_row(read.read(key), args.ticker) or {}
+        row, rejected = pinned.event_row(source_rows[key])
+        if rejected:
+            issues.append("listing_calendar_unavailable")
+        return row
 
     analyst = _mapped(listing_row(ANALYST).get("analyst"))
     if analyst:
@@ -549,13 +579,16 @@ def dated_events(
         issues.append("filings_unavailable")
     for row in _rows(filing_evidence.get("filings")):
         add(row.get("date"), "filing", row.get("accession") or row.get("id"))
+    fundamental = listing_row(FUNDAMENTALS)
     extra_events, extra_keys, extra_issues = listing_moment_events(
         read,
         args,
         series,
         _mapped(listing_row(EARNINGS).get("calendar")),
-        _mapped(listing_row(FUNDAMENTALS).get("metrics")),
+        _mapped(fundamental.get("metrics") or fundamental.get("info")),
         filing_evidence,
+        pinned,
+        news_rows,
     )
     keys.extend(extra_keys)
     issues.extend(extra_issues)
@@ -590,6 +623,12 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         return read.missing("published_daily_bars_unavailable")
     try:
         series = deps.price_series(args.ticker, deps.manifest, limit=2000)
+    except VenueConflict:
+        return read.result(
+            "unavailable",
+            reason="published_daily_bars_unavailable",
+            issues=["listing_calendar_unavailable"],
+        )
     except (FileNotFoundError, SnapshotIntegrityError, ValueError):
         return read.missing("published_daily_bars_unavailable")
     series_id = series.published_series_id
@@ -610,7 +649,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     bars = [p.model_dump(mode="json") for p in series.points]
     events, keys, issues = dated_events(
         read,
-        args.model_copy(update={"ticker": series.published_bar_ticker}),
+        args,
         codes,
         series,
     )

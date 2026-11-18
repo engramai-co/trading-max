@@ -8,13 +8,14 @@ import { formatCalendarDate, formatDate, formatDateTime } from "@/ui/formatters"
 import { ratingSummary, recommendationChange, targetAmount, targetSnapshot, targetSplitScale, targetUnitScale } from "./analyst-data";
 import { DeferredPlot } from "./research-reading";
 import { candleSeries, candleValues, priceReading } from "./research-price-candles";
-import { fixed, volume } from "./reading-format";
+import { volume } from "./reading-format";
 import { DataBasis } from "./reading-card";
-import { currency, number, object, objects, percent, str, tone } from "@/workspace/data";
+import { number, object, objects, percent, str, tone } from "@/workspace/data";
 import { inRange } from "@/lib/portfolio/nav";
 import { numeric } from "@/lib/numeric";
 import { Help, Panel, Tag, useCopy } from "./foundation";
-import type { ResearchPrice } from "./research-price-basis";
+import { quoteAmount, quoteUnit, quoteValue } from "./financial-values";
+import { basisPrice, lensFallback, type ResearchPrice } from "./research-price-basis";
 
 function ConsensusGauge({
   score,
@@ -82,14 +83,15 @@ export function AnalystExpectations({
     market = object(data.market);
   const summary = ratingSummary(objects(analyst.recommendations));
   const quote = data.context?.quote;
-  const code = price?.currency ?? quote?.currency ?? str(market.currency);
+  const observed = price ?? basisPrice(undefined, quote, lensFallback(data));
+  const code = quoteUnit(quote?.currency).currency || observed.currency || quoteUnit(market.currency).currency;
   const prices = useQuery(researchPriceQuery(data.ticker, revision ?? data.runId));
-  const currencyMatches = prices.data?.currency === code;
+  const currencyMatches = Boolean(code) && quoteUnit(prices.data?.currency).currency === code;
   const unitScale = targetUnitScale(quote?.quoteUnit, code);
   const targetAsOf = str(analyst.asOf);
   const snapshotDay = targetAsOf.slice(0, 10);
-  const spot = price?.price ?? quote?.price ?? market.spot ?? data.valuation?.spot;
-  const spotDay = (price?.asOf ?? quote?.asOf ?? str(market.asOf)).slice(0, 10);
+  const spot = observed.currency === code ? observed.price : null;
+  const spotDay = spot == null ? "" : (observed.asOf ?? "").slice(0, 10);
   const series = currencyMatches ? prices.data : undefined;
   const chartDay = series?.points.at(-1)?.date.slice(0, 10) ?? "";
   const splitScale = targetSplitScale(series);
@@ -138,7 +140,11 @@ export function AnalystExpectations({
     ? Math.abs(parseInt(summary.period))
     : null;
   const points = currencyMatches
-    ? inRange(prices.data?.points ?? [], "1Y")
+    ? inRange(prices.data?.points ?? [], "1Y").map((p) => {
+        const unit = prices.data?.currency;
+        return { ...p, close: quoteAmount(p.close, unit)!, open: quoteAmount(p.open, unit),
+          high: quoteAmount(p.high, unit), low: quoteAmount(p.low, unit) };
+      })
     : [];
   const priceDate = points.at(-1)?.date.slice(0, 10);
   const closeDays = points.map((point) => point.date.slice(0, 10));
@@ -171,8 +177,8 @@ export function AnalystExpectations({
     (timeline[index] >= 0 && (!hasCandles || candles[timeline[index]][0] != null));
   const priceLabels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   // A broker price carries its own time; a market spot carries its session date.
-  const spotLabel = price?.source === "broker" && price.asOf
-    ? formatDateTime(price.asOf, locale, timeZone)
+  const spotLabel = spotDay && observed.source === "broker" && observed.asOf
+    ? formatDateTime(observed.asOf, locale, timeZone)
     : spotDay && formatCalendarDate(spotDay, locale);
   const values = [
     ...points.flatMap((p) => [numeric(p.low), numeric(p.high), numeric(p.close)]),
@@ -287,7 +293,7 @@ export function AnalystExpectations({
           </div>
           <div className="mx-target-summary">
             <div>
-              <strong>{currency(median.value, code, 2)}</strong>
+              <strong>{quoteValue(median.value, code)}</strong>
             </div>
             <span
               className={
@@ -326,17 +332,17 @@ export function AnalystExpectations({
               readout={points.length ? {
                 gridIndexes: [0],
                 positions: days.flatMap((_, index) => hasReading(index) ? [index] : []),
-                latest: fixed(points.at(-1)!.close),
+                latest: quoteValue(points.at(-1)!.close, code, { style: "figure" }),
                 read: (index) => {
                   const day = days[index];
                   const time = formatCalendarDate(day, locale);
                   const indicators = (targetsByDay.get(day) ?? []).map((row) => ({
                     label: row.firm + " · " + t("目标价", "Target"),
-                    value: row.plotted != null ? fixed(row.plotted) : fixed(row.announced) + t(" · 公布时", " · as announced"),
+                    value: row.plotted != null ? quoteValue(row.plotted, code, { style: "figure" }) : quoteValue(row.announced, code, { style: "figure" }) + t(" · 公布时", " · as announced"),
                   }));
                   const i = timeline[index];
                   if (i < 0 || (hasCandles && candles[i][0] == null)) return { time, groups: [indicators] };
-                  return priceReading({ bar: points[i], previous: points[i - 1]?.close, time, indicators,
+                  return priceReading({ bar: points[i], unit: code, previous: points[i - 1]?.close, time, indicators,
                     candle: hasCandles, volume: points[i].volume == null ? undefined : volume(points[i].volume, locale), labels: priceLabels });
                 },
                 gap: (index) => !hasReading(Math.round(index)),
@@ -372,7 +378,7 @@ export function AnalystExpectations({
                     axisLabel: {
                       color: c.axis,
                       fontSize: 11,
-                      formatter: (v: number) => number(v, v < 10 ? 1 : 0),
+                      formatter: (v: number) => quoteValue(v, code, { style: "number", digits: v < 10 ? 1 : 0 }),
                     },
                     splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
                   },
@@ -441,7 +447,7 @@ export function AnalystExpectations({
                         fontSize: 11,
                         lineHeight: 15,
                         formatter:
-                          targetLabels[row.key] + "\n" + number(row.value, 2),
+                          targetLabels[row.key] + "\n" + quoteValue(row.value, code, { style: "number" }),
                       },
                       labelLayout: { hideOverlap: true },
                     })),
@@ -452,7 +458,7 @@ export function AnalystExpectations({
           <div className="mx-target-dateline">
             <span>
               {t("现价", "Current price")}{" "}
-              <strong>{currency(datedSpot, code, 2)}</strong>
+              <strong>{quoteValue(datedSpot, code)}</strong>
             </span>
             <span>
               {spotLabel || t("价格日期未提供", "Price date unavailable")}
@@ -493,7 +499,7 @@ export function AnalystExpectations({
                         row.key === "median" ? "mx-target-primary" : undefined
                       }
                     >
-                      {number(row.value, 2)}
+                      {quoteValue(row.value, code, { style: "number" })}
                     </td>
                   ))}
                 </tr>

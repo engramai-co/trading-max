@@ -88,6 +88,7 @@ from .routes.research import router as research_router
 from .routes.sectors import router as sectors_router
 from .routes.settings import router as settings_router
 from .routes.system import router as system_router
+from .routes.valuation_draft import router as valuation_draft_router
 from .scheduler import NightlyScheduler
 from .sector_monitor import SectorMonitor
 from .security_entity_resolution import OpenCodeWebSearchResolver
@@ -95,6 +96,7 @@ from .settings import MIGRATIONS, SettingsRepository
 from .typed_analysis import TypedAnalysisManager
 from .typed_jobs import TypedJobManager
 from .valuation_assumptions import ValuationAssumptionsStore
+from .valuation_drafts import ValuationDraftStore
 from .watchlist import SecuritySearchService, WatchlistStore
 
 # A refusal before any run starts: disabled or not consented is not the user's
@@ -644,6 +646,7 @@ def create_app(
     app.state.market_prices = market_prices
     app.state.research_journal = ResearchJournalStore(settings.data_root)
     app.state.research_funds = FundResearchService(settings.data_root)
+    app.state.valuation_drafts = ValuationDraftStore(settings.data_root)
     app.state.assistant = assistant
     app.state.assistant_readings = ReadingService(assistant, assistant_database)
     app.state.validation_secret = validation_secret
@@ -670,6 +673,7 @@ def create_app(
     app.include_router(analysis_router)
     app.include_router(operations_router)
     app.include_router(research_router)
+    app.include_router(valuation_draft_router)
     app.include_router(sectors_router)
     app.include_router(indices_router)
     app.include_router(assistant_router)

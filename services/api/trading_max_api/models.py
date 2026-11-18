@@ -537,6 +537,7 @@ class WatchlistItem(ApiModel):
     ticker: str
     name: str
     exchange: str
+    exchange_source: Literal["openfigi", "yahoo", "mic", "market", "name"] | None = None
     bloomberg_ticker: str
     figi: str
     composite_figi: str = ""
@@ -573,6 +574,7 @@ class SecuritySearchResult(ApiModel):
     ticker: str
     name: str
     exchange: str
+    exchange_source: Literal["openfigi", "yahoo", "mic", "market", "name"] | None = None
     bloomberg_ticker: str
     figi: str
     composite_figi: str = ""

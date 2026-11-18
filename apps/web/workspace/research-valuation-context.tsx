@@ -13,6 +13,7 @@ import { EvidenceTable } from "./evidence-table";
 import { Empty, Facts, Panel, TextLink, useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 import { factIndex } from "./research-facts";
+import { quoteValue } from "./financial-values";
 import type { ResearchPrice } from "./research-price-basis";
 
 export function ModelAlternatives({
@@ -320,8 +321,8 @@ export function FilingMultiples({
                 numeric: true,
               },
               {
-                label: t("收盘价", "Close") + " · " + code,
-                value: (r) => number(r.price, 2),
+                label: t("收盘价", "Close"),
+                value: (r) => quoteValue(r.price, r.currency),
                 numeric: true,
               },
               {

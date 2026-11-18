@@ -28,10 +28,10 @@ from trading_max.infrastructure import compressed_json
 from trading_max.infrastructure.history_chunks import atomic_bytes
 from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.reference.quote_units import major_quote_unit
-from trading_max.research.calendar import listing_calendar
 from trading_max.research.facts import fingerprint, number
 from trading_max.research.sec_companyfacts import SYMBOL, USER_AGENT, SecCompanyFacts
 from trading_max.research.trailing_pe import DailyClose, trailing_pe_history
+from trading_max.research.venues import resolve_venue, row_claims
 
 logger = logging.getLogger(__name__)
 
@@ -684,10 +684,7 @@ class ResearchEvidenceProvider:
                 and us_candidate
                 and code == "USD"
                 and metadata.get("instrumentType") == "EQUITY"
-                and listing_calendar(
-                    ticker, metadata.get("exchangeName"), metadata.get("exchangeTimezoneName")
-                )
-                == "XNYS"
+                and resolve_venue(ticker, *row_claims(ticker, metadata)).calendar == "XNYS"
             ):
                 try:
                     filings = self.sec.filings(ticker, since=min(bar.date for bar in bars))

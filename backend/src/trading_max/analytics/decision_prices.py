@@ -39,7 +39,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from pandas.tseries.holiday import EasterMonday, GoodFriday
 
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
@@ -50,7 +49,13 @@ from trading_max.analytics.historical_nav import (
     _observed_trade_gbp,
 )
 from trading_max.reference.quote_units import major_quote_unit
-from trading_max.research.calendar import calendar_name, completed_daily_bars, market_calendar
+from trading_max.research.calendar import (
+    completed_daily_bars,
+    frame_venue,
+    fx_rate_due,
+    market_calendar,
+)
+from trading_max.research.venues import VenueClaim, VenueConflict, row_claims, yahoo_venue_metadata
 
 TRADE_ACTIONS = r"buy|sell"
 #: Same acceptance limit as the NAV: a listing whose quotes sit more than 35%
@@ -63,7 +68,7 @@ GAP_SESSIONS = 3
 #: Cache rows carry date, close, split, dividend, high and low, for completed bars
 #: only, beside the listing's exchange. Older caches can hold a bar that was still
 #: forming when it was fetched, and are fetched again once.
-CACHE_FORMAT = 3
+CACHE_FORMAT = 4
 CACHE_COLUMNS = ["Close", "Stock Splits", "Dividends", "High", "Low"]
 
 
@@ -140,6 +145,7 @@ def _listing_history(symbol: str, start: date, end: date) -> pd.DataFrame:
         actions=True,
     )
     metadata = getattr(getattr(ticker, "_price_history", None), "_history_metadata", None)
+    frame.attrs["provider_venue"] = yahoo_venue_metadata(metadata or {})
     frame.attrs["exchange"] = str((metadata or {}).get("exchangeName") or "")
     frame.attrs["currency"] = str((metadata or {}).get("currency") or "")
     return frame
@@ -150,13 +156,12 @@ def _utc(value: datetime) -> pd.Timestamp:
     return stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
 
 
-def _closed_since(exchange: str, fetched_at: datetime, now: datetime, through: date) -> bool:
+def _closed_since(name: str | None, fetched_at: datetime, now: datetime, through: date) -> bool:
     """Whether a session up to through has closed since fetched_at, so its bar is new."""
 
     after, until = _utc(fetched_at), _utc(now)
     if until <= after:
         return False
-    name = calendar_name(exchange)
     if name is None:
         # Without a calendar, a bar completes when its UTC day is over.
         return after.date() < min(until.date(), through + timedelta(days=1))
@@ -165,11 +170,10 @@ def _closed_since(exchange: str, fetched_at: datetime, now: datetime, through: d
     return bool((closed.index <= pd.Timestamp(through)).any())
 
 
-def _last_closed_session(exchange: str, at: datetime, through: date) -> date | None:
+def _last_closed_session(name: str | None, at: datetime, through: date) -> date | None:
     """The latest session up to through that had closed by at."""
 
     when = _utc(at)
-    name = calendar_name(exchange)
     if name is None:
         # Without a calendar, a weekday's bar completes when its UTC day is over.
         last = min(pd.Timestamp(through), pd.Timestamp(when.date()) - pd.Timedelta(days=1))
@@ -179,14 +183,16 @@ def _last_closed_session(exchange: str, at: datetime, through: date) -> date | N
     return None if closed.empty else closed.index[-1].date()
 
 
-def _lacks_recent_bar(rows: list[list], exchange: str, fetched_at: datetime, through: date) -> bool:
+def _lacks_recent_bar(
+    rows: list[list], calendar: str | None, fetched_at: datetime, through: date
+) -> bool:
     """Whether the fetch missed the bar of a session closed shortly before it.
 
     The provider can publish a final bar some time after the close; a missing
     older bar is a gap in its history rather than one still to come.
     """
 
-    session = _last_closed_session(exchange, fetched_at, through)
+    session = _last_closed_session(calendar, fetched_at, through)
     if session is None or session < _utc(fetched_at).date() - timedelta(days=7):
         return False
     return all(row[0] != session.isoformat() for row in rows)
@@ -262,40 +268,70 @@ class CachedDailyHistory:
         return rows
 
     def _completed_rows(
-        self, symbol: str, start: date, end: date, exchange: str, now: datetime
-    ) -> tuple[list[list], str, str]:
-        """Completed rows, exchange and the provider's quote denomination."""
+        self, symbol: str, start: date, end: date, previous: dict, now: datetime
+    ) -> tuple[list[list], dict]:
+        """Corroborate a fresh response with the identity retained beside its cached rows.
 
+        The identity includes the provider's quote denomination; a response without
+        one keeps the retained denomination.
+        """
         frame = self.fetch(symbol, start, end)
-        exchange = str(frame.attrs.get("exchange") or exchange)
-        frame.attrs["exchange"] = exchange
-        return (
-            self._rows(completed_daily_bars(frame, now=_utc(now))),
-            exchange,
-            str(frame.attrs.get("currency") or ""),
-        )
+        claims = list(previous.get("venue_claims", ()))
+        if frame.attrs:
+            claims.extend(row_claims(symbol, frame.attrs))
+            claims.extend(frame.attrs.get("venue_claims", ()))
+        frame.attrs["venue_claims"] = tuple(dict.fromkeys(claims))
+        provider = frame.attrs.get("provider_venue") or previous.get("provider_venue") or {}
+        frame.attrs["provider_venue"] = provider
+        venue = frame_venue(frame.attrs, symbol)
+        if venue.conflict:
+            raise VenueConflict("incompatible decision history")
+        identity = {
+            "venue_claims": frame.attrs["venue_claims"],
+            "exchange": str(frame.attrs.get("exchange") or previous.get("exchange") or ""),
+            "calendar": venue.calendar,
+            "provider_venue": yahoo_venue_metadata(provider),
+            "currency": str(frame.attrs.get("currency") or previous.get("currency") or ""),
+        }
+        return self._rows(completed_daily_bars(frame, now=_utc(now), ticker=symbol)), identity
+
+    @staticmethod
+    def _identity(cached):
+        return {
+            "venue_claims": tuple(VenueClaim(*claim) for claim in cached.get("venue_claims", ())),
+            "exchange": cached.get("exchange", ""),
+            "calendar": cached.get("calendar"),
+            "provider_venue": cached.get("provider_venue", {}),
+            "currency": str(cached.get("currency") or ""),
+        }
 
     def read_cached(self, symbol: str, start: date, end: date) -> pd.DataFrame:
         """Read only completed bars already stored locally, with no fetch path."""
         with suppress(FileNotFoundError, ValueError):
             cached = json.loads(self._path(symbol).read_text(encoding="utf-8"))
-            if cached.get("format") == CACHE_FORMAT:
+            if cached.get("format") == CACHE_FORMAT and cached.get("symbol") == symbol:
                 frame = self._frame(cached.get("rows", []))
-                frame.attrs["exchange"] = str(cached.get("exchange") or "")
-                frame.attrs["currency"] = str(cached.get("currency") or "")
+                frame.attrs.update(self._identity(cached))
                 return frame.loc[pd.Timestamp(start) : pd.Timestamp(end)]
         return self._frame([])
 
     def __call__(self, symbol: str, start: date, end: date) -> pd.DataFrame:
+        try:
+            return self._read_or_fetch(symbol, start, end)
+        except VenueConflict:
+            return self._frame([])
+
+    def _read_or_fetch(self, symbol: str, start: date, end: date) -> pd.DataFrame:
         path = self._path(symbol)
         cached: dict = {}
         with suppress(FileNotFoundError, ValueError):
             cached = json.loads(path.read_text(encoding="utf-8"))
-        if cached.get("format") != CACHE_FORMAT:
+        if cached.get("format") != CACHE_FORMAT or cached.get("symbol") != symbol:
             cached = {}
         rows: list[list] = cached.get("rows", [])
-        exchange = str(cached.get("exchange") or "")
-        currency = str(cached.get("currency") or "")
+        identity = self._identity(cached)
+        calendar = identity["calendar"]
+        currency = identity["currency"]
         covered_start = date.fromisoformat(cached["start"]) if cached.get("start") else None
         covered_end = date.fromisoformat(cached["end"]) if cached.get("end") else None
         fetched_at = (
@@ -310,20 +346,18 @@ class CachedDailyHistory:
             and fetched_at is not None
             and covered_start <= start
             and (covered_end >= end or fresh)
-            and not _closed_since(exchange, fetched_at, now, end)
-            and (fresh or not _lacks_recent_bar(rows, exchange, fetched_at, end))
+            and not _closed_since(calendar, fetched_at, now, end)
+            and (fresh or not _lacks_recent_bar(rows, calendar, fetched_at, end))
         )
         if not covers:
             if rows and covered_start is not None and covered_start <= start:
                 tail_start = max(start, (covered_end or start) - timedelta(days=7))
-                tail, exchange, fresh_currency = self._completed_rows(
-                    symbol, tail_start, end, exchange, now
-                )
+                tail, identity = self._completed_rows(symbol, tail_start, end, identity, now)
                 known = {row[0]: row[1] for row in rows}
                 overlap = [(known[row[0]], row[1]) for row in tail if row[0] in known]
                 consistent = (
                     bool(tail)
-                    and (not fresh_currency or currency == fresh_currency)
+                    and identity["currency"] == currency
                     and all(math.isclose(old, new, rel_tol=0.005) for old, new in overlap)
                     and not any(row[2] for row in tail)
                 )
@@ -332,21 +366,15 @@ class CachedDailyHistory:
                     merged.update({row[0]: row for row in tail})
                     rows = [merged[key] for key in sorted(merged)]
                 else:
-                    rows, exchange, fresh_currency = self._completed_rows(
-                        symbol, covered_start, end, exchange, now
-                    )
+                    rows, identity = self._completed_rows(symbol, covered_start, end, identity, now)
             else:
                 first = min(start, covered_start) if covered_start else start
-                rows, exchange, fresh_currency = self._completed_rows(
-                    symbol, first, end, exchange, now
-                )
+                rows, identity = self._completed_rows(symbol, first, end, identity, now)
                 covered_start = first
-            currency = fresh_currency or currency
             payload = {
                 "format": CACHE_FORMAT,
                 "symbol": symbol,
-                "exchange": exchange,
-                "currency": currency,
+                **identity,
                 "start": (covered_start or start).isoformat(),
                 "end": max(end, covered_end or end).isoformat(),
                 "fetched_at": now.isoformat(),
@@ -357,8 +385,7 @@ class CachedDailyHistory:
             temporary.write_text(json.dumps(payload), encoding="utf-8")
             temporary.replace(path)
         frame = self._frame(rows)
-        frame.attrs["exchange"] = exchange
-        frame.attrs["currency"] = currency
+        frame.attrs.update(identity)
         if frame.empty:
             return frame
         window = (frame.index >= pd.Timestamp(start)) & (frame.index <= pd.Timestamp(end))
@@ -374,20 +401,6 @@ def _converted(series: pd.Series, mode: str, cash_fx: pd.DataFrame, gbpusd: pd.S
         return series / 100.0
     rate = cash_fx.get(mode, gbpusd).reindex(series.index).ffill().bfill()
     return series / rate
-
-
-def _rate_due(days: pd.DatetimeIndex) -> np.ndarray:
-    """Whether each day should have a daily exchange rate of its own.
-
-    None is due at weekends, on Christmas Day and New Year's Day, when the
-    currency market closes, or on Good Friday and Easter Monday, which the
-    provider can skip.
-    """
-
-    first, last = days.min(), days.max()
-    easter = GoodFriday.dates(first, last).union(EasterMonday.dates(first, last))
-    holiday = ((days.month == 12) & (days.day == 25)) | ((days.month == 1) & (days.day == 1))
-    return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
 
 
 def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -> pd.Series:
@@ -406,7 +419,7 @@ def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -
         return pd.Series(np.nan, index=days, dtype=float)
     today = _utc(now).tz_localize(None).normalize()
     span = pd.date_range(min(rates.index.min(), days.min()), max(days.max(), today), freq="D")
-    due = _rate_due(span)
+    due = fx_rate_due(span)
     own = rates.reindex(span).where(due)
     # Business days over by now; a missing rate settles once enough have followed it.
     over = due & np.asarray(span < today)
@@ -499,7 +512,9 @@ def final_rates(
     """
 
     rates = _nominal_close(
-        completed_daily_bars(history_loader(symbol, start.date(), end.date()), now=now)
+        completed_daily_bars(
+            history_loader(symbol, start.date(), end.date()), now=now, ticker=symbol
+        )
     )
     return rates[(rates > 0) & np.isfinite(rates)]
 
@@ -584,7 +599,7 @@ def resolve_decision_prices(
             published_rates[code] = rates
     observed_fx = {
         code: values.where(
-            ~_rate_due(calendar_days) | calendar_days.isin(published_rates[code].index)
+            ~fx_rate_due(calendar_days) | calendar_days.isin(published_rates[code].index)
         )
         for code, values in final_fx.items()
     }
@@ -600,7 +615,7 @@ def resolve_decision_prices(
         currency_values = rows["TradeCurrency"].replace("", pd.NA).dropna()
         currency = str(currency_values.iloc[-1] if not currency_values.empty else "USD").upper()
         observed = _observed_trade_gbp(rows, cash_fx)
-        best: tuple[float, str, pd.Series, pd.DataFrame, str, str] | None = None
+        best: tuple[float, str, pd.Series, pd.DataFrame, str, str | None] | None = None
         candidates = _candidate_symbols_from_ledger(
             ticker,
             currency,
@@ -615,10 +630,12 @@ def resolve_decision_prices(
                 break
             try:
                 listing = history_loader(symbol, listing_start.date(), end_day.date())
-                frame = completed_daily_bars(listing, now=now)
+                venue = frame_venue(listing.attrs, symbol)
+                if venue.conflict:
+                    continue
+                frame = completed_daily_bars(listing, now=now, ticker=symbol)
             except Exception:  # noqa: S112 - an unavailable listing is just a rejected candidate
                 continue
-            exchange = str(listing.attrs.get("exchange") or "")
             decision_frame = frame
             if not frame.empty and listing_start < start_day:
                 quote_days = frame.index.tz_localize(None).normalize()
@@ -646,7 +663,7 @@ def resolve_decision_prices(
                     continue
                 score = float(np.median(np.abs(np.log(left[valid] / fills_at[valid]))))
                 if best is None or score < best[0]:
-                    best = (score, symbol, adjusted, frame, mode, exchange)
+                    best = (score, symbol, adjusted, frame, mode, venue.calendar)
         if best is None or best[0] > MAX_LOG_DISTANCE:
             unpriced.append(ticker)
             continue
@@ -658,7 +675,7 @@ def resolve_decision_prices(
         values = session_closes(
             best[2],
             _divisor(mode, final_fx),
-            calendar_name(best[5]),
+            best[5],
             start=start_day,
             end=end_day,
             now=now,

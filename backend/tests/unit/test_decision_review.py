@@ -1309,3 +1309,22 @@ def test_verified_quote_unit_wins_even_if_the_fill_is_closer_to_another_unit():
     (row,) = review["decisions"]
     assert row["prior_close_gbp"] == 102
     assert row["settled_per_share_gbp"] == 127.5
+
+
+def test_cached_review_marks_keep_verified_calendar_without_display_exchange(tmp_path):
+    from trading_max.analytics.review_evidence import ReviewListing, _ListingMarks
+
+    def history(symbol, start, end):
+        frame = pd.DataFrame({"Close": [123.0]}, index=pd.DatetimeIndex(["2026-11-27"]))
+        frame.attrs["provider_venue"] = {"symbol": symbol, "mic": "XNYS"}
+        return frame
+
+    clock = pd.Timestamp("2026-11-27T18:01Z")
+    cache = CachedDailyHistory(tmp_path, fetch=history, now=lambda: clock.to_pydatetime())
+    window = (date(2026, 11, 26), date(2026, 11, 27))
+    cache("SYN", *window)
+    frame = cache.read_cached("SYN", *window)
+    listing = ReviewListing("SYN", "USD", "SYN", "USD", frame)
+    marks = _ListingMarks(listing, pd.Timestamp(window[0]), pd.Timestamp(window[1]))
+    assert marks.price(clock - pd.Timedelta(minutes=2)) is None
+    assert marks.price(clock) == 123

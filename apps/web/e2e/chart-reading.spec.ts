@@ -204,6 +204,18 @@ test.describe("primary chart reading", () => {
     });
   }
 
+  test("the chart explains unavailable price history for the selected listing", async ({ page }, info) => {
+    await page.route("**/api/backend/research/AAPL/prices?**", route => route.fulfill({
+      status: 404, json: { detail: "security-price-history-unavailable" },
+    }));
+    await page.goto("/research?ticker=AAPL&view=technical&chart=full");
+    const message = page.getByText("Price history unavailable for this listing", { exact: true }).last();
+    await expect(message).toBeVisible();
+    if (process.env.CHART_QA_DIR) await message.locator("..").screenshot({
+      path: join(process.env.CHART_QA_DIR, `listing-unavailable-${info.project.name}.png`),
+    });
+  });
+
   test("a response with no OHLC is visibly identified as closing prices", async ({ page }) => {
     await mockPrices(page, "no OHLC");
     await page.goto("/research?ticker=AAPL&view=overview");
