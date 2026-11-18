@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.65.0] - 2026-11-18
+
 ### Added
 - With MaxAI enabled, Research Overview can open a reading of your position in the selected security, and Price & technicals numbers up to three event-backed price moves on the chart. Each reading follows the subsequent sessions, and follow-ups keep the selected moment. Position readings identify the return basis and the matched market and sector comparison dates. Citations reopen the recorded publication and disclose expiry.
 - Financials & business and Estimates & events open with a dated earnings brief that names verified consensus changes. Consented workspaces write it in the background when a held or research-list company reports results or its estimates change.
