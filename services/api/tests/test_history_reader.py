@@ -325,6 +325,9 @@ def test_archived_money_revisions_do_not_evict_live_history(
             archived = client.get(endpoint, params={"run_id": run})
             assert archived.is_success
             assert archived.headers["X-History-Retained"] == "1"
+            assert (
+                client.head(endpoint, params={"run_id": run}).headers["X-History-Retained"] == "1"
+            )
         count = builds.count(runs[-1])
         assert client.get(endpoint, params={"run_id": runs[-1]}).is_success
         assert builds.count(runs[-1]) == count

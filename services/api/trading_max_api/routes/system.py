@@ -434,13 +434,21 @@ def _dashboard_manifest(request: Request, run_id: str | None) -> SnapshotManifes
         raise HTTPException(status_code=404, detail="snapshot not found") from None
 
 
+def _history_retained(request: Request, manifest: SnapshotManifest) -> bool:
+    latest = app_service(request, "store").latest_manifest()
+    return not latest or latest.run_id != manifest.run_id
+
+
 @router.head("/v1/dashboard/history", status_code=204, response_class=Response)
 def history_retention(
     request: Request, run_id: str = Query(pattern=r"^[A-Za-z0-9_-]{1,100}$")
 ) -> Response:
     """Validate a cached chart or exact page without loading its observations."""
-    _dashboard_manifest(request, run_id)
-    return Response(status_code=204, headers={"Cache-Control": "private, no-store"})
+    manifest = _dashboard_manifest(request, run_id)
+    headers = {"Cache-Control": "private, no-store"}
+    if _history_retained(request, manifest):
+        headers["X-History-Retained"] = "1"
+    return Response(status_code=204, headers=headers)
 
 
 @router.get(
@@ -457,8 +465,7 @@ def dashboard_history(
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
 ) -> HistorySnapshot:
     manifest = _dashboard_manifest(request, run_id)
-    latest = app_service(request, "store").latest_manifest() if run_id else manifest
-    retained = not latest or latest.run_id != manifest.run_id
+    retained = run_id is not None and _history_retained(request, manifest)
     if retained:
         response.headers["X-History-Retained"] = "1"
     reader = "retained_history_reader" if retained else "history_reader"

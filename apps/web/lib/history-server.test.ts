@@ -3,6 +3,8 @@ vi.mock("server-only", () => ({}));
 vi.mock("./backend", () => ({ backendFetch: vi.fn() }));
 import { backendFetch } from "./backend";
 import { readPreparedHistory } from "./history-server";
+vi.mock("./snapshot-cache-server", () => ({ rememberDesktopSnapshot: vi.fn() }));
+import { rememberDesktopSnapshot } from "./snapshot-cache-server";
 import { GET } from "@/app/api/backend/dashboard/history/route";
 
 const fetchMock = vi.mocked(backendFetch);
@@ -18,9 +20,10 @@ describe("snapshot-pinned history queries", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][0]).toContain("run_id=cache-one");
     const next = await readPreparedHistory(selection("cache-two"));
-    expect(next.chart.runId).toBe("cache-two");
-    expect((await readPreparedHistory(selection("cache-one"))).chart.runId).toBe("cache-one");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(next.prepared.chart.runId).toBe("cache-two");
+    fetchMock.mockResolvedValueOnce(new Response(null,{status:204}));
+    expect((await readPreparedHistory(selection("cache-one"))).prepared).toBe(a.prepared);
+    expect(fetchMock.mock.calls.filter(([,init]) => init?.method !== "HEAD")).toHaveLength(2);
   });
   it("rebuilds evicted views from the requested version without substituting latest", async () => {
     fetchMock.mockImplementation(async (path) => response(new URL(`http://backend${path}`).searchParams.get("run_id")!));
@@ -35,7 +38,7 @@ describe("snapshot-pinned history queries", () => {
     await readPreparedHistory(live);
     for (let i=0; i<9; i++) await readPreparedHistory(selection("archived-"+i),true);
     await readPreparedHistory(live);
-    expect(fetchMock.mock.calls.filter(([path]) => path.includes(live.runId))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([path,init]) => path.includes(live.runId) && init?.method !== "HEAD")).toHaveLength(1);
   });
   it("isolates older publications even when the caller omits the retained hint", async () => {
     let pruned = false;
@@ -52,9 +55,44 @@ describe("snapshot-pinned history queries", () => {
     await readPreparedHistory(live);
     for (let i = 0; i < 9; i++) await readPreparedHistory(selection("old-"+i));
     await readPreparedHistory(live);
-    expect(fetchMock.mock.calls.filter(([path]) => path.includes(live.runId))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([path,init]) => path.includes(live.runId) && init?.method !== "HEAD")).toHaveLength(1);
     pruned = true;
     expect((await GET(new Request("http://localhost/?runId=old-8&range=6M"))).status).toBe(404);
+  });
+  it("revalidates a chart warmed live when the publication is subsequently pruned", async () => {
+    const original = "warmed-before-pruning";
+    const successor = "after-pruning";
+    let current = original;
+    fetchMock.mockImplementation(async (path, init) => {
+      const run = new URL(path, "http://api").searchParams.get("run_id");
+      if (run !== current) return new Response(null, {status:404});
+      return init?.method === "HEAD" ? new Response(null,{status:204}) : response(run);
+    });
+    const load = (run: string, suffix = "") => GET(new Request("http://localhost/?runId="+run+suffix));
+    expect((await load(original)).status).toBe(200);
+    current = successor;
+    expect((await load(original)).status).toBe(404);
+    expect((await load(original,"&page=1")).status).toBe(404);
+    expect((await load(successor)).status).toBe(200);
+    expect((await load(successor,"&page=1")).status).toBe(200);
+  });
+  it("keeps hintless archived charts out of the desktop live cache", async () => {
+    const remember = vi.mocked(rememberDesktopSnapshot);
+    remember.mockClear();
+    let archived = false;
+    fetchMock.mockImplementation(async (path, init) => {
+      const run = new URL(path,"http://api").searchParams.get("run_id")!;
+      const result = init?.method === "HEAD" ? new Response(null,{status:204}) : response(run);
+      if (archived) result.headers.set("X-History-Retained","1");
+      return result;
+    });
+    const load = (id:string) => GET(new Request("http://localhost/?runId="+id));
+    expect((await load("desktop-warmed-live")).status).toBe(200);
+    expect(remember).toHaveBeenCalledOnce();
+    archived = true;
+    expect((await load("desktop-archived-only")).status).toBe(200);
+    expect((await load("desktop-warmed-live")).status).toBe(200);
+    expect(remember).toHaveBeenCalledOnce();
   });
   it("checks retention before returning cached charts and exact rows", async () => {
     const query = "http://localhost/?runId=prunable&retained=1";
@@ -122,6 +160,7 @@ describe("snapshot-pinned history queries", () => {
     expect(chart.history.points.map((point: { date: string }) => point.date)).not.toContain("2026-10-29T00:10:00.000Z");
     // 00:10 was thinned off the chart but is still read exactly; nothing was taken within a sync of 00:12.
     expect(chart.openings).toEqual({ "2026-10-29T00:10:00Z": 1, "2026-10-29T00:12:00Z": null });
+    fetchMock.mockResolvedValue(new Response(null,{status:204}));
     const plain = await (await GET(new Request("http://localhost/?runId=opening-revision&range=1W&scope=total"))).json();
     expect(plain).not.toHaveProperty("openings");
     // The same 00:10 sync, named with explicit offsets either side of UTC.
@@ -130,6 +169,6 @@ describe("snapshot-pinned history queries", () => {
     offsets.append("opening", "2026-10-28T19:10:00-05:00");
     expect((await (await GET(new Request(`http://localhost/?${offsets}`))).json()).openings)
       .toEqual({ "2026-10-29T01:10:00+01:00": 1, "2026-10-28T19:10:00-05:00": 1 });
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock.mock.calls.filter(([,init]) => init?.method !== "HEAD")).toHaveLength(1);
   });
 });
