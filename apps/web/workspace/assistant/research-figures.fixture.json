@@ -1,0 +1,104 @@
+{
+  "research_position": {
+    "data": {
+      "ticker": "TEST",
+      "end": "2026-02-03",
+      "close": 30.0,
+      "currency": "USD",
+      "adjustment": "split-and-dividend-adjusted",
+      "benchmarks": [],
+      "trade_date": "2026-01-28",
+      "side": "buy",
+      "start": "2026-01-28",
+      "change": -0.0625
+    },
+    "quality": {
+      "issues": []
+    },
+    "status": "ok",
+    "scope": "broker_total",
+    "evidence_id": "ev_d49d247b3d7d5f6f"
+  },
+  "research_earnings": {
+    "data": {
+      "report": {
+        "date": "2026-01-29",
+        "id": "report",
+        "fiscalPeriod": null,
+        "currency": "USD",
+        "actual": 1.2,
+        "estimate": 1.15,
+        "surprise": 0.04347826086956519
+      },
+      "estimates": [
+        {
+          "metric": "eps",
+          "end": "2026-03-31",
+          "period": "0q",
+          "currency": "USD",
+          "mean": 1.25
+        }
+      ],
+      "ticker": "TEST",
+      "version": "59d8b2a0b488da66049b8acb385e6c3d28c6a808d6fb3e6cd8f351f05e1398b6",
+      "as_of": "2026-02-03T17:00:00Z"
+    },
+    "quality": {
+      "issues": []
+    },
+    "status": "ok",
+    "scope": "public_research",
+    "evidence_id": "ev_ebe95f9d1de5da43"
+  },
+  "price_key_moments": {
+    "data": {
+      "ticker": "TEST",
+      "listing": "TEST",
+      "start": "2026-01-28",
+      "end": "2026-02-03",
+      "interval": "1d",
+      "basis": "published_daily_closes",
+      "published_series_id": "d2abc9401e29b8b2a89b",
+      "items": [
+        {
+          "date": "2026-01-30",
+          "move_fraction": 0.0625,
+          "volume_z_score": null,
+          "unusual_rank": 2,
+          "events": [
+            {
+              "date": "2026-01-30",
+              "kind": "news",
+              "reference": "article"
+            }
+          ],
+          "event_count": 1
+        }
+      ]
+    },
+    "quality": {
+      "issues": [
+        "rating_changes_unavailable",
+        "filings_unavailable"
+      ]
+    },
+    "status": "partial",
+    "scope": "broker_total",
+    "evidence_id": "ev_22611873aeda68b4"
+  },
+  "research_headline": {
+    "data": {
+      "ticker": "TEST",
+      "title": "Issuer publishes outlook",
+      "publisher": "Example Wire",
+      "url": "https://example.invalid/outlook",
+      "date": "2026-01-30"
+    },
+    "quality": {
+      "issues": []
+    },
+    "status": "ok",
+    "scope": "public_research",
+    "evidence_id": "ev_6ef117ef432da5e0"
+  }
+}
