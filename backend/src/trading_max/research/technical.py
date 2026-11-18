@@ -68,6 +68,7 @@ class OptionsResearchArtifact(DomainModel):
     ticker: str
     yf_ticker: str
     spot: float
+    provider_venue: dict[str, str] = Field(default_factory=dict)
     captured_at: datetime
     expiry_count: int = Field(ge=0)
     expiry_range: list[str]
@@ -1021,7 +1022,20 @@ def analyze_options(
 
     security = yf.Ticker(yf_ticker)
     captured = datetime.now(UTC)
+    claims = []
+
+    def observed_underlying(raw):
+        if not isinstance(raw, Mapping) or not raw.get("symbol"):
+            raise MarketDataError(f"{label}: option underlying is unavailable")
+        claims.extend(row_claims(yf_ticker, raw))
+        if resolve_venue(yf_ticker, *claims).conflict:
+            raise MarketDataError(f"{label}: conflicting option underlying")
+        return yahoo_venue_metadata(
+            {**raw, "exchangeName": raw.get("exchangeName") or raw.get("exchange")}
+        )
+
     info = security.info
+    underlying = observed_underlying(info)
     rate = treasury_rate(captured.date().isoformat())
     raw_yield = info.get("trailingAnnualDividendYield")
     dividend_yield = (
@@ -1029,7 +1043,7 @@ def analyze_options(
     )
     terms = {
         "captured_at": captured,
-        "underlying": yf_ticker,
+        "underlying": underlying["symbol"],
         "asset_type": str(info.get("quoteType") or ""),
         "exchange": str(info.get("exchange") or ""),
         "currency": info.get("currency"),
@@ -1052,12 +1066,14 @@ def analyze_options(
     contracts: list[pd.DataFrame] = []
     for expiry_date, raw_expiry in expiries:
         chain = security.option_chain(raw_expiry)
+        expiry_underlying = observed_underlying(getattr(chain, "underlying", None))
         calls = _clean_contracts(chain.calls, "call", expiry_date, **terms)
         puts = _clean_contracts(chain.puts, "put", expiry_date, **terms)
         options = pd.concat([calls, puts], ignore_index=True)
         if options.empty:
             continue
-        expiry_rows.append(_expiry_summary(options, raw_expiry, spot, captured_at=captured))
+        summary = _expiry_summary(options, raw_expiry, spot, captured_at=captured)
+        expiry_rows.append({**summary, "provider_venue": expiry_underlying})
         options["expiry"] = raw_expiry
         contracts.append(options)
     if not contracts:
@@ -1069,7 +1085,8 @@ def analyze_options(
     profile, flip = _gamma_profile(all_options, spot)
     return OptionsResearchArtifact(
         ticker=label,
-        yf_ticker=yf_ticker,
+        yf_ticker=underlying["symbol"],
+        provider_venue=underlying,
         spot=_finite(spot, 2) or spot,
         captured_at=captured,
         currency=info.get("currency"),

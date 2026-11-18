@@ -1427,7 +1427,13 @@ class ResearchLedger:
             manifest, "research/options.json", _raw_options, fallback_key="research/technical.json"
         )
         raw = exact_row(rows, pinned.symbol)
-        if not raw or pinned.venue(*row_claims(pinned.symbol, raw)).conflict:
+        if not raw:
+            return None
+        claims = list(row_claims(pinned.symbol, raw))
+        for expiry in raw.get("expiries") or ():
+            if isinstance(expiry, dict):
+                claims.extend(row_claims(pinned.symbol, expiry))
+        if pinned.venue(*claims).conflict:
             return None
         if fund and raw.get("currency") != "USD":
             return None
