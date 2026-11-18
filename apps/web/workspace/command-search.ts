@@ -34,7 +34,7 @@ const lenses = [
   { view: "technical", zh: "价格与技术", en: "Price & technicals", aliases: ["technicals", "technical", "技术面", "技术", "k线"] },
   { view: "fundamentals", zh: "财务与业务", en: "Financials & business", aliases: ["fundamentals", "financials", "财务报表", "基本面", "财务", "报表"] },
   { view: "analyst", zh: "预期与事件", en: "Estimates & events", aliases: ["analyst", "estimates", "分析师", "预期", "事件"] },
-  { view: "valuation", zh: "估值模型", en: "Valuation", aliases: ["valuation", "dcf", "估值模型", "估值"] },
+  { view: "valuation", zh: "估值", en: "Valuation", aliases: ["valuation", "dcf", "估值模型", "估值"] },
   { view: "options", zh: "期权结构", en: "Options", aliases: ["options", "option chain", "期权链", "期权"] },
   { view: "ledger", zh: "研究记录", en: "Journal", aliases: ["journal", "ledger", "研究记录"] },
 ] as const;

@@ -1,7 +1,7 @@
 import pageOutputs from "./page-figures.fixture.json";
 import { describe, expect, it } from "vitest";
 import { verifiedLines } from "./chat-reply";
-import { chatContext, displayTurns, evidenceHref, messageEvidence } from "./evidence";
+import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText } from "./evidence";
 import type { UIMessage } from "ai";
 
 describe("assistant evidence routing", () => {
@@ -181,4 +181,29 @@ it("keeps the selected benchmark window in the link when observations cover fewe
   const [line] = verifiedLines(message);
   expect(line.text).toContain("2026-10-02 – 2026-10-30");
   expect(line.evidence?.arguments).toMatchObject({scope:"isa",start:"2026-10-01",end:"2026-11-01"});
+});
+
+it.each([{}, {snapshotId:"previous"}])("reopens benchmark evidence on its published snapshot", (bound) => {
+  const reply = fieldReply("compare_benchmarks", {snapshot_id:"previous",bound_arguments:{...bound, scope:"isa",benchmark:"VOO"},
+    data:{start:"2026-02-02",end:"2026-02-03",portfolio_twr_fraction:0.02}}, "/data/portfolio_twr_fraction");
+  const [line] = verifiedLines(reply);
+  const params = new URL(evidenceHref(line.evidence!)!, "http://localhost").searchParams;
+  expect(Object.fromEntries(params)).toMatchObject({view:"returns",scope:"isa",benchmark:"VOO",returnFrom:"2026-02-02",returnTo:"2026-02-03",snapshotId:"previous"});
+});
+
+it("projects timed releases into the reader's day and preserves date-only earnings windows", () => {
+  const text = "2026-02-04 · CPI";
+  const macro = {en:text,zh:text,evidence:{source:"calendar" as const,tool:"upcoming_events",evidenceId:"ev_cal",
+    arguments:{date:"2026-02-04", instant:"2026-02-05T08:30:00+09:00", url:"https://example.org/calendar"}}};
+  expect(observationText(macro,"en","Asia/Tokyo")).toMatch(/5 Feb 2026.*08:30.* · CPI/);
+  expect(observationText(macro,"en","Europe/London")).toMatch(/4 Feb 2026.*23:30.* · CPI/);
+  expect(evidenceHref(macro.evidence)).toBe("https://example.org/calendar");
+  const earnings = {en:"2026-02-06 – 2026-02-08 · TEST earnings",zh:"财报",evidence:{...macro.evidence,source:"financials" as const,
+    arguments:{holdingTicker:"TEST", event:"earningsWindow",date:"2026-02-06",endDate:"2026-02-08"}}};
+  expect(observationText(earnings,"en","America/New_York")).toBe(earnings.en);
+  expect(evidenceHref(earnings.evidence)).toContain("event=earningsWindow&date=2026-02-06&end=2026-02-08");
+});
+
+it("keeps a historical benchmark with no publication ID from opening today's figures", () => {
+  expect(evidenceHref({tool:"compare_benchmarks",source:"market",evidenceId:"ev_old",arguments:{scope:"isa",benchmark:"VOO"}})).toBeNull();
 });

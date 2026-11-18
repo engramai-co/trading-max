@@ -91,10 +91,10 @@ class ArtifactStore:
             self._latest_cache = manifest
             return manifest
 
-    def load_manifest(self, run_id: str) -> SnapshotManifest:
+    def load_manifest(self, run_id: str, *, require_retained: bool = False) -> SnapshotManifest:
         with self._manifest_lock:
             cached = self._manifest_cache.get(run_id)
-            if cached is not None:
+            if cached is not None and not require_retained:
                 self._manifest_cache.move_to_end(run_id)
                 return cached
         try:

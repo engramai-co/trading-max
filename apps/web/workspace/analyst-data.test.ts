@@ -4,6 +4,8 @@ import {
   ratingSummary,
   recommendationChange,
   targetSnapshot,
+  targetSplitScale,
+  targetUnitScale,
 } from "./analyst-data";
 
 describe("analyst evidence", () => {
@@ -69,6 +71,30 @@ describe("analyst evidence", () => {
     expect(targets.rows[1].value).toBe(110);
     expect(targets.rows[2].change).toBeCloseTo(0.2);
     expect(targetSnapshot({ median: 120 }, 0).rows[2].change).toBeNull();
+  });
+  it("converts pence exactly once and withholds ambiguous or mismatched target units", () => {
+    for (const unit of ["GBp", "GBX", "GBx"]) expect(targetUnitScale(unit, "GBP")).toBe(0.01);
+    expect(targetUnitScale("GBP", "GBP")).toBe(1);
+    expect(targetUnitScale(undefined, "GBP")).toBeNull();
+    expect(targetUnitScale("GBp", "USD")).toBeNull();
+    expect(targetUnitScale("EUR", "USD")).toBeNull();
+    expect(targetUnitScale(undefined, "USD")).toBe(1);
+  });
+  it("rebases an older snapshot through splits and reverse splits once per effective date", () => {
+    const bar = { high: null, low: null, open: null, sma20: null, sma50: null, sma200: null, volume: null };
+    const scaleForDay = targetSplitScale({
+      points: [{ ...bar, date: "2026-05-01", close: 4 }, { ...bar, date: "2026-05-02", close: 2, split: 2 }, { ...bar, date: "2026-06-01", close: 8, split: 0.25 }],
+      events: [{ date: "2026-05-02", kind: "split", value: 2 }, { date: "2026-06-10", kind: "dividend", value: 0.1 }],
+    });
+    const targets = targetSnapshot({ median: 450 }, 8.5, scaleForDay("2026-05-01", "2026-06-01", 0.01));
+    expect(targets.rows[2].value).toBe(9);
+    expect(targets.rows[2].change).toBeCloseTo(9 / 8.5 - 1);
+    expect(scaleForDay("2026-06-01", "2026-06-01", 1)).toBe(1);
+    expect(scaleForDay("2026-05-01", "2026-06-10", 1)).toBeNull();
+    expect(scaleForDay("2026-04-30", "2026-06-01", 1)).toBeNull();
+    expect(scaleForDay("2026-05-01", "2026-05-02", 1)).toBe(0.5);
+    expect(scaleForDay("", "2026-06-01", 1)).toBeNull();
+    expect(scaleForDay("2026-05-01", "2026-06-01", null)).toBeNull();
   });
   it("preserves absent endpoints and rejects inverted ranges", () => {
     expect(targetSnapshot({ mean: 110, high: 150 }, 100).range).toBeNull();

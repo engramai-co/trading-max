@@ -66,11 +66,13 @@ import { useRouteState } from "./route-state";
 
 function CitedCalendarEvent({data, kind, date, end}: {data: ResearchLensSnapshot; kind: string; date: string | null; end: string | null}) {
   const t = useCopy();
-  const calendar = object(object(data.fundamentals).earningsCalendar);
+  const fundamentals = object(data.fundamentals);
+  const calendar = object(fundamentals.earningsCalendar);
   const exDividend = kind === "exDividend";
-  const raw = exDividend ? calendar["Ex-Dividend Date"] : calendar["Earnings Date"];
+  const raw = exDividend ? calendar["Ex-Dividend Date"] ?? object(fundamentals.metrics).exDividendDate : calendar["Earnings Date"];
   const days = [...new Set((Array.isArray(raw) ? raw : [raw]).flatMap(day =>
-    typeof day === "string" && /^\d{4}-\d{2}-\d{2}/.test(day) ? [day.slice(0, 10)] : []))].sort();
+    typeof day === "string" && /^\d{4}-\d{2}-\d{2}/.test(day) ? [day.slice(0, 10)] :
+      typeof day === "number" && Number.isFinite(new Date(day * 1000).valueOf()) ? [new Date(day * 1000).toISOString().slice(0, 10)] : []))].sort();
   const dates = days.length ? [...new Set([days[0], days[days.length-1]])].join(" – ") : t("暂无可核实日期", "No verified date");
   return <section data-reading-event=""><Panel title={exDividend ? t("除息日期", "Ex-dividend date") : t("预计财报日期", "Estimated earnings date")}>
     <p>{data.ticker} · {dates}</p>
@@ -348,7 +350,7 @@ function SecurityResearchWorkspace() {
   const titles: Record<ResearchTab, string> = {
     overview: t("概览", "Overview"),
     technical: t("价格与技术", "Price & technicals"),
-    valuation: t("估值模型", "Valuation"),
+    valuation: t("估值", "Valuation"),
     fundamentals: t("财务与业务", "Financials & business"),
     financials: t("财务报表", "Financials"),
     analyst: t("预期与事件", "Estimates & events"),
@@ -566,7 +568,10 @@ function SecurityResearchWorkspace() {
                 <Tabs
                   label={t("研究视角", "Research perspectives")}
                   value={tab === "financials" ? "fundamentals" : tab}
-                  onChange={(v) => update({ view: v === "overview" ? null : v, fundMode: null })}
+                  onChange={(v) => update({
+                    view: v === "overview" ? null : v,
+                    fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null,
+                  }, { focusResearchSection: false })}
                   options={(readOnly
                     ? (isFund ? ["overview", "technical", "tracking", "peers"] : ["overview", "technical"]) as ResearchTab[]
                     : isFund
@@ -683,7 +688,7 @@ function SecurityResearchWorkspace() {
                       )}
                       {displayTab === "technical" && !isFund && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
                       {displayTab === "valuation" && !isFund && (
-                        <ValuationWorkbench data={displayData} revision={revision} price={price} />
+                        <ValuationWorkbench key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "fundamentals" &&
                         (isFund ? (
@@ -717,7 +722,7 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView data={displayData} revision={revision} price={price} />
+                        <AnalystView key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
                       {displayTab === "ledger" && (

@@ -266,20 +266,14 @@
   content: none;
 }
 .mx-target-chart .mx-price-context-status {
-  position: static;
-  width: auto;
-  padding: 4px 0;
-  text-align: left;
+  top: 12px;
+  left: 6px;
+  max-width: calc(100% - 100px);
+  width: fit-content;
+  padding: 4px 8px;
+  text-align: start;
   color: var(--mx-warning);
 }
-.mx-target-history {
-  margin-top: 18px;
-}
-.mx-target-history h3 {
-  margin: 0;
-  font-size: 14px;
-}
-
 .mx-chart-host[data-expanded="true"] {
   position: fixed;
   z-index: 1100;

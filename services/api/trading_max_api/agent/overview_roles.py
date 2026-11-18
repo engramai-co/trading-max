@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from functools import partial
 from typing import Literal
 from zoneinfo import ZoneInfo
 
 from ..models import JobRecord
-from . import tools
-from .deps import ToolBindings
+from . import events, tools
+from .deps import AssistantDeps, ToolBindings
 from .roles import (
     BriefTarget,
     LinkedObservation,
@@ -175,6 +175,114 @@ def upcoming(read: RoleTools, today: date) -> list[ReadingLine]:
     ]
 
 
+def calendar_window(deps: AssistantDeps) -> dict[str, str]:
+    today = deps.manifest.created_at.astimezone(deps.timezone).date()
+    return {"start": today.isoformat(), "end": (today + timedelta(days=29)).isoformat()}
+
+
+class DailyRole(PageRole):
+    @property
+    def cache_id(self) -> str:
+        # Earlier daily readings contain only the holdings calendar.
+        return "calendar:" + super().cache_id
+
+    def bind(self, deps: AssistantDeps, context: RoleContext) -> AssistantDeps:
+        selected = super().bind(deps, context)
+        if selected.manifest:
+            selected.role_bindings["upcoming_events"].update(calendar_window(deps))
+        return selected
+
+
+def daily_calendar(read: RoleTools) -> ReadingLine:
+    """Keep the nearest dated release, earnings and ex-dividend event from this publication."""
+    selected = {}
+    cursor = 0
+    window = calendar_window(read.deps)
+    while True:
+        result = read.read(
+            events.upcoming_events,
+            events.EventArgs(
+                scope="broker_total",
+                **window,
+                cursor=cursor,
+                limit=20,
+            ),
+        )
+        page = result.get("data") or {}
+        for row in page.get("items", []):
+            kind = row["kind"]
+            day = row["local_date"]
+            if kind in selected or kind not in {"macro", "earnings", "ex_dividend"}:
+                continue
+            if len(day) != 10 or row.get("status") in {"cancelled", "postponed"}:
+                continue
+            instant = row.get("instant")
+            if instant and datetime.fromisoformat(instant) < read.deps.manifest.created_at:
+                continue
+            details = {"eventId": row["evidence_id"], "date": day}
+            if instant:
+                details["instant"] = instant
+            span = day
+            if row.get("end_date") and row["end_date"] != day:
+                details["endDate"] = row["end_date"]
+                span += " – " + row["end_date"]
+            if kind == "macro":
+                if not row.get("source_url") or not row.get("title_zh") or not row.get("title_en"):
+                    continue
+                details["url"] = row["source_url"]
+                market = row.get("market")
+                prefix = f"{market} · " if market else ""
+                zh, en = prefix + row["title_zh"], prefix + row["title_en"]
+                if row.get("credit"):
+                    details["credit"] = row["credit"]
+                if row.get("status") == "provisional":
+                    zh, en = zh + "（暂定）", en + " (provisional)"
+                source = "calendar"
+            else:
+                ticker = row["ticker"]
+                details["holdingTicker"] = ticker
+                if kind == "earnings":
+                    details["event"] = (
+                        "earnings" if row.get("research_event_id") else "earningsWindow"
+                    )
+                    if row.get("research_event_id"):
+                        details["researchEventId"] = row["research_event_id"]
+                    zh, en, source = (
+                        f"{ticker} 预计财报",
+                        f"{ticker} estimated earnings",
+                        "financials",
+                    )
+                else:
+                    details["event"] = "exDividend"
+                    zh, en, source = f"{ticker} 除息", f"{ticker} ex-dividend", "disclosure"
+            selected[kind] = line(
+                "next",
+                f"{span} · {zh}",
+                f"{span} · {en}",
+                result,
+                source,
+                "upcoming_events",
+                **details,
+            )
+        cursor = page.get("next_cursor")
+        if cursor is None or len(selected) == 3:
+            break
+    if not selected:
+        return line(
+            "next",
+            "未来 30 天暂无可核实的宏观发布、持仓财报或除息日期。",
+            "No macro release, holdings earnings or ex-dividend date is verified for the next 30 days.",
+            result,
+            "calendar",
+            "upcoming_events",
+        )
+    first, *rest = selected.values()
+    first.related = [
+        LinkedObservation(zh=item.zh, en=item.en, evidence=item.evidence) for item in rest
+    ]
+    return first
+
+
 def benchmark_line(read: RoleTools, args: dict[str, str], benchmark: str) -> ReadingLine:
     compare = read.read(tools.compare_benchmarks, tools.BenchmarkArgs(**args, benchmark=benchmark))
     comparison = compare.get("data") or {}
@@ -259,12 +367,12 @@ def overview_facts(
     facts.append(market)
     decisions = read.read(
         tools.recent_decisions,
-        tools.DecisionsArgs(scope="broker_total", since=start or end, limit=4),
+        tools.DecisionsArgs(scope="broker_total", range=period, limit=4),
     )
     rows = [
         r
         for r in (decisions.get("data") or {}).get("items", [])
-        if r.get("ticker") and r.get("side") and r.get("date", "")[:10] <= end
+        if r.get("ticker") and r.get("side") and r.get("date")
     ]
     if rows:
         for row in rows:
@@ -292,6 +400,8 @@ def overview_facts(
                 "recent_decisions",
             )
         )
+    if period == "1D":
+        return [*facts, daily_calendar(read)]
     return [*facts, *upcoming(read, read.deps.manifest.created_at.astimezone(LONDON).date())]
 
 
@@ -325,13 +435,14 @@ def overview_bindings(
         "period_performance": window,
         "compare_benchmarks": {**window, "benchmark": selection.benchmark},
         "list_holdings": account,
-        "recent_decisions": account,
+        "recent_decisions": {**window, "since": None},
         "read_research_lens": {},
+        **({"upcoming_events": {**account, "ticker": None}} if period == "1D" else {}),
     }
 
 
 OVERVIEW_ROLES = tuple(
-    PageRole(
+    (DailyRole if role == "daily" else PageRole)(
         id=role,
         page="overview",
         allowed_tools=frozenset(
@@ -340,6 +451,7 @@ OVERVIEW_ROLES = tuple(
                 "compare_benchmarks",
                 "recent_decisions",
                 "list_holdings",
+                *(["upcoming_events"] if role == "daily" else []),
                 "read_research_lens",
             }
         ),

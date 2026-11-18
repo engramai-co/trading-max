@@ -31,7 +31,7 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
           start:str(data.window_start), end:str(data.window_end), snapshotId:str(source.output.snapshot_id)}, source.output)};
       } else if (evidence.tool === "compare_benchmarks") {
         const data = object(source.output.data);
-        evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, start:str(data.start), end:str(data.end)}, source.output)};
+        evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, start:str(data.start), end:str(data.end), snapshotId:str(source.output.snapshot_id) || evidence.arguments?.snapshotId}, source.output)};
       }
       if (["selected_exposure","selected_daily","selected_fx","sector_headline","selected_money","daily_returns","holding_fx_split","exposure_benchmark","market_sector","global_map","update_issue"].includes(evidence.tool)) {
         evidence = {...evidence,arguments:{...evidence.arguments,metric:pointer,snapshotId:str(source.output.snapshot_id)}};
