@@ -87,6 +87,11 @@ export function evidenceHref(ref: Evidence): string | null {
     if (a.category) params.set("category",a.category);
     if (a.group) params.set("group", a.group);
     if (a.entityId) params.set("entityId", a.entityId);
+    if (ref.tool === "exposure_benchmark") {
+      for (const field of ["benchmarkSource","benchmarkAsOf","benchmarkObservation"]) {
+        if (a[field]) params.set(field,a[field]);
+      }
+    }
   }
   if (path === "/sectors") {
     params.set("market",ref.tool==="global_map" ? "global" : a.market ?? "global");

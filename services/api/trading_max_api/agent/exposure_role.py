@@ -1,5 +1,6 @@
 """Explain a selected, published look-through allocation and its dated comparators."""
 
+from dataclasses import replace
 from datetime import date, datetime, timedelta
 from math import isclose
 from typing import Literal
@@ -19,10 +20,21 @@ class ExposureContext(RoleContext):
     dimension: Literal["country", "sector", "gics", "company"]
     category: str = Field(min_length=1, max_length=180)
     entityId: str | None = Field(default=None, min_length=1, max_length=512)
+    citedBenchmark: Literal["SWDA", "SSAC"] | None = None
+    citedBenchmarkAsOf: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    citedBenchmarkObservation: str | None = Field(default=None, pattern=r"^bw_[0-9a-f]{16}$")
     group: Literal["tail", "unresolved"] | None = None
 
     @model_validator(mode="after")
     def grouped_category(self):
+        if any((self.citedBenchmark, self.citedBenchmarkAsOf, self.citedBenchmarkObservation)):
+            if not (
+                self.citedBenchmark
+                and self.citedBenchmarkAsOf
+                and self.citedBenchmarkObservation
+                and self.citedBenchmark == {"country": "SSAC", "sector": "SWDA"}.get(self.dimension)
+            ):
+                raise ValueError("Invalid benchmark observation")
         if self.entityId and (self.dimension != "company" or self.group):
             raise ValueError("An entity identifies one company")
         if (self.group and self.category != self.group) or (
@@ -200,9 +212,22 @@ def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
         or weights.as_of > observed.astimezone(LONDON).date()
     ):
         return read.missing("dated_benchmark_weight_unavailable")
+    source_id = "SSAC" if isinstance(weights, AcwiWeights) else "SWDA"
+    as_of = weights.as_of.isoformat()
+    # An issuer can correct its figures without changing the holdings date.
+    observation = tools._short_id("bw_", [source_id, as_of, args.dimension, names, value])
+    read = replace(read, evidence_context=observation)
+    if args.citedBenchmark and (
+        args.citedBenchmark,
+        args.citedBenchmarkAsOf,
+        args.citedBenchmarkObservation,
+    ) != (source_id, as_of, observation):
+        return read.missing("cited_benchmark_unavailable")
     return read.result(
         data={
-            "as_of": weights.as_of.isoformat(),
+            "source": source_id,
+            "observation": observation,
+            "as_of": as_of,
             "weight": value,
             "dimension": args.dimension,
             "name": args.category,
@@ -306,6 +331,8 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
         benchmark = "MSCI ACWI (SSAC)" if context.dimension == "country" else "MSCI World (SWDA)"
         basis = result.get("data")
         zh, en = f"{benchmark} 暂无可比权重。", f"No comparable {benchmark} weight is available."
+        if context.citedBenchmark:
+            zh, en = "引用的基准权重记录暂不可用。", "Cited benchmark weight unavailable."
         if basis:
             ref, stamp = basis["weight"], basis["as_of"]
             zh, en = (
@@ -320,9 +347,21 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
                 result,
                 "exposure_benchmark",
                 end=day.isoformat(),
-                **({"start": basis["as_of"]} if basis else {}),
+                **(
+                    {
+                        "start": basis["as_of"],
+                        "benchmarkSource": basis["source"],
+                        "benchmarkAsOf": basis["as_of"],
+                        "benchmarkObservation": basis["observation"],
+                    }
+                    if basis
+                    else {}
+                ),
             )
         )
+        if context.citedBenchmark:
+            # A reopened benchmark citation always includes the supporting weight or its expiry.
+            return [facts[0], facts[-1]]
     if (coverage := data.get("lookthrough_coverage_fraction")) is not None and coverage < 0.99995:
         facts.append(
             observation(

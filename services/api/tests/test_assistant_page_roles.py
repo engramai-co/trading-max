@@ -713,3 +713,69 @@ def test_first_failed_refresh_reading_survives_publication_and_filters_private_j
     finally:
         client.close()
         jobs.close()
+
+
+def test_cited_weight_identifies_the_dated_source_and_rejects_a_revision(tmp_path):
+    from trading_max.infrastructure.world_sector_weights import (
+        WorldSectorWeight,
+        WorldSectorWeights,
+    )
+
+    from services.api.tests.assistant_fixture import publication
+    from services.api.trading_max_api.agent import tools
+    from services.api.trading_max_api.agent.deps import AssistantDepsFactory
+    from services.api.trading_max_api.agent.exposure_role import exposure_benchmark
+    from services.api.trading_max_api.artifacts import ArtifactStore
+
+    store = ArtifactStore(tmp_path)
+    publication(
+        store,
+        extra_artifacts={
+            tools.LOOKTHROUGH: {
+                "available": True,
+                "brokerAsOf": STAMP,
+                "investedValueGbp": 1000,
+                "lookthroughCoveragePct": 1,
+                "industryAllocation": [
+                    {"industry": "Information Technology", "valueGbp": 350, "allocationPct": 0.35}
+                ],
+            }
+        },
+    )
+    deps = AssistantDepsFactory(store).for_run()
+    role = role_registry()["exposure"]
+    selected = role.context_schema.model_validate(
+        {"dimension": "sector", "category": "Information Technology"}
+    )
+
+    def inspect(weight, context):
+        weights = WorldSectorWeights(
+            as_of=date(2026, 2, 2),
+            fetched_at=datetime(2026, 2, 3, tzinfo=UTC),
+            sectors={"45": WorldSectorWeight(weight=weight, holdings=[])},
+        )
+        source = replace(inputs(), weights=lambda _: weights)
+        reader = role.reader(replace(deps, page_sources=source), context)
+        result = reader.read(exposure_benchmark, {})
+        facts = role.facts(reader, context)
+        reader.attach_evidence(facts)
+        return result, next(f for f in facts if f.section == "benchmark")
+
+    old, original = inspect(0.28, selected)
+    newer, _ = inspect(0.31, selected)
+    assert old["data"]["weight"] == 0.28 and newer["data"]["weight"] == 0.31
+    assert old["evidence_id"] != newer["evidence_id"]
+    target = original.evidence.arguments
+    assert target["benchmarkSource"] == "SWDA" and target["benchmarkAsOf"] == "2026-02-02"
+    pinned = selected.model_copy(
+        update={
+            "citedBenchmark": target["benchmarkSource"],
+            "citedBenchmarkAsOf": target["benchmarkAsOf"],
+            "citedBenchmarkObservation": target["benchmarkObservation"],
+        }
+    )
+    retained, _ = inspect(0.28, pinned)
+    assert retained["data"]["weight"] == 0.28
+    expired, line = inspect(0.31, pinned)
+    assert expired["status"] == "unavailable"
+    assert "cited" in line.en.lower() and "unavailable" in line.en.lower()

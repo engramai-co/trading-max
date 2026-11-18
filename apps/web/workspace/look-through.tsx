@@ -374,8 +374,13 @@ function Exposure({
   const dimension = view === "companies" ? "company" : view === "sectors" ? "sector" : view === "countries" ? "country" : "gics";
   const inspect = (row: Pick<AllocationSlice,"name"|"category"|"group"|"entityId">) => setChoice(row.category ? {name:row.name,category:row.category,entityId:row.entityId,group:row.group} : null);
   const categoryKey = (row: Record<string,unknown>) => str(row.country ?? row.subIndustry ?? row.industry ?? row.name);
+  const citedWeight = params?.get("evidence") === "exposure_benchmark" && choice?.category === params.get("category") && dimension === linkedDimension;
+  const source = params?.get("benchmarkSource"), asOf = params?.get("benchmarkAsOf"), observation = params?.get("benchmarkObservation");
+  if (citedWeight && (source !== (dimension === "sector" ? "SWDA" : "SSAC") || !asOf || !/^\d{4}-\d{2}-\d{2}$/.test(asOf) || !observation || !/^bw_[0-9a-f]{16}$/.test(observation))) {
+    return <Empty title={t("引用的基准权重记录暂不可用","Cited benchmark weight unavailable")} />;
+  }
   const role = <PageInspection role="exposure" object={choice?.name ?? t("穿透配置","Look-through allocation")}
-    context={choice ? {dimension,category:choice.category,...(choice.entityId ? {entityId:choice.entityId} : {}),...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
+    context={choice ? {dimension,category:choice.category,...(citedWeight && source && asOf && observation ? {citedBenchmark:source,citedBenchmarkAsOf:asOf,citedBenchmarkObservation:observation} : {}),...(choice.entityId ? {entityId:choice.entityId} : {}),...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
   if (params?.get("snapshotId") && choice && !choice.group) {
     const hasRecord = dimension === "company" ? !!linkedCompany || !params.get("category") || choice.category !== params.get("category")
       : allocations.some(row => dimension === "country" ? place(categoryKey(row)) === place(choice.category) : categoryKey(row) === choice.category);

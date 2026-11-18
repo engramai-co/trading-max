@@ -1,152 +1,4 @@
 {
-  "selected_money": {
-    "status": "ok",
-    "data": {
-      "pnl": -80.0,
-      "start": "2026-02-03T12:00:00Z",
-      "end": "2026-02-03T17:00:00Z",
-      "currency": "GBP",
-      "estimated": false
-    },
-    "snapshot_id": "synthetic-figures",
-    "scope": "isa",
-    "quality": {
-      "issues": []
-    },
-    "evidence_id": "ev_selected_money"
-  },
-  "exposure_benchmark": {
-    "status": "ok",
-    "data": {
-      "as_of": "2026-02-02",
-      "weight": 0.61,
-      "dimension": "country",
-      "name": "United States"
-    },
-    "snapshot_id": "synthetic-figures",
-    "scope": "broker_total",
-    "quality": {
-      "issues": []
-    },
-    "evidence_id": "ev_exposure_benchmark"
-  },
-  "market_sector": {
-    "status": "ok",
-    "data": {
-      "day": "2026-02-03",
-      "name": "Information Technology",
-      "move": 0.02,
-      "weight": 0.15,
-      "weights_as_of": "2026-02-02",
-      "weight_stale": false,
-      "contribution": 0.003
-    },
-    "snapshot_id": "synthetic-figures",
-    "scope": "market",
-    "quality": {
-      "issues": []
-    },
-    "evidence_id": "ev_market_sector"
-  },
-  "global_map": {
-    "status": "ok",
-    "data": {
-      "day": "2026-02-03",
-      "markets": [
-        {
-          "market": "us",
-          "move": -0.01,
-          "not_open": false,
-          "contribution": null
-        }
-      ]
-    },
-    "scope": "market",
-    "quality": {
-      "issues": []
-    },
-    "evidence_id": "ev_global_map",
-    "snapshot_id": "synthetic-figures",
-    "bound_arguments": {
-      "observed": "2026-02-03T17:00:00Z",
-      "market": "us",
-      "snapshotId": "synthetic-figures"
-    }
-  },
-  "update_issue": {
-    "status": "ok",
-    "data": {
-      "finished_at": "2026-02-03T17:00:00+00:00",
-      "status": "failed",
-      "failed_broker_reconciliation": false,
-      "failed_stages": [
-        {
-          "id": "research.fundamentals",
-          "zh": "基本面",
-          "en": "Fundamentals"
-        }
-      ],
-      "attempts": 2,
-      "completed": 0,
-      "stages": 1
-    },
-    "scope": "broker_total",
-    "quality": {
-      "issues": []
-    },
-    "evidence_id": "ev_update_issue",
-    "snapshot_id": "synthetic-figures",
-    "bound_arguments": {
-      "issue": "job",
-      "job": "example",
-      "snapshotId": "synthetic-figures"
-    }
-  },
-  "daily_returns": {
-    "status": "partial",
-    "data": {
-      "currency": "GBP",
-      "basis": "published_daily_twr",
-      "range": "ALL",
-      "window_twr_fraction": 0.020000000000000018,
-      "window_benchmarks": {
-        "VOO": 0.08000000000000007
-      },
-      "worst_day": {
-        "date": "2026-02-03",
-        "from_date": "2026-02-02",
-        "return_fraction": -0.07272727272727275,
-        "benchmark_return_fractions": {
-          "VOO": 0.018867924528301883
-        },
-        "worst_rank": 1
-      },
-      "window_start": "2026-01-28",
-      "window_end": "2026-02-03",
-      "benchmark": "VOO",
-      "benchmark_currency": "GBP",
-      "benchmark_basis": "adjusted_price_gbp",
-      "items": [
-        {
-          "date": "2026-02-03",
-          "from_date": "2026-02-02",
-          "return_fraction": -0.07272727272727275,
-          "benchmark_return_fractions": {
-            "VOO": 0.018867924528301883
-          },
-          "worst_rank": 1
-        }
-      ],
-      "total_items": 4,
-      "next_cursor": 1
-    },
-    "snapshot_id": "synthetic-figures",
-    "scope": "invest",
-    "quality": {
-      "issues": []
-    },
-    "evidence_id": "ev_daily_returns"
-  },
   "selected_fx": {
     "status": "ok",
     "data": {
@@ -258,6 +110,9 @@
       "dimension": "country",
       "category": "United States",
       "entityId": null,
+      "citedBenchmark": null,
+      "citedBenchmarkAsOf": null,
+      "citedBenchmarkObservation": null,
       "group": null,
       "snapshotId": "synthetic-figures"
     }
@@ -306,6 +161,60 @@
       "market": "us",
       "grouping": "gics",
       "sector": "45",
+      "snapshotId": "synthetic-figures"
+    }
+  },
+  "global_map": {
+    "status": "ok",
+    "data": {
+      "day": "2026-02-03",
+      "markets": [
+        {
+          "market": "us",
+          "move": -0.01,
+          "not_open": false,
+          "contribution": null
+        }
+      ]
+    },
+    "scope": "market",
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_global_map",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "observed": "2026-02-03T17:00:00Z",
+      "market": "us",
+      "snapshotId": "synthetic-figures"
+    }
+  },
+  "update_issue": {
+    "status": "ok",
+    "data": {
+      "finished_at": "2026-02-03T17:00:00+00:00",
+      "status": "failed",
+      "failed_broker_reconciliation": false,
+      "failed_stages": [
+        {
+          "id": "research.fundamentals",
+          "zh": "基本面",
+          "en": "Fundamentals"
+        }
+      ],
+      "attempts": 2,
+      "completed": 0,
+      "stages": 1
+    },
+    "scope": "broker_total",
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_update_issue",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "issue": "job",
+      "job": "example",
       "snapshotId": "synthetic-figures"
     }
   }

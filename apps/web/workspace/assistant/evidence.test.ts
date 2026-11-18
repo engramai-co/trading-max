@@ -256,3 +256,14 @@ it("reads the selected calendar row's title, Tokyo day and exact source", () => 
     snapshotId:"saved",calendarEventId:"ev_report",eventId:"report",date:"2026-02-05",ticker:"SYNT"
   });
 });
+
+it("carries the fund observation in both reading and chat weight citations",()=>{
+  const args={dimension:"sector",category:"Information Technology",snapshotId:"older",benchmarkSource:"SWDA",benchmarkAsOf:"2026-02-02",benchmarkObservation:"bw_0123456789abcdef"};
+  const reading={tool:"exposure_benchmark",source:"exposure" as const,evidenceId:"ev_weight",arguments:args};
+  const reply=fieldReply("exposure_benchmark",{snapshot_id:"older",bound_arguments:{dimension:"sector",category:args.category},
+    data:{dimension:"sector",weight:0.28,as_of:args.benchmarkAsOf,source:args.benchmarkSource,observation:args.benchmarkObservation}},"/data/weight");
+  for(const evidence of [reading,verifiedLines(reply)[0].evidence!]){
+    const params=new URL(evidenceHref(evidence)!,"http://localhost").searchParams;
+    expect(Object.fromEntries(params)).toMatchObject(args);
+  }
+});

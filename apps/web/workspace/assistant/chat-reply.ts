@@ -42,6 +42,10 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       if (["list_holdings","position_detail","lookthrough_exposure","dated_exposure","selected_exposure","selected_daily","selected_fx","sector_headline","selected_money","daily_returns","holding_fx_split","exposure_benchmark","market_sector","global_map","update_issue"].includes(evidence.tool)) {
         evidence = {...evidence,arguments:{...evidence.arguments,metric:pointer,snapshotId:str(source.output.snapshot_id)}};
       }
+      if (evidence.tool === "exposure_benchmark") {
+        const data = object(source.output.data);
+        evidence = {...evidence, arguments:{...evidence.arguments,benchmarkSource:str(data.source),benchmarkAsOf:str(data.as_of),benchmarkObservation:str(data.observation)}};
+      }
       if (["daily_returns","selected_daily"].includes(evidence.tool) && pointer.startsWith("/data/window_benchmarks/")) {
         const data = object(source.output.data);
         evidence = {...evidence, arguments:{...evidence.arguments,benchmark_basis:str(data.benchmark_basis),benchmark_currency:str(data.benchmark_currency)}};
