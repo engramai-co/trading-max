@@ -300,14 +300,6 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   });
   const query = useQuery(historyQuery(index?.id));
   const peerQuery = useQuery(historyQuery(peer?.id));
-  const context = useQuery({
-    queryKey: ["index-context", index?.id],
-    queryFn: ({ signal }) => readApi<IndexContext>(`/indices/${index?.id}/context`, signal),
-    enabled: !!index,
-    refetchInterval: 4 * 60_000,
-    staleTime: 60_000,
-    retry: 0,
-  });
   useLayoutEffect(() => {
     if (!index || (hasHistory && query.isPending) || lastFocused.current === id) return;
     const frame = requestAnimationFrame(() => {
@@ -545,15 +537,24 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
         </dl>
         {history && <IndexDrawdownChart history={history} />}
       </section>
-      {context.isPending ? <Pending compact /> : context.isError ? <QueryError retry={context.refetch} error={context.error} showDataStatusLink={false} /> :
-        context.data && <IndexContextPanels context={context.data} phone={phone} />}
+      <IndexContextPanels id={index.id} phone={phone} />
     </div>
   );
 }
 
-function IndexContextPanels({ context, phone }: { context: IndexContext; phone: boolean }) {
+function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
+  const query = useQuery({
+    queryKey: ["index-context", id],
+    queryFn: ({ signal }) => readApi<IndexContext>(`/indices/${id}/context`, signal),
+    refetchInterval: 4 * 60_000,
+    staleTime: 60_000,
+    retry: 0,
+  });
   const t = useCopy();
   const { locale, timeZone } = useLocale();
+  if (query.isPending) return <Pending compact />;
+  if (query.isError) return <QueryError retry={query.refetch} error={query.error} showDataStatusLink={false} />;
+  const context = query.data;
   const basket = context.basket;
   return (
     <>
