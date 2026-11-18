@@ -424,13 +424,14 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
     localStorage.setItem("trading_max-time-zone","Asia/Tokyo");
   });
   const eventRows = [
-    {kind:"macro",evidence_id:"ev_prices",title_en:"Consumer prices",date:"2026-02-03",instant:"2026-02-03T23:30:00Z",source_url:"https://example.org/calendar"},
+    {kind:"macro",evidence_id:"ev_prices",title_en:"Consumer prices",status:"cancelled",date:"2026-02-03",instant:"2026-02-03T23:30:00Z",source_url:"https://example.org/calendar"},
+    {kind:"macro",evidence_id:"ev_range",title_en:"GDP",status:"provisional",date:"2026-03",end_date:"2026-04",source_url:"https://example.org/gdp"},
     {kind:"earnings",ticker:"SYNT",evidence_id:"ev_report",research_event_id:"report-1",title_en:"Earnings",date:"2026-02-04"},
   ];
   const chunks = [{type:"start",messageId:"calendar"},{type:"start-step"},
     {type:"tool-input-available",toolCallId:"cal",toolName:"upcoming_events",input:{}},
     {type:"tool-output-available",toolCallId:"cal",output:{evidence_id:"ev_results",snapshot_id:"saved",status:"ok",data:{items:eventRows}}},
-    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:"{{/data/items/0/date}} [ev_results]\n{{/data/items/1/date}} [ev_results]"},
+    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:"{{/data/items/0/date}} [ev_results]\n{{/data/items/1/date}} [ev_results]\n{{/data/items/2/date}} [ev_results]"},
     {type:"text-end",id:"t"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
   await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
     headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
@@ -452,8 +453,9 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
   await input.fill("Which release and earnings date are coming up?");
   await input.press("Enter");
   const reply = page.locator(".mx-turn-assistant");
-  await expect(reply).toContainText(/Consumer prices.*4 Feb 2026.*08:30/);
-  await expect(reply.getByRole("link",{name:"Calendar"})).toHaveAttribute("href","https://example.org/calendar");
+  await expect(reply).toContainText(/Consumer prices \(cancelled\).*4 Feb 2026.*08:30/);
+  await expect(reply).toContainText("GDP (provisional) · 2026-03 – 2026-04");
+  await expect(reply.getByRole("link",{name:"Calendar"}).first()).toHaveAttribute("href","https://example.org/calendar");
   await expect(reply.getByRole("link",{name:"Financials"})).toHaveAttribute("href",/snapshotId=saved.*calendarEventId=ev_report/);
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-calendar-followup.png")});
 });

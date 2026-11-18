@@ -365,6 +365,16 @@ def test_calendar_keeps_the_nearest_dated_event_from_each_source(tmp_path, role_
                                 "instant": None,
                                 "status": "cancelled",
                             },
+                            *[
+                                {
+                                    **calendar,
+                                    "id": status,
+                                    "status": status,
+                                    "date": "2026-02-03",
+                                    "instant": None,
+                                }
+                                for status in ("postponed", "withdrawn")
+                            ],
                             {**calendar, "id": "month", "date": "2026-02", "instant": None},
                             {
                                 **calendar,

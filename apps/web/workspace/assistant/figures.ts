@@ -80,17 +80,27 @@ function resolveField(output: Json, pointer: string) {
   return { data, parent, group, field, value: parent[field] };
 }
 const dateText = (value: unknown) => /^\d{4}-\d{2}-\d{2}(?:T[\d:.+Z-]+)?$/.test(str(value)) ? str(value) : "";
+const calendarDate = (value: unknown) => /^\d{4}-\d{2}(?:-\d{2})?$/.test(str(value)) ? str(value) : "";
+const calendarStatuses: Record<string, Words> = {
+  cancelled: ["cancelled", "已取消"], withdrawn: ["withdrawn", "已撤回"],
+  postponed: ["postponed", "已推迟"], provisional: ["provisional", "暂定"],
+};
+
 export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
   if (output.status !== "ok" && output.status !== "partial") return null;
   const field = resolveField(output, pointer);
   if (!field || field.group !== "items" || !["date","local_date","instant","local_time","title_en","title_zh"].includes(field.field)) return null;
   const row = field.parent;
-  const day = dateText(row.date) || (/^\d{4}-\d{2}$/.test(str(row.date)) ? str(row.date) : "");
+  const day = calendarDate(row.date);
   const title = str(row[locale === "zh" ? "title_zh" : "title_en"]);
   if (!day || !title || !row.evidence_id) return null;
   const ticker = str(row.ticker);
-  const when = row.instant && dateText(row.instant) ? formatDateTimeInTimeZone(str(row.instant), locale, timeZone) :
-    [...new Set([day, dateText(row.end_date)].filter(Boolean))].join(" – ");
+  const start = row.instant && dateText(row.instant) ? formatDateTimeInTimeZone(str(row.instant), locale, timeZone) : day;
+  const end = calendarDate(row.end_date);
+  const when = end && end !== day ? start + " – " + end : start;
+  const status = str(row.status);
+  const label = Object.hasOwn(calendarStatuses,status) ? word(calendarStatuses[status],locale) : "";
+  const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
   if (row.kind === "earnings" || row.kind === "ex_dividend") {
@@ -101,7 +111,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
     if (row.end_date) args.endDate = str(row.end_date);
   } else if (row.source_url) args.url = str(row.source_url);
   const limited = output.status === "partial" ? word(["limited coverage","覆盖不完整"], locale) : "";
-  return {text:[ticker || str(row.market),title,when,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
+  return {text:[ticker || str(row.market),eventTitle,when,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
 }
 
 function money(value: number, unit: unknown, digits = 2) {
