@@ -15,7 +15,7 @@ from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
-from trading_max.research.venues import VenueConflict
+from trading_max.research.venues import VenueConflict, row_claims
 
 from ..dashboard import _benchmark_series
 from ..dashboard_models import ResearchPriceSeries
@@ -476,9 +476,17 @@ def dated_events(
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
     ticker = series.published_bar_ticker or args.ticker
-    pinned = PinnedListing(
-        args.ticker, series.ticker, ticker, series.venue_claims, (series.ticker,)
+    claims = (
+        *series.venue_claims,
+        *row_claims(
+            ticker,
+            {
+                "mic": series.published_bar_mic,
+                "exchange": series.published_bar_exchange,
+            },
+        ),
     )
+    pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker,))
     source_rows = {
         key: _ticker_row(read.read(key), ticker) or {}
         for key in (
