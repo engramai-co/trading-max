@@ -264,7 +264,8 @@ def test_pre_trade_leads_respect_the_earliest_fill_in_utc(tmp_path):
     deps = publish()
     items = [
         {"date": "2026-02-02", "title": "Date only, order uncertain"},
-        {"instant": "2026-02-03T01:00:00Z", "title": "Verified before the fill"},
+        {"instant": "2026-02-02T22:00:00Z", "title": "Verified before the fill"},
+        {"instant": "2026-02-03T01:00:00Z", "title": "Earlier on the recorded trade date"},
         {"instant": "2026-02-03T03:00:00Z", "title": "Later than the fill"},
     ]
     for i, item in enumerate(items):

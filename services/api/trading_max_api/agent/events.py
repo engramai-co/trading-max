@@ -254,6 +254,8 @@ def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill
         if not item:
             continue
         kind = item["kind"]
+        if kind == "news" and item["date"] >= day:
+            continue
         if kind not in {"news", "rating_change"} and not (
             kind == "earnings" and item.get("status") == "reported"
         ):
