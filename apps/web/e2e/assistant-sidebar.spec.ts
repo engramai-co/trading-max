@@ -485,19 +485,35 @@ test("opening a stale session rechecks consent before exposing saved History", a
   expect(historyReads).toBe(0);
 });
 
-test("withdrawal in Settings closes another window's saved History", async ({page,context}, info) => {
+test("cross-tab withdrawal suspends cached readings and History while the profile refresh is held", async ({page,context}, info) => {
   await context.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await fixtures(page);
   let enabled = true;
+  let releaseProfile!: () => void;
+  const profileWait = new Promise<void>(resolve => { releaseProfile = resolve; });
+  const assistantRequests: string[] = [];
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (!enabled && path.startsWith("/api/backend/assistant/")) assistantRequests.push(path);
+  });
   const settings = {enabled:true,revision:1,route:"openai/model-a",acceptedConsentRevision:2,consentRevision:2,acceptedDestination:"https://example.org/v1",
     acceptedAt:"2026-01-01",backgroundBriefsEnabled:false,shareValuationAssumptions:false,providers:[],integrations:[]};
-  await page.route("**/api/backend/profile", route => route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}}));
+  await page.route("**/api/backend/profile", async route => {
+    if (!enabled) await profileWait;
+    await route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}});
+  });
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[{id:"saved",title:"Saved weekly follow-up"}]}));
   await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:enabled,code:enabled ? null : "assistant_disabled"}}));
   await page.goto("/");
-  await expect(page.locator(".mx-digest")).toBeVisible();
+  const digest = page.locator(".mx-digest");
+  await expect(digest).toContainText("Period net P&L was £18.40.");
   await page.locator("[data-assistant-trigger]").click();
   await page.getByRole("button",{name:"Conversation history"}).click();
-  await expect(page.getByText("No saved conversations yet.")).toBeVisible();
+  const panel = page.locator("#mx-assistant-panel");
+  const saved = panel.getByRole("button", {name:"Saved weekly follow-up", exact:true});
+  const close = panel.getByRole("button", {name:"Close sidebar"});
+  await expect(saved).toBeVisible();
+  await saved.focus();
   const other = await context.newPage();
   await fixtures(other);
   await other.route("**/api/backend/settings/assistant", route => {
@@ -508,15 +524,110 @@ test("withdrawal in Settings closes another window's saved History", async ({pag
     return route.fulfill({json:settings});
   });
   await other.goto("/settings?tab=assistant");
-  await other.getByRole("button",{name:"Withdraw consent"}).click();
-  await expect.poll(() => enabled).toBe(false);
-  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant",{timeout:3000});
-  await expect(page.getByText("No saved conversations yet.")).toHaveCount(0);
-  await page.bringToFront();
-  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
+  const refreshing = page.waitForRequest(request => !enabled && new URL(request.url()).pathname === "/api/backend/profile");
+  try {
+    await other.getByRole("button",{name:"Withdraw consent"}).click();
+    await refreshing;
+    await page.bringToFront();
+    await expect.soft(assistantRequests, "assistant requests before profile confirmation").toEqual([]);
+    await expect(panel.getByText("Checking connection…")).toBeVisible({timeout:1500});
+    await expect(digest).toHaveCount(0);
+    await expect(saved).toBeHidden();
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(close).toBeFocused();
+    expect(assistantRequests).toEqual([]);
+
+    releaseProfile();
+    await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+    await expect(close).toBeFocused();
+    await expect(digest).toHaveCount(0);
+    await expect(panel.getByText("Saved weekly follow-up")).toHaveCount(0);
+    expect(assistantRequests).toEqual([]);
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
+  } finally {
+    releaseProfile();
+    await other.close();
+  }
 });
 
-for (const outcome of ["draft", "history button", "reopened draft", "withdrawn"] as const) {
+test("a newer consent signal keeps active streams cancelled until that profile confirms", async ({page,context}) => {
+  await fixtures(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("trading_max-locale","en");
+    // Observe the actual AbortSignals handed to fetch while both responses are held.
+    const fetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+      const stream = url.pathname.endsWith("/assistant/chat") ? "chat" :
+        url.pathname.endsWith("/roles/weekly/reading") ? "reading" : null;
+      if (stream) (init?.signal ?? (input instanceof Request ? input.signal : null))?.addEventListener("abort", () => {
+        document.documentElement.setAttribute("data-aborted-" + stream, "");
+      }, {once:true});
+      return fetch(input, init);
+    };
+  });
+  let changed = false;
+  const requests: string[] = [];
+  page.on("request", req => {
+    const path = new URL(req.url()).pathname;
+    if (changed && path.startsWith("/api/backend/assistant/")) requests.push(path);
+  });
+  const profiles: ((status:number) => void)[] = [];
+  await page.route("**/api/backend/profile", async route => {
+    const status = changed ? await new Promise<number>(resolve => profiles.push(resolve)) : 200;
+    await route.fulfill({status, json:{accountLabels:{},assistantEnabled:true}});
+  });
+  let releaseStreams!: () => void;
+  const hold = new Promise<void>(resolve => { releaseStreams = resolve; });
+  await page.route(/\/assistant\/(chat\?|roles\/weekly\/reading)/, async route => {
+    await hold;
+    await route.abort().catch(() => {});
+  });
+  await page.goto("/");
+  const reading = page.waitForRequest(req => req.url().endsWith("/roles/weekly/reading"));
+  await page.getByRole("button", {name:"Weekly", exact:true}).click();
+  await reading;
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const draft = panel.getByRole("textbox", {name:"Message"});
+  await draft.fill("Start the chat");
+  const chat = page.waitForRequest(req => new URL(req.url()).pathname.endsWith("/assistant/chat"));
+  await draft.press("Enter");
+  await chat;
+  await draft.fill("Keep this unsent question");
+  const other = await context.newPage();
+  await other.goto("/favicon.ico");
+  const signal = (revision:string) => other.evaluate(value => localStorage.setItem("trading_max-assistant-settings-revision",value),revision);
+  try {
+    changed = true;
+    await signal("first");
+    await expect.poll(() => profiles.length).toBe(1);
+    for (const stream of ["chat","reading"]) await expect(page.locator("html")).toHaveAttribute("data-aborted-" + stream, "");
+    await expect(panel.getByText("Checking connection…")).toBeVisible();
+    await expect(page.locator(".mx-digest")).toHaveCount(0);
+    await signal("second");
+    await expect.poll(() => profiles.length).toBe(2);
+    profiles[0](200);
+    profiles[1](503);
+    await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+    await expect(draft).toBeHidden();
+    expect(requests).toEqual([]);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => profiles.length).toBe(3);
+    expect(requests).toEqual([]);
+    profiles[2](200);
+    await expect(draft).toHaveValue("Keep this unsent question");
+    await expect(draft).toBeFocused();
+    expect(requests[0]).toBe("/api/backend/assistant/status");
+  } finally {
+    releaseStreams();
+    for (const resolve of profiles) resolve(200);
+    await other.close();
+  }
+});
+
+for (const outcome of ["draft", "history button", "reopened draft", "changed settings", "withdrawn"] as const) {
   test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
@@ -544,6 +655,8 @@ for (const outcome of ["draft", "history button", "reopened draft", "withdrawn"]
     });
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
     if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
+    else if (outcome === "changed settings") await page.evaluate(() => window.dispatchEvent(
+      new StorageEvent("storage",{key:"trading_max-assistant-settings-revision",newValue:"2"})));
     else if (outcome === "withdrawn") await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     else await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     try {

@@ -19,7 +19,7 @@ export function AssistantEntry() {
   </button>;
 }
 export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
-  const { open, close, ready, pending, code } = useAssistant();
+  const { open, close, ready, pending, suspended, code } = useAssistant();
   const t = useCopy();
   const [visited, setVisited] = useState(false);
   if (open && ready && !pending && !visited) setVisited(true);
@@ -36,7 +36,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
   const lastControl = useRef<HTMLElement>(null);
   const gateClose = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
-    if (!ready && !pending) lastControl.current = null;
+    if (!ready && !pending && !suspended) lastControl.current = null;
     if (!open || searchOpen) return;
     const active = document.activeElement;
     // A non-modal desktop panel may revalidate while the reader is working elsewhere.
@@ -46,11 +46,11 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
     } else if (lastControl.current?.isConnected) {
       lastControl.current.focus({preventScroll:true});
     }
-  }, [open, pending, ready, searchOpen]);
+  }, [open, pending, ready, suspended, searchOpen]);
   if (!visited && !open) return null;
   return <FocusTrap innerRef={panel} active={Boolean(open && overlay && !searchOpen)}><div id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
-    {ready && visited && <div className="mx-assistant-thread" hidden={pending}
+    {(ready || pending || suspended) && visited && <div className="mx-assistant-thread" hidden={pending || !ready}
       onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, search, scopeLabel }} /></div>}
     {(!ready || pending) && <>
       <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button ref={gateClose} onClick={close}
