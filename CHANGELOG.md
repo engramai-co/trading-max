@@ -16,7 +16,7 @@ All notable public Trading Max releases are recorded here.
 
 ### Changed
 - Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
-- Estimates & events opens with ratings and targets on the 12-month price chart. Targets use the chart currency and account for share splits. Announcements after the latest close keep their dates, and the upside appears when both dated amounts have a verified share basis. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
+- Estimates & events opens with ratings and targets on the 12-month price chart. Targets use the chart currency and account for share splits. Targets beyond the split history stay available by date at their announced amounts. The chart plots targets on the share basis of its latest close, and the upside uses the verified basis of the target and quote. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
 
 ### Fixed
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Older trade markers appear only when the snapshot identifies one matching listing.

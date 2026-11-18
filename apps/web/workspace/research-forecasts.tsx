@@ -80,7 +80,7 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
           <Segments
             label={t("预期报告周期", "Estimate reporting period")}
             value={period}
-            onChange={(v) => update({ estimateFrequency: v })}
+            onChange={(v) => update({ estimateFrequency: v }, { focusResearchSection: false })}
             options={[
               { value: "quarter", label: t("季度", "Quarterly") },
               { value: "year", label: t("年度", "Annual") },
