@@ -1,7 +1,7 @@
 """Read dated evidence from a single publication with account-scoped trades."""
 
 from collections import defaultdict
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
@@ -234,6 +234,71 @@ def _public(ticker, data, upcoming):
             reference=r.get("accession") or r.get("id"),
         )
     yield from listed_headlines(ticker, _headline_rows(data, ticker))
+
+
+def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill: str | None):
+    """The latest verified item of each kind, from the selected listing and before its first fill."""
+    trade_day = date.fromisoformat(day)
+    if not listing or trade_day <= date.min + timedelta(days=8):
+        return None
+    cutoff = datetime.fromisoformat(first_fill) if first_fill else None
+    cutoff = (
+        cutoff.astimezone(UTC)
+        if cutoff and cutoff.tzinfo
+        else datetime.combine(trade_day, time.min, UTC)
+    )
+    start = cutoff - timedelta(days=7)
+    data = {
+        ANALYST: _indexed(read.read(ANALYST)),
+        FINANCIALS: _indexed(read.read(FINANCIALS)),
+        NEWS_KEY: (read.read(NEWS_KEY) or {}).get("securities", {}),
+        EARNINGS: {},
+        FUNDAMENTALS: {},
+    }
+    latest = {}
+    for item in _public(listing, data, upcoming=False):
+        if not item:
+            continue
+        kind = item["kind"]
+        if kind not in {"news", "rating_change"} and not (
+            kind == "earnings" and item.get("status") == "reported"
+        ):
+            continue
+        if item["instant"]:
+            stamp = datetime.fromisoformat(item["instant"])
+            if kind == "news" and stamp.astimezone(UTC).date() >= trade_day:
+                continue
+            if not start <= stamp < cutoff:
+                continue
+            local_date = stamp.astimezone(read.deps.timezone).date()
+        else:
+            local_date = date.fromisoformat(item["date"])
+            if kind == "news" and local_date >= trade_day:
+                continue
+            # With no publisher zone, even the end of this day in UTC−12 must precede the fill.
+            stamp = datetime.combine(local_date, time.min, UTC)
+            if local_date < start.date() or stamp + timedelta(hours=36) > cutoff:
+                continue
+        if kind not in latest or latest[kind][0] < stamp:
+            fields = {
+                k: item[k]
+                for k in (
+                    "kind",
+                    "firm",
+                    "to_grade",
+                    "title_en",
+                    "title_zh",
+                    "publisher",
+                    "source_url",
+                )
+                if k in item
+            }
+            if kind != "news":
+                fields["record_id"] = _published_row(read.deps.snapshot_id, item, None)[
+                    "evidence_id"
+                ]
+            latest[kind] = (stamp, {**fields, "local_date": local_date.isoformat()})
+    return [item for _, item in latest.values()]
 
 
 def _reported_dividends(ticker, evidence):
@@ -510,12 +575,12 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     read = _Read(deps, "upcoming_events", args, args.scope)
     if kind == "dividend":
         financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
-        rows = _reported_dividends(ticker, financials.get("evidence", {}))
+        rows = listed_dividends(ticker, {}, {}, financials.get("evidence", {}))
     else:
         data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-        # Reported earnings remain citable after they leave the upcoming calendar.
+        # Historical earnings and rating changes remain citable after publication.
         data.update({NEWS_KEY: {}, FINANCIALS: {}})
-        rows = _public(ticker, data, upcoming=kind != "earnings")
+        rows = _public(ticker, data, upcoming=kind in {"dividend_pay", "ex_dividend"})
     for row in rows:
         if not row or row["kind"] != kind:
             continue

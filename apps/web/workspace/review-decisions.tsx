@@ -34,9 +34,9 @@ import { readingTone } from "./reading-format";
 import { SecurityPeek } from "./security-peek";
 
 export type AccountDecisions = NonNullable<DashboardLens["selectedAccountDecisions"]>;
-export type TradeDecision = NonNullable<AccountDecisions["decisions"]>[number];
-/** One security, one side and one trading day: what identifies a decision. */
-export type DecisionRef = Pick<TradeDecision, "date" | "side" | "ticker">;
+export type TradeDecision = NonNullable<AccountDecisions["decisions"]>[number] & { reviewOrdinal?: number };
+/** The optional ordinal distinguishes listings sharing a ticker, side and day. */
+export type DecisionRef = Pick<TradeDecision, "date" | "side" | "ticker" | "reviewOrdinal">;
 type ClosedTrade = NonNullable<AccountDecisions["closedTrades"]>[number];
 type RoundTrip = NonNullable<AccountDecisions["roundTrips"]>[number];
 type DecisionEvent = NonNullable<TradeDecision["events"]>[number];
@@ -88,7 +88,9 @@ export type HorizonChoices = Partial<Record<string, Horizon>>;
 
 /** Where a horizon choice is kept: one entry per account and decision, and one for each account's review without one. */
 export function horizonScope(account: AccountCode | undefined, row?: DecisionRef) {
-  return (account ?? "") + "\u0000" + (row ? decisionParam(row) : "");
+  const decision = row ? decisionParam(row) : "";
+  const ordinal = row?.reviewOrdinal;
+  return (account ?? "") + "\u0000" + decision + (ordinal == null ? "" : "/" + ordinal);
 }
 
 /**
@@ -119,7 +121,7 @@ export function sameDecision(row: DecisionRef, other: DecisionRef) {
  * React keys for a list of decisions: the day, side and ticker, and the account where a list spans two.
  * A lone decision's key never depends on its display name, context line or place in the list, so a
  * name correction or a refetch keeps its row and focus. Only when that repeats, as for two securities
- * sharing a ticker, does the key add the security's name, then its order among exact repeats.
+ * sharing a ticker, does the key include its published ordinal. Older callers fall back to name and occurrence.
  */
 export function decisionKeys(rows: Array<DecisionRef & { name: string; account?: string }>) {
   const tuple = (row: DecisionRef & { account?: string }) => [row.account ?? "", row.date, row.side, row.ticker].join("\u0000");
@@ -128,6 +130,7 @@ export function decisionKeys(rows: Array<DecisionRef & { name: string; account?:
   const seen = new Map<string, number>();
   return rows.map((row) => {
     const key = tuple(row);
+    if (row.reviewOrdinal != null) return key + "\u0000" + row.reviewOrdinal;
     if (counts.get(key) === 1) return key;
     const named = key + "\u0000" + row.name;
     const repeat = seen.get(named) ?? 0;
@@ -155,6 +158,7 @@ export function linkedDecision(rows: TradeDecision[] | null | undefined, ref: De
  */
 export function pendingOutcome(row: TradeDecision, horizon: Horizon, days: number, t: Copy, locale: "zh" | "en") {
   if (decisionEffect(row, horizon) != null) return null;
+  if (row.unpriced) return t("行情缺失，未计入", "Unmeasured · price unavailable");
   if (observing(row)) return t("观察中", "Observing");
   const observed = row.observedDays;
   if (horizon === "horizon" && !row.horizonComplete && observed != null && observed < days)
@@ -171,7 +175,7 @@ export function latestDecisions(reviews: DashboardLens["decisionReviews"], limit
   const accounts = (["A", "B"] as const).map((code) => [code, reviews?.[code]] as const);
   const rows = accounts
     .flatMap(([code, review]) => (review?.decisions ?? []).map((row) => ({ ...row, account: code })))
-    .sort((a, b) => b.date.localeCompare(a.date) || b.amountGbp - a.amountGbp);
+    .sort((a, b) => b.date.localeCompare(a.date) || (b.amountGbp ?? 0) - (a.amountGbp ?? 0));
   const kept = rows.filter(observing);
   // Payloads from before the count fall back to the rows they carry.
   const count = accounts.reduce(
@@ -538,11 +542,11 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
   // drop a tooltip the keyboard just opened.
   const chart = useRef<ECharts | null>(null);
   const { sides, marks } = useMemo(() => timelinePoints(rows, focus), [rows, focus]);
-  const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp)), [rows]);
+  const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp ?? 0)), [rows]);
   const point = useCallback((row: TradeDecision, colours: Record<string, string>) => {
     const effect = decisionEffect(row, horizon);
     const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
-    const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp) / largest);
+    const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp ?? 0) / largest);
     const ring = row === focus ? { borderColor: colours.text, borderWidth: 2 } : null;
     return {
       value: [Date.parse(row.date), effect ?? 0],
@@ -802,6 +806,7 @@ export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; d
  * context, and focus moves to it once each time one is named.
  */
 export function DecisionTimelinePanel({
+  action,
   rows,
   days,
   horizon,
@@ -821,12 +826,13 @@ export function DecisionTimelinePanel({
   /** Across accounts, the account each reading names. */
   accountOf?: (row: TradeDecision) => string | undefined;
   unpriced?: string[];
+  action?: ReactNode;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
   const card = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLSpanElement>(null);
-  const focusKey = focus ? decisionParam(focus) : "";
+  const focusKey = focus ? horizonScope(undefined, focus) : "";
   const landed = useRef("");
   const land = useEffectEvent(() => {
     const link = card.current?.querySelector<HTMLElement>(".mx-row-link");
@@ -838,7 +844,8 @@ export function DecisionTimelinePanel({
   });
   // A refetch that keeps the decision leaves focus where the reader put it.
   useEffect(() => {
-    land();
+    if (focusKey) land();
+    else landed.current = "";
   }, [focusKey]);
   const title = horizon === "horizon"
     ? (locale === "zh" ? `每笔决定 ${days} 个交易日后的结果` : `Each decision after ${days} trading days`)
@@ -846,6 +853,7 @@ export function DecisionTimelinePanel({
   return (
     <Panel
       className="mx-decision-review"
+      action={action}
       title={title}
       helpLabel={t("买卖决定", "Buy and sell decisions")}
       help={<>

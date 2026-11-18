@@ -1393,7 +1393,7 @@ class TradeDecision(ApiModel):
     side: Literal["buy", "sell"]
     kind: Literal["B", "S", "T"]
     quantity: float | None = None
-    amount_gbp: float
+    amount_gbp: float | None = None
     return_horizon: float | None = None
     effect_horizon_gbp: float | None = None
     return_to_date: float | None = None
@@ -1409,6 +1409,9 @@ class TradeDecision(ApiModel):
     observed_days: int | None = None
     #: Whether the HORIZON_DAYS window has closed and is scored; absent on older artifacts.
     horizon_complete: bool | None = None
+    before_earnings: bool | None = None
+    basket_buy: bool | None = None
+    unpriced: bool | None = None
     #: Present on the decisions the review lists: events from a week before to the horizon.
     events: list[DecisionEvent] | None = None
 
@@ -1465,6 +1468,7 @@ class AccountDecisions(ApiModel):
     buys: DecisionSide = Field(default_factory=DecisionSide)
     sells: DecisionSide = Field(default_factory=DecisionSide)
     decisions: list[TradeDecision] = Field(default_factory=list)
+    unpriced_basket_buys: list[TradeDecision] = Field(default_factory=list)
     round_trips: list[RoundTripReview] = Field(default_factory=list)
     round_trip_summary: RoundTripSummary = Field(default_factory=RoundTripSummary)
     closed_trades: list[ClosedTradeReview] = Field(default_factory=list)
@@ -1501,6 +1505,8 @@ class DashboardLensSnapshot(ApiModel):
     #: When the selected account review was built. Its figures are as of this
     #: moment, which can be hours older than broker_as_of.
     review_as_of: str | None = None
+    # Layout hint for review clients. Tool and reading access still requires live readiness.
+    review_habits_consented: bool = False
     selected_cfd_review: CfdAccountReview | None = None
     selected_account_report: dict[str, Any] | None = None
     selected_account_decisions: AccountDecisions | None = None

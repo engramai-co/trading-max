@@ -1,12 +1,15 @@
+import { join } from "node:path";
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type { components } from "../lib/api-schema";
+import { backendFixture } from "../tests/loading/fixtures";
 
 // Two synthetic accounts. Invest has two scored decisions and three young ones a link can open; Stocks ISA, when
 // present, has a buy that helped more than any in Invest and a sale that cost. Between fetches only their context changes.
 const asOf = "2026-10-20T12:00:00Z";
 type Context = {
   benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean;
-  renamed?: boolean; observations?: boolean; cluster?: boolean; empty?: boolean; isa?: boolean;
+  habitsConsented?: boolean; unpricedBasket?: boolean; renamed?: boolean; observations?: boolean; cluster?: boolean; empty?: boolean; isa?: boolean;
 };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
@@ -45,7 +48,7 @@ function decisions(context: Context) {
       effectHorizonGbp: -40, effectToDateGbp: -55, returnHorizon: 0.08, returnToDate: 0.11, events: [],
     },
     {
-      ...scored, date: "2026-09-02", ticker: "SYNB", name: "Synthetic Beta", side: "buy", kind: "B", amountGbp: 800,
+      ...scored, beforeEarnings:true, basketBuy:true, date: "2026-09-02", ticker: "SYNB", name: "Synthetic Beta", side: "buy", kind: "B", amountGbp: 800,
       effectHorizonGbp: 60, effectToDateGbp: 70, returnHorizon: 0.09, returnToDate: 0.1,
       events: events ? [
         { date: "2026-09-05", kind: "news", title: "Synthetic Beta opens a second plant in a long-named industrial district" },
@@ -82,7 +85,7 @@ function observations(account?: string): components["schemas"]["InvestmentReview
   const after = { largestHolding: 0.26, cash: 0.21, usdExposure: 0.34 };
   const invest: components["schemas"]["AccountReviewEvidence"] = {
     coverage: "complete", asOf,
-    holdingMoves: [{ date: "2026-10-16", ticker: "SYNB", quoteCurrency: "USD", change: -0.068, basis: "short_history", priorReturns: 19, threshold: 0.05 }],
+    holdingMoves: [{ date: "2026-10-16", ticker: "SYNB", quoteCurrency: "USD", change: -0.068, hypotheticalHorizonGbp:14, hypotheticalToDateGbp:-9, basis: "short_history", priorReturns: 19, threshold: 0.05 }],
     cashSpans: [{ start: "2026-09-30", end: "2026-10-16", sessions: 13, peakShare: 0.24, averageShare: 0.19 }],
     weightDrifts: [{ start: "2026-09-30", end: "2026-10-16", ticker: "SYNB", before: 0.2, after: 0.26 }],
     fillEffects: [
@@ -110,6 +113,10 @@ async function serve(page: Page, context: () => Context) {
     // Invest also made two same-day round trips, and sold one holding below its best close.
     const review = (rows: unknown[], trips = false) => ({
       status: "available", asOf, horizonDays: 20, observingCount: 1, decisions: rows,
+      ...(current.unpricedBasket && trips ? { unpricedBasketBuys: [{
+        date: "2026-09-02", side: "buy", ticker: "UNPRICED", name: "Unpriced listing", amountGbp: 140,
+        quantity: 2, kind: "B", unpriced: true, basketBuy: true,
+      }] } : {}),
       ...(trips ? {
         roundTripSummary: { count: 2, favourable: 1, resultGbp: 12, ranged: 2, rangeGbp: 40, rangedResultGbp: 12 },
         roundTrips: [
@@ -121,7 +128,7 @@ async function serve(page: Page, context: () => Context) {
     });
     if (path.includes("/dashboard/lens/")) return current.failing ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: {
       runId: "synthetic-decision-context", brokerAsOf: asOf, reviewAsOf: asOf,
-      totalValueGbp: 2000, totalCashGbp: 100, holdings: [], nav: [],
+      reviewHabitsConsented: current.habitsConsented, totalValueGbp: 2000, totalCashGbp: 100, holdings: [], nav: [],
       accounts: [{ code: "A", isInvestable: true, totalValueGbp: 2000 }],
       // Enough of the account review for its highlights: a realized gain and a loss to open.
       selectedAccountReview: current.empty ? null : { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
@@ -146,7 +153,7 @@ async function serve(page: Page, context: () => Context) {
       coverageStartDate: null, coverageEndDate: null, latestEventAt: null, lastImportedAt: null, staleAfterDays: 14, isStale: false,
       accountStatus: "active", staleRemindersEnabled: true, warnings: [],
     } });
-    return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {} } : {} });
+    return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {}, assistantEnabled: true } : {} });
   });
 }
 
@@ -707,10 +714,13 @@ test.describe("the review across accounts", () => {
     await expect(day.locator(".mx-journal-act")).toHaveText("卖出 2 笔");
     const twins = day.getByRole("link", { name: /SYND\.AS/ });
     await expect(twins).toHaveCount(2);
-    // Both name the same link, which opens the normal review rather than guess between them.
-    for (const twin of await twins.all()) {
-      await expect(twin).toHaveAttribute("href", "/review?account=A&decision=2026-10-14.sell.SYND.AS");
+    for (const [ordinal, twin] of (await twins.all()).entries()) {
+      await expect(twin).toHaveAttribute("href", "/review?account=A&decision=2026-10-14.sell.SYND.AS&reviewOrdinal=" + ordinal);
     }
+    await twins.nth(1).click();
+    const focus = page.locator(".mx-decision-focus").getByRole("link");
+    await expect(focus).toContainText("£120");
+    await expect(focus).toBeFocused();
     expect(warnings).toEqual([]);
   });
 });
@@ -795,4 +805,666 @@ test("CFD without history offers prerequisites and the import screen", async ({ 
   await expect(page).toHaveURL(/reviewView=imports/);
   await expect(page.getByRole("tab", { name: "导入记录" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "CFD 历史账本", level: 2 })).toBeVisible();
+});
+
+test.describe("review assistant", () => {
+  test.skip(
+    !process.env.PLAYWRIGHT_BASE_URL?.startsWith("http://127.0.0.1:"),
+    "Requires an isolated local build.",
+  );
+  for (const locale of ["zh", "en"])
+    for (const theme of ["light", "dark"] as const) {
+      test("habit filters and decision handoff " + locale + " " + theme, async ({ page }, info) => {
+        const mobile = info.project.name === "mobile";
+        const zh = locale === "zh";
+        if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+        await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
+        await page.addInitScript((lang) => localStorage.setItem("trading_max-locale", lang), locale);
+        await serve(page, () => ({ benchmark: 0.03, events: true, isa: true, observations: true }));
+        await page.route("**/api/backend/assistant/status", (route) =>
+          route.fulfill({ json: { ready: true } }),
+        );
+        await page.route("**/api/backend/assistant/roles/*/reading", (route) => {
+          const body = route.request().postDataJSON();
+          const digest = route.request().url().includes("/habits/");
+          const tool = digest ? "review_patterns" : "decision_timing_and_habits";
+          const lines = (
+            digest
+              ? [
+                  [
+                    "before_earnings",
+                    "财报前一周买入 1 次，合计 £60。",
+                    "One buy before earnings gained £60.",
+                  ],
+                  [
+                    "untraded_fall",
+                    "持仓大跌当天没加仓 1 次。事后看，假设加仓的净收益约 £14。",
+                    "One untraded fall. In hindsight, the net hypothetical gain was about £14.",
+                  ],
+                  ["basket_buy", "同一天买入多只 2 次，合计 £80。", "Two same-day basket buys gained £80."],
+                ]
+              : [
+                  [
+                    "outcome",
+                    "每股成交 £40。至今回报 +10.0%，同期标普 500 +3.0%。",
+                    "The trade averaged £40 per share. Return to date was +10.0%, versus +3.0% for the S&P 500.",
+                  ],
+                  [
+                    "hindsight",
+                    "事后看，最佳买入收盘日为 9 月 3 日。按平均买单，差额约 £12。",
+                    "In hindsight, the best closing buy was on 3 September. At the average purchase size, the gap was about £12.",
+                  ],
+                ]
+          ).map(([section, zh, en]) => {
+            const evidence = {
+              source: "review",
+              tool,
+              evidenceId: "ev_synthetic",
+              arguments: {
+                ...(digest ? { habit: section } : {}),
+                scope: digest ? "broker_total" : "invest",
+                horizon: digest ? "20_sessions" : "to_date",
+                ticker: digest ? "" : "SYNB",
+                side: "buy",
+                decision_date: "2026-09-02",
+              },
+            };
+            return {
+              section,
+              zh,
+              en,
+              evidence,
+              variants: digest
+                ? { to_date: { zh: zh.replace("£60", "£70"), en: en.replace("£60", "£70"), evidence } }
+                : {},
+            };
+          });
+          expect(body.snapshotId).toBe("synthetic-decision-context");
+          if (!digest) {
+            expect(body.context).toMatchObject({
+              page_scope: "broker_total",
+              scope: "invest",
+              habit: "before_earnings",
+              horizon: "to_date",
+              ticker: "SYNB",
+            });
+          }
+          const event =
+            !digest && body.cachedOnly
+              ? { type: "empty" }
+              : {
+                  type: "result",
+                  reading: {
+                    role: digest ? "habits" : "decision",
+                    version: "synthetic",
+                    snapshotId: body.snapshotId,
+                    asOf,
+                    lines,
+                  },
+                };
+          return route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(event) + "\n" });
+        });
+        await page.route("**/api/logos/**", (route) => route.abort());
+        await page.goto("/review");
+        const openHabits = () =>
+          (mobile ? page.locator(".mx-phone-habits") : page.locator(".mx-digest-head > button")).click();
+        await openHabits();
+        const chooseHabit = page.locator(".mx-habit-line > button").first();
+        await expect(chooseHabit).toContainText("£60");
+        const shots = process.env.REVIEW_SCREENSHOTS;
+        async function capture(name: string) {
+          if (shots)
+            await page.screenshot({
+              path: join(shots, [info.project.name, locale, theme, name].join("-") + ".png"),
+            });
+        }
+        await capture("habits");
+        if (mobile) {
+          await page.locator(".mx-habit-line .mx-reading-source").first().click();
+          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await expect(page.locator(".mx-review-filter")).toBeFocused();
+          await expect(page.locator(".mx-review-filter")).toBeInViewport({ ratio: 1 });
+          await capture("habit-citation");
+        } else await chooseHabit.click();
+        const filtered = page.locator(".mx-review-filter");
+        await expect(filtered).toBeVisible();
+        await expect(page.locator(".mx-review-expand-head > button")).toHaveCount(1);
+        await expect(page.locator(".mx-journal-item")).toHaveCount(1);
+        await page.getByRole("button", { name: zh ? "至今" : "To date", exact: true }).click();
+        if (mobile) await openHabits();
+        await expect(chooseHabit).toContainText("£70");
+        if (mobile) await page.getByRole("button", { name: zh ? "关闭解读" : "Close reading" }).click();
+        const row = page.locator(".mx-review-expand-head > button").first();
+        await row.focus();
+        await row.press("Enter");
+        const reading = mobile ? page.getByRole("dialog") : page.locator(".mx-inline-reading");
+        await expect(reading.locator(".mx-reading-line")).toHaveCount(2);
+        await expect(reading.locator(".mx-reading-source").last()).toHaveAttribute(
+          "href",
+          /decision=2026-09-02.buy.SYNB/,
+        );
+        if (!mobile)
+          await reading.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+        await capture("decision");
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+        expect(
+          (
+            await new AxeBuilder({ page })
+              .include(mobile ? '[role="dialog"]' : ".mx-inline-reading")
+              .analyze()
+          ).violations,
+        ).toEqual([]);
+        const question = reading.locator(".mx-reading-actions button").first();
+        const wording = await question.innerText();
+        await question.click();
+        const composer = page.locator("#mx-assistant-panel textarea");
+        await expect(composer).toHaveValue(wording);
+        const sent = page.waitForRequest((r) => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+        await composer.press("Enter");
+        expect((await sent).postDataJSON().context).toMatchObject({
+          page: "review",
+          scope: "invest",
+          role: "decision",
+          snapshotId: "synthetic-decision-context",
+          object: {
+            ticker: "SYNB",
+            decision_date: "2026-09-02",
+            horizon: "to_date",
+            habit: "before_earnings",
+            page_scope: "broker_total",
+          },
+        });
+      });
+    }
+  test("opens the selected sale inside the cost ranking", async ({ page }, info) => {
+    await serve(page, () => ({ benchmark: 0.03, events: true, isa: true, observations: true }));
+    await page.route("**/api/backend/assistant/status", (route) => route.fulfill({ json: { ready: true } }));
+    await page.route("**/api/backend/assistant/roles/*/reading", (route) => {
+      const request = route.request().postDataJSON();
+      const evidence = {
+        evidenceId: "ev_synthetic",
+        tool: "decision_timing_and_habits",
+        source: "review",
+        arguments: request.context,
+      };
+      const event = request.cachedOnly
+        ? { type: "empty" }
+        : {
+            type: "result",
+            reading: {
+              role: "decision",
+              snapshotId: request.snapshotId,
+              version: request.snapshotId,
+              asOf,
+              lines: [
+                {
+                  section: "outcome",
+                  zh: "卖出后 20 个交易日上涨 10%，同期标普 500 上涨 3%。",
+                  en: "The security rose 10% in the 20 trading days after the sale. The S&P 500 rose 3%.",
+                  evidence,
+                },
+                {
+                  section: "hindsight",
+                  zh: "事后对照：同一窗口的最佳收盘日资料不足。",
+                  en: "Hindsight comparison: the best close in the same window is unavailable.",
+                  evidence,
+                },
+              ],
+            },
+          };
+      return route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(event) + "\n" });
+    });
+    await page.goto("/review");
+    const row = panel(page, "代价最大").getByRole("button", { name: /SYNK/ });
+    const request = page.waitForRequest((r) => r.url().includes("/roles/decision/reading"));
+    await row.click();
+    expect((await request).postDataJSON().context).toMatchObject({
+      scope: "isa",
+      page_scope: "broker_total",
+      horizon: "20_sessions",
+      side: "sell",
+      ticker: "SYNK",
+    });
+    const reading =
+      info.project.name === "mobile" ? page.getByRole("dialog") : page.locator(".mx-inline-reading");
+    await expect(reading.locator(".mx-reading-line")).toHaveCount(2);
+    if (info.project.name === "desktop" && process.env.REVIEW_SCREENSHOTS) {
+      await row.evaluate((el) =>
+        el.closest(".mx-review-extremes")?.scrollIntoView({ block: "center", behavior: "instant" }),
+      );
+      await page.screenshot({ path: join(process.env.REVIEW_SCREENSHOTS, "desktop-zh-unfiltered-sale.png") });
+    }
+  });
+  test("untraded fall filters the rankings and journal at the selected horizon", async ({ page }) => {
+    await serve(page, () => ({ benchmark: 0.02, events: true, isa: true, observations: true }));
+    await page.route("**/api/backend/assistant/status", (route) => route.fulfill({ json: { ready: true } }));
+    await page.goto("/review?habit=untraded_fall");
+    const missed = panel(page, "事后错过的收益");
+    const avoided = panel(page, "事后避开的亏损");
+    await expect(missed).toContainText("£14");
+    await expect(page.locator(".mx-journal-item")).toHaveCount(1);
+    await expect(page.locator(".mx-journal-item")).toContainText("没操作");
+    await page.getByRole("button", { name: "至今", exact: true }).click();
+    await expect(avoided).toContainText("£9");
+    await expect(missed).toContainText("暂无匹配记录");
+    await page.locator(".mx-review-filter").click();
+    await expect(panel(page, "帮你最多")).toBeVisible();
+  });
+
+  test("each grouped recent purchase opens its own reading and failure preserves the record", async ({
+    page,
+  }) => {
+    await serve(page, () => ({ benchmark: 0.02, events: true, cluster: true }));
+    await page.route("**/api/backend/assistant/status", (route) => route.fulfill({ json: { ready: true } }));
+    await page.route("**/api/backend/assistant/roles/*/reading", (route) =>
+      route.fulfill({
+        contentType: "application/x-ndjson",
+        body: '{"type":"error","code":"assistant_unavailable"}\n',
+      }),
+    );
+    await page.goto("/review?account=A");
+    const group = entry(page, "2026-09-02");
+    const chip = group.getByRole("button", { name: /SYNC2/ });
+    const payload = page.waitForRequest((r) => r.url().includes("/roles/decision/reading"));
+    await chip.click();
+    expect((await payload).postDataJSON().context).toMatchObject({
+      ticker: "SYNC2",
+      scope: "invest",
+      decision_date: "2026-09-02",
+    });
+    await expect(page.getByText("暂时无法读取。", { exact: true }).last()).toBeVisible();
+    await expect(group.getByRole("button", { name: /SYNC3/ })).toBeAttached();
+  });
+
+  test("off preserves decision links and sends no role requests", async ({ page }) => {
+    await serve(page, () => ({ benchmark: 0.02, events: true, isa: true, observations: true }));
+    const requests: string[] = [];
+    page.on("request", (r) => {
+      if (r.url().includes("/assistant/roles/")) requests.push(r.url());
+    });
+    await page.goto("/review?habit=before_earnings");
+    await expect(page.locator(".mx-review-line").first()).toBeVisible();
+    await expect(page.locator(".mx-review-line").first()).toHaveAttribute("href", /decision=/);
+    await expect(page.locator(".mx-review-filter,.mx-digest,.mx-habit-list")).toHaveCount(0);
+    expect(requests).toEqual([]);
+  });
+});
+
+for (const expanded of [false, true]) {
+  test(`the timeline stays in place while status and the ${expanded ? "expanded" : "collapsed"} habits brief resolve`, async ({ page }) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+    await serve(page, () => ({ benchmark: 0.03, events: true, habitsConsented: true }));
+    if (expanded) await page.addInitScript(() => localStorage.setItem("tm-reading-review-habits", "open"));
+    let consent!: () => void, publish!: () => void;
+    const status = new Promise<void>(resolve => { consent = resolve; });
+    const publication = new Promise<void>(resolve => { publish = resolve; });
+    await page.route("**/api/backend/assistant/status", async route => {
+      await status;
+      await route.fulfill({ json: { ready: true } });
+    });
+    await page.route("**/api/backend/assistant/roles/habits/reading", async route => {
+      await publication;
+      const line = { section: "basket_buy", zh: "同一天买入多只", en: "Same-day basket buys",
+        evidence: { tool: "review_patterns", source: "review", evidenceId: "ev_brief", arguments: {habit: "basket_buy"} } };
+      await route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify({
+        type: "result", reading: { role: "habits", asOf, lines: [line] },
+      }) + "\n" });
+    });
+    await page.goto("/review");
+    await expect(page.locator(".mx-review-lead")).toBeVisible();
+    const timeline = page.getByRole("heading", { name: /每笔决定/ }).first();
+    await expect(timeline).toBeVisible();
+    await expect(page.locator(".mx-digest")).toHaveCount(0);
+    const top = (await timeline.boundingBox())!.y;
+    consent();
+    await expect(page.locator(".mx-digest")).toBeVisible();
+    expect(Math.abs((await timeline.boundingBox())!.y - top)).toBeLessThan(2);
+    publish();
+    const displayedLine = expanded && page.viewportSize()!.width >= 768
+      ? page.locator(".mx-habit-line > button") : page.locator(".mx-digest-summary");
+    await expect(displayedLine).toHaveText("同一天买入多只");
+    expect(Math.abs((await timeline.boundingBox())!.y - top)).toBeLessThan(2);
+  });
+}
+
+test("the ranked arrow and reading fallback lead to the selected twin", async ({page},info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (info.project.name === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+  await serve(page, () => ({benchmark:0.02,events:false,twin:true}));
+  await page.route("**/api/backend/assistant/status",route=>route.fulfill({json:{ready:true}}));
+  await page.route("**/api/backend/assistant/roles/*/reading",route=>route.fulfill({contentType:"application/x-ndjson",body:'{"type":"error","code":"assistant_unavailable"}\n'}));
+  await page.goto("/review?account=A&reviewWindow=to_date");
+  const row = panel(page,"代价最大").locator(".mx-review-expand-head").filter({hasText:"SYND.AS"});
+  await expect(row.getByRole("link")).toHaveAttribute("href",/reviewOrdinal=1/);
+  await row.getByRole("button").click();
+  const fallback = (info.project.name === "mobile" ? page.getByRole("dialog") : page.locator(".mx-inline-reading")).getByRole("link",{name:/查看这笔决定/});
+  await expect(fallback).toHaveAttribute("href",/reviewOrdinal=1/);
+  await expect(fallback).toHaveAttribute("href", /snapshotId=synthetic-decision-context/);
+  const originalSnapshot = page.waitForRequest(r => r.url().includes("/dashboard/lens/account-analysis") &&
+    new URL(r.url()).searchParams.get("runId") === "synthetic-decision-context");
+  await fallback.click();
+  await originalSnapshot;
+  await expect(page.locator(".mx-decision-focus")).toContainText("£120");
+  await expect(page.locator(".mx-decision-focus").getByRole("link").first()).toBeFocused();
+  if (process.env.REVIEW_SCREENSHOTS) {
+    await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-selected-twin.png")});
+  }
+  await page.goBack();
+  await row.getByRole("link").click();
+  await expect(page.locator(".mx-decision-focus")).toContainText("£120");
+  await row.getByRole("button").click();
+  const reading = info.project.name === "mobile" ? page.getByRole("dialog") : page.locator(".mx-inline-reading");
+  await reading.locator(".mx-reading-actions button").first().click();
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await page.locator("#mx-assistant-panel textarea").press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({scope:"invest", object:{ordinal:1, ticker:"SYND.AS"}});
+});
+
+test("an expired decision citation withholds the cached account review", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({ benchmark: 0.02, events: false, twin: true }));
+  const account = "**/api/backend/dashboard/lens/account-analysis?**";
+  const cited = "synthetic-decision-context";
+  let expired = false;
+  await page.route(account, route => {
+    if (expired && new URL(route.request().url()).searchParams.get("runId") === cited) {
+      return route.fulfill({ status: 404, json: { detail: "snapshot not found" } });
+    }
+    return route.fallback();
+  });
+  await page.goto("/review?account=A&decision=2026-10-14.sell.SYND.AS&reviewOrdinal=1&snapshotId=" + cited);
+  const selection = page.locator(".mx-decision-focus");
+  await expect(selection).toContainText("£120");
+  expired = true;
+  const missing = page.waitForResponse(r => r.status() === 404 && r.url().includes("runId=" + cited));
+  await page.context().setOffline(true);
+  await page.context().setOffline(false);
+  await missing;
+  await expect(page.getByText("引用的数据版本暂不可用", {exact:true})).toBeVisible();
+  await expect(selection).toHaveCount(0);
+});
+
+test("a phone citation focuses a newly loaded fall timeline", async ({ page }, info) => {
+  test.skip(info.project.name !== "mobile" || !process.env.PLAYWRIGHT_BASE_URL, "Requires a phone and isolated build.");
+  await serve(page, () => ({ benchmark: 0.02, events: false, observations: true }));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({ json: { ready: true } }));
+  await page.route("**/api/backend/assistant/roles/habits/reading", route => {
+    const line = {section: "untraded_fall", zh: "持仓大跌当天没加仓", en: "Large falls without a trade",
+      evidence: {tool: "review_patterns", source: "review", evidenceId: "ev_falls", arguments: {habitSection: "untraded_fall"}}};
+    return route.fulfill({contentType: "application/x-ndjson", body: JSON.stringify({
+      type: "result", reading: {role: "habits", asOf, lines: [line]},
+    }) + "\n"});
+  });
+  await page.goto("/review");
+  await page.locator(".mx-phone-habits").click();
+  await page.getByRole("dialog").getByRole("link", {name: "复盘"}).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".mx-review-filter")).toBeFocused();
+  await expect(page.locator(".mx-review-filter")).toBeInViewport({ratio: 1});
+  await expect(panel(page, "事后错过的收益")).toContainText("£14");
+});
+
+test("basket review includes unpriced purchases and discloses their missing outcome", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({ benchmark: 0.02, events: false, unpricedBasket: true }));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
+  await page.goto("/review?account=A&habit=basket_buy");
+  const purchase = page.locator(".mx-journal-chips button").filter({hasText:"UNPRICED"});
+  await expect(purchase).toContainText("行情缺失，未计入");
+  await expect(purchase).toContainText("£140");
+  await page.locator(".mx-review-filter").click();
+  await expect(purchase).toHaveCount(0);
+});
+
+test("earnings and rating source words open their own research sections", async ({ page }, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (info.project.name === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+  await serve(page, () => ({ benchmark: 0.03, events: true }));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
+  await page.route("**/api/backend/research/**", route => {
+    const url = new URL(route.request().url());
+    let data = backendFixture(url);
+    if (url.pathname.endsWith("/lens/analyst")) {
+      url.pathname = url.pathname.replace(/analyst$/, "overview");
+      data = { ...Object(backendFixture(url)), view: "analyst", analyst: {
+        earningsEvents: [{ id: "synthetic-results", date: "2026-11-16", status: "reported",
+          instant: "2026-11-16T12:00:00Z", timezone: "Europe/London" }],
+        upgradesDowngrades: [{ GradeDate: "2026-08-31", Firm: "Synthetic Research", FromGrade: "Buy", ToGrade: "Hold", Action: "down" }],
+      } };
+    }
+    return route.fulfill({json: data ?? {}});
+  });
+  await page.route("**/api/backend/assistant/roles/decision/reading", route => {
+    const lines = [["财报", "financials", "events"], ["评级", "analysts", "actions"], ["消息", "publisher", ""]]
+      .map(([zh, source, section]) => ({ section: section || "headline", zh, en: zh,
+        evidence: { tool: "decision_timing_and_habits", evidenceId: "ev_selected", source,
+          publisher: source === "publisher" ? "Synthetic Wire" : undefined,
+          arguments: {scope:"invest", ticker:"SYNB", listing:"SYNT", lens:"analyst", analystView:section, snapshotId:"older-publication", date:"2026-08-28", calendarEventId:section === "events" ? "ev_0000000000000001" : "ev_0000000000000002",
+            ...(source === "publisher" ? {url:"https://example.org/synthetic"} : {})} }}));
+    return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({
+      type:"result",reading:{role:"decision",asOf,lines},
+    }) + "\n"});
+  });
+  let expired = false;
+  await page.route("**/api/backend/publications/older-publication/events/upcoming?**", r => {
+    const items = ["earnings","rating_change"].map((kind, i) => ({kind, ticker:"SYNT", date:"2026-08-28",
+      local_date:"2026-08-28", snapshot_id:"older-publication", evidence_id:i ? "ev_0000000000000002" : "ev_0000000000000001", title_zh:i ? "评级变动" : "已公布",
+      title_en:i ? "Rating change" : "Reported earnings", publisher:"Synthetic archive", firm:i ? "Synthetic Research" : undefined,
+      to_grade:i ? "Hold" : undefined, actual_eps:i ? undefined : 1.75, currency:"USD"}));
+    const query = new URL(r.request().url()).searchParams;
+    const row = items.find(item => item.evidence_id === query.get("eventId") &&
+      item.ticker === query.get("ticker") && item.kind === query.get("kind"));
+    return r.fulfill({status: expired || !row ? 404 : 200,json: expired ? {} : row});
+  });
+  for (const [word, section, heading] of [["财报", "events", "财报事件"], ["分析师", "actions", "机构行动"]]) {
+    await page.goto("/review?account=A");
+    await panel(page, "帮你最多").getByRole("button", {name:/SYNB/}).click();
+    await expect(page.getByRole("link", {name:"Synthetic Wire"})).toHaveAttribute("href", "https://example.org/synthetic");
+    await page.getByRole("link", {name:word, exact:true}).click();
+    await expect(page).toHaveURL(new RegExp("ticker=SYNT.*analystView=" + section + ".*#research-" + section));
+    await expect(page).toHaveURL(/snapshotId=older-publication/);
+    await expect(page).toHaveURL(/calendarEventId=ev_000000000000000/);
+    const anchor = page.locator("#research-" + section);
+    await expect(anchor).toHaveAttribute("data-assistant-evidence", "");
+    await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeFocused();
+    await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeInViewport({ratio:1});
+    await expect(anchor).toContainText(section === "events" ? "已公布" : "Synthetic Research");
+    await expect(anchor).toContainText("2026-08-28");
+    if (section === "events") await expect(anchor).toContainText("1.75 USD");
+    await expect(anchor).not.toContainText("2026-11-16");
+    expect(await page.evaluate(() => window.scrollX)).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+    if (process.env.REVIEW_SCREENSHOTS) {
+      await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-" + section + "-citation.png")});
+    }
+    expired = true;
+    const missing = page.waitForResponse(r => r.url().includes("/publications/older-publication/events/upcoming?") && r.status() === 404);
+    await page.reload();
+    await missing;
+    await expect(page.getByText("引用的数据版本或事件暂不可用", {exact:true})).toBeVisible();
+    if (process.env.REVIEW_SCREENSHOTS && section === "events") await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-expired-review-event.png")});
+    expired = false;
+  }
+});
+
+test("clearing a habit by keyboard focuses the restored timeline heading", async ({page}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  await serve(page, () => ({ benchmark:0.03, events:true, observations:true }));
+  await page.route("**/api/backend/assistant/status", r => r.fulfill({json:{ready:true}}));
+  await page.goto("/review?habit=untraded_fall");
+  await page.locator(".mx-review-filter").press("Enter");
+  await expect(page.locator(".mx-decision-review h2").first()).toBeFocused();
+});
+
+for (const scope of ["all", "A"]) {
+  test("clearing a pinned habit focuses the cold and cached timeline for " + scope, async ({page}) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await serve(page, () => ({benchmark:0.03, events:true, observations:true, isa:true}));
+    await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
+    const lens = scope === "all" ? "review" : "account-analysis";
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    await page.route("**/api/backend/dashboard/lens/" + lens + "*", async route => {
+      if (!new URL(route.request().url()).searchParams.has("runId")) await held;
+      await route.fallback();
+    });
+    const params = new URLSearchParams({snapshotId:"synthetic-decision-context", habit:"untraded_fall", reviewWindow:"to_date"});
+    if (scope !== "all") params.set("account", scope);
+    const chip = page.getByRole("button", {name:/Clear filter/});
+    const heading = page.getByRole("heading", {name:"Each decision to date"});
+    try {
+      await page.goto("/review?" + params);
+      const live = page.waitForRequest(req => {
+        const url = new URL(req.url());
+        return url.pathname.endsWith("/dashboard/lens/" + lens) && !url.searchParams.has("runId");
+      });
+      await chip.press("Enter");
+      await live;
+      await expect(chip).toHaveCount(0);
+      await expect(heading).toHaveCount(0);
+    } finally { release(); }
+    await expect(heading).toBeFocused();
+    await page.goBack();
+    await chip.press("Enter");
+    await expect(heading).toBeFocused();
+  });
+}
+
+for (const provider of ["ready", "unavailable"]) {
+  test("expanded English habits keep the timeline fixed beside the sidebar when " + provider, async ({page,isMobile}, info) => {
+    test.skip(isMobile || !process.env.PLAYWRIGHT_BASE_URL, "The sidebar shares space with the desktop review.");
+    await page.addInitScript(() => {
+      localStorage.setItem("trading_max-locale","en");
+      localStorage.setItem("tm-reading-review-habits","open");
+    });
+    await serve(page, () => ({benchmark:0.02,events:true,habitsConsented:true}));
+    let resolveStatus!: () => void, resolveBrief!: () => void;
+    const status = new Promise<void>(r => resolveStatus = r);
+    const brief = new Promise<void>(r => resolveBrief = r);
+    await page.route("**/api/backend/assistant/status", async r => {await status; await r.fulfill({json:{ready:provider === "ready"}});});
+    const description = "In hindsight, the net hypothetical loss at each security’s average purchase size was about £94.52. Only four of the seven recorded purchases had a complete twenty-session outcome.";
+    await page.route("**/api/backend/assistant/roles/habits/reading", async r => {
+      await brief;
+      const lines = ["basket_buy","before_earnings","untraded_fall"].map(section => ({section, en:description, zh:description,
+        evidence:{tool:"review_patterns",source:"review",evidenceId:"ev_habit",arguments:{habitSection:section}}}));
+      await r.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({type:"result",reading:{role:"habits",asOf,lines}})+"\n"});
+    });
+    await page.goto("/review");
+    await page.locator("[data-assistant-trigger]").click();
+    await expect(page.locator("#mx-assistant-panel")).toBeVisible();
+    const heading = page.getByRole("heading",{name:/Each decision after/});
+    await expect(heading).toBeVisible();
+    const y = await heading.evaluate(node => node.getBoundingClientRect().top + scrollY);
+    const result = page.waitForResponse(r => r.url().endsWith("/assistant/status"));
+    resolveStatus(); await result;
+    resolveBrief();
+    if (provider === "ready") await expect(page.locator(".mx-habit-line")).toHaveCount(3);
+    else await expect(page.getByText("The model is unavailable.", {exact:false})).toBeVisible();
+    expect(Math.abs(await heading.evaluate(node => node.getBoundingClientRect().top + scrollY) - y)).toBeLessThan(2);
+    if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-en-habits-sidebar-"+provider+".png")});
+  });
+}
+
+test("a pinned habit and horizon remain readable with MaxAI off", async ({page},info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
+  await serve(page, () => ({ benchmark:0.03, events:true, unpricedBasket:true }));
+  await page.route("**/api/backend/profile", r => r.fulfill({json:{accountLabels:{}, assistantEnabled:false}}));
+  await page.goto("/review?account=A&habit=basket_buy&reviewWindow=to_date&snapshotId=synthetic-decision-context");
+  await expect(page.locator(".mx-review-filter")).toContainText("同一天买入多只");
+  await expect(page.getByRole("button",{name:"至今",exact:true})).toHaveAttribute("aria-pressed","true");
+  await expect(panel(page,"帮你最多")).toContainText("£70");
+  if (process.env.REVIEW_SCREENSHOTS) {
+    await panel(page,"帮你最多").scrollIntoViewIfNeeded();
+    await page.screenshot({animations:"disabled",path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-pinned-review-off.png")});
+  }
+});
+
+test("a consent change hides cached Review before the other tab's profile resolves", async ({page,context,isMobile}, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (isMobile) await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await serve(page, () => ({benchmark:0.03,events:true,habitsConsented:true}));
+  let changed = false, enabled = true;
+  let resolveProfile!: () => void, resolveStatus!: () => void;
+  const profileWait = new Promise<void>(r => { resolveProfile = r; });
+  const statusWait = new Promise<void>(r => { resolveStatus = r; });
+  const requests: string[] = [];
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (changed && path.includes("/api/backend/assistant/")) requests.push(path);
+  });
+  await page.route("**/api/backend/profile", async route => {
+    if (changed) await profileWait;
+    await route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}});
+  });
+  await page.route("**/api/backend/assistant/status", async route => {
+    if (changed) await statusWait;
+    await route.fulfill({json:{ready:enabled, code:enabled ? null : "assistant_disabled"}});
+  });
+  await page.route("**/api/backend/assistant/roles/habits/reading", route => route.fulfill({
+    contentType:"application/x-ndjson",body:JSON.stringify({type:"result",reading:{role:"habits",asOf,lines:[
+      {section:"basket_buy",en:"Two recorded basket buys.",zh:"同日买入",evidence:{source:"review",tool:"review_patterns",evidenceId:"ev_habit",arguments:{habit:"basket_buy"}}},
+    ]}})+"\n",
+  }));
+  await page.goto("/review?account=A");
+  await expect(page.locator(".mx-digest")).toContainText("Two recorded basket buys.");
+  const rank = panel(page,"Helped most");
+  await expect(rank.getByRole("button",{name:/SYNB/})).toBeVisible();
+  const other = await context.newPage();
+  await other.goto("/favicon.ico");
+  const fetching = page.waitForRequest(r => new URL(r.url()).pathname === "/api/backend/profile");
+  changed = true;
+  await other.evaluate(() => localStorage.setItem("trading_max-assistant-settings-revision","withdrew"));
+  await fetching;
+  try {
+    await expect(page.locator(".mx-digest")).toHaveCount(0, {timeout:1500});
+    await expect(rank.getByRole("button",{name:/SYNB/})).toHaveCount(0);
+    await expect(rank.getByRole("link").first()).toBeVisible();
+    expect(requests).toEqual([]);
+    await page.locator("[data-assistant-trigger]").click();
+    await expect(page.locator("#mx-assistant-panel")).toContainText("Checking connection");
+    expect(requests).toEqual([]);
+    enabled = false;
+    resolveProfile();
+    await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".mx-review-habits-space,.mx-digest")).toHaveCount(0);
+    expect(requests).toEqual([]);
+    if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-en-withdrawn-review.png")});
+  } finally {
+    resolveProfile(); resolveStatus();
+    await other.close();
+  }
+});
+
+test("collapsed unavailable Habits keeps its footprint and opens Assistant settings", async ({page,isMobile}, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (isMobile) await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await serve(page, () => ({benchmark:0.03,events:true,habitsConsented:true}));
+  let release!: () => void;
+  const held = new Promise<void>(r => {release = r;});
+  await page.route("**/api/backend/assistant/status", async route => {
+    await held;
+    await route.fulfill({json:{ready:false,code:"model_unavailable"}});
+  });
+  await page.goto("/review");
+  const timeline = page.getByRole("heading",{name:/Each decision after/});
+  await expect(timeline).toBeVisible();
+  const y = () => timeline.evaluate(el => el.getBoundingClientRect().top + scrollY);
+  const before = await y();
+  release();
+  const settings = page.getByRole("link",{name:"Assistant settings"});
+  await expect(settings).toBeVisible();
+  expect.soft(Math.abs(await y() - before)).toBeLessThan(1);
+  await expect(settings).toHaveAttribute("href","/settings?tab=assistant");
+  if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-en-collapsed-unavailable.png")});
+  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
+    enabled:true,consentRevision:2,acceptedConsentRevision:2,revision:1,providers:[],integrations:[],
+  }}));
+  await settings.click();
+  await expect(page).toHaveURL(/\/settings\?tab=assistant/);
+  await expect(page.getByRole("tab",{name:/MaxAI|Assistant/})).toHaveAttribute("aria-selected","true");
 });

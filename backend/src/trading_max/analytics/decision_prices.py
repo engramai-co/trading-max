@@ -48,6 +48,7 @@ from trading_max.analytics.historical_nav import (
     _nominal_close,
     _observed_trade_gbp,
 )
+from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import (
     completed_daily_bars,
     frame_venue,
@@ -105,6 +106,9 @@ class SecurityPrices:
     listing_currency: str | None = None
     market_frame: pd.DataFrame | None = field(default=None, compare=False, repr=False)
 
+    # Genuine provider closes with a verified GBP conversion; accounting series can carry values.
+    observed_closes_gbp: pd.Series = field(default_factory=_empty, compare=False, repr=False)
+
     @property
     def quoted(self) -> pd.DatetimeIndex:
         """The days in closes that are the listing's sessions."""
@@ -126,7 +130,7 @@ class SecurityPrices:
 
 
 def _listing_history(symbol: str, start: date, end: date) -> pd.DataFrame:
-    """Daily provider history whose attrs name the listing's exchange.
+    """Daily provider history carrying the listing exchange and quote denomination.
 
     The exchange comes from the metadata yfinance keeps from this same request;
     its get_history_metadata would fetch five days of hourly bars to answer.
@@ -143,6 +147,7 @@ def _listing_history(symbol: str, start: date, end: date) -> pd.DataFrame:
     metadata = getattr(getattr(ticker, "_price_history", None), "_history_metadata", None)
     frame.attrs["provider_venue"] = yahoo_venue_metadata(metadata or {})
     frame.attrs["exchange"] = str((metadata or {}).get("exchangeName") or "")
+    frame.attrs["currency"] = str((metadata or {}).get("currency") or "")
     return frame
 
 
@@ -265,7 +270,11 @@ class CachedDailyHistory:
     def _completed_rows(
         self, symbol: str, start: date, end: date, previous: dict, now: datetime
     ) -> tuple[list[list], dict]:
-        """Corroborate a fresh response with the identity retained beside its cached rows."""
+        """Corroborate a fresh response with the identity retained beside its cached rows.
+
+        The identity includes the provider's quote denomination; a response without
+        one keeps the retained denomination.
+        """
         frame = self.fetch(symbol, start, end)
         claims = list(previous.get("venue_claims", ()))
         if frame.attrs:
@@ -282,6 +291,7 @@ class CachedDailyHistory:
             "exchange": str(frame.attrs.get("exchange") or previous.get("exchange") or ""),
             "calendar": venue.calendar,
             "provider_venue": yahoo_venue_metadata(provider),
+            "currency": str(frame.attrs.get("currency") or previous.get("currency") or ""),
         }
         return self._rows(completed_daily_bars(frame, now=_utc(now), ticker=symbol)), identity
 
@@ -292,6 +302,7 @@ class CachedDailyHistory:
             "exchange": cached.get("exchange", ""),
             "calendar": cached.get("calendar"),
             "provider_venue": cached.get("provider_venue", {}),
+            "currency": str(cached.get("currency") or ""),
         }
 
     def read_cached(self, symbol: str, start: date, end: date) -> pd.DataFrame:
@@ -320,6 +331,7 @@ class CachedDailyHistory:
         rows: list[list] = cached.get("rows", [])
         identity = self._identity(cached)
         calendar = identity["calendar"]
+        currency = identity["currency"]
         covered_start = date.fromisoformat(cached["start"]) if cached.get("start") else None
         covered_end = date.fromisoformat(cached["end"]) if cached.get("end") else None
         fetched_at = (
@@ -328,7 +340,8 @@ class CachedDailyHistory:
         now = self.now()
         fresh = fetched_at is not None and now - fetched_at < self.refresh_after
         covers = (
-            covered_start is not None
+            "currency" in cached
+            and covered_start is not None
             and covered_end is not None
             and fetched_at is not None
             and covered_start <= start
@@ -344,6 +357,7 @@ class CachedDailyHistory:
                 overlap = [(known[row[0]], row[1]) for row in tail if row[0] in known]
                 consistent = (
                     bool(tail)
+                    and identity["currency"] == currency
                     and all(math.isclose(old, new, rel_tol=0.005) for old, new in overlap)
                     and not any(row[2] for row in tail)
                 )
@@ -399,7 +413,7 @@ def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -
     before it, even when the provider publishes one of its own.
     """
 
-    rates = rates[rates > 0].sort_index()
+    rates = rates[(rates > 0) & np.isfinite(rates)].sort_index()
     rates = rates[~rates.index.duplicated(keep="last")]
     if rates.empty or days.empty:
         return pd.Series(np.nan, index=days, dtype=float)
@@ -497,11 +511,12 @@ def final_rates(
     until then, converting it at an earlier rate would change after midnight.
     """
 
-    return _nominal_close(
+    rates = _nominal_close(
         completed_daily_bars(
             history_loader(symbol, start.date(), end.date()), now=now, ticker=symbol
         )
     )
+    return rates[(rates > 0) & np.isfinite(rates)]
 
 
 def resolve_decision_prices(
@@ -573,6 +588,7 @@ def resolve_decision_prices(
         )
     # Each currency's final rate on every day, NaN while one is pending.
     calendar_days = pd.date_range(start_day, end_day, freq="D")
+    published_rates = {"USD": usd_rates}
     final_fx = {"USD": final_rate_on(usd_rates, calendar_days, now)}
     for code in cash_fx.columns:
         if code in {"GBP", "USD"}:
@@ -580,6 +596,13 @@ def resolve_decision_prices(
         with suppress(Exception):
             rates = final_rates(history_loader, f"GBP{code}=X", start_day, end_day, now)
             final_fx[code] = final_rate_on(rates, calendar_days, now)
+            published_rates[code] = rates
+    observed_fx = {
+        code: values.where(
+            ~fx_rate_due(calendar_days) | calendar_days.isin(published_rates[code].index)
+        )
+        for code, values in final_fx.items()
+    }
     resolved: dict[str, SecurityPrices] = {}
     unpriced: list[str] = []
     for identity, rows in fills.groupby("SecurityIdentity", sort=True):
@@ -623,7 +646,11 @@ def resolve_decision_prices(
             adjusted = pd.to_numeric(decision_frame.get("Close"), errors="coerce").dropna()
             adjusted.index = pd.to_datetime(adjusted.index).tz_localize(None).normalize()
             modes = ["GBP", "GBX", *[c for c in cash_fx.columns if c != "GBP"]]
-            if allow_missing_usd and gbpusd.isna().all() and currency not in {"GBP", "GBX"}:
+            provider_currency, units = major_quote_unit(str(listing.attrs.get("currency") or ""))
+            if provider_currency:
+                verified_mode = "GBX" if units == 100 else provider_currency
+                modes = [mode for mode in modes if mode == verified_mode]
+            elif allow_missing_usd and gbpusd.isna().all() and currency not in {"GBP", "GBX"}:
                 # An unavailable dollar cross does not erase sterling results,
                 # but a foreign listing still needs its own conversion to match.
                 modes = [mode for mode in modes if mode == currency]
@@ -660,6 +687,8 @@ def resolve_decision_prices(
             unpriced.append(ticker)
             continue
         pending = closes.index[closes.index.isin(values.index[values.isna()])]
+        raw_closes = best[2][~best[2].index.duplicated(keep="last")]
+        observed = _at_final_rates(raw_closes, mode, observed_fx).reindex(values.index)
         resolved[identity] = SecurityPrices(
             identity,
             ticker,
@@ -673,6 +702,7 @@ def resolve_decision_prices(
             pending_days=pending if len(pending) else None,
             listing_currency=mode,
             market_frame=frame,
+            observed_closes_gbp=observed[(observed > 0) & np.isfinite(observed)],
         )
         if memo is not None:
             memo[identity] = best[1]

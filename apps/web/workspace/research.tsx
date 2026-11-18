@@ -102,6 +102,9 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
 
 export function ResearchWorkspace() {
   const { params } = useRouteState();
+  const reviewEvent = ["decision_timing_and_habits","news_and_events"].includes(params.get("evidence") ?? "") &&
+    ["events","actions","ratings"].includes(params.get("analystView") ?? "");
+  if (reviewEvent) return <CitedResearchEvent recorded />;
   if (params.get("evidence") === "read_research_lens" && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }

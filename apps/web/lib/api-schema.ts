@@ -1894,6 +1894,8 @@ export interface components {
              * @enum {string}
              */
             status: "available" | "unavailable";
+            /** Unpricedbasketbuys */
+            unpricedBasketBuys?: components["schemas"]["TradeDecision"][];
         };
         /** AccountEffects */
         AccountEffects: {
@@ -3260,15 +3262,19 @@ export interface components {
             estimated_eps?: number | null;
             /** Evidence Id */
             evidence_id: string;
+            /** Firm */
+            firm?: string | null;
             /** Fiscal Period */
             fiscal_period?: string | null;
+            /** From Grade */
+            from_grade?: string | null;
             /** Instant */
             instant?: string | null;
             /**
              * Kind
              * @enum {string}
              */
-            kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend";
+            kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change";
             /** Licence Url */
             licence_url?: string | null;
             /** Local Date */
@@ -3297,6 +3303,8 @@ export interface components {
             title_en: string;
             /** Title Zh */
             title_zh: string;
+            /** To Grade */
+            to_grade?: string | null;
             /** Unit */
             unit?: string | null;
         };
@@ -3498,6 +3506,11 @@ export interface components {
             /** Reviewasof */
             reviewAsOf?: string | null;
             reviewEvidence?: components["schemas"]["InvestmentReviewEvidence"] | null;
+            /**
+             * Reviewhabitsconsented
+             * @default false
+             */
+            reviewHabitsConsented: boolean;
             /** Reviewsummaries */
             reviewSummaries?: components["schemas"]["OverviewReviewSummary"][];
             /** Risk */
@@ -3738,13 +3751,33 @@ export interface components {
             date: string;
             /** Effect Gbp */
             effect_gbp: number | null;
+            /** First Fill At */
+            first_fill_at?: string | null;
             hindsight: components["schemas"]["Timing"] | null;
             /** Horizon */
             horizon: string;
+            /** Listing */
+            listing?: string | null;
+            /** Market Return */
+            market_return?: number | null;
+            /** Name */
+            name?: string | null;
             /** Observed Days */
             observed_days: number | null;
+            /** Ordinal */
+            ordinal: number;
+            /** Prior Close Date */
+            prior_close_date?: string | null;
+            /** Prior Close Gbp */
+            prior_close_gbp?: number | null;
+            /** Prior Events */
+            prior_events?: components["schemas"]["PriorDecisionEvent"][] | null;
             /** Scope */
             scope: string;
+            /** Security Return */
+            security_return?: number | null;
+            /** Settled Per Share Gbp */
+            settled_per_share_gbp?: number | null;
             /** Side */
             side: string;
             /** Ticker */
@@ -5327,6 +5360,8 @@ export interface components {
         };
         /** HoldingMove */
         HoldingMove: {
+            /** Averagepurchasegbp */
+            averagePurchaseGbp?: number | null;
             /** Basis */
             basis?: ("volatility" | "short_history") | null;
             /** Change */
@@ -5336,6 +5371,10 @@ export interface components {
              * Format: date
              */
             date: string;
+            /** Hypotheticalhorizongbp */
+            hypotheticalHorizonGbp?: number | null;
+            /** Hypotheticaltodategbp */
+            hypotheticalToDateGbp?: number | null;
             /** Priorreturns */
             priorReturns?: number | null;
             /** Quotecurrency */
@@ -7235,6 +7274,30 @@ export interface components {
             split?: number | null;
             /** Volume */
             volume: number | null;
+        };
+        /** PriorDecisionEvent */
+        PriorDecisionEvent: {
+            /** Firm */
+            firm?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earnings" | "rating_change" | "news";
+            /** Local Date */
+            local_date: string;
+            /** Publisher */
+            publisher: string;
+            /** Record Id */
+            record_id?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Title En */
+            title_en: string;
+            /** Title Zh */
+            title_zh: string;
+            /** To Grade */
+            to_grade?: string | null;
         };
         /** ProjectionYear */
         ProjectionYear: {
@@ -9881,7 +9944,11 @@ export interface components {
          */
         TradeDecision: {
             /** Amountgbp */
-            amountGbp: number;
+            amountGbp?: number | null;
+            /** Basketbuy */
+            basketBuy?: boolean | null;
+            /** Beforeearnings */
+            beforeEarnings?: boolean | null;
             /** Date */
             date: string;
             /** Dividendhorizongbp */
@@ -9922,6 +9989,8 @@ export interface components {
             side: "buy" | "sell";
             /** Ticker */
             ticker: string;
+            /** Unpriced */
+            unpriced?: boolean | null;
         };
         /** Trading212IntegrationCandidate */
         Trading212IntegrationCandidate: {
@@ -14003,7 +14072,7 @@ export interface operations {
         parameters: {
             query: {
                 ticker: components["schemas"]["Ticker"];
-                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend";
+                kind: "earnings" | "ex_dividend" | "dividend_pay" | "dividend" | "rating_change";
                 event_id?: string | null;
                 research_event_id?: string | null;
             };
@@ -14174,6 +14243,7 @@ export interface operations {
                 since?: components["schemas"]["CalendarDay"] | null;
                 decision_date?: components["schemas"]["CalendarDay"] | null;
                 side?: ("buy" | "sell") | null;
+                ordinal?: number | null;
             };
             header?: never;
             path: {

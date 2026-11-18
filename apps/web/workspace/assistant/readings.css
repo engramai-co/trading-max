@@ -1,6 +1,7 @@
 .mx-assistant-panel button,
 .mx-inline-reading button,
 .mx-digest button,
+.mx-reading-actions button,
 .mx-reading-close {
   appearance: none;
   border: 0;

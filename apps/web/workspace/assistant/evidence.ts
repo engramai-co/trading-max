@@ -24,6 +24,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
+  decision_timing_and_habits: ["/review", "review"], review_patterns: ["/review", "review"],
   data_freshness: ["/health", "health"], upcoming_events: ["/health", "calendar"], news_and_events: ["/research", "disclosure"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
@@ -52,9 +53,24 @@ export function evidenceHref(ref: Evidence): string | null {
   }
   const entry = destinations[ref.tool];
   if (!entry) return null;
-  const [path] = entry;
-  const params = new URLSearchParams();
   const a = ref.arguments ?? {};
+  const decisionEvent = ref.tool === "decision_timing_and_habits" && a.lens === "analyst" && Boolean(a.listing);
+  const path = decisionEvent ? "/research" : entry[0];
+  const params = new URLSearchParams();
+  const eventSource = decisionEvent || ref.tool === "news_and_events";
+  if (eventSource && a.url && /^https:\/\//i.test(a.url)) {
+    try { const url = new URL(a.url); if (!url.username && !url.password) return url.href; } catch {}
+  }
+  if (path === "/review") {
+    if (a.snapshotId) params.set("snapshotId", a.snapshotId);
+    if (a.scope === "invest" || a.scope === "isa") params.set("account", a.scope === "invest" ? "A" : "B");
+    if (a.ticker && a.side && a.decision_date) params.set("decision",[a.decision_date,a.side,a.ticker].join("."));
+    if (a.ordinal && /^\d+$/.test(a.ordinal)) params.set("reviewOrdinal",a.ordinal);
+    const horizon = a.comparedHorizon || a.horizon;
+    if (horizon === "20_sessions" || horizon === "to_date") params.set("reviewWindow", horizon);
+    const habit = a.habit || a.habitSection;
+    if (habit) params.set("habit", habit);
+  }
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
     if (a.range) params.set("range", a.range);
@@ -75,12 +91,13 @@ export function evidenceHref(ref: Evidence): string | null {
   }
   if (a.scope && a.scope !== "broker_total") {
     if (path === "/holdings" && ["invest", "isa"].includes(a.scope)) params.set("account", a.scope === "invest" ? "A" : "B");
-    else if (path !== "/holdings") params.set("scope", a.scope);
+    else if (path !== "/holdings" && path !== "/review") params.set("scope", a.scope);
   }
   if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
-    if (a.ticker) params.set("ticker", a.ticker);
+    const ticker = decisionEvent ? a.listing : a.ticker;
+    if (ticker) params.set("ticker", ticker);
     if (citedEventKind(a.event)) {
       params.set("event", a.event);
       if (a.date) params.set("date", a.date);
@@ -90,6 +107,16 @@ export function evidenceHref(ref: Evidence): string | null {
       if (a.eventId) { params.set("analystView", "events"); params.set("eventId", a.eventId); }
     }
     params.set("view", ref.tool === "read_valuation_evidence" ? "valuation" : a.lens || "overview");
+  }
+  // Saved rating-change observations used the former ratings tab.
+  const section = a.analystView === "ratings" ? "actions" : a.analystView;
+  if (eventSource && a.lens === "analyst" && ["actions", "events"].includes(section)) {
+    params.set("analystView", section);
+    if (a.snapshotId) params.set("snapshotId", a.snapshotId);
+    if (a.calendarEventId) params.set("calendarEventId", a.calendarEventId);
+    if (a.date) params.set("date", a.date);
+    params.set("evidence",ref.tool);
+    return path + "?" + params + "#research-" + section;
   }
   params.set("evidence", ref.tool);
   return path + "?" + params;
@@ -145,7 +172,7 @@ export function chatContext(page: string, search: string, timezone: string) {
   const lens = params.get("view");
   return {
     page: ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page) ? page : "overview", timezone,
-    ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics"].includes(page) ? { scope: "broker_total" } : {}),
+    ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics","review"].includes(page) ? { scope: "broker_total" } : {}),
     ...(page === "research" && ticker && /^[a-z0-9^=._-]{1,32}$/i.test(ticker) ? { ticker: ticker.toUpperCase() } : {}),
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),

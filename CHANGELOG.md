@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.61.0] - 2026-11-18
+
+### Added
+- Review can expand each recorded buy or sell into its dated evidence, subsequent return and hindsight timing gap. A trading habits brief filters the timeline and journal by pre-earnings buys, same-day basket purchases or large falls without a trade. Both horizons use the selected account’s records.
+
+### Fixed
+- Broker citations open the decision for the fill’s UTC ledger day, including when the reader’s time zone shows a different date.
+- Saved Review citations keep the selected horizon and habit with MaxAI off. Earnings and analyst citations reopen the recorded event or show that it is unavailable. Opening a habit citation on a phone closes the sheet. Clearing the filter returns keyboard focus to the timeline, including when it has to load the current account data.
+- Review keeps the provider’s quote currency when FX is missing, measures hindsight against observed GBP closes and excludes headlines on the UTC trade day. Basket counts include net buys with missing settlement. Habits follow-ups can compare both horizons. Briefs from older publications show only the habits those records cover.
+- When a consented provider is unavailable, Review links directly to MaxAI settings.
+
 ## [1.60.0] - 2026-11-18
 
 ### Added
@@ -22,6 +33,7 @@ All notable public Trading Max releases are recorded here.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.
 - The first day of a chart range can qualify as a key moment when the previous session’s close is available.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
 ## [1.59.0] - 2026-11-18
 
 ### Added

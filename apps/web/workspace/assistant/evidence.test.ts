@@ -123,6 +123,27 @@ it("reads quotation currency from the same research dataset and normalised valua
   expect(valuation.text).toContain("£1.2500/share");
 });
 
+it("opens the earnings and ratings sections from their own evidence", () => {
+  for (const section of ["events","actions","ratings"]) {
+    const href = evidenceHref({evidenceId:"ev_source",tool:"news_and_events",source:section === "events" ? "financials" : "analysts",arguments:{ticker:"TEST",lens:"analyst",analystView:section}});
+    const url = new URL(href!, "http://localhost");
+    expect(url.searchParams.get("analystView")).toBe(section === "ratings" ? "actions" : section);
+    expect(url.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
+  }
+});
+
+it.each(["events", "actions", "ratings"])("opens the selected listing’s %s section from a decision", section => {
+  const href = evidenceHref({evidenceId: "ev_decision", tool: "decision_timing_and_habits",
+    source: section === "events" ? "financials" : "analysts",
+    arguments: {ticker: "TEST", listing: "TEST.L", lens: "analyst", analystView: section,
+      snapshotId:"saved-run", calendarEventId:"ev_0123456789abcdef", date:"2026-08-28"}});
+  const opened = new URL(href!, "https://example.org");
+  expect(opened.pathname).toBe("/research");
+  expect(opened.searchParams.get("ticker")).toBe("TEST.L");
+  expect(Object.fromEntries(opened.searchParams)).toMatchObject({snapshotId:"saved-run", calendarEventId:"ev_0123456789abcdef", date:"2026-08-28"});
+  expect(opened.hash).toBe("#research-" + (section === "ratings" ? "actions" : section));
+});
+
 it.each([
   ["en", "Technical data", "Stale", "Earnings data", "Missing"],
   ["zh", "技术指标", "已过时", "业绩数据", "缺失"],
@@ -289,6 +310,21 @@ it("resolves each published historical event date to its source in mixed replies
       }
     });
   }
+});
+
+it.each([
+  ["America/New_York", "2026-11-24T19:30:00-05:00", "2026-11-24", "2026-11-25"],
+  ["Europe/London", "2026-11-25T00:30:00Z", "2026-11-25", "2026-11-25"],
+  ["Asia/Tokyo", "2026-11-25T23:30:00Z", "2026-11-26", "2026-11-25"],
+  ["Asia/Tokyo", "2026-11-28T12:00:00Z", "2026-11-28", "2026-11-27"],
+])("keeps the Broker decision identifier on its UTC ledger weekday in %s at %s", (zone, instant, localDay, ledgerDay) => {
+  const fill = historicalEvents.data.items.find(row => row.kind === "own_trade")!;
+  const output = {...historicalEvents, data:{items:[{...fill, date:instant.slice(0, 10), instant, local_date:localDay}]}};
+  const [line] = verifiedLines(fieldReply("news_and_events", output, "/data/items/0/local_date"), "en", zone);
+  expect(line.text).toContain(localDay);
+  const href = new URL(evidenceHref(line.evidence!)!, "http://localhost");
+  expect(href.searchParams.get("decision")).toBe(ledgerDay + ".buy.ALFA");
+  expect(href.searchParams.get("snapshotId")).toBe(historicalEvents.snapshot_id);
 });
 
 it("withholds Broker links without an investing account and a decision identity", () => {

@@ -529,19 +529,21 @@ export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
 export function QueryError({
   retry,
   showDataStatusLink = true,
+  title,
   error,
 }: {
   error?: unknown;
   retry: () => unknown;
   showDataStatusLink?: boolean;
+  title?: string;
 }) {
   const t = useCopy();
   const detail = useReadErrorCopy();
   return (
     <Panel>
       <Empty
-        title={isReadTimeout(error)
-          ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable")}
+        title={title ?? (isReadTimeout(error)
+          ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable"))}
         description={detail}
         action={
           <Group>

@@ -345,6 +345,14 @@ def _hash_state(root: Path):
 
 def test_real_agent_reads_every_tool_without_network_or_refresh(publication, monkeypatch):
     store, _, deps = publication
+    # The older publication can still answer a decision reading, but predates
+    # habit membership. Give this tool-loop fixture a published habit projection.
+    from services.api.tests.test_assistant_insights import republish
+
+    decisions = store.read_json(deps.snapshot_id, tools.DECISIONS)
+    decisions["accounts"]["A"]["decisions"][0].update(before_earnings=False, basket_buy=False)
+    updated = store.immutable_artifacts.put_json(key=tools.DECISIONS, payload=decisions).ref
+    deps = replace(deps, manifest=republish(store, {tools.DECISIONS: updated}))
     before = _hash_state(store.data_root)
 
     def forbidden(*_args, **_kwargs):
@@ -383,6 +391,7 @@ def test_real_agent_reads_every_tool_without_network_or_refresh(publication, mon
             "on_or_before": "2026-02-03",
         },
         "holding_fx_split": {"scope": "invest", "period": "open_position"},
+        "review_patterns": {"scope": "invest"},
         "decision_timing_and_habits": {"scope": "invest"},
         "price_key_moments": {
             "scope": "invest",

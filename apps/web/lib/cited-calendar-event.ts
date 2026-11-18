@@ -7,6 +7,7 @@ export function citedEventKind(event: string | null | undefined) {
     case "exDividend":
     case "ex_dividend":
       return "ex_dividend";
+    case "rating_change":
     case "dividend_pay":
     case "dividend":
       return event;

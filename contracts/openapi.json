@@ -607,6 +607,13 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "unpricedBasketBuys": {
+            "items": {
+              "$ref": "#/components/schemas/TradeDecision"
+            },
+            "title": "Unpricedbasketbuys",
+            "type": "array"
           }
         },
         "required": [
@@ -5047,6 +5054,17 @@
             "title": "Evidence Id",
             "type": "string"
           },
+          "firm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm"
+          },
           "fiscal_period": {
             "anyOf": [
               {
@@ -5057,6 +5075,17 @@
               }
             ],
             "title": "Fiscal Period"
+          },
+          "from_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Grade"
           },
           "instant": {
             "anyOf": [
@@ -5074,7 +5103,8 @@
               "earnings",
               "ex_dividend",
               "dividend_pay",
-              "dividend"
+              "dividend",
+              "rating_change"
             ],
             "title": "Kind",
             "type": "string"
@@ -5204,6 +5234,17 @@
           "title_zh": {
             "title": "Title Zh",
             "type": "string"
+          },
+          "to_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Grade"
           },
           "unit": {
             "anyOf": [
@@ -5909,6 +5950,11 @@
                 "type": "null"
               }
             ]
+          },
+          "reviewHabitsConsented": {
+            "default": false,
+            "title": "Reviewhabitsconsented",
+            "type": "boolean"
           },
           "reviewSummaries": {
             "items": {
@@ -6796,6 +6842,17 @@
             ],
             "title": "Effect Gbp"
           },
+          "first_fill_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Fill At"
+          },
           "hindsight": {
             "anyOf": [
               {
@@ -6810,6 +6867,39 @@
             "title": "Horizon",
             "type": "string"
           },
+          "listing": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Listing"
+          },
+          "market_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Return"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          },
           "observed_days": {
             "anyOf": [
               {
@@ -6821,9 +6911,71 @@
             ],
             "title": "Observed Days"
           },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "prior_close_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Close Date"
+          },
+          "prior_close_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Close Gbp"
+          },
+          "prior_events": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/PriorDecisionEvent"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prior Events"
+          },
           "scope": {
             "title": "Scope",
             "type": "string"
+          },
+          "security_return": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Security Return"
+          },
+          "settled_per_share_gbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settled Per Share Gbp"
           },
           "side": {
             "title": "Side",
@@ -6835,6 +6987,7 @@
           }
         },
         "required": [
+          "ordinal",
           "scope",
           "ticker",
           "date",
@@ -11965,6 +12118,17 @@
       "HoldingMove": {
         "additionalProperties": false,
         "properties": {
+          "averagePurchaseGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Averagepurchasegbp"
+          },
           "basis": {
             "anyOf": [
               {
@@ -11988,6 +12152,28 @@
             "format": "date",
             "title": "Date",
             "type": "string"
+          },
+          "hypotheticalHorizonGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypotheticalhorizongbp"
+          },
+          "hypotheticalToDateGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypotheticaltodategbp"
           },
           "priorReturns": {
             "anyOf": [
@@ -18007,6 +18193,88 @@
           "sma200"
         ],
         "title": "PriceSeriesPoint",
+        "type": "object"
+      },
+      "PriorDecisionEvent": {
+        "properties": {
+          "firm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm"
+          },
+          "kind": {
+            "enum": [
+              "earnings",
+              "rating_change",
+              "news"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "local_date": {
+            "title": "Local Date",
+            "type": "string"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "record_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Id"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "title_en": {
+            "title": "Title En",
+            "type": "string"
+          },
+          "title_zh": {
+            "title": "Title Zh",
+            "type": "string"
+          },
+          "to_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Grade"
+          }
+        },
+        "required": [
+          "kind",
+          "local_date",
+          "title_en",
+          "title_zh",
+          "publisher"
+        ],
+        "title": "PriorDecisionEvent",
         "type": "object"
       },
       "ProjectionYear": {
@@ -25626,8 +25894,37 @@
         "description": "One security, one side, one trading day; effects are GBP against not trading.\n\nEffects include dividends with an ex-date after the decision; the dividend\nfields show that part. On a T day only the shares beyond the round trip are\na decision.",
         "properties": {
           "amountGbp": {
-            "title": "Amountgbp",
-            "type": "number"
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amountgbp"
+          },
+          "basketBuy": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Basketbuy"
+          },
+          "beforeEarnings": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Beforeearnings"
           },
           "date": {
             "title": "Date",
@@ -25792,6 +26089,17 @@
           "ticker": {
             "title": "Ticker",
             "type": "string"
+          },
+          "unpriced": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unpriced"
           }
         },
         "required": [
@@ -25799,8 +26107,7 @@
           "ticker",
           "name",
           "side",
-          "kind",
-          "amountGbp"
+          "kind"
         ],
         "title": "TradeDecision",
         "type": "object"
@@ -28380,7 +28687,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.60.0"
+    "version": "1.61.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -33698,7 +34005,8 @@
                 "earnings",
                 "ex_dividend",
                 "dividend_pay",
-                "dividend"
+                "dividend",
+                "rating_change"
               ],
               "title": "Kind",
               "type": "string"
@@ -34304,6 +34612,24 @@
                 }
               ],
               "title": "Side"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ordinal",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "exclusiveMaximum": 2000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ordinal"
             }
           }
         ],

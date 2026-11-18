@@ -205,7 +205,11 @@ the body. A saved API key must match the integration's recorded fingerprint.
 Clients granting consent to a local model must send the endpoint shown to the
 user in `expectedConsentDestination`. A changed endpoint returns a conflict.
 Turning the assistant off retains consent. Both actions keep conversations
-available for separate deletion.
+available for separate deletion. A settings change in another window immediately
+hides cached readings and stops assistant requests. The window rechecks the
+workspace profile before requesting provider status. A confirmed withdrawal
+removes the Habits card, including when the dashboard was published before
+withdrawal. An ordinary readiness check preserves the open conversation draft.
 Background writing and sharing saved valuation assumptions each have a
 default-on preference. Both require enablement and current consent.
 
@@ -273,7 +277,8 @@ regression signals rather than a substitute for reviewing borderline answers.
 A page role declares its identifier, page, strict context schema, permitted read
 tools and editorial instructions. Its projection turns tool results from one
 immutable snapshot into bilingual observations with source references. The
-model selects and orders two to four observations. Their figures, units, dates
+model selects and orders two to four observations. A Habits brief can contain
+one observation when the publication covers a single habit. Their figures, units, dates
 and sources travel together. The browser constructs local evidence links from
 the tool and its checked arguments.
 
@@ -347,6 +352,61 @@ Date-only events and earnings windows retain the provider’s precision.
 Overview decision reads apply the selected money window before pagination.
 Benchmark evidence links read portfolio history and benchmark closes from the
 same cited manifest. A missing manifest displays an unavailable state.
+
+## Decision review
+
+Opening a buy or sell reads its account, date, side, ticker and selected horizon
+from the same published review. Follow-ups bind those fields and the listing ordinal
+to the original snapshot. The decision tool returns only that row and its verified
+pre-trade events. Review and Returns citations use the dashboard lens’s
+optional `run_id` to reopen the original publication. This preserves the
+selected listing even when a newer snapshot reuses its ticker. A habit
+follow-up binds the account, horizon and selected habit. The optional
+`compare_horizons` argument returns the other horizon from the same records.
+Saved Review links keep their horizon and habit when the assistant is off.
+Earnings and rating citations use the retained event reader to open the exact
+record on the resolved listing. An expired publication or missing record is
+shown as unavailable. Dated news links to its publisher. The saved consent
+state reserves room for the habits brief through the live readiness check. The timeline and journal render as soon as their snapshot arrives.
+Earlier results, rating changes and headlines use the earliest broker fill in
+the decision.
+An exact publication instant must precede that fill in UTC. For an unzoned
+archive date, even its latest possible publication must precede the fill.
+Older records with date-only fills use the start of the UTC business day.
+Timed headlines use the UTC calendar date of the instant for trade-day exclusion.
+Date-only headlines use the recorded source date.
+The pre-trade close uses a provider observation and a verified GBP conversion.
+The daily cache carries the provider’s quote denomination alongside the exchange.
+A provider-declared foreign quote requires its own conversion. An invalid daily
+rate cannot make that session an observed GBP endpoint. The matched S&P 500 return is
+in GBP. The hindsight window requires observed GBP closes at its start and
+end. Only sessions with an observed quote and a finite, positive GBP conversion
+qualify for the best close. The comparison uses the account’s mean purchase
+size for the security through the trade day.
+
+A completed review can pre-write a habits brief for each investment account and
+their combined scope. A new recorded decision, untraded fall or completed
+outcome changes the brief’s revision. The stored ordering covers both horizons.
+A later publication can update running to-date figures and their evidence from
+its pinned records without another model call. Older calculations retain their
+published habit membership and measured outcomes. The brief includes only
+habits with recorded coverage and marks partial counts across accounts.
+A qualifying fall in an older journal can supply a count even when its
+hypothetical outcome is unknown. An ordinary gain on its own does not trigger
+a background brief.
+
+- Pre-earnings buys fall in the seven calendar days before a recorded result.
+  A same-day report is excluded because the sequence may be unknown.
+- Same-day basket buys cover purchases of multiple listings in the same account
+  on a trading day, including members without a verified closing price or
+  sterling settlement amount. Each
+  net buy is one decision. The filter shows the unmeasured members.
+- Untraded falls come from the review journal’s qualifying negative holding
+  moves. A hypothetical purchase uses the average purchase order for that
+  security in that account through that date, GBP closes and subsequent
+  dividends. The brief labels the signed total as a net hypothetical outcome in
+  hindsight. The rankings show individual missed gains and avoided losses. Missing windows and missing purchase bases are
+  excluded from the amount and the brief shows the measured count.
 
 ## News and scheduled events
 
