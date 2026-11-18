@@ -24542,6 +24542,11 @@
             "title": "Accountlabels",
             "type": "object"
           },
+          "assistantEnabled": {
+            "default": false,
+            "title": "Assistantenabled",
+            "type": "boolean"
+          },
           "avatarColor": {
             "title": "Avatarcolor",
             "type": "string"
@@ -31464,6 +31469,104 @@
           }
         },
         "summary": "Snapshot Artifact"
+      }
+    },
+    "/v1/snapshots/{run_id}/events/cited": {
+      "get": {
+        "operationId": "cited_event_v1_snapshots__run_id__events_cited_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Ticker"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "earnings",
+                "ex_dividend"
+              ],
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^ev_[A-Za-z0-9_-]{1,96}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "research_event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Event Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpcomingItem"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cited Event",
+        "tags": [
+          "events"
+        ]
       }
     },
     "/v1/snapshots/{run_id}/events/upcoming": {

@@ -177,7 +177,7 @@ it("projects timed releases into the reader's day and preserves date-only earnin
   expect(observationText(macro,"en","Europe/London")).toMatch(/4 Feb 2026.*23:30.* · CPI/);
   expect(evidenceHref(macro.evidence)).toBe("https://example.org/calendar");
   const earnings = {en:"2026-02-06 – 2026-02-08 · TEST earnings",zh:"财报",evidence:{...macro.evidence,source:"financials" as const,
-    arguments:{holdingTicker:"TEST", event:"earningsWindow",date:"2026-02-06",endDate:"2026-02-08"}}};
+    arguments:{snapshotId:"old",eventId:"ev_earn",holdingTicker:"TEST", event:"earningsWindow",date:"2026-02-06",endDate:"2026-02-08"}}};
   expect(observationText(earnings,"en","America/New_York")).toBe(earnings.en);
   expect(evidenceHref(earnings.evidence)).toContain("event=earningsWindow&date=2026-02-06&end=2026-02-08");
 });
@@ -212,4 +212,40 @@ it("resolves the saved event identity when the same retained result is presented
   ]}};
   const cited = {tool:"news_and_events",source:"financials" as const,evidenceId:"ev_result",arguments:{eventId:"ev_selected"}};
   expect(researchFigure(cited,observation,"/data/items/0/title_en","en","Europe/London")?.text).toContain("Selected earnings");
+});
+
+it("carries both the calendar row and publication into the earnings target", () => {
+  const ref = {source:"financials" as const, tool:"upcoming_events",evidenceId:"ev_page",
+    arguments:{snapshotId:"old",eventId:"ev_calendar_row",researchEventId:"earn-1",date:"2026-02-04",holdingTicker:"TEST",event:"earnings"}};
+  expect(Object.fromEntries(new URL(evidenceHref(ref)!, "http://localhost").searchParams)).toMatchObject({
+    snapshotId:"old",calendarEventId:"ev_calendar_row",eventId:"earn-1",ticker:"TEST",date:"2026-02-04"
+  });
+});
+
+it("reads the selected calendar row's title, Tokyo day and exact source", () => {
+  const output = {snapshot_id:"saved",data:{items:[
+    {kind:"macro",evidence_id:"ev_prices",title_en:"Consumer prices",title_zh:"消费者价格",date:"2026-02-03",instant:"2026-02-03T23:30:00Z",source_url:"https://example.org/prices"},
+    {kind:"earnings",ticker:"SYNT",evidence_id:"ev_report",research_event_id:"report",title_en:"Earnings",date:"2026-02-05"},
+  ]}};
+  const [macro] = verifiedLines(fieldReply("upcoming_events",output,"/data/items/0/date"),"en","Asia/Tokyo");
+  expect(macro.text).toMatch(/Consumer prices.*4 Feb 2026.*08:30/);
+  expect(evidenceHref(macro.evidence!)).toBe("https://example.org/prices");
+  const [earnings] = verifiedLines(fieldReply("upcoming_events",output,"/data/items/1/date"),"en","Asia/Tokyo");
+  expect(earnings.text).toBe("SYNT · Earnings · 2026-02-05");
+  expect(earnings.evidence?.source).toBe("financials");
+  expect(Object.fromEntries(new URL(evidenceHref(earnings.evidence!)!, "http://localhost").searchParams)).toMatchObject({
+    snapshotId:"saved",calendarEventId:"ev_report",eventId:"report",date:"2026-02-05",ticker:"SYNT"
+  });
+});
+
+it.each([
+  ["cancelled","2026-03-05",null,"en","CPI (cancelled) · 2026-03-05"],
+  ["postponed","2026-03-05","2026-03-08","zh","消费价格（已推迟） · 2026-03-05 – 2026-03-08"],
+  ["provisional","2026-03","2026-04","en","CPI (provisional) · 2026-03 – 2026-04"],
+] as const)("retains calendar status %s and the precision of each endpoint", (status,date,end_date,locale,expected) => {
+  const output = {data:{items:[{kind:"macro",status,date,end_date,evidence_id:"ev_cpi",title_en:"CPI",title_zh:"消费价格"}]}};
+  for (const field of ["date","status", ...(end_date ? ["end_date"] : [])]) {
+    const [line] = verifiedLines(fieldReply("upcoming_events",output,"/data/items/0/" + field),locale);
+    expect(line?.text).toBe(expected);
+  }
 });

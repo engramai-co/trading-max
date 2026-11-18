@@ -1476,6 +1476,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/snapshots/{run_id}/events/cited": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Cited Event */
+        get: operations["cited_event_v1_snapshots__run_id__events_cited_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/snapshots/{run_id}/events/upcoming": {
         parameters: {
             query?: never;
@@ -9543,6 +9560,11 @@ export interface components {
             accountLabels?: {
                 [key: string]: string;
             };
+            /**
+             * Assistantenabled
+             * @default false
+             */
+            assistantEnabled: boolean;
             /** Avatarcolor */
             avatarColor: string;
             /**
@@ -13263,6 +13285,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cited_event_v1_snapshots__run_id__events_cited_get: {
+        parameters: {
+            query: {
+                ticker: components["schemas"]["Ticker"];
+                kind: "earnings" | "ex_dividend";
+                event_id?: string | null;
+                research_event_id?: string | null;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpcomingItem"];
                 };
             };
             /** @description Validation Error */

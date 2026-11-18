@@ -4,6 +4,10 @@ import { FocusTrap } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { X } from "@phosphor-icons/react";
+import Link from "../link";
+import { useCopy } from "../foundation";
+import { errorLabel } from "./status-label";
 import { ASSISTANT_NAME } from "../assistant-settings";
 import { useAssistant } from "./context";
 
@@ -15,9 +19,10 @@ export function AssistantEntry() {
   </button>;
 }
 export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
-  const { open, close } = useAssistant();
+  const { open, close, ready, pending, code } = useAssistant();
+  const t = useCopy();
   const [visited, setVisited] = useState(false);
-  if (open && !visited) setVisited(true);
+  if (open && ready && !pending && !visited) setVisited(true);
   const overlay = useMediaQuery("(max-width: 1199px)");
   useEffect(() => {
     if (!open || searchOpen) return;
@@ -27,9 +32,15 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
     if (overlay) document.body.style.overflow = "hidden";
     return () => { window.removeEventListener("keydown", escape); if (overlay) document.body.style.overflow = previous; };
   }, [close, open, overlay, searchOpen]);
-  if (!visited) return null;
+  if (!visited && !open) return null;
   return <FocusTrap active={Boolean(open && overlay && !searchOpen)}><div id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
-    <Sidebar {...{ page, search, scopeLabel }} />
+    {ready && visited && <div className="mx-assistant-thread" hidden={pending}><Sidebar {...{ page, search, scopeLabel }} /></div>}
+    {(!ready || pending) && <>
+      <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button onClick={close} aria-label={t("关闭侧栏","Close sidebar")}><X /></button></div>
+      <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
+        {!pending && <Link href="/settings?tab=assistant" prefetch={false} onClick={close} className="mx-text-link">{t("打开设置","Open Settings")} →</Link>}
+      </div>
+    </>}
   </div></FocusTrap>;
 }

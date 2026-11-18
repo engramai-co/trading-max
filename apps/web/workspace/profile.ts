@@ -2,11 +2,13 @@
 import { useQuery } from "@tanstack/react-query";
 import type { UserProfile } from "@/lib/types";
 import { api } from "@/workspace/data";
+export const workspaceProfileKey = ["workspace-profile"] as const;
+export const profileFreshFor = 300_000;
 export function useWorkspaceProfile() {
   return useQuery({
-    queryKey: ["workspace-profile"],
-    queryFn: () => api<UserProfile>("/profile"),
-    staleTime: 300_000,
+    queryKey: workspaceProfileKey,
+    queryFn: ({signal}) => api<UserProfile>("/profile", {signal}),
+    staleTime: profileFreshFor,
     retry: 0,
   });
 }

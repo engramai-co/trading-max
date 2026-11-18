@@ -3,7 +3,7 @@ import type { Locale } from "@/components/locale-provider";
 import { object, str } from "../data";
 import { completedEvidence, evidenceArguments, type Evidence } from "./evidence";
 import { researchFigure } from "./research-figures";
-import { inferenceText, renderToolField } from "./figures";
+import { calendarObservation, inferenceText, renderToolField } from "./figures";
 
 /** Resolve the whole reply before displaying or announcing any part of it. */
 export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZone = "Europe/London") {
@@ -23,6 +23,12 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       result.push({text, evidence:null});
     } else {
       if (!source) return [];
+      if (source.ref.tool === "upcoming_events" && pointer.startsWith("/data/items/")) {
+        const observation = calendarObservation(source.ref, source.output, pointer, locale, timeZone);
+        if (!observation) return [];
+        result.push(observation);
+        continue;
+      }
       const research = researchFigure(source.ref, source.output, pointer, locale, timeZone);
       const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone, research);
       if (!text) return [];

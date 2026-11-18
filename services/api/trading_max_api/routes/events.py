@@ -5,10 +5,12 @@ from typing import Annotated, Literal
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic_ai import ModelRetry
 
-from ..agent.events import EventArgs, event_data
+from ..agent.deps import AssistantDeps
+from ..agent.events import EventArgs, cited_holding_event, event_data
+from ..agent.tools import Ticker
 
 router = APIRouter(prefix="/v1/snapshots/{run_id}/events", tags=["events"])
 
@@ -87,7 +89,7 @@ def upcoming(
         raise HTTPException(422, "Unknown display timezone") from None
     deps = request.app.state.assistant.deps_for_run(None, zone.key)
     try:
-        manifest = deps.store.load_manifest(run_id)
+        manifest = request.app.state.store.load_manifest(run_id, require_retained=True)
     except FileNotFoundError:
         raise HTTPException(404, "Snapshot not found") from None
     args = EventArgs.model_validate(query.model_dump(exclude={"timezone"}))
@@ -95,3 +97,37 @@ def upcoming(
         return event_data(replace(deps, manifest=manifest), args, upcoming=True)
     except ModelRetry as exc:
         raise HTTPException(422, str(exc)) from None
+
+
+class CitedEventQuery(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ticker: Ticker
+    kind: Literal["earnings", "ex_dividend"]
+    event_id: str | None = Field(default=None, pattern=r"^ev_[A-Za-z0-9_-]{1,96}$")
+    research_event_id: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._:-]{1,128}$")
+
+    @model_validator(mode="after")
+    def one_identity(self):
+        if bool(self.event_id) == bool(self.research_event_id):
+            raise ValueError("Provide one event identity")
+        return self
+
+
+@router.get("/cited", response_model=UpcomingItem, response_model_exclude_unset=True)
+def cited_event(
+    request: Request,
+    run_id: Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{1,100}$")],
+    query: Annotated[CitedEventQuery, Query()],
+):
+    store = request.app.state.store
+    try:
+        manifest = store.load_manifest(run_id, require_retained=True)
+    except FileNotFoundError:
+        raise HTTPException(404, "Snapshot not found") from None
+    deps = AssistantDeps(manifest=manifest, store=store, allowed_scopes=frozenset())
+    row = cited_holding_event(
+        deps, query.ticker, query.kind, query.event_id, query.research_event_id
+    )
+    if row is None:
+        raise HTTPException(404, "Cited event not found")
+    return row

@@ -17,7 +17,9 @@ from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
 
 
-def publish(store, headline="Synthetic release", *, eps_currency="USD", markers=None):
+def publish(
+    store, headline="Synthetic release", *, eps_currency="USD", markers=None, earnings_dates=None
+):
     from trading_max.research.analyst_evidence import earnings_events
 
     normalised = earnings_events(
@@ -75,7 +77,7 @@ def publish(store, headline="Synthetic release", *, eps_currency="USD", markers=
                 {
                     "ticker": "WATCH",
                     "calendar": {
-                        "Earnings Date": ["2026-11-26", "2026-11-27"],
+                        "Earnings Date": earnings_dates or ["2026-11-26", "2026-11-27"],
                         "Ex-Dividend Date": "2026-11-26",
                         "Dividend Date": "2026-11-30",
                     },
@@ -629,3 +631,64 @@ def test_timed_headline_sets_the_merged_articles_local_date(tmp_path, timed_tick
     (single,) = news("2026-11-17", "America/New_York", timed_ticker)
     assert london["evidence_id"] == ny["evidence_id"] == single["evidence_id"]
     assert single["tickers"] == [timed_ticker]
+
+
+def test_cited_earnings_row_survives_replacement_and_expires_after_retention(tmp_path, monkeypatch):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    writer = ArtifactStore(tmp_path)
+    original = publish(writer, earnings_dates=["2026-02-04"])
+    query = {"scope": "broker_total", "ticker": "WATCH", "start": "2026-02-01", "end": "2026-02-28"}
+
+    def get(client, publication):
+        return client.get(f"/v1/snapshots/{publication.run_id}/events/upcoming", params=query)
+
+    def earnings(response):
+        assert response.status_code == 200
+        return next(row for row in response.json()["data"]["items"] if row["kind"] == "earnings")
+
+    with TestClient(app) as client:
+        cited = earnings(get(client, original))
+        replacement = publish(writer, earnings_dates=["2026-02-12"])
+        assert earnings(get(client, replacement))["date"] == "2026-02-12"
+        assert cited["date"] == "2026-02-04" and earnings(get(client, original)) == cited
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert original.run_id in writer.prune_snapshots(keep_recent=1)
+        assert get(client, original).status_code == 404
+
+
+def test_citation_reads_one_matching_published_holding_event(tmp_path, monkeypatch):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = ArtifactStore(tmp_path)
+    original = publish(store, earnings_dates=["2026-02-04"])
+    with TestClient(app) as client:
+        events_url = f"/v1/snapshots/{original.run_id}/events"
+        rows = client.get(
+            events_url + "/upcoming",
+            params={
+                "scope": "household",
+                "ticker": "WATCH",
+                "start": "2026-02-03",
+                "end": "2026-02-05",
+            },
+        ).json()["data"]["items"]
+        earned = next(row for row in rows if row["kind"] == "earnings")
+        query = {"ticker": "WATCH", "kind": "earnings", "event_id": earned["evidence_id"]}
+
+        def read(params):
+            return client.get(events_url + "/cited", params=params)
+
+        assert read(query).json() == earned
+        for invalid in (
+            {"scope": "household", "start": "2026-01-01", "end": "2026-12-31"},
+            {"ticker": "WATCH", "kind": "earnings"},
+            {**query, "scope": "household"},
+            {**query, "research_event_id": "different"},
+        ):
+            assert read(invalid).status_code == 422
+        for wrong in ({"ticker": "ALFA"}, {"kind": "ex_dividend"}, {"event_id": "ev_wrong"}):
+            assert read(query | wrong).status_code == 404
+        publish(store, earnings_dates=["2026-02-12"])
+        assert read(query).json() == earned
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert original.run_id in store.prune_snapshots(keep_recent=1)
+        assert read(query).status_code == 404

@@ -9,6 +9,7 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>) 
   const readings: string[] = [];
   await page.route("**/api/backend/**", async route => {
     const url = new URL(route.request().url()), path = url.pathname;
+    if (path.endsWith("/profile")) return route.fulfill({json:{...backendFixture(url) as object,assistantEnabled:ready}});
     if (path.endsWith("/assistant/status")) return route.fulfill({json: {ready}});
     if (path.includes("/assistant/key-moments/")) {
       expect(url.searchParams.get("published_series_id")).toBe(series);
