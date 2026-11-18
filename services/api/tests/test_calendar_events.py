@@ -692,3 +692,25 @@ def test_citation_reads_one_matching_published_holding_event(tmp_path, monkeypat
         monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
         assert original.run_id in store.prune_snapshots(keep_recent=1)
         assert read(query).status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("ticker", "kind"), [("WATCH", "ex_dividend"), ("WATCH", "dividend_pay"), ("ALFA", "dividend")]
+)
+def test_cited_dividend_returns_the_original_single_row(tmp_path, ticker, kind):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = ArtifactStore(tmp_path)
+    original = publish(store)
+    deps = AssistantDepsFactory(store).for_run()
+    items = events.event_data(deps, args(ticker=ticker), upcoming=kind != "dividend")["data"][
+        "items"
+    ]
+    cited = next(row for row in items if row["kind"] == kind)
+    query = {"ticker": ticker, "kind": kind, "event_id": cited["evidence_id"]}
+    publish(store)
+    path = f"/v1/snapshots/{original.run_id}/events/cited"
+    with TestClient(app) as client:
+        response = client.get(path, params=query)
+        assert response.status_code == 200
+        assert response.json() == cited
+        assert client.get(path, params=query | {"event_id": "ev_missing"}).status_code == 404

@@ -17,11 +17,11 @@ it("rejects calendar browsing before forwarding a retained citation request", as
   expect(backendFetch).not.toHaveBeenCalled();
 });
 
-it("forwards one ticker and event identity to the single-row backend", async () => {
+it.each(["earnings", "ex_dividend", "dividend_pay", "dividend"])("forwards one ticker and %s identity to the single-row backend", async kind => {
   backendFetch.mockResolvedValue(Response.json({ticker:"WATCH",evidence_id:"ev_row"}));
-  const response = await get("ticker=WATCH&eventId=ev_row&kind=earnings");
+  const response = await get("ticker=WATCH&eventId=ev_row&kind=" + kind);
   expect(response.status).toBe(200);
   const upstream = new URL(backendFetch.mock.calls[0][0],"http://localhost");
   expect(upstream.pathname).toBe("/v1/snapshots/saved/events/cited");
-  expect(Object.fromEntries(upstream.searchParams)).toEqual({ticker:"WATCH",event_id:"ev_row",kind:"earnings"});
+  expect(Object.fromEntries(upstream.searchParams)).toEqual({ticker:"WATCH",event_id:"ev_row",kind});
 });

@@ -2,6 +2,7 @@
 
 from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
@@ -102,40 +103,30 @@ def _indexed(payload):
     return {str(r.get("ticker", "")).upper(): r for r in _rows((payload or {}).get("rows"))}
 
 
-def _security_entry(ticker, kind, title, zh, raw, **kw):
+def _security_entry(ticker):
     url = "https://finance.yahoo.com/quote/" + quote(ticker, safe="") + "/"
-    return _entry(kind, title, zh, raw, ticker=ticker, url=kw.pop("url", url), **kw)
+    return partial(_entry, ticker=ticker, url=url)
 
 
 def listed_dividends(ticker, cal, metrics, evidence):
+    add = _security_entry(ticker)
     for key, metric, kind, en, zh in [
         ("Ex-Dividend Date", "exDividendDate", "ex_dividend", "Ex-dividend date", "除息日"),
         ("Dividend Date", "dividendDate", "dividend_pay", "Dividend payment date", "派息日"),
     ]:
         stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
         if stamp:
-            yield _security_entry(ticker, kind, en, zh, stamp[:10])
-    for r in _rows(evidence.get("dividends")):
-        yield _security_entry(
-            ticker,
-            "dividend",
-            "Dividend",
-            "股息",
-            r.get("date"),
-            amount=_number(r.get("amount")),
-            currency=r.get("currency"),
-            unit="per_share",
-            basis=r.get("basis"),
-        )
+            yield add(kind, en, zh, stamp[:10])
+    yield from _reported_dividends(ticker, evidence)
 
 
 def listed_headlines(ticker, rows):
+    add = _security_entry(ticker)
     for row in rows:
         url_value = web_url(row.get("url"))
         if not url_value or not (row.get("publisher") or row.get("source")):
             continue
-        yield _security_entry(
-            ticker,
+        yield add(
             "news",
             row.get("title"),
             row.get("title") or "",
@@ -148,9 +139,7 @@ def listed_headlines(ticker, rows):
 
 
 def _public(ticker, data, upcoming):
-    def add(kind, title, zh, raw, **kw):
-        return _security_entry(ticker, kind, title, zh, raw, **kw)
-
+    add = _security_entry(ticker)
     analyst = data[ANALYST].get(ticker, {}).get("analyst", {})
     recorded = set()
     for e in _rows(analyst.get("earningsEvents")):
@@ -228,6 +217,21 @@ def _public(ticker, data, upcoming):
             reference=r.get("accession") or r.get("id"),
         )
     yield from listed_headlines(ticker, _headline_rows(data, ticker))
+
+
+def _reported_dividends(ticker, evidence):
+    add = _security_entry(ticker)
+    for r in _rows(evidence.get("dividends")):
+        yield add(
+            "dividend",
+            "Dividend",
+            "股息",
+            r.get("date"),
+            amount=_number(r.get("amount")),
+            currency=r.get("currency"),
+            unit="per_share",
+            basis=r.get("basis"),
+        )
 
 
 def _headline_rows(data, ticker):
@@ -497,8 +501,13 @@ def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
     """Resolve a publication's exact security event without reading the account calendar."""
     args = Scoped(scope="broker_total")
     read = _Read(deps, "upcoming_events", args, args.scope)
-    data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
-    for row in _public(ticker, data, upcoming=True):
+    if kind == "dividend":
+        financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
+        rows = _reported_dividends(ticker, financials.get("evidence", {}))
+    else:
+        data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
+        rows = _public(ticker, data, upcoming=True)
+    for row in rows:
         if not row or row["kind"] != kind:
             continue
         local = (
