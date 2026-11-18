@@ -27,6 +27,7 @@ YAHOO_SUFFIX_BY_MIC = {
     "XSTO": ".ST",
     "XHKG": ".HK",
     "XTKS": ".T",
+    "XKRX": ".KS",
     "XASX": ".AX",
     "XTSE": ".TO",
     "XPAR": ".PA",

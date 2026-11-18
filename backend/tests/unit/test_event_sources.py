@@ -407,12 +407,7 @@ def test_yahoo_invalid_response_survives_disclosure_reuse_and_health(
     app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
     with TestClient(app) as client:
         (health,) = client.get("/health").json()["eventRefreshes"]
-    covered = {"FIX.L"} | {
-        spec.symbol
-        for spec in event_stages.INDEX_REGISTRY.values()
-        if spec.symbol and spec.rights == "provider-terms"
-    }
-    assert health["failedSources"] == len(covered) and health["asOf"] == observed
+    assert health["failedSources"] == 1 and health["asOf"] == observed
     assert health["failures"][0]["source"] == "Yahoo Finance"
     assert "FIX.L" not in str(health)
 

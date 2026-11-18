@@ -602,12 +602,15 @@ def distinct_listing_events(bound, *, london_report=False):
     app, manifest, _ = bound
     store = app.state.store
     technical = store.read_json(manifest.run_id, tools.TECHNICAL)
-    london = {**technical["rows"][0], "ticker": "SYN.L"}
+    london = {**technical["rows"][0], "ticker": "SYN.L", "exchange": "LSE"}
     us_bars = [
         {**p, "close": close}
         for p, close in zip(london["price_series"], [32, 32, 34, 30, 40], strict=True)
     ]
-    technical["rows"] = [london, {**london, "ticker": "SYN", "price_series": us_bars}]
+    technical["rows"] = [
+        london,
+        {**london, "ticker": "SYN", "exchange": "NYSE", "price_series": us_bars},
+    ]
     day = DATES[-1]
     analyst = [
         {
