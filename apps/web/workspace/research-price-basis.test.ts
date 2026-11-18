@@ -84,11 +84,12 @@ describe("research price basis", () => {
   it("selects each fallback with its own unit and date, passing over unpriced or unitless records", () => {
     const market = { spot: 88, currency: "EUR", asOf: "2026-02-05" };
     const technical = { price: 3100, currency: "GBp", asOf: "2026-02-03" };
-    const valuation = { spot: 29, currency: "USD", asOf: "2026-01-30" };
+    const valuation = { spot: 29, currency: "USD", spotAsOf: "2026-01-30", asOf: "2026-02-04" };
     expect(lensFallback({ market, technical, valuation })).toEqual({ price: 88, currency: "EUR", asOf: market.asOf });
     expect(lensFallback({ market: { ...market, spot: null }, technical, valuation })).toEqual(technical);
     expect(lensFallback({ market: { ...market, currency: "" }, technical: { ...technical, currency: "" }, valuation }))
-      .toEqual({ price: 29, currency: "USD", asOf: valuation.asOf });
+      .toEqual({ price: 29, currency: "USD", asOf: valuation.spotAsOf });
+    expect(lensFallback({ valuation: { ...valuation, spotAsOf: null } })?.asOf).toBeNull();
     expect(lensFallback({ technical: { ...technical, currency: "" } })).toBeUndefined();
   });
 

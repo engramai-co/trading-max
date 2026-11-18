@@ -9630,6 +9630,8 @@ export interface components {
             sensitivity: components["schemas"]["ValuationSensitivity"] | null;
             /** Spot */
             spot: number;
+            /** Spotasof */
+            spotAsOf?: string | null;
             terminalCheck: components["schemas"]["TerminalCheck"];
             /** Ticker */
             ticker: string;

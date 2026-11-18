@@ -53,7 +53,9 @@ function peReading(
       primary: { value: value(point.forward.eps) },
       groups: [[...rank,
         { label: t("价格", "Price"), value: quoteValue(point.forward.price, forward.currency, { style: "figure" }) },
-        { label: vendor ? t("远期 EPS", "Forward EPS") : "EPS (NTM)", value: epsFigure(quoteAmount(point.forward.eps, forward.currency)) }]],
+        vendor
+          ? { label: t("远期 EPS（单位未核实）", "Forward EPS (unit unverified)"), value: epsFigure(point.forward.eps) }
+          : { label: "EPS (NTM)", value: epsFigure(quoteAmount(point.forward.eps, forward.currency)) }]],
     };
   }
   return null;
@@ -270,7 +272,7 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
           "Yahoo 本财年和下一财年一致预期 EPS 与价格的存档，备用口径为存档中的 Yahoo forwardPE。每个交易所当地日期取最后一条存档，从已有记录起画。",
           "Archived Yahoo current- and next-fiscal-year consensus EPS and price; the fallback is archived Yahoo forwardPE. Each exchange-local date uses its last stored observation, starting with the archive.",
         )}
-        {unit && <>{" "}{t("价格与每股收益币种：", "Price and EPS currency: ")}{unit}.</>}
+        {unit && <>{" "}{t("价格币种：", "Price currency: ")}{unit}.</>}
         {span && <>{" "}{t("样本：", "Sample: ")}{span}{t("。", ".")}</>}
       </>}
     >

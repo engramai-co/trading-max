@@ -8,7 +8,7 @@ import { formatCalendarDate, formatDate, formatDateTime } from "@/ui/formatters"
 import { ratingSummary, recommendationChange, targetAmount, targetSnapshot, targetSplitScale, targetUnitScale } from "./analyst-data";
 import { DeferredPlot } from "./research-reading";
 import { candleSeries, candleValues, priceReading } from "./research-price-candles";
-import { fixed, volume } from "./reading-format";
+import { volume } from "./reading-format";
 import { DataBasis } from "./reading-card";
 import { number, object, objects, percent, str, tone } from "@/workspace/data";
 import { inRange } from "@/lib/portfolio/nav";
@@ -338,7 +338,7 @@ export function AnalystExpectations({
                   const time = formatCalendarDate(day, locale);
                   const indicators = (targetsByDay.get(day) ?? []).map((row) => ({
                     label: row.firm + " · " + t("目标价", "Target"),
-                    value: row.plotted != null ? fixed(row.plotted) : fixed(row.announced) + t(" · 公布时", " · as announced"),
+                    value: row.plotted != null ? quoteValue(row.plotted, code, { style: "figure" }) : quoteValue(row.announced, code, { style: "figure" }) + t(" · 公布时", " · as announced"),
                   }));
                   const i = timeline[index];
                   if (i < 0 || (hasCandles && candles[i][0] == null)) return { time, groups: [indicators] };
@@ -378,7 +378,7 @@ export function AnalystExpectations({
                     axisLabel: {
                       color: c.axis,
                       fontSize: 11,
-                      formatter: (v: number) => number(v, v < 10 ? 1 : 0),
+                      formatter: (v: number) => quoteValue(v, code, { style: "number", digits: v < 10 ? 1 : 0 }),
                     },
                     splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
                   },
@@ -447,7 +447,7 @@ export function AnalystExpectations({
                         fontSize: 11,
                         lineHeight: 15,
                         formatter:
-                          targetLabels[row.key] + "\n" + number(row.value, 2),
+                          targetLabels[row.key] + "\n" + quoteValue(row.value, code, { style: "number" }),
                       },
                       labelLayout: { hideOverlap: true },
                     })),
@@ -499,7 +499,7 @@ export function AnalystExpectations({
                         row.key === "median" ? "mx-target-primary" : undefined
                       }
                     >
-                      {number(row.value, 2)}
+                      {quoteValue(row.value, code, { style: "number" })}
                     </td>
                   ))}
                 </tr>

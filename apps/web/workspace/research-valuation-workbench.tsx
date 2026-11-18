@@ -21,7 +21,7 @@ import { useLayoutEffect, useMemo, useState } from "react";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
-import { quoteValue } from "./financial-values";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { api, compact, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import {
@@ -649,7 +649,7 @@ function ModelEditor({
           title={t("经营参考", "Operating reference")}
           action={
             <span className="mx-unit">
-              {referencePeriod?.label} · {result.basis.currency}
+              {referencePeriod?.label} · {quoteUnit(result.basis.currency).currency}
             </span>
           }
           help={t(
@@ -660,7 +660,7 @@ function ModelEditor({
           <div className="mx-metric-grid">
             <Metric
               label={t("营收", "Revenue")}
-              value={compact(result.basis.revenue, locale)}
+              value={quoteValue(result.basis.revenue, result.basis.currency, { style: "compact", locale })}
             />
             <Metric
               label={t("自由现金流率", "FCF margin")}

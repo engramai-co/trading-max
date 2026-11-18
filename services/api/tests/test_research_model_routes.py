@@ -5,15 +5,35 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from trading_max.research.facts import ResearchContext, build_financial_facts, make_quote
+from trading_max.research.fundamentals import build_valuation
 
 from services.api.trading_max_api.artifacts import ArtifactStore
-from services.api.trading_max_api.dashboard_models import ResearchLensSnapshot
+from services.api.trading_max_api.dashboard_models import ResearchLensSnapshot, ValuationRow
 from services.api.trading_max_api.projections.research import valuation_rows
 from services.api.trading_max_api.research import ResearchLedger
 from services.api.trading_max_api.research_journal import ResearchJournalStore
 from services.api.trading_max_api.routes.research import router
 from services.api.trading_max_api.valuation_assumptions import ValuationAssumptionsStore
 from services.api.trading_max_api.watchlist import WatchlistStore
+
+
+def test_valuation_spot_date_follows_each_tickers_observation():
+    rows = [
+        {"ticker": "SYN.L", "as_of": "2026-02-03", "price": 31, "currency": "GBP"},
+        {"ticker": "ACME", "as_of": "2026-02-04", "price": 100, "currency": "USD"},
+    ]
+    technical = {"as_of": "2026-02-04", "tickers": ["SYN.L", "ACME"], "rows": rows}
+    batch = build_valuation(technical, {"rows": rows}).model_dump(by_alias=False)
+    projected = [
+        ValuationRow.model_validate(item).model_dump(by_alias=True)
+        for item in valuation_rows(batch)
+    ]
+    assert [(r["ticker"], r.get("spotAsOf"), r["asOf"]) for r in projected] == [
+        ("SYN.L", "2026-02-03", "2026-02-04"),
+        ("ACME", "2026-02-04", "2026-02-04"),
+    ]
+    batch["rows"][0].pop("spot_as_of")
+    assert valuation_rows(batch)[0]["spotAsOf"] is None
 
 
 @pytest.mark.parametrize(

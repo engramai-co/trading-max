@@ -1,5 +1,7 @@
 import type { Json } from "@/workspace/data";
-import { currency, number, percent } from "@/workspace/data";
+import type { Locale } from "@/components/locale-provider";
+import { formatCurrency } from "@/ui/formatters";
+import { compact, currency, number, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { fixed } from "./reading-format";
 import type { FinancialFacts } from "./research-facts";
@@ -52,8 +54,9 @@ export function quoteAmount(value: unknown, unit: unknown) {
 export function quoteValue(
   value: unknown,
   unit: unknown,
-  { style = "money", digits = 2, unknownLabel = "—" }: {
-    style?: "money" | "figure" | "number" | "code";
+  { style = "money", digits = 2, unknownLabel = "—", locale }: {
+    style?: "money" | "figure" | "number" | "code" | "compact" | "native";
+    locale?: Locale;
     digits?: number;
     unknownLabel?: string;
   } = {},
@@ -62,8 +65,10 @@ export function quoteValue(
   if (n == null) return "—";
   const { currency: code, divisor } = quoteUnit(unit);
   if (!code) return unknownLabel;
+  if (style === "native") return String(unit).trim() + " " + fixed(n, digits);
   const amount = n / divisor;
-  if (style === "money") return currency(amount, code, digits);
+  if (style === "compact") return compact(amount, locale);
+  if (style === "money") return locale ? formatCurrency(amount, locale, code, digits) : currency(amount, code, digits);
   if (style === "figure") return fixed(amount, digits);
   return number(amount, digits) + (style === "code" ? " " + code : "");
 }

@@ -837,6 +837,7 @@ def build_valuation(
             {
                 "ticker": ticker,
                 "price": spot,
+                "spot_as_of": tech.get("as_of") if spot is not None else None,
                 "currency": quote_currency,
                 "lenses": lenses,
                 "ev5": ev5,

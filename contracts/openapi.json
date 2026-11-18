@@ -24892,6 +24892,17 @@
             "title": "Spot",
             "type": "number"
           },
+          "spotAsOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotasof"
+          },
           "terminalCheck": {
             "$ref": "#/components/schemas/TerminalCheck"
           },

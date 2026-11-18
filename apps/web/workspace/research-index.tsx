@@ -4,6 +4,7 @@ import { ActionIcon, Button, Drawer, Menu, Select, Tooltip } from "@mantine/core
 import { CaretDown, DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type CSSProperties } from "react";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { researchShellKey } from "@/lib/dashboard-query";
 import type { ResearchShell } from "@/lib/types";
@@ -113,11 +114,11 @@ export function IndexResearchWorkspace() {
                   </button>
                 </h2>
                 <div className="mx-index-research-basis">
-                  <span>{[index.compiler, variantLabel(index, t), index.currency].filter(Boolean).join(" · ")}</span>
+                  <span>{[index.compiler, variantLabel(index, t), index.kind === "etf-price" ? quoteUnit(index.currency).currency : index.currency].filter(Boolean).join(" · ")}</span>
                 </div>
               </div>
               {quote?.level != null ? <div className="mx-index-research-level">
-                <strong>{formatNumber(quote.level, locale, { maximumFractionDigits: 2 })}</strong>
+                <strong>{index.kind === "etf-price" ? quoteValue(quote.level, index.currency, { style: "number" }) : formatNumber(quote.level, locale, { maximumFractionDigits: 2 })}</strong>
                 {quote.change != null && <span className={quote.change > 0 ? "mx-up" : quote.change < 0 ? "mx-down" : ""}>
                   {index.kind === "volatility" ? formatNumber(quote.change, locale, { signDisplay: "exceptZero", maximumFractionDigits: 2 }) : formatDeltaPercent(quote.change, locale, 2)}
                 </span>}

@@ -1058,6 +1058,7 @@ class ValuationSensitivity(ApiModel):
 
 class ValuationRow(ApiModel):
     ticker: str
+    spot_as_of: str | None = None
     assumptions: dict[str, Any] = Field(default_factory=dict)
     as_of: str
     currency: str

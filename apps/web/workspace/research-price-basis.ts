@@ -186,7 +186,7 @@ export function brokerPriceLate(quote: Quote | undefined, asOf: Date, now: Date)
 export function lensFallback(lens: {
   market?: ResearchLensSnapshot["market"];
   technical?: Quote | null;
-  valuation?: Pick<NonNullable<ResearchLensSnapshot["valuation"]>, "spot" | "currency" | "asOf"> | null;
+  valuation?: Pick<NonNullable<ResearchLensSnapshot["valuation"]>, "spot" | "currency" | "spotAsOf"> | null;
 } | undefined): Quote | undefined {
   const market = lens?.market;
   const valuation = lens?.valuation;
@@ -194,7 +194,7 @@ export function lensFallback(lens: {
     { price: numeric(market?.spot), currency: typeof market?.currency === "string" ? market.currency : null,
       asOf: typeof market?.asOf === "string" ? market.asOf : null },
     lens?.technical,
-    valuation && { price: valuation.spot, currency: valuation.currency, asOf: valuation.asOf },
+    valuation && { price: valuation.spot, currency: valuation.currency, asOf: valuation.spotAsOf ?? null },
   ];
   return candidates.find((row): row is NonNullable<typeof row> =>
     row != null && quoteAmount(row.price, row.currency) != null);

@@ -1,9 +1,10 @@
 "use client";
 
+import { quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { formatCalendarDate } from "@/ui/formatters";
-import { currency, number, percent, tone } from "@/workspace/data";
+import { number, percent, tone } from "@/workspace/data";
 import { Metric, Panel, useCopy } from "./foundation";
 import type { Preview } from "./research-facts";
 
@@ -37,7 +38,7 @@ export function ValuationReadout({ data, reading }: { data: ResearchLensSnapshot
       help={t("固定中性情景的其他假设，求解让模型价值等于现价的前五年营收增长率。",
         "The annual revenue growth for years 1–5 that matches the current price with the other base assumptions held fixed.")} />
     <Metric label={t("中性情景", "Base scenario")} value={base && result ? <>
-      {currency(base.value, result.basis.currency, 2)}
+      {quoteValue(base.value, result.basis.currency)}
       {base.upside != null && <small className={"mx-metric-change mx-" + tone(base.upside)}>{percent(base.upside, true)}</small>}
     </> : "—"}
       note={<span>{[status, modelSource, result && result.horizon + t(" 年", "Y")].filter(Boolean).join(" · ")}</span>} />

@@ -9,6 +9,8 @@ All notable public Trading Max releases are recorded here.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
+- Valuation summaries, worksheets, saved models and comparisons show pence-denominated values in pounds.
+- Historical P/E labels the archived price currency without assigning it to vendor EPS of unverified unit. Valuation fallback quotes keep each ticker's own observation date.
 - Research headers show a fallback close with its own currency and date. London pence appear in pounds in price previews, chart readings, technical figures and alert messages.
 - Research keeps the price, currency and observation date of an archived quote together. Index charts keep the selected zoom when constituent and holdings data arrives.
 - London chart prices, dividends and trade markers retain their supported pound or pence units. Verified London history, news and earnings dates remain available across older ticker spellings. GBP benchmarks wait for both the ETF and currency close on days when both trade.

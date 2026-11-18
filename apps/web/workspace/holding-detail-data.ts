@@ -1,11 +1,5 @@
 import type { Holding } from "@/lib/types";
 import { quoteUnit, quoteValue } from "./financial-values";
-import { currency } from "./data";
-
-const quoteNumber = new Intl.NumberFormat("en-GB", {
-  minimumFractionDigits: 2,
-  maximumFractionDigits: 2,
-});
 
 export function holdingQuote(holding: Pick<
   Holding,
@@ -16,7 +10,7 @@ export function holdingQuote(holding: Pick<
   const pence = quoteUnit(priceCurrency).divisor === 100;
   const foreign = !pence && priceCurrency !== "GBP";
   const raw = pence && Number.isFinite(currentPrice)
-    ? `${priceCurrency} ${quoteNumber.format(currentPrice)}`
+    ? quoteValue(currentPrice, priceCurrency, { style: "native" })
     : quoteValue(currentPrice, priceCurrency);
   return {
     raw,
@@ -24,8 +18,8 @@ export function holdingQuote(holding: Pick<
     foreign,
     price: quoteValue(currentPrice, priceCurrency),
     dilutedCost: foreign
-      ? currency(dilutedCostCurrency === priceCurrency ? dilutedCostPerShareNative : null, priceCurrency, 2)
-      : currency(dilutedCostPerShareGbp, "GBP", 2),
+      ? quoteValue(dilutedCostCurrency === priceCurrency ? dilutedCostPerShareNative : null, priceCurrency)
+      : quoteValue(dilutedCostPerShareGbp, "GBP"),
   };
 }
 

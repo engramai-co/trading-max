@@ -2,9 +2,10 @@
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Select } from "@mantine/core";
+import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { compact, currency, number, object, objects, percent, str } from "@/workspace/data";
+import { compact, number, object, objects, percent, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { Facts, Panel, useCopy } from "./foundation";
 import type { Preview } from "./research-facts";
@@ -21,7 +22,7 @@ export function ValuationSensitivity({ result }: { result: Preview }) {
         action={
           <span className="mx-unit">
             {result.horizon}
-            {t(" 年", " years")} · {result.basis.currency}
+            {t(" 年", " years")} · {quoteUnit(result.basis.currency).currency}
           </span>
         }
       >
@@ -57,7 +58,7 @@ export function ValuationSensitivity({ result }: { result: Preview }) {
                           cell.upside >= 0 ? "positive" : "negative"
                         }
                       >
-                        <strong>{number(cell.value, 2)}</strong>
+                        <strong>{quoteValue(cell.value, result.basis.currency, { style: "figure" })}</strong>
                         <span>{percent(cell.upside, true, 1)}</span>
                       </td>
                     ))}
@@ -122,12 +123,12 @@ export function ValuationWorksheet({
                 <tr key={y.year}>
                   <th>{y.year}</th>
                   <td>{percent(y.growth)}</td>
-                  <td>{compact(y.revenue, locale)}</td>
+                  <td>{quoteValue(y.revenue, result.basis.currency, { style: "compact", locale })}</td>
                   <td>{percent(y.fcfMargin)}</td>
-                  <td>{compact(y.freeCashflow, locale)}</td>
+                  <td>{quoteValue(y.freeCashflow, result.basis.currency, { style: "compact", locale })}</td>
                   <td>{compact(y.shares, locale)}</td>
-                  <td>{number(y.cashflowPerShare, 2)}</td>
-                  <td>{number(y.presentValue, 2)}</td>
+                  <td>{quoteValue(y.cashflowPerShare, result.basis.currency)}</td>
+                  <td>{quoteValue(y.presentValue, result.basis.currency)}</td>
                 </tr>
               ))}
             </tbody>
@@ -137,11 +138,7 @@ export function ValuationWorksheet({
                   {t("预测现金流现值", "Projected cash-flow present value")}
                 </th>
                 <td colSpan={2}>
-                  {currency(
-                    projection.operatingValue,
-                    result.basis.currency,
-                    2,
-                  )}
+                  {quoteValue(projection.operatingValue, result.basis.currency)}
                 </td>
               </tr>
               <tr>
@@ -150,17 +147,13 @@ export function ValuationWorksheet({
                   {percent(projection.terminalContribution)}
                 </th>
                 <td colSpan={2}>
-                  {currency(
-                    projection.terminalPresentValue,
-                    result.basis.currency,
-                    2,
-                  )}
+                  {quoteValue(projection.terminalPresentValue, result.basis.currency)}
                 </td>
               </tr>
               <tr>
                 <th colSpan={6}>{t("每股价值", "Value per share")}</th>
                 <td colSpan={2}>
-                  {currency(projection.value, result.basis.currency, 2)}
+                  {quoteValue(projection.value, result.basis.currency)}
                 </td>
               </tr>
               {projection.equityFloorAdjustment > 0 && (
@@ -169,11 +162,7 @@ export function ValuationWorksheet({
                     {t("股权零下限调整", "Equity zero-floor adjustment")}
                   </th>
                   <td colSpan={2}>
-                    {currency(
-                      projection.equityFloorAdjustment,
-                      result.basis.currency,
-                      2,
-                    )}
+                    {quoteValue(projection.equityFloorAdjustment, result.basis.currency)}
                   </td>
                 </tr>
               )}
@@ -185,7 +174,7 @@ export function ValuationWorksheet({
           <dl className="mx-evidence-inputs">
             <dt>{t("起始营收", "Starting revenue")}</dt>
             <dd>
-              {currency(result.basis.revenue, result.basis.currency, 0)}
+              {quoteValue(result.basis.revenue, result.basis.currency, { digits: 0 })}
             </dd>
             <dt>{t("起始现金流率", "Starting FCF margin")}</dt>
             <dd>{percent(result.basis.startMargin, false, 2)}</dd>
