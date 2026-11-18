@@ -10,7 +10,15 @@ if TYPE_CHECKING:
 from trading_max.reference.quote_units import major_quote_unit
 
 from .facts import FinancialFacts, fingerprint, number
-from .valuation_basis import EXCLUDED_ASSETS, Family, listing_shares, period_choice, statement_basis
+from .listing import BP_LISTING_SOURCE, REVIEWED_ORDINARY_SOURCES
+from .valuation_basis import (
+    EXCLUDED_ASSETS,
+    Family,
+    listing_shares,
+    period_choice,
+    share_unit,
+    statement_basis,
+)
 from .valuation_preview import (
     VALUATION_FORMULA_VERSION,
     AssumptionReference,
@@ -92,7 +100,7 @@ def freeze_basis(
                 flow,
                 cash if family == "cash-flow" else None,
                 book if family == "residual-income" else None,
-                values.get("ordinaryShares") if ratio else None,
+                values.get("ordinaryShares"),
             )
             if o
             for e in o.evidence
@@ -222,16 +230,16 @@ def statement_row(
 
     metrics = fundamental.get("metrics") or {}
     name = fundamental.get("name") or ""
-    is_adr = "deposit" in security_type.lower() or bool(
-        {"ADR", "ADS"} & set(security_type.upper().split())
+    filed_units = filing_evidence.get("listedShareUnits") or {}
+    unit = share_unit(listing, filed_units, security_type)
+    is_adr = unit == "receipt"
+    ordinary_listing = unit == "ordinary"
+    source_url = (
+        filing_evidence.get("shareUnitFiling")
+        if filed_units.get(listing)
+        else REVIEWED_ORDINARY_SOURCES.get(listing)
+        or (BP_LISTING_SOURCE if listing == "US:BP" else None)
     )
-    ordinary_listing = any(
-        term in security_type.lower() for term in ("common stock", "ordinary share", "common share")
-    )
-    filed_unit = (filing_evidence.get("listedShareUnits") or {}).get(listing)
-    if filed_unit:
-        ordinary_listing = filed_unit == "ordinary"
-        is_adr = is_adr or filed_unit == "receipt"
     stored = {
         "family": family,
         "classification": classification,
@@ -243,10 +251,10 @@ def statement_row(
         "discountRate": cost,
         "discountRateInputs": discount_inputs,
         "listing": listing,
-        "shareUnitFiling": filing_evidence.get("shareUnitFiling") if filed_unit else None,
+        "shareUnitFiling": source_url,
         "issuerName": name,
         "isAdr": is_adr,
-        "shareUnit": "ordinary" if ordinary_listing and not is_adr else None,
+        "shareUnit": unit,
         "cashflowReconciliation": facts.reconciliation,
     }
     _, divisor = major_quote_unit(fundamental.get("currency") or "")
@@ -301,6 +309,8 @@ def statement_row(
         row["model_warnings"] = [str(exc)]
         return row
     stored.update(
+        quotedSharesOutstanding=shares,
+        sharesOutstanding=basis.shares,
         periodId=basis.period_id,
         startingRevenue=basis.revenue,
         freeCashflowMargin=basis.start_margin,

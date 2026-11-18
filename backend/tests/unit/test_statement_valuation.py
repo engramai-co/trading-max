@@ -285,3 +285,36 @@ def test_batch_requires_share_unit_evidence_for_the_quote(filed_listing, unit, e
     if eligible:
         assert row["assumptions"]["shareUnit"] == "ordinary"
         assert row["assumptions"]["shareUnitFiling"] == "https://issuer.invalid/cover"
+
+
+def test_class_count_requires_a_period_with_company_wide_shares():
+    from trading_max.research.valuation_basis import statement_basis
+
+    ends = ENDS[1:]
+    raw = {
+        "quarterlyIncomeStatement": [{"index": "Total Revenue", **dict.fromkeys(ends, 100)}],
+        "quarterlyCashflow": [
+            {"index": field, **dict.fromkeys(ends, amount)}
+            for field, amount in [("Operating Cash Flow", 20), ("Capital Expenditure", -5)]
+        ],
+        "incomeStatement": [{"index": "Total Revenue", ENDS[0]: 300}],
+        "cashflow": [
+            {"index": field, ENDS[0]: amount}
+            for field, amount in [("Operating Cash Flow", 60), ("Capital Expenditure", -15)]
+        ],
+    }
+
+    def period():
+        return statement_basis(build_financial_facts(raw, {}), "cash-flow", "XCSE:NOVO-B.CO")[0]
+
+    assert period() is None
+    raw["balanceSheet"] = [{"index": "Ordinary Shares Number", ENDS[0]: 4400}]
+    assert period().id == "annual:2024-12-31"
+
+
+def test_ordinary_designation_cannot_establish_equivalent_distribution_rights():
+    from trading_max.research.valuation_basis import share_unit
+
+    assert share_unit("XCSE:SYN-B.CO", {}, "Common Stock") is None
+    assert share_unit("US:SYN", {"US:SYN": "ordinary", "US:SYNX": "ordinary"}) is None
+    assert share_unit("XCSE:NOVO-B.CO", {"XCSE:NOVO-B.CO": "receipt"}) == "receipt"

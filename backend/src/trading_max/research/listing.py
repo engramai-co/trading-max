@@ -19,11 +19,26 @@ LONDON = "LSE"
 _NYSE = frozenset({"NYQ", "NYSE"})
 _NASDAQ = frozenset({"NASDAQ", "NMS", "NGM", "NCM", "NASDAQGS", "NASDAQGM", "NASDAQCM"})
 REVIEWED_RECEIPTS = {
+    "US:BP": (_NYSE, 6),
     "US:TSM": (_NYSE, 5),
     "US:BABA": (_NYSE, 8),
     "US:NOK": (_NYSE, 1),
     "US:ARM": (_NASDAQ, 1),
 }
+
+
+# Issuer-confirmed terms, keyed to the quoted venue and symbol. Novo and
+# Volvo have company-wide statements covering both A and B shares.
+BP_LISTING_SOURCE = (
+    "https://www.bp.com/investors/shareholder-and-dividend-information/share-listing-information"
+)
+REVIEWED_ORDINARY_SOURCES = {
+    "LSE:BP": BP_LISTING_SOURCE,
+    "XCSE:NOVO-B.CO": "https://annualreport.novonordisk.com/2025/strategic-aspirations/financial-performance.html",
+    "XSTO:VOLV-B.ST": "https://www.volvogroup.com/en/investors/the-volvo-share.html",
+    "XSTO:VOLV-A.ST": "https://www.volvogroup.com/en/investors/the-volvo-share.html",
+}
+EQUAL_DISTRIBUTION_CLASSES = frozenset({"XCSE:NOVO-B.CO", "XSTO:VOLV-A.ST", "XSTO:VOLV-B.ST"})
 
 
 def broker_listing(instrument: str | None) -> str | None:
@@ -43,7 +58,10 @@ def quote_listing(symbol: str | None, exchange: str | None, timezone: str | None
     code = str(symbol or "").strip().upper()
     calendar = listing_calendar(code, exchange, timezone)
     if code.endswith(".L") and len(code) > 2 and calendar == "XLON":
-        return f"{LONDON}:{code.removesuffix('.L')}"
+        listing = f"{LONDON}:{code.removesuffix('.L')}"
+        if listing in REVIEWED_ORDINARY_SOURCES and calendar_name(exchange) != "XLON":
+            return None
+        return listing
     if code and "." not in code and calendar_name(exchange) == "XNYS":
         listing = f"{US}:{code}"
         receipt = REVIEWED_RECEIPTS.get(listing)

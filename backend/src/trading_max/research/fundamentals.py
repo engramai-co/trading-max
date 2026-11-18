@@ -24,7 +24,7 @@ from trading_max.reference.security_master import SecurityDescriptor, SecurityMa
 from trading_max.research.facts import build_financial_facts
 from trading_max.research.listing import quote_listing
 from trading_max.research.statement_valuation import statement_row
-from trading_max.research.valuation_basis import classify
+from trading_max.research.valuation_basis import catalog_security_type, classify
 
 JsonObject = dict[str, Any]
 InfoLoader = Callable[[str], Mapping[str, Any]]
@@ -637,17 +637,7 @@ def build_valuation(
                         ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
                     ),
                     filing_evidence=financial_rows.get(ticker, {}).get("evidence") or {},
-                    security_type=" ".join(
-                        (
-                            security.security_type,
-                            security.provider_security_type,
-                            security.provider_security_type2,
-                        )
-                    )
-                    if security
-                    and security.method == "ticker"
-                    and security.canonical_ticker.upper() == ticker
-                    else "",
+                    security_type=catalog_security_type(ticker, security),
                 )
             )
             continue

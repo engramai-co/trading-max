@@ -1,10 +1,13 @@
 """Select comparable statements and a listing's model family before valuation."""
 
+import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
+from trading_max.reference.security_master import ResolvedSecurityEntity
+
 from .facts import FinancialFacts, FinancialPeriod, MetricObservation, number
-from .listing import REVIEWED_RECEIPTS
+from .listing import EQUAL_DISTRIBUTION_CLASSES, REVIEWED_ORDINARY_SOURCES, REVIEWED_RECEIPTS
 
 Family = Literal["cash-flow", "net-income", "residual-income"]
 PeriodChoice = Literal[
@@ -95,7 +98,10 @@ def statement_basis(
     for p in [*windows, *annual]:
         values = groups.get(p.id, {})
         ordinary = values.get("ordinaryShares")
-        if RECEIPT_RATIOS.get(listing, 1) != 1 and (not ordinary or ordinary.value <= 0):
+        needs_statement_shares = (
+            listing in EQUAL_DISTRIBUTION_CLASSES or RECEIPT_RATIOS.get(listing, 1) != 1
+        )
+        if needs_statement_shares and (not ordinary or ordinary.value <= 0):
             continue
         revenue = values.get("revenue")
         if family == "residual-income":
@@ -117,44 +123,44 @@ def statement_basis(
     return incomplete_cash
 
 
-def legacy_cashflow_worksheet(row: Mapping[str, Any]) -> bool:
-    """Identify a completed pre-share-unit worksheet in a retained publication."""
-    stored = row.get("assumptions") or {}
-    if {"shareUnit", "listing", "family", "isAdr"} & stored.keys():
-        return False
-    if row.get("method") not in {
-        None,
-        "",
-        "levered-fcf-exit-scenarios",
-        "explicit-preprofit-exit-scenarios",
-    }:
-        return False
-    scenarios = row.get("scenarios") or {}
-    fields = ("revenueCagr", "targetFcfMargin", "discountRate", "exitFcfMultiple", "shareCagr")
-    return set(scenarios) == {"bear", "base", "bull"} and all(
-        isinstance(params, Mapping)
-        and all(number(params.get(field)) is not None for field in fields)
-        for params in scenarios.values()
+def catalog_security_type(ticker: str, security: ResolvedSecurityEntity | None) -> str:
+    if not security or security.method != "ticker" or security.canonical_ticker.upper() != ticker:
+        return ""
+    return " ".join(
+        (security.security_type, security.provider_security_type, security.provider_security_type2)
     )
 
 
-def ordinary_share_basis(
-    stored: Mapping[str, Any],
-    listing: str | None,
-    *,
-    filed_unit: str | None,
-    legacy_worksheet: bool,
-    same_currency_equity: bool,
-) -> bool:
-    if not listing or stored.get("isAdr"):
-        return False
-    if "shareUnit" in stored:
-        return stored["shareUnit"] == "ordinary" and stored.get("listing") == listing
-    if filed_unit is not None:
-        return filed_unit == "ordinary"
-    # Preserve the count on an already published, same-currency operating
-    # worksheet until the batch replaces it. Receipt rules still run first.
-    return legacy_worksheet and same_currency_equity
+def share_unit(
+    listing: str | None, filed_units: Mapping[str, str], security_type: str = ""
+) -> str | None:
+    """Resolve the security on this venue independently of the reporting currency."""
+    if not listing:
+        return None
+    filed = filed_units.get(listing)
+    kind = security_type.lower()
+    if (
+        listing in REVIEWED_RECEIPTS
+        or filed == "receipt"
+        or "deposit" in kind
+        or re.search(r"\b(?:adr|ads)\b", kind)
+    ):
+        return "receipt"
+    if filed is not None and filed != "ordinary":
+        return None
+    if listing in REVIEWED_ORDINARY_SOURCES:
+        return "ordinary"
+    # An identified second ordinary class can have different economic rights.
+    # Counts or voting-class labels alone cannot translate it to the quoted unit.
+    if sum(unit == "ordinary" for unit in filed_units.values()) > 1 or re.search(
+        r"[-.][AB](?:\.|$)", listing
+    ):
+        return None
+    if filed == "ordinary" or any(
+        label in kind for label in ("common stock", "ordinary share", "common share")
+    ):
+        return "ordinary"
+    return None
 
 
 def listing_shares(
@@ -182,4 +188,7 @@ def listing_shares(
         return None, None
     if is_adr or any(x in name.lower() for x in ("depositary", "depository", " adr", " ads")):
         return None, None
-    return shares, None
+    ordinary = values.get("ordinaryShares")
+    if ordinary and ordinary.value and ordinary.value > 0:
+        return ordinary.value, None
+    return (None if listing in EQUAL_DISTRIBUTION_CLASSES else shares), None
