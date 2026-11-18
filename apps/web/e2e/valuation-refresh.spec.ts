@@ -487,3 +487,108 @@ test.describe("valuation refresh", () => {
   });
 
 });
+
+for (const locale of ["en", "zh"] as const) {
+  for (const scheme of ["light", "dark"] as const) {
+    test(`switch valuation family and inspect ROE · ${locale} · ${scheme}`, async ({ page }, info) => {
+      test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+      await page.setViewportSize(
+        info.project.name === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 900 },
+      );
+      await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+      await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
+      await synthetic(page, false);
+      await page.route(/\/SYNT\/valuation-preview/, async (route) => {
+        const req = route.request();
+        const family =
+          new URL(req.url()).searchParams.get("family") ??
+          (req.method() === "POST" ? req.postDataJSON().family : undefined) ??
+          "cash-flow";
+        const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", false, {});
+        const projections = Object.fromEntries(
+          Object.entries(p.scenarios).map(([key, value]) => [
+            key,
+            {
+              ...value,
+              inputs: { ...value.inputs, rampYears: 4, initialRoe: 0.15, payout: 0.3, terminalPb: 1.2 },
+            },
+          ]),
+        );
+        return route.fulfill({
+          json: {
+            ...p,
+            scenarios: projections,
+            formulaVersion: "statement-equity-v2",
+            basis: {
+              ...p.basis,
+              family,
+              bookPerShare: 25,
+              periodId: "annual:2025-12-31",
+              reportingCurrency: "USD",
+              fxRate: 1,
+            },
+            reverseMetric: family === "residual-income" ? "initial-roe" : "revenue-growth",
+            reverseValue: 0.18,
+          },
+        });
+      });
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      const select = page.getByRole("combobox", {
+        name: locale === "en" ? "Valuation model" : "估值模型",
+        exact: true,
+      });
+      await select.click();
+      const name = locale === "en" ? "Residual income" : "剩余收益";
+      await page.getByRole("option", { name, exact: true }).click();
+      await expect(select).toHaveValue(name);
+      await expect(
+        page.getByLabel(locale === "en" ? "Year-one ROE" : "第一年 ROE", { exact: true }),
+      ).toBeVisible();
+      const heading = page.getByRole("heading", {
+        name: locale === "en" ? "Year-one ROE implied by price" : "现价隐含的第一年 ROE",
+        exact: true,
+      });
+      await expect(heading).toBeVisible();
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const dir = process.env.VALUATION_QA_SCREENSHOTS_DIR;
+      if (dir) {
+        await page.locator("#valuation-assumptions").scrollIntoViewIfNeeded();
+        await page.screenshot({ path: join(dir, `${info.project.name}-${locale}-${scheme}.png`) });
+      }
+    });
+  }
+}
+
+test("set and clear a saved valuation baseline from its journal", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await synthetic(page, false);
+  const journal = {
+    ticker: "SYNT",
+    notes: [],
+    baselineModelId: null as string | null,
+    models: [
+      {
+        id: "model-one",
+        savedAt: "2026-10-20T12:00:00Z",
+        reason: "Synthetic baseline",
+        preview: preview("SYNT", 100, "2026-10-20", false, {}),
+      },
+    ],
+  };
+  await page.route("**/research/SYNT/journal", (r) => r.fulfill({ json: journal }));
+  await page.route("**/research/SYNT/models/baseline", (r) => {
+    expect(r.request().method()).toBe("PUT");
+    journal.baselineModelId = r.request().postDataJSON().modelId;
+    return r.fulfill({ json: journal });
+  });
+  await page.goto("/research?ticker=SYNT&view=ledger&notebook=models");
+  await page.getByRole("button", { name: "Set as baseline" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("button", { name: "Clear baseline" })).toHaveAttribute("aria-pressed", "true");
+  expect(journal.baselineModelId).toBe("model-one");
+  await page.getByRole("button", { name: "Clear baseline" }).click();
+  await expect(page.getByRole("button", { name: "Set as baseline" })).toHaveAttribute("aria-pressed", "false");
+  expect(journal.baselineModelId).toBe(null);
+});

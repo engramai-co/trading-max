@@ -8,7 +8,7 @@ export async function GET(
 ) {
   const { ticker } = await context.params;
   return proxyToBackend(
-    `/v1/research/${encodeURIComponent(ticker)}/valuation-preview`,
+    `/v1/research/${encodeURIComponent(ticker)}/valuation-preview${new URL(request.url).search}`,
     { signal: request.signal },
   );
 }

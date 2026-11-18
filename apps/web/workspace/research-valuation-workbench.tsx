@@ -6,6 +6,7 @@ import {
   Button,
   Group,
   Modal,
+  Select,
   NumberInput,
   Textarea,
 } from "@mantine/core";
@@ -21,7 +22,18 @@ import { useLayoutEffect, useMemo, useState } from "react";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
-import { api, compact, currency, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
+import {
+  ApiError,
+  api,
+  compact,
+  currency,
+  jsonRequest,
+  number,
+  object,
+  objects,
+  percent,
+  str,
+} from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import {
   Empty,
@@ -68,14 +80,10 @@ export function ValuationWorkbench({
   price?: ResearchPrice;
 }) {
   const t = useCopy();
-  const financial =
-    data.context?.capabilities.some(
-      (c) => c.reason === "financial-company-requires-equity-model",
-    ) ?? false;
-  // Valued against the price the header shows: a broker refresh recomputes it.
-  const query = useQuery({ ...valuationDefaultsQuery(data, price), enabled: !financial });
+  const [family, setFamily] = useState<Preview["basis"]["family"]>();
+  const query = useQuery(valuationDefaultsQuery(data, price, family));
   // Once this research has a preview, a failed refresh keeps it and its editor.
-  const loaded = useQuery(loadedValuationQuery(data));
+  const loaded = useQuery(loadedValuationQuery(data, family));
   const state = workbenchState(query, loaded.data);
   const [dirty, setDirty] = useState(false);
   const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
@@ -142,9 +150,12 @@ function ModelEditor({
   const [inputs, setInputs] = useState<Scenarios>(() =>
     Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
   );
+  const residual = initial.basis.family === "residual-income";
+  const earnings = initial.basis.family === "net-income";
+  const marginLabel = earnings || residual ? t("净利率", "Net margin") : t("现金流率","FCF margin");
   const [selected, setSelected] = useState<string>("base");
   const [activeField, setActiveField] =
-    useState<keyof ScenarioInput>("revenueCagr");
+    useState<keyof ScenarioInput>(residual ? "initialRoe" : "revenueCagr");
   const [saveOpen, setSaveOpen] = useState(false);
   const [draftValue, setDraftValue] = useState<number | string | null>(null);
   const [invalidInput, setInvalidInput] = useState(false);
@@ -163,12 +174,14 @@ function ModelEditor({
   const estimateGrowth = numeric(estimate?.growth);
   const liveRequest = useMemo(
     () => ({
+      family: initial.basis.family,
+      formulaVersion: initial.formulaVersion,
       scenarios: inputs,
       horizon,
       dataVersion: initial.basis.dataVersion,
       references,
     }),
-    [inputs, horizon, initial.basis.dataVersion, references],
+    [inputs, horizon, initial.basis.dataVersion, initial.basis.family, initial.formulaVersion, references],
   );
   const [debounced] = useDebouncedValue(liveRequest, 250);
   const liveFingerprint = JSON.stringify(liveRequest);
@@ -205,6 +218,8 @@ function ModelEditor({
     onSuccess: async (_result, payload) => {
       setSavedFingerprint(
         JSON.stringify({
+          family: payload.family,
+          formulaVersion: payload.formulaVersion,
           scenarios: payload.scenarios,
           horizon: payload.horizon,
           dataVersion: payload.dataVersion,
@@ -232,7 +247,12 @@ function ModelEditor({
     max: number;
     scale: number;
     suffix: string;
-  }[] = [
+  }[] = residual ? [
+    {key:"initialRoe",label:t("第一年 ROE","Year-one ROE"),min:-80,max:200,scale:100,suffix:"%"},
+    {key:"payout",label:t("派息率","Payout ratio"),min:0,max:100,scale:100,suffix:"%"},
+    {key:"discountRate",label:t("股权资本成本","Cost of equity"),min:1,max:60,scale:100,suffix:"%"},
+    {key:"terminalPb",label:t("终值市净率","Terminal P/B"),min:0,max:15,scale:1,suffix:"×"},
+  ] : [
     {
       key: "revenueCagr",
       label: t("前五年营收增长", "Revenue growth · years 1–5"),
@@ -243,7 +263,7 @@ function ModelEditor({
     },
     {
       key: "targetFcfMargin",
-      label: t("目标现金流率", "Target FCF margin"),
+      label: earnings ? t("目标净利率","Target net margin") : t("目标现金流率", "Target FCF margin"),
       min: -100,
       max: 100,
       scale: 100,
@@ -259,7 +279,7 @@ function ModelEditor({
     },
     {
       key: "exitFcfMultiple",
-      label: t("终值现金流倍数", "Terminal FCF multiple"),
+      label: earnings ? t("终值市盈率","Terminal P/E") : t("终值现金流倍数", "Terminal FCF multiple"),
       min: 0,
       max: 100,
       scale: 1,
@@ -274,7 +294,42 @@ function ModelEditor({
       suffix: "%",
     },
   ];
+  if (!residual && initial.formulaVersion !== "equity-proxy-projection-v1")
+    fields.push({
+      key: "rampYears",
+      label: t("达到目标的年数", "Years to target margin"),
+      min: 1,
+      max: 10,
+      scale: 1,
+      suffix: "",
+    });
   const base = result.scenarios.base;
+  const reverse = result.reverseMetric;
+  const reverseTitle =
+    reverse === "initial-roe"
+      ? t("现价隐含的第一年 ROE", "Year-one ROE implied by price")
+      : reverse === "target-margin"
+        ? t("现价隐含的目标利润率", "Target margin implied by price")
+        : t("价格隐含的增长", "Growth implied by price");
+  const reverseBound = result.reverseBound ?? result.impliedGrowthBound;
+  const limits = result.reverseLimits ?? [-0.3, 0.8];
+  const methodology = initial.formulaVersion === "equity-proxy-projection-v1"
+    ? t("保存的公式按三年调整利润率，股数按年度股数变化调整。", "The saved formula moves margin to its target over three years and applies the assumed annual share-count change.")
+    : residual
+    ? t(
+        "期初普通股每股净资产加上剩余收益现值。ROE 逐年回归股权成本，期末按市净率结算。",
+        "Starting common book value plus discounted residual earnings. ROE fades to the cost of equity and the terminal price uses P/B.",
+      )
+    : earnings
+      ? t(
+          "以普通股净利润作为收益代理。客户资金进出不计入估值。",
+          "Common earnings proxy the amount available to shareholders. Client cash movements are excluded.",
+        )
+      : t(
+          "经营现金流减资本开支，按股权成本折现。现金不足时按起始股价发行新股，后续收益由更多股份分摊。",
+          "Operating cash flow less capital expenditure is discounted at the cost of equity. Burn beyond opening cash is financed by shares issued at the starting price.",
+        );
+
   const current = result.scenarios[selected] ?? base;
   const sourceLabel =
     initial.defaultSource === "saved-model"
@@ -285,12 +340,12 @@ function ModelEditor({
           ? t("已配置的假设", "Configured assumptions")
           : t("模型初始假设", "Initial assumptions");
   const referencePeriod = data.financialFacts?.periods.find(
-    (p) => p.id === data.financialFacts?.latestTtm,
+    (p) => p.id === (result.basis.periodId ?? data.financialFacts?.latestTtm),
   );
   const latestFact = (metric: string) =>
     data.financialFacts?.observations.find(
       (o) =>
-        o.periodId === data.financialFacts?.latestTtm && o.metric === metric,
+        o.periodId === (result.basis.periodId ?? data.financialFacts?.latestTtm) && o.metric === metric,
     )?.value;
   const projection = result.scenarios[worksheet] ?? base;
   const editedBase = JSON.stringify(base.inputs) !== JSON.stringify(initial.scenarios.base.inputs);
@@ -326,11 +381,7 @@ function ModelEditor({
                   ]}
                 />
                 <span role="status" className="mx-preview-status">
-                  {invalidInput
-                    ? t("请完成输入", "Complete the input")
-                    : busy
-                      ? t("计算中…", "Calculating…")
-                      : ""}
+                  {invalidInput ? t("请完成输入", "Complete the input") : busy ? t("计算中…", "Calculating…") : ""}
                 </span>
               </Group>
             }
@@ -346,9 +397,7 @@ function ModelEditor({
             />
             {onRetry && !refreshing && (
               <div className="mx-model-refresh" role="alert">
-                <Tag tone="warn">
-                  {t("未能按最新价格重算", "Not revalued at the latest price")}
-                </Tag>
+                <Tag tone="warn">{t("未能按最新价格重算", "Not revalued at the latest price")}</Tag>
                 <Button
                   variant="subtle"
                   size="compact-xs"
@@ -363,17 +412,14 @@ function ModelEditor({
               !busy &&
               !query.isError &&
               inputs[selected] &&
-              JSON.stringify(inputs[selected]) !==
-                JSON.stringify(initial.scenarios[selected].inputs) && (
+              JSON.stringify(inputs[selected]) !== JSON.stringify(initial.scenarios[selected].inputs) && (
                 <div className="mx-model-change" role="status">
                   <span>
-                    {scenarioNames[selected]} ·{" "}
-                    {t("相对初始假设", "vs initial assumptions")}
+                    {scenarioNames[selected]} · {t("相对初始假设", "vs initial assumptions")}
                   </span>
                   <strong>
                     {currency(
-                      current.value -
-                        initialAtHorizon.scenarios[selected].value,
+                      current.value - initialAtHorizon.scenarios[selected].value,
                       result.basis.currency,
                       2,
                     )}{" "}
@@ -383,53 +429,52 @@ function ModelEditor({
               )}
             {query.isError && (
               <p role="alert">
-                {t(
-                  "预览计算失败，当前仍为上次结果。",
-                  "Preview failed. The previous result is retained.",
-                )}
+                {t("预览计算失败，当前仍为上次结果。", "Preview failed. The previous result is retained.")}
               </p>
             )}
             <details className="mx-disclosure">
               <summary>{t("比较情景假设", "Compare scenario assumptions")}</summary>
-            <div
-              className="mx-table-scroll"
-              tabIndex={0}
-              role="region"
-              aria-label={t("情景对比", "Scenario comparison")}
-            >
-              <table className="mx-financial-table">
-                <thead>
-                  <tr>
-                    <th>{t("情景", "Scenario")}</th>
-                    <th>{t("增长", "Growth")}</th>
-                    <th>{t("现金流率", "FCF margin")}</th>
-                    <th>{t("折现率", "Discount")}</th>
-                    <th>{t("价值", "Value")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keys.map((k) => (
-                    <tr key={k}>
-                      <th>{scenarioNames[k]}</th>
-                      <td>{percent(result.scenarios[k].inputs.revenueCagr)}</td>
-                      <td>
-                        {percent(result.scenarios[k].inputs.targetFcfMargin)}
-                      </td>
-                      <td>
-                        {percent(result.scenarios[k].inputs.discountRate)}
-                      </td>
-                      <td>
-                        {currency(
-                          result.scenarios[k].value,
-                          result.basis.currency,
-                          2,
-                        )}
-                      </td>
+              <div
+                className="mx-table-scroll"
+                tabIndex={0}
+                role="region"
+                aria-label={t("情景对比", "Scenario comparison")}
+              >
+                <table className="mx-financial-table">
+                  <thead>
+                    <tr>
+                      <th>{t("情景", "Scenario")}</th>
+                      <th>{residual ? "ROE" : t("增长", "Growth")}</th>
+                      <th>{residual ? t("派息率", "Payout") : marginLabel}</th>
+                      <th>{t("折现率", "Discount")}</th>
+                      <th>{t("价值", "Value")}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {keys.map((k) => (
+                      <tr key={k}>
+                        <th>{scenarioNames[k]}</th>
+                        <td>
+                          {percent(
+                            residual
+                              ? result.scenarios[k].inputs.initialRoe
+                              : result.scenarios[k].inputs.revenueCagr,
+                          )}
+                        </td>
+                        <td>
+                          {percent(
+                            residual
+                              ? result.scenarios[k].inputs.payout
+                              : result.scenarios[k].inputs.targetFcfMargin,
+                          )}
+                        </td>
+                        <td>{percent(result.scenarios[k].inputs.discountRate)}</td>
+                        <td>{currency(result.scenarios[k].value, result.basis.currency, 2)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </details>
           </Panel>
         </div>
@@ -448,10 +493,7 @@ function ModelEditor({
             </Button>
           }
           className="mx-model-inputs"
-          help={t(
-            "现金流来自四季报表的经营现金流减资本开支，作为股权现金流代理，与股权资本成本配对。十年模型从第六年逐渐收敛至 3% 增长。",
-            "Cash flow is reported operating cash flow less capital expenditure, used as an equity cash-flow proxy with cost of equity. In the ten-year model, growth fades toward 3% from year six.",
-          )}
+          help={methodology}
         >
           <Segments
             label={t("编辑情景", "Edit scenario")}
@@ -466,21 +508,16 @@ function ModelEditor({
               label: scenarioNames[key],
             }))}
           />
-          {params.get("estimateRef") && (
+          {!residual && params.get("estimateRef") && (
             <div className="mx-model-reference">
               <strong>{t("营收增长参考", "Revenue-growth reference")}</strong>
               <p>
-                {str(estimate?.endDate || params.get("estimateRef"))} ·{" "}
-                {percent(estimateGrowth, true)}
+                {str(estimate?.endDate || params.get("estimateRef"))} · {percent(estimateGrowth, true)}
               </p>
               <Button
                 variant="light"
                 size="xs"
-                disabled={
-                  estimateGrowth == null ||
-                  estimateGrowth < -0.8 ||
-                  estimateGrowth > 2
-                }
+                disabled={estimateGrowth == null || estimateGrowth < -0.8 || estimateGrowth > 2}
                 onClick={() => {
                   if (estimateGrowth == null) return;
                   setInputs((v) => ({
@@ -492,9 +529,7 @@ function ModelEditor({
                     {
                       metric: "revenueGrowth",
                       scenario: selected as "bear" | "base" | "bull",
-                      period: str(
-                        estimate?.endDate || params.get("estimateRef"),
-                      ),
+                      period: str(estimate?.endDate || params.get("estimateRef")),
                       asOf: str(estimate?.asOf || analyst.asOf),
                       value: estimateGrowth,
                       source: "yahoo-finance-consensus",
@@ -507,10 +542,7 @@ function ModelEditor({
                   update({ estimateRef: null });
                 }}
               >
-                {t(
-                  "设为当前情景的前五年增长",
-                  "Apply to years 1–5 of this scenario",
-                )}
+                {t("设为当前情景的前五年增长", "Apply to years 1–5 of this scenario")}
               </Button>
             </div>
           )}
@@ -528,12 +560,7 @@ function ModelEditor({
                     key={selected + field.key}
                     id={"assumption-" + field.key}
                     size="xs"
-                    value={
-                      draftValue ??
-                      Number(
-                        (inputs[selected][field.key] * field.scale).toFixed(3),
-                      )
-                    }
+                    value={draftValue ?? Number(((inputs[selected][field.key] ?? 0) * field.scale).toFixed(3))}
                     error={
                       invalidInput
                         ? `${t("请输入", "Enter a value between ")}${field.min} – ${field.max}${field.suffix}`
@@ -542,14 +569,8 @@ function ModelEditor({
                     onChange={(v) => {
                       setDraftValue(v);
                       const value = numeric(v);
-                      setInvalidInput(
-                        value == null || value < field.min || value > field.max,
-                      );
-                      if (
-                        value != null &&
-                        value >= field.min &&
-                        value <= field.max
-                      ) {
+                      setInvalidInput(value == null || value < field.min || value > field.max);
+                      if (value != null && value >= field.min && value <= field.max) {
                         setInputs((previous) => ({
                           ...previous,
                           [selected]: {
@@ -558,15 +579,13 @@ function ModelEditor({
                           },
                         }));
                         if (field.key === "revenueCagr")
-                          setReferences((v) =>
-                            v.filter((r) => r.scenario !== selected),
-                          );
+                          setReferences((v) => v.filter((r) => r.scenario !== selected));
                       }
                     }}
                     min={field.min}
                     max={field.max}
-                    step={field.key === "exitFcfMultiple" ? 1 : 0.5}
-                    decimalScale={2}
+                    step={field.key === "rampYears" || field.key === "exitFcfMultiple" ? 1 : 0.5}
+                    decimalScale={field.key === "rampYears" ? 0 : 2}
                     suffix={field.suffix}
                   />
                 </div>
@@ -582,7 +601,7 @@ function ModelEditor({
                 >
                   <span>{field.label}</span>
                   <strong>
-                    {number(inputs[selected][field.key] * field.scale, 2)}
+                    {number((inputs[selected][field.key] ?? 0) * field.scale, 2)}
                     {field.suffix}
                   </strong>
                 </button>
@@ -594,9 +613,7 @@ function ModelEditor({
             <Facts
               rows={fields.map((field) => {
                 const ref = references.find((r) => r.scenario === selected);
-                const changed =
-                  inputs[selected][field.key] !==
-                  initial.scenarios[selected].inputs[field.key];
+                const changed = inputs[selected][field.key] !== initial.scenarios[selected].inputs[field.key];
                 return [
                   field.label,
                   field.key === "revenueCagr" && ref
@@ -607,23 +624,13 @@ function ModelEditor({
                 ];
               })}
             />
-            <p>
-              {t(
-                "增长先应用五年；目标现金流率用三年达到。股数变化为负表示减少；终值倍数与股权资本成本是情景假设。",
-                "Growth applies for five years and the target margin is reached over three. Negative share-count change means fewer shares. The terminal multiple and cost of equity are scenario assumptions.",
-              )}
-            </p>
           </details>
           <Button
             variant="subtle"
             onClick={() => {
               setDraftValue(null);
               setInvalidInput(false);
-              setInputs(
-                Object.fromEntries(
-                  keys.map((k) => [k, initial.scenarios[k].inputs]),
-                ),
-              );
+              setInputs(Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])));
               setReferences(initial.references ?? []);
             }}
           >
@@ -635,15 +642,9 @@ function ModelEditor({
             loading={save.isPending}
             disabled={busy || query.isError || saved}
           >
-            {saved
-              ? t("已保存", "Saved")
-              : t("保存模型版本", "Save model version")}
+            {saved ? t("已保存", "Saved") : t("保存模型版本", "Save model version")}
           </Button>
-          {save.isError && (
-            <p role="alert">
-              {t("保存失败，请重试。", "Could not save. Try again.")}
-            </p>
-          )}
+          {save.isError && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
         </Panel>
         <div className="mx-model-reference-grid">
         <Panel
@@ -719,10 +720,7 @@ function ModelEditor({
         <Facts
           rows={[
             [t("预测年限", "Horizon"), `${horizon}Y`],
-            [
-              scenarioNames[selected],
-              currency(current.value, result.basis.currency, 2),
-            ],
+            [scenarioNames[selected], currency(current.value, result.basis.currency, 2)],
           ]}
         />
         <Textarea
@@ -748,11 +746,7 @@ function ModelEditor({
             {t("保存版本", "Save version")}
           </Button>
         </Group>
-        {save.isError && (
-          <p role="alert">
-            {t("保存失败，请重试。", "Could not save. Try again.")}
-          </p>
-        )}
+        {save.isError && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
       </Modal>
     </>
   );
