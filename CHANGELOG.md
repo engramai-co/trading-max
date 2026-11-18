@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.53.1] - 2026-11-18
+
+### Security
+- The web dependency audit accepts the picomatch advisory in development tooling until 18 December 2026. Affected production dependencies still block releases.
+
 ## [1.53.0] - 2026-11-17
 
 ### Changed
