@@ -273,35 +273,39 @@ test.describe("valuation refresh", () => {
     await expect(page.getByRole("link", { name: "Worksheet" })).toHaveAttribute("aria-current", "location");
   });
 
-  test("the readout keeps its space and shows the signed gap for a large base value", async ({ page, isMobile }) => {
-    if (isMobile) await page.setViewportSize({ width: 320, height: 844 });
-    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
-    await synthetic(page, false);
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    await page.route("**/SYNT/valuation-preview*", async (route) => {
-      await gate;
-      const model = preview("SYNT", 150000, "2026-11-04", true, {});
-      model.basis.currency = "JPY";
-      model.scenarios.base.value = 135956.78;
-      model.scenarios.base.upside = model.scenarios.base.value / model.basis.spot - 1;
-      await route.fulfill({ json: model });
+  for (const example of ["large", "floored"] as const) {
+    test(`the readout keeps its space and shows the signed gap for a ${example} base value`, async ({ page, isMobile }) => {
+      if (isMobile) await page.setViewportSize({ width: example === "large" ? 320 : 390, height: 844 });
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await synthetic(page, false);
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      await page.route("**/SYNT/valuation-preview*", async (route) => {
+        await gate;
+        const model = preview("SYNT", 150000, "2026-11-04", true, {});
+        model.basis.currency = "JPY";
+        model.scenarios.base.value = example === "large" ? 135956.78 : 0;
+        model.scenarios.base.equityFloorAdjustment = example === "floored" ? 3 : 0;
+        model.scenarios.base.upside = model.scenarios.base.value / model.basis.spot - 1;
+        await route.fulfill({ json: model });
+      });
+      await page.goto("/research?ticker=SYNT&view=valuation");
+      const history = page.locator("#research-history");
+      await expect(history).toBeVisible();
+      await page.evaluate(() => document.fonts.ready);
+      const before = await history.boundingBox();
+      release();
+      const readout = page.locator(".mx-valuation-readout");
+      await expect(readout).toContainText(example === "large" ? "135,956.78" : "Negative equity value floored at zero");
+      await expect.soft(readout).toContainText(example === "large" ? /[-−]9.4%/ : /[-−]100.0%/);
+      expect.soft(Math.abs((await history.boundingBox())!.y - before!.y)).toBeLessThan(1);
+      if (isMobile) {
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
+        const metrics = await readout.locator(".mx-metric").evaluateAll((items) => items.map((node) => node.getBoundingClientRect().top));
+        expect(metrics[1]).toBeGreaterThan(metrics[0]);
+      }
     });
-    await page.goto("/research?ticker=SYNT&view=valuation");
-    const history = page.locator("#research-history");
-    await expect(history).toBeVisible();
-    const before = await history.boundingBox();
-    release();
-    const readout = page.locator(".mx-valuation-readout");
-    await expect(readout).toContainText("135,956.78");
-    await expect.soft(readout).toContainText(/[-−]9.4%/);
-    expect.soft(Math.abs((await history.boundingBox())!.y - before!.y)).toBeLessThan(1);
-    if (isMobile) {
-      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
-      const metrics = await readout.locator(".mx-metric").evaluateAll((items) => items.map((node) => node.getBoundingClientRect().top));
-      expect(metrics[1]).toBeGreaterThan(metrics[0]);
-    }
-  });
+  }
 
   test("a failed broker refresh keeps edited assumptions and retries inline", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));

@@ -81,6 +81,10 @@
 .mx-valuation-readout .mx-metric-note {
   min-height: 1lh;
 }
+/* Reserve the base source and the conditional equity floor disclosure. */
+.mx-valuation-readout > .mx-metric:last-child .mx-metric-note {
+  min-height: 2lh;
+}
 .mx-reverse-feedback {
   display: grid;
 }
