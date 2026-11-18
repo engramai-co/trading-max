@@ -4,17 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
-## [1.55.0] - 2026-11-18
-
 ### Added
 - Research can open a security-specific position reading, inspect up to three event-backed price moves, and show a pre-written earnings brief in Financials and Estimates & events. Each observation links to its evidence.
 - Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Replies show figures and coverage directly from the cited records. The sidebar reflows wide screens and fills the screen on phones.
 - Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
-- The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
-- The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
-- Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
 
 ### Changed
 - Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
@@ -23,6 +18,13 @@ All notable public Trading Max releases are recorded here.
 ### Fixed
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Older trade markers appear only when the snapshot identifies one matching listing.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
+## [1.55.0] - 2026-11-18
+
+### Added
+- The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
+- The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
+- Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
 
 ## [1.54.0] - 2026-11-18
 
