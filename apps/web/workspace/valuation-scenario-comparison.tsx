@@ -18,8 +18,11 @@ const SCENARIO_NAMES: Record<ScenarioKey, (t: Copy) => string> = {
   bull: (t) => t("乐观", "Bull"),
 };
 
-export function ValuationScenarioComparison({ preview, selected, onSelect }: {
+export function ValuationScenarioComparison({ preview, selected, onSelect, beforeDraft, stagedScenarios = [], calculatingDraft }: {
   preview: Preview;
+  beforeDraft?: Preview;
+  stagedScenarios?: string[];
+  calculatingDraft?: boolean;
   selected: string;
   onSelect: (scenario: string) => void;
 }) {
@@ -92,13 +95,16 @@ export function ValuationScenarioComparison({ preview, selected, onSelect }: {
       <div className="mx-scenario-cards" role="group" aria-label={t("选择估值情景", "Select a valuation scenario")}>
         {keys.map((key) => {
           const scenario = preview.scenarios[key];
+          const staged = beforeDraft && stagedScenarios.includes(key);
+          const mainUpside = staged ? beforeDraft.scenarios[key].upside : scenario.upside;
           return <button type="button" key={key} aria-pressed={selected === key} data-hover={hovered === key || undefined}
             onClick={() => onSelect(key)}
             onPointerEnter={() => light(key)} onPointerLeave={() => light(null)}
             onFocus={() => light(key)} onBlur={() => light(null)}>
             <span>{name(key)}</span>
-            <strong>{currency(scenario.value, preview.basis.currency, 2)}</strong>
-            <span className={`mx-${tone(scenario.upside)}`}>{percent(scenario.upside, true, 2)}</span>
+            <strong>{currency(staged ? beforeDraft.scenarios[key].value : scenario.value, preview.basis.currency, 2)}</strong>
+            {staged && <span className="mx-draft-reading">{t("草稿", "Draft")} {calculatingDraft ? "…" : currency(scenario.value, preview.basis.currency, 2)}</span>}
+            <span className={`mx-${tone(mainUpside)}`}>{percent(mainUpside, true, 2)}</span>
           </button>;
         })}
       </div>

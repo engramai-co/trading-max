@@ -784,3 +784,105 @@
     min-height: 36px;
   }
 }
+
+/* Keep review in the editable assumption row at every workspace width. */
+.mx-draft-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--mx-border);
+  min-width: 0;
+}
+.mx-draft-values {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 7px;
+}
+.mx-draft-values .mx-draft-field {
+  flex: 1 1 84px;
+  width: auto;
+  padding: 4px 0;
+}
+.mx-draft-values del, .mx-draft-status, .mx-draft-reason {
+  color: var(--mx-muted);
+  font-size: 12px;
+}
+.mx-draft-values del, .mx-draft-candidate {
+  font-variant-numeric: tabular-nums;
+}
+.mx-draft-candidate {
+  padding: 4px 6px;
+  font-size: 14px;
+}
+.mx-draft-candidate small {
+  display: block;
+  font-size: 11px;
+  color: var(--mx-muted);
+}
+.mx-draft-row[data-decision="accepted"] .mx-draft-candidate {
+  background: var(--mx-brand-soft);
+  border-radius: 5px;
+}
+.mx-draft-row[data-decision="accepted"] strong::before, .mx-draft-reading::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-inline-end: 5px;
+  background: var(--mx-brand);
+  vertical-align: middle;
+}
+.mx-draft-actions {
+  display: flex;
+  gap: 3px;
+}
+.mx-draft-actions button {
+  width: 26px;
+  min-height: 28px;
+  justify-content: center;
+  padding: 0;
+  border-color: var(--mx-border);
+}
+.mx-draft-actions button[aria-pressed="true"] {
+  color: var(--mx-brand);
+  background: var(--mx-brand-soft);
+}
+.mx-draft-actions button:disabled {
+  opacity: .55;
+}
+.mx-draft-reason {
+  margin: 2px 0 0;
+  line-height: 1.5;
+}
+.mx-draft-reason a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: inherit;
+}
+.mx-draft-status {
+  margin: 4px 0 10px;
+}
+@media (max-width: 767px) {
+  .mx-assumption-picker .mx-draft-actions button {
+  min-width: 44px;
+  min-height: 44px;
+}
+}
+.mx-draft-reason a {
+  white-space: nowrap;
+}
+.mx-draft-evidence > div {
+  display: grid;
+  gap: 3px;
+  padding: 6px 0;
+  overflow-wrap: anywhere;
+  scroll-margin-block: 100px;
+}
+.mx-draft-evidence span, .mx-draft-evidence a {
+  color: var(--mx-muted);
+}
+@media (min-width: 1200px) {
+  .mx-model-workbench:has(.mx-draft-row) {
+    grid-template-columns: minmax(0, 1fr) minmax(340px, 31%);
+  }
+}

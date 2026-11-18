@@ -76,6 +76,10 @@ consent for that model and endpoint. It makes a small exchange in which the
 model must call a tool. Models that only return text fail it with
 `assistant_tools_unsupported`, rather than failing later on every question.
 
+The Research Desk uses a separate [valuation draft run](valuation-agent.md#drafting-in-research)
+with a listing-bound toolset, a deferred proposal and its own request limits.
+The model connection and consent check are shared with chat.
+
 ## Period calculations
 
 The assistant answers period P&L, drawdown, period returns and benchmark

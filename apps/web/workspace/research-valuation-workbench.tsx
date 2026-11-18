@@ -22,6 +22,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
+import { DraftEvidence, DraftStatus, ProposalRow, useValuationDraft } from "./valuation-draft-editor";
+import { inputKey, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import {
   ApiError,
@@ -121,6 +123,7 @@ export function ValuationWorkbench({
   const loaded = useQuery(loadedValuationQuery(data, family));
   const state = workbenchState(query, loaded.data);
   const [dirty, setDirty] = useState(false);
+  const [reload, setReload] = useState(0);
   const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
     (next, previous) => !dirty || next.basis.ticker !== previous.basis.ticker || editorIdentity(next) === editorIdentity(previous));
   const preview = retained?.basis.ticker === data.ticker && (!family || retained.basis.family === family)
@@ -240,6 +243,8 @@ function ModelEditor({
   methodology,
   initial,
   onReading,
+  requestedFamily,
+  reloadBasis,
   onDirty,
   data,
   revision,
@@ -251,6 +256,8 @@ function ModelEditor({
   methodology?: string;
   initial: Preview;
   onReading: (reading: ModelReading) => void;
+  requestedFamily?: Preview["basis"]["family"];
+  reloadBasis: () => Promise<void>;
   onDirty: (dirty: boolean) => void;
   data: ResearchLensSnapshot;
   revision?: string | null;
@@ -271,6 +278,9 @@ function ModelEditor({
   const [inputs, setInputs] = useState<Scenarios>(() =>
     Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
   );
+  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs);
+  const { draft } = drafting;
+  const [editingProposal, setEditingProposal] = useState<string | null>(null);
   const residual = initial.basis.family === "residual-income";
   const earnings = initial.basis.family === "net-income";
   const marginLabel = earnings || residual ? t("净利率", "Net margin") : t("现金流率","FCF margin");
@@ -322,7 +332,7 @@ function ModelEditor({
     invalidInput || refreshing || query.isFetching || request !== liveFingerprint;
   const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
   const saved = savedFingerprint === liveFingerprint;
-  const dirty = saveOpen || invalidInput || !saved && (
+  const dirty = Boolean(draft) || saveOpen || invalidInput || !saved && (
     draftValue !== null || liveFingerprint !== JSON.stringify(previewRequest(initial)));
   useBuildNavigationGuard(dirty);
   useLayoutEffect(() => {
@@ -330,7 +340,7 @@ function ModelEditor({
     return () => onDirty(false);
   }, [dirty, onDirty]);
   const save = useMutation({
-    mutationFn: (payload: typeof liveRequest & { reason: string }) =>
+    mutationFn: (payload: typeof liveRequest & { reason: string; draftReview?: DraftReview }) =>
       api(
         `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
         jsonRequest("POST", payload),
@@ -347,6 +357,7 @@ function ModelEditor({
         }),
       );
       setSaveOpen(false);
+      drafting.reset();
       await client.invalidateQueries({
         queryKey: ["workspace-valuation-assumptions"],
       });
@@ -355,6 +366,17 @@ function ModelEditor({
       });
     },
   });
+  const staleDraft = drafting.stale || Boolean(draft && save.error instanceof ApiError && [409, 422].includes(save.error.status));
+  const reReview = staleDraft && <div className="mx-draft-status" role="alert">
+    {t("估值口径或父模型已改变。", "The valuation basis or parent model changed.")}{" "}
+    <button type="button" className="mx-text-link" onClick={() => void reloadBasis()}>
+      {t("重新载入并重审", "Reload for review")}
+    </button>
+  </div>;
+  const changes = draft?.result.proposals.filter(p => p.value !== draft.before.scenarios[p.scenario].inputs[inputKey[p.field]]) ?? [];
+  const accepted = changes.filter(p => draft?.review.decisions[p.scenario][p.field] === "accepted").length;
+  const stagedScenarios = draft ? Object.keys(draft.review.decisions).filter(key =>
+    Object.values(draft.review.decisions[key]).some(d => d === "accepted" || d === "edited")) : [];
   const scenarioNames: Record<string, string> = {
     bear: t("保守", "Bear"),
     base: t("中性", "Base"),
@@ -479,6 +501,9 @@ function ModelEditor({
           >
             <ValuationScenarioComparison
               preview={result}
+              beforeDraft={draft?.before}
+              stagedScenarios={stagedScenarios}
+              calculatingDraft={busy || query.isError || staleDraft}
               selected={selected}
               onSelect={(key) => {
                 setSelected(key);
@@ -568,6 +593,11 @@ function ModelEditor({
               </div>
             </details>
           </Panel>, output)}
+          {draft && !drafting.phase && <p className="mx-draft-status" role="status">{changes.length ?
+            t("{changes} 处改动 · 已接受 {accepted}", "{changes} proposed · {accepted} accepted").replace("{changes}", String(changes.length)).replace("{accepted}", String(accepted)) :
+            t("此次起草保留了当前假设。", "The draft retains the current assumptions.")}</p>}
+          <DraftStatus phase={drafting.phase} error={drafting.error} />
+          {reReview}
           <Segments
             label={t("编辑情景", "Edit scenario")}
             value={selected}
@@ -593,6 +623,8 @@ function ModelEditor({
                 disabled={estimateGrowth == null || estimateGrowth < -0.8 || estimateGrowth > 2}
                 onClick={() => {
                   if (estimateGrowth == null) return;
+                  const p = draft?.result.proposals.find(p => p.scenario === selected && p.field === "revenue_cagr");
+                  if (p) drafting.decide(p, "edited");
                   setInputs((v) => ({
                     ...v,
                     [selected]: { ...v[selected], revenueCagr: estimateGrowth },
@@ -624,8 +656,23 @@ function ModelEditor({
             role="group"
             aria-label={t("选择要调整的假设", "Choose an assumption to adjust")}
           >
-            {fields.map((field) =>
-              field.key === activeField ? (
+            {fields.map((field) => {
+              const p = draft?.result.proposals.find(p => p.scenario === selected && inputKey[p.field] === field.key);
+              const decision = p && draft?.review.decisions[selected][p.field];
+              const old = draft?.before.scenarios[selected].inputs[field.key];
+              if (draft && p && p.value !== old && decision !== "rejected" && decision !== "edited" &&
+                editingProposal !== selected + field.key) {
+                return <ProposalRow key={field.key} draft={draft} proposal={p} label={field.label} scale={field.scale} suffix={field.suffix} disabled={staleDraft}
+                  edit={() => { setActiveField(field.key); setEditingProposal(selected + field.key); setDraftValue(null); setInvalidInput(false); }}
+                  decide={next => {
+                    drafting.decide(p, next);
+                    setDraftValue(null);
+                    setInvalidInput(false);
+                    setInputs(prev => ({ ...prev, [selected]: { ...prev[selected], [field.key]: next === "accepted" ? p.value : old } }));
+                    if (field.key === "revenueCagr") setReferences(refs => refs.filter(r => r.scenario !== selected));
+                  }} />;
+              }
+              return field.key === activeField ? (
                 // The selected row is the input; its label names the field once.
                 <div key={field.key} className="mx-assumption-edit">
                   <label htmlFor={"assumption-" + field.key}>{field.label}</label>
@@ -644,6 +691,7 @@ function ModelEditor({
                       const value = numeric(v);
                       setInvalidInput(value == null || value < field.min || value > field.max);
                       if (value != null && value >= field.min && value <= field.max) {
+                        if (p) drafting.decide(p, "edited");
                         setInputs((previous) => ({
                           ...previous,
                           [selected]: {
@@ -678,11 +726,12 @@ function ModelEditor({
                     {field.suffix}
                   </strong>
                 </button>
-              ),
-            )}
+              );
+            })}
           </div>
-          <details className="mx-model-sources">
+          <details className="mx-model-sources" id="valuation-assumption-sources">
             <summary>{t("参数依据", "Assumption sources")}</summary>
+            {draft && <DraftEvidence draft={draft} />}
             <Facts
               rows={fields.map((field) => {
                 const ref = references.find((r) => r.scenario === selected);
@@ -703,6 +752,8 @@ function ModelEditor({
             onClick={() => {
               setDraftValue(null);
               setInvalidInput(false);
+              drafting.reset();
+              setEditingProposal(null);
               setInputs(Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])));
               setReferences(initial.references ?? []);
             }}
@@ -713,11 +764,11 @@ function ModelEditor({
             fullWidth
             onClick={() => setSaveOpen(true)}
             loading={save.isPending}
-            disabled={busy || query.isError || saved}
+            disabled={busy || query.isError || saved || staleDraft || Boolean(drafting.phase)}
           >
             {saved ? t("已保存", "Saved") : t("保存模型版本", "Save model version")}
           </Button>
-          {save.isError && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
+          {save.isError && !staleDraft && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
       {referencePanel && createPortal(<>
         <Panel
           title={t("经营参考", "Operating reference")}
@@ -804,14 +855,15 @@ function ModelEditor({
             {t("取消", "Cancel")}
           </Button>
           <Button
-            onClick={() => save.mutate({ ...liveRequest, reason })}
+            onClick={() => save.mutate({ ...liveRequest, reason, draftReview: draft?.review })}
             loading={save.isPending}
-            disabled={busy || query.isError}
+            disabled={busy || query.isError || staleDraft || Boolean(drafting.phase)}
           >
             {t("保存版本", "Save version")}
           </Button>
         </Group>
-        {save.isError && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
+        {reReview}
+        {save.isError && !staleDraft && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
       </Modal>
     </>
   );

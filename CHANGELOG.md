@@ -4,6 +4,9 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Added
+- In Adjust assumptions, draft valuation inputs from public evidence for the selected model. Review each change and its source, stage it in the scenario and use Save model version when ready. A changed price, exchange rate, share count, statement or parent model requires a fresh review.
+
 ## [1.57.0] - 2026-11-18
 
 ### Changed

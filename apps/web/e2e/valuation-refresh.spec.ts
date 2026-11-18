@@ -820,3 +820,85 @@ test("set and clear a saved valuation baseline from its journal", async ({ page 
   await expect(page.getByRole("button", { name: "Set as baseline" })).toHaveAttribute("aria-pressed", "false");
   expect(journal.baselineModelId).toBe(null);
 });
+
+const draftProposals = [
+  { scenario: "base", field: "revenue_cagr", value: 0.19, category: "consensus", source: "consensus-growth", evidenceIds: ["estimate"] },
+  { scenario: "base", field: "target_fcf_margin", value: 0.12, category: "derived", source: "statement-margin", evidenceIds: ["statement"] },
+  { scenario: "bear", field: "discount_rate", value: 0.12, category: "template", source: "sector-template", evidenceIds: [] },
+];
+const draftResponse = { phase: "complete", result: { id: "synthetic-draft", proposals: draftProposals,
+  evidence: { estimate: { locator: { dataset: "analyst" }, metric: "consensusRevenueGrowth", period: {end:"2026-12-31"}, value: 0.19, unit: "ratio" },
+    statement: { locator: { dataset: "financials" }, metric: "freeCashflow", period: {end:"2025-12-31"}, value: 120, unit: "currency", currency: "USD" } } } };
+
+for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark"] as const) {
+  test(`stage a valuation draft field and review the changed basis · ${locale} · ${scheme}`, async ({ page }, info) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    const en = locale === "en";
+    await page.setViewportSize(info.project.name === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    await page.route("**/api/backend/settings/assistant", route => route.fulfill({json: {
+      enabled: true, consentRevision: 2, acceptedConsentRevision: 2, revision: 1,
+    }}));
+    let runs = 0;
+    await page.route("**/SYNT/valuation-draft", route => {
+      runs++;
+      return route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(draftResponse) + "\n" });
+    });
+    let saved: Record<string, unknown> | null = null;
+    await page.route("**/SYNT/models", route => { saved = route.request().postDataJSON(); return route.fulfill({
+      status: 409, json: { detail: "valuation-draft-review-required" },
+    }); });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const editor = page.locator("#valuation-assumptions");
+    const entry = editor.getByRole("button", { name: en ? "✦ Draft" : "✦ 起草", exact: true });
+    await expect(entry).toBeVisible();
+    expect(runs).toBe(0);
+    await entry.click();
+    const growth = en ? "Revenue growth · years 1–5" : "前五年营收增长";
+    const margin = en ? "Target FCF margin" : "目标现金流率";
+    const accept = editor.getByRole("button", {name: (en ? "Accept " : "接受 ") + growth, exact: true});
+    await accept.focus();
+    await accept.press("Enter");
+    await expect(accept).toHaveAttribute("aria-pressed","true");
+    await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
+    expect(saved).toBeNull();
+    await expect(editor.getByRole("link", {name: en ? "Analysts" : "分析师", exact:true})).toHaveAttribute("href", "#draft-evidence-estimate");
+    const dir = process.env.VALUATION_DRAFT_SCREENSHOTS_DIR;
+    if (dir) {
+      await editor.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
+      await page.screenshot({path: join(dir,`${info.project.name}-${locale}-${scheme}.png`)});
+    }
+    await editor.getByRole("button", {name:(en ? "Reject " : "拒绝 ") + margin, exact:true}).click();
+    await editor.getByRole("button", {name:en ? "Save model version" : "保存模型版本",exact:true}).click();
+    await page.getByRole("dialog").getByRole("button",{name:en ? "Save version" : "保存版本",exact:true}).click();
+    await expect(page.getByRole("dialog").getByRole("button",{name:en ? "Reload for review" : "重新载入并重审"})).toBeVisible();
+    expect(saved).toMatchObject({scenarios:{base:{revenueCagr:0.19,targetFcfMargin:0.15}},
+      draftReview:{decisions:{base:{revenue_cagr:"accepted",target_fcf_margin:"rejected"},bear:{discount_rate:"unreviewed"}}}});
+    expect(runs).toBe(1);
+  });
+}
+
+test("cancel a valuation draft and discard a late proposal", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await synthetic(page, false);
+  await page.route("**/api/backend/settings/assistant", route => route.fulfill({json:{
+    enabled:true, consentRevision:2, acceptedConsentRevision:2, revision:1,
+  }}));
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/SYNT/valuation-draft", async route => {
+    await delayed;
+    await route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(draftResponse) + "\n" }).catch(() => {});
+  });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  await editor.getByRole("button",{name:"✦ Draft",exact:true}).click();
+  await editor.getByRole("button",{name:"Cancel draft",exact:true}).click();
+  release();
+  await expect(editor.getByRole("button",{name:"✦ Draft",exact:true})).toBeVisible();
+  await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
+  await expect(editor.getByLabel("Revenue growth · years 1–5")).toHaveValue("10%");
+});
