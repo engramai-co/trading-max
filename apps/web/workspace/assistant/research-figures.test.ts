@@ -56,3 +56,19 @@ it("labels the sector index and uses only the matched window in both comparison 
   for (const term of ["MSCI World Financials","Index level change","2025-11-01 – 2026-01-30","+4.00%"]) expect(line.text).toContain(term);
   expect(line.text).not.toContain("2026-02-03");
 });
+
+it.each([["dividend","Reported dividend"],["ex_dividend","Ex-dividend date"],["dividend_pay","Dividend payment date"]])(
+  "cites the selected chart's %s record", (kind,label) => {
+    const reply = message("price_key_moments","/data/items/0/events/0/kind");
+    const part = reply.parts[0];
+    if (part.type !== "dynamic-tool" || part.state !== "output-available") throw new Error("missing fixture");
+    const output = results.price_key_moments, selected = output.data.items[0];
+    const event = {date:selected.date,kind,reference:"https://example.invalid/dividends"};
+    part.output = {...output,data:{...output.data,items:[{...selected,events:[event]}]}};
+    const [line] = verifiedLines(reply);
+    expect(line.text).toContain(label);
+    expect(line.evidence?.source).toBe("disclosure");
+    const link = new URL(evidenceHref(line.evidence!)!,"http://localhost");
+    expect(Object.fromEntries(link.searchParams)).toMatchObject({series:output.data.published_series_id,
+      date:selected.date,event:kind,eventId:event.reference,snapshotId:output.snapshot_id});
+  });
