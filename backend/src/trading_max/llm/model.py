@@ -20,6 +20,7 @@ from google.genai import Client as GenAIClient
 from google.genai.types import HttpOptions, HttpRetryOptions
 from openai import AsyncOpenAI
 from pydantic import Field, TypeAdapter
+from pydantic_ai import CancellationToken
 from pydantic_ai.exceptions import ModelHTTPError, UserError
 from pydantic_ai.models import Model
 from pydantic_ai.models.anthropic import AnthropicModel
@@ -122,6 +123,8 @@ class ModelConnection:
     base_url: str
     api_key: str | None = field(default=None, repr=False)
     codex_credentials: OpenAICodexCredentialSource | None = field(default=None, repr=False)
+    before_request: Callable[[], None] | None = field(default=None, repr=False, compare=False)
+    cancellation_token: CancellationToken | None = field(default=None, repr=False, compare=False)
 
 
 def _validated_connection(connection: ModelConnection) -> str:
@@ -170,12 +173,54 @@ def _base_transport() -> httpx2.AsyncBaseTransport:
     return httpx2.AsyncHTTPTransport(trust_env=False)
 
 
+class _CheckedTransport(httpx2.AsyncBaseTransport):
+    """Check current authorisation before each wire attempt, including retries and OAuth refresh."""
+
+    def __init__(self, transport: httpx2.AsyncBaseTransport, check: Callable[[], None]):
+        self.transport = transport
+        self.check = check
+
+    async def handle_async_request(self, request: httpx2.Request) -> httpx2.Response:
+        previous_trace = request.extensions.get("trace")
+
+        async def trace(event: str, info: dict[str, Any]) -> None:
+            if previous_trace is not None:
+                await previous_trace(event, info)
+            if event.endswith((".send_request_headers.started", ".send_request_body.started")):
+                self.check()
+
+        # A pooled request can wait for a socket after admission. Check again as
+        # httpcore starts writing its credential headers and its model payload.
+        self.check()
+        request.extensions["trace"] = trace
+        try:
+            return await self.transport.handle_async_request(request)
+        finally:
+            if previous_trace is None:
+                request.extensions.pop("trace", None)
+            else:
+                request.extensions["trace"] = previous_trace
+
+    async def aclose(self) -> None:
+        await self.transport.aclose()
+
+
 class _ModelTransport(httpx2.AsyncBaseTransport):
-    def __init__(self, base_url: str, *, provider: str, no_key: bool, max_retries: int) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        provider: str,
+        no_key: bool,
+        max_retries: int,
+        before_request: Callable[[], None] | None = None,
+    ) -> None:
         self._endpoint = httpx2.URL(base_url)
         self._provider = provider
         self._no_key = no_key
         self._transport = _base_transport()
+        if before_request is not None:
+            self._transport = _CheckedTransport(self._transport, before_request)
         attempts = 1 + max(0, min(max_retries, 2))
         self._retrying = AsyncHTTPX2TenacityTransport(
             RetryConfig(
@@ -457,6 +502,7 @@ def build_model(
                 no_key=connection.provider in LOCAL_PROVIDERS
                 and not (connection.api_key or "").strip(),
                 max_retries=max_retries,
+                before_request=connection.before_request,
             ),
             follow_redirects=False,
             trust_env=False,

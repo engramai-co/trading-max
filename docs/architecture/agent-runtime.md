@@ -63,15 +63,16 @@ fallback to another provider.
 | --- | --- | --- |
 | POST | `/v1/assistant/chat?page=&tz=` | Run a turn; AI SDK UI message stream. Requires the write token. |
 | GET | `/v1/assistant/status` | Whether a turn could start now, and why not, without calling the model. |
-| GET | `/v1/assistant/conversations` | Recent conversations with titles. |
+| GET, DELETE | `/v1/assistant/conversations` | List recent conversations or delete all conversations and messages in the workspace. |
 | GET | `/v1/assistant/conversations/{id}` | One conversation as AI SDK UI messages. |
 | DELETE | `/v1/assistant/conversations/{id}` | Delete a conversation and its messages. |
-| GET, PUT | `/v1/settings/assistant` | Enablement, route, reasoning effort and consent. |
+| GET, PUT | `/v1/settings/assistant` | Enablement, route, reasoning effort, consent, background briefs and sharing saved valuation assumptions. |
 
-The web app proxies these under `/api/backend/assistant/`; the chat route passes
-the stream through without buffering or compression.
+The web app proxies assistant and settings routes under `/api/backend`.
+The chat route passes the stream through without buffering or compression.
 
-The assistant connection test in Settings makes one small exchange in which the
+The saved-model test in Settings requires an enabled assistant and current
+consent for that model and endpoint. It makes a small exchange in which the
 model must call a tool. Models that only return text fail it with
 `assistant_tools_unsupported`, rather than failing later on every question.
 
@@ -85,7 +86,22 @@ agreement; the web test suite fails when they drift.
 ## Privacy
 
 The assistant is off until the user enables it and accepts the current consent
-revision. The selected provider receives tool results, not raw stores, limited
+revision. Settings names the recipient and asks for consent again when the
+provider or local endpoint changes. Turning the assistant off or withdrawing
+consent cancels active turns. Every outgoing provider request, including each
+retry, checks the bound preferences and integration against the workspace.
+Chats and saved-model tests share a cancellation token for the selected
+connection. Changing that connection advances its persisted revision. Queued
+requests check the revision before sending HTTP headers and again before sending
+the body. A saved API key must match the integration's recorded fingerprint.
+Clients granting consent to a local model must send the endpoint shown to the
+user in `expectedConsentDestination`. A changed endpoint returns a conflict.
+Turning the assistant off retains consent. Both actions keep conversations
+available for separate deletion.
+Background writing and sharing saved valuation assumptions each have a
+default-on preference. Both require enablement and current consent.
+
+The selected provider receives tool results, not raw stores, limited
 to what the question needs. Conversations stay in the workspace database;
 deleting one removes its messages there, though backups taken earlier keep
 their copy. Pydantic AI instrumentation stays off and no vendor tracing is used.

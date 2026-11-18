@@ -5,7 +5,7 @@ from __future__ import annotations
 from .llm_routing import LLMRoute, LLMRouteError, parse_route, provider_base_url, provider_spec
 from .models import IntegrationSummary
 
-ASSISTANT_CONSENT_REVISION = 1
+ASSISTANT_CONSENT_REVISION = 2
 
 
 class AssistantSettingsError(ValueError):

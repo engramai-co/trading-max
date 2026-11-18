@@ -32,6 +32,52 @@
   align-self: flex-start;
   margin-top: 10px;
 }
+.mx-panel-heading:has(> .mx-assistant-enable) {
+  flex-direction: row;
+  align-items: center;
+}
+.mx-assistant-enable {
+  padding: 12px 3px;
+  margin: -12px -3px;
+}
+.mx-assistant-enable .mantine-Switch-input {
+  inset: 0;
+  z-index: 1;
+  cursor: pointer;
+}
+.mx-assistant-enable .mantine-Switch-input:disabled {
+  cursor: not-allowed;
+}
+.mx-setting-row.mx-assistant-model {
+  justify-content: flex-start;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.mx-assistant-model .mantine-NativeSelect-root {
+  max-width: 100%;
+}
+.mx-assistant-settings .mantine-Switch-input:not(:checked, :disabled) + .mantine-Switch-track {
+  outline: 1px solid var(--mx-muted);
+  outline-offset: -1px;
+}
+.mx-assistant-settings .mantine-Switch-input:focus-visible + .mantine-Switch-track {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  .mx-assistant-settings :is(.mantine-NativeSelect-input, .mantine-Button-root),
+  .mx-assistant-dialog :is(.mantine-Button-root, .mantine-Modal-close) {
+    height: 44px;
+  }
+  .mx-assistant-dialog .mantine-Modal-close {
+    min-width: 44px;
+  }
+}
+/* A free-form model identifier may be a single long word. */
+.mx-assistant-consent {
+  overflow-wrap: anywhere;
+}
 /* Help text that runs long keeps a readable measure in Chinese and English. */
 .mx-measure {
   max-width: 40em;

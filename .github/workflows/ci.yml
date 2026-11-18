@@ -216,11 +216,14 @@ jobs:
 
           from trading_max.infrastructure import SqliteDatabase
 
+          migrations = Path("backend/migrations")
+          expected = sorted(path.name for path in migrations.glob("*.sql"))
+          assert expected, "no committed migrations found"
           with tempfile.TemporaryDirectory() as directory:
               root = Path(directory)
               database = SqliteDatabase(
                   root / "trading_max.db",
-                  migrations_dir=Path("backend/migrations"),
+                  migrations_dir=migrations,
               )
               try:
                   versions = [
@@ -231,7 +234,7 @@ jobs:
                   ]
               finally:
                   database.close()
-          assert versions[-1] == "0024_assistant_conversations.sql", versions
+          assert versions == expected, (versions, expected)
           PY
 
       - name: Exercise backup and restore safety contracts

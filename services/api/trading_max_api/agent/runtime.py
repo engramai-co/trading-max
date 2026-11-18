@@ -36,6 +36,8 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai.toolsets import AbstractToolset
 from trading_max.llm import ProviderError
 
+from ..provider_runtime import ProviderRuntimeError
+
 # Pydantic AI prints a banner when it detects a terminal or a coding agent.
 os.environ.setdefault("PYDANTIC_AI_NO_BANNER", "1")
 
@@ -128,7 +130,7 @@ def run_context(
 
 
 def _direct_code(error: BaseException) -> str | None:
-    if isinstance(error, ProviderError):
+    if isinstance(error, ProviderError | ProviderRuntimeError):
         return error.code
     if isinstance(error, CredentialsRefreshError | CredentialsPersistenceError):
         return "provider_auth_failed"

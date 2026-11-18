@@ -7,7 +7,7 @@ models answer text but never call tools, and would fail on every question.
 from __future__ import annotations
 
 from pydantic_ai import Agent, Tool, UsageLimits
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import RunCancelled, UsageLimitExceeded
 from pydantic_ai.settings import ModelSettings
 from trading_max.llm import ModelConnection, ProviderError, build_model
 
@@ -47,7 +47,12 @@ async def check_assistant_connection(connection: ModelConnection) -> None:
                 model=model,
                 model_settings=ModelSettings(max_tokens=1_024),
                 usage_limits=UsageLimits(request_limit=3, tool_calls_limit=2),
+                cancellation_token=connection.cancellation_token,
             )
+    except RunCancelled:
+        raise ProviderRuntimeError(
+            "assistant_settings_changed", "the assistant connection changed during the test"
+        ) from None
     except UsageLimitExceeded:
         raise ProviderRuntimeError(
             "assistant_tools_unsupported", "the model did not finish a tool call"

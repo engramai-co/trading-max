@@ -203,7 +203,8 @@ export interface paths {
         get: operations["assistant_conversations_v1_assistant_conversations_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Assistant Conversations */
+        delete: operations["delete_assistant_conversations_v1_assistant_conversations_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2209,14 +2210,20 @@ export interface components {
         AssistantPreferencesUpdate: {
             /** Acceptedconsentrevision */
             acceptedConsentRevision?: number | null;
+            /** Backgroundbriefsenabled */
+            backgroundBriefsEnabled?: boolean | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Expectedconsentdestination */
+            expectedConsentDestination?: string | null;
             /** Expectedrevision */
             expectedRevision?: number | null;
             /** Reasoning */
             reasoning?: ("minimal" | "low" | "medium" | "high" | "xhigh") | null;
             /** Route */
             route?: string | null;
+            /** Sharevaluationassumptions */
+            shareValuationAssumptions?: boolean | null;
         };
         /** AssistantProviderDescriptor */
         AssistantProviderDescriptor: {
@@ -2249,6 +2256,10 @@ export interface components {
             acceptedAt: string | null;
             /** Acceptedconsentrevision */
             acceptedConsentRevision: number | null;
+            /** Accepteddestination */
+            acceptedDestination: string | null;
+            /** Backgroundbriefsenabled */
+            backgroundBriefsEnabled: boolean;
             /** Consentrevision */
             consentRevision: number;
             /** Enabled */
@@ -2263,6 +2274,8 @@ export interface components {
             revision: number;
             /** Route */
             route: string | null;
+            /** Sharevaluationassumptions */
+            shareValuationAssumptions: boolean;
             /**
              * Updatedat
              * Format: date-time
@@ -9644,6 +9657,35 @@ export interface operations {
             };
         };
     };
+    delete_assistant_conversations_v1_assistant_conversations_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     assistant_conversation_v1_assistant_conversations__conversation_id__get: {
         parameters: {
             query?: never;
@@ -12112,7 +12154,9 @@ export interface operations {
     };
     test_assistant_provider_v1_settings_llm_providers__provider__assistant_test_post: {
         parameters: {
-            query?: never;
+            query?: {
+                saved?: boolean;
+            };
             header?: {
                 authorization?: string | null;
             };
