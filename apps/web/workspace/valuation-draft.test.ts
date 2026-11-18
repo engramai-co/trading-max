@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { newReview, readDraft, type DraftResult } from "./valuation-draft";
+import type { DraftResult } from "./valuation-draft";
+import { newReview, readDraft } from "./valuation-draft-stream";
 
 const result: DraftResult = { id: "draft", snapshotId: "run", family: "cash-flow", familySelection: "automatic", deskReadings:{base:{value:150,upside:0.5}}, origins: {}, evidence: {}, proposals: [{ scenario: "base", field: "revenue_cagr",
   value: 0.2, source: "consensus-growth", category: "consensus", evidenceIds: ["growth"] }] };

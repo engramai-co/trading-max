@@ -1169,8 +1169,10 @@ test("loading and retaining a draft requires workspace consent", async ({page}) 
   const entry = editor.getByRole("button", {name:"✦ Draft", exact:true});
   const growth = editor.getByLabel("Revenue growth · years 1–5", {exact:true});
   await expect(growth).toHaveValue("10%");
-  const hasDraftCode = async () => (await Promise.all(scripts)).some(s => s.includes("Divides common earnings by common equity"));
-  expect(await hasDraftCode()).toBe(false);
+  const hasScript = async (text: string) => (await Promise.all(scripts)).some(s => s.includes(text));
+  const renderer = "Divides common earnings by common equity", streamReader = "assistant_interrupted";
+  expect(await hasScript(renderer)).toBe(false);
+  expect(await hasScript(streamReader)).toBe(false);
   expect(requests.filter(url => /settings\/assistant|valuation-draft/.test(url))).toEqual([]);
   await expect(entry).toHaveCount(0);
   await growth.fill("14");
@@ -1181,7 +1183,8 @@ test("loading and retaining a draft requires workspace consent", async ({page}) 
   }
   await consent(true);
   await entry.click();
-  expect(await hasDraftCode()).toBe(true);
+  expect(await hasScript(renderer)).toBe(true);
+  expect(await hasScript(streamReader)).toBe(true);
   await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
   await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("195.00");
   await consent(false);

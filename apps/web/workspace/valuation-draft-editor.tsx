@@ -9,7 +9,9 @@ import { metricNames } from "./research-facts";
 import { jsonRequest, number } from "./data";
 import { useCopy } from "./foundation";
 import type { Preview, ScenarioInput } from "./research-facts";
-import { draftBlockMessage, inputKey, newReview, readDraft, type Decision, type DraftEvent, type DraftState, type Proposal } from "./valuation-draft";
+import { draftBlockMessage, inputKey, type Decision, type DraftEvent, type DraftState, type Proposal } from "./valuation-draft";
+
+import { newReview, readDraft } from "./valuation-draft-stream";
 
 type Context = {
   initial: Preview;
