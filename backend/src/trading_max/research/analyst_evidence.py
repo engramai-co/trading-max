@@ -51,8 +51,8 @@ def earnings_events(
                 and (estimate is not None or actual is not None),
                 "fiscalPeriod": row.get("Fiscal Quarter Ending") or row.get("fiscalPeriod"),
                 "asOf": row.get("asOf") or observed_at,
-                "actualEps": actual if currency else None,
-                "estimatedEps": estimate if currency else None,
+                "actualEps": actual,
+                "estimatedEps": estimate,
                 "surprisePct": (number(row.get("Surprise(%)")) / 100)
                 if number(row.get("Surprise(%)")) is not None
                 else None,
