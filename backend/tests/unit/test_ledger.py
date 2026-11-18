@@ -31,8 +31,8 @@ def _write_export(path: Path, rows: list[str]) -> None:
 def _write_export_with_isin(path: Path, rows: list[str]) -> None:
     path.write_text(
         "ID,Action,Time (UTC),ISIN,Ticker,Name,No. of shares,Price / share,Total,"
-        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result)\n"
-        + "\n".join(row + ",GBP,GBP,GBP" for row in rows)
+        "Currency conversion fee,Result,Currency (Total),Currency (Currency conversion fee),Currency (Result),Currency (Price / share)\n"
+        + "\n".join(row + ",GBP,GBP,GBP,GBP" for row in rows)
         + "\n",
         encoding="utf-8",
     )
@@ -134,6 +134,7 @@ def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(
     ]
     assert markers == [
         {
+            "price_currency": "GBP",
             "ticker": "NEW",
             "date": "2026-08-01",
             "accounts": ["invest"],
@@ -146,6 +147,7 @@ def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(
             "sell_average_price": None,
         },
         {
+            "price_currency": "GBP",
             "ticker": "NEW",
             "date": "2026-08-02",
             "accounts": ["invest", "isa"],
@@ -158,6 +160,7 @@ def test_transaction_markers_aggregate_real_fills_and_resolve_current_isin(
             "sell_average_price": 120.0,
         },
         {
+            "price_currency": "GBP",
             "ticker": "SOLD",
             "date": "2026-08-02",
             "accounts": ["isa"],

@@ -2,6 +2,7 @@
 
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 
 import pandas as pd
 import pytest
@@ -14,6 +15,7 @@ from trading_max.analytics.exposure_history import (
     record_exposure,
     retained_dates,
 )
+from trading_max.analytics.fx import FxQuote
 from trading_max.analytics.key_moments import key_moments
 from trading_max.analytics.ledger import load_transactions, transaction_marker_rows
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
@@ -661,6 +663,7 @@ def broker_markers(instruments):
             "PriceN": price,
             "TotalN": quantity * price,
             "Currency (Total)": "GBP",
+            "Currency (Price / share)": "GBP",
         }
         for instrument, action, quantity, price in instruments
     ]
@@ -793,7 +796,7 @@ def test_replayed_day_uses_priced_shares_for_its_combined_average(bound):
     app, initial, _ = bound
     store = app.state.store
     technical = store.read_json(initial.run_id, tools.TECHNICAL)
-    technical["rows"][0]["ticker"] = "SYN.L"
+    technical["rows"][0].update(ticker="SYN.L", currency="GBP")
     rows = broker_markers(
         [
             ("SYN", "Market buy", 2, 30),
@@ -814,6 +817,147 @@ def test_replayed_day_uses_priced_shares_for_its_combined_average(bound):
     (marker,) = TestClient(app).get("/v1/research/SYN.L/prices").json()["tradeMarkers"]
     assert (marker["buyOrders"], marker["buyQuantity"], marker["buyAveragePrice"]) == (3, 10, 36)
     assert len(marker["fills"]) == 3
+
+
+def publish_trade_chart(bound, rows, *, currency="GBP", version="trade-markers-v4"):
+    app, initial, _ = bound
+    store = app.state.store
+    technical = store.read_json(initial.run_id, tools.TECHNICAL)
+    technical["rows"][0].update(ticker="SYN.L", currency=currency)
+    manifest = republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_json(key=key, payload=payload)
+            for key, payload in (
+                (tools.TECHNICAL, technical),
+                (ins.TRADE_MARKERS, {"calculation_version": version, "rows": rows}),
+            )
+        },
+    )
+    series = TestClient(app).get("/v1/research/SYN.L/prices").json()
+    assert series["currency"] == currency
+    return app, manifest, series
+
+
+@pytest.mark.parametrize(
+    ("first_ticker", "quote", "price", "rate", "target", "expected"),
+    [
+        ("SYN", "GBX", 2500, None, "GBP", 25),
+        ("SYNl_EQ", "GBp", 2500, None, "GBP", 25),
+        ("SYN", "USD", 40, 1.25, "GBP", 27.8),
+        ("SYN", "GBX", 2000, 80, "USD", 25),
+        ("SYN", "EUR", 40, 0, "GBP", None),
+        ("SYN", None, 40, 1, "GBP", None),
+    ],
+)
+def test_trade_marker_converts_each_fill_before_weighting(
+    bound, tmp_path, first_ticker, quote, price, rate, target, expected
+):
+    export = tmp_path / "synthetic.csv"
+    export.write_text(
+        "Action,Time (UTC),Ticker,No. of shares,Price / share,Currency (Price / share),"
+        "Total,Currency (Total),Exchange rate\n"
+        f"Market buy,{DATES[-1]}T11:00:00Z,{first_ticker},2,{price},{quote or ''},50,{target},{rate or ''}\n"
+        f"Market buy,{DATES[-1]}T12:00:00Z,SYNl_EQ,3,25,{target},75,{target},1\n"
+    )
+    rows = transaction_marker_rows({"isa": load_transactions([export])}, [])
+    _, _, chart = publish_trade_chart(bound, rows, currency=target)
+    (marker,) = chart["tradeMarkers"]
+    assert (marker["buyOrders"], marker["buyQuantity"], marker["buyAveragePrice"]) == (
+        2,
+        5,
+        expected,
+    )
+    assert marker["fills"][0]["currency"] == target
+
+
+@pytest.mark.parametrize(("age", "average"), [(1, 30), (8, None), (-1, None)])
+def test_marker_cross_uses_only_dated_exchange_rates_in_its_snapshot(bound, age, average):
+    def fx(currency, at):
+        return FxQuote(
+            currency,
+            Decimal({"USD": "1.25", "EUR": "1.5"}[currency]),
+            at - timedelta(days=age),
+            "synthetic-close",
+        )
+
+    positions = [{"ticker": "SYN", "broker_ticker": "SYNl_EQ", "price_currency": "EUR"}]
+    tx = pd.DataFrame(
+        [
+            {
+                "Ticker": "SYNl_EQ",
+                "Action": "Market sell",
+                "Time": pd.Timestamp(f"{DATES[-1]}T14:00:00Z"),
+                "Shares": 2,
+                "PriceN": 25,
+                "Currency (Price / share)": "USD",
+                "TotalN": 50,
+                "Currency (Total)": "USD",
+            }
+        ]
+    )
+    rows = transaction_marker_rows({"isa": tx}, positions, fx_resolver=fx)
+    _, _, series = publish_trade_chart(bound, rows, currency="EUR")
+    (marker,) = series["tradeMarkers"]
+    assert marker["sellAveragePrice"] == average
+    assert marker["sellOrders"] == 1 and marker["fills"][0]["amount"] == 50
+
+
+def test_marker_uses_dated_wallet_fx_when_export_omits_the_fill_rate(bound):
+    def fx(currency, at):
+        return FxQuote(
+            currency, Decimal({"USD": "1.25", "EUR": "1.5"}[currency]), at, "synthetic-close"
+        )
+
+    tx = pd.DataFrame(
+        [
+            {
+                "Ticker": "SYNl_EQ",
+                "Action": "Market buy",
+                "Time": pd.Timestamp(f"{DATES[-1]}T14:00:00Z"),
+                "Shares": 2,
+                "PriceN": 30,
+                "Currency (Price / share)": "EUR",
+                "TotalN": 50,
+                "Currency (Total)": "USD",
+            }
+        ]
+    )
+    rows = transaction_marker_rows({"isa": tx}, [], fx_resolver=fx)
+    _, _, series = publish_trade_chart(bound, rows, currency="USD")
+    assert series["tradeMarkers"][0]["buyAveragePrice"] == 25
+
+
+@pytest.mark.parametrize("detail", ["fills", "aggregates", "mixed"])
+def test_legacy_listing_aliases_contribute_one_scoped_daily_marker(bound, detail):
+    (buy,) = broker_markers([("SYN", "Market buy", 2, 25)])
+    (sell,) = broker_markers([("SYNl_EQ", "Market sell", 3, 25)])
+    buy["ticker"], sell["ticker"] = "SYN", "SYN.L"
+    sell["accounts"] = ["invest"]
+    sell["fills"][0]["account"] = "invest"
+    for row in (buy, sell):
+        row["fills"][0].pop("broker_ticker")
+        row["fills"][0].pop("price")
+        row["fills"][0].pop("price_currency")
+        if detail == "aggregates" or (detail == "mixed" and row is sell):
+            row.pop("fills")
+    app, manifest, chart = publish_trade_chart(bound, [buy, sell], version="trade-markers-v1")
+    (marker,) = chart["tradeMarkers"]
+    assert (marker["kind"], marker["buyOrders"], marker["sellOrders"]) == ("T", 1, 1)
+    assert (marker["buyQuantity"], marker["sellQuantity"]) == (2, 3)
+    assert marker["accounts"] == ["invest", "isa"]
+    client = TestClient(app)
+    for scope, kind in (("broker_total", "T"), ("isa", "B"), ("invest", "S")):
+        data = client.get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"scope": scope, "ticker": "SYN.L", "start": DATES[0], "end": DATES[-1]},
+        ).json()["data"]
+        assert [
+            e["reference"]
+            for item in data["items"]
+            for e in item["events"]
+            if e["kind"] == "own_trade"
+        ] == [kind]
 
 
 @pytest.mark.parametrize("aggregate_only", [False, True])
@@ -894,7 +1038,8 @@ def test_mixed_publication_never_reuses_another_listings_price_or_account(bound)
     extra = broker_markers([("SYN_US_EQ", "Market buy", 3, 40)])[0]["fills"][0]
     rows[0]["fills"].append({**extra, "account": "invest"})
     for fill in rows[0]["fills"]:
-        fill.pop("price", None)  # The earlier publication supplied only the side averages.
+        fill.pop("price", None)  # The earlier publication supplied only unitless side averages.
+        fill.pop("price_currency", None)
     rows[0].update(buy_orders=2, buy_quantity=5, buy_average_price=36, accounts=["isa", "invest"])
     ref = store.immutable_artifacts.put_json(
         key=ins.TRADE_MARKERS, payload={"rows": rows, "calculation_version": "trade-markers-v3"}
@@ -904,7 +1049,7 @@ def test_mixed_publication_never_reuses_another_listings_price_or_account(bound)
     client = TestClient(app)
     (marker,) = client.get("/v1/research/SYN.L/prices").json()["tradeMarkers"]
     assert marker["accounts"] == ["isa"] and len(marker["fills"]) == 2
-    assert marker["buyAveragePrice"] is None and marker["sellAveragePrice"] == 31
+    assert marker["buyAveragePrice"] is None and marker["sellAveragePrice"] is None
     events = client.get(
         f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
         params={"scope": "invest", "ticker": "SYN.L", "start": DATES[0], "end": DATES[-1]},
