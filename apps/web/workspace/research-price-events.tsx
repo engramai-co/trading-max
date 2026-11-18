@@ -23,6 +23,17 @@ function archivedTrades(marker: Marker) {
   });
 }
 
+export function ArchivedTradeRows({ marker, date }: { marker: Marker; date: string }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  return archivedTrades(marker).map(({ side, quantity, orders }) => <li key={side}>
+    <time dateTime={date}>{formatCalendarDate(date, locale)}</time>
+    <span>{side === "buy" ? t("买入", "Buy") : t("卖出", "Sell")} {number(quantity, 8)} {quantity === 1 ? t("股", "share") : t("股", "shares")}</span>
+    <span>{orders} {t("笔", orders === 1 ? "order" : "orders")}</span>
+    <span>{t("旧档案未记录原币金额", "Original amount unavailable in this archive")}</span>
+  </li>);
+}
+
 export function priceEventDays(markers: Marker[], corporate: Record<string, unknown>[], earnings: Record<string, unknown>[]) {
   const days = new Map<string, PriceEventDay>();
   const get = (date: string) => {
@@ -71,9 +82,8 @@ export function PriceEventTrack({ days, openEarnings }: {
           const date = formatCalendarDate(entry.date, locale);
           const label = entry.marker?.kind ?? eventLabel(entry.company[0].kind);
           return <button key={entry.date} type="button" aria-controls={id} aria-expanded={entry === day}
-            aria-label={`${date} · ${label}${entry.count > 1 ? ` (+${entry.count - 1})` : ""}`}
             onClick={() => setSelected(entry === day ? undefined : entry.date)}>
-            <time dateTime={entry.date}>{date}</time>
+            <time dateTime={entry.date}>{date}</time>{" "}
             <strong>{label}{entry.count > 1 ? ` +${entry.count - 1}` : ""}</strong>
           </button>;
         })}
@@ -88,12 +98,7 @@ export function PriceEventTrack({ days, openEarnings }: {
               <strong>{fill.amount == null || !fill.currency ? "—" : `${formatNumber(fill.amount, locale, { maximumFractionDigits: 4 })} ${fill.currency}`}</strong>
             </li>
           ))}
-          {day.marker && archivedTrades(day.marker).map(({ side, quantity, orders }) => <li key={side}>
-            <time dateTime={day.date}>{formatCalendarDate(day.date, locale)}</time>
-            <span>{side === "buy" ? t("买入", "Buy") : t("卖出", "Sell")} {number(quantity, 8)} {quantity === 1 ? t("股", "share") : t("股", "shares")}</span>
-            {orders > 1 && <span>{orders} {t("笔", "orders")}</span>}
-            <span>{t("旧档案未记录原币金额", "Original amount unavailable in this archive")}</span>
-          </li>)}
+          {day.marker && <ArchivedTradeRows marker={day.marker} date={day.date} />}
           {day.company.map((event, i) => <li key={i}>
             <span>{eventLabel(event.kind)}</span>
             <time dateTime={event.date}>{formatCalendarDate(event.date, locale)}</time>
