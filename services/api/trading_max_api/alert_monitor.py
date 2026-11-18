@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 import yfinance as yf
+from trading_max.reference.quote_units import major_quote_unit
+from trading_max.research.venues import row_claims, yahoo_venue_metadata
 
 from .models import ResearchAlert, SnapshotManifest
 
@@ -23,41 +25,37 @@ JsonObject = dict[str, Any]
 
 
 class QuoteProvider(Protocol):
-    def fetch(self, tickers: Iterable[str]) -> dict[str, float]: ...
+    def fetch(self, tickers: Iterable[str]) -> dict[str, JsonObject]: ...
 
 
 class YFinanceQuoteProvider:
-    """Fetch the latest traded price in one non-threaded Yahoo request."""
+    """Read the unit and symbol from the chart response containing each mark."""
 
-    def fetch(self, tickers: Iterable[str]) -> dict[str, float]:
-        symbols = sorted({ticker.strip().upper() for ticker in tickers if ticker})
-        if not symbols:
-            return {}
-        frame = yf.download(
-            tickers=" ".join(symbols),
-            period="1d",
-            interval="5m",
-            auto_adjust=False,
-            group_by="ticker",
-            progress=False,
-            repair=False,
-            threads=False,
-        )
-        prices: dict[str, float] = {}
-        if frame.empty:
-            return prices
-        for ticker in symbols:
+    def fetch(self, tickers: Iterable[str]) -> dict[str, JsonObject]:
+        quotes = {}
+        for ticker in sorted({ticker.strip().upper() for ticker in tickers if ticker}):
             try:
-                series = frame[ticker]["Close"].dropna()
-            except (KeyError, TypeError):
-                # Current downloads retain ticker-level columns even for one
-                # symbol. Older providers can still return a flat single frame.
-                if len(symbols) != 1 or "Close" not in frame:
+                instrument = yf.Ticker(ticker)
+                frame = instrument.history(
+                    period="1d", interval="5m", auto_adjust=False, timeout=10
+                )
+                if frame.empty:
                     continue
-                series = frame["Close"].dropna()
-            if not series.empty and math.isfinite(float(series.iloc[-1])):
-                prices[ticker] = float(series.iloc[-1])
-        return prices
+                metadata = instrument.get_history_metadata() or {}
+                closes = frame["Close"].dropna()
+                if closes.empty or not metadata.get("currency") or not metadata.get("symbol"):
+                    continue
+                price = float(closes.iloc[-1])
+                if math.isfinite(price) and price > 0:
+                    quotes[ticker] = {
+                        "price": price,
+                        "asOf": closes.index[-1].isoformat(),
+                        "currency": metadata["currency"],
+                        "provider_venue": yahoo_venue_metadata(metadata),
+                    }
+            except (OSError, ValueError, KeyError, RuntimeError):
+                continue
+        return quotes
 
 
 class LiveAlertStore:
@@ -99,6 +97,8 @@ class LiveAlertStore:
         ticker: str,
         *,
         snapshot_run_id: str,
+        pinned,
+        unit: str,
     ) -> tuple[float, str] | None:
         payload = self.load()
         if payload.get("snapshotRunId") != snapshot_run_id:
@@ -110,7 +110,20 @@ class LiveAlertStore:
         as_of = row.get("asOf")
         if not isinstance(price, (int, float)) or not isinstance(as_of, str):
             return None
-        return float(price), as_of
+        currency = row.get("currency")
+        if not isinstance(currency, str) or not currency or not unit:
+            return None
+        if (
+            pinned.venue(*row_claims(ticker, row)).conflict
+            or not math.isfinite(price)
+            or price <= 0
+        ):
+            return None
+        major, divisor = major_quote_unit(currency)
+        target, multiplier = major_quote_unit(unit)
+        if major != target:
+            return None
+        return price / divisor * multiplier, as_of
 
 
 class AlertMonitor:
@@ -231,8 +244,12 @@ class AlertMonitor:
             prices = self.quote_provider.fetch(tickers)
             now_iso = now.isoformat()
             quotes = state.setdefault("quotes", {})
-            for ticker, price in prices.items():
-                quotes[ticker] = {"price": price, "asOf": now_iso}
+            for ticker in tickers:
+                observed = prices.get(ticker)
+                if isinstance(observed, dict):
+                    quotes[ticker] = observed
+                else:
+                    quotes.pop(ticker, None)
             if any(ticker in held for ticker in tickers):
                 state["heldUpdatedAt"] = now_iso
             if any(ticker not in held for ticker in tickers) or set(tickers) == {

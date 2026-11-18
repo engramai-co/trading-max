@@ -497,7 +497,9 @@ def test_public_preview_cannot_reopen_a_conflicting_published_listing(bound, mon
 
     monkeypatch.setattr(app.state.security_prices, "get", live)
     client = TestClient(app)
-    assert client.get(f"/v1/research/{ticker}/prices").status_code == 404
+    response = client.get(f"/v1/research/{ticker}/prices")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "security-price-history-unavailable"
     result = client.get(f"/v1/research/{ticker}/lens/technical?preview=true").json()
     assert (
         [result["context"]["quote"].get(k) for k in ("price", "schedule", "listing")],
@@ -505,7 +507,8 @@ def test_public_preview_cannot_reopen_a_conflicting_published_listing(bound, mon
     ) == ([None, None, None], None)
 
 
-def test_options_lens_keeps_contracts_on_exact_listing(bound):
+@pytest.mark.parametrize(("label", "provider"), [("SYN", "SYN"), ("SYN.L", "OTHER.L")])
+def test_options_lens_keeps_contracts_on_exact_listing(bound, label, provider):
     app, initial, _ = bound
     ticker = "SYN.L"
     publish(
@@ -515,8 +518,8 @@ def test_options_lens_keeps_contracts_on_exact_listing(bound):
             tools.OPTIONS: {
                 "rows": [
                     {
-                        "ticker": "SYN",
-                        "yf_ticker": "SYN",
+                        "ticker": label,
+                        "yf_ticker": provider,
                         "currency": "USD",
                         "spot": 100,
                         "expiry_count": 1,
@@ -533,7 +536,18 @@ def test_options_lens_keeps_contracts_on_exact_listing(bound):
     assert data["options"] is None
 
 
-def test_live_alerts_cannot_treat_pence_as_pounds(bound):
+@pytest.mark.parametrize(
+    ("bar_unit", "threshold", "live_unit", "observed", "venue", "breach"),
+    [
+        ("GBP", 100, "GBp", 9000, "LSE", True),
+        ("GBp", 10000, "GBP", 110, "LSE", False),
+        ("GBP", 100, "USD", 110, "LSE", True),
+        ("GBP", 100, "GBP", 110, "NYQ", True),
+    ],
+)
+def test_live_alerts_compare_verified_quote_units(
+    bound, bar_unit, threshold, live_unit, observed, venue, breach
+):
     app, initial, _ = bound
     ticker = "SYN.L"
     watch(app, ticker, "LSE")
@@ -542,7 +556,7 @@ def test_live_alerts_cannot_treat_pence_as_pounds(bound):
         ticker=ticker, broker_ticker="SYNl_EQ", current_price=90, price_currency="GBP"
     )
     row = raw_row(app, initial, ticker, exchange="LSE")
-    row.update(price=90, structure={"support20": 100})
+    row.update(price=threshold * 0.9, currency=bar_unit, structure={"support20": threshold})
     manifest = publish(
         app,
         **{
@@ -557,11 +571,19 @@ def test_live_alerts_cannot_treat_pence_as_pounds(bound):
         {
             "snapshotRunId": manifest.run_id,
             "quotes": {
-                ticker: {"price": 9000, "asOf": DATES[-1] + "T16:00:00Z", "currency": "GBp"}
+                ticker: {
+                    "price": observed,
+                    "asOf": DATES[-1] + "T16:00:00Z",
+                    "currency": live_unit,
+                    "exchange": venue,
+                }
             },
         }
     )
-    assert any(a["alertId"].endswith(":support-breach") for a in client.get(alerts_path).json())
+    assert (
+        any(a["alertId"].endswith(":support-breach") for a in client.get(alerts_path).json())
+        is breach
+    )
 
 
 def test_published_benchmark_uses_completed_bars_on_both_legs(monkeypatch):
