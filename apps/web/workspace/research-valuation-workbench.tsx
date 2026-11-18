@@ -25,7 +25,7 @@ import { useLocale } from "@/components/locale-provider";
 import type { DraftActions, DraftView } from "./valuation-draft-editor";
 import { useAssistant } from "./assistant/context";
 import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
-import { evidenceNoticesQuery, noticeKinds, useEvidenceNotice, useEvidenceSeen } from "./evidence-notices";
+import { evidenceNoticesQuery, noticeKinds, shownEvidence, useEvidenceNotice, useEvidenceSeen } from "./evidence-notices";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
 import type { InputField } from "./valuation-maintenance";
 import { quoteValue } from "./financial-values";
@@ -455,13 +455,16 @@ function ModelEditor({
   }, [dirty, onDirty]);
   const review = useQuery(valuationMaintenanceQuery(initial, savedModel?.id, debounced, locked,
     reviewOpen && !invalidInput));
+  // Only evidence the open comparison shows is settled: never a placeholder kept from
+  // earlier inputs, nor evidence a newer notice names that the comparison does not.
+  const shown = reviewOpen && !review.isPlaceholderData ? shownEvidence(unopened, review.data) : undefined;
   useEffect(() => {
-    if (!reviewOpen || !review.data || !unopened) return;
-    const key = unopened.modelId + "\u0000" + unopened.items.map((item) => item.key).join("\u0000");
+    if (!shown) return;
+    const key = shown.modelId + "\u0000" + shown.items.map((item) => item.key).join("\u0000");
     if (settled.current === key) return;
     settled.current = key;
-    settle.mutate(unopened);
-  }, [reviewOpen, review.data, unopened, settle]);
+    settle.mutate(shown);
+  }, [shown, settle]);
   useLayoutEffect(() => {
     const section = document.getElementById("valuation-evidence");
     if (!reviewOpen || !focusReview.current || !section) return;

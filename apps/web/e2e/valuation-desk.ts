@@ -78,6 +78,9 @@ export function maintenance(body: { scenarios: Record<Key, Inputs>; lockedInputs
         savedAsOf: "2026-08-02T21:00:00Z", currentAsOf: "2026-11-03T21:00:00Z" },
     ],
     assumptions: changes, lockedInputs: body.lockedInputs, newStatements: true, newEstimates: true,
+    // The evidence above as notices name it: the new period, the restatement and two consensus steps.
+    evidenceKeys: ["statements:ttm:2026-09-30", "restated:synthetic", "consensusRevenueGrowth:2027-09-30::2",
+      "consensusEps:2027-09-30:USD:1"],
   };
 }
 

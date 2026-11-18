@@ -175,4 +175,23 @@ describe("publication reconciliation", () => {
     expect(lens).toHaveBeenCalledTimes(1);
     close();
   });
+
+  it("refreshes evidence notices for a new publication only while they are on", async () => {
+    const { client, active, close } = fixture();
+    const notices = vi.fn(async () => ({ enabled: true, runId: "two", notices: [] }));
+    active(["evidence-notices"], { enabled: true, runId: "one", notices: [] }, notices);
+    await refreshPublicationQueries(client, "one");
+    expect(notices).not.toHaveBeenCalled();
+    await refreshPublicationQueries(client, "two");
+    await refreshPublicationQueries(client, "two");
+    expect(notices).toHaveBeenCalledTimes(1);
+    close();
+
+    const off = fixture();
+    const unread = vi.fn(async () => ({ enabled: false, runId: null, notices: [] }));
+    off.active(["evidence-notices"], { enabled: false, runId: null, notices: [] }, unread);
+    await refreshPublicationQueries(off.client, "two");
+    expect(unread).not.toHaveBeenCalled();
+    off.close();
+  });
 });

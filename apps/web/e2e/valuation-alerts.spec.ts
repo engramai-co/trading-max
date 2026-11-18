@@ -65,6 +65,70 @@ test("with notices off nothing is marked, and opening the evidence records nothi
   expect(state.seen).toEqual([]);
 });
 
+test("evidence that arrives after the comparison opened stays marked until a comparison shows it", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.clock.install();
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const later = { key: "statements:ttm:2026-12-31", kind: "statements", periodId: "ttm:2026-12-31" };
+  // The evidence each comparison names; the first is made before the later report arrives.
+  let compared = keys;
+  const state = await desk(page, { amend: (review) => ({ ...review, evidenceKeys: compared }) });
+  let current = { enabled: true, runId: "synthetic-run", notices: [] as object[] };
+  await page.route("**/api/backend/valuation/evidence-notices", (route) => route.fulfill({ json: current }));
+  await page.route("**/api/backend/valuation/evidence-notices/*/seen", (route) => {
+    state.seen.push(route.request().postDataJSON());
+    current = { ...current, notices: [] };
+    return route.fulfill({ json: current });
+  });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const toggle = editor.getByRole("button", { name: "See new evidence", exact: true });
+  await toggle.click();
+  await expect(page.locator("#valuation-evidence table")).toBeVisible();
+  const comparisons = state.reviews.length;
+  current = { enabled: true, runId: "next-run", notices: [{ ...notice, items: [later] }] };
+  const refreshed = page.waitForResponse((response) => response.url().endsWith("/valuation/evidence-notices"));
+  await page.clock.fastForward(61_000);
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event("online"));
+  });
+  await refreshed;
+  // The open comparison predates the evidence, so the notice stays.
+  await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();
+  expect(state.reviews.length).toBe(comparisons);
+  expect(state.seen).toEqual([]);
+  // A new comparison that shows it settles exactly that evidence.
+  compared = [...keys, later.key];
+  await editor.getByLabel("Revenue growth · years 1–5", { exact: true }).fill("12");
+  await page.clock.fastForward(2_000);
+  await expect.poll(() => state.seen).toEqual([{ modelId: savedModel.id, keys: [later.key] }]);
+  await expect(toggle.locator(".mx-evidence-dot")).toHaveCount(0);
+});
+
+test("a new publication brings its notices to an open page", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.clock.install();
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await desk(page);
+  let run = "synthetic-run";
+  let current = { enabled: true, runId: run, notices: [] as object[] };
+  await page.route("**/api/backend/health", (route) => route.fulfill({ json: {
+    service: "trading_max-api", status: "ok", latestRunId: run } }));
+  await page.route("**/api/backend/valuation/evidence-notices", (route) => route.fulfill({ json: current }));
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const toggle = page.locator("#valuation-assumptions").getByRole("button", { name: "See new evidence", exact: true });
+  await expect(toggle).toBeVisible();
+  await expect(toggle.locator(".mx-evidence-dot")).toHaveCount(0);
+  run = "next-run";
+  current = { enabled: true, runId: run, notices: [notice] };
+  const checked = page.waitForResponse((response) => response.url().endsWith("/health"));
+  await page.clock.fastForward(61_000);
+  await checked;
+  await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();
+});
+
+
 test("the journal opens a saved version's new evidence in the valuation", async ({ page }, info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));

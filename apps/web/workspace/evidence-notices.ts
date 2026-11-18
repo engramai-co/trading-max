@@ -49,6 +49,20 @@ export function useEvidenceSeen() {
   });
 }
 
+/**
+ * The part of a notice that a comparison shows: the evidence it names for the same saved
+ * version. Evidence that arrived after the comparison was made is not in it.
+ */
+export function shownEvidence(
+  notice: EvidenceNotice | undefined,
+  review: { modelId: string; evidenceKeys?: string[] } | undefined,
+): EvidenceNotice | undefined {
+  if (!notice || !review || review.modelId !== notice.modelId) return undefined;
+  const keys = new Set(review.evidenceKeys ?? []);
+  const items = notice.items.filter((item) => keys.has(item.key));
+  return items.length ? { ...notice, items } : undefined;
+}
+
 const kindNames = { statements: ["新报表", "New statements"], restatement: ["重述", "Restatement"] } as const;
 
 function itemName(item: Item, t: Copy) {

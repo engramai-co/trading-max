@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { noticeKinds, noticeLine, type EvidenceNotice } from "./evidence-notices";
+import { noticeKinds, noticeLine, shownEvidence, type EvidenceNotice } from "./evidence-notices";
 
 const zh = (a: string) => a;
 const en = (_: string, b: string) => b;
@@ -33,5 +33,17 @@ describe("evidence notices", () => {
     expect(noticeLine(eps, en, "en")).toMatch(/^EPS consensus · FY 30 Sept? 2027 · 2\.50 → 2\.70 USD$/);
     expect(noticeLine(loss, en, "en")).toMatch(/· \u22120\.40 → \u22120\.50 USD$/);
     expect(noticeLine(growth, zh, "zh")).toMatch(/^营收增长一致预期 · 财年 2027年9月30日 · 15\.0% → 19\.0%$/);
+  });
+
+  it("settles only the evidence a comparison of the same version shows", () => {
+    const keys = notice.items.map((item) => item.key);
+    expect(shownEvidence(notice, { modelId: "saved-version", evidenceKeys: keys })).toEqual(notice);
+    // A comparison made before newer evidence arrived does not settle it.
+    const older = shownEvidence(notice, { modelId: "saved-version", evidenceKeys: [keys[0], "statements:ttm:2026-06-30"] });
+    expect(older?.items.map((item) => item.key)).toEqual([keys[0]]);
+    expect(shownEvidence(notice, { modelId: "saved-version", evidenceKeys: ["statements:ttm:2026-06-30"] })).toBeUndefined();
+    expect(shownEvidence(notice, { modelId: "saved-version" })).toBeUndefined();
+    expect(shownEvidence(notice, { modelId: "another-version", evidenceKeys: keys })).toBeUndefined();
+    expect(shownEvidence(undefined, { modelId: "saved-version", evidenceKeys: keys })).toBeUndefined();
   });
 });
