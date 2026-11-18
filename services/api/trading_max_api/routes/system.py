@@ -324,6 +324,16 @@ def dashboard_etf_detail(
         raise HTTPException(status_code=404, detail="ETF evidence not found") from None
 
 
+def _dashboard_manifest(request: Request, run_id: str | None) -> SnapshotManifest:
+    if run_id is None:
+        return latest_or_503(request)
+    try:
+        # Retention can prune a cached publication in the separate worker process.
+        return app_service(request, "store").load_manifest(run_id, require_retained=True)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="snapshot not found") from None
+
+
 @router.get(
     "/v1/dashboard/history",
     response_model=HistorySnapshot,
@@ -336,11 +346,7 @@ def dashboard_history(
     scope: HistoryScope = "total",
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
 ) -> HistorySnapshot:
-    store = app_service(request, "store")
-    try:
-        manifest = store.load_manifest(run_id) if run_id else latest_or_503(request)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="snapshot not found") from None
+    manifest = _dashboard_manifest(request, run_id)
     return app_service(request, "history_reader").read(manifest, range, scope)
 
 
@@ -353,12 +359,10 @@ def dashboard_history(
 def dashboard_lens(
     view: DashboardLensName,
     request: Request,
+    run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
     account: AccountCode | None = None,
     range: HistoryRange | None = None,
     scope: HistoryScope | None = None,
-    snapshot_id: str | None = Query(
-        default=None, alias="snapshotId", max_length=128, pattern=r"^[a-zA-Z0-9_-]+$"
-    ),
     detail: Literal["full", "summary"] = Query(
         default="full",
         description=(
@@ -370,11 +374,7 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
-    if snapshot_id and view not in {"review", "account-analysis"}:
-        raise HTTPException(
-            status_code=422, detail="The snapshot selection applies to review lenses."
-        )
-    manifest = snapshot(snapshot_id, request) if snapshot_id else latest_or_503(request)
+    manifest = _dashboard_manifest(request, run_id)
     dashboard_data = request.app.state.cached_dashboard(
         manifest, include_history=detail != "summary"
     )

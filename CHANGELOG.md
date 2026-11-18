@@ -7,17 +7,28 @@ All notable public Trading Max releases are recorded here.
 ### Added
 - Review can expand each recorded buy or sell into its dated evidence, subsequent return and hindsight timing gap. A trading habits brief filters the timeline and journal by pre-earnings buys, same-day basket purchases or large falls without a trade. Both horizons use the selected account’s records.
 - Open MaxAI from the workspace bar or with ⌘J. A conversation follows navigation, keeps drafts when closed and links its evidence back to the relevant page. Follow-ups use the reading’s selected account, period and security. Replies show figures and coverage directly from the cited records, and name the dataset when reporting its freshness. Screen readers announce each source and any verification notice. The sidebar reflows wide screens and fills the screen on phones.
-- Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
+- Overview has collapsible daily and weekly briefs for all investment accounts, with the selected performance benchmark, verified trading records and upcoming holdings events. The daily brief also lists dated official macro releases in your display time zone. Benchmark citations reopen the portfolio and prices from the cited publication. Consented workspaces can pre-write briefs after scheduled updates and at the Saturday London fold.
+
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
-- The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
-- The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
-- Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
 
 ### Fixed
 - Review citations open the matching earnings or analyst action, and a decision link keeps its account, listing and publication. On phones, opening a habit citation closes the sheet and focuses the filtered timeline.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Older trade markers appear only when the snapshot identifies one matching listing.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+
+## [1.56.0] - 2026-11-18
+
+### Changed
+- Valuation now opens with trailing P/E, price-implied growth and the base scenario, followed by historical multiples, the editable model, sensitivity and the worksheet.
+- Estimates & events opens with ratings and targets on the 12-month price chart. Targets use the chart currency and account for share splits. Targets beyond the split history stay available by date at their announced amounts. The chart plots targets on the share basis of its latest close, and the upside uses the verified basis of the target and quote. Estimates, earnings dates and institutional actions follow on the same page. Both lenses have a section index, and phones show forecasts and events as labelled values.
+
+## [1.55.0] - 2026-11-18
+
+### Added
+- The assistant can look up dated headlines, earnings estimates and results, rating changes, dividends, filings and your own trades in a saved data version.
+- The upcoming-events API and assistant tool show official macro releases across six markets alongside portfolio and research earnings, dividends and exchange closures. Exact times follow your time zone. Day- and month-only announcements retain the publisher’s precision.
+- Data status shows the freshness of security news and official calendars, including the publisher and last attempt when an update fails.
 
 ## [1.54.0] - 2026-11-18
 

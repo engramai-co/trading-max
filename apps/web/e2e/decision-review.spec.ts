@@ -1140,7 +1140,7 @@ test("the ranked arrow and reading fallback lead to the selected twin", async ({
   await expect(fallback).toHaveAttribute("href",/reviewOrdinal=1/);
   await expect(fallback).toHaveAttribute("href", /snapshotId=synthetic-decision-context/);
   const originalSnapshot = page.waitForRequest(r => r.url().includes("/dashboard/lens/account-analysis") &&
-    new URL(r.url()).searchParams.get("snapshotId") === "synthetic-decision-context");
+    new URL(r.url()).searchParams.get("runId") === "synthetic-decision-context");
   await fallback.click();
   await originalSnapshot;
   await expect(page.locator(".mx-decision-focus")).toContainText("£120");

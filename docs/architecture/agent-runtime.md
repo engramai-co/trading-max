@@ -301,6 +301,15 @@ every thirty seconds without calling a provider. One brief
 includes bilingual text and all supported benchmark comparisons, so changing
 language or benchmark needs no further model call.
 
+The daily brief reads the pinned upcoming-events projection for the next thirty
+calendar days. It groups the nearest dated official release, held earnings and
+ex-dividend entry in the Coming up section. Each entry carries its own source.
+An instant follows the display time zone even when the brief is reopened.
+Date-only events and earnings windows retain the provider’s precision.
+Overview decision reads apply the selected money window before pagination.
+Benchmark evidence links read portfolio history and benchmark closes from the
+same cited manifest. A missing manifest displays an unavailable state.
+
 ## Decision review
 
 Opening a buy or sell reads its account, date, side, ticker and selected horizon

@@ -5,23 +5,28 @@ import { Drawer } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
 import { useId, useState, type ComponentProps, type ReactNode } from "react";
+import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
 import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
-import { evidenceHref, sourceLabel, type Evidence } from "./evidence";
+import { evidenceHref, observationText, sourceLabel, type Evidence, type Reading } from "./evidence";
 
 export function EvidenceLink({ evidence, onNavigate }: { evidence: Evidence; onNavigate?: ComponentProps<typeof Link>["onNavigate"] }) {
   const t = useCopy();
   const { close, open } = useAssistant();
   const word = sourceLabel(evidence, t);
   const href = evidenceHref(evidence);
+  if (href && /^https?:/.test(href)) return <a className="mx-reading-source" href={href} title={evidence.arguments?.credit} rel="noreferrer" target="_blank">{word}</a>;
   return href ? <Link className="mx-reading-source" href={href} onNavigate={onNavigate} onClick={() => { if (open && window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
+export function ObservationLine({line}: {line: Reading["lines"][number]}) {
+  const {locale, timeZone} = useLocale();
+  return <p className="mx-reading-line">{[line, ...(line.related ?? [])].map((item, i) =>
+    <span key={i} className="mx-reading-observation">{observationText(item, locale, timeZone)} <EvidenceLink evidence={item.evidence} /></span>
+  )}</p>;
+}
 export function ReadingLines({ card }: { card: RoleCard }) {
-  const t = useCopy();
-  return card.reading?.lines.map((line, i) => <p className="mx-reading-line" key={i}>
-    {t(line.zh, line.en)}{" "}<EvidenceLink evidence={line.evidence} />
-  </p>);
+  return card.reading?.lines.map((line, i) => <ObservationLine key={i} line={line} />);
 }
 export function CardTitle({ card }: { card: RoleCard }) {
   return <h3 className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title}{card.object && " · " + card.object}</h3>;

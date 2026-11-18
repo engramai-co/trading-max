@@ -107,10 +107,8 @@ export function ReviewWorkspace() {
   const scope = reviewScope(params.get("account"));
   const all = scope === "all";
   const snapshotId = params.get("snapshotId");
-  const selectionForLens = useMemo(() => snapshotId ? {snapshotId} : undefined, [snapshotId]);
-  const accountSelection = useMemo(() => ({...ACCOUNT_REVIEW_SELECTION, ...selectionForLens}), [selectionForLens]);
-  const overview = useDashboardLens("review", undefined, all, selectionForLens);
-  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all, accountSelection);
+  const overview = useDashboardLens("review", undefined, all, undefined, snapshotId ?? undefined);
+  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all, ACCOUNT_REVIEW_SELECTION, snapshotId ?? undefined);
   const query = all ? overview : single;
   const current = useMemo(
     () => query.data && { scope, data: query.data, updatedAt: query.dataUpdatedAt },
@@ -118,7 +116,7 @@ export function ReviewWorkspace() {
   );
   // Another scope keeps showing the last one until its own review arrives.
   const retained = useRetainedResult(current);
-  const result = snapshotId && retained?.data.runId !== snapshotId ? undefined : retained;
+  const result = snapshotId && (query.isError || retained?.data.runId !== snapshotId || retained.scope !== scope) ? undefined : retained;
   const publicationFailure = usePublicationFailure(result?.updatedAt ?? 0);
   const failure = query.isError && result ? { updatedAt: result.updatedAt, retry: query.refetch } : publicationFailure;
   // Horizon choices live here, keyed by account and decision, so they outlive the panels that use them.

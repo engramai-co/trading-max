@@ -7,6 +7,7 @@ from typing import Literal
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import Field
 from pydantic_ai import ModelRetry
 
 from services.api.tests.test_assistant_readings import sample
@@ -186,3 +187,106 @@ def test_reading_cannot_change_the_selected_ticker_through_a_variant(tmp_path, s
     assert asyncio.run(run()) == ["reading", "error"]
     assert not reads
     assert service.cached(role, SELECTED, deps.snapshot_id) is None
+
+
+class PublicationArgs(tools.Args):
+    snapshot_id: str = Field(alias="snapshotId")
+
+
+@pytest.mark.parametrize("form", ["typed", "python-name", "wire", "both"])
+def test_publication_alias_conflict_is_rejected_before_read(tmp_path, form):
+    _, deps, _, _ = sample(tmp_path)
+    reads = []
+
+    def get_publication(ctx: tools.Context, args: PublicationArgs) -> dict:
+        reads.append(args)
+        return {"evidence_id": "ev_test"}
+
+    role = roles.PageRole(
+        "p",
+        "overview",
+        frozenset({"get_publication"}),
+        roles.RoleContext,
+        "",
+        lambda *_: [],
+        tool_bindings=lambda _, pin: {"get_publication": {"snapshotId": pin}},
+    )
+    reader = role.reader(deps, roles.RoleContext())
+    arguments = {
+        "typed": PublicationArgs(snapshotId="wrong"),
+        "python-name": {"snapshot_id": "wrong"},
+        "wire": {"snapshotId": "wrong"},
+        "both": {"snapshotId": deps.snapshot_id, "snapshot_id": "wrong"},
+    }[form]
+    with pytest.raises(ModelRetry, match="snapshotId"):
+        reader.read(get_publication, arguments)
+    assert reads == []
+
+
+def test_weekly_decisions_apply_both_publication_bounds_before_paging(tmp_path):
+    from services.api.tests.assistant_fixture import publication
+    from services.api.trading_max_api.agent.deps import AssistantDepsFactory
+    from services.api.trading_max_api.agent.overview_roles import OverviewContext
+    from services.api.trading_max_api.artifacts import ArtifactStore
+
+    store = ArtifactStore(tmp_path)
+    dates = ["2025-11-12", "2026-02-03", "2026-10-15"]
+    publication(
+        store,
+        extra_artifacts={
+            tools.DECISIONS: {
+                "accounts": {
+                    "A": {
+                        "status": "available",
+                        "decisions": [{"ticker": "TEST", "side": "buy", "date": d} for d in dates],
+                    }
+                }
+            }
+        },
+    )
+    deps = AssistantDepsFactory(store).for_run()
+    reader = roles.role_registry()["weekly"].reader(deps, OverviewContext())
+    result = reader.read(tools.recent_decisions, {"limit": 1})
+    assert [row["date"] for row in result["data"]["items"]] == ["2026-02-03"]
+    assert result["data"]["next_cursor"] is None
+    with pytest.raises(ModelRetry):
+        reader.read(tools.recent_decisions, {"since": "2026-10-01"})
+
+
+@pytest.mark.parametrize("conflict", [False, True])
+def test_chat_normalises_publication_argument_aliases(tmp_path, monkeypatch, conflict):
+    reads = []
+    _, deps, _, _ = sample(tmp_path)
+
+    def get_publication(ctx: tools.Context, args: PublicationArgs) -> dict:
+        """Read the selected publication."""
+        reads.append(args.snapshot_id)
+        return {"evidence_id": "ev_test", "data": {}}
+
+    role = roles.PageRole(
+        "p",
+        "overview",
+        frozenset({"get_publication"}),
+        roles.RoleContext,
+        "",
+        lambda *_: [],
+        tool_bindings=lambda _, pin: {"get_publication": {"snapshotId": pin}},
+    )
+    monkeypatch.setattr(roles, "role_registry", lambda: {"p": role})
+    supplied = {"args": {"snapshot_id": "wrong" if conflict else deps.snapshot_id}}
+    stream, _ = answer_after_tool("get_publication", json.dumps(supplied))
+    app, service = make_app(tmp_path, stream)
+    registry = tools.build_assistant_toolset()
+    registry.add_function(get_publication, takes_ctx=True)
+    service.agent = build_assistant_agent([registry])
+    service.deps_for_run = lambda page, tz: deps
+    body = user_turn("p", "u", "Read the selected publication")
+    body["context"] = {
+        "role": "p",
+        "page": "overview",
+        "object": {},
+        "snapshotId": deps.snapshot_id,
+    }
+    response = TestClient(app).post("/v1/assistant/chat", json=body)
+    assert response.status_code == 200
+    assert reads == ([] if conflict else [deps.snapshot_id])

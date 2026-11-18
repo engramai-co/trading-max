@@ -198,6 +198,87 @@ async function synthetic(page: Page, running = true) {
 test.describe("valuation refresh", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
 
+  test("a legacy estimate reference focuses the scenario while the model loads and after a 422", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => {
+      await gate;
+      await route.fulfill({ status: 422, json: { detail: "synthetic missing inputs" } });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation&estimateRef=%2B1y");
+    const section = page.locator("#research-scenario");
+    await expect(section).toBeAttached();
+    const heading = section.getByRole("heading").first();
+    await expect.soft(heading).toBeFocused({ timeout: 1200 });
+    release();
+    await expect(section).toContainText("Cash-flow model inputs are incomplete");
+    await expect(heading).toBeFocused();
+    await expect(page.getByRole("link", { name: "Scenario model" })).toHaveAttribute("aria-current", "location");
+  });
+
+  test("a model response never replays a completed scenario bookmark after the reader moves to History", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => { await gate; await route.fallback(); });
+    await page.goto("/research?ticker=SYNT&view=valuation&estimateRef=%2B1y");
+    await expect(page.locator("#research-scenario h2").first()).toBeFocused();
+    await page.keyboard.press("Home");
+    const control = page.locator("#research-history button").first();
+    await control.focus();
+    release();
+    await expect(page.locator("#valuation-assumptions")).toBeAttached();
+    await expect(control).toBeFocused();
+    await expect(page.getByRole("link", { name: "Historical valuation" })).toHaveAttribute("aria-current", "location");
+  });
+
+  test("a worksheet bookmark waits for its heading to mount", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => { await gate; await route.fallback(); });
+    await page.goto("/research?ticker=SYNT&view=valuation&valuationView=worksheet");
+    await expect(page.locator("#research-scenario h2").first()).toBeAttached();
+    await expect(page.locator("#research-worksheet")).toHaveCount(0);
+    release();
+    await expect(page.locator("#research-worksheet h2").first()).toBeFocused();
+    await expect(page.getByRole("link", { name: "Worksheet" })).toHaveAttribute("aria-current", "location");
+  });
+
+  test("the readout keeps its space and shows the signed gap for a large base value", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 320, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => {
+      await gate;
+      const model = preview("SYNT", 150000, "2026-11-04", true, {});
+      model.basis.currency = "JPY";
+      model.scenarios.base.value = 135956.78;
+      model.scenarios.base.upside = model.scenarios.base.value / model.basis.spot - 1;
+      await route.fulfill({ json: model });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const history = page.locator("#research-history");
+    await expect(history).toBeVisible();
+    const before = await history.boundingBox();
+    release();
+    const readout = page.locator(".mx-valuation-readout");
+    await expect(readout).toContainText("135,956.78");
+    await expect.soft(readout).toContainText(/[-−]9.4%/);
+    expect.soft(Math.abs((await history.boundingBox())!.y - before!.y)).toBeLessThan(1);
+    if (isMobile) {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+      const metrics = await readout.locator(".mx-metric").evaluateAll((items) => items.map((node) => node.getBoundingClientRect().top));
+      expect(metrics[1]).toBeGreaterThan(metrics[0]);
+    }
+  });
+
   test("a failed broker refresh keeps edited assumptions and retries inline", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     const state = await synthetic(page);
@@ -300,7 +381,7 @@ test.describe("valuation refresh", () => {
     await expect(reading).not.toContainText("Yahoo");
     await chart.press("Escape");
     await expect(reading).toHaveAttribute("data-chart-reading", "latest");
-    await expect(page.getByText("Historical valuation reference", { exact: true })).toBeVisible();
+    await expect(section.locator("summary").filter({ hasText: "Valuation at disclosure" })).toBeVisible();
   });
 
   test("trailing P/E omits distribution for short histories and stays absent without SEC data", async ({ page }) => {
@@ -332,7 +413,7 @@ test.describe("valuation refresh", () => {
     });
     await page.goto("/research?ticker=SYNT&view=valuation");
     const section = page.locator(".mx-pe-history");
-    const modes = section.getByRole("group", { name: "P/E basis" });
+    const modes = section.getByRole("group", { name: "Historical valuation basis" });
     const ntm = modes.getByRole("button", { name: isMobile ? "NTM" : "NTM P/E", exact: true });
     await ntm.click();
     await expect(ntm).toHaveAttribute("aria-pressed", "true");
@@ -357,6 +438,34 @@ test.describe("valuation refresh", () => {
     const controls = (await modes.boundingBox())!;
     const bounds = (await section.boundingBox())!;
     expect(controls.x + controls.width).toBeLessThan(bounds.x + bounds.width);
+  });
+
+  test("the valuation index keeps assumptions mounted and wide tables scroll locally", async ({ page, isMobile }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const state = await synthetic(page, false);
+    state.trailingPe = peHistory();
+    await page.goto("/research?ticker=SYNT&view=valuation&valuationView=scenario");
+    const index = page.getByRole("navigation", { name: "On this page" });
+    await expect(page.locator("#valuation-results h2")).toBeFocused();
+    const growth = page.getByLabel("Revenue growth · years 1–5");
+    await growth.fill("17");
+    await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(0.17);
+    await index.getByRole("link", { name: "Sensitivity" }).click();
+    await expect(page.locator("#research-sensitivity h2")).toBeFocused();
+    await expect(index.getByRole("link", { name: "Sensitivity" })).toHaveAttribute("aria-current", "location");
+    await expect(growth).toHaveValue("17%");
+    const matrix = page.getByRole("region", { name: "Two-dimensional sensitivity matrix" });
+    if (isMobile) {
+      for (const width of [320, 360, 390, 430]) {
+        await page.setViewportSize({ width, height: 844 });
+        expect(await matrix.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+      }
+    }
+    await index.getByRole("link", { name: "Historical valuation" }).click();
+    await page.locator("#research-history summary").filter({ hasText: "Valuation at disclosure" }).click();
+    await page.getByRole("group", { name: "Historical valuation basis" }).getByRole("button", { name: "P/S" }).click();
+    await expect(page.locator("#research-history")).toContainText("P/S at disclosure");
   });
 
   test("a short NTM archive shows the latest multiple without a percentile", async ({ page, isMobile }, testInfo) => {

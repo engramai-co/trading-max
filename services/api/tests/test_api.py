@@ -416,16 +416,16 @@ def test_review_lens_counts_observing_decisions_before_keeping_the_latest(
         index = client.get("/v1/dashboard/lens/review").json()["decisionReviews"]["A"]
         account = client.get("/v1/dashboard/lens/account-analysis?account=A").json()
         pinned = client.get(
-            "/v1/dashboard/lens/review", params={"snapshotId": previous.manifest.run_id}
+            "/v1/dashboard/lens/review", params={"run_id": previous.manifest.run_id}
         )
         assert pinned.status_code == 200 and pinned.json()["runId"] == previous.manifest.run_id
         assert not pinned.json().get("decisionReviews", {}).get("A", {}).get("decisions")
         chosen = client.get(
             "/v1/dashboard/lens/account-analysis",
-            params={"account": "A", "snapshotId": current.manifest.run_id},
+            params={"account": "A", "run_id": current.manifest.run_id},
         )
         assert chosen.json()["selectedAccountDecisions"] == account["selectedAccountDecisions"]
-        assert client.get("/v1/dashboard/lens/review?snapshotId=absent").status_code == 404
+        assert client.get("/v1/dashboard/lens/review?run_id=absent").status_code == 404
 
     # The review carries every decision for its timeline and counts those still observing.
     assert index["observingCount"] == 12

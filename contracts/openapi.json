@@ -16971,6 +16971,13 @@
           "evidence": {
             "$ref": "#/components/schemas/ReadingEvidence"
           },
+          "related": {
+            "items": {
+              "$ref": "#/components/schemas/LinkedObservation"
+            },
+            "title": "Related",
+            "type": "array"
+          },
           "section": {
             "default": "",
             "title": "Section",
@@ -24421,6 +24428,17 @@
             "title": "Publisher",
             "type": "string"
           },
+          "research_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Event Id"
+          },
           "source_as_of": {
             "anyOf": [
               {
@@ -26099,7 +26117,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.54.0"
+    "version": "1.56.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -27102,6 +27120,23 @@
           },
           {
             "in": "query",
+            "name": "run_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9_-]{1,100}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "in": "query",
             "name": "account",
             "required": false,
             "schema": {
@@ -27168,24 +27203,6 @@
                 }
               ],
               "title": "Scope"
-            }
-          },
-          {
-            "in": "query",
-            "name": "snapshotId",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 128,
-                  "pattern": "^[a-zA-Z0-9_-]+$",
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Snapshotid"
             }
           },
           {

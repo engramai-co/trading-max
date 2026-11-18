@@ -327,3 +327,118 @@ def test_follow_up_tools_read_the_original_snapshot_after_a_new_publication(tmp_
     response = TestClient(app).post("/v1/assistant/chat", json=body)
     assert response.status_code == 200
     assert observations == [original.run_id]
+
+
+def test_daily_calendar_keeps_the_nearest_dated_event_from_each_source(tmp_path):
+    from pydantic_ai import ModelRetry
+    from trading_max.research.calendars.refresh import MACRO_KEY
+
+    from services.api.trading_max_api.agent import events, tools
+    from services.api.trading_max_api.agent.overview_roles import daily_calendar
+
+    store = ArtifactStore(tmp_path)
+    calendar = {
+        "id": "fixture-release",
+        "market": "JP",
+        "publisher": "Fixture agency",
+        "title_en": "Consumer prices",
+        "title_zh": "消费者价格",
+        "date": "2026-02-05",
+        "instant": "2026-02-05T08:30:00+09:00",
+        "timezone": "Asia/Tokyo",
+        "source_url": "https://example.org/releases/prices",
+        "status": "provisional",
+    }
+    created = datetime(2026, 2, 3, 17, tzinfo=UTC)
+    publication(
+        store,
+        created_at=created,
+        extra_artifacts={
+            MACRO_KEY: {
+                "sources": {
+                    "test": {
+                        "events": [
+                            {
+                                **calendar,
+                                "id": "cancelled",
+                                "date": "2026-02-03",
+                                "instant": None,
+                                "status": "cancelled",
+                            },
+                            {**calendar, "id": "month", "date": "2026-02", "instant": None},
+                            {
+                                **calendar,
+                                "id": "past",
+                                "date": "2026-02-03",
+                                "instant": "2026-02-03T10:00:00Z",
+                            },
+                            calendar,
+                        ]
+                    }
+                }
+            },
+            tools.EARNINGS: {
+                "rows": [
+                    {
+                        "ticker": "TEST",
+                        "calendar": {
+                            "Earnings Date": ["2026-02-06", "2026-02-08"],
+                            "Ex-Dividend Date": "2026-02-10",
+                        },
+                    },
+                    {"ticker": "UNHELD", "calendar": {"Ex-Dividend Date": "2026-02-04"}},
+                ]
+            },
+        },
+    )
+    role = role_registry()["daily"]
+    deps = AssistantDepsFactory(store).for_run(timezone="Europe/London")
+    reader = role.reader(deps, OverviewContext())
+    publication(store, created_at=created + timedelta(days=1))
+    first = daily_calendar(reader)
+    reader.attach_evidence([first])
+    macro, earnings, ex = (first, *first.related)
+    assert macro.en == "2026-02-04 · JP · Consumer prices (provisional)"
+    assert macro.evidence.arguments["instant"] == calendar["instant"]
+    assert macro.evidence.arguments["url"] == calendar["source_url"]
+    assert earnings.en == "2026-02-06 – 2026-02-08 · TEST estimated earnings"
+    assert ex.en == "2026-02-10 · TEST ex-dividend"
+    assert [item.evidence.source for item in (macro, earnings, ex)] == [
+        "calendar",
+        "financials",
+        "disclosure",
+    ]
+    assert all(
+        item.evidence.arguments["snapshotId"] == deps.snapshot_id for item in (macro, earnings, ex)
+    )
+    assert len({item.evidence.arguments["eventId"] for item in (macro, earnings, ex)}) == 3
+    with pytest.raises(ModelRetry):
+        reader.read(events.upcoming_events, {"start": "2025-01-01"})
+
+    missing = daily_calendar(role.reader(AssistantDepsFactory(store).for_run(), OverviewContext()))
+    assert (
+        missing.related == []
+        and "No macro release" in missing.en
+        and "instant" not in missing.evidence.arguments
+    )
+
+
+def test_daily_calendar_preserves_a_single_published_earnings_date(tmp_path):
+    from services.api.trading_max_api.agent import tools
+    from services.api.trading_max_api.agent.overview_roles import daily_calendar
+
+    store = ArtifactStore(tmp_path)
+    publication(
+        store,
+        created_at=datetime(2026, 2, 3, tzinfo=UTC),
+        extra_artifacts={
+            tools.EARNINGS: {
+                "rows": [{"ticker": "TEST", "calendar": {"Earnings Date": "2026-02-05"}}]
+            }
+        },
+    )
+    deps = AssistantDepsFactory(store).for_run()
+    entry = daily_calendar(role_registry()["daily"].reader(deps, OverviewContext()))
+    assert entry.en == "2026-02-05 · TEST estimated earnings"
+    assert "instant" not in entry.evidence.arguments
+    assert not entry.related

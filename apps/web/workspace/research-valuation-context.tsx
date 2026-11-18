@@ -4,13 +4,13 @@ import { formatCalendarDate, formatDate, formatDateSpan } from "@/ui/formatters"
 import { useChartColours } from "@/ui/charts/palette";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { useState, type ReactNode } from "react";
-import { Plot } from "./charts";
+import { type ReactNode } from "react";
+import { DeferredPlot } from "./research-reading";
 import type { ChartReadout, Reading } from "./chart-readout";
 import { compact, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Panel, Segments, TextLink, useCopy } from "./foundation";
+import { Empty, Facts, Panel, TextLink, useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 import { factIndex } from "./research-facts";
 import type { ResearchPrice } from "./research-price-basis";
@@ -110,18 +110,17 @@ export function ModelAlternatives({
 export function FilingMultiples({
   data,
   price,
+  mode,
 }: {
   data: ResearchLensSnapshot;
   price?: ResearchPrice;
+  mode: "pe" | "ps";
 }) {
   const t = useCopy();
   const { locale } = useLocale();
   const colours = useChartColours();
-  const [requested, setRequested] = useState("ps");
   const evidence = object(data.researchEvidence);
-  const sales = objects(evidence.releaseSalesMultiples);
-  const mode = requested === "ps" && sales.length ? "ps" : "pe";
-  const rows = mode === "ps" ? sales : objects(evidence.releaseMultiples);
+  const rows = objects(mode === "ps" ? evidence.releaseSalesMultiples : evidence.releaseMultiples);
   const ratio = mode === "ps" ? "P/S" : "P/E";
   const code = str(rows[0]?.currency);
   const samples = rows
@@ -192,21 +191,9 @@ export function FilingMultiples({
   };
   return (
     <Panel
-      title={t("披露时的估值", "Valuation at disclosure")}
+      title={mode === "ps" ? t("披露时的市销率", "P/S at disclosure") : t("年度 P/E · 披露样本", "Annual P/E · filing sample")}
       className="mx-multiple-context"
-      action={
-        sales.length > 0 ? (
-          <Segments
-            label={t("历史估值口径", "Historical multiple basis")}
-            value={mode}
-            onChange={setRequested}
-            options={[
-              { value: "ps", label: "P/S · TTM" },
-              { value: "pe", label: t("P/E · 年度", "P/E · Annual") },
-            ]}
-          />
-        ) : undefined
-      }
+      bare
       help={
         mode === "ps"
           ? t(
@@ -257,7 +244,7 @@ export function FilingMultiples({
                 : []),
             ]}
           />
-          <Plot
+          <DeferredPlot
             research
             height={225}
             label={

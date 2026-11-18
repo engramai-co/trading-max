@@ -35,7 +35,7 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
           start:str(data.window_start), end:str(data.window_end), snapshotId:str(source.output.snapshot_id)}, source.output)};
       } else if (evidence.tool === "compare_benchmarks") {
         const data = object(source.output.data);
-        evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, start:str(data.start), end:str(data.end)}, source.output)};
+        evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, start:str(data.start), end:str(data.end), snapshotId:str(source.output.snapshot_id) || evidence.arguments?.snapshotId}, source.output)};
       }
       result.push({text, evidence});
     }

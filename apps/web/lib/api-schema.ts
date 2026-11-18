@@ -6858,6 +6858,8 @@ export interface components {
             /** En */
             en: string;
             evidence: components["schemas"]["ReadingEvidence"];
+            /** Related */
+            related?: components["schemas"]["LinkedObservation"][];
             /**
              * Section
              * @default
@@ -9481,6 +9483,8 @@ export interface components {
             market?: string | null;
             /** Publisher */
             publisher: string;
+            /** Research Event Id */
+            research_event_id?: string | null;
             /** Source As Of */
             source_as_of?: string | null;
             /** Source Url */
@@ -10688,10 +10692,10 @@ export interface operations {
     dashboard_lens_v1_dashboard_lens__view__get: {
         parameters: {
             query?: {
+                run_id?: string | null;
                 account?: ("A" | "B" | "C") | null;
                 range?: ("1D" | "1W" | "1M" | "3M" | "6M" | "YTD" | "1Y" | "ALL") | null;
                 scope?: ("invest" | "isa" | "total" | "household" | "cfd") | null;
-                snapshotId?: string | null;
                 /** @description summary returns the page projection without NAV and intraday history; interactive clients and agents should use it and read history from /v1/dashboard/history. full (the compatible default) also embeds the complete history, which grows with every snapshot and can reach many megabytes on a long-running installation. */
                 detail?: "full" | "summary";
             };
