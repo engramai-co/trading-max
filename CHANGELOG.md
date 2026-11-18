@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.63.1] - 2026-11-18
+
+### Changed
+- On wide screens, the research section index starts closed so the reading uses the full width. The button at the top right opens it, and Trading Max remembers your choice. Phones keep the index as a strip at the top.
+
 ## [1.63.0] - 2026-11-18
 
 ### Changed

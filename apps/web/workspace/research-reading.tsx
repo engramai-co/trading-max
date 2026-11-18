@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useLocalStorage } from "@mantine/hooks";
+import { SidebarSimple } from "@phosphor-icons/react";
+import { useCallback, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useCopy } from "./foundation";
 import { Plot } from "./plot";
 import { useRouteState } from "./route-state";
@@ -63,6 +65,9 @@ export function ResearchReading({ sections, parameter, children, before, initial
   const pending = useRef<string | null>(null);
   const pinned = useRef<string | null>(null);
   const focusedHeading = useRef<HTMLElement | null>(null);
+  // Wide layouts give the reading the full width until the reader opens the index.
+  const [indexOpen, setIndexOpen] = useLocalStorage({ key: "mx-research-index-open", defaultValue: false });
+  const indexId = useId();
   const visitSection = useCallback((id: string) => {
     const section = document.getElementById("research-" + id);
     const heading = section?.querySelector<HTMLElement>("h2");
@@ -193,8 +198,14 @@ export function ResearchReading({ sections, parameter, children, before, initial
   }, [active]);
 
   return <div className="mx-reading-container">
-    <div className="mx-reading-layout">
-      <nav ref={nav} className="mx-section-index" aria-label={t("本页分节", "On this page")}>
+    <div className="mx-reading-layout" data-index-open={indexOpen || undefined}>
+      <div className="mx-section-rail">
+        <button type="button" className="mx-section-toggle" aria-expanded={indexOpen} aria-controls={indexId}
+          aria-label={t("本页分节", "Sections on this page")} title={indexOpen ? t("收起分节", "Hide sections") : t("展开分节", "Show sections")}
+          onClick={() => setIndexOpen((open) => !open)}>
+          <SidebarSimple size={16} mirrored aria-hidden="true" />
+        </button>
+      <nav id={indexId} ref={nav} className="mx-section-index" aria-label={t("本页分节", "On this page")}>
         {sections.map(([id, zh, en]) => {
           const next = new URLSearchParams(params.toString());
           next.set(parameter, id);
@@ -207,6 +218,7 @@ export function ResearchReading({ sections, parameter, children, before, initial
             }}>{t(zh, en)}</a>;
         })}
       </nav>
+      </div>
       <div ref={content} className="mx-reading-sections">{before}{children}</div>
     </div>
   </div>;

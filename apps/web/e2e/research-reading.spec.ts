@@ -27,11 +27,17 @@ async function analystFixture(page: Page) {
   } }));
 }
 
+/** Wide readings start with the index closed; these cases navigate with it open. */
+async function openSectionIndex(page: Page) {
+  await page.addInitScript(() => localStorage.setItem("mx-research-index-open", "true"));
+}
+
 test.describe("research section navigation", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
 
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await openSectionIndex(page);
     await analystFixture(page);
   });
 
@@ -433,5 +439,30 @@ test.describe("research section navigation", () => {
     await expect(page.locator("#research-cash h2").first()).toBeFocused();
     await expect(index.getByRole("link", { name: "Cash flow" })).toHaveAttribute("aria-current", "location");
     await expect(page.getByRole("radiogroup", { name: "Reporting frequency" }).or(page.getByRole("group", { name: "Reporting frequency" })).first()).toBeAttached();
+  });
+});
+
+test.describe("research section index", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+
+  test("a wide reading keeps the index closed until the reader opens it", async ({ page, isMobile }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.goto("/research?ticker=AAPL&view=technical");
+    const index = page.getByRole("navigation", { name: "On this page" });
+    const toggle = page.getByRole("button", { name: "Sections on this page" });
+    if (isMobile) {
+      // Phones keep the index as the sticky strip.
+      await expect(index.getByRole("link", { name: "Seasonality" })).toBeVisible();
+      await expect(toggle).toBeHidden();
+      return;
+    }
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(index).toBeHidden();
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await index.getByRole("link", { name: "Seasonality" }).click();
+    await expect(page.locator("#research-seasonality h2").first()).toBeFocused();
+    await page.reload();
+    await expect(index.getByRole("link", { name: "Seasonality" })).toBeVisible();
   });
 });
