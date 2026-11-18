@@ -1,0 +1,76 @@
+[
+  {
+    "text": "Synthetic Issuer Inc. designs and sells synthetic widgets in 12 markets. The company also offers Widget Cloud, a subscription service. It was founded in 1999 and is headquartered in Exampleton.",
+    "sentences": [
+      "Synthetic Issuer Inc. designs and sells synthetic widgets in 12 markets.",
+      "The company also offers Widget Cloud, a subscription service.",
+      "It was founded in 1999 and is headquartered in Exampleton."
+    ],
+    "ids": [
+      "cfac2b85",
+      "6e2b34b5",
+      "919014b5"
+    ]
+  },
+  {
+    "text": "Example Holdings, Inc. operates in the U.S. and Canada. It was formerly known as Example Co. and changed its name in Jan. 2007. Example Corp. Was founded in 1990.",
+    "sentences": [
+      "Example Holdings, Inc. operates in the U.S. and Canada.",
+      "It was formerly known as Example Co. and changed its name in Jan. 2007.",
+      "Example Corp. Was founded in 1990."
+    ],
+    "ids": [
+      "7249f19d",
+      "21416c81",
+      "8b20d9f5"
+    ]
+  },
+  {
+    "text": "One sentence only without a full stop",
+    "sentences": [
+      "One sentence only without a full stop"
+    ],
+    "ids": [
+      "b95d883e"
+    ]
+  },
+  {
+    "text": "It sells A. B. Testing kits! Does it work? \"Quoted\" sentences start here. (Brackets) too.",
+    "sentences": [
+      "It sells A. B. Testing kits!",
+      "Does it work?",
+      "\"Quoted\" sentences start here.",
+      "(Brackets) too."
+    ],
+    "ids": [
+      "ef9cbe94",
+      "c846c917",
+      "7d1055d3",
+      "2c1006f3"
+    ]
+  },
+  {
+    "text": "Nestlé S.A. sells food in 186 countries.  It employs about 270,000 people.\nIt was founded in 1866.",
+    "sentences": [
+      "Nestlé S.A. sells food in 186 countries.",
+      "It employs about 270,000 people.",
+      "It was founded in 1866."
+    ],
+    "ids": [
+      "29ecaa42",
+      "b43f2af8",
+      "d81b724a"
+    ]
+  },
+  {
+    "text": "The company’s products include Widget 15… The rest follows. 2026 brings more.",
+    "sentences": [
+      "The company’s products include Widget 15… The rest follows.",
+      "2026 brings more."
+    ],
+    "ids": [
+      "f4a2eb22",
+      "98c54d69"
+    ]
+  }
+]

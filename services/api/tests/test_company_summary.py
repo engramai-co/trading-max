@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -121,6 +122,7 @@ def test_summary_restates_chosen_sentences_once_per_description(tmp_path):
         "ticker": "TEST",
         "lens": "overview",
         "sentence": "1",
+        "sentenceId": research.sentence_id(SENTENCES[1]),
         "snapshotId": deps.snapshot_id,
     }
     # A later publication that repeats the description reuses the summary.
@@ -360,3 +362,14 @@ def test_follow_up_reads_only_the_selected_company_description(tmp_path, lens, t
     outputs = [e["output"] for e in events(response.text) if e["type"] == "tool-output-available"]
     assert outputs[0]["data"]["sentences"] == SENTENCES
     assert outputs[0]["bound_arguments"] == {"ticker": "TEST", "snapshotId": deps.snapshot_id}
+
+
+def test_browser_finds_cited_sentences_as_the_tool_splits_them():
+    # The web test suite checks its own split and fingerprints against the same file.
+    fixture = (
+        Path(__file__).resolve().parents[3] / "apps/web/workspace/company-profile.fixture.json"
+    )
+    for case in json.loads(fixture.read_text()):
+        sentences = research.profile_sentences(" ".join(case["text"].split()))
+        assert sentences == case["sentences"]
+        assert [research.sentence_id(sentence) for sentence in sentences] == case["ids"]

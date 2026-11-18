@@ -493,9 +493,10 @@ it("withholds Broker links without an investing account and a decision identity"
   }
 });
 
-it("cites a restated company description as a disclosure on the security's overview", () => {
+it("cites the restated sentence of a company description on the security's overview", () => {
   const evidence = {tool:"company_profile", source:"disclosure" as const, evidenceId:"ev_profile",
-    arguments:{ticker:"TEST", lens:"overview", sentence:"1", snapshotId:"saved-run"}};
-  expect(evidenceHref(evidence)).toBe("/research?ticker=TEST&view=overview&evidence=company_profile");
+    arguments:{ticker:"TEST", lens:"overview", sentence:"1", sentenceId:"6e2b34b5", snapshotId:"saved-run"}};
+  expect(evidenceHref(evidence)).toBe(
+    "/research?ticker=TEST&sentence=1&sentenceId=6e2b34b5&snapshotId=saved-run&view=overview&evidence=company_profile");
   expect([sourceLabel(evidence, zh => zh), sourceLabel(evidence, (_zh, en) => en)]).toEqual(["披露", "Disclosure"]);
 });

@@ -163,6 +163,10 @@ export function evidenceHref(ref: Evidence): string | null {
     // Research links name the listing before the section.
     const ticker = decisionEvent ? a.listing : a.ticker;
     if (ticker) params.set("ticker", ticker);
+    // A restated company description cites one sentence of one publication.
+    if (ref.tool === "company_profile") {
+      for (const key of ["sentence", "sentenceId", "snapshotId"]) if (a[key]) params.set(key, a[key]);
+    }
     if (a.analystView) params.set("analystView",a.analystView);
     if (a.date && a.lens === "technical") { params.set("eventDate",a.date); params.set("priceRange","ALL"); params.set("interval","1d"); }
     if (a.event === "filing") params.set("notebook","filings");

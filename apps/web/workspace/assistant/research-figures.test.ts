@@ -33,6 +33,7 @@ describe("research follow-up citations", () => {
     if (field === "/data/change" || field.endsWith("/move_fraction")) expect(line.text).toContain("Split- and dividend-adjusted return");
     if (field === "/data/changes/0/change") for (const value of ["2026-01-31","2026-02-03","$1.00","$1.25"]) expect(line.text).toContain(value);
     expect(evidenceHref(line.evidence!)).toContain(href);
+    if (tool === "company_profile") expect(evidenceHref(line.evidence!)).toContain("sentence=1&sentenceId=6e2b34b5");
     if (tool === "price_key_moments") expect(line.text).toContain("limited coverage");
     if (tool === "research_headline") expect(line.evidence?.publisher).toBe("Example Wire");
   });

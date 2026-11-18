@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { backendFixture } from "../tests/loading/fixtures";
+import { sentenceId } from "../workspace/company-profile";
 
 const snapshot = "synthetic-loading", series = "a".repeat(20), day = "2026-01-22";
 const base = "/api/backend/research/SYNT";
@@ -545,6 +546,7 @@ const description = "Synthetic Issuer Inc. designs and sells synthetic widgets i
 const restated = [
   ["Synthetic Issuer Inc. 在 12 个市场设计并销售合成小部件。", "Synthetic Issuer Inc. designs and sells synthetic widgets in 12 markets.", "0"],
   ["公司还提供订阅服务 Widget Cloud。", "The company also offers Widget Cloud, a subscription service.", "1"],
+  ["公司成立于 1999 年，总部位于 Exampleton。", "It was founded in 1999 and is headquartered in Exampleton.", "2"],
 ];
 const profile = async (page: Page, ready = true) => {
   const reads = await fixtures(page, ready);
@@ -558,7 +560,7 @@ const profile = async (page: Page, ready = true) => {
     return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result", reading:{
       role:"company-summary", snapshotId:snapshot, version:"synthetic-profile", asOf:"2026-01-30T20:00:00Z",
       lines:restated.map(([zh, en, sentence]) => ({zh, en, evidence:{source:"disclosure", tool:"company_profile", evidenceId:"ev_profile",
-        arguments:{ticker:"SYNT", lens:"overview", sentence, snapshotId:snapshot}}})),
+        arguments:{ticker:"SYNT", lens:"overview", sentence, sentenceId:sentenceId(en), snapshotId:snapshot}}})),
     }}) + "\n"});
   });
   return {reads, summaries};
@@ -582,11 +584,12 @@ for (const theme of ["light", "dark"] as const) {
     }
     await trigger.click();
     const reading = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading");
-    await expect(reading.locator(".mx-reading-line")).toHaveCount(2);
+    await expect(reading.locator(".mx-reading-line")).toHaveCount(3);
     await expect(reading.locator(".mx-reading-line").first()).toContainText("在 12 个市场设计并销售");
     const sources = reading.locator(".mx-reading-source");
-    await expect(sources).toHaveText(["披露", "披露"]);
-    await expect(sources.first()).toHaveAttribute("href", "/research?ticker=SYNT&view=overview&evidence=company_profile");
+    await expect(sources).toHaveText(["披露", "披露", "披露"]);
+    await expect(sources.first()).toHaveAttribute("href",
+      "/research?ticker=SYNT&sentence=0&sentenceId=cfac2b85&snapshotId=synthetic-loading&view=overview&evidence=company_profile");
     await expect(reading.getByRole("button", {name:"主要产品和服务有哪些？"})).toBeVisible();
     expect(summaries).toEqual([{context:{ticker:"SYNT"}, snapshotId:snapshot}]);
     expect((await new AxeBuilder({page}).include(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading").analyze()).violations).toEqual([]);
@@ -599,14 +602,63 @@ for (const theme of ["light", "dark"] as const) {
     } else {
       await trigger.click();
       await expect(reading).toHaveCount(0);
-      await trigger.click();
-      // The source word returns to the English description it restates.
-      await sources.first().click();
-      await expect(english).toHaveAttribute("data-assistant-evidence", "");
     }
     expect(reads).toEqual([]);
   });
+
+  test(`a citation opens the description at its sentence and takes focus, ${theme}`, async ({page, isMobile}, info) => {
+    if (isMobile) await page.setViewportSize({width:390, height:844});
+    await page.emulateMedia({colorScheme:theme, reducedMotion:"reduce"});
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+    await profile(page);
+    await page.goto("/research?ticker=SYNT");
+    // The two-sentence excerpt does not contain the third sentence.
+    await expect(page.locator(".mx-business-excerpt")).not.toContainText("Exampleton");
+    await page.getByRole("button", {name:"✦ 中文摘要"}).click();
+    const reading = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading");
+    await reading.locator(".mx-reading-source").nth(2).click();
+    await expect(page).toHaveURL(/sentence=2&sentenceId=919014b5&snapshotId=synthetic-loading&view=overview&evidence=company_profile/);
+    const sentence = page.locator('[data-profile-sentence="2"]');
+    await expect(sentence).toHaveText("It was founded in 1999 and is headquartered in Exampleton.");
+    await expect(sentence).toBeFocused();
+    await expect(sentence).toHaveAttribute("data-assistant-evidence", "");
+    await expect(sentence).toBeInViewport();
+    await expect(page.locator(".mx-business-description")).toContainText("12 markets");
+    if (isMobile) {
+      // Following the citation leaves the sheet, its backdrop and its focus trap.
+      await expect(page.locator(".mx-reading-sheet")).toHaveCount(0);
+      await expect(page.locator(".mantine-Drawer-overlay")).toHaveCount(0);
+    }
+    expect((await new AxeBuilder({page}).include(".mx-overview-bento").analyze()).violations).toEqual([]);
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, [info.project.name, "zh", theme, "company-summary-citation"].join("-") + ".png")});
+  });
 }
+
+test("a citation whose sentence has left the description says so in place", async ({page, isMobile}, info) => {
+  if (isMobile) await page.setViewportSize({width:390, height:844});
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+  await profile(page);
+  await page.goto("/research?" + new URLSearchParams({ticker:"SYNT", sentence:"2", sentenceId:"00000000", snapshotId:snapshot,
+    view:"overview", evidence:"company_profile"}));
+  const note = page.getByRole("status").filter({hasText:"引用的句子已不在当前公司介绍中。"});
+  await expect(note).toBeVisible();
+  await expect(note).toBeFocused();
+  await expect(page.locator(".mx-business-excerpt")).toBeVisible();
+  await expect(page.locator("[data-profile-sentence]")).toHaveCount(0);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-zh-light-citation-missing.png")});
+});
+
+test("a citation without a sentence fingerprint opens and outlines the whole description", async ({page, isMobile}) => {
+  if (isMobile) await page.setViewportSize({width:390, height:844});
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+  await profile(page);
+  await page.goto("/research?" + new URLSearchParams({ticker:"SYNT", sentence:"1", snapshotId:snapshot, view:"overview", evidence:"company_profile"}));
+  const whole = page.locator(".mx-business-description");
+  await expect(whole).toContainText("headquartered in Exampleton");
+  await expect(whole).toBeFocused();
+  await expect(whole).toHaveAttribute("data-assistant-evidence", "");
+  await expect(whole).toHaveCSS("outline-style", "solid");
+});
 
 test("the overview offers no summary in English", async ({page}, info) => {
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));

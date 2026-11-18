@@ -409,6 +409,7 @@ def profile_facts(read: RoleTools, context: SecurityContext) -> list[ReadingLine
             ticker=ticker,
             lens="overview",
             sentence=str(index),
+            sentenceId=research.sentence_id(sentence),
         )
         for index, sentence in enumerate(data.get("sentences", []))
     ]

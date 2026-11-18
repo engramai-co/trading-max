@@ -69,6 +69,14 @@ def profile_sentences(text: str) -> list[str]:
     return [sentence for sentence in sentences if sentence]
 
 
+def sentence_id(sentence: str) -> str:
+    """A short fingerprint (32-bit FNV-1a of UTF-8) that lets a citation find its sentence."""
+    value = 0x811C9DC5
+    for byte in sentence.encode():
+        value = ((value ^ byte) * 0x01000193) & 0xFFFFFFFF
+    return f"{value:08x}"
+
+
 def company_profile(ctx: Context, args: SecurityArgs) -> dict:
     """Read the selected company's English business description, numbered sentence by sentence."""
     read = _Read(ctx.deps, "company_profile", args, "public_research")

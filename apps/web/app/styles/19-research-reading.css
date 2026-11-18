@@ -418,3 +418,25 @@
     min-height: 44px;
   }
 }
+/* A cited sentence of the company description stays tinted while it has focus. */
+.mx-profile-sentence {
+  scroll-margin-top: 70px;
+  border-radius: 2px;
+}
+.mx-profile-sentence:focus,
+.mx-profile-sentence[data-assistant-evidence] {
+  outline: none;
+  background: var(--mx-brand-soft);
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+/* A citation without a sentence fingerprint names the whole description. */
+.mx-business-description[data-assistant-evidence] {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 3px;
+}
+.mx-citation-missing {
+  margin: 0 0 8px;
+  color: var(--mx-muted);
+  font-size: 13px;
+}

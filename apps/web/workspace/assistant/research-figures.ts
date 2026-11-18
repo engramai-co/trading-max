@@ -1,6 +1,7 @@
 import type { Locale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
+import { sentenceId } from "../company-profile";
 import { calendarObservation } from "./figures";
 import type { Evidence } from "./evidence";
 
@@ -49,7 +50,7 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     // A sentence of the company's own English description, quoted as written.
     const match = /^\/data\/sentences\/(0|[1-9]\d?)$/.exec(path);
     const sentence = match && Array.isArray(data.sentences) ? str(data.sentences[Number(match[1])]) : "";
-    return sentence ? figure([sentence], "disclosure", {lens:"overview", sentence:match![1]}) : null;
+    return sentence ? figure([sentence], "disclosure", {lens:"overview", sentence:match![1], sentenceId:sentenceId(sentence)}) : null;
   }
 
   function priceEvent(event: Json) {
