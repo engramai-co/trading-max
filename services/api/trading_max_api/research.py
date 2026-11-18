@@ -2475,9 +2475,18 @@ class ResearchLedger:
     ) -> ResearchPriceSeries:
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
+        ticker = ticker.strip().upper()
+        requested_venue = listing_calendar(ticker, exchanges.get(ticker), None)
         listing = self.held_fund(ticker, manifest, exchanges)
-        ticker = listing.ticker if listing else self._route_ticker(ticker, exchanges)
-        return self.published_price_series(ticker, manifest, limit=limit)
+        resolved = listing.ticker if listing else self._route_ticker(ticker, exchanges)
+        series = self.published_price_series(resolved, manifest, limit=limit)
+        published = series.published_bar_ticker
+        published_venue = series.exchange_calendar or listing_calendar(
+            published, exchanges.get(published or ""), None
+        )
+        if requested_venue and published_venue and requested_venue != published_venue:
+            raise FileNotFoundError(f"published bars belong to another venue for {ticker}")
+        return series
 
     def _published_technicals(self, manifest: SnapshotManifest) -> JsonObject:
         key = "research/technical.json"
@@ -2584,6 +2593,7 @@ class ResearchLedger:
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
             timezone=source.get("timezone") or None,
+            published_bar_exchange=str(source.get("exchange") or "").strip() or None,
             exchange_calendar=listing_calendar(
                 bar_ticker, source.get("exchange"), source.get("timezone")
             ),

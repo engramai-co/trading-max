@@ -146,7 +146,15 @@ aliases at the start and reads prices and events from its pinned snapshot.
 Events must match the listing on the published bar row. Timed headlines use the
 first session whose regular close is at or after publication, including early
 closes and holidays. A missing exchange calendar withholds the timed headline.
+A venue code or qualified listing identifies the calendar. Frankfurt shares and
+funds use the 22:00 local close (20:00 on traded public holidays), with the
+exchange's shorter year-end session. Xetra uses its regular 17:30 close.
+[Deutsche Börse trading hours](https://cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours)
+and the [2021 Frankfurt hours change](https://www.cashmarket.deutsche-boerse.com/cash-en/Stay-Informed/circulars-newsletters/deutsche-boerse-circulars/Amendments-to-the-Rules-and-Regulations-of-the-Frankfurter-Wertpapierb-rse-and-further-decisions-of-the-FWB-Management-Board-2841560)
+give the session boundaries.
 Date-only headlines and dividend dates keep the date supplied by their source.
+A distribution recorded in the listing's bars counts once with calendar or
+historical dividend evidence for that ex-date.
 News carries the role `lead` and retains `publication_date` when the session
 date differs from the publisher's date. The chart resolves each
 broker fill by its recorded instrument code. A bare CSV ticker or an older

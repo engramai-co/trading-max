@@ -522,6 +522,7 @@ def dated_events(
         _mapped(listing_row(EARNINGS).get("calendar")),
         _mapped(listing_row(FUNDAMENTALS).get("metrics")),
         filing_evidence,
+        series=series,
     )
     keys.extend(extra_keys)
     issues.extend(extra_issues)

@@ -503,12 +503,16 @@ def test_moment_reports_subsequent_sessions_outside_selected_window(tmp_path):
     assert [r["return_fraction"] for r in trajectory] == pytest.approx([33 / 34 - 1, 30 / 34 - 1])
 
 
-@pytest.mark.parametrize("zone", ["America/New_York", None])
-def test_published_technical_zone_determines_timed_headline_coverage(tmp_path, zone):
+@pytest.mark.parametrize(
+    ("zone", "venue"), [("America/New_York", "NYQ"), ("America/New_York", None), (None, None)]
+)
+def test_published_technical_zone_and_venue_determine_timed_headline_coverage(
+    tmp_path, zone, venue
+):
     _, _, factory, _, _ = setup(tmp_path)
     deps = factory.for_run()
     batch = deps.store.read_json(deps.snapshot_id, tools.TECHNICAL)
-    batch["rows"][0]["timezone"] = zone
+    batch["rows"][0].update(timezone=zone, exchange=venue)
     story = {**STORY, "date": "2026-01-31", "instant": "2026-01-31T01:00:00Z"}
     publication(
         factory.store,
@@ -528,8 +532,8 @@ def test_published_technical_zone_determines_timed_headline_coverage(tmp_path, z
         published_series_id=series.published_series_id,
     )
     result = insights.moments_data(deps, args)
-    if zone:
-        assert series.timezone == zone
+    assert series.timezone == zone
+    if venue:
         assert any(
             e["kind"] == "news" and e["date"] == DATES[3]
             for m in result["data"]["items"]

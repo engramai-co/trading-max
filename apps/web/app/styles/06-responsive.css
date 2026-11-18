@@ -415,8 +415,8 @@
     transition-property: opacity, color, background-color, border-color, outline-color, box-shadow,
       fill, stroke !important;
   }
-  .mx-tabs ~ *,
-  .mx-toolbar:has(> .mx-tabs) ~ *,
+  :where(:not(.mx-settings-page)) > .mx-tabs ~ *,
+  :where(:not(.mx-settings-page)) > .mx-toolbar:has(> .mx-tabs) ~ *,
   .mx-number-value[data-changed] {
     animation-name: mx-fade !important;
     animation-duration: 160ms !important;

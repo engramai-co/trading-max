@@ -837,6 +837,7 @@ class ResearchPriceSeries(ApiModel):
     snapshot_id: str | None = None
     # The route ticker can be an alias. Event readers join the actual published bar row.
     published_bar_ticker: str | None = Field(default=None, exclude=True)
+    published_bar_exchange: str | None = Field(default=None, exclude=True)
     # None means the publication supplied no marker rows. Dates keep quality scoped to the window.
     unresolved_trade_accounts: dict[str, set[str]] | None = Field(default=None, exclude=True)
     published_series_id: str | None = None
