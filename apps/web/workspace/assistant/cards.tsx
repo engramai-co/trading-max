@@ -4,11 +4,11 @@ import "./readings.css";
 import { Drawer } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useRef, useState, type ReactNode } from "react";
 import { useCopy } from "../foundation";
 import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
-import { evidenceHref, sourceWords, type Evidence } from "./evidence";
+import { evidenceHref, sourceWords, type Evidence, type Reading } from "./evidence";
 
 export function EvidenceLink({ evidence }: { evidence: Evidence }) {
   const t = useCopy();
@@ -18,9 +18,9 @@ export function EvidenceLink({ evidence }: { evidence: Evidence }) {
   const href = evidenceHref(evidence);
   return href ? <Link className="mx-reading-source" href={href} onClick={() => { if (window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
-export function ReadingLines({ card }: { card: RoleCard }) {
+export function ReadingLines({ card, lines = card.reading?.lines }: { card: RoleCard; lines?: Reading["lines"] }) {
   const t = useCopy();
-  return card.reading?.lines.map((line, i) => <p className="mx-reading-line" key={i}>
+  return lines?.map((line, i) => <p className="mx-reading-line" key={i}>
     {t(line.zh, line.en)}{" "}<EvidenceLink evidence={line.evidence} />
   </p>);
 }
@@ -44,8 +44,14 @@ function ReadingContent({ card, children }: ReadingContainerProps) {
 }
 function ReadingSheet({ card, children, onClose }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
-  return <Drawer opened onClose={onClose} position="bottom" size="auto" title={card.title + " · " + card.object}
-    returnFocus attributes={{header:{role:"presentation"}}} closeButtonProps={{"aria-label":t("关闭解读", "Close reading")}}
+  const trigger = useRef(document.activeElement);
+  function dismiss() {
+    onClose();
+    const element = trigger.current;
+    if (element instanceof HTMLElement) requestAnimationFrame(() => element.focus({preventScroll:true}));
+  }
+  return <Drawer opened onClose={dismiss} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title} · {card.object}</span>}
+    returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{"aria-label":t("关闭解读", "Close reading")}}
     classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>
     {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
   </Drawer>;
