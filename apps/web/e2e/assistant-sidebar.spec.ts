@@ -1,3 +1,4 @@
+import historicalDividend from "../tests/fixtures/historical-dividend.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
@@ -684,3 +685,34 @@ for (const outcome of ["draft", "history button", "reopened draft", "changed set
     }
   });
 }
+
+test("a historical dividend in chat reopens its published amount and basis", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  const row = historicalDividend.data.items[0];
+  const chunks = [{type:"start",messageId:"dividend"},{type:"start-step"},
+    {type:"tool-input-available",toolCallId:"d",toolName:"news_and_events",input:{args:{scope:"invest",ticker:row.ticker,start:row.date,end:row.date}}},
+    {type:"tool-output-available",toolCallId:"d",output:historicalDividend},
+    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:`{{/data/items/0/amount}} [${historicalDividend.evidence_id}]\n{{insufficient-evidence}} [inference]`},
+    {type:"text-end",id:"t"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
+    headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+    body:chunks.map(c => "data: " + JSON.stringify(c) + "\n\n").join("") + "data: [DONE]\n\n",
+  }));
+  await page.route("**/api/backend/publications/**/events/upcoming?**", route => {
+    const url = new URL(route.request().url());
+    expect(url.pathname).toContain("/publications/" + historicalDividend.snapshot_id + "/");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ticker:row.ticker,kind:"dividend",eventId:row.evidence_id});
+    return route.fulfill({json:row});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.locator(".mx-assistant-questions button").first().click();
+  const disclosure = page.locator(".mx-turn-assistant").getByRole("link", {name:"Disclosure"});
+  await disclosure.click({timeout:3000});
+  const target = page.locator("[data-reading-event]");
+  await expect(target).toContainText("USD 0.375 per share");
+  await expect(target).toContainText("Provider-adjusted per share");
+  await expect(target).toContainText(row.date);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
+});

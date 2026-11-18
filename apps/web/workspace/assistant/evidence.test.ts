@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
 import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText } from "./evidence";
 import type { UIMessage } from "ai";
@@ -67,10 +68,11 @@ describe("financial claims and their cited tool output", () => {
 });
 
 function fieldReply(toolName: string, output: Record<string, unknown>, pointer: string): UIMessage {
+  const id = output.evidence_id ?? "ev_local";
   return {id:"answer",role:"assistant",parts:[
     {type:"dynamic-tool",toolName,toolCallId:"tool",state:"output-available",input:{},
       output:{status:"ok",evidence_id:"ev_local", ...output}},
-    {type:"text",text:`{{${pointer}}} [ev_local]\n{{insufficient-evidence}} [inference]`},
+    {type:"text",text:`{{${pointer}}} [${id}]\n{{insufficient-evidence}} [inference]`},
   ]};
 }
 it("keeps a row's subject and native unit and uses only its selected evidence", () => {
@@ -211,7 +213,7 @@ it.each([
 });
 
 it.each([
-  ["ex_dividend", "exDividend"], ["dividend_pay", "dividend_pay"], ["dividend", "dividend"],
+  ["ex_dividend", "exDividend"], ["dividend_pay", "dividend_pay"],
 ])("opens the exact retained %s disclosure", (kind, event) => {
   const row = {kind, ticker:"SYNT", evidence_id:"ev_published", date:"2026-02-05",
     title_en:"Dividend disclosure", source_url:"https://example.org/current-quote"};
@@ -222,4 +224,20 @@ it.each([
   expect(Object.fromEntries(url.searchParams)).toMatchObject({
     event, evidence:"read_research_lens", snapshotId:"saved", calendarEventId:"ev_published", ticker:"SYNT",
   });
+});
+
+it("renders the published amount and retained disclosure from news_and_events", () => {
+  const row = historicalDividend.data.items[0];
+  for (const field of ["date", "amount", "basis"]) {
+    const pointer = "/data/items/0/" + field;
+    const message = fieldReply("news_and_events", historicalDividend, pointer);
+    const [line] = verifiedLines(message);
+    expect(line?.text).toContain("SYNT · Dividend · 2026-01-06");
+    if (field === "amount") expect(line.text).toContain("USD 0.375 per share");
+    if (field === "basis") expect(line.text).toContain("Provider-adjusted per share");
+    expect(line.evidence?.source).toBe("disclosure");
+    expect(Object.fromEntries(new URL(evidenceHref(line.evidence!)!, "http://localhost").searchParams)).toMatchObject({
+      event:"dividend", ticker:row.ticker, snapshotId:historicalDividend.snapshot_id, calendarEventId:row.evidence_id,
+    });
+  }
 });

@@ -83,7 +83,8 @@ unit, scope, dates and coverage. Prefer a relevant field over a general status.
 Supported fields include GBP amounts, fractions (including /data/twr/fraction), counts,
 position quantity and unit price, benchmark rows, decision amounts, dated events,
 freshness states and available valuation evidence values. For a calendar event select
-items/N/date, items/N/end_date or items/N/status from its row. For a research lens, select
+items/N/date, items/N/end_date or items/N/status from its row. For a historical dividend in news_and_events,
+select its items/N/amount for the published payment per share, or items/N/basis. For a research lens, select
 items/N/value for a typed price (with currency), technical score, expiry count,
 as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
 To offer a qualitative interpretation choose a suitable reference from this list:
