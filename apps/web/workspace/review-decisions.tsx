@@ -803,8 +803,8 @@ export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; d
       <Help label={t("对照时点", "Compare at")}>
         <p>
           {t(
-            "每笔买卖都和“不做这笔交易”比，按期间的价格变动加上分红计算：买入后上涨记为赚，下跌记为亏；卖出后上涨记为少赚，下跌记为少亏。",
-            "Each buy or sell is compared with not making that trade, counting the price move plus any dividends in the window: after a buy, a rise is a gain and a fall a loss; after a sell, a rise is a gain given up and a fall a loss avoided.",
+            "每笔买卖都和“不做这笔交易”比，看窗口内按英镑计、含分红的总回报：买入后总回报为正记为赚，为负记为亏；卖出后总回报为正记为少赚，为负记为少亏。",
+            "Each buy or sell is compared with not making that trade, by its total return in GBP over the window, dividends included: after a buy, a positive return is a gain and a negative one a loss; after a sell, a positive return is a gain given up and a negative one a loss avoided.",
           )}
         </p>
         <p>
@@ -814,8 +814,8 @@ export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; d
         </p>
         <p>
           {locale === "zh"
-            ? `不满 ${days} 个交易日的决定不计入成绩，在时间轴上是零线上的空心点；选“至今”时，只有之后还没有收盘的决定如此。“最近”里的金额不随切换变化，总是按至今计算。`
-            : `Decisions younger than ${days} trading days are not scored and show as hollow points on the timeline’s zero line; under “To date”, only decisions with no close after them yet do. Amounts under “Recently” do not follow the switch: they are always to date.`}
+            ? `结果还不可得的决定不计入成绩，在时间轴上是零线上的空心点：还不满 ${days} 个交易日（“至今”则是之后还没有收盘），或还在等待价格、汇率或分红的最终值。“最近”里的金额不随切换变化，总是按至今计算。`
+            : `A decision whose result is not available yet is not scored and sits as a hollow point on the timeline’s zero line: one younger than ${days} trading days (for “To date”, one with no close after it yet), or one still waiting for the final value of a price, exchange rate or dividend. Amounts under “Recently” do not follow the switch: they are always to date.`}
         </p>
       </Help>
     </span>
