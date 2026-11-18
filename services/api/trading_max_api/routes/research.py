@@ -17,11 +17,12 @@ from trading_max.infrastructure.alpaca_market_prices import is_alpaca_listing
 from trading_max.reference.fund_benchmarks import US_FUND_ISINS, london_fund_benchmark
 from trading_max.research.calendar import calendar_name
 from trading_max.research.estimate_history import MAX_HISTORY_ROWS, EstimateObservation
-from trading_max.research.facts import fingerprint, number
+from trading_max.research.facts import number
 from trading_max.research.fund_references import us_fund
+from trading_max.research.fundamentals import _sector_profile
+from trading_max.research.statement_valuation import freeze_basis, scenario_defaults
+from trading_max.research.valuation_basis import EXCLUDED_ASSETS, Family, classify
 from trading_max.research.valuation_preview import (
-    AssumptionReference,
-    FrozenValuationBasis,
     ScenarioInputs,
     ValuationPreview,
     ValuationPreviewRequest,
@@ -55,7 +56,12 @@ from ..models import (
     WatchlistState,
 )
 from ..research_funds import FundResearch, benchmark_fields, fund_research_from_snapshot
-from ..research_journal import ResearchJournal, ResearchModelSaveRequest, ResearchNoteInput
+from ..research_journal import (
+    BaselineSelection,
+    ResearchJournal,
+    ResearchModelSaveRequest,
+    ResearchNoteInput,
+)
 from ..research_public import public_lens
 from ..watchlist import SecuritySearchError
 from .dependencies import app_service, latest_or_503, require_write_auth
@@ -64,7 +70,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 def _valuation_preview(
-    ticker: str, request: Request, inputs: ValuationPreviewRequest | None = None
+    ticker: str,
+    request: Request,
+    inputs: ValuationPreviewRequest | None = None,
+    requested_family: Family | None = None,
 ) -> ValuationPreview:
     default_source = "user-input"
     research = app_service(request, "research")
@@ -73,31 +82,16 @@ def _valuation_preview(
     facts, context = lens.financial_facts, lens.context
     if not facts or not context or not lens.valuation:
         raise HTTPException(status_code=422, detail="valuation-inputs-unavailable")
-    if context.asset_type in {"ETF", "MUTUALFUND"} or any(
-        c.reason == "financial-company-requires-equity-model" for c in context.capabilities
-    ):
-        raise HTTPException(status_code=422, detail="cashflow-model-not-applicable")
-    observations = {o.metric: o for o in facts.observations if o.period_id == facts.latest_ttm}
-    revenue, fcf = observations.get("revenue"), observations.get("freeCashflow")
+    if context.asset_type in EXCLUDED_ASSETS:
+        raise HTTPException(status_code=422, detail="company-model-not-applicable")
     stored = lens.valuation.assumptions
-    shares = number(stored.get("sharesOutstanding"))
     quote = context.quote
-    if (
-        not quote.currency
-        or not facts.currency
-        or not quote.price
-        or not revenue
-        or not revenue.value
-        or not fcf
-        or fcf.value is None
-        or not shares
-    ):
-        raise HTTPException(
-            status_code=422, detail="complete-ttm-currency-and-share-count-required"
-        )
-    fx = 1 if facts.currency == quote.currency else number(stored.get("fxRate"))
-    if not fx or fx <= 0:
-        raise HTTPException(status_code=422, detail="currency-conversion-unavailable")
+    saved = app_service(request, "research_journal").load(ticker).models if inputs is None else []
+    latest = saved[0].preview if saved and requested_family is None else None
+    auto = stored.get("family") or classify(ticker, "", {})[0]
+    family = (inputs.family if inputs else requested_family) or (
+        latest.basis.family if latest else auto
+    )
     # The data version stays tied to the research quote so a broker refresh
     # never invalidates an edit in progress.
     held = research.held_position(ticker, manifest)
@@ -109,112 +103,88 @@ def _valuation_preview(
         and held["listing"] == quote.listing
         and held["currency"] == quote.currency
     )
-    basis = FrozenValuationBasis(
-        ticker=ticker,
-        quote_id=quote.id,
-        data_version=fingerprint([facts.version, quote.id]),
-        currency=quote.currency,
-        spot=held["price"] if broker_spot else quote.price,
-        spot_source="broker" if broker_spot else "quote",
-        spot_as_of=held["asOf"] if broker_spot else quote.as_of,
-        revenue=revenue.value * fx,
-        shares=shares,
-        start_margin=fcf.value / revenue.value,
-        evidence=[*revenue.evidence, *fcf.evidence],
-    )
-    if inputs is None:
-        default_source = (
-            "sector-template"
-            if stored.get("assumptionSource") == "sector-template"
-            else "configured-scenarios"
+    try:
+        basis = freeze_basis(
+            facts,
+            family,
+            ticker=ticker,
+            spot=held["price"] if broker_spot else quote.price,
+            currency=quote.currency,
+            shares=number(stored.get("sharesOutstanding")),
+            fx=number(stored.get("fxRate"))
+            if lens.valuation.currency == quote.currency
+            and stored.get("financialFactsVersion") in {None, facts.version}
+            else None,
+            quote_id=quote.id,
+            listing=quote.listing,
+            name=stored.get("issuerName") or "",
+            is_adr=bool(stored.get("isAdr")),
         )
-        references = []
-        try:
-            scenarios = {
-                key: ScenarioInputs.model_validate(
-                    value.model_dump(
-                        exclude_none=True,
-                        include={
-                            "revenue_cagr",
-                            "target_fcf_margin",
-                            "discount_rate",
-                            "exit_fcf_multiple",
-                            "share_cagr",
-                        },
-                    )
+        basis.spot_source = "broker" if broker_spot else "quote"
+        basis.spot_as_of = held["asOf"] if broker_spot else quote.as_of
+        if inputs is None:
+            if latest and latest.scenarios:
+                inputs = ValuationPreviewRequest(
+                    scenarios={k: v.inputs for k, v in latest.scenarios.items()},
+                    family=family,
+                    horizon=latest.horizon,
+                    references=latest.references,
+                    formula_version=latest.formula_version,
                 )
-                for key, value in lens.valuation.scenarios.items()
-            }
-        except ValueError as exc:
-            raise HTTPException(
-                status_code=422, detail="complete-scenario-assumptions-required"
-            ) from exc
-        if stored.get("assumptionSource") == "sector-template":
-            annual = sorted(
-                (p for p in facts.periods if p.kind == "annual"), key=lambda p: p.provider_end
-            )[-4:]
-            revenues = {
-                o.period_id: o
-                for o in facts.observations
-                if o.metric == "revenue" and o.value is not None and o.value > 0
-            }
-            annual = [p for p in annual if p.id in revenues]
-            if len(annual) < 2:
-                raise HTTPException(status_code=422, detail="explicit-growth-assumption-required")
-            from datetime import date
-
-            duration = (
-                date.fromisoformat(annual[-1].provider_end)
-                - date.fromisoformat(annual[0].provider_end)
-            ).days / 365.25
-            first, last = revenues[annual[0].id], revenues[annual[-1].id]
-            growth = (last.value / first.value) ** (1 / duration) - 1
-            for key, delta in (("bear", -0.05), ("base", 0), ("bull", 0.05)):
-                if key in scenarios:
-                    scenarios[key] = scenarios[key].model_copy(
-                        update={"revenue_cagr": max(-0.3, min(0.8, growth + delta))}
-                    )
-                    references.append(
-                        AssumptionReference(
-                            scenario=key,
-                            period=f"{annual[0].label} → {annual[-1].label}",
-                            as_of=annual[-1].actual_end or annual[-1].provider_end,
-                            value=scenarios[key].revenue_cagr,
-                            reference_value=growth,
-                            adjustment=scenarios[key].revenue_cagr - growth,
-                            source="historical-revenue-cagr",
-                            evidence=[*first.evidence, *last.evidence],
+                default_source = "saved-model"
+            else:
+                profile, _ = _sector_profile(str(stored.get("profile") or ""), "")
+                cost = number(stored.get("discountRate")) or profile.discount
+                scenarios, references = scenario_defaults(basis, facts, profile, cost)
+                same_family = family == auto
+                if same_family and lens.valuation.scenarios:
+                    scenarios = {
+                        key: ScenarioInputs.model_validate(
+                            {
+                                **scenarios[key].model_dump(by_alias=False),
+                                **value.model_dump(
+                                    by_alias=False,
+                                    exclude_none=True,
+                                    include=set(ScenarioInputs.model_fields),
+                                ),
+                            }
                         )
-                    )
-        configured = app_service(request, "valuation_assumptions").load()
-        company = next(
-            (c for c in configured.companies if c.ticker.upper() == ticker.upper()), None
-        )
-        if company and company.source == "manual":
-            default_source = "configured-scenarios"
-            references = []
-            for key, value in company.scenarios.items():
-                if key in scenarios:
-                    scenarios[key] = ScenarioInputs.model_validate(
-                        {
-                            **scenarios[key].model_dump(),
-                            **value.model_dump(
-                                exclude_none=True, include=set(ScenarioInputs.model_fields)
-                            ),
-                        }
-                    )
-        saved = app_service(request, "research_journal").load(ticker).models
-        if saved:
-            default_source = "saved-model"
-        inputs = (
-            ValuationPreviewRequest(
-                scenarios={k: v.inputs for k, v in saved[0].preview.scenarios.items()},
-                horizon=saved[0].preview.horizon,
-                references=saved[0].preview.references,
-            )
-            if saved
-            else ValuationPreviewRequest(scenarios=scenarios, references=references)
-        )
+                        for key, value in lens.valuation.scenarios.items()
+                        if key in scenarios
+                    }
+                default_source = (
+                    "sector-template"
+                    if not same_family or stored.get("assumptionSource") == "sector-template"
+                    else "configured-scenarios"
+                )
+                company = next(
+                    (
+                        c
+                        for c in app_service(request, "valuation_assumptions").load().companies
+                        if c.ticker.upper() == ticker.upper() and c.source == "manual"
+                    ),
+                    None,
+                )
+                if company and company.family == family:
+                    default_source = "configured-scenarios"
+                    for key, value in company.scenarios.items():
+                        if key in scenarios:
+                            scenarios[key] = ScenarioInputs.model_validate(
+                                {
+                                    **scenarios[key].model_dump(by_alias=False),
+                                    **value.model_dump(by_alias=False, exclude_none=True),
+                                }
+                            )
+                if default_source != "sector-template":
+                    references = []
+                for ref in references:
+                    ref.value = scenarios[ref.scenario].revenue_cagr
+                    ref.adjustment = ref.value - ref.reference_value
+                inputs = ValuationPreviewRequest(
+                    scenarios=scenarios, family=family, references=references
+                )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         result = preview(basis, inputs)
         result.default_source = default_source
@@ -229,8 +199,10 @@ router = APIRouter(tags=["research"])
 
 
 @router.get("/v1/research/{ticker}/valuation-preview", response_model=ValuationPreview)
-def valuation_preview_defaults(ticker: str, request: Request) -> ValuationPreview:
-    return _valuation_preview(ticker, request)
+def valuation_preview_defaults(
+    ticker: str, request: Request, family: Family | None = None
+) -> ValuationPreview:
+    return _valuation_preview(ticker, request, requested_family=family)
 
 
 @router.post("/v1/research/{ticker}/valuation-preview", response_model=ValuationPreview)
@@ -285,7 +257,23 @@ def research_model_save(
 ) -> ResearchJournal:
     inputs = ValuationPreviewRequest.model_validate(body.model_dump(exclude={"reason"}))
     result = _valuation_preview(ticker, request, inputs)
+    if not result.scenarios:
+        raise HTTPException(status_code=422, detail="no-valuation-range-to-save")
     return app_service(request, "research_journal").save_model(result, body.reason)
+
+
+@router.put(
+    "/v1/research/{ticker}/models/baseline",
+    response_model=ResearchJournal,
+    dependencies=[Depends(require_write_auth)],
+)
+def research_model_baseline(
+    ticker: str, body: BaselineSelection, request: Request
+) -> ResearchJournal:
+    try:
+        return app_service(request, "research_journal").set_baseline(ticker, body.model_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="research-model-not-found") from exc
 
 
 @router.get("/v1/research", response_model=ResearchOverview)

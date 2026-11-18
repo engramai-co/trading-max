@@ -17,7 +17,13 @@ from trading_max.research.facts import (
     make_quote,
     number,
 )
-from trading_max.research.fundamentals import _sector_profile
+from trading_max.research.valuation_basis import (
+    EXCLUDED_ASSETS,
+    classify,
+    listing_shares,
+    period_choice,
+    statement_basis,
+)
 from trading_max.research.valuation_evidence import (
     EvidenceBinding,
     EvidenceGroup,
@@ -153,6 +159,8 @@ def _read_row(
         row = {
             "currency": row.get("currency"),
             "assumptions": {
+                "family": stored.get("family"),
+                "isAdr": stored.get("isAdr"),
                 "sharesOutstanding": stored.get("sharesOutstanding"),
                 "fxRate": stored.get("fxRate"),
                 "financialFactsVersion": stored.get("financialFactsVersion"),
@@ -269,9 +277,9 @@ def _statement(
         )
     value = obs.value if obs and obs.state == "available" else None
     if group == EvidenceGroup.BASIS:
-        if metric == Metric.REVENUE:
-            value = _positive(value)
-        if currency is None or (obs and obs.currency != currency):
+        if metric == Metric.REVENUE and value is not None and value < 0:
+            value = None
+        if metric != Metric.SHARES and (currency is None or (obs and obs.currency != currency)):
             value = None
     capture.add(
         group,
@@ -462,24 +470,13 @@ def freeze_valuation_evidence(
     if quote.listing is None:
         return FrozenValuationEvidence(binding=binding, eligibility="unknown", rows=())
     quote_type = str(metrics.get("quoteType", "")).upper()
-    if quote_type in {"ETF", "MUTUALFUND"}:
-        eligibility = "fund"
-    elif quote_type != "EQUITY":
-        eligibility = "unknown"
-    else:
-        industry = str(data.get("industry") or metrics.get("industry") or "")
-        sector = str(data.get("sector") or metrics.get("sector") or "")
-        profile, _ = _sector_profile(sector, industry)
-        eligibility = (
-            "financial"
-            if (
-                profile.method == "analyst"
-                or "financial" in sector.lower()
-                or any(word in industry.lower() for word in ("banks", "banking", "insurance"))
-            )
-            else "equity"
-        )
-
+    eligibility = (
+        "fund"
+        if quote_type in EXCLUDED_ASSETS
+        else "equity"
+        if quote_type == "EQUITY"
+        else "unknown"
+    )
     financials = _read_row(
         snapshots, manifest, binding, "research/financials.json", _financials_rows
     )
@@ -487,19 +484,48 @@ def freeze_valuation_evidence(
     facts = build_financial_facts(raw, metrics, period_evidence=raw.get("periodEvidence"))
     periods = {p.id: p for p in facts.periods}
     values = {(o.period_id, o.metric): o for o in facts.observations}
-    ttm = periods.get(facts.latest_ttm)
     report, quoted = _currency(facts.currency), _currency(quote.currency)
-    for metric in (Metric.REVENUE, Metric.FREE_CASHFLOW):
+    valuation = _read_row(
+        snapshots, manifest, binding, "research/valuation.json", _fundamentals_rows
+    )
+    stored = valuation.data.get("assumptions") or {} if valuation else {}
+    valuation_currency = valuation.data.get("currency") if valuation else None
+    aligned = quoted is not None and valuation_currency == quoted
+    family = stored.get("family") or classify(binding.ticker, "", raw)[0]
+    ttm, selected = statement_basis(facts, family)
+    metrics_for_basis = {Metric.REVENUE: "revenue"}
+    if family == "cash-flow":
+        metrics_for_basis[Metric.FREE_CASHFLOW] = "freeCashflow"
+        if "cash" in selected or (
+            selected.get("freeCashflow") and selected["freeCashflow"].value < 0
+        ):
+            metrics_for_basis[Metric.CASH] = "cash"
+    else:
+        metrics_for_basis[Metric.EARNINGS] = (
+            "commonIncome"
+            if family == "residual-income" or "commonIncome" in selected
+            else "netIncome"
+        )
+        if family == "residual-income":
+            metrics_for_basis[Metric.BOOK] = "commonEquity"
+    for metric, name in metrics_for_basis.items():
         _statement(
             capture,
             EvidenceGroup.BASIS,
             metric,
             financials,
             ttm,
-            values.get((facts.latest_ttm, metric)),
+            selected.get(name),
             currency=report,
         )
-
+    shares, ratio = listing_shares(
+        binding.ticker,
+        binding.listing,
+        data.get("name") or "",
+        _positive(stored.get("sharesOutstanding")),
+        selected,
+        bool(stored.get("isAdr")),
+    )
     recent = [
         period
         for kind in ("annual", "quarterly")
@@ -507,7 +533,7 @@ def freeze_valuation_evidence(
             (p for p in periods.values() if p.kind == kind), key=lambda p: p.provider_end
         )[-4:]
     ]
-    for period in [*recent, *([ttm] if ttm else [])]:
+    for period in [*recent, *([ttm] if ttm and ttm.kind == "ttm" else [])]:
         metrics_for_period = (
             (Metric.REVENUE, Metric.FREE_CASHFLOW, Metric.CASH_FROM_OPERATIONS, Metric.CAPEX)
             if period.kind == "quarterly"
@@ -524,12 +550,6 @@ def freeze_valuation_evidence(
                 currency=report,
             )
 
-    valuation = _read_row(
-        snapshots, manifest, binding, "research/valuation.json", _fundamentals_rows
-    )
-    stored = valuation.data.get("assumptions") or {} if valuation else {}
-    valuation_currency = valuation.data.get("currency") if valuation else None
-    aligned = quoted is not None and valuation_currency == quoted
     market_matches = market is not None and market.data.get("currency") == quoted
     quote_row = fundamental if quote.session == "regular" else market if market_matches else None
     quote_day = _day(quote.as_of)
@@ -558,17 +578,35 @@ def freeze_valuation_evidence(
         unit="perShare",
         source="yahoo-finance",
     )
-    capture.add(
-        EvidenceGroup.BASIS,
-        Metric.SHARES,
-        _positive(stored.get("sharesOutstanding")) if aligned else None,
-        row=valuation,
-        dataset="valuation",
-        field="assumptions.sharesOutstanding",
-        basis="listing-shares",
-        unit="shares",
-        source="research-valuation",
-    )
+    ordinary = selected.get("ordinaryShares") if ratio else None
+    if ordinary:
+        _statement(
+            capture,
+            EvidenceGroup.BASIS,
+            Metric.SHARES,
+            financials,
+            ttm,
+            ordinary.model_copy(
+                update={
+                    "value": shares,
+                    "formula": "ordinary shares divided by verified receipt ratio",
+                    "basis": "listing-shares",
+                }
+            ),
+            currency=None,
+        )
+    else:
+        capture.add(
+            EvidenceGroup.BASIS,
+            Metric.SHARES,
+            shares if aligned else None,
+            row=valuation,
+            dataset="valuation",
+            field="assumptions.sharesOutstanding",
+            basis="listing-shares",
+            unit="shares",
+            source="research-valuation",
+        )
     identity_fx = report is not None and report == quoted
     fx_facts_version = stored.get("financialFactsVersion")
     fx_matches = (
@@ -643,9 +681,17 @@ def freeze_valuation_evidence(
         source="research-valuation",
         quality="derived",
     )
+    disclose_period = ttm and any(
+        r.metric == Metric.REVENUE and r.group == EvidenceGroup.BASIS and r.state == "available"
+        for r in capture.rows
+    )
     return FrozenValuationEvidence(
         binding=binding,
         eligibility=eligibility,
+        family=family,
+        ordinary_per_receipt=ratio,
+        period_choice=period_choice(facts, ttm) if disclose_period else None,
+        period_id=ttm.id if disclose_period else None,
         facts_version=facts.version,
         quote_id=quote.id,
         rows=tuple(capture.rows),

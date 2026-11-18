@@ -275,3 +275,67 @@ def test_valuation_preview_uses_the_broker_price_only_for_the_same_listing(
         basis = client.get(f"/v1/research/{symbol}/valuation-preview").json()["basis"]
     assert basis["spot"] == pytest.approx(spot)
     assert basis["spotSource"] == ("broker" if spot == 20.0 else "quote")
+
+
+def test_set_replace_and_clear_one_baseline_at_five_years_and_batch_spot(tmp_path):
+    from trading_max.research.valuation_preview import (
+        FrozenValuationBasis,
+        ScenarioInputs,
+        ValuationPreviewRequest,
+        preview,
+    )
+
+    lens = _valuation_lens()
+    store = ResearchJournalStore(tmp_path)
+    basis = FrozenValuationBasis(
+        ticker="TEST",
+        quote_id="quote",
+        data_version="version",
+        spot=10,
+        currency="USD",
+        revenue=100,
+        shares=10,
+        start_margin=0.2,
+    )
+    inputs = ScenarioInputs(
+        discount_rate=0.10,
+        exit_fcf_multiple=12,
+        share_cagr=0,
+        revenue_cagr=0.1,
+        target_fcf_margin=0.2,
+    )
+    req = ValuationPreviewRequest(
+        horizon=10, scenarios=dict.fromkeys(("bear", "base", "bull"), inputs)
+    )
+    saved = preview(basis, req)
+    store.save_model(saved)
+    other = store.save_model(saved, "second view").models[0].id
+    app = FastAPI()
+    app.include_router(router)
+    app.state.research_journal = store
+    app.state.settings = SimpleNamespace(api_token="synthetic")
+    row = lens.valuation
+    with TestClient(app) as client:
+
+        def select(model):
+            return client.put(
+                "/v1/research/TEST/models/baseline",
+                json={"modelId": model},
+                headers={"Authorization": "Bearer synthetic"},
+            )
+
+        assert (
+            client.put("/v1/research/TEST/models/baseline", json={"modelId": saved.id}).status_code
+            == 401
+        )
+        assert select(saved.id).json()["baselineModelId"] == saved.id
+        assert select(other).json()["baselineModelId"] == other
+        assert select("unknown").status_code == 404
+        projected = ResearchJournalStore(tmp_path).overview_valuation(row)
+        expected = preview(basis, req.model_copy(update={"horizon": 5})).scenarios["base"].value
+        assert projected.ev5 == pytest.approx(expected)
+        assert projected.ev5_upside == pytest.approx(expected / 25 - 1)
+        assert projected.ev5 != saved.scenarios["base"].value
+        assert len(store.load("TEST").models) == 2
+        assert select(None).json()["baselineModelId"] is None
+        assert store.overview_valuation(row) == row

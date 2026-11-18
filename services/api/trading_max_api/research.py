@@ -35,6 +35,7 @@ from trading_max.research.held_funds import (
 from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
 from trading_max.research.trailing_pe import TrailingPeHistory
+from trading_max.research.valuation_basis import classify
 
 from .artifacts import ArtifactStore
 from .dashboard_models import (
@@ -1560,7 +1561,18 @@ class ResearchLedger:
         ticker = self._route_ticker(ticker)
         if us_fund(ticker):
             return self._fund_lens(ticker, view, manifest, detail=detail)
-        market = _find(self._market_rows(manifest), ticker)
+
+        def find_listing(rows, symbol):
+            row = _find(rows, symbol)
+            if (
+                view == "valuation"
+                and row
+                and str(row.get("ticker") or "").upper() != symbol.upper()
+            ):
+                return None
+            return row
+
+        market = find_listing(self._market_rows(manifest), ticker)
         payload = ResearchLensSnapshot(
             ticker=ticker,
             view=view,
@@ -1569,7 +1581,7 @@ class ResearchLedger:
             market=market,
         )
         fundamental = (
-            _find(
+            find_listing(
                 self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows),
                 ticker,
             )
@@ -1605,10 +1617,6 @@ class ResearchLedger:
             else peer.fund.ticker
             if peer
             else None
-        )
-        is_financial = any(
-            word in str(fundamental.get("industry") or metrics.get("industry") or "").lower()
-            for word in ("banks", "banking", "insurance")
         )
         coverage_row = _find(
             self._cached_rows(manifest, "research/coverage.json", _fundamentals_rows), ticker
@@ -1698,11 +1706,7 @@ class ResearchLedger:
                     )
                     or task in {"overview", "ledger"}
                     else "missing",
-                    reason="fund-research"
-                    if inappropriate
-                    else "financial-company-requires-equity-model"
-                    if is_financial and task == "valuation"
-                    else None,
+                    reason="fund-research" if inappropriate else None,
                     intervals=["1d"] if task == "technical" else [],
                 )
             )
@@ -1722,7 +1726,7 @@ class ResearchLedger:
             view == "ledger" and detail in {"summary", "documents"}
         ):
             financial_row = (
-                _find(
+                find_listing(
                     self._cached_rows(manifest, "research/financials.json", _financials_rows),
                     ticker,
                 )
@@ -1762,7 +1766,7 @@ class ResearchLedger:
                 ticker,
             )
         if not is_fund and (view == "valuation" or (view == "overview" and detail != "summary")):
-            payload.valuation = _find(
+            valuation = find_listing(
                 self._cached_rows(
                     manifest,
                     "research/valuation.json",
@@ -1770,6 +1774,18 @@ class ResearchLedger:
                 ),
                 ticker,
             )
+            if valuation and view == "valuation" and not valuation["assumptions"].get("family"):
+                family, classification = classify(ticker, "", raw)
+                valuation = {
+                    **valuation,
+                    "assumptions": {
+                        **valuation["assumptions"],
+                        "family": family,
+                        "classification": classification,
+                        "issuerName": fundamental.get("name") or "",
+                    },
+                }
+            payload.valuation = valuation
         if view == "options":
             if is_fund:
                 payload.options_peer = peer if fund_options_ticker != ticker else None

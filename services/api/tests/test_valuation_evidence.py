@@ -340,18 +340,6 @@ def test_frozen_replay_matches_full_desk_worksheet(tmp_path, issuer, horizon):
             "complete-ttm-currency-and-share-count-required",
             Metric.REVENUE,
         ),
-        (
-            replace(MATURE, quarterly_ocf=10),
-            "unsupported",
-            "non-positive-starting-free-cash-flow",
-            None,
-        ),
-        (
-            replace(MATURE, sector="Financial Services", industry="Banks"),
-            "unsupported",
-            "cashflow-model-not-applicable",
-            None,
-        ),
     ],
 )
 def test_missing_and_unsupported_do_not_project(tmp_path, issuer, state, reason, missing_metric):
@@ -370,9 +358,6 @@ def test_missing_and_unsupported_do_not_project(tmp_path, issuer, state, reason,
     if missing_metric is not None:
         row = next(row for row in basis.items if row.metric == missing_metric)
         assert row.state == "missing" and row.value is None
-    if reason == "non-positive-starting-free-cash-flow":
-        row = next(row for row in basis.items if row.metric == Metric.FREE_CASHFLOW)
-        assert row.value == -60  # The observation survives; only the model is unsupported.
 
 
 def test_restatement_creates_new_evidence_without_mutating_the_pinned_replay(tmp_path):
@@ -668,6 +653,9 @@ def test_batch_and_frozen_limits(tmp_path):
         tools.evaluate_valuation(_request(horizon=10))
 
     tools = ValuationEvidenceTools(binding, frozen)
+    # Use the empty catalog to exercise the call-count cap independently of bytes.
+    empty = frozen.model_copy(update={"rows": ()})
+    tools = ValuationEvidenceTools(binding, empty)
     for _ in range(MAX_BATCH_CALLS):
         tools.get_valuation_basis()
     with pytest.raises(EvidenceLimitError, match="batch budget"):
@@ -679,7 +667,6 @@ def test_batch_and_frozen_limits(tmp_path):
     [
         (1.0, 0.16, "below", "reverse-dcf-outside-bounds"),
         (10000.0, 0.16, "above", "reverse-dcf-outside-bounds"),
-        (25.0, -0.1, None, "reverse-dcf-withheld"),
     ],
 )
 def test_reverse_dcf_reports_bounds_or_refuses_a_non_monotone_solve(
@@ -761,3 +748,54 @@ def test_date_only_filing_and_mismatched_fx_version(tmp_path):
     assert revenue.published_at == AS_OF.date()
     assert revenue.state == "available"
     assert basis.reason == "currency-conversion-unavailable"
+
+
+@pytest.mark.parametrize("family", ["net-income", "residual-income", "cash-flow"])
+def test_new_families_freeze_and_replay_the_same_desk_basis(tmp_path, family):
+    def inject(batches):
+        raw = batches["research/financials.json"]["rows"][0]["financials"]
+        dates = raw["quarterlyIncomeStatement"][0].keys() - {"index"}
+        raw["quarterlyIncomeStatement"].append(
+            {"index": "Net Income Common Stockholders", **dict.fromkeys(dates, 100)}
+        )
+        raw["quarterlyBalanceSheet"] = [
+            {"index": k, **dict.fromkeys(dates, n)}
+            for k, n in [("Common Stock Equity", 2000), ("Cash And Cash Equivalents", 15)]
+        ]
+        batches["research/valuation.json"]["rows"][0]["assumptions"]["family"] = family
+
+    issuer = replace(MATURE, quarterly_ocf=-450)
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, issuer, inject=inject)
+    frozen = freeze_valuation_evidence(binding, snapshots=store)
+    tools = ValuationEvidenceTools(binding, frozen)
+    basis = tools.get_valuation_basis().basis
+    assert basis.family == family
+    raw = _request().model_dump()
+    if family == "residual-income":
+        raw["scenarios"] = {
+            key: {"initialRoe": 0.15, "payout": 0.3, "discountRate": 0.1, "terminalPb": 1.2}
+            for key in ("bear", "base", "bull")
+        }
+    req = EvaluateValuationRequest.model_validate(raw)
+    result = tools.evaluate_valuation(req)
+    desk = _desk(store, issuer, req)
+    assert result.state == "available"
+    _equal(result.projections["base"].model_dump(), desk["scenarios"]["base"])
+    assert result.reverse_dcf.metric == desk["reverseMetric"]
+    assert result.reverse_dcf.value == desk["reverseValue"]
+    if family == "cash-flow":
+        assert basis.start_margin < 0 and result.reverse_dcf.metric == "target-margin"
+        assert result.projections["base"].years[0].financing > 0
+    elif family == "net-income":
+        assert basis.start_margin == 0.1
+    else:
+        assert basis.book_per_share == 20
+
+
+def test_missing_cash_is_disclosed_when_a_scenario_requires_funding(tmp_path):
+    store = ArtifactStore(tmp_path)
+    binding = _publish(store, replace(MATURE, quarterly_ocf=-500))
+    tools = ValuationEvidenceTools(binding, freeze_valuation_evidence(binding, snapshots=store))
+    assert tools.get_valuation_basis().basis.opening_cash is None
+    assert tools.evaluate_valuation(_request()).reason == "opening-cash-required-for-burn"

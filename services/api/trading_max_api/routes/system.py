@@ -436,7 +436,11 @@ def dashboard_lens(
                 for item in dashboard_data.technical
                 if item.ticker in held
             ],
-            valuations=[item for item in dashboard_data.valuations if item.ticker in held],
+            valuations=[
+                app_service(request, "research_journal").overview_valuation(item)
+                for item in dashboard_data.valuations
+                if item.ticker in held
+            ],
             nav=dashboard_data.nav[-31:],
             intraday_nav=_latest_intraday_points(dashboard_data.intraday_nav),
         )
