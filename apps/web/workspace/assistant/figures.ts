@@ -1,3 +1,4 @@
+import { dividendAmount, dividendBasis } from "@/lib/dividend-disclosure";
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { Locale } from "@/components/locale-provider";
 import type { Evidence } from "./evidence";
@@ -91,8 +92,18 @@ const calendarStatuses: Record<string, Words> = {
 export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
   if (output.status !== "ok" && output.status !== "partial") return null;
   const field = resolveField(output, pointer);
-  if (!field || field.group !== "items" || !["date","end_date","local_date","instant","local_time","title_en","title_zh","status"].includes(field.field)) return null;
+  if (!field || field.group !== "items") return null;
   const row = field.parent;
+  const historical = ref.tool === "news_and_events";
+  if (historical && (row.kind !== "dividend" || !str(row.ticker) || !str(output.snapshot_id))) return null;
+  let detail = "";
+  if (historical && ["amount", "currency", "unit"].includes(field.field)) {
+    detail = dividendAmount(row.amount, row.currency, row.unit, locale) ?? "";
+    if (!detail) return null;
+  } else if (historical && field.field === "basis") {
+    detail = dividendBasis(row.basis, locale) ?? "";
+    if (!detail) return null;
+  } else if (!["date","end_date","local_date","instant","local_time","title_en","title_zh","status"].includes(field.field)) return null;
   const day = calendarDate(row.date);
   const title = str(row[locale === "zh" ? "title_zh" : "title_en"]);
   if (!day || !title || !row.evidence_id) return null;
@@ -115,7 +126,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
     if (row.end_date) args.endDate = str(row.end_date);
   } else if (row.source_url) args.url = str(row.source_url);
   const limited = output.status === "partial" ? word(["limited coverage","覆盖不完整"], locale) : "";
-  return {text:[ticker || str(row.market),eventTitle,when,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
+  return {text:[ticker || str(row.market),eventTitle,when,detail,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
 }
 
 function money(value: number, unit: unknown, digits = 2) {
@@ -141,6 +152,7 @@ function researchField(row: NonNullable<ReturnType<typeof resolveField>>, locale
 }
 function formatField(tool: string, row: NonNullable<ReturnType<typeof resolveField>>, locale: Locale) {
   const { field, parent, group, value } = row;
+  if (tool === "news_and_events") return null;
   if (tool === "read_research_lens" && field === "value") return researchField(row, locale);
   if (field === "date" && dateText(value)) return [word(labels.date, locale), dateText(value)];
   if (tool === "data_freshness" && group === "items" && field === "state") {

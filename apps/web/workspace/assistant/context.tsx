@@ -17,7 +17,7 @@ export type RoleCard = {
 const statusFreshFor = 30_000;
 type Handoff = { card: RoleCard; draft: string; sequence: number };
 type AssistantState = {
-  open: boolean; ready: boolean; pending: boolean; consented: boolean; code: string | null; toggle: () => void; close: () => void;
+  open: boolean; ready: boolean; pending: boolean; suspended: boolean; consented: boolean; code: string | null; toggle: () => void; close: () => void;
   pageCard: RoleCard | null; setPageCard: (card: RoleCard | null) => void;
   continueInSidebar: (card: RoleCard, draft?: string) => void; handoff: Handoff | null;
 };
@@ -125,7 +125,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, suspended: waitingForConsent, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }

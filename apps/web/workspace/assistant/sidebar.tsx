@@ -150,13 +150,19 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
   const [busy, setBusy] = useState(false);
   const { ready } = useAssistant();
   const conversations = useQuery({ enabled: ready, queryKey: ["assistant-conversations"], queryFn: ({ signal }) => api<{ id: string; title: string | null }[]>("/assistant/conversations", { signal }), retry: false });
+  const action = useRef<AbortController | null>(null);
+  useEffect(() => () => action.current?.abort(), [ready]);
   async function act(id: string, erase: boolean) {
+    if (!ready || action.current) return;
+    const controller = new AbortController();
+    action.current = controller;
+    const {signal} = controller;
     setBusy(true); setError(false);
     try {
       const path = "/assistant/conversations/" + encodeURIComponent(id);
-      if (erase) { await api(path, { method: "DELETE" }); removed(id); await client.invalidateQueries({ queryKey: ["assistant-conversations"] }); }
-      else { const data = await api<{ messages: UIMessage[] }>(path); select(id, data.messages); }
-    } catch { setError(true); } finally { setBusy(false); }
+      if (erase) { await api(path, { method: "DELETE", signal }); removed(id); await client.invalidateQueries({ queryKey: ["assistant-conversations"] }); }
+      else { const data = await api<{ messages: UIMessage[] }>(path, {signal}); select(id, data.messages); }
+    } catch { if (!signal.aborted) setError(true); } finally { action.current = null; setBusy(false); }
   }
   return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
     <div className="mx-assistant-transcript">{conversations.data?.map(c => <div className="mx-assistant-history" key={c.id}>

@@ -1,5 +1,6 @@
 "use client";
 
+import { dividendAmount, dividendBasis } from "@/lib/dividend-disclosure";
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import { useEffect, useRef } from "react";
 import { Button } from "@mantine/core";
@@ -45,6 +46,10 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
     },
   });
   const row = !result.isFetching && !result.isError && result.data;
+  const details = row && kind === "dividend" ? [
+    dividendAmount(row.amount, row.currency, row.unit, locale) ?? t("每股金额暂无数据","Amount per share unavailable"),
+    dividendBasis(row.basis, locale),
+  ].filter(Boolean).join(" · ") : "";
   const title = kind === "earnings" ? t("财报", "Earnings") : kind === "ex_dividend" ? t("除息日期", "Ex-dividend date") : t("股息", "Dividend");
   const heading = recorded ? rating ? t("机构行动", "Institutional actions") : t("财报事件", "Earnings events") : ticker + " · " + title;
   return <Page title={t("研究", "Research")}><section ref={section} id={recorded ? "research-" + (rating ? "actions" : "events") : undefined} data-reading-event=""><Panel title={heading}>
@@ -57,6 +62,7 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
           <p>{t("预期每股收益", "Estimated EPS")} · {row.estimated_eps} {row.currency}</p>}
         {row.firm && <p>{[row.firm, [row.from_grade, row.to_grade].filter(Boolean).join(" → ")].filter(Boolean).join(" · ")}</p>}
         <p>{row.instant ? formatDateTimeInTimeZone(row.instant, locale, timeZone) : [...new Set([row.date, row.end_date].filter(Boolean))].join(" – ")}</p>
+        {details && <p>{details}</p>}
         <p>{row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
     <Button variant="subtle" onClick={() => update({evidence:null,snapshotId:null,event:null,date:null,end:null,eventId:null,calendarEventId:null})}>
       {t("打开证券研究", "Open security research")}

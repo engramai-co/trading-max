@@ -1,3 +1,4 @@
+import historicalDividend from "../tests/fixtures/historical-dividend.json";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
@@ -485,19 +486,35 @@ test("opening a stale session rechecks consent before exposing saved History", a
   expect(historyReads).toBe(0);
 });
 
-test("withdrawal in Settings closes another window's saved History", async ({page,context}, info) => {
+test("cross-tab withdrawal suspends cached readings and History while the profile refresh is held", async ({page,context}, info) => {
   await context.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await fixtures(page);
   let enabled = true;
+  let releaseProfile!: () => void;
+  const profileWait = new Promise<void>(resolve => { releaseProfile = resolve; });
+  const assistantRequests: string[] = [];
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (!enabled && path.startsWith("/api/backend/assistant/")) assistantRequests.push(path);
+  });
   const settings = {enabled:true,revision:1,route:"openai/model-a",acceptedConsentRevision:2,consentRevision:2,acceptedDestination:"https://example.org/v1",
     acceptedAt:"2026-01-01",backgroundBriefsEnabled:false,shareValuationAssumptions:false,providers:[],integrations:[]};
-  await page.route("**/api/backend/profile", route => route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}}));
+  await page.route("**/api/backend/profile", async route => {
+    if (!enabled) await profileWait;
+    await route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}});
+  });
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[{id:"saved",title:"Saved weekly follow-up"}]}));
   await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:enabled,code:enabled ? null : "assistant_disabled"}}));
   await page.goto("/");
-  await expect(page.locator(".mx-digest")).toBeVisible();
+  const digest = page.locator(".mx-digest");
+  await expect(digest).toContainText("Period net P&L was £18.40.");
   await page.locator("[data-assistant-trigger]").click();
   await page.getByRole("button",{name:"Conversation history"}).click();
-  await expect(page.getByText("No saved conversations yet.")).toBeVisible();
+  const panel = page.locator("#mx-assistant-panel");
+  const saved = panel.getByRole("button", {name:"Saved weekly follow-up", exact:true});
+  const close = panel.getByRole("button", {name:"Close sidebar"});
+  await expect(saved).toBeVisible();
+  await saved.focus();
   const other = await context.newPage();
   await fixtures(other);
   await other.route("**/api/backend/settings/assistant", route => {
@@ -508,15 +525,110 @@ test("withdrawal in Settings closes another window's saved History", async ({pag
     return route.fulfill({json:settings});
   });
   await other.goto("/settings?tab=assistant");
-  await other.getByRole("button",{name:"Withdraw consent"}).click();
-  await expect.poll(() => enabled).toBe(false);
-  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant",{timeout:3000});
-  await expect(page.getByText("No saved conversations yet.")).toHaveCount(0);
-  await page.bringToFront();
-  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
+  const refreshing = page.waitForRequest(request => !enabled && new URL(request.url()).pathname === "/api/backend/profile");
+  try {
+    await other.getByRole("button",{name:"Withdraw consent"}).click();
+    await refreshing;
+    await page.bringToFront();
+    await expect.soft(assistantRequests, "assistant requests before profile confirmation").toEqual([]);
+    await expect(panel.getByText("Checking connection…")).toBeVisible({timeout:1500});
+    await expect(digest).toHaveCount(0);
+    await expect(saved).toBeHidden();
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(close).toBeFocused();
+    expect(assistantRequests).toEqual([]);
+
+    releaseProfile();
+    await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+    await expect(close).toBeFocused();
+    await expect(digest).toHaveCount(0);
+    await expect(panel.getByText("Saved weekly follow-up")).toHaveCount(0);
+    expect(assistantRequests).toEqual([]);
+    if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
+  } finally {
+    releaseProfile();
+    await other.close();
+  }
 });
 
-for (const outcome of ["draft", "history button", "reopened draft", "changed settings", "withdrawn"] as const) {
+test("a newer consent signal keeps active streams cancelled until that profile confirms", async ({page,context}) => {
+  await fixtures(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("trading_max-locale","en");
+    // Observe the actual AbortSignals handed to fetch while both responses are held.
+    const fetch = window.fetch.bind(window);
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+      const stream = url.pathname.endsWith("/assistant/chat") ? "chat" :
+        url.pathname.endsWith("/roles/weekly/reading") ? "reading" : null;
+      if (stream) (init?.signal ?? (input instanceof Request ? input.signal : null))?.addEventListener("abort", () => {
+        document.documentElement.setAttribute("data-aborted-" + stream, "");
+      }, {once:true});
+      return fetch(input, init);
+    };
+  });
+  let changed = false;
+  const requests: string[] = [];
+  page.on("request", req => {
+    const path = new URL(req.url()).pathname;
+    if (changed && path.startsWith("/api/backend/assistant/")) requests.push(path);
+  });
+  const profiles: ((status:number) => void)[] = [];
+  await page.route("**/api/backend/profile", async route => {
+    const status = changed ? await new Promise<number>(resolve => profiles.push(resolve)) : 200;
+    await route.fulfill({status, json:{accountLabels:{},assistantEnabled:true}});
+  });
+  let releaseStreams!: () => void;
+  const hold = new Promise<void>(resolve => { releaseStreams = resolve; });
+  await page.route(/\/assistant\/(chat\?|roles\/weekly\/reading)/, async route => {
+    await hold;
+    await route.abort().catch(() => {});
+  });
+  await page.goto("/");
+  const reading = page.waitForRequest(req => req.url().endsWith("/roles/weekly/reading"));
+  await page.getByRole("button", {name:"Weekly", exact:true}).click();
+  await reading;
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const draft = panel.getByRole("textbox", {name:"Message"});
+  await draft.fill("Start the chat");
+  const chat = page.waitForRequest(req => new URL(req.url()).pathname.endsWith("/assistant/chat"));
+  await draft.press("Enter");
+  await chat;
+  await draft.fill("Keep this unsent question");
+  const other = await context.newPage();
+  await other.goto("/favicon.ico");
+  const signal = (revision:string) => other.evaluate(value => localStorage.setItem("trading_max-assistant-settings-revision",value),revision);
+  try {
+    changed = true;
+    await signal("first");
+    await expect.poll(() => profiles.length).toBe(1);
+    for (const stream of ["chat","reading"]) await expect(page.locator("html")).toHaveAttribute("data-aborted-" + stream, "");
+    await expect(panel.getByText("Checking connection…")).toBeVisible();
+    await expect(page.locator(".mx-digest")).toHaveCount(0);
+    await signal("second");
+    await expect.poll(() => profiles.length).toBe(2);
+    profiles[0](200);
+    profiles[1](503);
+    await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+    await expect(draft).toBeHidden();
+    expect(requests).toEqual([]);
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    await expect.poll(() => profiles.length).toBe(3);
+    expect(requests).toEqual([]);
+    profiles[2](200);
+    await expect(draft).toHaveValue("Keep this unsent question");
+    await expect(draft).toBeFocused();
+    expect(requests[0]).toBe("/api/backend/assistant/status");
+  } finally {
+    releaseStreams();
+    for (const resolve of profiles) resolve(200);
+    await other.close();
+  }
+});
+
+for (const outcome of ["draft", "history button", "reopened draft", "Control+j", "Meta+j", "changed settings", "withdrawn"] as const) {
   test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
@@ -525,14 +637,22 @@ for (const outcome of ["draft", "history button", "reopened draft", "changed set
     await page.locator("[data-assistant-trigger]").click();
     const panel = page.locator("#mx-assistant-panel");
     const draft = panel.getByRole("textbox", {name:"Message"});
+    await draft.click();
     await draft.fill("Keep this draft");
+    await expect(draft).toHaveValue("Keep this draft");
     const shots = process.env.ASSISTANT_SCREENSHOTS;
     const control = outcome === "history button" ? panel.getByRole("button", {name:"Conversation history"}) : draft;
     await control.focus();
     await expect(control).toBeFocused();
-    if (outcome === "reopened draft") {
+    const shortcut = outcome === "Control+j" || outcome === "Meta+j";
+    if (shortcut || outcome === "reopened draft") {
       await page.keyboard.press("Escape");
-      await expect(panel).toBeHidden();
+      await expect(page.locator("[data-assistant-trigger]")).toBeFocused();
+      if (shortcut) {
+        const skip = page.getByRole("link", {name:"Skip to content"});
+        await skip.focus();
+        await expect(skip).toBeFocused();
+      }
     }
 
     let release!: () => void;
@@ -543,13 +663,15 @@ for (const outcome of ["draft", "history button", "reopened draft", "changed set
       await route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
     });
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
-    if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
+    if (shortcut) await page.keyboard.press(outcome);
+    else if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
     else if (outcome === "changed settings") await page.evaluate(() => window.dispatchEvent(
       new StorageEvent("storage",{key:"trading_max-assistant-settings-revision",newValue:"2"})));
     else if (outcome === "withdrawn") await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     else await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     try {
       await expect(panel.getByText("Checking connection…")).toBeVisible();
+      if (shortcut) await expect.soft(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused({timeout:1000});
       await expect.soft(panel.locator(":focus"), "focus during the check").toHaveCount(1, {timeout:1000});
       if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-checking-focus.png")});
       for (const key of ["Tab", "Shift+Tab"]) {
@@ -573,3 +695,34 @@ for (const outcome of ["draft", "history button", "reopened draft", "changed set
     }
   });
 }
+
+test("a historical dividend in chat reopens its published amount and basis", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  const row = historicalDividend.data.items[0];
+  const chunks = [{type:"start",messageId:"dividend"},{type:"start-step"},
+    {type:"tool-input-available",toolCallId:"d",toolName:"news_and_events",input:{args:{scope:"invest",ticker:row.ticker,start:row.date,end:row.date}}},
+    {type:"tool-output-available",toolCallId:"d",output:historicalDividend},
+    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:`{{/data/items/0/amount}} [${historicalDividend.evidence_id}]\n{{insufficient-evidence}} [inference]`},
+    {type:"text-end",id:"t"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
+    headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+    body:chunks.map(c => "data: " + JSON.stringify(c) + "\n\n").join("") + "data: [DONE]\n\n",
+  }));
+  await page.route("**/api/backend/publications/**/events/upcoming?**", route => {
+    const url = new URL(route.request().url());
+    expect(url.pathname).toContain("/publications/" + historicalDividend.snapshot_id + "/");
+    expect(Object.fromEntries(url.searchParams)).toEqual({ticker:row.ticker,kind:"dividend",eventId:row.evidence_id});
+    return route.fulfill({json:row});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.locator(".mx-assistant-questions button").first().click();
+  const disclosure = page.locator(".mx-turn-assistant").getByRole("link", {name:"Disclosure"});
+  await disclosure.click({timeout:3000});
+  const target = page.locator("[data-reading-event]");
+  await expect(target).toContainText("USD 0.375 per share");
+  await expect(target).toContainText("Provider-adjusted per share");
+  await expect(target).toContainText(row.date);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dividend.png")});
+});

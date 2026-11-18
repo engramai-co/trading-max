@@ -24,12 +24,12 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
-  decision_timing_and_habits: ["/review", "review"], review_patterns: ["/review", "review"], news_and_events: ["/research","disclosure"],
-  data_freshness: ["/health", "health"], upcoming_events: ["/health", "calendar"],
+  decision_timing_and_habits: ["/review", "review"], review_patterns: ["/review", "review"],
+  data_freshness: ["/health", "health"], upcoming_events: ["/health", "calendar"], news_and_events: ["/research", "disclosure"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
-  if (ref.tool === "upcoming_events") {
+  if (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.event === "dividend")) {
     const args = ref.arguments ?? {};
     if (args.url) return safeUrl(args.url) ?? null;
     if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
