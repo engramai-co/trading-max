@@ -412,3 +412,47 @@ def test_cfd_symbol_without_a_venue_stays_in_account_chronology(tmp_path):
     assert [r["ticker"] for r in whole["data"]["items"]] == ["ALFA"]
     exact = events.event_data(deps, args("cfd", ticker="ALFA"), upcoming=False)
     assert exact["data"]["items"] == [] and "trade_listing_unresolved" in exact["quality"]["issues"]
+
+
+def test_analyst_lens_retains_eps_with_unpublished_currency(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import yfinance as yf
+    from trading_max.research.analyst_evidence import earnings_events
+    from trading_max.research.fundamentals import _frame_to_records
+
+    html = """<table>
+      <thead><tr><th>Symbol</th><th>Company</th><th>Earnings Date</th>
+      <th>EPS Estimate</th><th>Reported EPS</th></tr></thead>
+      <tbody><tr><td>ALFA</td><td>Synthetic</td><td>November 25, 2026 at 4 PM EST</td>
+      <td>1.2</td><td>1.1</td></tr></tbody></table>"""
+    proxy = yf.Ticker("ALFA")
+    monkeypatch.setattr(
+        type(proxy._data), "cache_get", lambda self, url: SimpleNamespace(text=html)
+    )
+    observations = earnings_events(
+        _frame_to_records(proxy.get_earnings_dates(limit=40)), timezone="America/New_York"
+    )
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = app.state.store
+    analyst = {"earningsEvents": observations, "reportingCurrency": "USD"}
+    ref = store.immutable_artifacts.put_json(
+        key=events.ANALYST, payload={"rows": [{"ticker": "ALFA", "analyst": analyst}]}
+    )
+    store.publish_typed(scope="research", source="synthetic", artifacts=[ref])
+    with TestClient(app) as client:
+        lens = client.get("/v1/research/ALFA/lens/analyst")
+        assert lens.status_code == 200, lens.text
+        (reported,) = lens.json()["analyst"]["earningsEvents"]
+    assert (reported["actualEps"], reported["estimatedEps"], reported["currency"]) == (
+        1.1,
+        1.2,
+        None,
+    )
+    result = events.event_data(
+        AssistantDepsFactory(store).for_run(), args(ticker="ALFA"), upcoming=False
+    )
+    (reading,) = result["data"]["items"]
+    assert reading["status"] == "reported"
+    assert reading["actual_eps"] is reading["estimated_eps"] is reading["currency"] is None
+    assert "earnings_currency_unavailable" in result["quality"]["issues"]
