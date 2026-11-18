@@ -4,7 +4,7 @@ import { backendFetch, backendUrl } from "@/lib/backend";
 import { backendUnavailable, PRIVATE_JSON_HEADERS } from "@/lib/backend-proxy";
 
 export const ASSISTANT_MAX_REQUEST_BYTES = 1_000_000;
-const FORWARDED_QUERY = ["page", "tz"] as const;
+const FORWARDED_QUERY = ["page", "tz", "format"] as const;
 // The AI SDK client reads the stream protocol version from this header.
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "x-vercel-ai-ui-message-stream"] as const;
 

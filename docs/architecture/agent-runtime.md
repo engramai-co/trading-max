@@ -63,7 +63,7 @@ fallback to another provider.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| POST | `/v1/assistant/chat?page=&tz=` | Run a turn; AI SDK UI message stream. Requires the write token. |
+| POST | `/v1/assistant/chat?page=&tz=&format=` | Run a turn; AI SDK UI message stream. Requires the write token. |
 | GET | `/v1/assistant/status` | Whether a turn could start now, and why not, without calling the model. |
 | GET, DELETE | `/v1/assistant/conversations` | List recent conversations or delete all conversations and messages in the workspace. |
 | GET | `/v1/assistant/conversations/{id}` | One conversation as AI SDK UI messages. |
@@ -250,12 +250,15 @@ with the next question. A follow-up keeps the reading's page, account, period,
 object and immutable snapshot across navigation and when restoring a stopped
 draft.
 
-The sidebar requests two to four references. For example,
+The chat route defaults to `format=prose` and streams a tool-grounded answer
+in the user's language. The sidebar passes `format=references` to request
+two to four references for the current turn. For example,
 `{{/data/period_pnl_gbp}} [ev_example]` selects the dated GBP net P&L from
 that completed tool call. The client resolves the field in the current turn
 and formats its metric, amount, unit, window and coverage. Qualitative lines
 select a bilingual interpretation such as `{{cash-flows}} [inference]`.
-The transcript and its completion announcement use the same verifier.
+Completion announcements include the same source words as the transcript.
+A withheld reply announces the localised verification notice.
 Unknown fields, conflicting IDs and model-authored prose make the whole
 reply unverifiable, including replies reopened from conversation history.
 

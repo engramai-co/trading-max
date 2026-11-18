@@ -25,9 +25,9 @@ describe("assistant chat proxy", () => {
       },
     }), { headers: { "Content-Type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1", "Set-Cookie": "x=1" } }));
 
-    const response = await proxyAssistantChat(chat('{"id":"c1"}', "?page=overview&tz=Europe%2FLondon&evil=1"));
+    const response = await proxyAssistantChat(chat('{"id":"c1"}', "?page=overview&tz=Europe%2FLondon&format=references&evil=1"));
     const [path, init] = backendFetch.mock.calls[0];
-    expect(path).toBe("/v1/assistant/chat?page=overview&tz=Europe%2FLondon");
+    expect(path).toBe("/v1/assistant/chat?page=overview&tz=Europe%2FLondon&format=references");
     expect(new TextDecoder().decode(init.body)).toBe('{"id":"c1"}');
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(response.headers.get("content-type")).toBe("text/event-stream");

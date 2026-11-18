@@ -66,8 +66,11 @@ def answer_after_tool(tool: str, args: str = "{}"):
         if isinstance(last, ModelRequest) and any(
             isinstance(part, ToolReturnPart) for part in last.parts
         ):
-            yield "{{/data/total_value_gbp}} [ev_test]\n"
-            yield "{{cash-flows}} [inference]"
+            if "{{/data/period_pnl_gbp}}" in (info.instructions or ""):
+                yield "{{/data/total_value_gbp}} [ev_test]\n"
+                yield "{{cash-flows}} [inference]"
+            else:
+                yield "The portfolio value is £1,234.50 [ev_test]"
             return
         yield {0: DeltaToolCall(name=tool, json_args=args, tool_call_id=f"call_{len(seen)}")}
 
@@ -158,13 +161,30 @@ def test_stale_revision_is_a_conflict(tmp_path):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize("suffix", ["", "&format=prose"])
+def test_chat_returns_prose_without_a_reference_format_opt_in(tmp_path, suffix):
+    stream, seen = answer_after_tool("lookup_total")
+    app, _ = make_app(tmp_path, stream)
+    response = TestClient(app).post(
+        f"/v1/assistant/chat?page=analytics&tz=Europe/London{suffix}",
+        json=user_turn("ordinary", "u1", "What is my total?"),
+    )
+    assert response.status_code == 200
+    text = "".join(
+        event["delta"] for event in events(response.text) if event["type"] == "text-delta"
+    )
+    assert text == "The portfolio value is £1,234.50 [ev_test]"
+    instructions = seen[0][0].instructions or ""
+    assert "analytics page" in instructions and "Europe/London" in instructions
+
+
 def test_chat_streams_a_tool_grounded_answer_and_keeps_history_on_the_server(tmp_path):
     stream, seen = answer_after_tool("lookup_total")
     app, _ = make_app(tmp_path, stream)
     client = TestClient(app)
 
     first = client.post(
-        "/v1/assistant/chat?page=overview&tz=Asia/Shanghai",
+        "/v1/assistant/chat?page=overview&tz=Asia/Shanghai&format=references",
         json=user_turn("chat1", "u1", "What is my total?"),
     )
     assert first.status_code == 200
