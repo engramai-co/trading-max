@@ -296,3 +296,15 @@ def test_grouped_allocations_use_complete_members_and_dated_comparison(tmp_path)
     assert "10.00%" in facts["current"].en
     assert "10.00%" in facts["history"].en
     assert "benchmark" not in facts
+
+
+def test_benchmark_published_after_the_portfolio_observation_is_unavailable(tmp_path):
+    _, deps, *_ = sample(tmp_path)
+    sources = inputs()
+    later = sources.weights("country").model_copy(update={"as_of": date(2026, 2, 4)})
+    role = role_registry()["exposure"]
+    read = RoleTools.pinned(
+        replace(deps, page_sources=replace(sources, weights=lambda dim: later)), role.allowed_tools
+    )
+    facts = role.facts(read, role.context_schema(dimension="country", category="United States"))
+    assert "No comparable MSCI ACWI" in next(f.en for f in facts if f.section == "benchmark")

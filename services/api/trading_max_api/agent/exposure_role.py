@@ -87,9 +87,11 @@ def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
         if source and args.dimension in {"country", "sector"}
         else None
     )
+    raw = read.read(tools.LOOKTHROUGH) or {}
+    stamp = tools._iso(raw.get("brokerAsOf"))
+    observed = datetime.fromisoformat(stamp) if stamp else None
     names = [args.category]
     if args.group == "tail" and weights:
-        raw = read.read(tools.LOOKTHROUGH) or {}
         rows, _, _ = tools._exposure_reading(raw, args.dimension)
         names = [row["name"] for row in rows[12:]]
     values = []
@@ -107,8 +109,9 @@ def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
     value = sum(values) if values and all(value is not None for value in values) else None
     if (
         value is None
-        or not ctx.deps.manifest
-        or weights.as_of > ctx.deps.manifest.created_at.date()
+        or not observed
+        or observed.utcoffset() is None
+        or weights.as_of > observed.astimezone(LONDON).date()
     ):
         return read.missing("dated_benchmark_weight_unavailable")
     return read.result(

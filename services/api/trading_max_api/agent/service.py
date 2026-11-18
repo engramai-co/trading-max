@@ -160,6 +160,10 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
                     raise ValueError("A page reading requires its published origin")
                 if role.id == "exposure" and context.scope != "broker_total":
                     raise ValueError("Look-through covers the combined broker accounts")
+                if role.id != "attribution" and (context.range or context.benchmark):
+                    raise ValueError("This page selection has no performance window")
+                if role.id in {"market-map", "market-sector", "diagnosis"} and context.scope:
+                    raise ValueError("This selection has no account filter")
                 if role.id == "attribution" and any(
                     context.object[key] != getattr(context, key)
                     for key in ("scope", "range", "benchmark")
