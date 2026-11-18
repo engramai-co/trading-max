@@ -16,7 +16,7 @@ from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
 
-from ..dashboard import _benchmark_series
+from ..dashboard import benchmark_series
 from ..dashboard_models import ResearchPriceSeries
 from ..projections.day_change import measures_broker_observation, within_trading_days
 from ..projections.nav import nav_series
@@ -162,7 +162,7 @@ def daily_data(deps: AssistantDeps, args: DailyArgs) -> Json:
         daily = [p for p in daily if args.start <= p["date"] <= args.end]
     raw = read.read(TECHNICAL) or {}
     names = ["VOO", "QQQ", "VT"] if args.benchmark == "ALL" else [args.benchmark]
-    comparison = benchmark_comparison(daily, scope, _benchmark_series(raw), names)
+    comparison = benchmark_comparison(daily, scope, benchmark_series(raw), names)
     aligned = {
         line["name"]: dict(
             zip((p["date"] for p in comparison["points"]), line["values"], strict=True)
