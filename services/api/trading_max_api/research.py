@@ -606,10 +606,8 @@ class PriceListing:
             series.quote_exchange or series.published_bar_exchange or series.exchange_calendar
         )
         observed = venue_mic(reported) or listing_calendar(None if live else symbol, reported, None)
-        if (
-            _canonical_ticker(symbol) != _canonical_ticker(self.ticker)
-            or self.venue
-            and self.venue != observed
+        if _canonical_ticker(symbol) != _canonical_ticker(self.ticker) or (
+            self.venue and self.venue != observed
         ):
             raise FileNotFoundError(f"unverified price listing for {self.ticker}")
         return series

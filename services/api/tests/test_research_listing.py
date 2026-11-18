@@ -9,8 +9,8 @@ from services.api.tests.test_assistant_insights import (
     SecuritySearchResult,
     _call,
     broker_markers,
-    publish_trade_chart,
     distinct_listing_events,
+    publish_trade_chart,
     republish,
     tools,
 )
