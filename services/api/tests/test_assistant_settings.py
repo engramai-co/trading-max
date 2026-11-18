@@ -736,6 +736,48 @@ def test_settings_cancel_an_active_turn_before_its_tool_result_is_sent(
     assert client.post("/v1/assistant/chat", json=turn, headers=_AUTH).status_code == 403
 
 
+def test_background_only_change_allows_an_open_reply_to_finish(assistant_client, monkeypatch):
+    client, _, _ = assistant_client
+    repository = client.app.state.settings_repository
+    _register(repository, "ollama", "local-model", key=False)
+    _enable(repository, "ollama/local-model")
+    opened, resume = threading.Event(), threading.Event()
+    connections = []
+
+    async def reply(messages, info):
+        yield "First"
+        opened.set()
+        await anyio.to_thread.run_sync(resume.wait, abandon_on_cancel=True)
+        yield "Finished"
+
+    def build(connection):
+        connections.append(connection)
+        return FunctionModel(stream_function=reply)
+
+    monkeypatch.setattr("services.api.trading_max_api.app.build_model", build)
+    turn = {
+        "trigger": "submit-message",
+        "id": "open-reply",
+        "messages": [
+            {"id": "u1", "role": "user", "parts": [{"type": "text", "text": "Hello"}]},
+        ],
+    }
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(client.post, "/v1/assistant/chat", json=turn, headers=_AUTH)
+        try:
+            assert opened.wait(5)
+            client.put(
+                _PREFERENCES, json={"backgroundBriefsEnabled": False}, headers=_AUTH
+            ).raise_for_status()
+            with pytest.raises(ProviderRuntimeError, match="assistant_settings_changed"):
+                connections[0].before_request()
+        finally:
+            resume.set()
+        response = pending.result(timeout=5)
+    assert response.status_code == 200 and "Finished" in response.text
+    assert '"type":"abort"' not in response.text
+
+
 def test_a_bound_connection_checks_current_consent_and_generation_on_every_request(
     assistant_client,
 ):

@@ -490,23 +490,22 @@ class SettingsRepository:
                     raise AssistantSettingsError(
                         "assistant_consent_required", "accept the current assistant destination"
                     )
-            if (
+            access_changed = (
                 enabled,
                 route_id,
                 reasoning,
-                background,
                 assumptions,
                 consent,
                 accepted_destination,
-            ) == (
+            ) != (
                 previous.enabled,
                 previous.route,
                 previous.reasoning,
-                previous.background_briefs_enabled,
                 previous.share_valuation_assumptions,
                 previous.accepted_consent_revision,
                 previous.accepted_destination,
-            ):
+            )
+            if not access_changed and background == previous.background_briefs_enabled:
                 return previous
             now = _now()
             accepted_at = (
@@ -545,7 +544,8 @@ class SettingsRepository:
                 revision=revision,
                 metadata={"enabled": enabled, "accepted_consent_revision": consent},
             )
-            self._cancel_assistant_access()
+            if access_changed:
+                self._cancel_assistant_access()
             return self._assistant_preferences(row)
 
     def get_route_policy(self) -> LLMRoutePolicy:
