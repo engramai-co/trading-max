@@ -1,6 +1,8 @@
 """Read dated evidence from a single publication with account-scoped trades."""
 
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
 
@@ -198,8 +200,7 @@ def _public(ticker, data, upcoming):
             unit="per_share",
             basis=r.get("basis"),
         )
-    headlines = data[NEWS_KEY].get(ticker, {}).get("items", [])
-    for row in [*headlines, *_rows(evidence.get("news"))]:
+    for row in _headline_rows(data, ticker):
         url_value = web_url(row.get("url"))
         if not url_value or not (row.get("publisher") or row.get("source")):
             continue
@@ -213,6 +214,42 @@ def _public(ticker, data, upcoming):
             provider_id=row.get("id") if row.get("id") != url_value else None,
             role="lead",
         )
+
+
+def _headline_rows(data, ticker):
+    headlines = data[NEWS_KEY].get(ticker, {}).get("items", [])
+    evidence = data[FINANCIALS].get(ticker, {}).get("financials", {}).get("evidence", {})
+    return chain(headlines, _rows(evidence.get("news")))
+
+
+def _article_references(data):
+    """Give each article one reference across all scopes in this publication."""
+    by_url = {}
+    aliases = defaultdict(set)
+    for ticker in data[NEWS_KEY].keys() | data[FINANCIALS].keys():
+        for row in _headline_rows(data, ticker):
+            url, article_id = row.get("url"), row.get("id")
+            if not url or not article_id or article_id == url:
+                continue
+            other = by_url.setdefault(url, article_id)
+            if article_id != other:
+                aliases[article_id].add(other)
+                aliases[other].add(article_id)
+
+    # One canonical URL may appear under several IDs, each with its own syndicated links.
+    canonical = {}
+    for article_id in aliases:
+        if article_id in canonical:
+            continue
+        group = set()
+        pending = [article_id]
+        while pending:
+            item = pending.pop()
+            if item not in group:
+                group.add(item)
+                pending.extend(aliases[item] - group)
+        canonical.update(dict.fromkeys(group, min(group)))
+    return {url: canonical.get(article_id, article_id) for url, article_id in by_url.items()}
 
 
 def _market_days(names, start, end, issues):
@@ -508,10 +545,10 @@ def event_data(deps, args, *, upcoming):
     # A single syndicated article can appear in several held security feeds.
     # Retain those associations while citing the article once.
     articles = [row for row in entries if row and row["kind"] == "news"]
-    provider_ids = {r["source_url"]: r["provider_id"] for r in articles if r["provider_id"]}
+    references = _article_references(data) if articles else {}
     headlines = {}
     for row in articles:
-        identity = row["provider_id"] or provider_ids.get(row["source_url"]) or row["source_url"]
+        identity = references.get(row["source_url"], row["source_url"])
         story = headlines.setdefault(identity, {**row, "reference": identity, "tickers": []})
         if row["ticker"] not in story["tickers"]:
             story["tickers"].append(row["ticker"])

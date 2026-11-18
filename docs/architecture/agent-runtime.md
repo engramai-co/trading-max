@@ -164,7 +164,12 @@ regression signals rather than a substitute for reviewing borderline answers.
 
 The read-only `news_and_events` tool returns dated headlines, earnings estimates
 and reports, rating changes, filings, dividends and the permitted accounts'
-broker trades. Each row identifies its evidence in the pinned publication.
+broker trades. A shared provider ID or canonical URL links copies of a headline
+across security feeds. Exact-ticker results use the instrument recorded on each
+fill. The account chronology also retains fills whose listing is unknown.
+The events tool shows EPS amounts when the observation identifies its currency.
+The Analyst lens retains the provider's original estimates and results.
+Each row identifies its evidence in the pinned publication.
 A publisher's headline is a lead. It cannot establish the cause of a price move.
 
 `upcoming_events` and `GET /v1/snapshots/{run_id}/events/upcoming` share the

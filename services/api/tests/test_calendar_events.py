@@ -526,3 +526,55 @@ def test_macro_uses_last_success_before_cancellation_tiebreak(order):
     assert status() == "cancelled"
     cancelled["as_of"] = None
     assert status() == "provisional"
+
+
+def test_news_merges_shared_urls_and_provider_ids_across_holdings(tmp_path):
+    store = ArtifactStore(tmp_path)
+
+    def headline(article, path):
+        return {
+            "id": article,
+            "url": f"https://example.org/{path}",
+            "title": "Synthetic release",
+            "publisher": "Fixture Press",
+            "date": "2026-11-25",
+        }
+
+    feeds = {
+        "ALFA": [headline("a", "original")],
+        "BETA": [headline("b", "syndicated"), headline("unrelated", "other")],
+        "GAMMA": [headline("b", "original")],
+    }
+    data = {
+        events.NEWS_KEY: {
+            "securities": {t: {"items": rows, "as_of": "2026-11-26"} for t, rows in feeds.items()}
+        },
+        "account/broker_snapshot_metrics.json": {
+            "accounts": {"A": {"positions": [{"ticker": t} for t in feeds]}}
+        },
+    }
+    store.publish_typed(
+        scope="research",
+        source="synthetic",
+        artifacts=[
+            store.immutable_artifacts.put_json(key=key, payload=value)
+            for key, value in data.items()
+        ],
+    )
+    result = events.event_data(
+        AssistantDepsFactory(store).for_run(), args("invest"), upcoming=False
+    )
+    stories = [r for r in result["data"]["items"] if r["kind"] == "news"]
+    assert sorted(r["tickers"] for r in stories) == [["ALFA", "BETA", "GAMMA"], ["BETA"]]
+    assert len({r["evidence_id"] for r in stories}) == 2
+    evidence = next(r["evidence_id"] for r in stories if "ALFA" in r["tickers"])
+    for ticker in feeds:
+        scoped = events.event_data(
+            AssistantDepsFactory(store).for_run(), args(ticker=ticker), upcoming=False
+        )
+        (same,) = [
+            r
+            for r in scoped["data"]["items"]
+            if r["kind"] == "news" and r["source_url"] != "https://example.org/other"
+        ]
+        assert same["evidence_id"] == evidence and same["tickers"] == [ticker]
