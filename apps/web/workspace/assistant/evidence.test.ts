@@ -257,3 +257,13 @@ it.each(["ex_dividend","dividend_pay","dividend"])("reopens a calendar %s from i
   expect(link.pathname).toBe("/research");
   expect(Object.fromEntries(link.searchParams)).toMatchObject({snapshotId:"older",calendarEventId:"ev_row",ticker:"TEST"});
 });
+
+it("keeps a saved account event scoped to the original publication", () => {
+  const row = {kind:"own_trade",ticker:"TEST",title_en:"Account trade",date:"2026-01-15",evidence_id:"ev_fill"};
+  const [line] = verifiedLines(fieldReply("news_and_events",{scope:"isa",snapshot_id:"old",data:{
+    items:[row],timezone:"Europe/London",start:row.date,end:row.date}},"/data/items/0/date"));
+  expect(line.evidence?.source).toBe("broker");
+  expect(Object.fromEntries(new URL(evidenceHref(line.evidence!)!,"http://localhost").searchParams)).toMatchObject({
+    snapshotId:"old",eventId:"ev_fill",scope:"isa",event:"own_trade",
+  });
+});

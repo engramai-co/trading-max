@@ -113,6 +113,12 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   } else if (row.kind === "macro" && (ref.arguments?.market || ref.arguments?.rowCitation || ref.tool === "news_and_events")) {
     args.holdingTicker = "MARKET";
     args.event = "macro";
+  } else if (["own_trade","holiday","half_day"].includes(str(row.kind))) {
+    const data = object(output.data);
+    source = row.kind === "own_trade" ? "broker" : "calendar";
+    Object.assign(args, ref.arguments, {rowCitation:"1",field:pointer,event:str(row.kind),eventId:str(row.evidence_id),
+      ticker:ticker || "MARKET",eventTicker:str(ref.arguments?.ticker),start:str(data.start),end:str(data.end),
+      timezone:str(data.timezone) || timeZone, scope:str(output.scope)});
   } else if (row.source_url) args.url = str(row.source_url);
   const limited = output.status === "partial" ? word(["limited coverage","覆盖不完整"], locale) : "";
   return {text:[ticker || str(row.market),eventTitle,when,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
