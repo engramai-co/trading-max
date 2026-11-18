@@ -2555,13 +2555,14 @@ class ResearchLedger:
             else market.get("currency") or source.get("currency") or ""
         )
         all_markers, unresolved = self.trade_markers(manifest, bar_ticker, currency)
+        exchange = str(source.get("mic") or source.get("exchange") or "").strip() or None
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
-            published_bar_exchange=str(source.get("exchange") or "").strip() or None,
-            exchange_calendar=listing_calendar(
-                bar_ticker, source.get("exchange"), source.get("timezone")
-            ),
+            published_bar_asset_type=str(source.get("asset_type") or ("ETF" if fund_price else ""))
+            or None,
+            published_bar_exchange=exchange,
+            exchange_calendar=listing_calendar(bar_ticker, exchange, source.get("timezone")),
             published_series_id=published_price_series_id(artifact.sha256, ticker)
             if artifact
             else None,

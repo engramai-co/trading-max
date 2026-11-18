@@ -2,27 +2,12 @@
 
 from datetime import datetime
 
-from exchange_calendars.errors import CalendarError
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import listing_calendar
+from trading_max.research.closing_auctions import headline_session
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
 from .events import headline_stories, listed_dividends, listed_headlines
 from .tools import EARNINGS, FINANCIALS, FUNDAMENTALS, _mapped, _Read, _rows
-
-
-def _news_session(calendar, instant):
-    if calendar:
-        stamp = datetime.fromisoformat(instant)
-        try:
-            exchange = market_calendar(calendar, stamp.year, stamp.year)
-            local_day = stamp.astimezone(exchange.tz).date().isoformat()
-            session = exchange.date_to_session(local_day, direction="next")
-            if stamp > exchange.session_close(session):
-                session = exchange.next_session(session)
-            return session.date().isoformat()
-        except (CalendarError, OverflowError, ValueError):
-            pass
-    return None
 
 
 def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence):
@@ -94,13 +79,22 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
         exchange = listing_calendar(
             ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
         )
+    asset_type = series.published_bar_asset_type
+    if not asset_type or asset_type.upper() == "UNKNOWN":
+        asset_type = metrics.get("quoteType")
     for row in headline_stories(rows, raw_rows):
         published = row["date"]
-        day = _news_session(exchange, row["instant"]) if row["instant"] else published
+        day, timing = (
+            headline_session(exchange, datetime.fromisoformat(row["instant"]), asset_type)
+            if row["instant"]
+            else (published, None)
+        )
         if day is None:
             issues.append("listing_calendar_unavailable")
         elif args.start <= day <= args.end:
             event = {"date": day, "kind": "news", "reference": row["reference"], "role": "lead"}
+            if timing:
+                event["timing"] = timing
             if day != published:
                 event["publication_date"] = published
             events.append(event)

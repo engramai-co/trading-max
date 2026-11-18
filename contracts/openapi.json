@@ -14323,6 +14323,18 @@
               }
             ],
             "title": "Role"
+          },
+          "timing": {
+            "anyOf": [
+              {
+                "const": "closing_auction_window",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timing"
           }
         },
         "required": [
