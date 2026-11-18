@@ -19,7 +19,7 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 from trading_max.reference.quote_units import major_quote_unit
-from trading_max.research.calendar import completed_daily_bars, completed_months
+from trading_max.research.calendar import completed_daily_bars, completed_months, frame_venue
 from trading_max.research.option_terms import contract_terms, treasury_rate
 from trading_max.research.technical_scoring import technical_score
 from trading_max.research.venues import resolve_venue, row_claims, yahoo_venue_metadata
@@ -507,9 +507,7 @@ def analyze_ticker(
 ) -> TechnicalResearchArtifact:
     """Calculate all deterministic technical indicators for one security."""
 
-    if resolve_venue(
-        yf_ticker, *row_claims(yf_ticker, frame.attrs), *frame.attrs.get("venue_claims", ())
-    ).conflict:
+    if frame_venue(frame.attrs, yf_ticker).conflict:
         raise MarketDataError(f"{label}: conflicting history listing")
     asset_type = str(frame.attrs.get("asset_type") or "").upper()
     frame = completed_daily_bars(frame, now=pd.Timestamp.now(tz="UTC"), ticker=yf_ticker)

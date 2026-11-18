@@ -157,6 +157,7 @@ def frame_venue(attrs, ticker=None, exchange=None):
         *row_claims(requested, attrs),
         *attrs.get("venue_claims", ()),
         provider_claim(exchange),
+        aliases=attrs.get("venue_aliases", ()),
     )
     if not (
         exchange

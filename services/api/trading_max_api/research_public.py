@@ -74,7 +74,10 @@ def public_lens(
                 ),
             ).astype(float)
             frame.attrs.update(
-                asset_type=asset_type, venue_claims=series.venue_claims, ticker=ticker
+                asset_type=asset_type,
+                venue_claims=series.venue_claims,
+                venue_aliases=(pinned.requested, *pinned.aliases),
+                ticker=ticker,
             )
             artifact = analyze_ticker(
                 ticker, ticker, frame, {}, currency=series.currency, requested_period="10y"

@@ -780,3 +780,45 @@ def test_unverified_event_alias_does_not_poison_ordinary_london_headline(bound):
     assert {
         event["reference"] for event in history["data"]["items"] if event.get("ticker") == ticker
     } == {"compatible-news"}
+
+
+def test_public_preview_can_read_verified_london_history_despite_legacy_bare_bar_key(
+    bound, monkeypatch
+):
+    from services.api.trading_max_api.dashboard_models import ResearchPriceSeries
+
+    app, initial, _ = bound
+    ticker = "SYN.L"
+    security = watch(app, ticker, "LSE")
+    row = raw_row(app, initial, "SYN", yf_ticker="SYN", currency="GBP", exchange="LSE")
+    row["price_series"][-1]["close"] = 30
+    publish(app, **{tools.TECHNICAL: {"rows": [row]}})
+    monkeypatch.setattr(app.state.security_search, "exact", lambda *_: security)
+
+    def live(symbol, interval, **kwargs):
+        assert (symbol, interval) == (ticker, "1d")
+        return ResearchPriceSeries(
+            ticker=ticker,
+            as_of=DATES[-1],
+            currency="GBP",
+            points=[
+                {
+                    **point,
+                    "open": point["close"],
+                    "high": point["close"] + 1,
+                    "low": point["close"] - 1,
+                }
+                for point in row["price_series"]
+            ],
+            available_sessions=len(row["price_series"]),
+            published_bar_ticker=ticker,
+            published_bar_exchange="LSE",
+            timezone="Europe/London",
+        )
+
+    monkeypatch.setattr(app.state.security_prices, "get", live)
+    client = TestClient(app)
+    chart = client.get(f"/v1/research/{ticker}/prices")
+    assert (chart.status_code, chart.json()["exchangeCalendar"]) == (200, "XLON")
+    result = client.get(f"/v1/research/{ticker}/lens/technical?preview=true").json()
+    assert (result["context"]["quote"]["price"], bool(result["technical"])) == (30, True)
