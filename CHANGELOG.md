@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.63.3] - 2026-11-18
+
+### Fixed
+- The floating research section index has a solid background, so the reading no longer shows through it.
+
 ## [1.63.2] - 2026-11-18
 
 ### Changed
