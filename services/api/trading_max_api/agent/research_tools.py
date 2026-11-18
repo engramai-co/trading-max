@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import date, timedelta
 from typing import Annotated, Literal
 
@@ -41,10 +42,62 @@ from .tools import (
 )
 
 SeriesId = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{20}$")]
+# A company profile is restated a sentence at a time; later sentences add detail.
+PROFILE_SENTENCES = 12
+_CJK = re.compile(r"[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]")
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[\"“(]?[A-Z0-9])")
+# Abbreviations that end with a full stop but rarely end an English sentence.
+_ABBREVIATION = re.compile(
+    r"(?:(?:^|[\s(])(?:[A-Z]\.)+|\b(?:Inc|Co|Corp|Ltd|Plc|Bros|No|Nos|St|Mt|Mr|Mrs|Ms|Dr|Jr|Sr"
+    r"|vs|approx|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec)\.)$"
+)
 
 
 class SecurityArgs(Args):
     ticker: Ticker
+
+
+def profile_sentences(text: str) -> list[str]:
+    """Split an English description into sentences without breaking at common abbreviations."""
+    sentences, start = [], 0
+    for boundary in _SENTENCE_END.finditer(text):
+        if _ABBREVIATION.search(text[start : boundary.start()]):
+            continue
+        sentences.append(text[start : boundary.start()].strip())
+        start = boundary.end()
+    sentences.append(text[start:].strip())
+    return [sentence for sentence in sentences if sentence]
+
+
+def company_profile(ctx: Context, args: SecurityArgs) -> dict:
+    """Read the selected company's English business description, numbered sentence by sentence."""
+    read = _Read(ctx.deps, "company_profile", args, "public_research")
+    pinned = ctx.deps.selected_listing(args.ticker)
+    if pinned.venue().conflict:
+        return read.missing("listing_unavailable")
+    batch = read.read(FUNDAMENTALS) or {}
+    row, _ = pinned.event_row(
+        pinned.published_row(_rows(batch.get("rows", batch.get("fundamentals"))))
+    )
+    metrics = _mapped(row.get("metrics") or row.get("info"))
+    if str(metrics.get("quoteType") or "").upper() in {"ETF", "ETP", "MUTUALFUND", "INDEX"}:
+        return read.result("not_applicable")
+    text = " ".join(str(metrics.get("longBusinessSummary") or "").split())
+    if not text:
+        return read.missing("company_profile_unavailable", keys=[FUNDAMENTALS])
+    # Only the provider's English description needs a Chinese restatement.
+    if _CJK.search(text):
+        return read.result("not_applicable", keys=[FUNDAMENTALS])
+    return read.result(
+        data={
+            "ticker": pinned.ticker,
+            "language": "en",
+            "sentences": profile_sentences(text)[:PROFILE_SENTENCES],
+            "version": _digest(["company-profile-v1", text]),
+            "as_of": _iso(batch.get("generated_at")),
+        },
+        keys=[FUNDAMENTALS],
+    )
 
 
 class PositionArgs(SecurityArgs):

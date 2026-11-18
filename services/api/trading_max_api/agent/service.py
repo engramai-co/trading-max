@@ -162,6 +162,7 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
                 "your-position": {"overview"},
                 "key-moment": {"technical"},
                 "earnings-brief": {"analyst", "fundamentals"},
+                "company-summary": {"overview"},
             }
             if role.id in research_lenses and (
                 context.lens not in research_lenses[role.id]

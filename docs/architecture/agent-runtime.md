@@ -282,6 +282,14 @@ one observation when the publication covers a single habit. Their figures, units
 and sources travel together. The browser constructs local evidence links from
 the tool and its checked arguments.
 
+A restating role receives numbered source sentences instead of observations. The
+model chooses two to four of them, or the only one, and restates each in Chinese.
+The role's check accepts a restatement only when it is Chinese text on one line,
+without links or markup, and repeats only figures and Latin-script words from its
+own sentence. The English line stays the source sentence. The Research Overview
+company summary uses this mode with `company_profile`, cites each line as a
+disclosure and keys its cache by a digest of the description.
+
 `POST /v1/assistant/roles/{role_id}/reading` accepts a context and optional
 snapshot ID. The newline-delimited stream delivers verified lines as model
 selection progresses, then the complete reading, an empty result or a stable

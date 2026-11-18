@@ -1508,7 +1508,12 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         price_key_moments,
     )
     from .market_roles import global_map, market_sector, sector_headline
-    from .research_tools import research_earnings, research_headline, research_position
+    from .research_tools import (
+        company_profile,
+        research_earnings,
+        research_headline,
+        research_position,
+    )
     from .review_patterns import review_patterns
 
     toolset = _AssistantToolset(id="trading-max-read-only")
@@ -1532,6 +1537,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (research_earnings, 8),
         (research_position, 8),
         (research_headline, 8),
+        (company_profile, 5),
         (news_and_events, 8),
         (upcoming_events, 8),
         (selected_money, 10),

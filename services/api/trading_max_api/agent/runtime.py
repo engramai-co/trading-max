@@ -125,6 +125,8 @@ or /data/benchmarks/N/asset or benchmark; /data/sector_comparison explains missi
 date: /data/items/N/move_fraction, volume_z_score, or /data/items/N/events/M/kind for a dated non-news event. For subsequent sessions choose /data/following/N/return_fraction. Cite a separate research_headline
 /data/title only as a lead. For research_earnings choose /data/report/actual, estimate,
 surprise or date, /data/estimates/N/mean or /data/changes/N/change for the relevant fiscal period. For news_and_events or upcoming_events cite a dated non-news row with /data/items/N/title_en.
+For company_profile cite /data/sentences/N, a sentence of the company's own English description; it
+says only what the company states about itself.
 To offer a qualitative interpretation choose a suitable reference from this list:
 {{other-drivers}}, {{attribution}}, {{cash-flows}}, {{concentration}}, {{benchmark}},
 {{valuation}}, {{history}}, {{insufficient-evidence}}. End it with a space and [inference].
