@@ -229,11 +229,22 @@ class _BoundedValidator:
         return self.inner.validate_python(value, **kwargs)
 
 
+PAGE_TOOLS = {
+    "exposure_benchmark": "holdings",
+    "selected_money": "analytics",
+    "market_sector": "sectors",
+    "global_map": "sectors",
+    "update_issue": "health",
+}
+
+
 class _AssistantToolset(FunctionToolset[AssistantDeps]):
     async def get_tools(self, ctx: Context):
         return {
             name: replace(tool, args_validator=_BoundedValidator(tool.args_validator))
             for name, tool in (await super().get_tools(ctx)).items()
+            if name not in PAGE_TOOLS
+            or (ctx.deps.page_sources and PAGE_TOOLS[name] == ctx.deps.page_hint)
         }
 
 
@@ -1364,7 +1375,10 @@ def recent_decisions(ctx: Context, args: DecisionsArgs) -> Json:
 
 def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
     """Construct the fixed Trading Max tool registry for Pydantic AI."""
+    from .attribution_role import selected_money
+    from .diagnosis_role import update_issue
     from .events import news_and_events, upcoming_events
+    from .exposure_role import exposure_benchmark
     from .insights import (
         daily_returns,
         dated_exposure,
@@ -1372,6 +1386,7 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         holding_fx_split,
         price_key_moments,
     )
+    from .market_roles import global_map, market_sector
 
     toolset = _AssistantToolset(id="trading-max-read-only")
     for function, timeout in (
@@ -1392,6 +1407,11 @@ def build_assistant_toolset() -> FunctionToolset[AssistantDeps]:
         (price_key_moments, 8),
         (news_and_events, 8),
         (upcoming_events, 8),
+        (selected_money, 10),
+        (market_sector, 5),
+        (global_map, 5),
+        (exposure_benchmark, 5),
+        (update_issue, 5),
     ):
         toolset.add_function(function, takes_ctx=True, timeout=timeout, strict=True)
     return toolset

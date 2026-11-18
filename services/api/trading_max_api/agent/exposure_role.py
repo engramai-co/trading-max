@@ -20,6 +20,8 @@ class ExposureContext(RoleContext):
 
 
 def _category(dimension, row):
+    if dimension == "country":
+        return _countries().get((row["name"] or "").lower(), row["name"])
     if dimension == "company":
         return row.get("isin") or row.get("ticker") or row["name"]
     return row["name"]
@@ -30,7 +32,12 @@ def _find(read, tool, args, context):
         result = read.read(tool, args)
         data = result.get("data") or {}
         for row in data.get("items", []):
-            if _category(context.dimension, row) == context.category:
+            expected = (
+                _countries().get(context.category.lower(), context.category)
+                if context.dimension == "country"
+                else context.category
+            )
+            if _category(context.dimension, row) == expected:
                 return row, result
         cursor = data.get("next_cursor")
         if cursor is None:
@@ -61,7 +68,11 @@ def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
     elif isinstance(weights, WorldSectorWeights):
         code = GICS_SECTORS.get(SECTOR_ALIASES.get(args.category, args.category))
         value = weights.sectors[code].weight if code in weights.sectors else None
-    if value is None or weights.as_of > ctx.deps.manifest.created_at.date():
+    if (
+        value is None
+        or not ctx.deps.manifest
+        or weights.as_of > ctx.deps.manifest.created_at.date()
+    ):
         return read.missing("dated_benchmark_weight_unavailable")
     return read.result(data={"as_of": weights.as_of.isoformat(), "weight": value})
 
@@ -78,10 +89,14 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
     if not item or item["weight_fraction"] is None or not data.get("broker_as_of"):
         return []
     day = datetime.fromisoformat(data["broker_as_of"]).astimezone(LONDON).date()
-    arguments = {"dimension": context.dimension, "category": context.category}
+    arguments = {
+        "dimension": context.dimension,
+        "category": context.category,
+        "snapshotId": read.deps.snapshot_id,
+    }
 
     def observation(section, zh, en, result=current, tool="lookthrough_exposure"):
-        return line(section, zh, en, result, "exposure", tool, **arguments)
+        return line(section, zh, en, result, "exposure", tool, metric=section, **arguments)
 
     weight = item["weight_fraction"]
     facts = [

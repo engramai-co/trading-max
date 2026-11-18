@@ -63,6 +63,7 @@ class AssistantDepsFactory:
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
     bind_price_series: Callable[[], PublishedPriceReader] | None = None
+    bind_page_sources: Callable[[], PageSources] | None = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
@@ -71,6 +72,10 @@ class AssistantDepsFactory:
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
         return AssistantDeps(
+            page_sources=self.bind_page_sources()
+            if self.bind_page_sources
+            and page_hint in {"holdings", "analytics", "sectors", "health"}
+            else None,
             price_series=self.bind_price_series() if self.bind_price_series else None,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),

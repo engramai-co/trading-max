@@ -36,10 +36,17 @@ def published_page_sources(indices, jobs) -> PageSources:
         except (OSError, ValueError):
             return None
 
+    def published_job(job_id: str):
+        # Match the workspace's public refresh history. Internal queue jobs never enter model context.
+        for item in jobs.list(limit=200):
+            if item.job_id == job_id:
+                return item
+        raise FileNotFoundError("Update outside the displayed job history")
+
     return PageSources(
         weights,
         indices.boards.load,
         indices.observed_world_sectors,
         indices.observed_contribution,
-        jobs.get,
+        published_job,
     )

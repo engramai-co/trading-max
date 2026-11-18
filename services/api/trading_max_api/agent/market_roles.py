@@ -34,6 +34,7 @@ class SectorContext(MarketContext):
 
 
 def market_sector(ctx: tools.Context, args: SectorContext):
+    """Inspect a matching regional or world sector at the observed board timestamp."""
     read = tools._Read(ctx.deps, "market_sector", args, "market")
     sources = ctx.deps.page_sources
     stamp = datetime.fromisoformat(args.observed)
@@ -184,7 +185,8 @@ def sector_facts(read: RoleTools, context: SectorContext):
     return facts
 
 
-def global_map(ctx: tools.Context, args: MarketContext):
+def global_map(ctx: tools.Context, args: RegionalMapContext):
+    """Read one published global session and its estimated ACWI contributions."""
     read = tools._Read(ctx.deps, "global_map", args, "market")
     board = ctx.deps.page_sources.regions() if ctx.deps.page_sources else None
     if (

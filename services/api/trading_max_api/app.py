@@ -36,6 +36,7 @@ from trading_max.research.market import MarketResearchService
 
 from .agent.background import BriefWriter, completed_publications
 from .agent.deps import AssistantDepsFactory
+from .agent.page_sources import published_page_sources
 from .agent.readings import ReadingService
 from .agent.runtime import build_assistant_agent, run_settings
 from .agent.service import AssistantService, AssistantUnavailable, BoundModel
@@ -179,7 +180,9 @@ def create_app(
         bind_model=bind_assistant_model,
         bind_background_model=partial(bind_assistant_model, background=True),
         deps_for_run=AssistantDepsFactory(
-            store=store, bind_price_series=research.bind_price_series
+            store=store,
+            bind_price_series=research.bind_price_series,
+            bind_page_sources=lambda: published_page_sources(app.state.indices, jobs),
         ).for_run,
         check_ready=assistant_ready,
     )

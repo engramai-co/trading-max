@@ -155,6 +155,16 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
             context.object = role.context_schema.model_validate(context.object or {}).model_dump(
                 mode="json"
             )
+            if role.id in {"exposure", "attribution", "market-map", "market-sector", "diagnosis"}:
+                if not context.snapshot_id or context.ticker or context.lens:
+                    raise ValueError("A page reading requires its published origin")
+                if role.id == "exposure" and context.scope != "broker_total":
+                    raise ValueError("Look-through covers the combined broker accounts")
+                if role.id == "attribution" and any(
+                    context.object[key] != getattr(context, key)
+                    for key in ("scope", "range", "benchmark")
+                ):
+                    raise ValueError("The selected range must match its page origin")
         elif context.object or context.snapshot_id:
             raise ValueError("object requires a role")
         return context

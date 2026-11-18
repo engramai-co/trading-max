@@ -47,7 +47,11 @@ export function Inspection({role, object, context, snapshotId, onClose, anchored
   const key = JSON.stringify(request);
   const [stopped, setStopped] = useState("");
   const [closed, setClosed] = useState("");
-  const query = useRoleReading(request, Boolean(context) && stopped !== key && closed !== key);
+  const activeObject = JSON.stringify([role,Object.entries(request.context).filter(([field]) => field!=="observed")]);
+  const [pinned, setPinned] = useState({object:activeObject,key});
+  if (pinned.object!==activeObject) setPinned({object:activeObject,key});
+  const updated = pinned.object===activeObject && pinned.key!==key;
+  const query = useRoleReading(request, Boolean(context) && !updated && stopped !== key && closed !== key);
   const client = useQueryClient();
   const reading = useMemo(() => {
     if (role !== "market-map") return query.data;
@@ -56,10 +60,12 @@ export function Inspection({role, object, context, snapshotId, onClose, anchored
     return lines.length ? {...query.data, lines: lines.slice(0,1)} : null;
   },[role, market, query.data, showMapLine]);
   const hasContext = Boolean(context);
+  const page = {exposure:"holdings",attribution:"analytics",diagnosis:"health","market-sector":"sectors","market-map":"sectors"}[role];
+  const origin = useMemo(() => ({page,search:new URLSearchParams(request.context).toString(),snapshotId:snapshotId ?? reading?.snapshotId ?? undefined}), [page, request, snapshotId, reading?.snapshotId]);
   const card = useMemo<RoleCard>(() => ({
-    role:hasContext ? role : "", title:t(descriptor.title[0],descriptor.title[1]), object, context:role === "market-map" && market ? {...request.context,market} : request.context, reading,
+    role:hasContext && origin.snapshotId ? role : "", origin, title:t(descriptor.title[0],descriptor.title[1]), object, context:role === "market-map" && market ? {...request.context,market} : request.context, reading,
     questions:descriptor.questions.map(([zh,en]) => t(zh,en)),
-  }), [hasContext, role, descriptor, object, request, reading, market, t]);
+  }), [hasContext, role, descriptor, object, request, reading, market, origin, t]);
   usePageRole(card);
   if (!context) return null;
   if (role === "market-map") {
@@ -67,6 +73,7 @@ export function Inspection({role, object, context, snapshotId, onClose, anchored
     return portal && line ? createPortal(<div className="mx-map-reading"><p><span aria-hidden="true">✦ </span>{t(line.zh,line.en)} <EvidenceLink evidence={line.evidence}/></p>
       <button type="button" onClick={() => continueInSidebar(card)}>{t("解读 →","Read more →")}</button></div>,portal) : null;
   }
+  if (updated) return <button type="button" className="mx-text-link" onClick={() => setPinned({object:activeObject,key})}>{t("解读最新记录","Read updated records")}</button>;
   if (closed === key) return <button type="button" className="mx-text-link" onClick={() => setClosed("")}>✦ {card.title}</button>;
   const close = () => { if (onClose) onClose(); else setClosed(key); };
   const Container = anchored ? AnchoredReading : InlineReading;

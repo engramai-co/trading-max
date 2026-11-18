@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request, Response
 from pydantic import Field, ValidationError
 from starlette.responses import StreamingResponse
 
-from ..agent.page_sources import published_page_sources
 from ..agent.readings import ReadingEvent, ReadingService
 from ..agent.roles import role_registry
 from ..agent.service import AssistantService
@@ -137,11 +136,6 @@ async def role_reading(request: Request, role_id: str, body: ReadingRequest) -> 
         raise HTTPException(422, detail={"code": "assistant_context_invalid"})
     service: ReadingService = request.app.state.assistant_readings
     deps = service.assistant.deps_for_run(role.page, None)
-    if role.page in {"holdings", "analytics", "sectors", "health"}:
-        deps = replace(
-            deps,
-            page_sources=published_page_sources(request.app.state.indices, request.app.state.jobs),
-        )
     if body.snapshot_id and body.snapshot_id != deps.snapshot_id:
         try:
             deps = replace(deps, manifest=deps.store.load_manifest(body.snapshot_id))

@@ -177,10 +177,12 @@ export function PerformanceContent({
   const identity = [view,scope,actualRange,data?.runId,benchmark,start,end].join("|");
   const brush = ready ? (a:string,b:string) => {setPhoneRange(null); setSelectionRange({start:a,end:b,identity});} : undefined;
   const phoneIdentity = [view,scope,actualRange,data?.runId].join("|");
+  const linkedFrom = params.get("inspectFrom"), linkedTo=params.get("inspectTo");
+  const citedWindow = params.get("snapshotId")===data?.runId && linkedFrom && linkedTo && points.some(point=>point.date===linkedFrom) && points.some(point=>point.date===linkedTo) ? {start:linkedFrom,end:linkedTo} : null;
   const selectedWindow = selectionRange?.identity===identity ? selectionRange
-    : phoneRange===phoneIdentity && points.length && !rangeMismatch ? {start:points[0].date,end:points.at(-1)!.date} : null;
+    : phoneRange===phoneIdentity && points.length && !rangeMismatch ? {start:points[0].date,end:points.at(-1)!.date} : citedWindow;
   const inspection = <PageInspection role="attribution" snapshotId={data?.runId} object={selectedWindow ? selectedWindow.start.slice(0,10)+" – "+selectedWindow.end.slice(0,10) : t("所选区间","Selected range")}
-    context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,start:selectedWindow.start,end:selectedWindow.end} : undefined}
+    context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
     onClose={() => {setSelectionRange(null);setPhoneRange(null);}}/>;
   const first = points[0],
     last = points.at(-1);

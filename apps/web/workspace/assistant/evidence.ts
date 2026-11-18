@@ -34,6 +34,10 @@ export function evidenceHref(ref: Evidence) {
   }
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
+    if (["daily_returns","selected_money","holding_fx_split"].includes(ref.tool) && a.start && a.end) {
+      params.set("view",a.view ?? "returns"); params.set("inspectFrom",a.start); params.set("inspectTo",a.end);
+      if (a.snapshotId) params.set("snapshotId",a.snapshotId);
+    }
     if (a.range) params.set("range", a.range);
     if (a.metric === "period_pnl_gbp" && a.start && a.end && a.snapshotId) {
       params.set("moneyFrom", a.start);
@@ -41,7 +45,7 @@ export function evidenceHref(ref: Evidence) {
       params.set("snapshotId", a.snapshotId);
     }
     if (a.benchmark) params.set("benchmark", a.benchmark);
-    if (a.start && a.end && a.start.length === 10 && a.end.length === 10) {
+    if (params.get("view")==="returns" && a.start && a.end && a.start.length === 10 && a.end.length === 10) {
       params.set("returnFrom", a.start);
       params.set("returnTo", a.end);
     }
@@ -56,7 +60,7 @@ export function evidenceHref(ref: Evidence) {
     if (a.category) params.set("category",a.category);
   }
   if (path === "/sectors") {
-    params.set("market",a.market ?? "global");
+    params.set("market",ref.tool==="global_map" ? "global" : a.market ?? "global");
     if (a.sector) {params.set("sector",a.sector); if(a.market === "global") params.set("view","sectors");}
     if (a.grouping) params.set("grouping",a.grouping);
   }
@@ -113,6 +117,7 @@ export function chatContext(page: string, search: string, timezone: string) {
     page: ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page) ? page : "overview", timezone,
     ...(["invest", "isa", "cfd", "household"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics"].includes(page) ? { scope: "broker_total" } : {}),
     ...(page === "research" && ticker && /^[a-z0-9^=._-]{1,32}$/i.test(ticker) ? { ticker: ticker.toUpperCase() } : {}),
+    ...(page==="analytics" && ["VOO","QQQ","VT","ALL"].includes(params.get("benchmark") ?? "") ? {benchmark:params.get("benchmark")} : {}),
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),
   };

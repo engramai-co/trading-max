@@ -23,6 +23,7 @@ class DiagnosisContext(RoleContext):
 
 
 def update_issue(ctx: tools.Context, args: DiagnosisContext):
+    """Read a terminal update or stale snapshot and return only classified, verified facts."""
     read = tools._Read(ctx.deps, "update_issue", args, "broker_total")
     read.account_codes("broker_total")
     if args.issue == "stale":

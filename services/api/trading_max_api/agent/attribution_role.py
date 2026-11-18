@@ -15,6 +15,8 @@ from .roles import PageRole, RoleContext, RoleTools
 class AttributionContext(RoleContext):
     scope: AccountScope
     benchmark: Literal["VOO", "QQQ", "VT", "ALL"]
+    range: tools.PageRange = "ALL"
+    view: Literal["money", "returns", "risk"] = "returns"
     start: str
     end: str
 
@@ -97,7 +99,7 @@ def selected_money(ctx: tools.Context, args: AttributionContext):
 
 
 def attribution_facts(read: RoleTools, context: AttributionContext):
-    args = context.model_dump()
+    args = {**context.model_dump(), "snapshotId": read.deps.snapshot_id}
     daily = read.read(
         insights.daily_returns,
         insights.DailyArgs(
@@ -111,7 +113,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
     data = daily.get("data") or {}
 
     def observed(section, zh, en, source="account", result=daily, tool="daily_returns"):
-        return line(section, zh, en, result, source, tool, **args)
+        return line(section, zh, en, result, source, tool, metric=section, **args)
 
     facts = []
     if (
