@@ -166,6 +166,11 @@ def test_moments_require_selected_rule_candidate_and_exact_chart(tmp_path):
     assert any(
         r["date"] == DATES[2] and r["events"][0]["kind"] == "news" for r in result["data"]["items"]
     )
+    for day in (DATES[2], DATES[3]):
+        selection = insights.MomentsArgs(scope="broker_total", date=day, **args)
+        selected = insights.moments_data(deps, selection)
+        assert selected["data"]["items"] == [r for r in result["data"]["items"] if r["date"] == day]
+        assert selected["evidence_id"] != result["evidence_id"]
     role = role_registry()["key-moment"]
 
     async def run(day):

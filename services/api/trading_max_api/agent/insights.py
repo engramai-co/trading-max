@@ -103,12 +103,15 @@ class MomentsArgs(Scoped):
     ticker: Ticker
     start: CalendarDay
     end: CalendarDay
+    date: CalendarDay | None = None
     published_series_id: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{20}$")] | None = None
 
     @model_validator(mode="after")
     def ordered(self):
         if self.end < self.start:
             raise ValueError("The range end must be on or after the start.")
+        if self.date and not self.start <= self.date <= self.end:
+            raise ValueError("The selected date must be inside the chart range.")
         return self
 
 
@@ -554,6 +557,11 @@ def news_events(read: _Read, ticker: str) -> list[dict]:
     ]
 
 
+def selected_moments(bars, events, args: MomentsArgs) -> list[dict]:
+    candidates = key_moments(bars, events, args.start, args.end)
+    return [item for item in candidates if item["date"] == args.date] if args.date else candidates
+
+
 def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     read = _Read(deps, "price_key_moments", args, args.scope)
     codes = read.account_codes(args.scope)
@@ -588,7 +596,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
                 "basis": "observed_index_series",
                 "index_range": history.range,
                 "published_series_id": args.published_series_id,
-                "items": key_moments(bars, events, args.start, args.end),
+                "items": selected_moments(bars, events, args),
             },
             keys=[NEWS_KEY, *keys],
             issues=issues,
@@ -632,7 +640,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     )
     events.extend(news_events(read, listing))
     keys.append(NEWS_KEY)
-    moments = key_moments(bars, events, args.start, args.end)
+    moments = selected_moments(bars, events, args)
     has_bars = any(args.start <= bar["date"] <= args.end for bar in bars)
     if not has_bars:
         return read.missing("no_visible_daily_bars", keys=price_keys)

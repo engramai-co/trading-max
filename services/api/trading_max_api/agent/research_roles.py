@@ -144,7 +144,7 @@ EVENTS = {
 
 
 def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
-    args = insights.MomentsArgs(scope="broker_total", **context.model_dump(exclude={"date"}))
+    args = insights.MomentsArgs(scope="broker_total", **context.model_dump())
     result = read.read(insights.price_key_moments, args)
     data = result.get("data") or {}
     moment = next((r for r in data.get("items", []) if r["date"] == context.date), None)
