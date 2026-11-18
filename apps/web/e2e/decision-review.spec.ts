@@ -1263,3 +1263,11 @@ test("earnings and rating source words open their own research sections", async 
     }
   }
 });
+
+test("clearing a habit by keyboard focuses the restored timeline heading", async ({page}) => {
+  await serve(page, () => ({ benchmark:0.03, events:true, observations:true }));
+  await page.route("**/api/backend/assistant/status", r => r.fulfill({json:{ready:true}}));
+  await page.goto("/review?habit=untraded_fall");
+  await page.locator(".mx-review-filter").press("Enter");
+  await expect(page.locator(".mx-decision-review h2").first()).toBeFocused();
+});
