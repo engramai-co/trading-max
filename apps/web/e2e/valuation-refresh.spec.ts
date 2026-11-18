@@ -1152,6 +1152,44 @@ test.describe("frozen draft review", () => {
   });
 });
 
+test("explicitly choosing the displayed model survives save and reopen", async ({page}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await synthetic(page,false);
+  let stored: string | null = null;
+  const selections: (string | null)[] = [];
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:true}}));
+  await page.route("**/SYNT/valuation-preview*", route => {
+    const family = new URL(route.request().url()).searchParams.get("family");
+    const body = route.request().method() === "POST" ? route.request().postDataJSON() : undefined;
+    if (!body) selections.push(family);
+    const p = preview("SYNT", 100, "2026-11-04T15:40:00Z", true, body?.scenarios ?? {});
+    return route.fulfill({json:{...p, familySelection:family ? "override" : stored ?? "automatic",
+      defaultSource:stored ? "saved-model" : p.defaultSource}});
+  });
+  await page.route("**/SYNT/models", route => {
+    stored = route.request().postDataJSON().familySelection;
+    return route.fulfill({json:{models:[]}});
+  });
+  await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
+    body:JSON.stringify({...draftResponse,result:{...draftResponse.result,familySelection:"override"}})+"\n"}));
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  const editor = page.locator("#valuation-assumptions");
+  const select = editor.getByRole("combobox",{name:"Valuation model"});
+  await expect(select).toHaveValue("Equity cash flow");
+  await select.click();
+  await page.getByRole("option",{name:"Equity cash flow",exact:true}).click();
+  await expect.poll(() => selections).toContain("cash-flow");
+  await editor.getByRole("button",{name:"Save model version",exact:true}).click();
+  await page.getByRole("dialog").getByRole("button",{name:"Save version",exact:true}).click();
+  await expect.poll(() => stored).toBe("override");
+  await page.reload();
+  await expect(select).toHaveValue("Equity cash flow");
+  await editor.getByRole("button",{name:"✦ Draft",exact:true}).click();
+  await expect(editor.getByRole("button",{name:"Accept Revenue growth · years 1–5"})).toBeVisible();
+  expect(selections.at(-1)).toBeNull();
+});
+
 test("cold disabled valuation stays dormant and cross-tab withdrawal clears shell and review", async ({page,context}) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   await context.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));

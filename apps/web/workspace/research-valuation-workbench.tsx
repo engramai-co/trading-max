@@ -192,7 +192,7 @@ export function ValuationWorkbench({
         { value: "net-income", label: t("净利润", "Net income") },
         { value: "residual-income", label: t("剩余收益", "Residual income") },
       ]}
-      onChange={(value) => {
+      onOptionSubmit={(value) => {
         position.current = selector.current ? { selectorTop: selector.current.getBoundingClientRect().top } : null;
         setDirty(false);
         setRecovered(undefined);
