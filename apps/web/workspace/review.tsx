@@ -174,21 +174,23 @@ export function ReviewWorkspace() {
     }
   }, [habit]);
   const focusAfterClear = useRef(false);
-  useEffect(() => {
-    if (habit || !focusAfterClear.current) return;
-    const heading = document.querySelector<HTMLElement>(".mx-decision-review h2");
-    if (heading) {
-      heading.tabIndex = -1;
-      heading.focus();
-      focusAfterClear.current = false;
-    }
-  }, [habit]);
   const filterChip = habit ? <button ref={attachFilter} type="button" className="mx-review-filter" onClick={() => {focusAfterClear.current = true; setSelection(null);update({habit:null, snapshotId: null});}}>
     {t("只看","Only")} · {t(habitLabels[habit][0],habitLabels[habit][1])} <span aria-hidden="true">×</span><span className="sr-only">{t("清除筛选","Clear filter")}</span></button> : undefined;
   const reviews = shown === "all"
     ? (["A", "B"] as const).map((code) => data?.decisionReviews?.[code])
     : shown === "C" ? [] : [data?.selectedAccountDecisions];
   const available = reviews.some((review) => review?.status === "available");
+  // A cold citation can lose its heading while the live dashboard is loading.
+  const unfilteredTimelineVisible = available && !habit;
+  useEffect(() => {
+    if (!unfilteredTimelineVisible || !focusAfterClear.current) return;
+    const heading = document.querySelector<HTMLElement>(".mx-decision-review h2");
+    if (heading) {
+      heading.tabIndex = -1;
+      if (document.activeElement === document.body) heading.focus();
+      focusAfterClear.current = false;
+    }
+  }, [unfilteredTimelineVisible]);
   const days = reviews.find((review) => review?.horizonDays)?.horizonDays ?? 20;
   const asOf = !data ? undefined : shown === "all"
     ? data.reviewAsOf ?? data.brokerAsOf

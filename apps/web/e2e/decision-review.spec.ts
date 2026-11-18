@@ -1296,6 +1296,41 @@ test("clearing a habit by keyboard focuses the restored timeline heading", async
   await expect(page.locator(".mx-decision-review h2").first()).toBeFocused();
 });
 
+for (const scope of ["all", "A"]) {
+  test("clearing a pinned habit focuses the cold and cached timeline for " + scope, async ({page}) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await serve(page, () => ({benchmark:0.03, events:true, observations:true, isa:true}));
+    await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
+    const lens = scope === "all" ? "review" : "account-analysis";
+    let release!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    await page.route("**/api/backend/dashboard/lens/" + lens + "*", async route => {
+      if (!new URL(route.request().url()).searchParams.has("runId")) await held;
+      await route.fallback();
+    });
+    const params = new URLSearchParams({snapshotId:"synthetic-decision-context", habit:"untraded_fall", reviewWindow:"to_date"});
+    if (scope !== "all") params.set("account", scope);
+    const chip = page.getByRole("button", {name:/Clear filter/});
+    const heading = page.getByRole("heading", {name:"Each decision to date"});
+    try {
+      await page.goto("/review?" + params);
+      const live = page.waitForRequest(req => {
+        const url = new URL(req.url());
+        return url.pathname.endsWith("/dashboard/lens/" + lens) && !url.searchParams.has("runId");
+      });
+      await chip.press("Enter");
+      await live;
+      await expect(chip).toHaveCount(0);
+      await expect(heading).toHaveCount(0);
+    } finally { release(); }
+    await expect(heading).toBeFocused();
+    await page.goBack();
+    await chip.press("Enter");
+    await expect(heading).toBeFocused();
+  });
+}
+
 for (const provider of ["ready", "unavailable"]) {
   test("expanded English habits keep the timeline fixed beside the sidebar when " + provider, async ({page,isMobile}, info) => {
     test.skip(isMobile || !process.env.PLAYWRIGHT_BASE_URL, "The sidebar shares space with the desktop review.");

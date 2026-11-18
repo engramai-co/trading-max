@@ -10,7 +10,7 @@ All notable public Trading Max releases are recorded here.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
-- Saved Review citations keep the selected horizon and habit with MaxAI off. Earnings and analyst citations reopen the recorded event or show that it is unavailable. Opening a habit citation on a phone closes the sheet. Clearing the filter returns keyboard focus to the timeline.
+- Saved Review citations keep the selected horizon and habit with MaxAI off. Earnings and analyst citations reopen the recorded event or show that it is unavailable. Opening a habit citation on a phone closes the sheet. Clearing the filter returns keyboard focus to the timeline, including when it has to load the current account data.
 - Review keeps the provider’s quote currency when FX is missing, measures hindsight against observed GBP closes and excludes headlines on the UTC trade day. Basket counts include net buys with missing settlement. Habits follow-ups can compare both horizons. Briefs from older publications show only the habits those records cover.
 - When a consented provider is unavailable, Review links directly to MaxAI settings.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
