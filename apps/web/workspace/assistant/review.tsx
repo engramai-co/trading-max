@@ -119,10 +119,10 @@ export function ReviewHabits({
   habit,
   active,
   onSelect,
-}: Common & { active: boolean; onSelect: (habit: Habit) => void }) {
+}: Common & { active: boolean; onSelect: (habit: Habit | null, options: { focusFilter: boolean; citation?: boolean }) => void }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
-  const phone = useMediaQuery("(max-width: 767px)");
+  const phone = useMediaQuery("(max-width: 767px)", false, { getInitialValueInEffect: false });
   const [sheet, setSheet] = useState(() => {
     try {
       return localStorage.getItem("tm-reading-review-habits-phone") === "open";
@@ -189,15 +189,20 @@ export function ReviewHabits({
               type="button"
               aria-pressed={key === habit}
               onClick={() => {
-                onSelect(key);
                 showSheet(false);
-                opener.current?.focus();
+                const next = key === habit ? null : key;
+                onSelect(next, { focusFilter: Boolean(phone && next) });
+                if (phone && !next) opener.current?.focus();
               }}
             >
               {t(line.zh, line.en)}
               <CaretRight aria-hidden="true" size={14} />
             </button>
-            <EvidenceLink evidence={line.evidence} />
+            <EvidenceLink evidence={line.evidence} onNavigate={phone ? event => {
+              event.preventDefault();
+              showSheet(false);
+              onSelect(key, { focusFilter: true, citation: true });
+            } : undefined} />
           </div>
         );
       })}
@@ -214,10 +219,11 @@ export function ReviewHabits({
           onClick={() => showSheet(true)}
           aria-expanded={sheet}
         >
-          <span aria-hidden="true">✦</span> <strong>{card.title}</strong> · {card.object}
-          {reading?.lines[0] && (
-            <span className="mx-digest-summary">{t(reading.lines[0].zh, reading.lines[0].en)}</span>
-          )}
+          <span aria-hidden="true">✦</span>
+          <span className="mx-phone-habits-label">
+            <span><strong>{card.title}</strong> · {card.object}</span>
+            <span className="mx-digest-summary">{reading?.lines[0] && t(reading.lines[0].zh, reading.lines[0].en)}</span>
+          </span>
           <CaretRight aria-hidden="true" size={14} />
         </button>
         {sheet && (
@@ -252,13 +258,12 @@ export function DecisionReading({
   horizon,
   habit,
   row,
-  rows,
   onClose,
-}: Common & { row: ScopedDecision; rows: ScopedDecision[]; onClose: () => void }) {
+}: Common & { row: ScopedDecision; onClose: () => void }) {
   const t = useCopy();
   const context = useMemo(
-    () => decisionContext(row, rows, scope, horizon, habit),
-    [row, rows, scope, horizon, habit],
+    () => decisionContext(row, scope, horizon, habit),
+    [row, scope, horizon, habit],
   );
   const request = useMemo(() => ({ role: "decision", context, snapshotId: snapshot }), [context, snapshot]);
   const run = useReviewReading(request);
@@ -274,6 +279,7 @@ export function DecisionReading({
         search: new URLSearchParams({
           account: row.account,
           decision: [row.date, row.side, row.ticker].join("."),
+          reviewOrdinal: String(context.ordinal),
           reviewWindow: context.horizon,
           ...(habit ? { habit } : {}),
         }).toString(),
@@ -301,7 +307,7 @@ export function DecisionReading({
           ))}
           <ReadingStatus run={run} />
           {(run.state === "error" || run.state === "empty") && (
-            <Link className="mx-text-link" href={decisionHref(row.account, row)}>
+            <Link className="mx-text-link" href={decisionHref(row.account, row, true)} onNavigate={onClose}>
               {t("查看这笔决定", "View this decision")} →
             </Link>
           )}

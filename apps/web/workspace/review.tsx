@@ -2,7 +2,7 @@
 
 import { ArrowRight } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateSpan } from "@/ui/formatters";
 import { usePublicationFailure } from "@/ui/publication-provider";
@@ -43,6 +43,7 @@ import { reviewHighlights } from "./review-highlights";
 import {
   BestCloses,
   DecisionTimelinePanel,
+  horizonScope,
   HorizonSwitch,
   type HorizonChoices,
   RoundTrips,
@@ -72,8 +73,8 @@ import { useRetainedResult } from "./retained-result";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
 import { useAssistant } from "./assistant/context";
-import { fallObservations, habitDecisions, habitLabels, isHabit } from "./review-patterns";
-const ReviewHabits = dynamic(() => import("./assistant/review").then(module => module.ReviewHabits));
+import { fallObservations, habitDecisions, habitLabels, isHabit, toolHorizon, type Habit } from "./review-patterns";
+const ReviewHabits = lazy(async () => ({ default: (await import("./assistant/review")).ReviewHabits }));
 const DecisionReading = dynamic(() => import("./assistant/review").then(module => module.DecisionReading));
 const FallTimeline = dynamic(() => import("./assistant/review-falls").then(module => module.FallTimeline));
 
@@ -107,22 +108,24 @@ export function ReviewWorkspace() {
   const [horizons, setHorizons] = useState<HorizonChoices>({});
   const shown = result?.scope ?? scope;
   const data = result?.data;
-  const rows = useMemo<ScopedDecision[]>(
+  const ledgerRows = useMemo<ScopedDecision[]>(
     () => !data || shown === "C" ? [] : shown === "all" ? allDecisions(data.decisionReviews) : scopedDecisions(shown, data.selectedAccountDecisions),
     [data, shown],
   );
-  const {ready} = useAssistant();
+  const rows = useMemo(() => ledgerRows.filter(row => !row.unpriced), [ledgerRows]);
+  const {ready, pending: readinessPending} = useAssistant();
   const reference = parseDecisionParam(params.get("decision"));
   const ordinal = params.get("reviewOrdinal");
   // A cited decision can disambiguate two listings with the same ticker on one day.
   const focus = shown === "all" || shown === "C" ? undefined : ready && ordinal && /^\d{1,4}$/.test(ordinal) && reference
-    ? rows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(rows,reference);
+    ? ledgerRows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(ready ? ledgerRows : rows,reference);
   const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
   const requestedHorizon = ready ? params.get("reviewWindow") : null;
   const horizon = requestedHorizon === "to_date" ? "date" : requestedHorizon === "20_sessions" ? "horizon" : localHorizon;
   const rawHabit = params.get("habit");
   const habit = ready && shown === scope && isHabit(rawHabit) ? rawHabit : null;
-  const filtered = useMemo(() => habitDecisions(rows,habit),[rows,habit]);
+  const habitRows = habit === "basket_buy" ? ledgerRows : rows;
+  const filtered = useMemo(() => habitDecisions(habitRows,habit),[habitRows,habit]);
   const falls = useMemo(() => fallObservations(data?.reviewEvidence,shown === "all" ? ["A","B"] : shown === "C" ? [] : [shown]),[data,shown]);
   const [selection,setSelection] = useState<{row:ScopedDecision;location:"extremes"|"recent";trigger:HTMLElement} | null>(null);
   const selected = ready && selection && filtered.includes(selection.row) && shown === scope ? selection : null;
@@ -131,10 +134,18 @@ export function ReviewWorkspace() {
   const expansion: DecisionExpansion | undefined = ready && shown !== "C" && data ? {
     selected:selected?.row ?? null,location:selected?.location ?? null,id:readingId,
     toggle:(row,location,trigger) => setSelection(selected?.row === row && selected.location === location ? null : {row,location,trigger}),
-    reading:selected && <div id={readingId}><DecisionReading key={readingId+selected.location+rows.indexOf(selected.row)+horizon+data.runId}
-      snapshot={data.runId} scope={shown} row={selected.row} rows={rows} horizon={horizon} habit={habit} onClose={closeReading}/></div>,
+    reading:selected && <div id={readingId}><DecisionReading key={readingId + selected.location + horizonScope(selected.row.account, selected.row) + horizon + data.runId}
+      snapshot={data.runId} scope={shown} row={selected.row} horizon={horizon} habit={habit} onClose={closeReading}/></div>,
   } : undefined;
-  const filterChip = habit ? <button type="button" className="mx-review-filter" onClick={() => {setSelection(null);update({habit:null});}}>
+  const filterButton = useRef<HTMLButtonElement>(null);
+  const [focusFilter, setFocusFilter] = useState<{ habit: Habit | null } | null>(null);
+  useEffect(() => {
+    if (focusFilter && focusFilter.habit === habit) {
+      filterButton.current?.focus();
+      setFocusFilter(null);
+    }
+  }, [focusFilter, habit]);
+  const filterChip = habit ? <button ref={filterButton} type="button" className="mx-review-filter" onClick={() => {setSelection(null);update({habit:null});}}>
     {t("只看","Only")} · {t(habitLabels[habit][0],habitLabels[habit][1])} <span aria-hidden="true">×</span><span className="sr-only">{t("清除筛选","Clear filter")}</span></button> : undefined;
   const reviews = shown === "all"
     ? (["A", "B"] as const).map((code) => data?.decisionReviews?.[code])
@@ -187,21 +198,29 @@ export function ReviewWorkspace() {
                   <AccountMoney data={data} />
                 )}
               </ReviewLead>
+              {(!available || !readinessPending) && <Suspense fallback={null}>
               {available ? (
                 <>
                   {ready && <ReviewHabits key={shown+data.runId} snapshot={data.runId} scope={shown} horizon={horizon} habit={habit} active={!selected}
-                    onSelect={value => {setSelection(null); update({habit:value === habit ? null : value, decision:null});}} />}
+                    onSelect={(value, options) => {
+                      setSelection(null);
+                      if (options.focusFilter) setFocusFilter({ habit: value });
+                      update({
+                        habit: value, decision: null, reviewOrdinal: null,
+                        ...(options.citation ? { evidence: "review_patterns", reviewWindow: toolHorizon(horizon) } : {}),
+                      });
+                    }} />}
                   {habit === "untraded_fall" ? <FallTimeline moves={falls} horizon={horizon} action={filterChip}/> : <DecisionTimelinePanel
                     action={filterChip}
                     rows={filtered}
                     days={days}
                     horizon={horizon}
-                    focus={focus && filtered.includes(focus as ScopedDecision) ? focus : undefined}
+                    focus={focus && ((!habit && focus.unpriced) || filtered.includes(focus as ScopedDecision)) ? focus : undefined}
                     onClear={() => {
                       release();
-                      update({ decision: null });
+                      update({ decision: null, reviewOrdinal: null });
                     }}
-                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row), reviewOrdinal:null })}
+                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row), reviewOrdinal:ready && row.reviewOrdinal != null ? String(row.reviewOrdinal) : null })}
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}
                     unpriced={[...new Set(reviews.flatMap((review) => review?.coverage?.unpricedTickers ?? []))]}
                   />}
@@ -227,6 +246,7 @@ export function ReviewWorkspace() {
                 showAccount={shown === "all"}
               />
               {shown !== "all" && <AccountAnalysis key={shown} data={data} code={shown} />}
+              </Suspense>}
             </>
           )}
         </div>

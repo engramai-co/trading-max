@@ -32,9 +32,9 @@ import { readingTone } from "./reading-format";
 import { SecurityPeek } from "./security-peek";
 
 export type AccountDecisions = NonNullable<DashboardLens["selectedAccountDecisions"]>;
-export type TradeDecision = NonNullable<AccountDecisions["decisions"]>[number];
-/** One security, one side and one trading day: what identifies a decision. */
-export type DecisionRef = Pick<TradeDecision, "date" | "side" | "ticker">;
+export type TradeDecision = NonNullable<AccountDecisions["decisions"]>[number] & { reviewOrdinal?: number };
+/** The optional ordinal distinguishes listings sharing a ticker, side and day. */
+export type DecisionRef = Pick<TradeDecision, "date" | "side" | "ticker" | "reviewOrdinal">;
 type ClosedTrade = NonNullable<AccountDecisions["closedTrades"]>[number];
 type RoundTrip = NonNullable<AccountDecisions["roundTrips"]>[number];
 type DecisionEvent = NonNullable<TradeDecision["events"]>[number];
@@ -86,7 +86,9 @@ export type HorizonChoices = Partial<Record<string, Horizon>>;
 
 /** Where a horizon choice is kept: one entry per account and decision, and one for each account's review without one. */
 export function horizonScope(account: AccountCode | undefined, row?: DecisionRef) {
-  return (account ?? "") + "\u0000" + (row ? decisionParam(row) : "");
+  const decision = row ? decisionParam(row) : "";
+  const ordinal = row?.reviewOrdinal;
+  return (account ?? "") + "\u0000" + decision + (ordinal == null ? "" : "/" + ordinal);
 }
 
 /**
@@ -153,6 +155,7 @@ export function linkedDecision(rows: TradeDecision[] | null | undefined, ref: De
  */
 export function pendingOutcome(row: TradeDecision, horizon: Horizon, days: number, t: Copy, locale: "zh" | "en") {
   if (decisionEffect(row, horizon) != null) return null;
+  if (row.unpriced) return t("行情缺失，未计入", "Unmeasured · price unavailable");
   if (observing(row)) return t("观察中", "Observing");
   const observed = row.observedDays;
   if (horizon === "horizon" && !row.horizonComplete && observed != null && observed < days)
@@ -826,7 +829,7 @@ export function DecisionTimelinePanel({
   const { locale } = useLocale();
   const card = useRef<HTMLDivElement>(null);
   const anchor = useRef<HTMLSpanElement>(null);
-  const focusKey = focus ? decisionParam(focus) : "";
+  const focusKey = focus ? horizonScope(undefined, focus) : "";
   const landed = useRef("");
   const land = useEffectEvent(() => {
     const link = card.current?.querySelector<HTMLElement>(".mx-row-link");
@@ -838,7 +841,8 @@ export function DecisionTimelinePanel({
   });
   // A refetch that keeps the decision leaves focus where the reader put it.
   useEffect(() => {
-    land();
+    if (focusKey) land();
+    else landed.current = "";
   }, [focusKey]);
   const title = horizon === "horizon"
     ? (locale === "zh" ? `每笔决定 ${days} 个交易日后的结果` : `Each decision after ${days} trading days`)

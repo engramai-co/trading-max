@@ -31,18 +31,10 @@ export function fallObservations(evidence: Evidence | undefined | null, accounts
 
 export function decisionContext(
   row: ScopedDecision,
-  rows: ScopedDecision[],
   scope: Exclude<ReviewScope, "C">,
   horizon: Horizon,
   habit: Habit | null,
 ) {
-  const twins = rows.filter(
-    (candidate) =>
-      candidate.account === row.account &&
-      candidate.date === row.date &&
-      candidate.side === row.side &&
-      candidate.ticker === row.ticker,
-  );
   return {
     scope: toolScope(row.account),
     page_scope: toolScope(scope),
@@ -51,6 +43,6 @@ export function decisionContext(
     ticker: row.ticker,
     decision_date: row.date,
     side: row.side,
-    ordinal: twins.indexOf(row),
+    ordinal: row.reviewOrdinal ?? 0,
   };
 }

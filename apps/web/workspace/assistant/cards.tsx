@@ -4,19 +4,19 @@ import "./readings.css";
 import { Drawer } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
-import { useId, useState, type ReactNode } from "react";
+import { useId, useState, type ComponentProps, type ReactNode } from "react";
 import { useCopy } from "../foundation";
 import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
 import { evidenceHref, sourceWords, type Evidence } from "./evidence";
 
-export function EvidenceLink({ evidence }: { evidence: Evidence }) {
+export function EvidenceLink({ evidence, onNavigate }: { evidence: Evidence; onNavigate?: ComponentProps<typeof Link>["onNavigate"] }) {
   const t = useCopy();
-  const { close } = useAssistant();
+  const { close, open } = useAssistant();
   const [zh, en] = sourceWords[evidence.source];
   const word = evidence.source === "publisher" && evidence.publisher ? evidence.publisher : t(zh, en);
   const href = evidenceHref(evidence);
-  return href ? <Link className="mx-reading-source" href={href} onClick={() => { if (window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
+  return href ? <Link className="mx-reading-source" href={href} onNavigate={onNavigate} onClick={() => { if (open && window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
 export function ReadingLines({ card }: { card: RoleCard }) {
   const t = useCopy();

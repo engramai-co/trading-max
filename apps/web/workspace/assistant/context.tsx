@@ -48,8 +48,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     queryKey: assistantSettingsKey, queryFn: ({ signal }) => api("/settings/assistant", { signal }), enabled: false,
   });
   const status = useQuery({ queryKey: ["assistant-status", settings.data?.revision ?? null],
-    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal, priority: "low" }),
-    enabled: painted || open, staleTime: 30_000, retry: false,
+    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]), priority: "low" }),
+    enabled: painted || open, staleTime: 30_000, retry: false, networkMode: "always",
   });
   const ready = !status.isError && Boolean(status.data?.ready) && (!settings.data || settings.data.enabled && settings.data.acceptedConsentRevision === settings.data.consentRevision);
   const close = useCallback(() => {

@@ -63,13 +63,30 @@ export function reviewScope(value: string | null | undefined, fallback: ReviewSc
 }
 
 /** Where a decision opens: its account's review, led by that decision. */
-export function decisionHref(account: DecisionAccount, row: Pick<TradeDecision, "date" | "side" | "ticker">) {
-  return "/review?" + new URLSearchParams({ account, decision: decisionParam(row) });
+export function decisionHref(account: DecisionAccount, row: Pick<TradeDecision, "date" | "side" | "ticker" | "reviewOrdinal" | "unpriced">, identify = false) {
+  const query = new URLSearchParams({ account, decision: decisionParam(row) });
+  if (identify && row.reviewOrdinal != null) query.set("reviewOrdinal", String(row.reviewOrdinal));
+  if (identify && row.unpriced) query.set("habit", "basket_buy");
+  return "/review?" + query;
 }
 
 /** One account's decisions, each knowing its account. */
 export function scopedDecisions(account: DecisionAccount, review: AccountDecisions | null | undefined): ScopedDecision[] {
-  return review?.status === "available" ? (review.decisions ?? []).map((row) => ({ ...row, account })) : [];
+  if (review?.status !== "available") return [];
+  // Match the account order used by the decision timing tool, before filtering or ranking.
+  const rows = [...(review.decisions ?? []), ...(review.unpricedBasketBuys ?? [])];
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    const key = decisionParam(row);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  return rows.map(row => {
+    const key = decisionParam(row);
+    const ordinal = seen.get(key) ?? 0;
+    seen.set(key, ordinal + 1);
+    return { ...row, account, ...((counts.get(key) ?? 0) > 1 ? { reviewOrdinal: ordinal } : {}) };
+  });
 }
 
 /** Both accounts' decisions by date, as the review across accounts plots them. */
@@ -315,7 +332,7 @@ export function DecisionExtremes({ rows, horizon, showAccount, expansion }: { ro
     const keys = decisionKeys(items);
     return items.length ? items.map((row, index) => (
       <DecisionLine key={keys[index]} row={row} horizon={horizon} expansion={expansion}
-        account={showAccount ? accountName(profile, row.account) : undefined} href={decisionHref(row.account, row)} />
+        account={showAccount ? accountName(profile, row.account) : undefined} href={decisionHref(row.account, row, Boolean(expansion))} />
     )) : <p className="mx-review-empty">{empty}</p>;
   };
   return (
@@ -367,7 +384,7 @@ function JournalItem({ entry, showAccount, expansion }: { entry: JournalEntry; s
           {single && (
             <span className="mx-muted">
               {[single.quantity != null ? (locale === "zh" ? `${single.quantity.toLocaleString("zh-CN", { maximumFractionDigits: 4 })} 股` : `${single.quantity.toLocaleString("en-GB", { maximumFractionDigits: 4 })} shares`) : null,
-                currency(single.amountGbp), account].filter(Boolean).join(" · ")}
+                currency(single.amountGbp), single.unpriced ? t("行情缺失，未计入", "Unmeasured · price unavailable") : null, account].filter(Boolean).join(" · ")}
             </span>
           )}
           {!single && account && <span className="mx-muted">{account}</span>}
@@ -379,7 +396,7 @@ function JournalItem({ entry, showAccount, expansion }: { entry: JournalEntry; s
                 {tradeTrigger(row, <>
                   {sides.size > 1 && <span className={"mx-journal-mark mx-journal-mark-" + row.side} aria-hidden="true" />}
                   <span className="sr-only">{decisionAction(row, t)}</span>
-                  {row.ticker} <span className="mx-muted">{currency(row.amountGbp)}</span>
+                  {row.ticker} <span className="mx-muted">{currency(row.amountGbp)}{row.unpriced && " · " + t("行情缺失，未计入", "Unmeasured · price unavailable")}</span>
                 </>)}
               </li>
             ))}

@@ -363,11 +363,20 @@ a.mx-journal-act:focus-visible,
   background: var(--mx-brand-soft);
 }
 .mx-phone-habits {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
   text-align: start;
   min-height: 44px;
+}
+.mx-phone-habits-label {
+  display: grid;
+  min-width: 0;
+}
+/* Reserve the summary line while the cached brief is being read. */
+.mx-phone-habits-label .mx-digest-summary {
+  min-height: 1lh;
 }
 .mx-phone-habits > svg {
   margin-inline-start: auto;

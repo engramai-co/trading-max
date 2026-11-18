@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ScopedDecision } from "./review-board";
+import { scopedDecisions, type ScopedDecision } from "./review-board";
 import { decisionContext, habitDecisions } from "./review-patterns";
 import { evidenceHref } from "./assistant/evidence";
 
@@ -21,7 +21,8 @@ describe("trading habit scope", () => {
     expect(habitDecisions(rows, "before_earnings")).toEqual([twin]);
     expect(habitDecisions(rows, "untraded_fall")).toEqual([]);
     expect(habitDecisions(rows, null)).toBe(rows);
-    expect(decisionContext(twin, rows, "all", "date", "before_earnings")).toMatchObject({
+    const [filteredTwin] = habitDecisions(scopedDecisions("A", { status: "available", decisions: [first, twin] }), "before_earnings");
+    expect(decisionContext(filteredTwin, "all", "date", "before_earnings")).toMatchObject({
       scope: "invest",
       page_scope: "broker_total",
       ordinal: 1,
