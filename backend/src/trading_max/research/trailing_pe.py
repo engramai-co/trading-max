@@ -9,8 +9,10 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from statistics import fmean, pstdev
-from typing import Literal
+from typing import Literal, Self
 from zoneinfo import ZoneInfo
+
+from pydantic import Field, model_validator
 
 from trading_max.domain import DomainModel
 
@@ -19,10 +21,24 @@ from .calendar import market_calendar
 MINIMUM_SAMPLE = 60
 # Don't carry a denominator indefinitely when a listing stops reporting.
 MAX_PERIOD_AGE = timedelta(days=180)
+# Above 200x the earnings yield is under 0.5%. Over ten years of this series
+# for 16 large US listings, steady earners stayed below 100x and growth phases
+# peaked at 250-370x, while EPS within cents of zero produced 700-5,400x and
+# swamped the distribution. The cap withholds those and the tops of the growth
+# phases; the web copy repeats this number.
+MEANINGFUL_PE_CAP = 200.0
+# Within one EPS reading the multiple moves only with the close, so a fivefold
+# move where a new reading starts is a break in the earnings data, not a
+# change in valuation.
+SEGMENT_JUMP = 5.0
+# A filing that restates every period it repeats by the same power of ten of
+# at least two orders of magnitude used the wrong scale for per-share values.
+SCALE_ERROR_POWER = 2
 NEW_YORK = ZoneInfo("America/New_York")
 DAY = timedelta(days=1)
 
 Method = Literal["annual", "fourQuarters", "derivedFourthQuarter"]
+NotMeaningful = Literal["aboveCap", "segmentJump"]
 
 
 class TrailingPeEarnings(DomainModel):
@@ -37,6 +53,10 @@ class TrailingPePoint(DomainModel):
     close: float | None
     pe: float | None
     earnings_index: int | None
+    # Why a positive multiple is withheld; its close and EPS remain.
+    not_meaningful: NotMeaningful | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class TrailingPeDistribution(DomainModel):
@@ -54,6 +74,59 @@ class TrailingPeHistory(DomainModel):
     points: list[TrailingPePoint]
     earnings: list[TrailingPeEarnings]
     distribution: TrailingPeDistribution | None
+
+    @model_validator(mode="after")
+    def _screen(self) -> Self:
+        """Derive every multiple and the distribution from the closes and EPS.
+
+        A stored series and a new one are screened alike: a multiple above
+        the cap, or a reading that opens with a fivefold jump from the previous
+        close's multiple, is withheld as not meaningful and left out of the
+        distribution.
+        """
+        # Each close with positive EPS: its reading and multiple, if it has a price.
+        readings: list[tuple[int, float | None] | None] = []
+        for point in self.points:
+            index = point.earnings_index
+            eps = (
+                self.earnings[index].eps
+                if index is not None and 0 <= index < len(self.earnings)
+                else None
+            )
+            if index is None or eps is None or eps <= 0:
+                readings.append(None)
+                continue
+            value = point.close / eps if point.close is not None and point.close > 0 else None
+            readings.append((index, value if value is not None and math.isfinite(value) else None))
+        jumped: set[int] = set()
+        last: tuple[int, float] | None = None
+        for reading in readings:
+            if reading is None:
+                # Earnings crossing zero are not a jump: the line already breaks there.
+                last = None
+            elif reading[1] is not None:
+                index, value = reading[0], reading[1]
+                if (
+                    last
+                    and index != last[0]
+                    and max(value / last[1], last[1] / value) > SEGMENT_JUMP
+                ):
+                    jumped.add(index)
+                last = (index, value)
+        for point, reading in zip(self.points, readings, strict=True):
+            value = reading[1] if reading else None
+            reason: NotMeaningful | None = None
+            if value is not None and value > MEANINGFUL_PE_CAP:
+                reason = "aboveCap"
+            elif value is not None and point.earnings_index in jumped:
+                reason = "segmentJump"
+            point.not_meaningful = reason
+            point.pe = None if reason else value
+        self.distribution = pe_distribution(
+            [point.pe for point in self.points if point.pe is not None],
+            self.points[-1].pe if self.points else None,
+        )
+        return self
 
 
 @dataclass(frozen=True)
@@ -107,14 +180,43 @@ def _quarter_chain(quarters: Facts, end: date, count: int) -> list[tuple[Period,
     return chain
 
 
+def _power_of_ten(before: float | None, after: float | None) -> int | None:
+    """The power of ten that turns one value into the other, if either is a rescaling of the other."""
+    if not before or not after or (before > 0) != (after > 0):
+        return None
+    power = math.log10(after / before)
+    # Per-share values are filed to the cent, so allow for that rounding.
+    return round(power) if abs(power - round(power)) <= 0.05 else None
+
+
 class _EarningsReplay:
     def __init__(self) -> None:
         self.quarters: Facts = {}
         self.annuals: Facts = {}
         self.derived: Facts = {}
         self.derived_years: dict[Period, Period] = {}
+        # Every period's latest accepted value, to check new filings against.
+        self.recorded: Facts = {}
         self.period_end: date | None = None
         self.is_annual = False
+
+    def _misscaled(self, filing: EpsFiling, split_factor: float) -> bool:
+        """Whether a filing repeats earlier-filed periods, all at the same power of ten above them.
+
+        Tagging per-share values in thousands is a known filing error. Such a
+        filing is ignored; a later filing that repeats the periods correctly
+        restores them.
+        """
+        powers = {
+            _power_of_ten(before, None if fact.value is None else fact.value / split_factor)
+            for fact in filing.observations
+            if (before := self.recorded.get((fact.start, fact.end))) and fact.value
+        }
+        return (
+            len(powers) == 1
+            and (power := next(iter(powers))) is not None
+            and power >= SCALE_ERROR_POWER
+        )
 
     def apply(self, filings: list[EpsFiling], split_factor: float) -> None:
         changes: dict[Period, set[float | None]] = defaultdict(set)
@@ -124,19 +226,34 @@ class _EarningsReplay:
                 self.is_annual = filing.annual
             elif filing.report_end == self.period_end:
                 self.is_annual |= filing.annual
+            if self._misscaled(filing, split_factor):
+                # Its period still becomes the latest one: unknown, not carried over.
+                continue
             for fact in filing.observations:
                 changes[fact.start, fact.end].add(
                     None if fact.value is None else fact.value / split_factor
                 )
 
         updated_annuals = set()
+        rescaled = set()
         for period, values in changes.items():
             value = next(iter(values)) if len(values) == 1 else None
             if _quarter(*period):
+                if abs(_power_of_ten(self.quarters.get(period), value) or 0) >= SCALE_ERROR_POWER:
+                    rescaled.add(period)
                 self.quarters[period] = value
             elif _year(*period):
                 self.annuals[period] = value
                 updated_annuals.add(period)
+            self.recorded[period] = value
+        # An implied Q4 stays at its annual's vintage through ordinary
+        # restatements, but not when a quarter it used was filed at the wrong
+        # scale and is now corrected.
+        updated_annuals.update(
+            year
+            for year in self.annuals
+            if any(year[0] <= start and end < year[1] for start, end in rescaled)
+        )
 
         # If a prerequisite was missing at the annual filing, a newly
         # disclosed comparative can complete the calculation prospectively.
@@ -280,7 +397,8 @@ def trailing_pe_history(
         TrailingPeHistory(
             points=points,
             earnings=earnings,
-            distribution=pe_distribution([p.pe for p in points if p.pe is not None], points[-1].pe),
+            # Screening the multiples derives the distribution.
+            distribution=None,
         )
         if points
         else None

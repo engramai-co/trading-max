@@ -26451,6 +26451,21 @@
             ],
             "title": "Earningsindex"
           },
+          "notMeaningful": {
+            "anyOf": [
+              {
+                "enum": [
+                  "aboveCap",
+                  "segmentJump"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notmeaningful"
+          },
           "pe": {
             "anyOf": [
               {
