@@ -405,9 +405,11 @@ const statementNames: Record<string, [string, string]> = {
 export function FinancialStatements({
   data,
   controlledFrequency,
+  title,
 }: {
   data: ResearchLensSnapshot;
   controlledFrequency?: string;
+  title?: string;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -477,7 +479,7 @@ export function FinancialStatements({
   });
   return (
     <Panel
-      title={t("财务报表", "Financial statements")}
+      title={title ?? t("财务报表", "Financial statements")}
       help={t(
         "报告期从新到旧。同比仅匹配上一财年同一季度或年度，基数非正或缺失时不计算。TTM 汇总完整四季；资产负债为期末值。",
         "Newest periods first. YoY matches the same fiscal quarter or year; non-positive or missing baselines stay unavailable. TTM sums four quarters; balance-sheet items use the ending value.",

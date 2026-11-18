@@ -54,8 +54,7 @@ import { ResearchNotebook } from "./research-notebook";
 import { OptionsView } from "./research-options";
 import { PricePreview } from "./research-price-preview";
 import { basisPrice, lensFallback } from "./research-price-basis";
-import { TechnicalWorkspace } from "./research-technical";
-import { Seasonality } from "./research-seasonality";
+import { SeasonalitySection, TechnicalWorkspace } from "./research-technical";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { ValuationWorkbench } from "./research-valuation-workbench";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
@@ -196,10 +195,10 @@ function SecurityResearchWorkspace() {
 
   const lensName = ["financials", "tracking", "peers"].includes(tab) ? "fundamentals" : tab;
   const revision = selected?.lastRunId ?? shell.data?.status.runId;
-  const detail = tab === "overview" ? "summary"
-    : tab === "technical" ? (!isFund && params.get("technicalView") === "seasonality" ? "seasonality" : "summary")
+  // Seasonality and the complete statements load in their own sections.
+  const detail = tab === "overview" || tab === "technical" ? "summary"
     : tab === "ledger" ? (!isFund && ["filings", "news"].includes(params.get("notebook") ?? "notes") ? "documents" : "summary")
-    : lensName === "fundamentals" && (isFund || params.get("financialMode") !== "full") ? "summary"
+    : lensName === "fundamentals" ? "summary"
     : "full";
   const lens = useQuery({
     ...researchLensQuery(ticker, lensName, revision, detail, readOnly),
@@ -215,7 +214,7 @@ function SecurityResearchWorkspace() {
   const overviewWaiting = tab === "overview" && !isFund && (
     (prices.isPending && !prices.data) || runtime.status === "loading"
   );
-  const technicalPrice = tab === "technical" && (isFund || params.get("technicalView") !== "seasonality");
+  const technicalPrice = tab === "technical";
   const currentLens = !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
     ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
   } : undefined;
@@ -563,6 +562,7 @@ function SecurityResearchWorkspace() {
                   onChange={(v) => update({
                     view: v === "overview" ? null : v,
                     fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null,
+                    technicalView: null, financialMode: null,
                   }, { focusResearchSection: false })}
                   options={(readOnly
                     ? (isFund ? ["overview", "technical", "tracking", "peers"] : ["overview", "technical"]) as ResearchTab[]
@@ -599,27 +599,6 @@ function SecurityResearchWorkspace() {
                   : <PricePreview ticker={ticker} query={prices} summary={displayData?.technicalSummary} />
                 )}
                 {(tab === "technical" || displayTab === "technical") && <>
-                          {!isFund && <Tabs
-                            label={t(
-                              "价格与技术内容",
-                              "Price & technical sections",
-                            )}
-                            value={
-                              params.get("technicalView") === "seasonality" ? "seasonality" : "price"
-                            }
-                            onChange={(v) =>
-                              update({
-                                technicalView: v === "price" ? null : v,
-                              })
-                            }
-                            options={[
-                              { value: "price", label: t("走势与诊断", "Chart & diagnosis") },
-                              {
-                                value: "seasonality",
-                                label: t("季节性", "Seasonality"),
-                              },
-                            ]}
-                          />}
                           {(tab === "technical" ? technicalPrice : shown?.technicalPrice) && (
                             <TechnicalWorkspace
                               key={ticker}
@@ -629,6 +608,7 @@ function SecurityResearchWorkspace() {
                               pending={lens.isPending}
                               error={lens.isError}
                               retry={() => { void lens.refetch(); }}
+                              seasonality={isFund ? undefined : <SeasonalitySection ticker={ticker} revision={revision} preview={readOnly} />}
                             />
                           )}
                 </>}
@@ -675,7 +655,6 @@ function SecurityResearchWorkspace() {
                           )}
                         </>
                       )}
-                      {displayTab === "technical" && !isFund && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
                       {displayTab === "valuation" && !isFund && (
                         <ValuationWorkbench key={displayData.ticker} publication={shell.data?.status.runId} data={displayData} revision={revision} price={price} />
                       )}
@@ -687,7 +666,7 @@ function SecurityResearchWorkspace() {
                             onExplore={exploreHolding}
                           />
                         ) : (
-                          <FinancialWorkbench data={displayData} />
+                          <FinancialWorkbench key={ticker} data={displayData} ticker={ticker} revision={revision} preview={readOnly} />
                         ))}
                       {displayTab === "financials" &&
                         (isFund ? (
@@ -698,8 +677,12 @@ function SecurityResearchWorkspace() {
                           />
                         ) : (
                           <FinancialWorkbench
+                            key={ticker}
                             data={displayData}
                             initialMode="income"
+                            ticker={ticker}
+                            revision={revision}
+                            preview={readOnly}
                           />
                         ))}
                       {isFund && (displayTab === "tracking" || displayTab === "peers") && (

@@ -546,7 +546,8 @@ test.describe("valuation refresh", () => {
     await expect(reading).toContainText("Price 31.00");
     await expect.soft(reading).toContainText("Forward EPS (unit unverified) 200.00", { timeout: 1000 });
     await section.locator(".mx-info").first().click();
-    const help = page.locator(".mx-help-popover");
+    // Phones open the same help as a sheet.
+    const help = page.locator(":is(.mx-help-popover, .mx-help-sheet)");
     await expect(help).toContainText("Price currency: GBP.");
     await expect(help).not.toContainText("Price and EPS currency");
   });

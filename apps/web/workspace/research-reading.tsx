@@ -19,19 +19,40 @@ export const analystSections = [
   ["actions", "机构行动", "Institutional actions"],
 ] as const;
 
+// Ids keep the former sub-tab values, so existing links open the same content.
+export const technicalSections = [
+  ["price", "走势", "Price"],
+  ["data", "技术诊断", "Technical diagnosis"],
+  ["seasonality", "季节性", "Seasonality"],
+] as const;
+
+export const financialSections = [
+  ["performance", "经营分析", "Operating analysis"],
+  ["income", "利润表", "Income"],
+  ["balance", "资产负债表", "Balance sheet"],
+  ["cash", "现金流量表", "Cash flow"],
+  ["business", "业务分部", "Segments"],
+  ["ownership", "股权与分红", "Ownership & dividends"],
+  ["full", "完整报表", "All reported rows"],
+] as const;
+
 type Section = readonly [id: string, zh: string, en: string];
 
-export function ResearchReading({ sections, parameter, children, before }: {
+export function ResearchReading({ sections, parameter, children, before, initial }: {
   sections: readonly Section[];
-  parameter: "analystView" | "valuationView";
+  parameter: "analystView" | "valuationView" | "technicalView" | "financialMode";
   children: ReactNode;
   before?: ReactNode;
+  /** The section a legacy route opens when it names none. */
+  initial?: string;
 }) {
   const t = useCopy();
   const { params, update } = useRouteState("push");
   const legacySection = parameter === "valuationView"
     ? params.has("estimateRef") && "scenario"
-    : (params.has("forecastPeriod") || params.has("estimateFrequency")) && "forecast";
+    : parameter === "analystView"
+      ? (params.has("forecastPeriod") || params.has("estimateFrequency")) && "forecast"
+      : initial;
   const requested = params.get(parameter) ?? legacySection;
   const ids = sections.map(([id]) => id).join(",");
   const [active, setActive] = useState(sections[0][0]);
@@ -206,4 +227,23 @@ export function DeferredPlot(props: ComponentProps<typeof Plot>) {
     return () => observer.disconnect();
   }, []);
   return <div ref={box} style={{ minHeight: props.height ?? 300 }}>{visible && <Plot {...props} />}</div>;
+}
+
+/** True once the section approaches the viewport, or at once when a link asks for it. */
+export function useApproached(requested: boolean) {
+  const box = useRef<HTMLDivElement>(null);
+  const [seen, setSeen] = useState(false);
+  const near = seen || requested;
+  useEffect(() => {
+    if (near) return;
+    const observer = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        setSeen(true);
+        observer.disconnect();
+      }
+    }, { rootMargin: "600px 0px" });
+    if (box.current) observer.observe(box.current);
+    return () => observer.disconnect();
+  }, [near]);
+  return [box, near] as const;
 }

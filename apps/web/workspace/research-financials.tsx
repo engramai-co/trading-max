@@ -4,12 +4,13 @@ import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Button, Drawer, Group, Select } from "@mantine/core";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Legend, Plot } from "./charts";
 import { compact, compactTick, number, percent } from "@/workspace/data";
 import { useChartColours } from "@/ui/charts/palette";
 import type { ChartReadout, ReadingKey } from "./chart-readout";
-import { Empty, Metric, Panel, Segments, useCopy } from "./foundation";
+import { Empty, Metric, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 import { readingTone } from "./reading-format";
 import { FinancialStatements } from "./research-company";
@@ -25,6 +26,8 @@ import {
   metricNames,
   type Observation,
 } from "./research-facts";
+import { researchLensQuery } from "./research-queries";
+import { financialSections, ResearchReading, useApproached } from "./research-reading";
 import { useRouteState } from "./route-state";
 import { Sparkbars } from "./sparks";
 import { chartNumber } from "./research-chart-format";
@@ -32,9 +35,16 @@ import { chartNumber } from "./research-chart-format";
 export function FinancialWorkbench({
   data,
   initialMode,
+  ticker = data.ticker,
+  revision,
+  preview = false,
 }: {
   data: ResearchLensSnapshot;
   initialMode?: string;
+  /** The route's listing, which also requests the complete statements. */
+  ticker?: string;
+  revision?: string | null;
+  preview?: boolean;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -48,8 +58,8 @@ export function FinancialWorkbench({
         <Empty title={t("暂无可用财报", "No financial statements available")} />
       </Panel>
     );
-  const mode = params.get("financialMode") ?? initialMode ?? "performance";
-  const requestedFrequency = [
+  // Segments read the same parameter and keep an annual view when TTM is selected.
+  const frequency = [
     "annual",
     "quarterly",
     "ttm",
@@ -58,10 +68,6 @@ export function FinancialWorkbench({
   ].includes(params.get("frequency") ?? "")
     ? params.get("frequency")!
     : "annual";
-  const frequency =
-    mode === "business" && requestedFrequency === "ttm"
-      ? "annual"
-      : requestedFrequency;
   const periods = factPeriods(facts, frequency);
   const period =
     periods.find((p) => p.id === params.get("period")) ?? periods.at(-1);
@@ -98,34 +104,27 @@ export function FinancialWorkbench({
   };
   const chartMetrics = groups[chart] ?? groups.income;
   const ratio = chart === "margins" || chart === "returns";
-  const statementMetrics =
-    mode === "balance"
-      ? ["cash", "assets", "debt", "equity", "shareCount"]
-      : mode === "cash"
-        ? [
-            "operatingCashflow",
-            "capex",
-            "freeCashflow",
-            "buybacks",
-            "dividends",
-          ]
-        : [
-            "revenue",
-            "revenueGrowth",
-            "costOfRevenue",
-            "grossProfit",
-            "grossMargin",
-            "operatingExpense",
-            "operatingIncome",
-            "operatingMargin",
-            "pretaxIncome",
-            "tax",
-            "netIncome",
-            "netMargin",
-            "eps",
-            "epsGrowth",
-            "dilutedShares",
-          ];
+  const statementRows = {
+    income: [
+      "revenue",
+      "revenueGrowth",
+      "costOfRevenue",
+      "grossProfit",
+      "grossMargin",
+      "operatingExpense",
+      "operatingIncome",
+      "operatingMargin",
+      "pretaxIncome",
+      "tax",
+      "netIncome",
+      "netMargin",
+      "eps",
+      "epsGrowth",
+      "dilutedShares",
+    ],
+    balance: ["cash", "assets", "debt", "equity", "shareCount"],
+    cash: ["operatingCashflow", "capex", "freeCashflow", "buybacks", "dividends"],
+  };
   const bridge = incomeBridge((key) => selected(key)?.value);
   const activeDetail =
     detail ??
@@ -191,27 +190,23 @@ export function FinancialWorkbench({
     },
     latest: periods.length ? historyValue(get(periods.at(-1)!.id, activeDetail.metric)?.value) : "—",
   } : undefined;
+  const statementTitles = {
+    income: t("利润表", "Income statement"),
+    balance: t("资产负债表", "Balance sheet"),
+    cash: t("现金流量表", "Cash flow statement"),
+  };
+  // Statements need a complete period; the other sections read their own records.
+  const sections = period
+    ? financialSections
+    : financialSections.filter(([id]) => !(id in statementTitles));
   return (
     <>
-      <div className="mx-research-context-toolbar">
-        <Segments
-          label={t("财务内容", "Financial workspace")}
-          value={mode}
-          onChange={(v) => update({ financialMode: v })}
-          options={[
-            { value: "performance", label: t("经营分析", "Operating analysis") },
-            { value: "income", label: t("利润表", "Income") },
-            { value: "balance", label: t("资产负债表", "Balance sheet") },
-            { value: "cash", label: t("现金流量表", "Cash flow") },
-            { value: "business", label: t("业务分部", "Segments") },
-            {
-              value: "ownership",
-              label: t("股权与分红", "Ownership & dividends"),
-            },
-            { value: "full", label: t("完整报表", "All reported rows") },
-          ]}
-        />
-        {mode !== "ownership" && (
+      <ResearchReading
+        sections={sections}
+        parameter="financialMode"
+        initial={initialMode}
+        before={
+          <div className="mx-research-context-toolbar">
           <Group gap="xs">
             <Segments
               label={t("报告频率", "Reporting frequency")}
@@ -239,20 +234,24 @@ export function FinancialWorkbench({
               w={205}
             />
           </Group>
-        )}
-      </div>
+          </div>
+        }
+      >
       {!period ? (
-        <Panel>
-          <Empty
-            title={t(
-              "没有完整的四个季度",
-              "Four complete quarters are unavailable",
-            )}
-          />
-        </Panel>
+        <div id="research-performance">
+          <Panel title={t("经营分析", "Operating analysis")}>
+            <Empty
+              title={t(
+                "没有完整的四个季度",
+                "Four complete quarters are unavailable",
+              )}
+            />
+          </Panel>
+        </div>
       ) : (
         <>
-          {mode !== "ownership" && (
+          <section id="research-performance">
+            <h2>{t("经营分析", "Operating analysis")}</h2>
             <Panel
               className="mx-period-summary"
               // The period picker above already shows the period; the heading keeps it for assistive technology.
@@ -305,9 +304,6 @@ export function FinancialWorkbench({
                 })}
               </div>
             </Panel>
-          )}
-          {mode === "performance" ? (
-            <>
               <Panel
                 title={t("经营历史", "Operating history")}
                 help={
@@ -575,22 +571,14 @@ export function FinancialWorkbench({
                   />
                 </Panel>
               )}
-            </>
-          ) : mode === "business" ? (
-            <BusinessSegments data={data} />
-          ) : mode === "ownership" ? (
-            <>
-              <CompanyOwnership data={data} />
-              <DividendHistory data={data} />
-            </>
-          ) : mode === "full" ? (
-            <FinancialStatements data={data} controlledFrequency={frequency} />
-          ) : (
-            <Panel title={t("财务报表", "Financial statements")}>
+          </section>
+          {(["income", "balance", "cash"] as const).map((section) => (
+            <div id={"research-" + section} key={section}>
+            <Panel title={statementTitles[section]}>
               <div
                 className="mx-table-scroll"
                 role="region"
-                aria-label={t("财务数据", "Financial data")}
+                aria-label={statementTitles[section]}
                 tabIndex={0}
               >
                 <table className="mx-financial-table">
@@ -609,7 +597,7 @@ export function FinancialWorkbench({
                     </tr>
                   </thead>
                   <tbody>
-                    {statementMetrics
+                    {statementRows[section]
                       .filter((key) =>
                         periods.some((p) => get(p.id, key)?.value != null),
                       )
@@ -643,9 +631,17 @@ export function FinancialWorkbench({
                 </table>
               </div>
             </Panel>
-          )}
+            </div>
+          ))}
         </>
       )}
+      <div id="research-business"><BusinessSegments data={data} /></div>
+      <div id="research-ownership">
+        <CompanyOwnership data={data} />
+        <DividendHistory data={data} />
+      </div>
+      <CompleteStatements ticker={ticker} revision={revision} preview={preview} frequency={frequency} />
+      </ResearchReading>
       <Drawer
         position="right"
         size="lg"
@@ -744,3 +740,29 @@ export function FinancialWorkbench({
     </>
   );
 }
+
+/** Every reported row loads as the reader approaches it, or at once when a link opens it. */
+function CompleteStatements({ ticker, revision, preview, frequency }: {
+  ticker: string;
+  revision?: string | null;
+  preview: boolean;
+  frequency: string;
+}) {
+  const t = useCopy();
+  const { params } = useRouteState("push");
+  const [box, near] = useApproached(params.get("financialMode") === "full");
+  const lens = useQuery({ ...researchLensQuery(ticker, "fundamentals", revision, "full", preview), enabled: near });
+  const title = t("完整报表", "All reported rows");
+  return (
+    <div id="research-full" ref={box}>
+      {lens.data ? (
+        <FinancialStatements data={lens.data} controlledFrequency={frequency} title={title} />
+      ) : (
+        <Panel title={title}>
+          {lens.isError ? <QueryError retry={() => { void lens.refetch(); }} error={lens.error} /> : <Pending />}
+        </Panel>
+      )}
+    </div>
+  );
+}
+
