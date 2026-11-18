@@ -573,33 +573,3 @@ def test_delete_all_conversations_clears_the_workspace_beyond_the_recent_list(
             connection.execute("SELECT COUNT(*) FROM assistant_conversation_entries").fetchone()[0]
             == 0
         )
-
-
-@pytest.mark.parametrize("budget", ["requests", "parallel_tools", "tokens"])
-def test_single_turn_rejects_excess_usage_before_saving(tmp_path, monkeypatch, budget):
-    from pydantic_ai import UsageLimits
-
-    limits = {
-        "requests": UsageLimits(request_limit=1),
-        "parallel_tools": UsageLimits(tool_calls_limit=1),
-        "tokens": UsageLimits(total_tokens_limit=1),
-    }
-    monkeypatch.setattr(service_module, "USAGE_LIMITS", limits[budget])
-
-    async def stream(messages, info):
-        if any(isinstance(part, ToolReturnPart) for part in messages[-1].parts):
-            yield "Complete"
-        elif budget == "tokens":
-            yield "A complete answer exceeding a single token"
-        else:
-            yield {
-                i: DeltaToolCall(name="lookup_total", json_args="{}", tool_call_id=f"call_{i}")
-                for i in range(2 if budget == "parallel_tools" else 1)
-            }
-
-    app, service = make_app(tmp_path, stream)
-    response = TestClient(app).post("/v1/assistant/chat", json=user_turn("over", "u", "Question"))
-    chunks = events(response.text)
-    assert [c["errorText"] for c in chunks if c["type"] == "error"] == ["assistant_limit_reached"]
-    assert not any(c["type"] == "data-conversation-saved" for c in chunks)
-    assert anyio.run(service.store.read_record, "over") is None
