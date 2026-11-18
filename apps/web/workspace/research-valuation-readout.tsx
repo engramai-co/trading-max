@@ -6,6 +6,7 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import { formatCalendarDate, formatCompactCurrency } from "@/ui/formatters";
 import { currency, number, percent, tone } from "@/workspace/data";
 import { Metric, Panel, useCopy } from "./foundation";
+import { ValuationFloorNote } from "./valuation-floor-note";
 import type { Preview } from "./research-facts";
 
 export type ModelReading = {
@@ -116,8 +117,7 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing, wi
     </> : "—"}
       note={<>
         <span>{[status, modelSource, base && result && result.horizon + t(" 年", "Y"), withheldReason].filter(Boolean).join(" · ")}</span>
-        {base && base.equityFloorAdjustment > 0 &&
-          <span className="mx-valuation-floor">{t("股权估值为负，按零计", "Negative equity value floored at zero")}</span>}
+        <ValuationFloorNote adjustment={base?.equityFloorAdjustment} />
       </>} />
   </Panel>;
 }

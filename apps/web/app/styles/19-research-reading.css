@@ -99,6 +99,9 @@
 .mx-valuation-floor {
   display: block;
 }
+.mx-financial-table .mx-valuation-floor {
+  white-space: normal;
+}
 .mx-valuation-readout .mx-metric-change {
   white-space: nowrap;
 }

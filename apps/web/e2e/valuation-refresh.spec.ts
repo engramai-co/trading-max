@@ -871,3 +871,36 @@ test("set and clear a saved valuation baseline from its journal", async ({ page 
   await expect(page.getByRole("button", { name: "Set as baseline" })).toHaveAttribute("aria-pressed", "false");
   expect(journal.baselineModelId).toBe(null);
 });
+
+for (const locale of ["en", "zh"] as const) {
+  test(`saved worksheets distinguish floored and exact zeros · ${locale}`, async ({ page, isMobile }) => {
+    test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+    await synthetic(page, false);
+    const models = [3, 0].map((adjustment, index) => {
+      const savedAt = `2026-10-${20 - index}T12:00:00Z`;
+      const p = preview("SYNT", 100, savedAt, false, {});
+      Object.assign(p.scenarios.base, { operatingValue: -adjustment, terminalPresentValue: 0,
+        equityFloorAdjustment: adjustment, value: 0, upside: -1 });
+      return { id: `model-${index}`, savedAt, preview: p };
+    });
+    await page.route("**/research/SYNT/journal", r => r.fulfill({ json: { ticker: "SYNT", notes: [], models } }));
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=models");
+    const table = page.getByRole("region", { name: locale === "en" ? "Saved model comparison" : "冻结模型对比" });
+    const cells = table.getByRole("row").filter({ hasText: locale === "en" ? "Base value" : "中性估值" }).getByRole("cell");
+    const note = locale === "en" ? "Negative equity value floored at zero" : "股权估值为负，按零计";
+    await expect.soft(cells.first()).toContainText(note, { timeout: 1500 });
+    await expect(cells.nth(1)).toHaveText("US$0.00");
+    for (const index of [0, 1]) {
+      await table.getByRole("button", { name: locale === "en" ? "Open worksheet" : "查看底稿" }).nth(index).click();
+      const drawer = page.getByRole("dialog");
+      const total = drawer.locator("p").filter({ hasText: locale === "en" ? "Value per share" : "每股价值" });
+      await expect(total).toContainText("US$0.00");
+      if (index === 0) await expect.soft(total).toContainText(note, { timeout: 1500 });
+      else await expect(total).not.toContainText(note);
+      await page.keyboard.press("Escape");
+      await expect(drawer).toBeHidden();
+    }
+  });
+}
