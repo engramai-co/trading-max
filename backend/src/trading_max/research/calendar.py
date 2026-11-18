@@ -6,12 +6,13 @@ from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 
 import exchange_calendars as xcals
+import numpy as np
 import pandas as pd
 from exchange_calendars.common_holidays import ascension_day, corpus_christi, whit_monday
 from exchange_calendars.errors import CalendarError
 from exchange_calendars.exchange_calendar import HolidayCalendar
 from exchange_calendars.exchange_calendar_xfra import XFRAExchangeCalendar
-from pandas.tseries.holiday import Holiday
+from pandas.tseries.holiday import EasterMonday, GoodFriday, Holiday
 from pydantic import Field
 
 from trading_max.domain import DomainModel
@@ -45,6 +46,20 @@ class SessionSchedule(DomainModel):
     calendar: str
     sessions: list[ScheduledSession] = Field(default_factory=list)
     until: str | None = None
+
+
+def fx_rate_due(days: pd.DatetimeIndex) -> np.ndarray:
+    """Whether each day should have a daily exchange rate of its own.
+
+    None is due at weekends, on Christmas Day and New Year's Day, when the
+    currency market closes, or on Good Friday and Easter Monday, which the
+    provider can skip.
+    """
+
+    first, last = days.min(), days.max()
+    easter = GoodFriday.dates(first, last).union(EasterMonday.dates(first, last))
+    holiday = ((days.month == 12) & (days.day == 25)) | ((days.month == 1) & (days.day == 1))
+    return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
 
 
 def calendar_name(exchange: str | None) -> str | None:

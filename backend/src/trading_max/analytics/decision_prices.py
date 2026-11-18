@@ -39,7 +39,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from pandas.tseries.holiday import EasterMonday, GoodFriday
 
 from trading_max.analytics.historical_nav import (
     HistoricalNavError,
@@ -49,7 +48,12 @@ from trading_max.analytics.historical_nav import (
     _nominal_close,
     _observed_trade_gbp,
 )
-from trading_max.research.calendar import completed_daily_bars, frame_venue, market_calendar
+from trading_max.research.calendar import (
+    completed_daily_bars,
+    frame_venue,
+    fx_rate_due,
+    market_calendar,
+)
 from trading_max.research.venues import VenueClaim, VenueConflict, row_claims, yahoo_venue_metadata
 
 TRADE_ACTIONS = r"buy|sell"
@@ -385,20 +389,6 @@ def _converted(series: pd.Series, mode: str, cash_fx: pd.DataFrame, gbpusd: pd.S
     return series / rate
 
 
-def _rate_due(days: pd.DatetimeIndex) -> np.ndarray:
-    """Whether each day should have a daily exchange rate of its own.
-
-    None is due at weekends, on Christmas Day and New Year's Day, when the
-    currency market closes, or on Good Friday and Easter Monday, which the
-    provider can skip.
-    """
-
-    first, last = days.min(), days.max()
-    easter = GoodFriday.dates(first, last).union(EasterMonday.dates(first, last))
-    holiday = ((days.month == 12) & (days.day == 25)) | ((days.month == 1) & (days.day == 1))
-    return np.asarray((days.weekday < 5) & ~holiday & ~days.isin(easter))
-
-
 def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -> pd.Series:
     """Each day's final exchange rate by now, NaN while it is pending.
 
@@ -415,7 +405,7 @@ def final_rate_on(rates: pd.Series, days: pd.DatetimeIndex, now: pd.Timestamp) -
         return pd.Series(np.nan, index=days, dtype=float)
     today = _utc(now).tz_localize(None).normalize()
     span = pd.date_range(min(rates.index.min(), days.min()), max(days.max(), today), freq="D")
-    due = _rate_due(span)
+    due = fx_rate_due(span)
     own = rates.reindex(span).where(due)
     # Business days over by now; a missing rate settles once enough have followed it.
     over = due & np.asarray(span < today)
