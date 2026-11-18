@@ -596,9 +596,7 @@ class CatalogSecurityMaster:
                 mic = listing_mic(item.exchange, item.mic)
                 listings.add((local_venue_symbol(item.ticker, mic), mic))
             quoted = {
-                (code, mic)
-                for code, mic in listings
-                if code == symbol and shared_venue(mic, venue)
+                (code, mic) for code, mic in listings if code == symbol and shared_venue(mic, venue)
             }
             if quoted:
                 if (
