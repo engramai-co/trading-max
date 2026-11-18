@@ -167,7 +167,7 @@ test.describe("dashboard readings", () => {
     await expect(page.locator(".mx-overview-portfolio time.mx-freshness")).toBeVisible();
     await expect(page.locator(".mx-overview-history [data-tm-chart-ready=true]")).toBeVisible();
     await page.goto(new URL("/desktop/analytics?view=returns", demo).href);
-    await expect(page.getByRole("combobox", { name: "Comparison benchmark" })).toHaveValue("S&P 500 · VOO");
+    await expect(page.getByRole("combobox", { name: "Benchmark", exact: true })).toHaveValue("S&P 500 · VOO");
     await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
     await page.getByRole("tab", { name: "Risk profile" }).click();
     await expect(page.locator(".mx-risk-basis")).toContainText("All available history");
