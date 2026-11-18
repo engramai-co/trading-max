@@ -543,8 +543,8 @@ html[data-scrolled] .mx-topbar-title strong {
   display: inline-block;
   animation: mx-number-in 180ms var(--mx-ease);
 }
-.mx-tabs ~ *,
-.mx-toolbar:has(> .mx-tabs) ~ * {
+:where(:not(.mx-settings-page)) > .mx-tabs ~ *,
+:where(:not(.mx-settings-page)) > .mx-toolbar:has(> .mx-tabs) ~ * {
   animation: mx-fade 120ms ease-out;
 }
 .mx-tag {

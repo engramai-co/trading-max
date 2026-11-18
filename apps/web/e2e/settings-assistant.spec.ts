@@ -138,6 +138,12 @@ for (const locale of ["en", "zh"] as const) {
       const shotDir = process.env.SETTINGS_SCREENSHOT_DIR;
       const prefix = [testInfo.project.name, locale, colorScheme].join("-");
       const panel = page.locator(".mx-panel").filter({ has: page.getByRole("heading", { name: ASSISTANT_NAME }) });
+      // Check the opening frame deterministically, even on a busy device.
+      await page.addStyleTag({ content: ".mx-tabs ~ * { animation-delay: 60s !important; animation-fill-mode: backwards !important; }" });
+      for (const reducedMotion of ["reduce", "no-preference"] as const) {
+        await page.emulateMedia({ reducedMotion, colorScheme });
+        await expect(panel).toHaveCSS("opacity", "1", { timeout: 1000 });
+      }
       expect(await new AxeBuilder({ page }).include(".mx-panel").analyze().then((r) => r.violations)).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (isMobile) {
