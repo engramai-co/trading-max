@@ -11,7 +11,7 @@ from . import insights
 from . import research_tools as research
 from .overview_roles import line
 from .roles import BriefTarget, PageRole, ReadingLine, RoleContext, RoleTools
-from .tools import Ticker
+from .tools import Ticker, _digest
 
 PROMPT = (
     "Select two to four useful observations and include each named section. "
@@ -40,6 +40,14 @@ class MomentContext(PriceContext):
         return self
 
 
+def cited_facts(facts: list[ReadingLine]) -> list[ReadingLine]:
+    for fact in facts:
+        fact.evidence.arguments["observation"] = _digest(
+            [fact.evidence.evidence_id, fact.zh, fact.en]
+        )[:20]
+    return facts
+
+
 def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
     result = read.read(research.research_position, {})
     data = result.get("data")
@@ -50,8 +58,8 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
         args["index"] = context.index_id
         args["indexRange"] = data["range"]
 
-    def observation(zh, en, source="market", **target):
-        return line("", zh, en, result, source, "research_position", **(args | target))
+    def observation(zh, en, source="market", section="", **target):
+        return line(section, zh, en, result, source, "research_position", **(args | target))
 
     facts = []
     day, close, currency = data["end"], data["close"], data.get("currency")
@@ -90,13 +98,35 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
             )
         )
     for item in data.get("benchmarks", []):
-        name = "S&P 500 ETF (SPY)" if item["symbol"] == "SPY" else "SOXX"
+        name = "S&P 500 ETF (SPY)" if item["symbol"] == "SPY" else item["name"]
         sessions, asset, other = item["sessions"], item["asset"], item["benchmark"]
+        benchmark_basis = (
+            "price index change" if item["benchmark_basis"] == "price-index" else "adjusted return"
+        )
+        benchmark_zh = "指数点位变动" if item["benchmark_basis"] == "price-index" else "调整后回报"
         facts.append(
             observation(
-                f"{item['start']} – {item['end']}，{sessions} 个共同交易日，{data['ticker']} {asset:+.2%}，{name} {other:+.2%}。",
-                f"{item['start']} – {item['end']}, over {sessions} matched USD sessions, {data['ticker']} returned {asset:+.2%} and {name} {other:+.2%}.",
+                f"{item['start']} – {item['end']}，{sessions} 个共同交易日，{data['ticker']} 拆股及股息调整后回报 {asset:+.2%}，{name} {benchmark_zh} {other:+.2%}。",
+                f"{item['start']} – {item['end']}, over {sessions} matched USD sessions, {data['ticker']} split- and dividend-adjusted return {asset:+.2%}, {name} {benchmark_basis} {other:+.2%}.",
                 "technical",
+            )
+        )
+    if data.get("sector_comparison") == "unmapped":
+        facts.append(
+            observation(
+                "此证券暂无已核实的行业基准映射。",
+                "No verified sector benchmark mapping is available for this security.",
+                "technical",
+                section="sector",
+            )
+        )
+    elif data.get("sector_comparison") == "unavailable":
+        facts.append(
+            observation(
+                "同期同币种行业数据不足。",
+                "The sector benchmark has insufficient matched sessions in the chart currency.",
+                "technical",
+                section="sector",
             )
         )
     if event := data.get("event"):
@@ -114,7 +144,7 @@ def price_facts(read: RoleTools, context: PriceContext) -> list[ReadingLine]:
                 eventId=reference,
             )
         )
-    return facts
+    return cited_facts(facts)
 
 
 EVENTS = {
@@ -152,11 +182,18 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
 
     facts = []
     if (move := moment.get("move_fraction")) is not None:
+        zh, en = {
+            "split-and-dividend-adjusted": (
+                "拆股及股息调整后单日回报",
+                "one-session split- and dividend-adjusted return",
+            ),
+            "index-level": ("指数点位单日变动", "one-session index level change"),
+        }.get(data.get("adjustment"), ("图表收盘价单日变动", "one-session change in chart closes"))
         facts.append(
             observation(
                 "price",
-                f"{date} · 较前一收盘 {move:+.2%}",
-                f"{date} · change from the previous close {move:+.2%}",
+                f"{date} · {zh} {move:+.2%}",
+                f"{date} · {en} {move:+.2%}",
                 "market",
                 "technical",
             )
@@ -179,13 +216,15 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
             if story:
                 fact = line(
                     "event",
-                    f"{date} · 相关报道：{story['title']}",
-                    f"{date} · related headline: {story['title']}",
+                    f"{story['date']} · 相关报道：{story['title']}",
+                    f"{story['date']} · related headline: {story['title']}",
                     news,
                     "publisher",
                     "research_headline",
                     **target,
                     url=story["url"],
+                    reference=ref,
+                    role="lead",
                 )
                 fact.evidence.publisher = story["publisher"][:80]
                 facts.append(fact)
@@ -203,7 +242,7 @@ def moment_facts(read: RoleTools, context: MomentContext) -> list[ReadingLine]:
                     eventId=ref,
                 )
             )
-    return facts
+    return cited_facts(facts)
 
 
 def earnings_data(read):
@@ -219,6 +258,17 @@ def earnings_facts(read: RoleTools, context: SecurityContext) -> list[ReadingLin
     data = result.get("data") or {}
     facts = []
 
+    report = data.get("report") or {}
+    headline = {
+        k: v
+        for k, v in {
+            "reportDate": (report.get("date") or "")[:10],
+            "fiscalPeriod": report.get("fiscalPeriod"),
+            "observedAt": data.get("as_of"),
+        }.items()
+        if v
+    }
+
     def observation(zh, en, source, **args):
         return line(
             "",
@@ -229,6 +279,7 @@ def earnings_facts(read: RoleTools, context: SecurityContext) -> list[ReadingLin
             "research_earnings",
             ticker=context.ticker,
             lens="analyst",
+            **headline,
             **args,
         )
 
@@ -283,7 +334,7 @@ def earnings_facts(read: RoleTools, context: SecurityContext) -> list[ReadingLin
                 analystView="forecast",
             )
         )
-    return facts
+    return cited_facts(facts)
 
 
 def earnings_targets(job: JobRecord, read: RoleTools):
@@ -318,8 +369,14 @@ def earnings_bindings(context: SecurityContext, snapshot_id: str | None):
     return {"research_earnings": {"ticker": context.ticker}}
 
 
+class PublishedResearchRole(PageRole):
+    @property
+    def cache_id(self):
+        return "research-publication-v2:" + super().cache_id
+
+
 RESEARCH_ROLES = (
-    PageRole(
+    PublishedResearchRole(
         "your-position",
         "research",
         frozenset({"research_position"}),
@@ -328,7 +385,7 @@ RESEARCH_ROLES = (
         price_facts,
         tool_bindings=position_bindings,
     ),
-    PageRole(
+    PublishedResearchRole(
         "key-moment",
         "research",
         frozenset({"price_key_moments", "research_headline"}),
@@ -337,7 +394,7 @@ RESEARCH_ROLES = (
         moment_facts,
         tool_bindings=moment_bindings,
     ),
-    PageRole(
+    PublishedResearchRole(
         "earnings-brief",
         "research",
         frozenset({"research_earnings", "earnings_universe"}),

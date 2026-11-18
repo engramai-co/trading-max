@@ -626,6 +626,11 @@ def analyze_ticker(
             "spy_63d": _relative_stats(close, benchmarks.get("SPY", unavailable_benchmark), 63),
             "spy_126d": _relative_stats(close, benchmarks.get("SPY", unavailable_benchmark), 126),
             "qqq_63d": _relative_stats(close, benchmarks.get("QQQ", unavailable_benchmark), 63),
+            **{
+                symbol: _relative_stats(close, prices, 63)
+                for symbol, prices in benchmarks.items()
+                if symbol.endswith("-USD-STRD")
+            },
             "soxx_63d": _relative_stats(close, benchmarks.get("SOXX", unavailable_benchmark), 63),
         },
         "seasonality": _monthly_seasonality(close),

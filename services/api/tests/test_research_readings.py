@@ -231,7 +231,11 @@ def test_timed_news_is_attached_to_the_exchange_day_and_opens_the_original_headl
     reader = role.reader(deps, selection)
     facts = role.facts(reader, selection)
     news = next(fact for fact in facts if fact.evidence.source == "publisher")
-    assert news.en.startswith("2026-02-02") and news.evidence.arguments["url"] == STORY["url"]
+    assert news.en.startswith(stamp) and news.evidence.arguments["url"] == STORY["url"]
+    assert (
+        news.evidence.arguments["date"] == "2026-02-02"
+        and news.evidence.arguments["role"] == "lead"
+    )
     assert (
         reader.read(
             research.research_headline,
@@ -590,3 +594,104 @@ def test_catalogue_index_candidate_uses_scheduled_news_publication(tmp_path, mon
         end=DATES[-1],
     )
     assert [m["date"] for m in insights.moments_data(deps, args)["data"]["items"]] == [DATES[2]]
+
+
+def test_published_consensus_delta_keeps_both_dates_and_fiscal_identity(tmp_path):
+    from trading_max.research.earnings_changes import bind_estimate_changes
+
+    previous = analyst(1.25, "2026-01-15T10:00:00Z")
+    current = analyst(1.50, "2026-01-25T10:00:00Z")
+    current["rows"][0]["analyst"]["earningsEstimate"].append(
+        {"period": "+1q", "endDate": "2026-06-30", "avg": 2.0, "currency": "USD"}
+    )
+    bound = bind_estimate_changes(previous, current, ("TEST",))
+    store = ArtifactStore(tmp_path)
+    publication(store, extra_artifacts={tools.ANALYST: bound})
+    deps = AssistantDepsFactory(store).for_run()
+    role = role_registry()["earnings-brief"]
+    ctx = SecurityContext(ticker="TEST")
+    (delta,) = role.reader(deps, ctx).read(research.research_earnings, {})["data"]["changes"]
+    assert delta == {
+        "metric": "eps",
+        "end": "2026-03-31",
+        "period": "0q",
+        "currency": "USD",
+        "previous": 1.25,
+        "current": 1.5,
+        "change": 0.25,
+        "previous_as_of": "2026-01-15T10:00:00Z",
+        "current_as_of": "2026-01-25T10:00:00Z",
+    }
+    assert bind_estimate_changes(bound, analyst(1.5, "2026-01-26T10:00:00Z"), ("TEST",))["rows"][0][
+        "estimateChanges"
+    ] == [delta]
+    current["rows"][0]["analyst"]["earningsEstimate"][0]["currency"] = "EUR"
+    assert not bind_estimate_changes(previous, current, ("TEST",))["rows"][0]["estimateChanges"]
+
+
+def test_gics_sector_comparison_uses_the_published_world_sector_for_financials(tmp_path):
+    import pandas as pd
+    from trading_max.reference.msci_world_sectors import WORLD_INDUSTRY_INDICES
+    from trading_max.research.technical import _relative_stats
+
+    _, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    tech = deps.store.read_json(deps.snapshot_id, tools.TECHNICAL)
+    tech["rows"][0]["as_of"] = DATES[-1]
+    symbol = next(s.symbol for s in WORLD_INDUSTRY_INDICES if s.gics == "40")
+    dates = pd.bdate_range(end=DATES[-1], periods=64)
+    prices = pd.Series(range(100, 164), index=dates)
+    tech["rows"][0]["relative_strength"] = {symbol: _relative_stats(prices, prices, 63)}
+    fundamentals = deps.store.read_json(deps.snapshot_id, tools.FUNDAMENTALS)
+    fundamentals["rows"][0].update(sector="Financial Services", industry="Banks - Diversified")
+    publication(
+        factory.store, extra_artifacts={tools.TECHNICAL: tech, tools.FUNDAMENTALS: fundamentals}
+    )
+    deps = factory.for_run()
+    chart = deps.price_series("TEST", deps.manifest, limit=2000)
+    selected = PriceContext(ticker="TEST", published_series_id=chart.published_series_id)
+    role = role_registry()["your-position"]
+    reader = role.reader(deps, selected)
+    result = reader.read(research.research_position, {})["data"]
+    assert result["benchmarks"][0]["symbol"] == symbol
+    assert any("MSCI World Financials" in f.en for f in role.facts(reader, selected))
+
+
+def test_reopened_research_citation_rechecks_retention_and_event_identity(tmp_path):
+    from pathlib import Path
+
+    from fastapi import FastAPI
+
+    from services.api.trading_max_api.routes.research import router
+
+    publish, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run()
+    role = role_registry()["earnings-brief"]
+    selection = SecurityContext(ticker="TEST")
+    result = role.reader(deps, selection).read(research.research_earnings, {})
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = factory.store
+    app.state.assistant = SimpleNamespace(deps_for_run=factory.for_run)
+    client = TestClient(app)
+    path = "/v1/research/TEST/citation"
+    params = {
+        "tool": "research_earnings",
+        "snapshotId": deps.snapshot_id,
+        "evidenceId": result["evidence_id"],
+        "eventId": "report",
+        "event": "earnings",
+    }
+    publish(eps=9)
+    old = client.get(path, params=params)
+    assert old.status_code == 200
+    fact = role.facts(role.reader(deps, selection), selection)[0]
+    single = client.get(
+        path, params={**params, "observation": fact.evidence.arguments["observation"]}
+    )
+    assert [line["en"] for line in single.json()["lines"]] == [fact.en]
+    assert old.json()["output"]["data"]["estimates"][0]["mean"] == 1.25
+    assert client.get(path, params={**params, "eventId": "absent"}).status_code == 404
+    root = factory.store.immutable_snapshots.snapshots_root
+    Path(root / deps.snapshot_id).rename(tmp_path / "expired")
+    assert client.get(path, params=params).status_code == 404

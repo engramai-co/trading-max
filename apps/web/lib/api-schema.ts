@@ -811,6 +811,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/research/{ticker}/citation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Research Citation */
+        get: operations["research_citation_v1_research__ticker__citation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/research/{ticker}/estimate-history": {
         parameters: {
             query?: never;
@@ -7073,6 +7090,18 @@ export interface components {
             /** Task */
             task: string;
         };
+        /** ResearchCitation */
+        ResearchCitation: {
+            /**
+             * Lines
+             * @default []
+             */
+            lines: components["schemas"]["ReadingLine"][];
+            /** Output */
+            output: {
+                [key: string]: unknown;
+            };
+        };
         /** ResearchContext */
         ResearchContext: {
             /** Assettype */
@@ -11484,6 +11513,56 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResearchAlert"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    research_citation_v1_research__ticker__citation_get: {
+        parameters: {
+            query: {
+                tool: "price_key_moments" | "research_position" | "research_earnings" | "research_headline" | "news_and_events" | "upcoming_events";
+                snapshotId: string;
+                evidenceId: string;
+                series?: string | null;
+                index?: string | null;
+                date?: components["schemas"]["CalendarDay"] | null;
+                start?: components["schemas"]["CalendarDay"] | null;
+                end?: components["schemas"]["CalendarDay"] | null;
+                observation?: string | null;
+                unselected?: boolean;
+                eventId?: string | null;
+                reference?: string | null;
+                event?: string | null;
+                scope?: "broker_total" | "invest" | "isa" | "household" | "cfd";
+                timezone?: string;
+                eventTicker?: components["schemas"]["Ticker"] | null;
+                limit?: number;
+                cursor?: number;
+            };
+            header?: never;
+            path: {
+                ticker: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchCitation"];
                 };
             };
             /** @description Validation Error */

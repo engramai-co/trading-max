@@ -7,6 +7,9 @@ from typing import Annotated, Literal
 
 from pydantic import StringConstraints, model_validator
 from trading_max.infrastructure import SnapshotIntegrityError
+from trading_max.reference.msci_world_sectors import WORLD_INDUSTRY_INDICES
+from trading_max.reference.taxonomy import classification_for_profile
+from trading_max.research.earnings_changes import consensus_estimates
 from trading_max.research.held_funds import FUND_PRICES_KEY
 
 from .insights import (
@@ -21,6 +24,8 @@ from .tools import (
     ANALYST,
     FINANCIALS,
     FUNDAMENTALS,
+    LOOKTHROUGH,
+    MARKET,
     TECHNICAL,
     Args,
     Context,
@@ -148,11 +153,29 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
         else previous
     )
     benchmarks = []
+    fund = _ticker_row(read.read(FUNDAMENTALS), ticker) or {}
+    profile = classification_for_profile(
+        sector=fund.get("sector"),
+        industry=fund.get("industry"),
+        industry_key=_mapped(fund.get("metrics")).get("industryKey"),
+    )
+    held_codes = {
+        classification["sectorCode"]
+        for row in _rows((read.read(LOOKTHROUGH) or {}).get("positions"))
+        if row.get("ticker") == ticker
+        and (classification := _mapped(row.get("gics"))).get("sectorCode")
+    }
+    code = (
+        next(iter(held_codes)) if len(held_codes) == 1 else profile.sector_code if profile else None
+    )
+    sector = next((spec for spec in WORLD_INDUSTRY_INDICES if spec.gics == code), None)
+    sector_status = "unmapped" if not sector else "unavailable"
     technical = _ticker_row(read.read(TECHNICAL), ticker) or {}
     if not observed and series.currency == "USD" and technical.get("as_of") == latest.date:
-        industry = (_ticker_row(read.read(FUNDAMENTALS), ticker) or {}).get("industry")
         comparisons = [("spy_63d", "SPY")]
-        if industry == "Semiconductors":
+        if sector and sector.symbol:
+            comparisons.append((sector.symbol, sector.symbol))
+        if fund.get("industry") == "Semiconductors":
             comparisons.append(("soxx_63d", "SOXX"))
         for key, symbol in comparisons:
             stats = _mapped(_mapped(technical.get("relative_strength")).get(key))
@@ -161,9 +184,16 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
                 _number(stats.get("benchmark_return")),
             )
             if asset is not None and other is not None and stats.get("start") and stats.get("end"):
+                is_sector = sector and symbol == sector.symbol
+                if is_sector:
+                    sector_status = "available"
                 benchmarks.append(
                     {
                         "symbol": symbol,
+                        "name": f"MSCI World {sector.name}" if is_sector else symbol,
+                        "benchmark_basis": "price-index"
+                        if is_sector
+                        else "split-and-dividend-adjusted",
                         "sessions": 63,
                         "start": stats["start"],
                         "end": stats["end"],
@@ -199,12 +229,13 @@ def research_position(ctx: Context, args: PositionArgs) -> dict:
             "adjustment": series.adjustment,
             "event": event,
             "benchmarks": benchmarks,
+            "sector_comparison": sector_status,
             "trade_date": last_trade[0] if last_trade else None,
             "side": last_trade[2] if last_trade else None,
             "start": base.date if base else None,
             "change": latest.close / base.close - 1 if base and base.close > 0 else None,
         },
-        keys=[TECHNICAL, FUND_PRICES_KEY, FUNDAMENTALS, TRADE_MARKERS, *event_keys],
+        keys=[TECHNICAL, FUND_PRICES_KEY, FUNDAMENTALS, LOOKTHROUGH, TRADE_MARKERS, *event_keys],
     )
 
 
@@ -230,27 +261,7 @@ def earnings_observations(analyst: dict, today: str) -> dict:
             estimate=_number(event.get("estimatedEps")),
             surprise=_number(event.get("surprisePct")),
         )
-    estimates = []
-    for field, metric in (("earningsEstimate", "eps"), ("revenueEstimate", "revenue")):
-        for row in _rows(analyst.get(field)):
-            currency, end, mean = (
-                row.get("currency"),
-                _iso(row.get("endDate")),
-                _number(row.get("avg")),
-            )
-            period = row.get("period") or row.get("index")
-            if end and currency and mean is not None and period in {"0q", "+1q", "0y", "+1y"}:
-                estimates.append(
-                    {
-                        "metric": metric,
-                        "end": end[:10],
-                        "period": period,
-                        "currency": currency,
-                        "mean": mean,
-                    }
-                )
-    estimates.sort(key=lambda r: (r["end"], r["period"], r["metric"]))
-    return {"report": report, "estimates": estimates}
+    return {"report": report, "estimates": consensus_estimates(analyst)}
 
 
 def research_earnings(ctx: Context, args: SecurityArgs) -> dict:
@@ -264,7 +275,8 @@ def research_earnings(ctx: Context, args: SecurityArgs) -> dict:
     clock = _mapped(_mapped(batch.get("rowClocks")).get(args.ticker))
     if clock and clock.get("state") != "available":
         return read.missing("fresh_estimates_unavailable", keys=[ANALYST])
-    analyst = _mapped((_ticker_row(batch, args.ticker) or {}).get("analyst"))
+    row = _ticker_row(batch, args.ticker) or {}
+    analyst = _mapped(row.get("analyst"))
     if not analyst or not ctx.deps.manifest:
         return read.missing("analyst_data_unavailable", keys=[ANALYST])
     observations = earnings_observations(analyst, ctx.deps.manifest.created_at.date().isoformat())
@@ -273,8 +285,9 @@ def research_earnings(ctx: Context, args: SecurityArgs) -> dict:
     return read.result(
         data={
             **observations,
+            "changes": row.get("estimateChanges", []),
             "ticker": args.ticker,
-            "version": _digest(observations),
+            "version": _digest(["earnings-v2", observations, row.get("estimateChanges", [])]),
             "as_of": _iso(analyst.get("asOf")) or _iso(batch.get("generated_at")),
         },
         keys=[ANALYST],
@@ -284,18 +297,25 @@ def research_earnings(ctx: Context, args: SecurityArgs) -> dict:
 def earnings_universe(ctx: Context, args: Args) -> dict:
     """Return the exact symbols in this research publication's held and research-list universe."""
     read = _Read(ctx.deps, "earnings_universe", args, "public_research")
-    return read.result(
-        data={
-            "tickers": sorted(
-                {
-                    row["ticker"]
-                    for row in _rows((read.read(ANALYST) or {}).get("rows"))
-                    if row.get("ticker")
-                }
+    batch = read.read(ANALYST) or {}
+    clocks = _mapped(batch.get("rowClocks"))
+    fresh = {
+        row["ticker"]
+        for row in _rows(batch.get("rows"))
+        if row.get("ticker")
+        and (
+            not clocks
+            or (
+                clocks.get(row["ticker"], {}).get("state") == "available"
+                and clocks[row["ticker"]].get("fetchedAt") == batch.get("generated_at")
             )
-        },
-        keys=[ANALYST],
-    )
+        )
+    }
+    # The market job resolves the held and watchlisted equities before fetching analyst rows.
+    market = read.read(MARKET) or {}
+    if isinstance(market.get("equity_tickers"), list):
+        fresh.intersection_update(market["equity_tickers"])
+    return read.result(data={"tickers": sorted(fresh)}, keys=[ANALYST, MARKET])
 
 
 class HeadlineArgs(SecurityArgs):
@@ -357,6 +377,7 @@ def research_headline(ctx: Context, args: HeadlineArgs) -> dict:
         data={
             "ticker": ticker,
             "title": row["title_en"],
+            "reference": row["reference"],
             "publisher": row["publisher"],
             "url": row["source_url"],
             "role": "lead",

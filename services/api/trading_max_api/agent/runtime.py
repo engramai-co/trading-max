@@ -107,10 +107,10 @@ freshness states and available valuation evidence values. For a research lens, s
 items/N/value for a typed price (with currency), technical score, expiry count,
 as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
 For research_position select /data/close, /data/change, /data/trade_date, /data/event/date
-or /data/benchmarks/N/asset or benchmark. For price_key_moments use the row of the selected
-date: /data/items/N/move_fraction or volume_z_score. Cite a separate research_headline
+or /data/benchmarks/N/asset or benchmark; /data/sector_comparison explains missing coverage. For price_key_moments use the row of the selected
+date: /data/items/N/move_fraction, volume_z_score, or /data/items/N/events/M/kind for a dated non-news event. For subsequent sessions choose /data/following/N/return_fraction. Cite a separate research_headline
 /data/title only as a lead. For research_earnings choose /data/report/actual, estimate,
-surprise or date, or /data/estimates/N/mean for the relevant fiscal period.
+surprise or date, /data/estimates/N/mean or /data/changes/N/change for the relevant fiscal period. For news_and_events or upcoming_events cite a dated non-news row with /data/items/N/title_en.
 To offer a qualitative interpretation choose a suitable reference from this list:
 {{other-drivers}}, {{attribution}}, {{cash-flows}}, {{concentration}}, {{benchmark}},
 {{valuation}}, {{history}}, {{insufficient-evidence}}. End it with a space and [inference].

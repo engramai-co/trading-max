@@ -23,6 +23,7 @@ from trading_max.infrastructure import (
 )
 from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog, is_fund_instrument
 from trading_max.research.coverage import merge_rows, row_clocks
+from trading_max.research.earnings_changes import bind_estimate_changes
 from trading_max.research.estimate_history import (
     ANALYST_KEY,
     ESTIMATE_KEYS,
@@ -1077,6 +1078,12 @@ class TypedPublishSnapshotStage:
                     previous_payload,
                     current.payload,
                     refreshed=refreshed,
+                )
+            if ref.key == "research/analyst.json":
+                merged_payload = bind_estimate_changes(
+                    previous_payload,
+                    merged_payload,
+                    tuple(r["ticker"] for r in current.payload.get("rows", [])),
                 )
             if ref.key == "research/technical.json":
                 merged_payload = _retain_benchmarks(previous_payload, merged_payload)

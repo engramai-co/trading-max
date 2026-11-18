@@ -28,6 +28,8 @@ from trading_max.research.valuation_preview import (
     preview,
 )
 
+from ..agent.research_citations import CitationQuery, ResearchCitation, resolve_citation
+from ..agent.tools import Ticker
 from ..dashboard_models import (
     PriceSeriesPoint,
     ResearchLensName,
@@ -679,6 +681,11 @@ def research_alerts(ticker: str, request: Request) -> list[ResearchAlert]:
         ticker,
         latest_or_503(request),
     )
+
+
+@router.get("/v1/research/{ticker}/citation", response_model=ResearchCitation)
+def research_citation(ticker: Ticker, request: Request, query: Annotated[CitationQuery, Query()]):
+    return resolve_citation(request, ticker, query)
 
 
 @router.get(
