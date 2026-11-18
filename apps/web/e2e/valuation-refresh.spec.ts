@@ -713,27 +713,33 @@ test.describe("valuation refresh", () => {
     if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     const state = await synthetic(page, false);
-    state.trailingPe = withheldHistory([[2, 30], [20, 10, "segmentJump"], [2.1, 10, "segmentJump"], [2.2, 20], [0.1, 5, "aboveCap"]]);
+    // A break and its recovery, a growth-phase climb to about 300×, then EPS near zero (800×).
+    state.trailingPe = withheldHistory([[2, 30], [20, 10, "segmentJump"], [2.1, 10, "segmentJump"], [2.2, 20],
+      [0.5, 10], [0.133, 10], [0.05, 5, "aboveCap"]]);
     await page.goto("/research?ticker=SYNT&view=valuation");
     await expect(page.locator(".mx-valuation-readout .mx-metric").first()).toContainText("Not meaningful");
     const section = page.locator(".mx-pe-history");
-    await expect(section.getByText("The latest P/E is above 200× and not meaningful")).toBeVisible();
+    await expect(section.getByText("The latest P/E is above 400× and not meaningful")).toBeVisible();
     const chart = section.getByRole("group", { name: /^Trailing P\/E history/ });
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
     await chart.focus();
     await chart.press("End");
     const reading = section.locator(".mx-chart-readout-values");
     await expect(reading).toContainText("Not meaningful");
-    await expect(reading).toContainText("Above 200×");
-    await expect(reading).toContainText("EPS (TTM) 0.10");
+    await expect(reading).toContainText("Above 400×");
+    await expect(reading).toContainText("EPS (TTM) 0.05");
     await chart.press("Home");
     for (let i = 0; i < 35; i++) await chart.press("ArrowRight");
     await expect(reading).toContainText("Jumped over 5×");
     await expect(reading).toContainText("EPS (TTM) 20.00");
+    // About 300× reads as a multiple.
+    for (let i = 0; i < 50; i++) await chart.press("ArrowRight");
+    await expect(reading.locator("span").filter({ hasText: /^(29|30)\d(\.\d{1,2})?×$/ })).toHaveCount(1);
+    await expect(reading).not.toContainText("Not meaningful");
     await chart.press("Escape");
     await section.locator(".mx-info").first().click();
     const help = page.locator(":is(.mx-help-popover, .mx-help-sheet)");
-    await expect(help).toContainText("above 200×");
+    await expect(help).toContainText("above 400× (an earnings yield under 0.25%");
     await expect(help).toContainText("more than 5× away from the previous close");
   });
 

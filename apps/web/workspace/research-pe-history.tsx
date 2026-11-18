@@ -28,13 +28,16 @@ type Point = {
 type Translator = ReturnType<typeof useCopy>;
 
 /** The API's trailing P/E screen (MEANINGFUL_PE_CAP and SEGMENT_JUMP in trailing_pe.py). */
-const PE_CAP = 200;
+const PE_CAP = 400;
 const SEGMENT_JUMP = 5;
+/** Copy with the screen's numbers in place of {cap}, {yield} and {jump}. */
+const screened = (copy: string) => copy.replaceAll("{cap}", String(PE_CAP))
+  .replaceAll("{yield}", String(100 / PE_CAP)).replaceAll("{jump}", String(SEGMENT_JUMP));
 
 /** Why the API withholds a positive trailing multiple. */
 function withheldReason(reason: Withheld | undefined, t: Translator) {
-  return reason === "aboveCap" ? t(`超过 ${PE_CAP}×`, `Above ${PE_CAP}×`)
-    : reason === "segmentJump" ? t(`跳变超过 ${SEGMENT_JUMP} 倍`, `Jumped over ${SEGMENT_JUMP}×`) : undefined;
+  return reason === "aboveCap" ? screened(t("超过 {cap}×", "Above {cap}×"))
+    : reason === "segmentJump" ? screened(t("跳变超过 {jump} 倍", "Jumped over {jump}×")) : undefined;
 }
 
 /** One date on the P/E line: the multiple leads, then where it sits in the band and its two inputs.
@@ -229,8 +232,8 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
     : latest?.forward?.eps != null && latest.forward.eps <= 0;
   const withheld = isTrailing ? latest?.trailing?.notMeaningful : undefined;
   const withheldState = withheld === "aboveCap"
-    ? t(`最新 P/E 超过 ${PE_CAP}×，不适用`, `The latest P/E is above ${PE_CAP}× and not meaningful`)
-    : t(`最新 EPS 跳变超过 ${SEGMENT_JUMP} 倍，P/E 不适用`, `The latest EPS jumped more than ${SEGMENT_JUMP}×; P/E is not meaningful`);
+    ? screened(t("最新 P/E 超过 {cap}×，不适用", "The latest P/E is above {cap}× and not meaningful"))
+    : screened(t("最新 EPS 跳变超过 {jump} 倍，P/E 不适用", "The latest EPS jumped more than {jump}×; P/E is not meaningful"));
   const supported = isTrailing ? trailing != null : true;
   const emptyReason = !supported ? t("暂不支持滚动 P/E 历史", "Trailing P/E history is unavailable")
     : !points.length ? t("历史存档尚无记录", "History archive is empty")
@@ -271,10 +274,10 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
         </div>
       }
       help={basis !== "sales" && <>
-        <p>{isTrailing ? t(
-          `每日收盘价除以同一拆股口径的摊薄 EPS。财年末用已披露的全年 EPS，其他日期用最近四个完整季度；缺少第四季度时以全年减前三季推算，读数标「推算 Q4」。每次 EPS 更新开始新的一段，EPS 不为正时留空。倍数超过 ${PE_CAP}×（盈利收益率不足 ${100 / PE_CAP}%，通常是 EPS 接近零），或新一段的倍数较前一收盘跳变超过 ${SEGMENT_JUMP} 倍时，标为不适用并留空，不计入分布。`,
-          `Daily close divided by diluted EPS on the same share basis. At year end use filed full-year EPS; otherwise use the latest four complete quarters. An unreported Q4 is inferred from full-year EPS minus Q1–Q3 and its readings say Inferred Q4. Each new EPS starts a segment; nonpositive EPS leaves a gap. A multiple above ${PE_CAP}× (an earnings yield under ${100 / PE_CAP}%, usually EPS near zero), or a segment that opens more than ${SEGMENT_JUMP}× away from the previous close's multiple, is not meaningful: it is left as a gap and kept out of the distribution.`,
-        ) : t(
+        <p>{isTrailing ? screened(t(
+          "每日收盘价除以同一拆股口径的摊薄 EPS。财年末用已披露的全年 EPS，其他日期用最近四个完整季度；缺少第四季度时以全年减前三季推算，读数标「推算 Q4」。每次 EPS 更新开始新的一段，EPS 不为正时留空。倍数超过 {cap}×（盈利收益率不足 {yield}%，通常是 EPS 接近零），或新一段的倍数较前一收盘跳变超过 {jump} 倍时，标为不适用并留空，不计入分布。",
+          "Daily close divided by diluted EPS on the same share basis. At year end use filed full-year EPS; otherwise use the latest four complete quarters. An unreported Q4 is inferred from full-year EPS minus Q1–Q3 and its readings say Inferred Q4. Each new EPS starts a segment; nonpositive EPS leaves a gap. A multiple above {cap}× (an earnings yield under {yield}%, usually EPS near zero), or a segment that opens more than {jump}× away from the previous close's multiple, is not meaningful: it is left as a gap and kept out of the distribution.",
+        )) : t(
           "NTM 是未来 12 个月。按存档日到本财年末的剩余天数占财年长度的比例，对本财年和下一财年的一致预期 EPS 加权，再用同一存档里的价格相除；加权 EPS 不为正时留空。财年口径对不上时改用备用的远期 P/E，预测期限可能不同，读数标「备用口径」。",
           "NTM means next twelve months. Current- and next-fiscal-year consensus EPS are weighted by the fraction of the fiscal year remaining on the archive date, and the archived price is divided by that EPS; nonpositive weighted EPS leaves a gap. When the fiscal inputs cannot be aligned, a fallback forward P/E is used, whose horizon can differ; its readings say Fallback.",
         )}</p>

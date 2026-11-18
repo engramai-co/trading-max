@@ -1116,9 +1116,9 @@ def test_trailing_pe_is_scoped_to_the_valuation_lens_and_keeps_its_research_revi
 
 
 def test_a_stored_trailing_pe_series_is_served_screened(tmp_path):
-    # Published before multiples were screened: 20x and 21x, then 400x on EPS
-    # near zero, then a reading 200 times larger than the one before it.
-    readings = [(2, "2026-02-02"), (1.9, "2026-03-02"), (0.1, "2026-04-01"), (20, "2026-05-01")]
+    # Published before multiples were screened: 20x and 21x, then 800x on EPS
+    # near zero, then a reading 400 times larger than the one before it.
+    readings = [(2, "2026-02-02"), (1.9, "2026-03-02"), (0.05, "2026-04-01"), (20, "2026-05-01")]
     data = {
         "currency": "USD",
         "points": [

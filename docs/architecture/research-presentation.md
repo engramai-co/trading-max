@@ -118,8 +118,8 @@ available as separate evidence.
 
 The trailing P/E model screens every series it validates, so a stored series
 is served with the same rules as a new one. Each multiple is recomputed from
-its close and EPS. A multiple above `MEANINGFUL_PE_CAP` (200×, an earnings
-yield under 0.5%) is withheld as `aboveCap`. An EPS reading whose first
+its close and EPS. A multiple above `MEANINGFUL_PE_CAP` (400×, an earnings
+yield under 0.25%) is withheld as `aboveCap`. An EPS reading whose first
 multiple differs from the previous close's by more than `SEGMENT_JUMP` (five
 times) is withheld in full as `segmentJump`; earnings crossing zero already
 break the line and are not compared. Withheld points keep their close and EPS

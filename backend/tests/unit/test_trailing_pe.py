@@ -336,21 +336,32 @@ def _reasons(history):
     return [by_reading[index] for index in sorted(by_reading)]
 
 
-def test_multiples_above_200_are_not_meaningful_and_leave_the_distribution():
-    # EPS just above zero: 40 / 0.1 = 400x and 40 / 0.16 = 250x.
-    stored = _series((0.1, 30), (0.16, 30), (0.25, 70))
+def test_multiples_above_400_are_not_meaningful_and_leave_the_distribution():
+    # EPS just above zero: 40 / 0.05 = 800x and 40 / 0.08 = 500x, then 200x.
+    stored = _series((0.05, 30), (0.08, 30), (0.2, 70))
     history = TrailingPeHistory.model_validate(stored)
     assert _reasons(history) == [{"aboveCap"}, {"aboveCap"}, {None}]
     capped = history.points[0]
     assert capped.pe is None and capped.close == 40
     assert history.distribution.samples == 70
-    assert history.distribution.median == pytest.approx(160)
+    assert history.distribution.median == pytest.approx(200)
     # The reason is part of the stored series only where it applies.
     dumped = history.model_dump(mode="json")
     assert dumped["points"][0]["notMeaningful"] == "aboveCap"
     assert "notMeaningful" not in dumped["points"][-1]
     # Screening is idempotent.
     assert TrailingPeHistory.model_validate(dumped) == history
+
+
+def test_a_growth_phase_near_300x_stays_visible():
+    # Like the peak of a growth phase: 100x rising to about 300x and 370x.
+    history = TrailingPeHistory.model_validate(
+        _series((0.4, 20), (0.2, 20), (0.133, 20), (0.108, 20))
+    )
+    assert _reasons(history) == [{None}, {None}, {None}, {None}]
+    assert history.points[59].pe == pytest.approx(40 / 0.133)
+    assert history.points[-1].pe == pytest.approx(40 / 0.108)
+    assert history.distribution.samples == 80
 
 
 def test_a_fivefold_jump_where_a_reading_starts_is_not_meaningful():
@@ -370,7 +381,7 @@ def test_earnings_crossing_zero_are_a_gap_not_a_jump():
 
 
 def test_a_withheld_latest_close_has_no_percentile():
-    history = TrailingPeHistory.model_validate(_series((2, 70), (0.1, 5)))
+    history = TrailingPeHistory.model_validate(_series((2, 70), (0.05, 5)))
     assert history.points[-1].pe is None and history.points[-1].not_meaningful == "aboveCap"
     assert history.distribution.samples == 70
     assert history.distribution.latest_percentile is None

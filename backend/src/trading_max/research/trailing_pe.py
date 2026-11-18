@@ -21,12 +21,12 @@ from .calendar import market_calendar
 MINIMUM_SAMPLE = 60
 # Don't carry a denominator indefinitely when a listing stops reporting.
 MAX_PERIOD_AGE = timedelta(days=180)
-# Above 200x the earnings yield is under 0.5%. Over ten years of this series
+# Above 400x the earnings yield is under 0.25%. Over ten years of this series
 # for 16 large US listings, steady earners stayed below 100x and growth phases
 # peaked at 250-370x, while EPS within cents of zero produced 700-5,400x and
-# swamped the distribution. The cap withholds those and the tops of the growth
-# phases; the web copy repeats this number.
-MEANINGFUL_PE_CAP = 200.0
+# swamped the distribution. The cap keeps the growth phases and withholds
+# those; the web copy repeats this number.
+MEANINGFUL_PE_CAP = 400.0
 # Within one EPS reading the multiple moves only with the close, so a fivefold
 # move where a new reading starts is a break in the earnings data, not a
 # change in valuation.
