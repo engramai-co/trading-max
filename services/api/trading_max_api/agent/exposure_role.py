@@ -21,11 +21,8 @@ class ExposureContext(RoleContext):
 
     @model_validator(mode="after")
     def grouped_category(self):
-        if (
-            self.group
-            and self.category != self.group
-            or self.group == "unresolved"
-            and self.dimension != "company"
+        if (self.group and self.category != self.group) or (
+            self.group == "unresolved" and self.dimension != "company"
         ):
             raise ValueError("Invalid grouped allocation")
         return self
@@ -62,7 +59,7 @@ def _find(read, tool, args, context):
         args = args.model_copy(update={"cursor": cursor})
     # Dated company tables keep only the top forty. A truncated table cannot
     # establish the complete residual or the full group outside the leading twelve.
-    if not context.group or data.get("company_limit") and len(rows) >= data["company_limit"]:
+    if not context.group or (data.get("company_limit") and len(rows) >= data["company_limit"]):
         return None, result
     members = rows[12:] if context.group == "tail" else rows
     if not members or any(row["weight_fraction"] is None for row in members):
