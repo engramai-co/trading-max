@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from trading_max.analytics.etf_projection import ETFReading
 from trading_max.reference import CatalogSecurityMaster, SecurityDescriptor, is_fund_instrument
 
+from .calendar import YAHOO_MIC_BY_SUFFIX, YAHOO_SUFFIX_BY_MIC
 from .listing import LONDON, broker_listing
 
 FUND_PRICE_DIRECTORY_KEY = "research/fund_price_directory.json"
@@ -12,27 +13,6 @@ FUND_PRICES_KEY = "research/fund_prices.json"
 BROKER_SNAPSHOT_KEY = "account/broker_snapshot_metrics.json"
 LOOKTHROUGH_KEY = "account/lookthrough_metrics.json"
 SECURITY_MASTER_KEY = "reference/security_master.json"
-
-_SUFFIX_BY_MIC = {
-    "XLON": ".L",
-    "XAMS": ".AS",
-    "XETR": ".DE",
-    "XFRA": ".F",
-    "XBRU": ".BR",
-    "XMAD": ".MC",
-    "XSTO": ".ST",
-    "XHKG": ".HK",
-    "XTKS": ".T",
-    "XASX": ".AX",
-    "XTSE": ".TO",
-    "XPAR": ".PA",
-    "XMIL": ".MI",
-    "XSWX": ".SW",
-    "XNYS": "",
-    "XNAS": "",
-    "ARCX": "",
-}
-_MIC_BY_SUFFIX = {suffix: mic for mic, suffix in _SUFFIX_BY_MIC.items() if suffix}
 
 
 def _text(value: object) -> str:
@@ -66,14 +46,20 @@ def fund_listing(position: dict, catalog: CatalogSecurityMaster) -> FundListingI
             exchange = market
         ticker = symbol
     base, dot, venue = ticker.rpartition(".")
-    if dot and (suffix := "." + venue) in _MIC_BY_SUFFIX:
+    if dot and (suffix := "." + venue) in YAHOO_MIC_BY_SUFFIX:
         return FundListingIdentity(
-            isin, mic or _MIC_BY_SUFFIX[suffix], base, ticker, exchange or _MIC_BY_SUFFIX[suffix]
+            isin,
+            mic or YAHOO_MIC_BY_SUFFIX[suffix],
+            base,
+            ticker,
+            exchange or YAHOO_MIC_BY_SUFFIX[suffix],
         )
     if exchange in {"LSE", "LONDON", "LONDON STOCK EXCHANGE"}:
         mic = mic or "XLON"
-    if mic in _SUFFIX_BY_MIC:
-        return FundListingIdentity(isin, mic, ticker, ticker + _SUFFIX_BY_MIC[mic], exchange or mic)
+    if mic in YAHOO_SUFFIX_BY_MIC:
+        return FundListingIdentity(
+            isin, mic, ticker, ticker + YAHOO_SUFFIX_BY_MIC[mic], exchange or mic
+        )
 
     # A provider-qualified symbol must describe this exact listing. Do not choose
     # another listing of the same ISIN just because it uses the same currency.
@@ -86,8 +72,8 @@ def fund_listing(position: dict, catalog: CatalogSecurityMaster) -> FundListingI
                 symbol = _text(observed.ticker)
                 venue_mic = _text(observed.mic)
                 if not venue_mic:
-                    venue_mic = _MIC_BY_SUFFIX.get("." + symbol.rpartition(".")[2], "")
-                suffix = _SUFFIX_BY_MIC.get(venue_mic, "")
+                    venue_mic = YAHOO_MIC_BY_SUFFIX.get("." + symbol.rpartition(".")[2], "")
+                suffix = YAHOO_SUFFIX_BY_MIC.get(venue_mic, "")
                 if exchange == "US" and suffix:
                     continue
                 if symbol.removesuffix(suffix) == ticker:

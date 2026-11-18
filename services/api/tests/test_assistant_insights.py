@@ -594,7 +594,8 @@ def test_aliased_listing_moments_match_returned_chart_identity(bound, watchliste
         assert pinned["data"]["ticker"] == "SYN.L"
         assert pinned["data"]["published_series_id"] == series["publishedSeriesId"]
         new_run = ins.moments_data(app.state.assistant.deps_for_run(None, None), args)
-        assert new_run["quality"]["reason_code"] == "displayed_price_series_mismatch"
+        assert new_run["data"] is None
+        assert new_run["quality"]["reason_code"] == "published_daily_bars_unavailable"
 
 
 def distinct_listing_events(bound, *, london_report=False):
@@ -1599,3 +1600,146 @@ def test_relative_daily_range_uses_returns_lens_calendar(bound):
     assert [(row["from_date"], row["date"]) for row in result["data"]["items"]] == [
         tuple(DATES[-2:])
     ]
+
+
+@pytest.mark.parametrize(("requested", "published"), [("SYN", "SYN.L"), ("SYN.L", "SYN")])
+def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, requested, published):
+    app, _ = distinct_listing_events(bound, london_report=True)
+    store = app.state.store
+    technical = store.read_json(store.latest_manifest().run_id, tools.TECHNICAL)
+    technical["rows"] = [row for row in technical["rows"] if row["ticker"] == published]
+    manifest = republish(
+        store,
+        {
+            tools.TECHNICAL: store.immutable_artifacts.put_json(
+                key=tools.TECHNICAL, payload=technical
+            )
+        },
+    )
+    app.state.watchlist.add(
+        SecuritySearchResult(
+            ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+        )
+    )
+
+    def missing_live(symbol, *args, **kwargs):
+        assert symbol == requested
+        raise ValueError("synthetic missing bars")
+
+    monkeypatch.setattr(app.state.security_prices, "get", missing_live)
+    client = TestClient(app)
+    assert client.get(f"/v1/research/{published}/prices").json()["points"]
+    missing = client.get(f"/v1/research/{requested}/prices")
+    assert missing.status_code == 404
+    result = client.get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={"ticker": requested, "scope": "invest", "start": DATES[0], "end": DATES[-1]},
+    ).json()
+    assert (
+        result["data"] is None
+        and result["quality"]["reason_code"] == "published_daily_bars_unavailable"
+    )
+
+
+@pytest.mark.parametrize("disclosure", [None, "history", "ex_date"])
+def test_fund_bar_distribution_qualifies_once_on_its_own_listing(bound, monkeypatch, disclosure):
+    app, initial, _ = bound
+    store = app.state.store
+    date = DATES[-1]
+    points = store.read_json(initial.run_id, tools.TECHNICAL)["rows"][0]["price_series"]
+    points[-1]["dividend"] = 0.5
+    data = {
+        FUND_PRICES_KEY: {"rows": [{"ticker": "SPY", "currency": "USD", "price_series": points}]}
+    }
+    if disclosure == "history":
+        data[tools.FINANCIALS] = {
+            "rows": [
+                {
+                    "ticker": "SPY",
+                    "financials": {
+                        "evidence": {
+                            "dividends": [{"date": date, "amount": 0.5, "currency": "USD"}]
+                        }
+                    },
+                }
+            ]
+        }
+    elif disclosure == "ex_date":
+        data[tools.EARNINGS] = {"rows": [{"ticker": "SPY", "calendar": {"Ex-Dividend Date": date}}]}
+    manifest = republish(
+        store, {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in data.items()}
+    )
+    monkeypatch.setattr(app.state.security_prices, "alpaca_etf", lambda *args: None)
+    client = TestClient(app)
+    chart = client.get("/v1/research/SPY/prices").json()
+    assert chart["events"] == [{"date": date, "kind": "dividend", "value": 0.5, "currency": "USD"}]
+    result = client.get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={
+            "ticker": "SPY",
+            "scope": "cfd",
+            "start": DATES[0],
+            "end": date,
+            "published_series_id": chart["publishedSeriesId"],
+        },
+    ).json()
+    (moment,) = result["data"]["items"]
+    assert moment["date"] == date and moment["move_fraction"] != 0
+    assert moment["event_count"] == 1
+    assert [event["kind"] for event in moment["events"]] == [
+        "ex_dividend" if disclosure == "ex_date" else "dividend"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("venue", "session"), [("FRA", "2026-01-30"), ("GER", "2026-02-02"), ("UNVERIFIED", None)]
+)
+def test_evening_headline_uses_observed_german_venue(bound, venue, session):
+    app, initial, _ = bound
+    store = app.state.store
+    ticker = "SYN"
+    friday = DATES[-3]
+    technical = store.read_json(initial.run_id, tools.TECHNICAL)
+    technical["rows"] = [
+        {**technical["rows"][0], "ticker": ticker, "exchange": venue, "timezone": "Europe/Berlin"}
+    ]
+    article = {
+        "id": "friday",
+        "title": "Synthetic update",
+        "publisher": "Wire",
+        "url": "https://example.test/friday",
+        "date": friday,
+        "instant": friday + "T18:00:00Z",
+    }
+    payloads = {
+        tools.TECHNICAL: technical,
+        NEWS_KEY: {"securities": {ticker: {"items": [article], "as_of": friday}}},
+        tools.FUNDAMENTALS: {
+            "rows": [
+                {
+                    "ticker": ticker,
+                    "metrics": {
+                        "fullExchangeName": "XETRA",
+                        "exchangeTimezoneName": "Europe/Berlin",
+                    },
+                }
+            ]
+        },
+    }
+    manifest = republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in payloads.items()},
+    )
+    reading = (
+        TestClient(app)
+        .get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"ticker": ticker, "scope": "cfd", "start": DATES[0], "end": DATES[-1]},
+        )
+        .json()
+    )
+    dates = [
+        e["date"] for day in reading["data"]["items"] for e in day["events"] if e["kind"] == "news"
+    ]
+    assert dates == ([session] if session else [])
+    assert ("listing_calendar_unavailable" in reading["quality"]["issues"]) == (session is None)
