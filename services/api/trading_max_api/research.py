@@ -297,6 +297,14 @@ def _quote_unit_price(value: Any, currency: Any) -> tuple[float | None, str | No
     return price / divisor, code or None
 
 
+def _alert_price(value: float, unit: str | None) -> str:
+    amount, code = _quote_unit_price(value, unit)
+    if amount is None or not code:
+        return "—"
+    prefix = {"GBP": "£", "USD": "US$", "EUR": "€"}.get(code, f"{code} ")
+    return f"{prefix}{amount:,.2f}"
+
+
 def _account_holdings(broker: JsonObject, lookthrough: JsonObject) -> dict[str, JsonObject]:
     """Direct and fund exposure per security on the current broker basis.
 
@@ -2347,6 +2355,7 @@ class ResearchLedger:
         impact = snapshot.portfolio_impact
         if impact.held and snapshot.technical:
             technical = snapshot.technical
+            unit = technical.get("currency")
             live_quote = quote_for(technical)
             price = live_quote[0] if live_quote else technical.get("price")
             price_as_of = live_quote[1] if live_quote else technical.get("asOf")
@@ -2369,8 +2378,8 @@ class ResearchLedger:
                                 severity="critical",
                                 title="Held position is below 20D support",
                                 message=(
-                                    f"{ticker} is at {price:.2f}, below the "
-                                    f"20D support at {level:.2f}."
+                                    f"{ticker} is at {_alert_price(price, unit)}, below the "
+                                    f"20D support at {_alert_price(level, unit)}."
                                 ),
                                 as_of=str(price_as_of or ""),
                             )
@@ -2385,7 +2394,7 @@ class ResearchLedger:
                                 title=f"Held position is near {label}",
                                 message=(
                                     f"{ticker} is {abs(distance):.1%} from the "
-                                    f"{label.lower()} at {level:.2f}."
+                                    f"{label.lower()} at {_alert_price(level, unit)}."
                                 ),
                                 as_of=str(price_as_of or ""),
                             )
@@ -2399,7 +2408,9 @@ class ResearchLedger:
                             alert_type="position",
                             severity="warning",
                             title="Held position is below SMA 200",
-                            message=(f"{ticker} is at {price:.2f}; SMA 200 is {sma200:.2f}."),
+                            message=(
+                                f"{ticker} is at {_alert_price(price, unit)}; SMA 200 is {_alert_price(sma200, unit)}."
+                            ),
                             as_of=str(price_as_of or ""),
                         )
                     )
@@ -2419,6 +2430,7 @@ class ResearchLedger:
             )
 
         if snapshot.options:
+            unit = snapshot.options.get("currency")
             live_quote = quote_for(snapshot.options)
             spot = live_quote[0] if live_quote else snapshot.options.get("spot")
             for name, label in (("callWall", "call wall"), ("putWall", "put wall")):
@@ -2439,8 +2451,8 @@ class ResearchLedger:
                             severity="warning",
                             title=f"Spot is near the {label}",
                             message=(
-                                f"Spot {spot:.2f} is {distance:.1%} from "
-                                f"the {label} at {level:.2f}."
+                                f"Spot {_alert_price(spot, unit)} is {distance:.1%} from "
+                                f"the {label} at {_alert_price(level, unit)}."
                             ),
                             as_of=str(
                                 live_quote[1]

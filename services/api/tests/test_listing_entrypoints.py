@@ -604,7 +604,10 @@ def test_live_alerts_compare_verified_quote_units(
     )
     client = TestClient(app)
     alerts_path = f"/v1/research/{ticker}/alerts"
-    assert any(a["alertId"].endswith(":support-breach") for a in client.get(alerts_path).json())
+    support = next(
+        a for a in client.get(alerts_path).json() if a["alertId"].endswith(":support-breach")
+    )
+    assert "£90.00" in support["message"] and "£100.00" in support["message"]
     app.state.alert_monitor.live_store.save(
         {
             "snapshotRunId": manifest.run_id,
