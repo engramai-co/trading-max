@@ -756,3 +756,45 @@ def test_generic_event_citation_reopens_the_same_page_and_time_zone(tmp_path):
     assert event in reopened.json()["output"]["data"]["items"]
     assert client.get(path, params={**params, "timezone": "Europe/London"}).status_code == 404
     assert client.get(path, params={**params, "eventId": "ev_unknown"}).status_code == 404
+
+
+def test_background_writer_publishes_a_lone_revised_estimate(tmp_path):
+    from trading_max.research.earnings_changes import bind_estimate_changes
+
+    _, _, factory, service, bindings = setup(tmp_path)
+    previous, current = analyst(1.25, "2026-01-15T10:00:00Z"), analyst(1.5, "2026-01-25T10:00:00Z")
+    current["rows"][0]["analyst"]["earningsEvents"] = []
+    publication(
+        factory.store,
+        extra_artifacts={tools.ANALYST: bind_estimate_changes(previous, current, ("TEST",))},
+    )
+    deps = factory.for_run()
+    when = deps.manifest.created_at
+    role = role_registry()["earnings-brief"]
+    record = job(when, deps.snapshot_id, "research").model_copy(
+        update={"scope": "research", "tickers": ["TEST"]}
+    )
+    (target,) = role.publication_targets(record, RoleTools.pinned(deps, role.allowed_tools))
+    asyncio.run(
+        BriefWriter(service, lambda: True, lambda: [], lambda: when).write(record, role, target)
+    )
+    assert bindings
+
+    async def cached():
+        return [
+            ev
+            async for ev in service.events(
+                role, target.context, deps, cached_only=True, latest=True, match_data_version=True
+            )
+        ]
+
+    reading = asyncio.run(cached())[-1].reading
+    assert reading.snapshot_id == deps.snapshot_id
+    assert any(
+        "2026-01-15" in line.en
+        and "2026-01-25" in line.en
+        and "1.25" in line.en
+        and "1.50" in line.en
+        and line.evidence.arguments["observation"]
+        for line in reading.lines
+    )

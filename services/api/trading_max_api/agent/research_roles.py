@@ -334,6 +334,19 @@ def earnings_facts(read: RoleTools, context: SecurityContext) -> list[ReadingLin
                 analystView="forecast",
             )
         )
+    for delta in data.get("changes", []):
+        old, new = delta["previous_as_of"][:10], delta["current_as_of"][:10]
+        end, currency = delta["end"], delta["currency"]
+        before, after = delta["previous"], delta["current"]
+        eps = delta["metric"] == "eps"
+        facts.append(
+            observation(
+                f"{end} 止{'季度' if delta['period'].endswith('q') else '年度'}{'每股收益' if eps else '营收'}一致预期：{old} 为 {currency} {before:,.2f}，{new} 为 {currency} {after:,.2f}。",
+                f"Consensus {'EPS' if eps else 'revenue'} for the {'quarter' if delta['period'].endswith('q') else 'year'} ending {end} changed from {currency} {before:,.2f} on {old} to {currency} {after:,.2f} on {new}.",
+                "analysts",
+                analystView="forecast",
+            )
+        )
     return cited_facts(facts)
 
 
