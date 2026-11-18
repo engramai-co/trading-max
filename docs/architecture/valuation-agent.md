@@ -34,8 +34,10 @@ resolve only in the frozen catalog; unknown, unavailable, duplicate, or
 incompatible citations fail validation. The bundle is limited to 96 rows and
 64 KiB. A call batch permits up to 16 responses, 192 total rows including
 worksheet rows, and 64 KiB of response JSON. Excess requests fail explicitly.
-Capture uses only named public research artifacts and an optional bounded,
-parameterized SELECT on the existing estimate archive. The tools themselves
+Capture uses named public research artifacts and an optional bounded,
+parameterized SELECT on the existing estimate archive. For snapshots that
+predate share-unit publication it may read the pinned reference catalog
+to resolve the exact ticker’s public security type. The tools themselves
 hold only the frozen data; they have no database, network, broker, or journal
 handle.
 

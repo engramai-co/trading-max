@@ -17,10 +17,11 @@ residual-income year exposes ROE, book and earnings, with nullable operating
 fields. Its terminal present value is the discounted sale price, with the
 premium in `terminalPremiumPresentValue`.
 
-The v1 preview routes serve cash-flow worksheets with three complete scenarios
-and numeric annual operating fields. GET and POST serialize the original v1 response types, including the nested inputs and projection years. A family or basis the published v1 client
-cannot display returns HTTP 422. Saved versions continue to record their own
-formula and worksheet.
+The v1 preview routes use the published cash-flow formula, its three-year
+margin ramp and its five operating inputs. GET, POST and a legacy save
+reproduce the same worksheet. A family or basis the published v1 client
+cannot display returns HTTP 422. Family-aware saves specify their family or
+formula version. Saved models record the version used to calculate them.
 
 ## Eligibility and input identity
 
@@ -45,32 +46,47 @@ an identified listing and a positive share-class identification. The existing SE
 symbol, exchange and security title within one XBRL context. The latest
 parsed filing or the exact canonical ticker’s explicit security-master type
 can establish a common or ordinary share. A receipt flag takes precedence.
-For an ordinary line, use quoted shares outstanding or, if absent, the
-published market capitalisation divided by the batch price. A receipt requires
-a reviewed listing-specific ratio.
-Divide statement ordinary shares outstanding by ordinary shares per receipt
-to obtain the equivalent listed count. A quoted count can also be used for a
-verified one-to-one line. The current reviewed US listings are
-[TSMC, five ordinary shares per ADS](https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf),
-[Alibaba, eight per NYSE ADS](https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm),
-[Arm, one per ADS](https://investors.arm.com/node/8281/html) and
-[Nokia, one per ADS](https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf).
-Unidentified listings, ambiguous share classes and unknown receipt ratios
-withhold the per-share result. Multi-share receipts require a period with
-positive reported ordinary shares. The quote must name the reviewed NYSE venue
-for TSM, BABA and NOK, or Nasdaq for ARM. A US time zone cannot identify
-that venue. On European listings the venue corroborates the quoted suffix,
-including Copenhagen (`.CO`) and Stockholm (`.ST`).
+For a verified ordinary line, use period-end ordinary shares from the same
+consolidated statement period as the forecast inputs. If the period omits the
+count for a single-class company, use the quote's shares outstanding or the
+published market capitalisation divided by the batch price. The batch records
+the denominator in `sharesOutstanding` and the original quote count in
+`quotedSharesOutstanding`. The evidence worksheet identifies the source of
+the count.
 
-Retained pre-share-unit snapshots can be read before the first new batch.
-For an exact equity listing, first use a share-unit designation in the
-retained filing. Without that designation, carry forward the old share count
-only for a same-currency equity worksheet with all three published sets of
-cash-flow inputs and no family, listing or share-unit fields. The former
-desk could project those inputs even when a batch value was absent.
-Receipt designations in the issuer name and the reviewed receipt table still
-apply. The next publication supplies explicit listing and share-unit fields,
-including an empty share unit when verification is inconclusive.
+**Multiple ordinary classes.** A listed B-class count covers only part of
+the cash flows when the company also has A shares. For shares with verified
+equal distributions per share, divide consolidated cash flows by the combined
+period-end ordinary shares. If a period lacks this balance, try an earlier
+complete period. Volvo's A and B shares pay the same dividend and carry
+different voting rights. Novo Nordisk describes different priority rights
+and equal dividends paid in practice. Its Copenhagen B forecast assumes that
+equal distribution continues. Compare the resulting per-share value with the
+price of the selected local class. The model withholds values for additional
+ordinary classes identified on a filing cover or by an A/B ticker suffix until
+their economic units are established.
+[Volvo share terms](https://www.volvogroup.com/en/investors/the-volvo-share.html) ·
+[Novo Nordisk share terms](https://annualreport.novonordisk.com/2025/strategic-aspirations/financial-performance.html)
+
+**Receipts.** Divide period-end ordinary shares outstanding by the verified
+ordinary shares per receipt on that venue. A one-to-one receipt may also use a
+quoted count. The NYSE lines for TSM, Alibaba, Nokia and BP represent five,
+eight, one and six ordinary shares respectively. Arm's Nasdaq ADS represents
+one ordinary share. A US time zone alone cannot identify a receipt venue.
+BP's London line is an ordinary share quoted in pence. Its USD statements
+use the stored USD-to-GBP rate once.
+[TSMC](https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf) ·
+[Alibaba](https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm) ·
+[Nokia](https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf) ·
+[Arm](https://investors.arm.com/node/8281/html) ·
+[BP listing and ADS terms](https://www.bp.com/investors/shareholder-and-dividend-information/share-listing-information)
+
+**Retained snapshots.** Before the first new batch, the desk and evidence
+reader can recover the unit from an exact filed designation, the security
+master in that snapshot, or issuer-reviewed terms for the quoted listing.
+FX is checked separately against the reporting currency, quote currency and
+financial facts. A completed old worksheet and a matching currency provide
+no share-class evidence. An unidentified unit withholds the per-share result.
 
 ## Selecting a family
 
