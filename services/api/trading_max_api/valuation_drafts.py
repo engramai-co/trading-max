@@ -48,6 +48,8 @@ DRAFT_BLOCK_REASONS = frozenset(
     {
         "valuation-reverse-withheld",
         "complete-ttm-currency-and-share-count-required",
+        "listed-share-unit-unverified",
+        "receipt-ratio-unverified",
         "currency-conversion-unavailable",
         "positive-common-equity-and-common-income-required",
         "company-model-not-applicable",

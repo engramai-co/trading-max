@@ -923,18 +923,23 @@ def test_family_aware_contract_without_revenue_and_explicit_override(desk):
     )
 
 
-def test_ambiguous_receipt_requires_a_new_verified_share_basis(desk):
+@pytest.mark.parametrize(
+    ("is_adr", "reason"),
+    [(True, "receipt-ratio-unverified"), (False, "listed-share-unit-unverified")],
+)
+def test_unverified_shares_block_the_desk_and_draft_for_the_same_reason(desk, is_adr, reason):
     client, state, _, transcript = desk
     _, body = inputs(client)
 
     def ambiguous(batches):
         stored = batches["research/valuation.json"]["rows"][0]["assumptions"]
         stored.pop("shareUnit")
-        stored["isAdr"] = True
+        stored["isAdr"] = is_adr
 
     _publish(state.store, MATURE, inject=ambiguous)
-    assert client.get("/v2/research/SYNM/valuation-preview").status_code == 422
-    assert post(client, body)[-1]["code"] == "complete-ttm-currency-and-share-count-required"
+    response = client.get("/v2/research/SYNM/valuation-preview")
+    assert response.status_code == 422 and response.json()["detail"] == reason
+    assert post(client, body)[-1]["code"] == reason
     assert not transcript and not list(state.valuation_drafts.root.glob("*.json"))
 
 
