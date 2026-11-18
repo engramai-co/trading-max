@@ -156,7 +156,7 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
     {erase.isSuccess && <Notice tone="good">{t("已删除此工作区中的对话。", "Conversations deleted from this workspace.")}</Notice>}
     <span role="status" className="sr-only">{save.isPending ? t("正在保存…", "Saving…") : save.isSuccess ? t("已保存", "Saved") : null}</span>
     <Modal opened={dialog !== null} onClose={() => { if (!inFlight()) setDialog(null); }} centered
-      classNames={{ content: "mx-assistant-dialog" }} attributes={{ header: { role: "presentation" } }}
+      transitionProps={{ duration: 0 }} classNames={{ content: "mx-assistant-dialog" }} attributes={{ header: { role: "presentation" } }}
       closeButtonProps={{ "aria-label": t("关闭", "Close") }}
       title={dialog?.kind === "delete" ? t("删除所有对话？", "Delete all conversations?") : t("同意向模型分享数据", "Consent to share data")}>
       {dialog?.kind === "consent" && <Stack>
