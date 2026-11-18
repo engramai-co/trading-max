@@ -845,6 +845,10 @@ async function captureDraft(page: Page, project: string, locale: string, scheme:
   await page.locator("#valuation-assumptions").evaluate(el => {
     window.scrollBy({top: el.getBoundingClientRect().top - (window.innerWidth < 768 ? 140 : 75), behavior: "instant"});
   });
+  if (project === "desktop") {
+    await expect(page.locator("#valuation-results canvas").first()).toBeVisible();
+    await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  }
   await page.screenshot({scale: "css", path: join(dir, `${example}-${project}-${locale}-${scheme}.png`)});
 }
 
