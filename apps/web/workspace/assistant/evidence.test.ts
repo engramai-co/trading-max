@@ -165,11 +165,19 @@ it("projects timed releases into the reader's day and preserves date-only earnin
   expect(observationText(macro,"en","Europe/London")).toMatch(/4 Feb 2026.*23:30.* · CPI/);
   expect(evidenceHref(macro.evidence)).toBe("https://example.org/calendar");
   const earnings = {en:"2026-02-06 – 2026-02-08 · TEST earnings",zh:"财报",evidence:{...macro.evidence,source:"financials" as const,
-    arguments:{holdingTicker:"TEST", event:"earningsWindow",date:"2026-02-06",endDate:"2026-02-08"}}};
+    arguments:{snapshotId:"old",eventId:"ev_earn",holdingTicker:"TEST", event:"earningsWindow",date:"2026-02-06",endDate:"2026-02-08"}}};
   expect(observationText(earnings,"en","America/New_York")).toBe(earnings.en);
   expect(evidenceHref(earnings.evidence)).toContain("event=earningsWindow&date=2026-02-06&end=2026-02-08");
 });
 
 it("keeps a historical benchmark with no publication ID from opening today's figures", () => {
   expect(evidenceHref({tool:"compare_benchmarks",source:"market",evidenceId:"ev_old",arguments:{scope:"isa",benchmark:"VOO"}})).toBeNull();
+});
+
+it("carries both the calendar row and publication into the earnings target", () => {
+  const ref = {source:"financials" as const, tool:"upcoming_events",evidenceId:"ev_page",
+    arguments:{snapshotId:"old",eventId:"ev_calendar_row",researchEventId:"earn-1",date:"2026-02-04",holdingTicker:"TEST",event:"earnings"}};
+  expect(Object.fromEntries(new URL(evidenceHref(ref)!, "http://localhost").searchParams)).toMatchObject({
+    snapshotId:"old",calendarEventId:"ev_calendar_row",eventId:"earn-1",ticker:"TEST",date:"2026-02-04"
+  });
 });

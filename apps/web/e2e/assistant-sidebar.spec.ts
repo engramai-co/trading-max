@@ -21,9 +21,9 @@ async function fixtures(page: Page, ready = true) {
             date:"2026-02-03",instant:"2026-02-04T08:30:00+09:00",url:"https://example.org/calendar"}},
           related:[
             {...line("next","financials","upcoming_events","2026-02-04 – 2026-02-06 · SYNT 预计财报","2026-02-04 – 2026-02-06 · SYNT estimated earnings"),
-              evidence:{source:"financials",tool:"upcoming_events",evidenceId:"ev_earnings",arguments:{date:"2026-02-04",endDate:"2026-02-06",event:"earningsWindow",holdingTicker:"SYNT"}}},
+              evidence:{source:"financials",tool:"upcoming_events",evidenceId:"ev_earnings",arguments:{snapshotId:"saved",eventId:"ev_window",date:"2026-02-04",endDate:"2026-02-06",event:"earningsWindow",holdingTicker:"SYNT"}}},
             {...line("next","disclosure","upcoming_events","2026-02-09 · SYNT 除息","2026-02-09 · SYNT ex-dividend"),
-              evidence:{source:"disclosure",tool:"upcoming_events",evidenceId:"ev_ex",arguments:{date:"2026-02-09",event:"exDividend",holdingTicker:"SYNT"}}},
+              evidence:{source:"disclosure",tool:"upcoming_events",evidenceId:"ev_ex",arguments:{snapshotId:"saved",eventId:"ev_ex",date:"2026-02-09",event:"exDividend",holdingTicker:"SYNT"}}},
           ]}],
     }})+"\n"});
     if (url.pathname.endsWith("/assistant/chat")) {
@@ -245,13 +245,8 @@ test("cited money and ex-dividend dates open their published evidence", async ({
   await page.goto("/analytics?view=money&range=1W&moneyFrom=2026-01-26&moneyTo=2026-01-30&snapshotId=older&evidence=period_performance");
   expect(new URL((await history).url()).searchParams.get("range")).toBe("1W");
   await expect(page.locator(".mx-money-summary[data-assistant-evidence]")).toBeVisible();
-  await page.route("**/api/backend/research/SYNT/lens/overview?**", route => {
-    const data = backendFixture(new URL(route.request().url())) as Record<string,unknown>;
-    return route.fulfill({json:{...data,fundamentals:{metrics:{exDividendDate:Date.parse("2026-11-28")/1000}}}});
-  });
   await page.goto("/research?ticker=SYNT&view=overview&event=exDividend&date=2026-11-28&evidence=read_research_lens");
-  await expect(page.locator("[data-reading-event]")).toContainText("2026-11-28");
-  await expect(page.locator("[data-reading-event]")).toContainText("除息日期");
+  await expect(page.locator("[data-reading-event]")).toContainText("引用的数据版本或事件暂不可用");
 });
 
 test("keyboard Back from History restores focus inside the tablet sidebar", async ({page}, info) => {
@@ -354,4 +349,26 @@ test("a saved benchmark citation reopens its portfolio and prices and discloses 
   await expect(page.getByText("Cited publication unavailable", {exact:true})).toBeVisible();
   await expect(result).toHaveCount(0);
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-benchmark.png")});
+});
+
+test("earnings citations reopen the exact retained row and disclose expiry", async ({page}, info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  let expired = false;
+  await page.route("**/api/backend/snapshots/saved/events/upcoming?**", route => route.fulfill(expired
+    ? {status:404,json:{detail:"snapshot not found"}} : {json:{snapshot_id:"saved",data:{items:[
+      {kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture"},
+    ]}}}));
+  await page.goto("/");
+  const link = page.locator(".mx-digest").getByRole("link",{name:"Financials",exact:true}).first();
+  await expect(link).toHaveAttribute("href", /snapshotId=saved/);
+  await link.click();
+  const target = page.locator("[data-reading-event]");
+  await expect(target).toContainText("2026-02-04 – 2026-02-06");
+  const shots = process.env.ASSISTANT_SCREENSHOTS;
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-retained-earnings.png")});
+  expired = true;
+  await page.reload();
+  await expect(target).toContainText("Cited publication or event unavailable");
+  if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-earnings.png")});
 });

@@ -34,6 +34,7 @@ export function evidenceHref(ref: Evidence): string | null {
       return evidenceHref({...ref, tool:"read_research_lens", arguments:{
         ticker:args.holdingTicker, lens:args.researchEventId ? "analyst" : "overview", event:args.event,
         date:args.date, end:args.endDate, eventId:args.researchEventId,
+        snapshotId:args.snapshotId, calendarEventId:args.eventId,
       }});
     }
   }
@@ -72,6 +73,8 @@ export function evidenceHref(ref: Evidence): string | null {
       params.set("event", a.event);
       if (a.date) params.set("date", a.date);
       if (a.end) params.set("end", a.end);
+      if (a.snapshotId) params.set("snapshotId", a.snapshotId);
+      if (a.calendarEventId) params.set("calendarEventId", a.calendarEventId);
       if (a.eventId) { params.set("analystView", "events"); params.set("eventId", a.eventId); }
     }
     params.set("view", ref.tool === "read_valuation_evidence" ? "valuation" : a.lens || "overview");
