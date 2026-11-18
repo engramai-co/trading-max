@@ -579,7 +579,6 @@ function ModelEditor({
       {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
         {t("放弃草稿", "Discard draft")}
       </Button> : <Button variant="default" size="compact-xs"
-        title={initial.defaultSource === "saved-model" ? t("看新证据", "Review new evidence") : undefined}
         aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
         disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
         onClick={() => { if (drafting.phase) actions.current?.cancel(); else { setEditingProposal(null); void actions.current?.start(result); } }}>

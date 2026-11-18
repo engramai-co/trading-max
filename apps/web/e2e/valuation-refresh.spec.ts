@@ -1000,7 +1000,8 @@ test("cancel a valuation draft and discard a late proposal", async ({ page }) =>
   await page.goto("/research?ticker=SYNT&view=valuation");
   const editor = page.locator("#valuation-assumptions");
   const entry = editor.getByRole("button",{name:"✦ Draft",exact:true});
-  await expect(entry).toHaveAttribute("title","Review new evidence");
+  await expect(entry).toHaveAccessibleDescription("");
+  await expect(entry).not.toHaveAttribute("title", /.+/);
   const status = editor.locator('[role="status"][aria-atomic="true"]');
   await expect(status).toHaveText("");
   await status.evaluate(el => el.setAttribute("data-original-region", "true"));
