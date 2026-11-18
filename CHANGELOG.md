@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.57.0] - 2026-11-18
+
 ### Changed
 - The Research Desk values banks and insurers from common book value and residual income, trading platforms from earnings, and other companies from equity cash flow. Choose the model in the desk and inspect its period, currency and share basis. A missing quarter falls back to an earlier complete year of statements. Cash-flow and earnings models with reported zero revenue show the year-five revenue implied by price.
 - Valuations fall for the eleven cash-burning companies previously modelled from a zero starting margin. Their actual losses now enter the forecast and financing beyond available cash dilutes later returns.
