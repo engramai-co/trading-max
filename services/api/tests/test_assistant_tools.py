@@ -43,7 +43,7 @@ def publication(tmp_path):
     manifest = publish_fixture(store)
     research = ResearchLedger(store, WatchlistStore(tmp_path))
     deps = replace(
-        AssistantDepsFactory(store, price_series=research.published_price_series).for_run(),
+        AssistantDepsFactory(store, price_series=research.price_series).for_run(),
         captured_at=STALE_NOW,
     )
     return store, manifest, deps

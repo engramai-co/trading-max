@@ -580,6 +580,46 @@ def position_detail(ctx: Context, args: PositionArgs) -> Json:
     return read.page(matches, args, {"value_currency": "GBP"}, keys=keys, issues=issues)
 
 
+def _exposure_reading(raw: Json, dimension: str) -> tuple[list[Json], Json, list[str]]:
+    _, name_key, _ = DIMENSIONS[dimension]
+    rows = []
+    for row in exposure_rows(raw, dimension):
+        item = {
+            "name": _text(row.get(name_key), 512),
+            "value_gbp": _number(row.get("valueGbp")),
+            "weight_fraction": _number(row.get("allocationPct")),
+        }
+        if dimension == "company":
+            item.update(
+                ticker=_text(row.get("ticker"), 64),
+                isin=_text(row.get("isin"), 64),
+                direct_value_gbp=_number(row.get("directValueGbp")),
+                indirect_value_gbp=_number(row.get("indirectValueGbp")),
+            )
+        if dimension == "gics":
+            item.update(
+                code=_text(row.get("subIndustryCode"), 16),
+                classification_status=_text(row.get("classificationStatus"), 32),
+            )
+        rows.append(item)
+    lookthrough = _number(raw.get("lookthroughCoveragePct"))
+    coverage = {"lookthrough_coverage_fraction": lookthrough}
+    issues = ["lookthrough_incomplete"] if lookthrough is None or lookthrough < 0.99995 else []
+    if dimension == "gics":
+        classification = _number(raw.get("gicsCoveragePct"))
+        coverage.update(
+            gics_coverage_fraction=classification,
+            gics_portfolio_coverage_fraction=_number(raw.get("gicsPortfolioCoveragePct")),
+        )
+        if (
+            classification is None
+            or classification < 0.99995
+            or any(r["classification_status"] is None for r in rows)
+        ):
+            issues.append("gics_classification_incomplete")
+    return rows, coverage, issues
+
+
 def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
     """Read published broker-wide country, sector or underlying company exposures.
     Only broker_total has this projection. Weights are fractions of invested GBP,
@@ -592,29 +632,11 @@ def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
     raw = read.read(LOOKTHROUGH)
     if not raw or raw.get("available") is not True:
         return read.missing("lookthrough_unavailable", keys=(LOOKTHROUGH,))
-    rows_key, name_key, basis_key = DIMENSIONS[args.dimension]
+    rows_key, _, basis_key = DIMENSIONS[args.dimension]
     if not isinstance(raw.get(rows_key), list):
         return read.missing("exposure_dimension_unavailable", keys=(LOOKTHROUGH,))
-    rows = []
-    for row in exposure_rows(raw, args.dimension):
-        item = {
-            "name": _text(row.get(name_key), 512),
-            "value_gbp": _number(row.get("valueGbp")),
-            "weight_fraction": _number(row.get("allocationPct")),
-        }
-        if args.dimension == "company":
-            item.update(
-                ticker=_text(row.get("ticker"), 64),
-                isin=_text(row.get("isin"), 64),
-                direct_value_gbp=_number(row.get("directValueGbp")),
-                indirect_value_gbp=_number(row.get("indirectValueGbp")),
-            )
-        rows.append(item)
+    rows, coverage, issues = _exposure_reading(raw, args.dimension)
     ref = read.ref(LOOKTHROUGH)
-    coverage = _number(raw.get("lookthroughCoveragePct"))
-    issues = []
-    if coverage is None or coverage < 0.99995:
-        issues.append("lookthrough_incomplete")
     if ref and ref.warnings:
         issues.append("source_reported_warnings")
     return read.page(
@@ -625,7 +647,7 @@ def lookthrough_exposure(ctx: Context, args: ExposureArgs) -> Json:
             "currency": "GBP",
             "basis": _text(raw.get(basis_key)) if basis_key else "direct_and_fund_constituents",
             "invested_value_gbp": _number(raw.get("investedValueGbp")),
-            "lookthrough_coverage_fraction": coverage,
+            **coverage,
             "non_security_value_gbp": _number(raw.get("nonSecurityValueGbp")),
             "broker_as_of": _iso(raw.get("brokerAsOf")),
         },

@@ -6,11 +6,17 @@ from datetime import UTC, date, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from pydantic_ai import ModelRetry
-from trading_max.analytics.exposure_history import PREFIX, record_exposure, retained_dates
+from trading_max.analytics.exposure_history import (
+    PREFIX,
+    exposure_rows,
+    record_exposure,
+    retained_dates,
+)
 from trading_max.analytics.key_moments import key_moments
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 
 from services.api.tests.assistant_fixture import DATES, publication
+from services.api.tests.test_assistant_tools import _call
 from services.api.tests.test_dashboard import _measured_day, _publish_day_attribution
 from services.api.trading_max_api.agent import insights as ins
 from services.api.trading_max_api.agent import tools
@@ -21,6 +27,7 @@ from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
 from services.api.trading_max_api.dashboard import build_dashboard_data
 from services.api.trading_max_api.history_reader import HistoryReader
+from services.api.trading_max_api.models import SecuritySearchResult
 
 
 @pytest.fixture
@@ -177,7 +184,7 @@ def test_exposure_pins_one_observation_per_london_date_and_retains_month_ends(bo
     )
     assert result["total_items"] == result["company_limit"] == 40
     assert result["items"][0]["name"] == "49"
-    assert ins.exposure_rows(sample, "country") == [
+    assert exposure_rows(sample, "country") == [
         {"country": "Taiwan", "valueGbp": 55, "allocationPct": 0.55}
     ]
     end = date(2026, 11, 18)
@@ -461,7 +468,8 @@ def test_habit_default_and_focused_decision_match_review(bound):
     assert result(ticker="TEST", decision_date=DATES[-1], side="buy") == ("to_date", 10, 1)
 
 
-def test_aliased_listing_moments_match_returned_chart_identity(bound):
+@pytest.mark.parametrize("watchlisted", [False, True])
+def test_aliased_listing_moments_match_returned_chart_identity(bound, watchlisted):
     app, manifest, _ = bound
     store = app.state.store
     changes = {}
@@ -470,12 +478,18 @@ def test_aliased_listing_moments_match_returned_chart_identity(bound):
         raw["rows"][0]["ticker"] = "SYN.L"
         changes[key] = store.immutable_artifacts.put_json(key=key, payload=raw)
     manifest = republish(store, changes)
+    if watchlisted:
+        app.state.watchlist.add(
+            SecuritySearchResult(
+                ticker="SYN.L", name="Synthetic", exchange="LSE", bloomberg_ticker="", figi=""
+            )
+        )
     series = TestClient(app).get("/v1/research/SYN/prices").json()
-    assert len(series["points"]) == 5 and series["ticker"] == "SYN"
+    assert len(series["points"]) == 5 and series["ticker"] == ("SYN.L" if watchlisted else "SYN")
     response = TestClient(app).get(
         f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
         params={
-            "ticker": series["ticker"],
+            "ticker": "SYN",
             "published_series_id": series["publishedSeriesId"],
             "scope": "isa",
             "start": DATES[0],
@@ -547,6 +561,20 @@ def test_dated_gics_reports_holdings_classification_and_row_status(
         "not-applicable",
     }
 
+    current_reading = _call(
+        app.state.assistant.deps_for_run(None, None),
+        tools.lookthrough_exposure,
+        tools.ExposureArgs(scope="broker_total", dimension="gics"),
+    )
+    assert current_reading["status"] == reading["status"]
+    for field in (
+        "lookthrough_coverage_fraction",
+        "gics_coverage_fraction",
+        "gics_portfolio_coverage_fraction",
+        "items",
+    ):
+        assert current_reading["data"][field] == reading["data"][field]
+
 
 def test_exposure_storage_coalesces_repeated_publications_and_preserves_pins(tmp_path):
     import sqlite3
@@ -614,3 +642,73 @@ def test_exposure_storage_coalesces_repeated_publications_and_preserves_pins(tmp
     assert restored.read_json(first, PREFIX + "2026-01-01.json") == store.read_json(
         first, PREFIX + "2026-01-01.json"
     )
+
+
+def daily_csv_result(bound, text):
+    app, _, _ = bound
+    store = app.state.store
+    key = tools.HISTORY_KEYS[0]
+    republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_bytes(
+                key=key, content=text.encode(), media_type="text/csv"
+            )
+        },
+    )
+    return ins.daily_data(
+        app.state.assistant.deps_for_run(None, None), ins.DailyArgs(scope="invest", range="ALL")
+    )
+
+
+def test_withdrawal_and_redeposit_do_not_rank_undefined_daily_returns(bound):
+    reading = daily_csv_result(
+        bound,
+        "Date,SyntheticNAVGBP,ExternalFlowGBP,WeightedExternalFlowGBP,DailyReturn,TWRWealth\n"
+        "2026-01-28,100,0,0,,1\n"
+        "2026-01-29,110,0,0,0.1,1.1\n"
+        "2026-01-30,0,-110,-110,,\n"
+        "2026-02-02,100,100,0,,\n"
+        "2026-02-03,105,0,0,0.05,1.155\n",
+    )
+    assert reading["status"] == "partial"
+    assert [r["date"] for r in reading["data"]["items"]] == ["2026-02-03", "2026-01-29"]
+    assert [r["return_fraction"] for r in reading["data"]["items"]] == pytest.approx([0.05, 0.1])
+
+
+def test_daily_ranks_tie_at_published_return_precision(bound):
+    reading = daily_csv_result(
+        bound,
+        "Date,SyntheticNAVGBP,ExternalFlowGBP,TWRWealth\n"
+        "2026-01-28,100,0,1.00\n2026-01-29,110,0,1.10\n2026-01-30,121,0,1.21\n",
+    )
+    assert [r["worst_rank"] for r in reading["data"]["items"]] == [1, 1]
+
+
+def test_relative_daily_range_uses_returns_lens_calendar(bound):
+    app, manifest, _ = bound
+    store = app.state.store
+    key = tools.HISTORY_KEYS[2]
+    csv = store.read_text(manifest.run_id, key) + "2026-02-08,20,100,100,-80\n"
+    manifest = republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_bytes(
+                key=key, content=csv.encode(), media_type="text/csv"
+            )
+        },
+    )
+    history = HistoryReader(store).read(manifest, "1W", "invest")
+    chart = benchmark_comparison(
+        in_range([p.model_dump(mode="json") for p in history.nav], "1W"),
+        "invest",
+        store.read_json(manifest.run_id, tools.TECHNICAL)["benchmark_series"],
+        ["VOO"],
+    )
+    assert [p["date"] for p in chart["points"]] == DATES[-2:]
+    result = ins.daily_data(
+        app.state.assistant.deps_for_run(None, None), ins.DailyArgs(scope="invest", range="1W")
+    )
+    assert [(row["from_date"], row["date"]) for row in result["data"]["items"]] == [
+        tuple(DATES[-2:])
+    ]

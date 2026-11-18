@@ -88,7 +88,7 @@ async def run_turn(
 ) -> Turn:
     chart = ResearchLedger(store, WatchlistStore(store.data_root))
     deps = AssistantDepsFactory(
-        store, allowed_scopes=scenario.scopes, price_series=chart.published_price_series
+        store, allowed_scopes=scenario.scopes, price_series=chart.price_series
     ).for_run(scenario.page)
     deps = replace(deps, captured_at=STALE_NOW)
     history: list[ModelMessage] = []
