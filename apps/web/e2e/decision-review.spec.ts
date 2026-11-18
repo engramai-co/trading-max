@@ -268,6 +268,39 @@ test.describe("decision review", () => {
     await expect(more).toBeHidden();
     await expect(entry.getByRole("link")).toBeFocused();
   });
+
+  for (const locale of ["zh", "en"] as const) {
+    test("the horizon switch's help says how each window is measured, in " + locale, async ({ page }) => {
+      const zh = locale === "zh";
+      await page.addInitScript((lang) => localStorage.setItem("trading_max-locale", lang), locale);
+      await page.goto("/review?account=A");
+      const help = page.locator(".mx-horizon-switch").getByRole("button", { name: zh ? "对照时点说明" : "Compare at explained" });
+      await help.click();
+      const card = page.getByRole("dialog", { name: zh ? "对照时点" : "Compare at" });
+      for (const words of zh ? [
+        "每笔买卖都和“不做这笔交易”比",
+        "按英镑计、含分红的总回报",
+        "买入后总回报为正记为赚，为负记为亏；卖出后总回报为正记为少赚，为负记为少亏",
+        "“20 个交易日后”从决定当天的收盘算到之后第 20 个交易日的收盘",
+        "“至今”算到最近一个收盘",
+        "结果还不可得的决定不计入成绩，在时间轴上是零线上的空心点",
+        "还不满 20 个交易日（“至今”则是之后还没有收盘），或还在等待价格、汇率或分红的最终值",
+        "“最近”里的金额不随切换变化，总是按至今计算",
+      ] : [
+        "Each buy or sell is compared with not making that trade",
+        "by its total return in GBP over the window, dividends included",
+        "after a sell, a positive return is a gain given up and a negative one a loss avoided",
+        "“20 trading days” runs from the close on the day of the decision to the close 20 trading days later",
+        "“To date” runs to the latest close",
+        "A decision whose result is not available yet is not scored and sits as a hollow point on the timeline’s zero line",
+        "or one still waiting for the final value of a price, exchange rate or dividend",
+        "Amounts under “Recently” do not follow the switch",
+      ]) await expect(card).toContainText(words);
+      await page.keyboard.press("Escape");
+      await expect(card).toBeHidden();
+      await expect(help).toBeFocused();
+    });
+  }
 });
 
 test.describe("a link to one decision", () => {
