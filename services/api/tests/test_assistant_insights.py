@@ -15,7 +15,7 @@ from trading_max.analytics.exposure_history import (
     retained_dates,
 )
 from trading_max.analytics.key_moments import key_moments
-from trading_max.analytics.ledger import transaction_marker_rows
+from trading_max.analytics.ledger import load_transactions, transaction_marker_rows
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 
 from services.api.tests.assistant_fixture import DATES, publication
@@ -713,6 +713,109 @@ def test_chart_and_moments_route_published_broker_fills_by_listing(bound, includ
     assert {f["broker_ticker"] for row in rows for f in row["fills"]} == {o[0] for o in orders}
 
 
+def test_bare_csv_fill_survives_marker_replay_on_its_unique_published_listing(bound, tmp_path):
+    app, initial, _ = bound
+    store = app.state.store
+    broker = store.read_json(initial.run_id, tools.BROKER)
+    position = broker["accounts"]["A"]["positions"][0]
+    position.update(ticker="SYN", broker_ticker="SYNl_EQ", isin="GB0000000001")
+    technical = store.read_json(initial.run_id, tools.TECHNICAL)
+    technical["rows"][0]["ticker"] = "SYN.L"
+    refs = {
+        key: store.immutable_artifacts.put_json(key=key, payload=payload)
+        for key, payload in ((tools.BROKER, broker), (tools.TECHNICAL, technical))
+    }
+    csv = tmp_path / "transactions.csv"
+    csv.write_text(
+        "Action,Time (UTC),ISIN,Ticker,No. of shares,Price / share,Total,Currency (Total)\n"
+        f"Market buy,{DATES[-1]}T12:00:00Z,GB0000000001,SYN,2,30,60,GBP\n"
+    )
+    expected = ([("SYN.L", "B", 2, 0)], ["B"])
+    for version in ("trade-markers-v1", "trade-markers-v3"):
+        rows = transaction_marker_rows({"isa": load_transactions([csv])}, [position])
+        assert rows[0]["fills"][0]["broker_ticker"] == "SYN"
+        if version == "trade-markers-v1":
+            rows[0]["fills"][0].pop("broker_ticker")
+            rows[0]["fills"][0].pop("price", None)
+        key = ins.TRADE_MARKERS
+        refs[key] = store.immutable_artifacts.put_json(
+            key=key, payload={"calculation_version": version, "rows": rows}
+        )
+        manifest = republish(store, refs)
+        assert listing_trade_readings(app, manifest, "SYN.L") == expected, version
+        query = {"scope": "isa", "ticker": "SYN.L", "start": DATES[0], "end": DATES[-1]}
+        result = (
+            TestClient(app)
+            .get(f"/v1/snapshots/{manifest.run_id}/insights/key-moments", params=query)
+            .json()
+        )
+        assert "trade_listing_unresolved" not in result["quality"]["issues"]
+
+    technical["rows"].append({**technical["rows"][0], "ticker": "SYN"})
+    key = tools.TECHNICAL
+    manifest = republish(
+        store, {key: store.immutable_artifacts.put_json(key=key, payload=technical)}
+    )
+    for ticker in ("SYN.L", "SYN"):
+        assert listing_trade_readings(app, manifest, ticker) == ([], [])
+
+
+@pytest.mark.parametrize(
+    ("second_order", "expected"),
+    [
+        (("SYNl_EQ", "Market sell", 1, 31), ([("SYN.L", "T", 2, 1)], ["T"])),
+        (("SYN_US_EQ", "Market sell", 1, 40), ([], [])),
+        (("SYNALT", "Market sell", 1, 40), ([("SYN.L", "B", 2, 0)], ["B"])),
+    ],
+)
+def test_replayed_bare_fill_uses_its_own_symbol_and_other_fills_listing_evidence(
+    bound, second_order, expected
+):
+    app, initial, _ = bound
+    store = app.state.store
+    technical = store.read_json(initial.run_id, tools.TECHNICAL)
+    technical["rows"][0]["ticker"] = "SYN.L"
+    rows = broker_markers([("SYN", "Market buy", 2, 30), second_order])
+    manifest = republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_json(key=key, payload=payload)
+            for key, payload in (
+                (tools.TECHNICAL, technical),
+                (ins.TRADE_MARKERS, {"calculation_version": "trade-markers-v3", "rows": rows}),
+            )
+        },
+    )
+    assert listing_trade_readings(app, manifest, "SYN.L") == expected
+
+
+def test_replayed_day_uses_priced_shares_for_its_combined_average(bound):
+    app, initial, _ = bound
+    store = app.state.store
+    technical = store.read_json(initial.run_id, tools.TECHNICAL)
+    technical["rows"][0]["ticker"] = "SYN.L"
+    rows = broker_markers(
+        [
+            ("SYN", "Market buy", 2, 30),
+            ("SYNl_EQ", "Market buy", 3, 40),
+            ("SYNl_EQ", "Market buy", 5, float("nan")),
+        ]
+    )
+    republish(
+        store,
+        {
+            key: store.immutable_artifacts.put_json(key=key, payload=payload)
+            for key, payload in (
+                (tools.TECHNICAL, technical),
+                (ins.TRADE_MARKERS, {"calculation_version": "trade-markers-v3", "rows": rows}),
+            )
+        },
+    )
+    (marker,) = TestClient(app).get("/v1/research/SYN.L/prices").json()["tradeMarkers"]
+    assert (marker["buyOrders"], marker["buyQuantity"], marker["buyAveragePrice"]) == (3, 10, 36)
+    assert len(marker["fills"]) == 3
+
+
 @pytest.mark.parametrize("aggregate_only", [False, True])
 def test_legacy_marker_requires_a_unique_published_listing(bound, aggregate_only):
     app, _ = distinct_listing_events(bound)
@@ -790,6 +893,8 @@ def test_mixed_publication_never_reuses_another_listings_price_or_account(bound)
     rows = broker_markers([("SYNl_EQ", "Market buy", 2, 30), ("SYNl_EQ", "Market sell", 1, 31)])
     extra = broker_markers([("SYN_US_EQ", "Market buy", 3, 40)])[0]["fills"][0]
     rows[0]["fills"].append({**extra, "account": "invest"})
+    for fill in rows[0]["fills"]:
+        fill.pop("price", None)  # The earlier publication supplied only the side averages.
     rows[0].update(buy_orders=2, buy_quantity=5, buy_average_price=36, accounts=["isa", "invest"])
     ref = store.immutable_artifacts.put_json(
         key=ins.TRADE_MARKERS, payload={"rows": rows, "calculation_version": "trade-markers-v3"}

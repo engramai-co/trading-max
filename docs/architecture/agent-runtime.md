@@ -143,8 +143,10 @@ earlier date breaking a tie. The chart and reading resolve the same requested
 listing, including exchange-qualified watchlist aliases. A run captures its
 aliases at the start and reads prices and events from its pinned snapshot.
 Events must match the listing on the published bar row. The chart resolves each
-new broker fill by its recorded instrument code. Older markers can use a ticker
-when the published listings and broker positions identify a single match.
+broker fill by its recorded instrument code. A bare CSV ticker or an older
+marker requires one matching listing across the pinned research, broker
+positions and venue-qualified fills. Trades resolved to the same listing and
+date share one daily marker.
 Key moments use the chart's resolved trades and report `trade_listing_unresolved`
 for an ambiguous trade in the selected account and date range. If the aliases cannot
 be read, key moments return an unavailable reading. Their evidence IDs include

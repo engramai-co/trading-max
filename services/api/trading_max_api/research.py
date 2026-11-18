@@ -2451,7 +2451,9 @@ class ResearchLedger:
             ref.sha256 if ref else manifest.run_id, lambda: self._read_optional(manifest, key)
         )
 
-    def _legacy_marker_listings(self, manifest: SnapshotManifest) -> dict[str, set[str]]:
+    def _marker_listings(
+        self, manifest: SnapshotManifest, markers: JsonObject
+    ) -> dict[str, set[str]]:
         """Inventory the listings in this publication, independent of current routing aliases."""
 
         def load():
@@ -2467,6 +2469,13 @@ class ResearchLedger:
                     rows = self._cached_rows(manifest, key, _fundamentals_rows)
                     symbols.update(str(r.get("ticker") or "").upper() for r in rows)
             symbols.update(str(r["ticker"]).upper() for r in self._market_rows(manifest))
+            symbols.update(
+                symbol
+                for row in markers["rows"]
+                if isinstance(row, dict)
+                for fill in row.get("fills") or []
+                if (symbol := broker_symbol(fill.get("broker_ticker")))
+            )
             aliases = defaultdict(set)
             for account in self._broker_snapshot(manifest).get("accounts", {}).values():
                 for position in account.get("positions") or []:
@@ -2480,7 +2489,7 @@ class ResearchLedger:
                 aliases[symbol.partition(".")[0]].add(symbol)
             return dict(aliases)
 
-        return self._facts_cache.get_or_compute((manifest.run_id, "legacy_marker_listings"), load)
+        return self._facts_cache.get_or_compute((manifest.run_id, "marker_listings"), load)
 
     def published_price_series(
         self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
@@ -2526,7 +2535,7 @@ class ResearchLedger:
             else {}
         )
         all_markers, unresolved = chart_trade_markers(
-            raw_markers, bar_ticker, lambda: self._legacy_marker_listings(manifest)
+            raw_markers, bar_ticker, lambda: self._marker_listings(manifest, raw_markers)
         )
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
