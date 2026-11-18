@@ -1914,7 +1914,10 @@ def test_headlines_disclose_closing_auction_uncertainty(
         (None, None, False),
     ],
 )
-def test_pinned_fund_auction_uses_verified_product(bound, published, fundamental, expected):
+@pytest.mark.parametrize("metadata", ["metrics", "info"])
+def test_pinned_fund_auction_uses_verified_product(
+    bound, published, fundamental, expected, metadata
+):
     app, initial, _ = bound
     store = app.state.store
     day = DATES[-3]
@@ -1941,7 +1944,7 @@ def test_pinned_fund_auction_uses_verified_product(bound, published, fundamental
                 }
             ]
         },
-        tools.FUNDAMENTALS: {"rows": [{"ticker": ticker, "metrics": {"quoteType": fundamental}}]},
+        tools.FUNDAMENTALS: {"rows": [{"ticker": ticker, metadata: {"quoteType": fundamental}}]},
         NEWS_KEY: {"securities": {ticker: {"items": [article], "as_of": day}}},
     }
     manifest = republish(
@@ -2071,3 +2074,31 @@ def test_held_fund_route_preserves_original_requested_listing(bound, monkeypatch
     client = TestClient(app)
     assert client.get("/v1/research/SYN.L/prices").status_code == 200
     assert client.get("/v1/research/SYN/prices").status_code == 404
+
+
+@pytest.mark.parametrize("upcoming", [True, False])
+def test_news_diagnostics_cannot_overwrite_the_feeds_listing(bound, upcoming):
+    from services.api.trading_max_api.agent.events import EventArgs, event_data
+
+    app, _, _ = bound
+    store = app.state.store
+    ticker = "SYN"
+    date = DATES[-3]
+    source = {"ticker": ticker, "mic": "XLON", "as_of": date, "items": []}
+    status = {"ticker": ticker, "mic": "XNYS", "as_of": date}
+    publications = {
+        NEWS_KEY: {"securities": {ticker: source}},
+        NEWS_STATUS_KEY: {"securities": {ticker: status}},
+        tools.EARNINGS: {"rows": [{"ticker": ticker, "calendar": {"Ex-Dividend Date": date}}]},
+    }
+    republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in publications.items()},
+    )
+    result = event_data(
+        app.state.assistant.deps_for_run(None, None),
+        EventArgs(scope="cfd", ticker=ticker, start=DATES[0], end=DATES[-1]),
+        upcoming=upcoming,
+    )
+    assert "listing_calendar_unavailable" in result["quality"]["issues"]
+    assert not any(row.get("ticker") == ticker for row in result["data"]["items"])

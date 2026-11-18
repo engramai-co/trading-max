@@ -15,7 +15,7 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
     keys = []
     issues = []
     events = []
-    ticker = args.ticker
+    ticker = series.published_bar_ticker or args.ticker
     if calendar:
         keys.append(EARNINGS)
     if metrics:

@@ -474,7 +474,7 @@ def dated_events(
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
     def listing_row(key):
-        return _ticker_row(read.read(key), args.ticker) or {}
+        return _ticker_row(read.read(key), series.published_bar_ticker or args.ticker) or {}
 
     analyst = _mapped(listing_row(ANALYST).get("analyst"))
     if analyst:
@@ -504,12 +504,13 @@ def dated_events(
         issues.append("filings_unavailable")
     for row in _rows(filing_evidence.get("filings")):
         add(row.get("date"), "filing", row.get("accession") or row.get("id"))
+    fundamental = listing_row(FUNDAMENTALS)
     extra_events, extra_keys, extra_issues = listing_moment_events(
         read,
         args,
         series,
         _mapped(listing_row(EARNINGS).get("calendar")),
-        _mapped(listing_row(FUNDAMENTALS).get("metrics")),
+        _mapped(fundamental.get("metrics") or fundamental.get("info")),
         filing_evidence,
     )
     keys.extend(extra_keys)
@@ -571,7 +572,7 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
     bars = [p.model_dump(mode="json") for p in series.points]
     events, keys, issues = dated_events(
         read,
-        args.model_copy(update={"ticker": series.published_bar_ticker}),
+        args,
         codes,
         series,
     )

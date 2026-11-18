@@ -100,7 +100,11 @@ def _entry(kind, title, zh, raw, *, ticker=None, publisher=YAHOO, url=None, end=
 
 
 def _indexed(payload):
-    return {str(r.get("ticker", "")).upper(): r for r in _rows((payload or {}).get("rows"))}
+    payload = payload or {}
+    return {
+        str(r.get("ticker", "")).upper(): r
+        for r in _rows(payload.get("rows", payload.get("fundamentals")))
+    }
 
 
 def _security_entry(ticker, kind, title, zh, raw, **kw):
@@ -191,7 +195,8 @@ def _public(ticker, data, upcoming):
             end=days[-1] if len(days) > 1 else None,
             status="provider-estimate",
         )
-    metrics = data[FUNDAMENTALS].get(ticker, {}).get("metrics", {})
+    fundamental = data[FUNDAMENTALS].get(ticker, {})
+    metrics = fundamental.get("metrics") or fundamental.get("info") or {}
     evidence = data.get(FINANCIALS, {}).get(ticker, {}).get("financials", {}).get("evidence", {})
     yield from listed_dividends(ticker, cal, metrics, {} if upcoming else evidence)
     if upcoming:
@@ -509,9 +514,10 @@ def event_data(deps, args, *, upcoming):
     diagnostics = read.read(NEWS_STATUS_KEY)
     if diagnostics:
         keys.append(NEWS_STATUS_KEY)
+    news_rows = (raw or {}).get("securities", {})
+    status_rows = (diagnostics or {}).get("securities", {})
     data[NEWS_KEY] = {
-        ticker: {**row, **(diagnostics or {}).get("securities", {}).get(ticker, {})}
-        for ticker, row in (raw or {}).get("securities", {}).items()
+        ticker: {**row, **status_rows.get(ticker, {})} for ticker, row in news_rows.items()
     }
     if raw is None and not upcoming:
         issues.append("security_news_unavailable")
@@ -533,7 +539,11 @@ def event_data(deps, args, *, upcoming):
             technical.get(ticker),
             funds.get(ticker),
             fundamental,
-            data[NEWS_KEY].get(ticker),
+            news_rows.get(ticker),
+            status_rows.get(ticker),
+            data[ANALYST].get(ticker),
+            data[EARNINGS].get(ticker, {}).get("calendar"),
+            data.get(FINANCIALS, {}).get(ticker, {}).get("financials", {}).get("evidence"),
             data[EARNINGS].get(ticker),
             data.get(FINANCIALS, {}).get(ticker),
         ):
