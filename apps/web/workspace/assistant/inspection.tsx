@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useCopy } from "../foundation";
 import {
@@ -93,6 +93,7 @@ export type InspectionProps = {
   portal?: HTMLElement | null;
   onUpdate?: () => void;
   unavailable?: boolean;
+  returnFocusRef?: RefObject<HTMLElement | null>;
 };
 
 export function Inspection({
@@ -104,7 +105,7 @@ export function Inspection({
   anchored,
   market,
   showMapLine,
-  portal, onUpdate, unavailable,
+  portal, onUpdate, unavailable, returnFocusRef,
 }: InspectionProps) {
   const t = useCopy();
   const { continueInSidebar } = useAssistant();
@@ -227,7 +228,7 @@ export function Inspection({
   };
   const Container = anchored ? AnchoredReading : InlineReading;
   return (
-    <Container card={card} onClose={close} focusClose={unavailable}>
+    <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef}>
       {onUpdate && <button type="button" className="mx-text-link" onClick={onUpdate}>{t("解读最新记录","Read updated records")}</button>}
       {unavailable ? <p role="status">{t("引用的区间记录暂不可用","Cited interval unavailable")}</p> : !reading ? (
         <div className="mx-inspection-status" role="status">

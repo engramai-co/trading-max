@@ -6,7 +6,7 @@ import { deepestDrawdown } from "@/lib/portfolio/drawdown-episodes";
 import { ReturnGrid } from "./performance-return-grid";
 import { DrawdownReading, drawdownMarks } from "./drawdown-reading";
 import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatDateTime } from "@/ui/formatters";
@@ -90,6 +90,7 @@ export function PerformanceContent({
   const {ready} = useAssistant();
   const {locale, timeZone} = useLocale();
   const [selectionRange,setSelectionRange] = useState<{start:string; end:string; identity:string; snapshotId:string} | null>(null);
+  const rangeTrigger = useRef<HTMLButtonElement>(null);
   const [phoneRange,setPhoneRange] = useState<string | null>(null);
   const [moneyUnit, setMoneyUnit] = useState("gbp");
   const start = params.get("returnFrom"), end = params.get("returnTo");
@@ -204,6 +205,7 @@ export function PerformanceContent({
   const endpointLabel = (value:string) => value.length===10 ? value : formatDateTime(value,locale,timeZone);
   const newestId = current && publicationOf(current);
   const inspection = <PageInspection key={selectedWindow?.snapshotId} role="attribution"
+      returnFocusRef={activeRange ? rangeTrigger : undefined}
       unavailable={Boolean(selectedWindow && !endpointsPresent && shown)}
       snapshotId={selectedWindow?.snapshotId ?? plottedId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
       context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
@@ -412,7 +414,11 @@ export function PerformanceContent({
                   w={220}
                 />
               )}
-              <div className="mx-period-control">
+              <div className="mx-period-control" onClickCapture={event => {
+                const button = event.target instanceof Element ? event.target.closest("button") : null;
+                // The More menu is portalled. Keep its persistent opener when a menu item is chosen.
+                if (button && event.currentTarget.contains(button)) rangeTrigger.current = button;
+              }}>
                 {runtime.status === "ready" && comparison && comparison.comparisons.length > 0
                   ? <span className="mx-comparison-basis">{t("共同区间", "Shared dates")} <PeriodSpan points={points} /></span>
                   : <PeriodSpan points={runtime.status === "ready" ? points : []} reserve />}

@@ -4,7 +4,7 @@ import "./readings.css";
 import { Drawer } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
 import Link from "../link";
@@ -42,11 +42,11 @@ export function FollowUps({ card, onContinue }: { card: RoleCard; onContinue?: (
     <button disabled={card.pendingBinding} className="mx-reading-continue" onClick={() => handoff()}>{t("在右栏继续 →", "Continue in sidebar →")}</button>
   </div>;
 }
-type ReadingContainerProps = { card: RoleCard; children?: ReactNode; onClose?: () => void; focusClose?: boolean };
+type ReadingContainerProps = { card: RoleCard; children?: ReactNode; onClose?: () => void; focusClose?: boolean; returnFocusRef?: RefObject<HTMLElement | null> };
 function ReadingContent({ card, children }: ReadingContainerProps) {
   return <section className="mx-inline-reading"><CardTitle card={card} />{children ?? <ReadingLines card={card} />}<FollowUps card={card} /></section>;
 }
-function ReadingSheet({ card, children, onClose, focusClose }: ReadingContainerProps & {onClose: () => void}) {
+function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
   const trigger = useRef(document.activeElement);
   const closeButton = useRef<HTMLButtonElement>(null);
@@ -54,8 +54,8 @@ function ReadingSheet({ card, children, onClose, focusClose }: ReadingContainerP
     if (focusClose) closeButton.current?.focus({preventScroll:true});
   }, [focusClose]);
   function dismiss() {
+    const element = returnFocusRef?.current ?? trigger.current;
     onClose();
-    const element = trigger.current;
     if (element instanceof HTMLElement) requestAnimationFrame(() => {
       const dialog = document.querySelector('[role="dialog"][aria-modal="true"]');
       if (element.isConnected && (!dialog || dialog.contains(element))) element.focus({preventScroll:true});
@@ -67,11 +67,11 @@ function ReadingSheet({ card, children, onClose, focusClose }: ReadingContainerP
     {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
   </Drawer>;
 }
-export function InlineReading({ card, children, onClose, focusClose }: ReadingContainerProps) {
+export function InlineReading({ card, children, onClose, focusClose, returnFocusRef }: ReadingContainerProps) {
   const { ready } = useAssistant();
   const phone = useMediaQuery("(max-width: 767px)");
   if (!ready) return null;
-  return phone && onClose ? <ReadingSheet card={card} onClose={onClose} focusClose={focusClose}>{children}</ReadingSheet>
+  return phone && onClose ? <ReadingSheet card={card} onClose={onClose} focusClose={focusClose} returnFocusRef={returnFocusRef}>{children}</ReadingSheet>
     : <ReadingContent card={card}>{children}</ReadingContent>;
 }
 /** Mount beside a selected point in its positioned inspection surface. */

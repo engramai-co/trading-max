@@ -745,6 +745,9 @@ test("a missing endpoint in the updated phone reading keeps the dialog and focus
   await expect(sheet.getByRole("button",{name:"Close reading"})).toBeFocused();
   expect(calls.some(c=>c.snapshotId===id)).toBe(false);
   if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-updated-endpoint-unavailable.png")});
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(page.getByRole("button",{name:"YTD",exact:true})).toBeFocused();
 });
 
 for (const view of ["holdings","money","returns","risk"] as const) {
