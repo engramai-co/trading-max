@@ -1229,6 +1229,8 @@ test("earnings and rating source words open their own research sections", async 
     await expect(anchor).toHaveAttribute("data-assistant-evidence", "");
     await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeInViewport({ratio:1});
     await expect(anchor).toContainText(section === "events" ? "已公布" : "Synthetic Research");
+    expect(await page.evaluate(() => window.scrollX)).toBe(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
     if (process.env.REVIEW_SCREENSHOTS) {
       await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-" + section + "-citation.png")});
     }

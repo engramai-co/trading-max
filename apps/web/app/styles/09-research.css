@@ -6,6 +6,10 @@
 .mx-research-page > .mx-page-heading h1 {
   font-size: 28px;
 }
+/* Wide earnings tables scroll within their panel when a citation lands here on a phone. */
+.mx-research-read > [data-reading-event] {
+  min-inline-size: 0;
+}
 .mx-research-content > .mx-grid {
   align-items: stretch;
 }
