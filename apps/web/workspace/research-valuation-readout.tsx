@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { formatCalendarDate, formatCompactCurrency } from "@/ui/formatters";
@@ -16,31 +17,56 @@ export type ModelReading = {
   busy: boolean;
 };
 
-function ReverseReading({ result, retry, refreshing }: {
-  result?: Preview;
-  retry?: () => void;
-  refreshing?: boolean;
-}) {
+type Refresh = { retry?: () => Promise<unknown>; refreshing?: boolean };
+
+function RevenueReading({ result, retry, refreshing }: { result: Preview } & Refresh) {
   const t = useCopy();
   const { locale } = useLocale();
+  const value = useRef<HTMLSpanElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  const [attempt, setAttempt] = useState<"idle" | "pending" | "complete">("idle");
+  const showRetry = Boolean(retry) || attempt === "pending";
+  useLayoutEffect(() => {
+    if (attempt === "complete" && !refreshing && !retry && button.current === document.activeElement)
+      value.current?.focus({ preventScroll: true });
+  }, [attempt, refreshing, retry]);
+
+  const label = t("现价隐含的第五年营收", "Year-five revenue implied by price");
+  const amount = formatCompactCurrency(result.reverseValue, locale, result.basis.currency);
+  return <Metric label={label}
+    value={<span ref={value} tabIndex={-1} role="group" aria-label={label + " · " + amount}>
+      {amount}
+    </span>}
+    note={<>
+      {t("目标利润率", "Target margin")} {percent(result.reverseInputs?.targetFcfMargin)}
+      {" · "}{t("退出倍数", "Exit multiple")} {number(result.reverseInputs?.exitFcfMultiple, 1)}×
+      {result.reverseReason === "positive-target-and-multiple-required" &&
+        <span className="mx-reverse-status">{t("利润率与倍数须为正", "Margin and multiple must be positive")}</span>}
+      <span className="mx-reverse-feedback">
+        {(showRetry || attempt === "complete") &&
+          <span className="mx-reverse-status" role={showRetry ? "alert" : undefined} data-settled={!showRetry || undefined}>
+            {t("未能按最新价格重算", "Not revalued at the latest price")}{" "}
+            <button ref={button} type="button" className="mx-text-link" aria-disabled={refreshing || attempt === "pending" || !retry}
+              onClick={async () => {
+                if (!retry || refreshing || attempt === "pending") return;
+                setAttempt("pending");
+                await retry();
+                setAttempt("complete");
+              }}>{t("重试", "Retry")}</button>
+          </span>}
+        {refreshing && !showRetry && <span className="mx-reverse-status" role="status">{t("计算中…", "Calculating…")}</span>}
+      </span>
+    </>}
+    help={t("报告期营收为零。按前五年无中期分配和给定退出倍数计算所需营收。",
+      "Reported revenue was zero. The required revenue assumes no interim distributions and applies the exit multiple to year-five earnings.")} />;
+}
+
+function ReverseReading({ result, retry, refreshing }: { result?: Preview } & Refresh) {
+  const t = useCopy();
   const metric = result?.reverseMetric ?? "revenue-growth";
   const inputs = result?.scenarios.base?.inputs;
-  if (metric === "year-five-revenue" && result) {
-    return <Metric label={t("现价隐含的第五年营收", "Year-five revenue implied by price")}
-      value={formatCompactCurrency(result.reverseValue, locale, result.basis.currency)}
-      note={<>
-        {t("目标利润率", "Target margin")} {percent(result.reverseInputs?.targetFcfMargin)}
-        {" · "}{t("退出倍数", "Exit multiple")} {number(result.reverseInputs?.exitFcfMultiple, 1)}×
-        {result.reverseReason === "positive-target-and-multiple-required" &&
-          <span className="mx-reverse-status">{t("利润率与倍数须为正", "Margin and multiple must be positive")}</span>}
-        {retry && !refreshing ? <span className="mx-reverse-status" role="alert">
-          {t("未能按最新价格重算", "Not revalued at the latest price")}{" "}
-          <button type="button" className="mx-text-link" onClick={retry}>{t("重试", "Retry")}</button>
-        </span> : refreshing && <span className="mx-reverse-status" role="status">{t("计算中…", "Calculating…")}</span>}
-      </>}
-      help={t("报告期营收为零。按前五年无中期分配和给定退出倍数计算所需营收。",
-        "Reported revenue was zero. The required revenue assumes no interim distributions and applies the exit multiple to year-five earnings.")} />;
-  }
+  if (metric === "year-five-revenue" && result)
+    return <RevenueReading result={result} retry={retry} refreshing={refreshing} />;
   const roe = metric === "initial-roe";
   const margin = metric === "target-margin";
   const label = roe ? t("现价隐含的第一年 ROE", "Year-one ROE implied by price")
@@ -66,7 +92,7 @@ export function ValuationReadout({ data, preview, reading, retry, refreshing }: 
   data: ResearchLensSnapshot;
   preview?: Preview;
   reading?: ModelReading;
-  retry?: () => void;
+  retry?: () => Promise<unknown>;
   refreshing?: boolean;
 }) {
   const t = useCopy();

@@ -331,11 +331,15 @@ test.describe("valuation refresh", () => {
     await expect(spot).not.toContainText("120.00");
   });
 
-  test("a failed quote refresh labels the retained year-five revenue and retries inline", async ({ page }) => {
+  test("a failed quote refresh labels the retained year-five revenue and retries inline", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     const state = await synthetic(page);
-    await page.route("**/SYNT/valuation-preview*", route => {
+    let receipt: Promise<void> | undefined;
+    let release!: () => void;
+    await page.route("**/SYNT/valuation-preview*", async route => {
       if (state.defaultsDown) return route.fulfill({ status: 503, json: { detail: "synthetic outage" } });
+      await receipt;
       return route.fulfill({ json: zeroRevenue("SYNT", state.broker.price, state.broker.asOf, state.broker.price * 1000) });
     });
     await page.goto("/research?ticker=SYNT&view=valuation");
@@ -348,9 +352,34 @@ test.describe("valuation refresh", () => {
     await expect(failure).toContainText("Not revalued at the latest price");
     await expect(reverse).toContainText("US$100k");
     state.defaultsDown = false;
-    await failure.getByRole("button", { name: "Retry" }).click();
+    const retryButton = failure.getByRole("button", { name: "Retry" });
+    const history = page.locator("#research-history");
+    await retryButton.focus();
+    const top = (await history.boundingBox())!.y;
+    receipt = new Promise<void>(resolve => { release = resolve; });
+    const request = page.waitForRequest("**/SYNT/valuation-preview*");
+    await page.keyboard.press("Enter");
+    await request;
+    await expect.soft(retryButton).toBeFocused({ timeout: 1000 });
+    expect.soft(Math.abs((await history.boundingBox())!.y - top)).toBeLessThan(1);
+    release();
     await expect(reverse).toContainText("US$120k");
     await expect(failure).toHaveCount(0);
+    await expect(reverse.getByText("US$120k", { exact: true })).toBeFocused();
+    expect(Math.abs((await history.boundingBox())!.y - top)).toBeLessThan(1);
+
+    state.defaultsDown = true;
+    state.broker = { price: 140, asOf: "2026-11-04T16:00:00Z" };
+    await expect(retryButton).toBeVisible();
+    state.defaultsDown = false;
+    receipt = new Promise<void>(resolve => { release = resolve; });
+    await retryButton.focus();
+    await page.keyboard.press("Enter");
+    const other = reverse.getByRole("button", { name: /explained/ });
+    await other.focus();
+    release();
+    await expect(reverse).toContainText("US$140k");
+    await expect(other).toBeFocused();
   });
 
   test("new research defaults do not rebase dirty assumptions", async ({ page }) => {

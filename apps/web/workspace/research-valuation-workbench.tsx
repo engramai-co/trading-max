@@ -199,7 +199,7 @@ export function ValuationWorkbench({
 
   return <ResearchReading parameter="valuationView" sections={editor ? valuationSections : valuationSections.slice(0, 2)}>
     <ValuationReadout data={data} preview={preview} reading={currentReading}
-      retry={query.isError ? () => void query.refetch() : undefined} refreshing={query.isFetching} />
+      retry={query.isError ? query.refetch : undefined} refreshing={query.isFetching} />
     <div id="research-history">
       <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}
         sales={<FilingMultiples data={data} price={price} mode="ps" />}

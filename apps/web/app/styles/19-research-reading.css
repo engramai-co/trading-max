@@ -81,6 +81,16 @@
 .mx-valuation-readout .mx-metric-note {
   min-height: 1lh;
 }
+.mx-reverse-feedback {
+  display: grid;
+}
+.mx-reverse-feedback > span {
+  grid-area: 1 / 1;
+}
+/* Keep the retry footprint and let the reading take focus before hiding the button. */
+.mx-reverse-status[data-settled]:not(:focus-within) {
+  visibility: hidden;
+}
 .mx-reverse-status {
   display: block;
 }
