@@ -16,7 +16,7 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 
-from .venues import provider_claim, resolve_venue, row_claims, watchlist_claim
+from .venues import VenueResolution, provider_claim, resolve_venue, row_claims, watchlist_claim
 
 # A schedule covers the recent sessions a quote or broker price can belong to
 # and the coming ones a page can stay open into.
@@ -149,7 +149,15 @@ def session_schedule(name: str | None, now: datetime) -> SessionSchedule | None:
     )
 
 
-def _frame_calendar(attrs, ticker=None, exchange=None):
+def frame_venue(attrs, ticker=None, exchange=None):
+    """Validate observed history identity and retain verified session evidence."""
+    requested = ticker or attrs.get("ticker") or (attrs.get("provider_venue") or {}).get("symbol")
+    venue = resolve_venue(
+        requested,
+        *row_claims(requested, attrs),
+        *attrs.get("venue_claims", ()),
+        provider_claim(exchange),
+    )
     if not (
         exchange
         or attrs.get("exchange")
@@ -158,14 +166,8 @@ def _frame_calendar(attrs, ticker=None, exchange=None):
         or attrs.get("mic")
     ):
         # A requested symbol alone does not attest that the fetched frame is its session.
-        return None
-    requested = ticker or attrs.get("ticker") or (attrs.get("provider_venue") or {}).get("symbol")
-    return resolve_venue(
-        requested,
-        *row_claims(requested, attrs),
-        *attrs.get("venue_claims", ()),
-        provider_claim(exchange),
-    ).calendar
+        return VenueResolution(venue.venues, venue.conflict)
+    return venue
 
 
 def completed_daily_bars(
@@ -179,7 +181,7 @@ def completed_daily_bars(
     today = pd.Timestamp(local.date())
     days = frame.index.tz_localize(None).normalize()
     complete = days < today
-    name = _frame_calendar(frame.attrs, ticker)
+    name = frame_venue(frame.attrs, ticker).calendar
     if name:
         cal = market_calendar(name, today.year, today.year)
         if cal.is_session(today) and cal.session_close(today) <= now:
@@ -195,7 +197,7 @@ def completed_months(close: pd.Series, *, exchange: str | None, now: pd.Timestam
     timestamps = close.index.tz_localize(None).normalize()
     daily = pd.Series(close.to_numpy(), index=timestamps)
     monthly = daily.resample("ME").last()
-    name = _frame_calendar(close.attrs, exchange=exchange)
+    name = frame_venue(close.attrs, exchange=exchange).calendar
     if not name:
         # Legacy data with unknown exchange: final observed month stays pending.
         cutoff = min(

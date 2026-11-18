@@ -1153,3 +1153,22 @@ def test_sell_hindsight_requires_a_known_purchase_size(earlier_buy):
     sell = next(row for row in result["decisions"] if row["side"] == "sell")
     assert sell["effect_to_date_gbp"] is not None
     assert sell["hindsight_to_date"] is None
+
+
+def test_cached_review_marks_keep_verified_calendar_without_display_exchange(tmp_path):
+    from trading_max.analytics.review_evidence import ReviewListing, _ListingMarks
+
+    def history(symbol, start, end):
+        frame = pd.DataFrame({"Close": [123.0]}, index=pd.DatetimeIndex(["2026-11-27"]))
+        frame.attrs["provider_venue"] = {"symbol": symbol, "mic": "XNYS"}
+        return frame
+
+    clock = pd.Timestamp("2026-11-27T18:01Z")
+    cache = CachedDailyHistory(tmp_path, fetch=history, now=lambda: clock.to_pydatetime())
+    window = (date(2026, 11, 26), date(2026, 11, 27))
+    cache("SYN", *window)
+    frame = cache.read_cached("SYN", *window)
+    listing = ReviewListing("SYN", "USD", "SYN", "USD", frame)
+    marks = _ListingMarks(listing, pd.Timestamp(window[0]), pd.Timestamp(window[1]))
+    assert marks.price(clock - pd.Timedelta(minutes=2)) is None
+    assert marks.price(clock) == 123

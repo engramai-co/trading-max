@@ -23,7 +23,7 @@ from trading_max.analytics.historical_nav import (
     _nominal_close,
 )
 from trading_max.domain import DomainModel
-from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendar import frame_venue, market_calendar
 
 SESSION_MOVE_SHARE = 0.05
 SESSION_MOVE_VOLATILITY_MULTIPLE = 2.5
@@ -159,7 +159,7 @@ def _column(frame: pd.DataFrame, name: str) -> pd.Series:
 class _ListingMarks:
     def __init__(self, listing: ReviewListing, start: pd.Timestamp, end: pd.Timestamp):
         self.listing = listing
-        calendar = listing_calendar(listing.symbol, listing.frame.attrs.get("exchange"), None)
+        calendar = frame_venue(listing.frame.attrs, listing.symbol).calendar
         equivalent = listing.quote_currency == listing.listing_currency or {
             listing.quote_currency,
             listing.listing_currency,
