@@ -7705,6 +7705,11 @@ export interface components {
             context?: components["schemas"]["ResearchContext"] | null;
             /** Datarevision */
             dataRevision?: string | null;
+            /**
+             * Earningsbriefeligible
+             * @default false
+             */
+            earningsBriefEligible: boolean;
             /** Events */
             events?: components["schemas"]["ResearchEvent"][];
             financialFacts?: components["schemas"]["FinancialFacts"] | null;
@@ -11922,6 +11927,7 @@ export interface operations {
                 event?: string | null;
                 scope?: "broker_total" | "invest" | "isa" | "household" | "cfd";
                 timezone?: string;
+                market?: ("US" | "GB" | "EA" | "JP" | "HK" | "KR") | null;
                 eventTicker?: components["schemas"]["Ticker"] | null;
                 limit?: number;
                 cursor?: number;
