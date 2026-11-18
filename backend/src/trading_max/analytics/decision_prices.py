@@ -646,6 +646,8 @@ def resolve_decision_prices(
             unpriced.append(ticker)
             continue
         pending = closes.index[closes.index.isin(values.index[values.isna()])]
+        raw_closes = best[2][~best[2].index.duplicated(keep="last")]
+        observed = _at_final_rates(raw_closes, mode, observed_fx).reindex(values.index)
         resolved[identity] = SecurityPrices(
             identity,
             ticker,
@@ -659,9 +661,7 @@ def resolve_decision_prices(
             pending_days=pending if len(pending) else None,
             listing_currency=mode,
             market_frame=frame,
-            observed_closes_gbp=_at_final_rates(best[2], mode, observed_fx)
-            .reindex(values.index)
-            .dropna(),
+            observed_closes_gbp=observed[(observed > 0) & np.isfinite(observed)],
         )
         if memo is not None:
             memo[identity] = best[1]
