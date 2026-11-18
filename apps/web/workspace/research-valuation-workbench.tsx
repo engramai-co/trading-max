@@ -6,6 +6,7 @@ import {
   Button,
   Group,
   Modal,
+  Select,
   NumberInput,
   Textarea,
 } from "@mantine/core";
@@ -17,12 +18,27 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRetainedResult } from "./retained-result";
 import { useLocale } from "@/components/locale-provider";
+import type { DraftActions, DraftView } from "./valuation-draft-editor";
+import { useAssistant } from "./assistant/context";
+import { draftBlockMessage, inputKey, reverseDraftBlock, type DraftReview } from "./valuation-draft";
 import { ValuationScenarioComparison } from "./valuation-scenario-comparison";
-import { quoteUnit, quoteValue } from "./financial-values";
-import { api, compact, jsonRequest, number, object, objects, percent, str } from "@/workspace/data";
+import { quoteValue } from "./financial-values";
+import {
+  ApiError,
+  api,
+  compact,
+  jsonRequest,
+  number,
+  object,
+  objects,
+  percent,
+  str,
+} from "@/workspace/data";
+import { formatCurrency } from "@/ui/formatters";
 import { numeric } from "@/lib/numeric";
 import {
   Empty,
@@ -56,73 +72,251 @@ import {
   workbenchState,
 } from "./valuation-queries";
 
+type DraftModule = typeof import("./valuation-draft-editor");
+const emptyReview: DraftView = {draft:null, error:null, stale:false, phase:null, cancelled:false};
+
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
+type EditorValues = { inputs: Scenarios; references: NonNullable<Preview["references"]> };
+type ManualChanges = { fields: Record<string, Partial<ScenarioInput>>; references: EditorValues["references"] };
+
+function initialValues(preview: Preview, changes?: ManualChanges): EditorValues {
+  const inputs = Object.fromEntries(keys.map(key => [key, { ...preview.scenarios[key].inputs, ...changes?.fields[key] }]));
+  const references = (preview.references ?? []).filter(r => changes?.fields[r.scenario]?.revenueCagr === undefined);
+  return { inputs, references: [...references, ...(changes?.references ?? [])] };
+}
+
+function modelMethodology(initial: Preview, t: ReturnType<typeof useCopy>) {
+  return initial.formulaVersion === "equity-proxy-projection-v1"
+    ? t("保存的公式按三年调整利润率，股数按年度股数变化调整。", "The saved formula moves margin to its target over three years and applies the assumed annual share-count change.")
+    : initial.basis.family === "residual-income"
+    ? t(
+        "期初普通股每股净资产加上剩余收益现值。ROE 逐年回归股权成本，期末按市净率结算。",
+        "Starting common book value plus discounted residual earnings. ROE fades to the cost of equity and the terminal price uses P/B.",
+      )
+    : initial.basis.family === "net-income"
+      ? t(
+          "以普通股净利润作为收益代理。客户资金进出不计入估值。",
+          "Common earnings proxy the amount available to shareholders. Client cash movements are excluded.",
+        )
+      : t(
+          "经营现金流减资本开支，按股权成本折现。现金不足时按起始股价发行新股，后续收益由更多股份分摊。",
+          "Operating cash flow less capital expenditure is discounted at the cost of equity. Burn beyond opening cash is financed by shares issued at the starting price.",
+        );
+}
+
+function statementPeriod(result: Preview, data: ResearchLensSnapshot, t: ReturnType<typeof useCopy>) {
+  const referencePeriod = data.financialFacts?.periods.find(
+    (p) => p.id === (result.basis.periodId ?? data.financialFacts?.latestTtm),
+  );
+  const choice = result.basis.periodChoice;
+  const label = choice === "previous-four-quarters" ? t("上个完整四季", "Earlier complete four quarters")
+    : choice === "latest-fiscal-year" ? t("上一财年", "Last fiscal year")
+      : choice === "previous-fiscal-year" ? t("较早完整财年", "Earlier complete fiscal year")
+        : referencePeriod?.label;
+  const end = referencePeriod?.actualEnd ?? referencePeriod?.providerEnd ?? result.basis.periodId?.split(":")[1];
+  return [label, end, result.basis.currency].filter(Boolean).join(" · ");
+}
 
 export function ValuationWorkbench({
   data,
   revision,
+  publication,
   price,
 }: {
   data: ResearchLensSnapshot;
   revision?: string | null;
+  publication?: string | null;
   price?: ResearchPrice;
 }) {
   const t = useCopy();
-  const financial =
-    data.context?.capabilities.some(
-      (c) => c.reason === "financial-company-requires-equity-model",
-    ) ?? false;
-  // Valued against the price the header shows: a broker refresh recomputes it.
-  const query = useQuery({ ...valuationDefaultsQuery(data, price), enabled: !financial });
+  const { locale } = useLocale();
+  const client = useQueryClient();
+  const [family, setFamily] = useState<Preview["basis"]["family"]>();
+  const query = useQuery(valuationDefaultsQuery(data, price, family));
   // Once this research has a preview, a failed refresh keeps it and its editor.
-  const loaded = useQuery(loadedValuationQuery(data));
+  const loaded = useQuery(loadedValuationQuery(data, family));
   const state = workbenchState(query, loaded.data);
   const [dirty, setDirty] = useState(false);
+  const [reload, setReload] = useState(0);
+  const [recovered, setRecovered] = useState<{ id: string; changes: ManualChanges }>();
   const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
     (next, previous) => !dirty || next.basis.ticker !== previous.basis.ticker || editorIdentity(next) === editorIdentity(previous));
-  const preview = retained?.basis.ticker === data.ticker ? retained : undefined;
+  const preview = retained?.basis.ticker === data.ticker && (!family || retained.basis.family === family)
+    ? retained : undefined;
   const [reading, setReading] = useState<ModelReading>();
-  const modelAvailable = preview && (!financial || dirty);
-  return <ResearchReading parameter="valuationView" sections={modelAvailable ? valuationSections : valuationSections.slice(0, 2)}>
-    <ValuationReadout data={data} reading={modelAvailable && reading?.initial === preview ? reading : undefined} />
+  const reverseOnly = preview?.reverseMetric === "year-five-revenue";
+  // Keep the previous layout while a new family loads, so its selector stays in view.
+  // Only the requested family's values and controls are available to the reader.
+  const switching = !preview && state.view === "pending" && retained?.basis.ticker === data.ticker;
+  const model = preview ?? (switching ? retained : undefined);
+  const editor = model?.reverseMetric === "year-five-revenue" ? undefined : model;
+  const methodology = editor && modelMethodology(editor, t);
+  const selector = useRef<HTMLInputElement>(null);
+  const position = useRef<{ selectorTop: number } | { scrollY: number } | null>(null);
+  useLayoutEffect(() => {
+    const input = selector.current;
+    const saved = position.current;
+    if (!saved || !input) return;
+    if (document.activeElement === input) {
+      if ("selectorTop" in saved) {
+        window.scrollBy({ top: input.getBoundingClientRect().top - saved.selectorTop, behavior: "instant" });
+      } else {
+        // WebKit can clamp the reader's scroll position while replacing the results.
+        window.scrollTo({ top: saved.scrollY, behavior: "instant" });
+      }
+    }
+    if (!switching || document.activeElement !== input) {
+      position.current = null;
+      return;
+    }
+    const alignedY = window.scrollY;
+    const recordScroll = () => {
+      if (window.scrollY !== alignedY || (position.current && "scrollY" in position.current))
+        position.current = { scrollY: window.scrollY };
+    };
+    window.addEventListener("scroll", recordScroll, { passive: true });
+    return () => window.removeEventListener("scroll", recordScroll);
+  }, [family, model, switching]);
+  const [output, setOutput] = useState<HTMLDivElement | null>(null);
+  const [reference, setReference] = useState<HTMLDivElement | null>(null);
+  const currentReading = reading?.initial === preview ? reading : undefined;
+  const chooser = (
+    <Select
+      ref={selector}
+      label={t("估值模型", "Valuation model")}
+      value={family ?? preview?.basis.family ?? null}
+      placeholder={t("自动选择", "Automatic")}
+      allowDeselect={false}
+      data={[
+        { value: "cash-flow", label: t("股权现金流", "Equity cash flow") },
+        { value: "net-income", label: t("净利润", "Net income") },
+        { value: "residual-income", label: t("剩余收益", "Residual income") },
+      ]}
+      onOptionSubmit={(value) => {
+        const choice = value as Preview["basis"]["family"];
+        if (choice === family) return;
+        if (choice === preview?.basis.family) {
+          // Confirming the displayed family keeps the current basis and editor. Future
+          // refreshes use the explicit family and the original preview's freshness.
+          if (query.data?.basis.family === choice && !query.isError && !query.isPlaceholderData) {
+            client.setQueryData(valuationDefaultsQuery(data, price, choice).queryKey,
+              {...query.data, familySelection:"override"}, {updatedAt:query.dataUpdatedAt});
+          }
+        } else {
+          position.current = selector.current ? { selectorTop: selector.current.getBoundingClientRect().top } : null;
+          setDirty(false);
+          setRecovered(undefined);
+        }
+        setFamily(choice);
+      }}
+    />
+  );
+  const reason = query.error instanceof ApiError && query.error.status === 422 ? query.error.message : null;
+  const {consented: enabled} = useAssistant();
+  const [module, setModule] = useState<DraftModule | null>(null);
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+    void import("./valuation-draft-editor").then(next => { if (active) setModule(next); });
+    return () => { active = false; };
+  }, [enabled]);
+  const draftModule = enabled ? module : null;
+  const [draftAction, setDraftAction] = useState<HTMLSpanElement | null>(null);
+  const block = reason ?? (preview && reverseDraftBlock(preview));
+
+  const blockedMessage = block && draftBlockMessage(block, t, "complete-ttm-currency-and-share-count-required");
+  const shareReason = reason === "listed-share-unit-unverified" || reason === "receipt-ratio-unverified"
+    ? blockedMessage ?? undefined : undefined;
+
+  return <ResearchReading parameter="valuationView" sections={editor ? valuationSections : valuationSections.slice(0, 2)}>
+    <ValuationReadout data={data} preview={preview} reading={currentReading}
+      withheldReason={preview ? undefined : shareReason}
+      retry={query.isError ? query.refetch : undefined} refreshing={query.isFetching} />
     <div id="research-history">
       <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}
         sales={<FilingMultiples data={data} price={price} mode="ps" />}
         disclosure={<FilingMultiples data={data} price={price} mode="pe" />} />
     </div>
-    {modelAvailable ? <ModelEditor
-      key={editorIdentity(preview)}
-      initial={preview}
-      onDirty={setDirty}
-      data={data}
-      revision={revision}
-      onReading={setReading}
-      refreshing={query.isFetching}
-      onRetry={query.isError ? () => void query.refetch() : undefined}
-    /> : <div id="research-scenario">
-        {!financial && <Panel title={t("情景模型", "Scenario model")}>
-          {state.view === "error" ? <>
-            <Empty title={t("当前数据不足以建立现金流模型", "Cash-flow model inputs are incomplete")} />
-            <QueryError retry={query.refetch} />
-          </> : <Pending />}
-        </Panel>}
-        {(financial || state.view === "error") && <ModelAlternatives data={data} financial={financial} />}
-    </div>}
+    <div id="research-scenario" className={editor ? "mx-model-workbench" : undefined}
+      data-draft-enabled={enabled || undefined} aria-busy={switching || currentReading?.busy} data-switching={switching || undefined}>
+      {editor && <div className="mx-model-output" ref={setOutput} inert={switching} />}
+      <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
+        id="valuation-assumptions" className="mx-model-inputs" help={methodology}
+        action={<Group gap="xs">
+          {enabled && <span ref={setDraftAction}>
+            {!editor && block && <Button variant="default" size="compact-xs" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
+          </span>}
+          {editor && <Button className="mx-model-jump" component="a" href="#valuation-results"
+          variant="subtle" size="compact-xs">{t("查看结果", "View results")}</Button>}
+        </Group>}>
+        {chooser}
+        {editor ? <div className="mx-model-fields" inert={switching}>
+          <ModelEditor key={reload + editorIdentity(editor)}
+            requestedFamily={family} currentBasis={state.view === "editor" && !query.isError ? state.preview.id : null}
+            draftAction={!switching && draftModule ? draftAction : null} draftModule={draftModule} defaultBlock={block ?? null}
+            recovered={recovered?.id === editor.id ? recovered.changes : undefined}
+            reloadBasis={async changes => {
+              const result = await query.refetch();
+              if (result.isSuccess) {
+                const next = result.data;
+                setRecovered(next.basis.ticker === editor.basis.ticker && next.basis.family === editor.basis.family
+                  ? { id: next.id, changes } : undefined);
+                setDirty(false);
+                setReload(n => n + 1);
+              }
+            }}
+            publication={publication ?? data.runId} initial={editor} output={output} referencePanel={reference}
+            onDirty={setDirty} onReading={setReading} data={data} revision={revision}
+            methodology={methodology} refreshing={query.isFetching}
+            onRetry={query.isError ? () => void query.refetch() : undefined} />
+        </div> : reverseOnly && preview ? <Facts rows={[
+          [t("期间", "Period"), statementPeriod(preview, data, t)],
+          [t("第五年隐含营收", "Implied year-five revenue"), formatCurrency(preview.reverseValue, locale, preview.basis.currency)],
+          [t("股权成本", "Cost of equity"), percent(preview.reverseInputs?.discountRate)],
+          [t("股数变化", "Share change"), percent(preview.reverseInputs?.shareCagr)],
+        ]} /> : state.view === "error" ? (
+          reason ? <div id="valuation-draft-block"><Empty title={blockedMessage} /></div> : <QueryError error={query.error} retry={query.refetch} />
+        ) : <Pending />}
+        {reverseOnly && enabled && block && <p id="valuation-draft-block" className="mx-draft-status">{blockedMessage}</p>}
+      </Panel>
+      {editor && <div className="mx-model-reference-grid" ref={setReference} inert={switching} />}
+      {!preview && state.view === "error" && <ModelAlternatives data={data} financial={family === "residual-income"} />}
+    </div>
+    {editor && !switching && <ModelDetails key={editorIdentity(editor)} result={currentReading?.result ?? editor} />}
   </ResearchReading>;
 }
 
 function ModelEditor({
+  draftAction, draftModule, defaultBlock, publication,
+  output,
+  referencePanel,
+  methodology,
   initial,
   onReading,
+  requestedFamily,
+  currentBasis,
+  recovered,
+  reloadBasis,
   onDirty,
   data,
   revision,
   refreshing,
   onRetry,
 }: {
+  publication?: string | null;
+  draftAction: HTMLSpanElement | null;
+  draftModule: DraftModule | null;
+  defaultBlock: string | null;
+  output: HTMLDivElement | null;
+  referencePanel: HTMLDivElement | null;
+  methodology?: string;
   initial: Preview;
   onReading: (reading: ModelReading) => void;
+  requestedFamily?: Preview["basis"]["family"];
+  currentBasis: string | null;
+  recovered?: ManualChanges;
+  reloadBasis: (changes: ManualChanges) => Promise<void>;
   onDirty: (dirty: boolean) => void;
   data: ResearchLensSnapshot;
   revision?: string | null;
@@ -140,20 +334,33 @@ function ModelEditor({
       ? 10
       : 5
     : initial.horizon;
-  const [inputs, setInputs] = useState<Scenarios>(() =>
-    Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
-  );
+  const [inputs, setInputs] = useState<Scenarios>(() => initialValues(initial, recovered).inputs);
+  const actions = useRef<DraftActions>(null);
+  const [drafting, setDrafting] = useState(emptyReview);
+  const { draft } = drafting;
+  const [editingProposal, setEditingProposal] = useState<string | null>(null);
+  const focusField = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (!focusField.current) return;
+    const replacement = document.getElementById("assumption-" + focusField.current);
+    if (replacement) {
+      replacement.focus();
+      focusField.current = null;
+    }
+  });
+  const residual = initial.basis.family === "residual-income";
+  const earnings = initial.basis.family === "net-income";
+  const marginLabel = earnings || residual ? t("净利率", "Net margin") : t("现金流率","FCF margin");
   const [selected, setSelected] = useState<string>("base");
   const [activeField, setActiveField] =
-    useState<keyof ScenarioInput>("revenueCagr");
+    useState<keyof ScenarioInput>(residual ? "initialRoe" : "revenueCagr");
   const [saveOpen, setSaveOpen] = useState(false);
   const [draftValue, setDraftValue] = useState<number | string | null>(null);
   const [invalidInput, setInvalidInput] = useState(false);
   const [reason, setReason] = useState("");
-  const [worksheet, setWorksheet] = useState<string>("base");
   const [references, setReferences] = useState<
     NonNullable<Preview["references"]>
-  >(initial.references ?? []);
+  >(() => initialValues(initial, recovered).references);
   const reference = useQuery({
     ...researchLensQuery(initial.basis.ticker, "analyst", revision ?? data.runId),
   });
@@ -164,12 +371,14 @@ function ModelEditor({
   const estimateGrowth = numeric(estimate?.growth);
   const liveRequest = useMemo(
     () => ({
+      family: initial.basis.family,
+      formulaVersion: initial.formulaVersion,
       scenarios: inputs,
       horizon,
       dataVersion: initial.basis.dataVersion,
       references,
     }),
-    [inputs, horizon, initial.basis.dataVersion, references],
+    [inputs, horizon, initial.basis.dataVersion, initial.basis.family, initial.formulaVersion, references],
   );
   const [debounced] = useDebouncedValue(liveRequest, 250);
   const liveFingerprint = JSON.stringify(liveRequest);
@@ -188,9 +397,10 @@ function ModelEditor({
   const result = query.data ?? initial;
   const busy =
     invalidInput || refreshing || query.isFetching || request !== liveFingerprint;
-  const [savedFingerprint, setSavedFingerprint] = useState<string | null>(null);
-  const saved = savedFingerprint === liveFingerprint;
-  const dirty = saveOpen || invalidInput || !saved && (
+  const familySelection = requestedFamily ? "override" : initial.familySelection ?? "automatic";
+  const [savedVersion, setSavedVersion] = useState<{fingerprint:string; selection:string}>();
+  const saved = savedVersion?.fingerprint === liveFingerprint && savedVersion.selection === familySelection;
+  const dirty = Boolean(draft) || saveOpen || invalidInput || !saved && (
     draftValue !== null || liveFingerprint !== JSON.stringify(previewRequest(initial)));
   useBuildNavigationGuard(dirty);
   useLayoutEffect(() => {
@@ -198,21 +408,26 @@ function ModelEditor({
     return () => onDirty(false);
   }, [dirty, onDirty]);
   const save = useMutation({
-    mutationFn: (payload: typeof liveRequest & { reason: string }) =>
+    mutationFn: (payload: typeof liveRequest & { familySelection: string; reason: string; draftReview?: DraftReview }) =>
       api(
         `/research/${encodeURIComponent(initial.basis.ticker)}/models`,
         jsonRequest("POST", payload),
       ),
     onSuccess: async (_result, payload) => {
-      setSavedFingerprint(
-        JSON.stringify({
+      setSavedVersion({
+        selection:payload.familySelection,
+        fingerprint:JSON.stringify({
+          family: payload.family,
+          formulaVersion: payload.formulaVersion,
           scenarios: payload.scenarios,
           horizon: payload.horizon,
           dataVersion: payload.dataVersion,
           references: payload.references,
         }),
-      );
+      });
       setSaveOpen(false);
+      actions.current?.reset();
+      if (payload.draftReview) await client.invalidateQueries({ queryKey: ["valuation-workbench", initial.basis.ticker] });
       await client.invalidateQueries({
         queryKey: ["workspace-valuation-assumptions"],
       });
@@ -221,6 +436,77 @@ function ModelEditor({
       });
     },
   });
+  const failedBlock = drafting.error && draftBlockMessage(drafting.error, t) ? drafting.error : null;
+  const draftBlock = defaultBlock ?? failedBlock ?? (query.error instanceof ApiError && query.error.status === 422
+    ? query.error.message : reverseDraftBlock(result));
+  const basisChanged = currentBasis !== initial.id;
+  const staleDraft = drafting.stale || Boolean((draft || dirty) && currentBasis && basisChanged) ||
+    Boolean(draft && (!currentBasis || [query.error, save.error].some(e => e instanceof ApiError && [409, 422].includes(e.status))));
+  function unstageAccepted(): EditorValues {
+    const manual = Object.fromEntries(keys.map(k => [k, { ...inputs[k] }]));
+    let refs = references;
+    if (draft) for (const p of draft.result.proposals) {
+      if (draft.review.decisions[p.scenario][p.field] !== "accepted") continue;
+      const key = inputKey[p.field];
+      Object.assign(manual[p.scenario], { [key]: draft.before.scenarios[p.scenario].inputs[key] });
+      if (key === "revenueCagr") refs = [...refs.filter(r => r.scenario !== p.scenario),
+        ...(draft.before.references ?? []).filter(r => r.scenario === p.scenario)];
+    }
+    return { inputs: manual, references: refs };
+  }
+  function discardDraft() {
+    const manual = unstageAccepted();
+    setInputs(manual.inputs);
+    setReferences(manual.references);
+    setDraftValue(null);
+    setInvalidInput(false);
+    setEditingProposal(null);
+    actions.current?.reset();
+    save.reset();
+  }
+  // Keep the deterministic editor mounted when Settings withdraws consent.
+  if (!draftModule && drafting !== emptyReview) {
+    if (draft) {
+      const manual = unstageAccepted();
+      setInputs(manual.inputs);
+      setReferences(manual.references);
+      setEditingProposal(null);
+      setSaveOpen(false);
+    }
+    setDrafting(emptyReview);
+  }
+  function reloadForReview() {
+    const manual = unstageAccepted();
+    const fields = Object.fromEntries(keys.map(k => [k, Object.fromEntries(
+      Object.entries(manual.inputs[k]).filter(([field, value]) =>
+        value !== initial.scenarios[k].inputs[field as keyof ScenarioInput])
+    )]));
+    void reloadBasis({ fields, references: manual.references.filter(r => "revenueCagr" in fields[r.scenario]) });
+  }
+  const reReview = staleDraft && <div className="mx-draft-status" role="alert">
+    {t("估值口径或父模型已改变。", "The valuation basis or parent model changed.")}{" "}
+    <button type="button" className="mx-text-link" onClick={reloadForReview}>
+      {t("重新载入并重审", "Reload for review")}
+    </button>
+  </div>;
+  const changes = draft?.result.proposals.filter(p => p.value !== draft.before.scenarios[p.scenario].inputs[inputKey[p.field]]) ?? [];
+  const accepted = changes.filter(p => draft?.review.decisions[p.scenario][p.field] === "accepted").length;
+  const stagedScenarios = [...new Set(changes.filter(p =>
+    draft?.review.decisions[p.scenario][p.field] !== "rejected").map(p => p.scenario))];
+  const pendingScenarios = stagedScenarios.filter(key => {
+    if (staleDraft || query.isError) return true;
+    const settled = result.scenarios[key]?.inputs;
+    const hasReview = changes.some(p => p.scenario === key && draft!.review.decisions[key][p.field] !== "unreviewed");
+    return hasReview && (result.horizon !== horizon || !settled ||
+      Object.entries(inputs[key]).some(([field, value]) => value !== settled[field as keyof ScenarioInput]) ||
+      (invalidInput && selected === key));
+  });
+  const comparison = draft ? { ...result, scenarios: Object.fromEntries(
+    Object.entries(result.scenarios).map(([key, row]) => {
+      const started = changes.some(p => p.scenario === key && draft.review.decisions[key][p.field] !== "unreviewed");
+      return [key, started ? row : {...row, ...draft.result.deskReadings[key]}];
+    }),
+  ) } : result;
   const scenarioNames: Record<string, string> = {
     bear: t("保守", "Bear"),
     base: t("中性", "Base"),
@@ -233,7 +519,12 @@ function ModelEditor({
     max: number;
     scale: number;
     suffix: string;
-  }[] = [
+  }[] = residual ? [
+    {key:"initialRoe",label:t("第一年 ROE","Year-one ROE"),min:-80,max:200,scale:100,suffix:"%"},
+    {key:"payout",label:t("派息率","Payout ratio"),min:0,max:100,scale:100,suffix:"%"},
+    {key:"discountRate",label:t("股权资本成本","Cost of equity"),min:1,max:60,scale:100,suffix:"%"},
+    {key:"terminalPb",label:t("终值市净率","Terminal P/B"),min:0,max:15,scale:1,suffix:"×"},
+  ] : [
     {
       key: "revenueCagr",
       label: t("前五年营收增长", "Revenue growth · years 1–5"),
@@ -244,7 +535,7 @@ function ModelEditor({
     },
     {
       key: "targetFcfMargin",
-      label: t("目标现金流率", "Target FCF margin"),
+      label: earnings ? t("目标净利率","Target net margin") : t("目标现金流率", "Target FCF margin"),
       min: -100,
       max: 100,
       scale: 100,
@@ -260,7 +551,7 @@ function ModelEditor({
     },
     {
       key: "exitFcfMultiple",
-      label: t("终值现金流倍数", "Terminal FCF multiple"),
+      label: earnings ? t("终值市盈率","Terminal P/E") : t("终值现金流倍数", "Terminal FCF multiple"),
       min: 0,
       max: 100,
       scale: 1,
@@ -275,7 +566,18 @@ function ModelEditor({
       suffix: "%",
     },
   ];
+  if (!residual && initial.formulaVersion !== "equity-proxy-projection-v1")
+    fields.push({
+      key: "rampYears",
+      label: t("达到目标的年数", "Years to target margin"),
+      min: 1,
+      max: 10,
+      scale: 1,
+      suffix: "",
+    });
   const base = result.scenarios.base;
+
+
   const current = result.scenarios[selected] ?? base;
   const sourceLabel =
     initial.defaultSource === "saved-model"
@@ -285,15 +587,11 @@ function ModelEditor({
         : initial.defaultSource === "configured-scenarios"
           ? t("已配置的假设", "Configured assumptions")
           : t("模型初始假设", "Initial assumptions");
-  const referencePeriod = data.financialFacts?.periods.find(
-    (p) => p.id === data.financialFacts?.latestTtm,
-  );
   const latestFact = (metric: string) =>
     data.financialFacts?.observations.find(
       (o) =>
-        o.periodId === data.financialFacts?.latestTtm && o.metric === metric,
+        o.periodId === (result.basis.periodId ?? data.financialFacts?.latestTtm) && o.metric === metric,
     )?.value;
-  const projection = result.scenarios[worksheet] ?? base;
   const editedBase = JSON.stringify(base.inputs) !== JSON.stringify(initial.scenarios.base.inputs);
   const stale = Boolean(onRetry) || query.isError;
   useLayoutEffect(() => {
@@ -301,8 +599,18 @@ function ModelEditor({
   }, [initial, result, editedBase, sourceLabel, stale, busy, onReading]);
   return (
     <>
-      <div id="research-scenario" className="mx-model-workbench" aria-busy={busy}>
-        <div className="mx-model-output">
+      {draftModule && <draftModule.DraftController initial={initial} requestedFamily={requestedFamily} horizon={horizon}
+        inputs={inputs} publication={publication} currentBasis={currentBasis} actions={actions} onChange={setDrafting} />}
+      {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
+        {t("放弃草稿", "Discard draft")}
+      </Button> : <Button variant="default" size="compact-xs"
+        aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
+        disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
+        onClick={() => { if (drafting.phase) actions.current?.cancel(); else { setEditingProposal(null); void actions.current?.start(result); } }}>
+        {drafting.phase ? t("取消起草", "Cancel draft") : t("✦ 起草", "✦ Draft")}
+      </Button>, draftAction)}
+      {draftModule && draftBlock && <p className="mx-draft-status" id="valuation-draft-block">{draftBlockMessage(draftBlock, t, "complete-ttm-currency-and-share-count-required")}</p>}
+      {output && createPortal(
           <Panel
             title={t("情景估值", "Scenario valuation")}
             id="valuation-results"
@@ -327,17 +635,16 @@ function ModelEditor({
                   ]}
                 />
                 <span role="status" className="mx-preview-status">
-                  {invalidInput
-                    ? t("请完成输入", "Complete the input")
-                    : busy
-                      ? t("计算中…", "Calculating…")
-                      : ""}
+                  {invalidInput ? t("请完成输入", "Complete the input") : busy ? t("计算中…", "Calculating…") : ""}
                 </span>
               </Group>
             }
           >
             <ValuationScenarioComparison
-              preview={result}
+              preview={comparison}
+              beforeDraft={draft?.before}
+              stagedScenarios={stagedScenarios}
+              pendingScenarios={pendingScenarios}
               selected={selected}
               onSelect={(key) => {
                 setSelected(key);
@@ -347,9 +654,7 @@ function ModelEditor({
             />
             {onRetry && !refreshing && (
               <div className="mx-model-refresh" role="alert">
-                <Tag tone="warn">
-                  {t("未能按最新价格重算", "Not revalued at the latest price")}
-                </Tag>
+                <Tag tone="warn">{t("未能按最新价格重算", "Not revalued at the latest price")}</Tag>
                 <Button
                   variant="subtle"
                   size="compact-xs"
@@ -364,17 +669,14 @@ function ModelEditor({
               !busy &&
               !query.isError &&
               inputs[selected] &&
-              JSON.stringify(inputs[selected]) !==
-                JSON.stringify(initial.scenarios[selected].inputs) && (
+              JSON.stringify(inputs[selected]) !== JSON.stringify(initial.scenarios[selected].inputs) && (
                 <div className="mx-model-change" role="status">
                   <span>
-                    {scenarioNames[selected]} ·{" "}
-                    {t("相对初始假设", "vs initial assumptions")}
+                    {scenarioNames[selected]} · {t("相对初始假设", "vs initial assumptions")}
                   </span>
                   <strong>
                     {quoteValue(
-                      current.value -
-                        initialAtHorizon.scenarios[selected].value,
+                      current.value - initialAtHorizon.scenarios[selected].value,
                       result.basis.currency,
                     )}{" "}
                     / {t("股", "share")}
@@ -383,75 +685,59 @@ function ModelEditor({
               )}
             {query.isError && (
               <p role="alert">
-                {t(
-                  "预览计算失败，当前仍为上次结果。",
-                  "Preview failed. The previous result is retained.",
-                )}
+                {t("预览计算失败，当前仍为上次结果。", "Preview failed. The previous result is retained.")}
               </p>
             )}
             <details className="mx-disclosure">
               <summary>{t("比较情景假设", "Compare scenario assumptions")}</summary>
-            <div
-              className="mx-table-scroll"
-              tabIndex={0}
-              role="region"
-              aria-label={t("情景对比", "Scenario comparison")}
-            >
-              <table className="mx-financial-table">
-                <thead>
-                  <tr>
-                    <th>{t("情景", "Scenario")}</th>
-                    <th>{t("增长", "Growth")}</th>
-                    <th>{t("现金流率", "FCF margin")}</th>
-                    <th>{t("折现率", "Discount")}</th>
-                    <th>{t("价值", "Value")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {keys.map((k) => (
-                    <tr key={k}>
-                      <th>{scenarioNames[k]}</th>
-                      <td>{percent(result.scenarios[k].inputs.revenueCagr)}</td>
-                      <td>
-                        {percent(result.scenarios[k].inputs.targetFcfMargin)}
-                      </td>
-                      <td>
-                        {percent(result.scenarios[k].inputs.discountRate)}
-                      </td>
-                      <td>
-                        {quoteValue(
-                          result.scenarios[k].value,
-                          result.basis.currency,
-                        )}
-                      </td>
+              <div
+                className="mx-table-scroll"
+                tabIndex={0}
+                role="region"
+                aria-label={t("情景对比", "Scenario comparison")}
+              >
+                <table className="mx-financial-table">
+                  <thead>
+                    <tr>
+                      <th>{t("情景", "Scenario")}</th>
+                      <th>{residual ? "ROE" : t("增长", "Growth")}</th>
+                      <th>{residual ? t("派息率", "Payout") : marginLabel}</th>
+                      <th>{t("折现率", "Discount")}</th>
+                      <th>{t("价值", "Value")}</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {keys.map((k) => (
+                      <tr key={k}>
+                        <th>{scenarioNames[k]}</th>
+                        <td>
+                          {percent(
+                            residual
+                              ? result.scenarios[k].inputs.initialRoe
+                              : result.scenarios[k].inputs.revenueCagr,
+                          )}
+                        </td>
+                        <td>
+                          {percent(
+                            residual
+                              ? result.scenarios[k].inputs.payout
+                              : result.scenarios[k].inputs.targetFcfMargin,
+                          )}
+                        </td>
+                        <td>{percent(result.scenarios[k].inputs.discountRate)}</td>
+                        <td>{quoteValue(result.scenarios[k].value, result.basis.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </details>
-          </Panel>
-        </div>
-        <Panel
-          title={t("调整假设", "Adjust assumptions")}
-          id="valuation-assumptions"
-          action={
-            <Button
-              className="mx-model-jump"
-              component="a"
-              href="#valuation-results"
-              variant="subtle"
-              size="compact-xs"
-            >
-              {t("查看结果", "View results")}
-            </Button>
-          }
-          className="mx-model-inputs"
-          help={t(
-            "现金流来自四季报表的经营现金流减资本开支，作为股权现金流代理，与股权资本成本配对。十年模型从第六年逐渐收敛至 3% 增长。",
-            "Cash flow is reported operating cash flow less capital expenditure, used as an equity cash-flow proxy with cost of equity. In the ten-year model, growth fades toward 3% from year six.",
-          )}
-        >
+          </Panel>, output)}
+          {draftModule && <draftModule.DraftStatus phase={drafting.phase} error={failedBlock ? null : drafting.error}
+            cancelled={drafting.cancelled} summary={!draft ? null : changes.length ?
+              t("{changes} 处改动 · 已接受 {accepted}", "{changes} proposed · {accepted} accepted").replace("{changes}", String(changes.length)).replace("{accepted}", String(accepted)) :
+              t("此次起草保留了当前假设。", "The draft retains the current assumptions.")} />}
+          {reReview}
           <Segments
             label={t("编辑情景", "Edit scenario")}
             value={selected}
@@ -465,23 +751,20 @@ function ModelEditor({
               label: scenarioNames[key],
             }))}
           />
-          {params.get("estimateRef") && (
+          {!residual && params.get("estimateRef") && (
             <div className="mx-model-reference">
               <strong>{t("营收增长参考", "Revenue-growth reference")}</strong>
               <p>
-                {str(estimate?.endDate || params.get("estimateRef"))} ·{" "}
-                {percent(estimateGrowth, true)}
+                {str(estimate?.endDate || params.get("estimateRef"))} · {percent(estimateGrowth, true)}
               </p>
               <Button
                 variant="light"
                 size="xs"
-                disabled={
-                  estimateGrowth == null ||
-                  estimateGrowth < -0.8 ||
-                  estimateGrowth > 2
-                }
+                disabled={estimateGrowth == null || estimateGrowth < -0.8 || estimateGrowth > 2}
                 onClick={() => {
                   if (estimateGrowth == null) return;
+                  const p = draft?.result.proposals.find(p => p.scenario === selected && p.field === "revenue_cagr");
+                  if (p) actions.current?.decide(p, "edited");
                   setInputs((v) => ({
                     ...v,
                     [selected]: { ...v[selected], revenueCagr: estimateGrowth },
@@ -491,9 +774,7 @@ function ModelEditor({
                     {
                       metric: "revenueGrowth",
                       scenario: selected as "bear" | "base" | "bull",
-                      period: str(
-                        estimate?.endDate || params.get("estimateRef"),
-                      ),
+                      period: str(estimate?.endDate || params.get("estimateRef")),
                       asOf: str(estimate?.asOf || analyst.asOf),
                       value: estimateGrowth,
                       source: "yahoo-finance-consensus",
@@ -506,20 +787,39 @@ function ModelEditor({
                   update({ estimateRef: null });
                 }}
               >
-                {t(
-                  "设为当前情景的前五年增长",
-                  "Apply to years 1–5 of this scenario",
-                )}
+                {t("设为当前情景的前五年增长", "Apply to years 1–5 of this scenario")}
               </Button>
             </div>
           )}
           <div
             className="mx-assumption-picker"
+            data-reviewing={Boolean(drafting.phase || draft) || undefined}
             role="group"
             aria-label={t("选择要调整的假设", "Choose an assumption to adjust")}
           >
-            {fields.map((field) =>
-              field.key === activeField ? (
+            {fields.map((field) => {
+              const p = draft?.result.proposals.find(p => p.scenario === selected && inputKey[p.field] === field.key);
+              const decision = p && draft?.review.decisions[selected][p.field];
+              const old = draft?.before.scenarios[selected].inputs[field.key];
+              if (draftModule && draft && p && p.value !== old && decision !== "rejected" && decision !== "edited" &&
+                editingProposal !== selected + field.key) {
+                return <draftModule.ProposalRow key={field.key} draft={draft} proposal={p} label={field.label} scale={field.scale} suffix={field.suffix} disabled={staleDraft}
+                  edit={() => { focusField.current = field.key; setActiveField(field.key); setEditingProposal(selected + field.key); setDraftValue(null); setInvalidInput(false); }}
+                  decide={next => {
+                    if (next === "rejected") focusField.current = field.key;
+                    actions.current?.decide(p, next);
+                    setDraftValue(null);
+                    setInvalidInput(false);
+                    setInputs(prev => ({ ...prev, [selected]: { ...prev[selected], [field.key]: next === "accepted" ? p.value : old } }));
+                    if (field.key === "revenueCagr") {
+                      setReferences(refs => [
+                        ...refs.filter(r => r.scenario !== selected),
+                        ...(next === "rejected" ? (draft.before.references ?? []).filter(r => r.scenario === selected) : []),
+                      ]);
+                    }
+                  }} />;
+              }
+              return field.key === activeField ? (
                 // The selected row is the input; its label names the field once.
                 <div key={field.key} className="mx-assumption-edit">
                   <label htmlFor={"assumption-" + field.key}>{field.label}</label>
@@ -527,12 +827,7 @@ function ModelEditor({
                     key={selected + field.key}
                     id={"assumption-" + field.key}
                     size="xs"
-                    value={
-                      draftValue ??
-                      Number(
-                        (inputs[selected][field.key] * field.scale).toFixed(3),
-                      )
-                    }
+                    value={draftValue ?? Number(((inputs[selected][field.key] ?? 0) * field.scale).toFixed(3))}
                     error={
                       invalidInput
                         ? `${t("请输入", "Enter a value between ")}${field.min} – ${field.max}${field.suffix}`
@@ -541,14 +836,9 @@ function ModelEditor({
                     onChange={(v) => {
                       setDraftValue(v);
                       const value = numeric(v);
-                      setInvalidInput(
-                        value == null || value < field.min || value > field.max,
-                      );
-                      if (
-                        value != null &&
-                        value >= field.min &&
-                        value <= field.max
-                      ) {
+                      setInvalidInput(value == null || value < field.min || value > field.max);
+                      if (value != null && value >= field.min && value <= field.max) {
+                        if (p) actions.current?.decide(p, "edited");
                         setInputs((previous) => ({
                           ...previous,
                           [selected]: {
@@ -557,21 +847,20 @@ function ModelEditor({
                           },
                         }));
                         if (field.key === "revenueCagr")
-                          setReferences((v) =>
-                            v.filter((r) => r.scenario !== selected),
-                          );
+                          setReferences((v) => v.filter((r) => r.scenario !== selected));
                       }
                     }}
                     min={field.min}
                     max={field.max}
-                    step={field.key === "exitFcfMultiple" ? 1 : 0.5}
-                    decimalScale={2}
+                    step={field.key === "rampYears" || field.key === "exitFcfMultiple" ? 1 : 0.5}
+                    decimalScale={field.key === "rampYears" ? 0 : 2}
                     suffix={field.suffix}
                   />
                 </div>
               ) : (
                 <button
                   key={field.key}
+                  id={"assumption-" + field.key}
                   type="button"
                   onClick={() => {
                     setActiveField(field.key);
@@ -581,21 +870,20 @@ function ModelEditor({
                 >
                   <span>{field.label}</span>
                   <strong>
-                    {number(inputs[selected][field.key] * field.scale, 2)}
+                    {number((inputs[selected][field.key] ?? 0) * field.scale, 2)}
                     {field.suffix}
                   </strong>
                 </button>
-              ),
-            )}
+              );
+            })}
           </div>
-          <details className="mx-model-sources">
+          <details className="mx-model-sources" id="valuation-assumption-sources">
             <summary>{t("参数依据", "Assumption sources")}</summary>
+            {draftModule && draft && <draftModule.DraftEvidence draft={draft} />}
             <Facts
               rows={fields.map((field) => {
                 const ref = references.find((r) => r.scenario === selected);
-                const changed =
-                  inputs[selected][field.key] !==
-                  initial.scenarios[selected].inputs[field.key];
+                const changed = inputs[selected][field.key] !== initial.scenarios[selected].inputs[field.key];
                 return [
                   field.label,
                   field.key === "revenueCagr" && ref
@@ -606,23 +894,15 @@ function ModelEditor({
                 ];
               })}
             />
-            <p>
-              {t(
-                "增长先应用五年；目标现金流率用三年达到。股数变化为负表示减少；终值倍数与股权资本成本是情景假设。",
-                "Growth applies for five years and the target margin is reached over three. Negative share-count change means fewer shares. The terminal multiple and cost of equity are scenario assumptions.",
-              )}
-            </p>
           </details>
           <Button
             variant="subtle"
             onClick={() => {
               setDraftValue(null);
               setInvalidInput(false);
-              setInputs(
-                Object.fromEntries(
-                  keys.map((k) => [k, initial.scenarios[k].inputs]),
-                ),
-              );
+              actions.current?.reset();
+              setEditingProposal(null);
+              setInputs(Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])));
               setReferences(initial.references ?? []);
             }}
           >
@@ -632,62 +912,57 @@ function ModelEditor({
             fullWidth
             onClick={() => setSaveOpen(true)}
             loading={save.isPending}
-            disabled={busy || query.isError || saved}
+            disabled={busy || query.isError || saved || staleDraft || Boolean(drafting.phase)}
           >
-            {saved
-              ? t("已保存", "Saved")
-              : t("保存模型版本", "Save model version")}
+            {saved ? t("已保存", "Saved") : t("保存模型版本", "Save model version")}
           </Button>
-          {save.isError && (
-            <p role="alert">
-              {t("保存失败，请重试。", "Could not save. Try again.")}
-            </p>
-          )}
-        </Panel>
-        <div className="mx-model-reference-grid">
+          {save.isError && !staleDraft && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
+      {referencePanel && createPortal(<>
         <Panel
           title={t("经营参考", "Operating reference")}
           action={
             <span className="mx-unit">
-              {referencePeriod?.label} · {quoteUnit(result.basis.currency).currency}
+              {statementPeriod(result, data, t)}
             </span>
           }
-          help={t(
-            "模型从最近四个完整季度的经营现金流减资本开支出发，使用股权资本成本。它是股权现金流代理，没有完整建模借款、偿债和回购融资；现金、债务不在结果上直接加减。目标现金流率在三年内逐渐达到；十年模式第六年起增长逐渐收敛至 3%。",
-            "The model starts with operating cash flow less capital expenditure over four complete quarters and discounts at cost of equity. It is an equity cash-flow proxy, without a complete borrowing, repayment or buyback financing model. Cash and debt are not directly added or subtracted. Margins converge over three years; ten-year growth fades toward 3% from year six.",
-          )}
+          help={methodology}
         >
           <div className="mx-metric-grid">
+            {residual ? <Metric label={t("普通股净利润", "Common earnings")} value={quoteValue(result.basis.commonEarnings, result.basis.currency, { style: "compact", locale })} /> :
+              <Metric label={t("营收", "Revenue")} value={quoteValue(result.basis.revenue, result.basis.currency, { style: "compact", locale })} />}
             <Metric
-              label={t("营收", "Revenue")}
-              value={quoteValue(result.basis.revenue, result.basis.currency, { style: "compact", locale })}
-            />
-            <Metric
-              label={t("自由现金流率", "FCF margin")}
-              value={percent(result.basis.startMargin, false, 2)}
+              label={residual ? t("每股净资产", "Book value per share") : marginLabel}
+              value={
+                residual
+                  ? quoteValue(result.basis.bookPerShare, result.basis.currency)
+                  : percent(result.basis.startMargin, false, 2)
+              }
             />
           </div>
           <details className="mx-chart-data">
-            <summary>
-              {t("基数与资本结构", "Basis & capital structure")}
-            </summary>
+            <summary>{t("基数与资本结构", "Basis & capital structure")}</summary>
             <Facts
               rows={[
                 [
-                  t("模型股数", "Model share count"),
-                  number(result.basis.shares, 0),
+                  t("报表 → 报价", "Reporting → quote"),
+                  `${result.basis.reportingCurrency ?? result.basis.currency} → ${result.basis.currency} · ${result.basis.fxRate ?? "—"}`,
                 ],
+                ...(result.basis.ordinaryPerReceipt
+                  ? ([
+                      [
+                        t("每份存托凭证对应普通股", "Ordinary shares per receipt"),
+                        String(result.basis.ordinaryPerReceipt),
+                      ],
+                    ] as [string, string][])
+                  : []),
+                [t("模型股数", "Model share count"), number(result.basis.shares, 0)],
                 [
                   t("现金及短期投资", "Cash & short-term investments"),
-                  compact(latestFact("cash"), locale) +
-                    " " +
-                    (data.financialFacts?.currency ?? ""),
+                  compact(latestFact("cash"), locale) + " " + (data.financialFacts?.currency ?? ""),
                 ],
                 [
                   t("总债务", "Total debt"),
-                  compact(latestFact("debt"), locale) +
-                    " " +
-                    (data.financialFacts?.currency ?? ""),
+                  compact(latestFact("debt"), locale) + " " + (data.financialFacts?.currency ?? ""),
                 ],
               ]}
             />
@@ -699,17 +974,8 @@ function ModelEditor({
             </a>
           </details>
         </Panel>
-        <GrowthContext data={data} analyst={analyst} />
-      </div>
-      </div>
-      <div id="research-sensitivity"><ValuationSensitivity result={result} /></div>
-      <div id="research-worksheet"><ValuationWorksheet
-        result={result}
-        projection={projection}
-        worksheet={worksheet}
-        onWorksheet={setWorksheet}
-        scenarioNames={scenarioNames}
-      /></div>
+        {!residual && <GrowthContext data={data} analyst={analyst} />}
+      </>, referencePanel)}
       <Modal
         opened={saveOpen}
         onClose={() => setSaveOpen(false)}
@@ -718,10 +984,7 @@ function ModelEditor({
         <Facts
           rows={[
             [t("预测年限", "Horizon"), `${horizon}Y`],
-            [
-              scenarioNames[selected],
-              quoteValue(current.value, result.basis.currency),
-            ],
+            [scenarioNames[selected], quoteValue(current.value, result.basis.currency)],
           ]}
         />
         <Textarea
@@ -740,19 +1003,28 @@ function ModelEditor({
             {t("取消", "Cancel")}
           </Button>
           <Button
-            onClick={() => save.mutate({ ...liveRequest, reason })}
+            onClick={() => save.mutate({ ...liveRequest, familySelection, reason, draftReview: draft?.review })}
             loading={save.isPending}
-            disabled={busy || query.isError}
+            disabled={busy || query.isError || staleDraft || Boolean(drafting.phase)}
           >
             {t("保存版本", "Save version")}
           </Button>
         </Group>
-        {save.isError && (
-          <p role="alert">
-            {t("保存失败，请重试。", "Could not save. Try again.")}
-          </p>
-        )}
+        {reReview}
+        {save.isError && !staleDraft && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
       </Modal>
     </>
   );
+}
+
+function ModelDetails({ result }: { result: Preview }) {
+  const t = useCopy();
+  const [worksheet, setWorksheet] = useState("base");
+  return <>
+    <div id="research-sensitivity"><ValuationSensitivity result={result} /></div>
+    <div id="research-worksheet"><ValuationWorksheet result={result}
+      projection={result.scenarios[worksheet] ?? result.scenarios.base}
+      worksheet={worksheet} onWorksheet={setWorksheet}
+      scenarioNames={{ bear: t("保守", "Bear"), base: t("中性", "Base"), bull: t("乐观", "Bull") }} /></div>
+  </>;
 }

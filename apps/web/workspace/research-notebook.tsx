@@ -17,6 +17,7 @@ import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
 import { api, compact, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
+import { ValuationFloorNote } from "./valuation-floor-note";
 import { EvidenceTable } from "./evidence-table";
 import {
   Empty,
@@ -368,6 +369,18 @@ function ModelVersions({ journal }: { journal: Journal }) {
   const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const models = journal.models ?? [];
+  const client = useQueryClient();
+  const baseline = useMutation({
+    mutationFn: (modelId: string | null) =>
+      api<Journal>(
+        `/research/${encodeURIComponent(journal.ticker)}/models/baseline`,
+        jsonRequest("PUT", { modelId }),
+      ),
+    onSuccess: (updated) => {
+      client.setQueryData(["research-journal", journal.ticker], updated);
+      void client.invalidateQueries({ queryKey: ["dashboard-lens", "latest", "overview"] });
+    },
+  });
   const [compare, setCompare] = useState<string | null>(null);
   const [opened, setOpened] = useState<string | null>(null);
   const [scenario, setScenario] = useState("base");
@@ -408,12 +421,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
         }
       >
         {!models.length ? (
-          <Empty
-            title={t(
-              "在估值页保存一个模型版本",
-              "Save a model version from Valuation",
-            )}
-          />
+          <Empty title={t("在估值页保存一个模型版本", "Save a model version from Valuation")} />
         ) : (
           <div
             className="mx-table-scroll"
@@ -432,8 +440,15 @@ function ModelVersions({ journal }: { journal: Journal }) {
                         display="block"
                         variant="subtle"
                         size="compact-xs"
-                        onClick={() => setOpened(m.id)}
+                        disabled={baseline.isPending}
+                        aria-pressed={m.id === journal.baselineModelId}
+                        onClick={() => baseline.mutate(m.id === journal.baselineModelId ? null : m.id)}
                       >
+                        {m.id === journal.baselineModelId
+                          ? t("取消基准", "Clear baseline")
+                          : t("设为基准", "Set as baseline")}
+                      </Button>
+                      <Button display="block" variant="subtle" size="compact-xs" onClick={() => setOpened(m.id)}>
                         {t("查看底稿", "Open worksheet")}
                       </Button>
                     </th>
@@ -441,6 +456,18 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 </tr>
               </thead>
               <tbody>
+                <tr>
+                  <th>{t("模型", "Model")}</th>
+                  {columns.map((m) => (
+                    <td key={m.id}>
+                      {m.preview.basis.family === "residual-income"
+                        ? t("剩余收益", "Residual income")
+                        : m.preview.basis.family === "net-income"
+                          ? t("净利润", "Net income")
+                          : t("股权现金流", "Equity cash flow")}
+                    </td>
+                  ))}
+                </tr>
                 <tr>
                   <th>{t("预测年限", "Horizon")}</th>
                   {columns.map((m) => (
@@ -450,9 +477,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 <tr>
                   <th>{t("保存时现价", "Price at save")}</th>
                   {columns.map((m) => (
-                    <td key={m.id}>
-                      {quoteValue(m.preview.basis.spot, m.preview.basis.currency)}
-                    </td>
+                    <td key={m.id}>{quoteValue(m.preview.basis.spot, m.preview.basis.currency)}</td>
                   ))}
                 </tr>
                 {(["revenue", "shares", "startMargin"] as const).map((k, i) => (
@@ -462,7 +487,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                         [
                           t("起始营收", "Starting revenue"),
                           t("起始股数", "Starting shares"),
-                          t("起始现金流率", "Starting FCF margin"),
+                          t("起始利润率", "Starting margin"),
                         ][i]
                       }
                     </th>
@@ -470,9 +495,10 @@ function ModelVersions({ journal }: { journal: Journal }) {
                       <td key={m.id}>
                         {k === "startMargin"
                           ? percent(m.preview.basis[k])
-                          : k === "revenue"
-                            ? quoteValue(m.preview.basis.revenue, m.preview.basis.currency, { style: "compact", locale }) + " " + quoteUnit(m.preview.basis.currency).currency
-                            : compact(m.preview.basis.shares, locale)}
+                          : (k === "revenue"
+                            ? quoteValue(m.preview.basis.revenue, m.preview.basis.currency, { style: "compact", locale }) +
+                              " " + quoteUnit(m.preview.basis.currency).currency
+                            : compact(m.preview.basis[k], locale))}
                       </td>
                     ))}
                   </tr>
@@ -480,17 +506,12 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 {(["bear", "base", "bull"] as const).map((k, i) => (
                   <tr key={k}>
                     <th>
-                      {
-                        [
-                          t("保守估值", "Bear value"),
-                          t("中性估值", "Base value"),
-                          t("乐观估值", "Bull value"),
-                        ][i]
-                      }
+                      {[t("保守估值", "Bear value"), t("中性估值", "Base value"), t("乐观估值", "Bull value")][i]}
                     </th>
                     {columns.map((m) => (
                       <td key={m.id}>
                         {quoteValue(m.preview.scenarios[k].value, m.preview.basis.currency)}
+                        <ValuationFloorNote adjustment={m.preview.scenarios[k].equityFloorAdjustment} />
                       </td>
                     ))}
                   </tr>
@@ -502,6 +523,10 @@ function ModelVersions({ journal }: { journal: Journal }) {
                     "discountRate",
                     "shareCagr",
                     "exitFcfMultiple",
+                    "rampYears",
+                    "initialRoe",
+                    "payout",
+                    "terminalPb",
                   ] as const
                 ).map((k, i) => (
                   <tr key={k}>
@@ -509,19 +534,29 @@ function ModelVersions({ journal }: { journal: Journal }) {
                       {
                         [
                           t("营收增长", "Revenue growth"),
-                          t("目标现金流率", "Target FCF margin"),
+                          t("目标利润率", "Target margin"),
                           t("股权资本成本", "Cost of equity"),
                           t("股数增长", "Share growth"),
                           t("终值倍数", "Exit multiple"),
+                          t("达到目标的年数", "Years to target margin"),
+                          t("第一年 ROE", "Year-one ROE"),
+                          t("派息率", "Payout"),
+                          t("终值市净率", "Terminal P/B"),
                         ][i]
                       }{" "}
                       · {t("中性", "Base")}
                     </th>
                     {columns.map((m) => (
                       <td key={m.id}>
-                        {k === "exitFcfMultiple"
-                          ? m.preview.scenarios.base.inputs[k] + "×"
-                          : percent(m.preview.scenarios.base.inputs[k])}
+                        {(m.preview.basis.family === "residual-income" &&
+                          !["discountRate", "initialRoe", "payout", "terminalPb"].includes(k)) ||
+                        m.preview.scenarios.base.inputs[k] == null
+                          ? "—"
+                          : k === "rampYears"
+                            ? String(m.preview.scenarios.base.inputs[k])
+                            : k === "exitFcfMultiple" || k === "terminalPb"
+                              ? m.preview.scenarios.base.inputs[k] + "×"
+                              : percent(m.preview.scenarios.base.inputs[k])}
                       </td>
                     ))}
                   </tr>
@@ -529,9 +564,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 <tr>
                   <th>{t("终值贡献", "Terminal contribution")}</th>
                   {columns.map((m) => (
-                    <td key={m.id}>
-                      {percent(m.preview.scenarios.base.terminalContribution)}
-                    </td>
+                    <td key={m.id}>{percent(m.preview.scenarios.base.terminalContribution)}</td>
                   ))}
                 </tr>
                 <tr>
@@ -544,9 +577,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                   <th>{t("数据版本", "Data version")}</th>
                   {columns.map((m) => (
                     <td key={m.id}>
-                      <code title={m.preview.basis.dataVersion}>
-                        {m.preview.basis.dataVersion.slice(0, 12)}
-                      </code>
+                      <code title={m.preview.basis.dataVersion}>{m.preview.basis.dataVersion.slice(0, 12)}</code>
                     </td>
                   ))}
                 </tr>
@@ -555,6 +586,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
           </div>
         )}
       </Panel>
+      {baseline.isError && <p role="alert">{t("基准设置失败", "Baseline change failed")}</p>}
       <Drawer
         opened={Boolean(detail)}
         onClose={() => setOpened(null)}
@@ -565,8 +597,8 @@ function ModelVersions({ journal }: { journal: Journal }) {
         {detail && (
           <>
             <p>
-              {detail.savedAt.slice(0, 16).replace("T", " ")} UTC ·{" "}
-              {detail.preview.horizon}Y · {quoteUnit(detail.preview.basis.currency).currency}
+              {detail.savedAt.slice(0, 16).replace("T", " ")} UTC · {detail.preview.horizon}Y ·{" "}
+              {quoteUnit(detail.preview.basis.currency).currency}
             </p>
             {detail.reason && (
               <div className="mx-saved-reason">
@@ -590,13 +622,26 @@ function ModelVersions({ journal }: { journal: Journal }) {
               columns={[
                 { label: t("年", "Year"), value: (r) => String(r.year) },
                 {
-                  label: t("营收", "Revenue"),
-                  value: (r) => quoteValue(r.revenue, detail.preview.basis.currency, { style: "compact", locale }),
+                  label:
+                    detail.preview.basis.family === "residual-income"
+                      ? t("期末每股净资产", "Closing book / share")
+                      : t("营收", "Revenue"),
+                  value: (r) => quoteValue(r.closingBook ?? r.revenue, detail.preview.basis.currency, { style: "compact", locale }),
                   numeric: true,
                 },
                 {
-                  label: t("现金流", "Cash flow"),
-                  value: (r) => quoteValue(r.freeCashflow, detail.preview.basis.currency, { style: "compact", locale }),
+                  label:
+                    detail.preview.basis.family === "residual-income"
+                      ? t("每股剩余收益", "Residual earnings / share")
+                      : detail.preview.basis.family === "net-income"
+                        ? t("净利润", "Net income")
+                        : t("现金流", "Cash flow"),
+                  value: (r) =>
+                    quoteValue(
+                      detail.preview.basis.family === "residual-income" ? r.cashflowPerShare : r.freeCashflow,
+                      detail.preview.basis.currency,
+                      { style: "compact", locale },
+                    ),
                   numeric: true,
                 },
                 {
@@ -614,11 +659,10 @@ function ModelVersions({ journal }: { journal: Journal }) {
             <p>
               {t("每股价值", "Value per share")}:{" "}
               {quoteValue(detail.preview.scenarios[scenario].value, detail.preview.basis.currency)}
+              <ValuationFloorNote adjustment={detail.preview.scenarios[scenario].equityFloorAdjustment} />
             </p>
             <details>
-              <summary>
-                {t("冻结的输入与来源", "Frozen inputs & sources")}
-              </summary>
+              <summary>{t("冻结的输入与来源", "Frozen inputs & sources")}</summary>
               <EvidenceTable
                 label={t("模型来源", "Model sources")}
                 rows={detail.preview.basis.evidence ?? []}
@@ -635,11 +679,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                     label: t("文件", "Document"),
                     value: (r) =>
                       safeUrl(r.url ?? "") ? (
-                        <a
-                          href={safeUrl(r.url ?? "")}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
+                        <a href={safeUrl(r.url ?? "")} target="_blank" rel="noreferrer">
                           {r.source} ↗
                         </a>
                       ) : (

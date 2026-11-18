@@ -75,11 +75,13 @@ export function ResearchReading({ sections, parameter, children, before }: {
         pending.current = null;
       }
       if (pinned.current) {
-        // React replaces the loading heading when the editor mounts. Preserve its
-        // focus without replaying the jump if the reader stayed on that heading.
-        if (focusedHeading.current && !focusedHeading.current.isConnected && document.activeElement === document.body) {
+        // The first heading may be replaced or move behind the loaded results.
+        // Follow it only if the reader still has focus on the original heading.
+        const previous = focusedHeading.current;
+        if (previous && (document.activeElement === previous ||
+          (!previous.isConnected && document.activeElement === document.body))) {
           const heading = document.getElementById("research-" + pinned.current)?.querySelector<HTMLElement>("h2");
-          if (heading) {
+          if (heading && heading !== previous) {
             focusedHeading.current = heading;
             heading.tabIndex = -1;
             heading.focus({ preventScroll: true });

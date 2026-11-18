@@ -91,10 +91,18 @@ class ArtifactStore:
             self._latest_cache = manifest
             return manifest
 
-    def load_manifest(self, run_id: str) -> SnapshotManifest:
+    def load_manifest(self, run_id: str, *, require_retained: bool = False) -> SnapshotManifest:
         with self._manifest_lock:
             cached = self._manifest_cache.get(run_id)
             if cached is not None:
+                if (
+                    require_retained
+                    and not (
+                        self.immutable_snapshots.snapshots_root / run_id / "manifest.json"
+                    ).is_file()
+                ):
+                    del self._manifest_cache[run_id]
+                    raise FileNotFoundError(f"snapshot not found: {run_id}")
                 self._manifest_cache.move_to_end(run_id)
                 return cached
         try:
@@ -159,12 +167,10 @@ class ArtifactStore:
             artifacts=artifacts,
         )
         manifest = self._api_manifest(published.manifest)
-        latest_path = self.immutable_snapshots.latest_path
-        stat = latest_path.stat()
+        # A concurrent publisher may already own latest.json. Only a pointer
+        # read can populate the latest cache; this manifest is known by ID.
         with self._manifest_lock:
             self._remember_manifest(manifest)
-            self._latest_signature = (stat.st_ino, stat.st_mtime_ns, stat.st_size)
-            self._latest_cache = manifest
         return manifest
 
     def list_manifests(self, limit: int = 100) -> list[SnapshotManifest]:

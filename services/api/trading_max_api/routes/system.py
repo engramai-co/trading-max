@@ -20,6 +20,8 @@ from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.research.calendars.refresh import MACRO_KEY, MACRO_STATUS_KEY
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
+from ..artifacts import ArtifactStore
+from ..dashboard import benchmark_series
 from ..dashboard_models import (
     AccountCode,
     AccountDecisions,
@@ -36,7 +38,7 @@ from ..dashboard_models import (
 )
 from ..etf_snapshot import read_etf_detail, read_etf_portfolio
 from ..history_projection import HistoryRange, HistoryScope, project_intraday, scope_points
-from ..history_reader import HistorySnapshot
+from ..history_reader import HistorySnapshot, daily_nav
 from ..models import HealthResponse, ReadinessResponse, SnapshotManifest
 from ..projections.day_change import within_trading_days
 from .dependencies import app_service, latest_or_503
@@ -48,7 +50,7 @@ _PORTFOLIO_TIME_ZONE = ZoneInfo("Europe/London")
 
 
 def researched_holdings(holdings) -> set[str]:
-    """Stocks are researched under their display ticker; funds under their listing (EQQQ.L)."""
+    """Include technical readings published under old display symbols or exact listings."""
     return {holding.ticker for holding in holdings} | {
         holding.research_ticker for holding in holdings if holding.research_ticker
     }
@@ -165,19 +167,50 @@ def _latest_intraday_points(points: list[NavPoint]) -> list[NavPoint]:
 
 
 def _benchmark_series_for_nav(
-    dashboard_data: DashboardResponse,
+    nav: list[NavPoint],
+    series: dict[str, list[BenchmarkPricePoint]],
 ) -> dict[str, list[BenchmarkPricePoint]]:
     """Discard benchmark history that cannot align with the account NAV."""
 
-    daily_dates = [point.date[:10] for point in dashboard_data.nav if not point.intraday]
+    daily_dates = [point.date[:10] for point in nav if not point.intraday]
     if not daily_dates:
         return {}
     first_date = min(daily_dates)
     last_date = max(daily_dates)
     return {
         ticker: [point for point in points if first_date <= point.date[:10] <= last_date]
-        for ticker, points in dashboard_data.benchmark_series.items()
+        for ticker, points in series.items()
     }
+
+
+def _retained_returns(
+    store: ArtifactStore, manifest: SnapshotManifest, scope: str
+) -> DashboardLensSnapshot:
+    run = manifest.run_id
+    broker = store.read_json(run, "account/broker_snapshot_metrics.json")
+    nav = daily_nav(store, run, broker["accounts"])
+    omit = {
+        key: None
+        for key in NavPoint.model_fields
+        if key not in {"date", "flow_status", "intraday", scope, scope + "_twr"}
+    }
+    try:
+        technical = store.read_json(run, "research/technical.json")
+    except FileNotFoundError:
+        technical = {}
+    series = {
+        ticker: [BenchmarkPricePoint.model_validate(p) for p in points]
+        for ticker, points in benchmark_series(technical).items()
+    }
+    return DashboardLensSnapshot(
+        view="analytics",
+        run_id=run,
+        generated_at=manifest.created_at.isoformat(),
+        broker_as_of=str(broker.get("generated_at_utc") or ""),
+        research_as_of=str(technical.get("as_of") or ""),
+        nav=[p.model_copy(update=omit) for p in nav],
+        benchmark_series=_benchmark_series_for_nav(nav, series),
+    )
 
 
 def _effective_bootstrap_error(
@@ -322,6 +355,16 @@ def dashboard_etf_detail(
         raise HTTPException(status_code=404, detail="ETF evidence not found") from None
 
 
+def _dashboard_manifest(request: Request, run_id: str | None) -> SnapshotManifest:
+    if run_id is None:
+        return latest_or_503(request)
+    try:
+        # Retention can prune a cached publication in the separate worker process.
+        return app_service(request, "store").load_manifest(run_id, require_retained=True)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="snapshot not found") from None
+
+
 @router.get(
     "/v1/dashboard/history",
     response_model=HistorySnapshot,
@@ -334,11 +377,7 @@ def dashboard_history(
     scope: HistoryScope = "total",
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
 ) -> HistorySnapshot:
-    store = app_service(request, "store")
-    try:
-        manifest = store.load_manifest(run_id) if run_id else latest_or_503(request)
-    except FileNotFoundError:
-        raise HTTPException(status_code=404, detail="snapshot not found") from None
+    manifest = _dashboard_manifest(request, run_id)
     return app_service(request, "history_reader").read(manifest, range, scope)
 
 
@@ -351,6 +390,7 @@ def dashboard_history(
 def dashboard_lens(
     view: DashboardLensName,
     request: Request,
+    run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
     account: AccountCode | None = None,
     range: HistoryRange | None = None,
     scope: HistoryScope | None = None,
@@ -365,9 +405,31 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
-    manifest = latest_or_503(request)
+    retained_account = (
+        run_id is not None
+        and view == "account-analysis"
+        and detail == "summary"
+        and account in {"A", "B"}
+        and scope is None
+        and range is None
+    )
+    if run_id is not None and not retained_account:
+        if (
+            view != "analytics"
+            or account is not None
+            or detail != "summary"
+            or scope not in {None, "invest", "isa", "total"}
+        ):
+            raise HTTPException(422, "Unsupported retained dashboard selection")
+        manifest = _dashboard_manifest(request, run_id)
+        selected = scope or "total"
+        return request.app.state.retained_returns.get_or_compute(
+            (run_id, selected),
+            lambda: _retained_returns(app_service(request, "store"), manifest, selected),
+        )
+    manifest = _dashboard_manifest(request, run_id)
     dashboard_data = request.app.state.cached_dashboard(
-        manifest, include_history=detail != "summary"
+        manifest, include_history=detail != "summary", retained=retained_account
     )
     base = {
         "view": view,
@@ -379,6 +441,9 @@ def dashboard_lens(
 
     if view == "overview":
         held = researched_holdings(dashboard_data.holdings)
+        equity_listings = {
+            h.research_ticker or h.ticker for h in dashboard_data.holdings if not h.is_fund
+        }
         account_names = {item.code: item.name for item in dashboard_data.accounts}
         review_summaries = [
             OverviewReviewSummary(
@@ -436,7 +501,11 @@ def dashboard_lens(
                 for item in dashboard_data.technical
                 if item.ticker in held
             ],
-            valuations=[item for item in dashboard_data.valuations if item.ticker in held],
+            valuations=[
+                app_service(request, "research_journal").overview_valuation(item)
+                for item in dashboard_data.valuations
+                if item.ticker in equity_listings
+            ],
             nav=dashboard_data.nav[-31:],
             intraday_nav=_latest_intraday_points(dashboard_data.intraday_nav),
         )
@@ -469,7 +538,9 @@ def dashboard_lens(
                 scope=scope,
             ),
             risk=dashboard_data.risk,
-            benchmark_series=_benchmark_series_for_nav(dashboard_data),
+            benchmark_series=_benchmark_series_for_nav(
+                dashboard_data.nav, dashboard_data.benchmark_series
+            ),
             policy=dashboard_data.policy,
         )
     if view == "review":

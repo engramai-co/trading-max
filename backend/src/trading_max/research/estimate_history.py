@@ -189,7 +189,9 @@ def estimate_observations(
         yield EstimateObservation(
             ticker=ticker,
             listing=resolved_quote_listing(
-                ticker, resolve_venue(ticker, *row_claims(ticker, row, metrics))
+                ticker,
+                resolve_venue(ticker, *row_claims(ticker, row, metrics)),
+                metrics.get("fullExchangeName") or metrics.get("exchange"),
             ),
             currency=currency,
             quote_unit=unit,

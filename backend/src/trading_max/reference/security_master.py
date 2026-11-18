@@ -24,6 +24,8 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 
+from .venues import listing_mic, local_venue_symbol
+
 ResolutionMethod = Literal[
     "isin",
     "figi",
@@ -568,6 +570,43 @@ class CatalogSecurityMaster:
             if len(narrowed) == 1:
                 return narrowed[0], "name"
         return None
+
+    def listing_security_type(self, security: SecurityDescriptor) -> str:
+        """Use a catalog type only when its scope is one exact quoted listing.
+
+        Older catalogs attach types to the entity, so an entity spanning several
+        instruments cannot attribute that type to any one of its listings.
+        """
+        ticker = _identifier(security.ticker)
+        venue = listing_mic(security.exchange, security.mic)
+        if not ticker or not venue:
+            return ""
+        symbol = local_venue_symbol(ticker, venue)
+        target = (symbol, venue)
+        candidates = {
+            record.entity_id: record
+            for key in {ticker, symbol}
+            for record in self._ticker_index.get(key, ())
+        }
+        matches = []
+        for record in candidates.values():
+            listings = set()
+            for item in record.listings:
+                mic = listing_mic(item.exchange, item.mic)
+                listings.add((local_venue_symbol(item.ticker, mic), mic))
+            if target in listings:
+                if (
+                    listings != {target}
+                    or local_venue_symbol(record.canonical_ticker, venue) != symbol
+                ):
+                    return ""
+                matches.append(record)
+        if len(matches) != 1:
+            return ""
+        record = matches[0]
+        return " ".join(
+            (record.security_type, record.provider_security_type, record.provider_security_type2)
+        )
 
     def resolve(self, security: SecurityDescriptor) -> ResolvedSecurityEntity:
         matched = self._match(security)

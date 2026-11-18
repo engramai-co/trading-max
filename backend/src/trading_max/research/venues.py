@@ -30,6 +30,7 @@ YAHOO_SUFFIX_BY_MIC = {
     "XLIS": ".LS",
     "XOSL": ".OL",
     "XWBO": ".VI",
+    "XWAR": ".WA",
     "XNAS": "",
     "XNYS": "",
     "ARCX": "",
@@ -90,6 +91,7 @@ _YAHOO = _codes(
         "XLIS": "LIS LISBON",
         "XOSL": "OSL OSLO",
         "XWBO": "VIE VIENNA",
+        "XWAR": "WSE WARSAW",
         "ROCO": "TWO TAIPEIEXCHANGE",
         "XNSE": "NSI NSE",
         "XBOM": "BSE",
@@ -138,6 +140,7 @@ _FIGI = _codes(
         "XLIS": "PL",
         "XOSL": "NO",
         "XWBO": "AV",
+        "XWAR": "PW",
         "XNSE": "IS",
         "XBOM": "IB",
         "XSOM": "BO",
@@ -217,6 +220,7 @@ _MICS = {
         "XTSE",
         "XTSX",
         "XWBO",
+        "XWAR",
     ]
 }
 _MICS["XNAS"] = _NASDAQ
@@ -335,10 +339,13 @@ _CALENDARS = {
         "XLIS",
         "XOSL",
         "XWBO",
+        "XWAR",
     ]
 }
 _CALENDARS.update(dict.fromkeys(["XNYS", *_NASDAQ, "XASE", "ARCX", "BATS"], "XNYS"))
 _CALENDARS["XMCE"] = "XMAD"
+# KOSDAQ has its own listing MIC but trades on the Korea Exchange schedule.
+_CALENDARS["XKOS"] = "XKRX"
 
 
 class VenueClaim(NamedTuple):

@@ -1,9 +1,12 @@
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from jsonschema import Draft202012Validator
 from trading_max.research.facts import ResearchContext, build_financial_facts, make_quote
 from trading_max.research.fundamentals import build_valuation
 
@@ -77,6 +80,8 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
                     "currency": "USD",
                     "assumptions": {
                         "sharesOutstanding": 100,
+                        "listing": "US:TEST",
+                        "shareUnit": "ordinary",
                         "assumptionSource": "sector-template",
                     },
                     "scenarios": dict.fromkeys(("bear", "base", "bull"), inputs),
@@ -91,7 +96,10 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
         generated_at=datetime.now(UTC).isoformat(),
         financial_facts=facts,
         context=ResearchContext(
-            quote=make_quote("TEST", {"spot": 25, "currency": "USD"}, {}), asset_type="EQUITY"
+            quote=make_quote(
+                "TEST", {"spot": 25, "currency": "USD"}, {"metrics": {"fullExchangeName": "NYSE"}}
+            ),
+            asset_type="EQUITY",
         ),
         valuation=valuation,
     )
@@ -135,7 +143,12 @@ def test_typed_model_preview_save_and_note_flow(tmp_path, revenues):
         assert saved.status_code == 200, saved.text
         assert len(saved.json()["models"]) == 1
         assert saved.json()["models"][0]["reason"] == "Growth converges to the historical range"
-        assert saved.json()["models"][0]["preview"]["scenarios"] == result.json()["scenarios"]
+        full = client.post("/v2/research/TEST/valuation-preview", json=body)
+        assert full.status_code == 200
+        assert saved.json()["models"][0]["preview"]["scenarios"] == full.json()["scenarios"]
+        assert (
+            full.json()["scenarios"]["base"]["value"] == result.json()["scenarios"]["base"]["value"]
+        )
         reopened = client.get("/v1/research/TEST/valuation-preview")
         assert reopened.status_code == 200
         assert reopened.json()["horizon"] == 10
@@ -184,7 +197,11 @@ def _valuation_lens(symbol: str = "TEST", unit: str = "USD") -> ResearchLensSnap
                     "ticker": symbol,
                     "price": 25,
                     "currency": currency,
-                    "assumptions": {"sharesOutstanding": 100},
+                    "assumptions": {
+                        "sharesOutstanding": 100,
+                        "shareUnit": "ordinary",
+                        "listing": "US:TEST" if symbol == "TEST" else "LSE:TEST",
+                    },
                     "scenarios": dict.fromkeys(("bear", "base", "bull"), inputs),
                 }
             ]
@@ -297,3 +314,221 @@ def test_valuation_preview_uses_the_broker_price_only_for_the_same_listing(
         basis = client.get(f"/v1/research/{symbol}/valuation-preview").json()["basis"]
     assert basis["spot"] == pytest.approx(spot)
     assert basis["spotSource"] == ("broker" if spot == 20.0 else "quote")
+
+
+def test_set_replace_and_clear_one_baseline_at_five_years_and_batch_spot(tmp_path):
+    from trading_max.research.valuation_preview import (
+        FrozenValuationBasis,
+        ScenarioInputs,
+        ValuationPreviewRequest,
+        preview,
+    )
+
+    lens = _valuation_lens()
+    store = ResearchJournalStore(tmp_path)
+    basis = FrozenValuationBasis(
+        ticker="TEST",
+        quote_id="quote",
+        data_version="version",
+        spot=10,
+        currency="USD",
+        revenue=100,
+        shares=10,
+        start_margin=0.2,
+    )
+    inputs = ScenarioInputs(
+        discount_rate=0.10,
+        exit_fcf_multiple=12,
+        share_cagr=0,
+        revenue_cagr=0.1,
+        target_fcf_margin=0.2,
+    )
+    req = ValuationPreviewRequest(
+        horizon=10, scenarios=dict.fromkeys(("bear", "base", "bull"), inputs)
+    )
+    saved = preview(basis, req)
+    store.save_model(saved)
+    other = store.save_model(saved, "second view").models[0].id
+    app = FastAPI()
+    app.include_router(router)
+    app.state.research_journal = store
+    app.state.settings = SimpleNamespace(api_token="synthetic")
+    row = lens.valuation
+    with TestClient(app) as client:
+
+        def select(model):
+            return client.put(
+                "/v1/research/TEST/models/baseline",
+                json={"modelId": model},
+                headers={"Authorization": "Bearer synthetic"},
+            )
+
+        assert (
+            client.put("/v1/research/TEST/models/baseline", json={"modelId": saved.id}).status_code
+            == 401
+        )
+        assert select(saved.id).json()["baselineModelId"] == saved.id
+        assert select(other).json()["baselineModelId"] == other
+        assert select("unknown").status_code == 404
+        projected = ResearchJournalStore(tmp_path).overview_valuation(row)
+        expected = preview(basis, req.model_copy(update={"horizon": 5})).scenarios["base"].value
+        assert projected.ev5 == pytest.approx(expected)
+        assert projected.ev5_upside == pytest.approx(expected / 25 - 1)
+        assert projected.ev5 != saved.scenarios["base"].value
+        assert len(store.load("TEST").models) == 2
+        assert select(None).json()["baselineModelId"] is None
+        assert store.overview_valuation(row) == row
+
+
+@pytest.mark.parametrize("case", ["ordinary", "zero", "bank"])
+def test_published_preview_client_and_family_aware_opt_in(tmp_path, case):
+    lens = _valuation_lens()
+    lens.valuation.assumptions["shareUnit"] = "ordinary"
+    if case in {"zero", "bank"}:
+        rows = (
+            [{"index": "Net Income Common Stockholders", "2025-12-31": 12}]
+            if case == "bank"
+            else [{"index": "Total Revenue", "2025-12-31": 0}]
+        )
+        lens.financial_facts = build_financial_facts(
+            {
+                "incomeStatement": rows,
+                "balanceSheet": [{"index": "Common Stock Equity", "2025-12-31": 100}],
+            },
+            {"financialCurrency": "USD"},
+        )
+        lens.valuation.scenarios = {}
+        lens.valuation.assumptions["family"] = "residual-income" if case == "bank" else "cash-flow"
+    app = FastAPI()
+    app.include_router(router)
+    app.state.research = SimpleNamespace(
+        lens_snapshot=lambda *args: lens, held_position=lambda *args: None
+    )
+    app.state.store = SimpleNamespace(latest_manifest=lambda: object())
+    app.state.research_journal = ResearchJournalStore(tmp_path)
+    app.state.valuation_assumptions = ValuationAssumptionsStore(tmp_path)
+    with TestClient(app) as client:
+        path = "/research/TEST/valuation-preview"
+        old = client.get("/v1" + path)
+        if case == "ordinary":
+            assert old.status_code == 200
+            legacy = old.json()
+            # The published client reads all three inputs and formats numeric worksheet fields.
+            inputs = {key: legacy["scenarios"][key]["inputs"] for key in ("bear", "base", "bull")}
+            for scenario in legacy["scenarios"].values():
+                for year in scenario["years"]:
+                    assert all(
+                        isinstance(year[k], (float, int))
+                        for k in ("growth", "revenue", "fcfMargin", "freeCashflow")
+                    )
+            posted = client.post("/v1" + path, json={"scenarios": inputs})
+            assert posted.status_code == 200
+            # Frozen response contract published at 3d152ecb.
+            contract = json.loads(
+                (Path(__file__).parent / "fixtures/valuation-preview-v1-schema.json").read_text()
+            )
+            for payload in (legacy, posted.json()):
+                Draft202012Validator(contract).validate(payload)
+        else:
+            assert old.status_code == 422
+        modern = client.get("/v2" + path)
+        assert modern.status_code == 200, modern.text
+        assert bool(modern.json()["scenarios"]) == (case != "zero")
+        if case == "bank":
+            assert modern.json()["scenarios"]["base"]["years"][0]["revenue"] is None
+
+
+def test_overview_sets_and_clears_a_london_equity_baseline(research_root, tmp_path, typed_fixture):
+    import json
+
+    from trading_max.research.valuation_preview import (
+        FrozenValuationBasis,
+        ScenarioInputs,
+        ValuationPreviewRequest,
+        preview,
+    )
+
+    from services.api.trading_max_api.app import create_app
+    from services.api.trading_max_api.config import Settings
+
+    broker_file = next(research_root.rglob("broker_snapshot_metrics.json"))
+    broker = json.loads(broker_file.read_text())
+    broker["accounts"]["A"]["positions"][0].update(
+        ticker="SYN", broker_ticker="SYNl_EQ", name="Synthetic plc", price_currency="GBX"
+    )
+    broker_file.write_text(json.dumps(broker))
+    valuation_file = next(research_root.rglob("valuation_engine_v2_output_*.json"))
+    valuation = json.loads(valuation_file.read_text())
+    valuation["rows"][0].update(t="SYN.L", ccy="GBP", spot=25, ev5=30)
+    valuation_file.write_text(json.dumps(valuation))
+    root = tmp_path / "runtime"
+    typed_fixture(research_root, ArtifactStore(root))
+    app = create_app(
+        Settings(
+            data_root=root, api_token="fixture", embedded_worker=False, dashboard_prewarm_seconds=0
+        )
+    )
+    basis = FrozenValuationBasis(
+        ticker="SYN.L",
+        quote_id="q",
+        data_version="v",
+        currency="GBP",
+        spot=20,
+        shares=10,
+        revenue=100,
+        start_margin=0.2,
+    )
+    params = ScenarioInputs(
+        revenue_cagr=0, target_fcf_margin=0.2, discount_rate=0.1, exit_fcf_multiple=10, share_cagr=0
+    )
+    forecast = preview(
+        basis, ValuationPreviewRequest(scenarios=dict.fromkeys(("bear", "base", "bull"), params))
+    )
+    saved = app.state.research_journal.save_model(forecast).models[0].id
+    with TestClient(app) as client:
+        for selected in (saved, None):
+            response = client.put(
+                "/v1/research/SYN.L/models/baseline",
+                headers={"Authorization": "Bearer fixture"},
+                json={"modelId": selected},
+            )
+            assert response.status_code == 200
+            dashboard = client.get("/v1/dashboard/lens/overview?detail=summary").json()
+            assert (
+                next(h for h in dashboard["holdings"] if h["ticker"] == "SYN")["researchTicker"]
+                == "SYN.L"
+            )
+            row = next(v for v in dashboard["valuations"] if v["ticker"] == "SYN.L")
+            assert row.get("baselineModelId") == selected
+            assert row["ev5Upside"] == pytest.approx(
+                forecast.scenarios["base"].value / 25 - 1 if selected else 0.2
+            )
+
+
+def test_v1_roundtrip_and_legacy_save_use_the_published_formula(tmp_path):
+    lens = _valuation_lens()
+    for params in lens.valuation.scenarios.values():
+        params.ramp_years = 4
+    app = FastAPI()
+    app.include_router(router)
+    app.state.research = SimpleNamespace(
+        lens_snapshot=lambda *args: lens, held_position=lambda *args: None
+    )
+    app.state.store = SimpleNamespace(latest_manifest=lambda: object())
+    app.state.settings = SimpleNamespace(api_token="synthetic-token")
+    app.state.research_journal = ResearchJournalStore(tmp_path)
+    app.state.valuation_assumptions = ValuationAssumptionsStore(tmp_path)
+    with TestClient(app) as client:
+        route = "/v1/research/TEST/valuation-preview"
+        first = client.get(route).json()
+        req = {"scenarios": {k: v["inputs"] for k, v in first["scenarios"].items()}}
+        again = client.post(route, json=req).json()
+        assert first["scenarios"] == again["scenarios"]
+        assert first["formulaVersion"] == again["formulaVersion"] == "equity-proxy-projection-v1"
+        saved = client.post(
+            "/v1/research/TEST/models",
+            json={**req, "reason": "Legacy worksheet"},
+            headers={"Authorization": "Bearer synthetic-token"},
+        ).json()["models"][0]["preview"]
+        assert saved["formulaVersion"] == first["formulaVersion"]
+        assert saved["scenarios"]["base"]["value"] == first["scenarios"]["base"]["value"]

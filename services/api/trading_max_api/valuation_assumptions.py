@@ -13,9 +13,12 @@ import os
 import tempfile
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+from trading_max.research.valuation_basis import Family
 
 from .models import ApiModel, Field
 
@@ -23,6 +26,10 @@ SEED_PATH = Path(__file__).with_name("valuation_assumptions_seed.json")
 
 
 class ValuationScenario(ApiModel):
+    ramp_years: int | None = Field(default=None, ge=1, le=10)
+    initial_roe: float | None = Field(default=None, ge=-0.8, le=2)
+    payout: float | None = Field(default=None, ge=0, le=1)
+    terminal_pb: float | None = Field(default=None, ge=0, le=15)
     revenue_cagr: float | None = None
     target_fcf_margin: float | None = None
     discount_rate: float | None = None
@@ -31,6 +38,7 @@ class ValuationScenario(ApiModel):
 
 
 class ValuationCompanyAssumptions(ApiModel):
+    family: Family = "cash-flow"
     ticker: str
     name: str = ""
     source: str = "seed-v1"
@@ -47,6 +55,7 @@ class ValuationAssumptionsState(ApiModel):
 
 
 class ValuationAssumptionsUpsertRequest(ApiModel):
+    family: Family = "cash-flow"
     scenarios: dict[str, ValuationScenario]
     name: str | None = None
     source: str = "manual"
@@ -83,6 +92,10 @@ def _scenario_diff(
             "discountRate",
             "exitFcfMultiple",
             "shareCagr",
+            "rampYears",
+            "payout",
+            "initialRoe",
+            "terminalPb",
         ):
             before_value = before_scenario.get(field)
             after_value = after_scenario.get(field)
@@ -94,7 +107,9 @@ def _scenario_diff(
     return changes
 
 
-def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
+@contextmanager
+def _prepared_write(path: Path, payload: dict[str, Any]):
+    """Stage a private replacement on the destination filesystem."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{path.name}.",
@@ -110,10 +125,14 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
                 indent=2,
             )
             handle.write("\n")
-        Path(temporary).replace(path)
-    except Exception:
+        yield Path(temporary)
+    finally:
         Path(temporary).unlink(missing_ok=True)
-        raise
+
+
+def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
+    with _prepared_write(path, payload) as temporary:
+        temporary.replace(path)
 
 
 class ValuationAssumptionsStore:
@@ -164,6 +183,7 @@ class ValuationAssumptionsStore:
                 company = ValuationCompanyAssumptions(
                     ticker=ticker,
                     name=request.name or "",
+                    family=request.family,
                     source=request.source,
                     scenarios=request.scenarios,
                 )
@@ -181,6 +201,9 @@ class ValuationAssumptionsStore:
                         "before": company.source,
                         "after": request.source,
                     }
+                if company.family != request.family:
+                    changes["family"] = {"before": company.family, "after": request.family}
+                company.family = request.family
                 company.name = request.name or company.name
                 company.source = request.source
                 company.scenarios = request.scenarios
@@ -219,6 +242,7 @@ class ValuationAssumptionsStore:
             "companies": [
                 {
                     "ticker": item.ticker,
+                    "family": item.family,
                     "name": item.name,
                     "source": item.source,
                     "updated_at": (

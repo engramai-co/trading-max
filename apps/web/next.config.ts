@@ -8,6 +8,9 @@ export default function nextConfig(phase: string): NextConfig {
   const buildId = phase === PHASE_PRODUCTION_BUILD ? randomUUID() : "";
   return {
     agentRules: false,
+    // Overview is the cold entry. Keep its shared dependencies together when
+    // optional chat and chart features introduce additional async chunks.
+    experimental: { turbopackChunking: { minChunkSize: 100_000 } },
     allowedDevOrigins: ["127.0.0.1"],
     env: { NEXT_PUBLIC_TRADING_MAX_WEB_BUILD_ID: buildId },
     generateBuildId: () => buildId || null,

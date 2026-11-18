@@ -109,10 +109,10 @@ def assistant_provider_credentials(
 
 
 def _consented_assistant_route(
-    preferences: SettingsRepository, requested_route: str | None
+    preferences: SettingsRepository, requested_route: str | None, *, background: bool = False
 ) -> tuple[AssistantPreferences, LLMRoute, IntegrationSummary, str, CancellationToken]:
-    current, integration, access = preferences.assistant_connection_snapshot()
-    if not current.enabled:
+    current, integration, access = preferences.assistant_connection_snapshot(background=background)
+    if not current.enabled or (background and not current.background_briefs_enabled):
         raise ProviderRuntimeError("assistant_disabled", "enable the assistant in Settings")
     if current.accepted_consent_revision != ASSISTANT_CONSENT_REVISION:
         raise ProviderRuntimeError(
@@ -138,25 +138,26 @@ def resolve_assistant_connection(
     credentials: CredentialStore,
     *,
     requested_route: str | None = None,
+    background: bool = False,
 ) -> AssistantConnection:
     """Resolve the selected, consented assistant route using OS credentials.
 
     Run in a worker thread: the credential manager is synchronous.
     """
     current, route, integration, base_url, access = _consented_assistant_route(
-        preferences, requested_route
+        preferences, requested_route, background=background
     )
 
     def before_request() -> None:
         try:
-            enabled, consent, revision, integration_revision = preferences.assistant_dispatch_state(
-                integration.integration_id
+            enabled, consent, revision, integration_revision, background_enabled = (
+                preferences.assistant_dispatch_state(integration.integration_id)
             )
         except sqlite3.Error:
             raise ProviderRuntimeError(
                 "assistant_settings_changed", "the current assistant settings could not be verified"
             ) from None
-        if not enabled:
+        if not enabled or (background and not background_enabled):
             raise ProviderRuntimeError("assistant_disabled", "enable the assistant in Settings")
         if (
             consent != ASSISTANT_CONSENT_REVISION

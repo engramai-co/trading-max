@@ -1,6 +1,6 @@
 import type { DashboardLens, Holding, RefreshAttention } from "@/lib/types";
 import { findETF, type ETFReading } from "./etf-data";
-import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, isFundHolding, type HoldingGroup } from "./holding-groups";
+import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, holdingValuation, isFundHolding, type HoldingGroup } from "./holding-groups";
 
 /** One reading that crossed an attention threshold for a held security. */
 export type AttentionFact = { kind: "score" | "rsi" | "upside" | "loss" | "tracking"; value: number; severity: number };
@@ -36,7 +36,7 @@ function factsFor(
     facts.push({ kind: "rsi", value: Math.round(rsi), severity: 40 + Math.abs(rsi - 50) - 25 });
   }
   if (!isFundHolding(positions)) {
-    const upside = finite(valuations?.find((row) => row.ticker === ticker)?.ev5Upside);
+    const upside = finite(holdingValuation(valuations, positions)?.ev5Upside);
     if (upside != null && upside <= THRESHOLD.upside) {
       facts.push({ kind: "upside", value: upside, severity: 55 + Math.min(30, (THRESHOLD.upside - upside) * 100) });
     }

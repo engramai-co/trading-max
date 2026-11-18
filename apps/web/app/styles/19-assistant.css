@@ -1,0 +1,123 @@
+/* The entry reserves its top-bar space even while assistant UI code is unloaded. */
+.mx-assistant-trigger {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 38px;
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--mx-muted);
+}
+.mx-assistant-trigger[aria-expanded="true"] {
+  background: var(--mx-brand-soft);
+  color: var(--mx-brand);
+}
+.mx-assistant-trigger kbd {
+  border: 1px solid var(--mx-border);
+  border-radius: 4px;
+  padding: 0 3px;
+  font: inherit;
+  font-size: 11px;
+}
+
+@media (max-width: 767px) {
+  .mx-assistant-trigger {
+    min-height: 44px;
+  }
+  .mx-assistant-trigger kbd {
+    display: none;
+  }
+}
+@media (hover: hover) {
+  .mx-assistant-trigger:hover {
+    background: var(--mx-brand-soft);
+  }
+}
+
+@media (min-width: 1200px) {
+  .mx-app[data-assistant-open] #main-content {
+    margin-inline-end: 400px;
+  }
+}
+
+[data-assistant-evidence] {
+  outline: 2px solid var(--mx-brand);
+  outline-offset: 3px;
+  scroll-margin-top: 70px;
+}
+
+/* The consent hint uses the same panel before any reading or chat code loads. */
+.mx-assistant-panel {
+  position: fixed;
+  inset: 56px 14px 14px auto;
+  z-index: 125;
+  width: 386px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--mx-border);
+  border-radius: 12px;
+  background: var(--mx-surface);
+  color: var(--mx-ink);
+  font-size: 14px;
+}
+.mx-assistant-panel[hidden] {
+  display: none;
+}
+.mx-assistant-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--mx-border);
+}
+.mx-assistant-heading button {
+  appearance: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mx-muted);
+}
+.mx-assistant-panel svg {
+  width: 18px;
+  height: 18px;
+}
+.mx-assistant-opening {
+  padding: 16px;
+  line-height: 1.65;
+}
+@media (max-width: 1199px) {
+  .mx-assistant-panel {
+    inset: 0 0 0 auto;
+    z-index: 500;
+    width: 400px;
+    border-radius: 0;
+  }
+}
+@media (max-width: 767px) {
+  .mx-assistant-panel {
+    width: 100%;
+    border: 0;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .mx-assistant-heading button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+@media (hover: hover) {
+  .mx-assistant-heading button:hover {
+    background: var(--mx-brand-soft);
+  }
+}

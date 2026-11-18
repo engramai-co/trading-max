@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import uuid
 from collections.abc import Iterable, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from heapq import nlargest
@@ -63,6 +65,24 @@ class SnapshotStore:
         self.snapshots_root = self.root / "snapshots"
         self.latest_path = self.root / "latest.json"
 
+    @contextmanager
+    def publication_lock(self):
+        """Order pointer replacements and commits that require the pointer to stay current."""
+        self.root.mkdir(parents=True, exist_ok=True)
+        # The pointer itself is replaced by rename. Lock a stable inode shared
+        # by API, worker and CLI processes, including separate store instances.
+        with (self.root / ".publication.lock").open("a+b") as handle:
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle, fcntl.LOCK_EX)
+            yield
+
     def publish(
         self,
         *,
@@ -101,7 +121,8 @@ class SnapshotStore:
             "manifest_sha256": manifest_hash,
             "published_at": now.isoformat(),
         }
-        _atomic_write(self.latest_path, _canonical_json(pointer) + b"\n")
+        with self.publication_lock():
+            _atomic_write(self.latest_path, _canonical_json(pointer) + b"\n")
         return StoredSnapshot(manifest=manifest, path=final)
 
     def load(self, run_id: str, *, verify_artifacts: bool = True) -> StoredSnapshot:

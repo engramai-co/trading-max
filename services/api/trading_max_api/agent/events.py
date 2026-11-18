@@ -168,6 +168,7 @@ def _public(ticker, data, upcoming):
             "Earnings",
             "业绩公布",
             e.get("instant") or e.get("date"),
+            **({"research_event_id": e["id"]} if e.get("id") else {}),
             status=e.get("status"),
             estimated_eps=_number(e.get("estimatedEps")) if currency else None,
             actual_eps=_number(e.get("actualEps")) if currency else None,
@@ -183,9 +184,9 @@ def _public(ticker, data, upcoming):
             unit="per_share",
         )
     cal = data[EARNINGS].get(ticker, {}).get("calendar", {})
-    days = sorted(
-        {v[:10] for v in (cal.get("Earnings Date") or []) if isinstance(v, str) and _stamp(v)}
-    )
+    raw_days = cal.get("Earnings Date")
+    values = raw_days if isinstance(raw_days, list) else [raw_days]
+    days = sorted({v[:10] for v in values if isinstance(v, str) and _stamp(v)})
     if days and not any(days[0] <= d <= days[-1] for d in recorded if d):
         yield add(
             "earnings",
@@ -233,6 +234,11 @@ def _public(ticker, data, upcoming):
             reference=r.get("accession") or r.get("id"),
         )
     yield from listed_headlines(ticker, _headline_rows(data, ticker))
+
+
+def _reported_dividends(ticker, evidence):
+    """Dividends reported in a publication's financial evidence."""
+    yield from listed_dividends(ticker, {}, {}, evidence)
 
 
 def _headline_rows(data, ticker):
@@ -482,6 +488,50 @@ def _macros(payload, start, end, issues):
     ]
 
 
+def _published_row(snapshot_id, row, local):
+    # Research navigation and earnings coverage metadata are not event identity.
+    row = {k: v for k, v in row.items() if k != "currency_missing"}
+    identity = (
+        ["news", row["reference"]]
+        if row["kind"] == "news"
+        else {key: value for key, value in row.items() if key != "research_event_id"}
+    )
+    return {
+        **row,
+        "evidence_id": _short_id("ev_", [snapshot_id, identity]),
+        "local_date": local.date().isoformat() if local else row["date"],
+        "local_time": local.isoformat() if local else None,
+    }
+
+
+def cited_holding_event(deps, ticker, kind, event_id, research_event_id):
+    """Resolve a publication's exact security event without reading the account calendar."""
+    args = Scoped(scope="broker_total")
+    read = _Read(deps, "upcoming_events", args, args.scope)
+    if kind == "dividend":
+        financials = _indexed(read.read(FINANCIALS)).get(ticker, {}).get("financials", {})
+        rows = _reported_dividends(ticker, financials.get("evidence", {}))
+    else:
+        data = {key: _indexed(read.read(key)) for key in (ANALYST, EARNINGS, FUNDAMENTALS)}
+        # Reported earnings remain citable after they leave the upcoming calendar.
+        data.update({NEWS_KEY: {}, FINANCIALS: {}})
+        rows = _public(ticker, data, upcoming=kind != "earnings")
+    for row in rows:
+        if not row or row["kind"] != kind:
+            continue
+        local = (
+            datetime.fromisoformat(row["instant"]).astimezone(deps.timezone)
+            if row.get("instant")
+            else None
+        )
+        item = _published_row(deps.snapshot_id, row, local)
+        if event_id == item["evidence_id"] or (
+            research_event_id and research_event_id == item.get("research_event_id")
+        ):
+            return item
+    return None
+
+
 def event_data(deps, args, *, upcoming):
     name = "upcoming_events" if upcoming else "news_and_events"
     read = _Read(deps, name, args, args.scope)
@@ -635,14 +685,8 @@ def event_data(deps, args, *, upcoming):
         first, last = window_bounds(day, row.get("end_date"))
         if args.start > last or first > args.end:
             continue
-        identity = ["news", row["reference"]] if row["kind"] == "news" else row
-        evidence = _short_id("ev_", [deps.snapshot_id, identity])
-        rows[evidence] = {
-            **row,
-            "evidence_id": evidence,
-            "local_date": day,
-            "local_time": local.isoformat() if local else None,
-        }
+        item = _published_row(deps.snapshot_id, row, local)
+        rows[item["evidence_id"]] = item
     ordered = sorted(
         rows.values(),
         key=lambda r: (

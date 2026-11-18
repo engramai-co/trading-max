@@ -1,5 +1,6 @@
 "use client";
 
+import { citedEventKind } from "@/lib/cited-calendar-event";
 import { researchShellKey } from "@/lib/dashboard-query";
 import type {
   ResearchLensSnapshot,
@@ -64,6 +65,8 @@ import { previousForIdentity } from "./loading-state";
 import { useRetainedResult } from "./retained-result";
 import { useRouteState } from "./route-state";
 
+import { CitedResearchEvent } from "./research-cited-event";
+
 export type ResearchTab =
   | "overview"
   | "technical"
@@ -99,6 +102,9 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
 
 export function ResearchWorkspace() {
   const { params } = useRouteState();
+  if (params.get("evidence") === "read_research_lens" && citedEventKind(params.get("event"))) {
+    return <CitedResearchEvent />;
+  }
   return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;
 }
 
@@ -668,7 +674,7 @@ function SecurityResearchWorkspace() {
                       )}
                       {displayTab === "technical" && !isFund && !shown?.technicalPrice && <Seasonality data={displayData} revision={revision} />}
                       {displayTab === "valuation" && !isFund && (
-                        <ValuationWorkbench key={ticker} data={displayData} revision={revision} price={price} />
+                        <ValuationWorkbench key={displayData.ticker} publication={shell.data?.status.runId} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "fundamentals" &&
                         (isFund ? (

@@ -613,6 +613,7 @@ class WatchlistMutation(ApiModel):
 
 
 class UserProfile(ApiModel):
+    assistant_enabled: bool = False
     profile_id: str = "local"
     display_name: str
     initials: str

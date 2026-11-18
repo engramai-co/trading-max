@@ -64,7 +64,7 @@ def _fund_identities(lookthrough: JsonObject) -> list[Identity]:
     return [_identity(row.get("ticker"), row.get("isin")) for row in rows if isinstance(row, dict)]
 
 
-def _benchmark_series(raw: JsonObject) -> dict[str, list[JsonObject]]:
+def benchmark_series(raw: JsonObject) -> dict[str, list[JsonObject]]:
     result: dict[str, list[JsonObject]] = {}
     payload = raw.get("benchmark_series")
     if not isinstance(payload, dict):
@@ -280,11 +280,10 @@ def build_dashboard_data(
         lookthrough.setdefault("gicsSubIndustryAllocation", [])
     fund_identities = _fund_identities(lookthrough)
     catalog = CatalogSecurityMaster.default()
-    if fund_identities:
-        with suppress(FileNotFoundError):
-            catalog = CatalogSecurityMaster(
-                SecurityMasterCatalog.model_validate(store.read_json(run_id, SECURITY_MASTER_KEY))
-            )
+    with suppress(FileNotFoundError):
+        catalog = CatalogSecurityMaster(
+            SecurityMasterCatalog.model_validate(store.read_json(run_id, SECURITY_MASTER_KEY))
+        )
     try:
         diluted_cost_raw = store.read_json(run_id, "account/diluted_cost_metrics.json")
     except FileNotFoundError:
@@ -373,7 +372,7 @@ def build_dashboard_data(
                     "dayChangeClosedOn": day_change.closed_on if day_change else None,
                     "isFund": fund is not None,
                     "researchTicker": listing.ticker
-                    if fund is not None and (listing := fund_listing(position, catalog))
+                    if (listing := fund_listing(position, catalog))
                     else None,
                     "fundIsin": (identity[1] or fund[1] or None) if fund is not None else None,
                 }
@@ -564,7 +563,7 @@ def build_dashboard_data(
         "nav": nav_series(nav_a, nav_b, nav_c),
         "intradayNav": intraday_nav_points(intraday_nav, cash_flows),
         "risk": {code: _risk_metrics(synthetic[code]) for code in account_codes},
-        "benchmarkSeries": _benchmark_series(technical_raw),
+        "benchmarkSeries": benchmark_series(technical_raw),
         "technical": technical,
         "options": option_rows(options_raw),
         "valuations": valuations,

@@ -55,7 +55,7 @@ export function AnalystView({
       <EpsTimeline data={data} />
       <EstimateRevisions data={data} />
     </div>
-    <div id="research-events"><EarningsEvents data={data} /></div>
+    <div id="research-events" data-reading-event=""><EarningsEvents data={data} /></div>
     <div id="research-actions"><InstitutionalActions data={data} /></div>
   </ResearchReading>;
 }

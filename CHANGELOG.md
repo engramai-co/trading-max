@@ -4,6 +4,8 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.60.0] - 2026-11-18
+
 ### Added
 - The read-only assistant can rank daily returns, split held-share gains between price and currency, compare dated look-through exposure, and inspect hindsight decision timing, trading habits and event-backed price moves. Key moments include dated dividend records and headlines for the chart’s listing. A headline published after the exchange closes goes with the next session.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
@@ -20,6 +22,36 @@ All notable public Trading Max releases are recorded here.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.
 - The first day of a chart range can qualify as a key moment when the previous session’s close is available.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
+## [1.59.0] - 2026-11-18
+
+### Added
+- With MaxAI enabled, choose Draft under Adjust assumptions to see suggested changes for the selected valuation model. Review each change and its sources, accept or reject it, and see how the scenario value changes. Choose Save model version to keep the result. If the price, exchange rate, share count, statements or parent model change, the desk asks you to review the draft again.
+
+## [1.58.0] - 2026-11-18
+
+### Added
+- Open MaxAI from the workspace bar or press ⌘J. Conversations follow you between pages, and follow-up questions keep the original account, period and security. The sidebar sits beside the page on wide screens and fills the screen on phones. Opening it while MaxAI is off shows where to enable it in Settings.
+- Replies cite the records behind figures, dates and data freshness. You can reopen the original Returns comparison, Broker decision, earnings or dividend record while its publication is retained. Expired records show an unavailable message. Screen readers announce sources, and keyboard users can move through saved conversations.
+- Closing the sidebar or losing the model connection temporarily preserves your unsent message. You can keep typing during a background connection check and send once MaxAI is ready again.
+- Overview has collapsible daily and weekly portfolio briefs covering performance, trades and upcoming events. Scheduled briefs include dated official releases in your display time zone. With background writing enabled, daily briefs are prepared after full updates and the weekly brief after 02:00 on Saturday in London.
+
+## [1.57.2] - 2026-11-18
+
+### Fixed
+- The public release check recognises the upcoming-events API route as source code.
+
+## [1.57.1] - 2026-11-18
+
+### Changed
+- Live and saved valuation readings explain when negative equity value reaches the zero floor. When a listing lacks a verified share unit or depositary receipt ratio, the Research Desk identifies the missing input.
+
+## [1.57.0] - 2026-11-18
+
+### Changed
+- The Research Desk values banks and insurers from common book value and residual income, trading platforms from earnings, and other companies from equity cash flow. Choose the model in the desk and inspect its period, currency and share basis. A missing quarter falls back to an earlier complete year of statements. Cash-flow and earnings models with reported zero revenue show the year-five revenue implied by price.
+- Valuations fall for the eleven cash-burning companies previously modelled from a zero starting margin. Their actual losses now enter the forecast and financing beyond available cash dilutes later returns.
+- Per-share valuations check the quoted symbol and exchange before using a catalog share type. Shell’s New York valuation uses two ordinary shares per ADS, and its London valuation uses one ordinary share.
+- A saved model can serve as the overview baseline. Model upside uses its five-year base value and the batch price. Clearing the baseline restores the automatic reading.
 
 ## [1.56.0] - 2026-11-18
 
