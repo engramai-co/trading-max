@@ -411,15 +411,20 @@ for (const locale of ["en", "zh"] as const) {
     });
   }
 }
-test("off leaves the original page controls and sends no role requests", async ({
+test("off keeps the original page controls and sends no assistant requests", async ({
   page,
 }) => {
   const calls = await setup(page, "en", false, false);
-  const statusRequests:string[]=[];
-  page.on("request",r=>{if (r.url().endsWith("/assistant/status")) statusRequests.push(r.url());});
+  const requests: string[] = [];
+  page.on("request", request => {
+    const { pathname } = new URL(request.url());
+    if (pathname.startsWith("/api/backend/assistant/")) requests.push(pathname);
+  });
   for (const url of [
     "/holdings?view=lookthrough",
+    "/analytics?view=money",
     "/analytics?view=returns",
+    "/analytics?view=risk",
     "/sectors?market=us&sector=2",
     "/sectors?market=global",
     "/health",
@@ -433,7 +438,7 @@ test("off leaves the original page controls and sends no role requests", async (
     ).toHaveCount(0);
   }
   expect(calls).toEqual([]);
-  expect(statusRequests).toEqual([]);
+  expect(requests).toEqual([]);
 });
 
 test("keyboard range survives a failed reading, stop and retry", async ({
