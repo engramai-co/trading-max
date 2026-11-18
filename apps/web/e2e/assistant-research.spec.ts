@@ -98,7 +98,16 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await card.locator(".mx-reading-actions button").first().click();
     const composer = page.locator(".mx-assistant-composer textarea");
     await expect(composer).not.toHaveValue("");
-    await page.route("**/api/backend/assistant/chat*", route => route.fulfill({status:503, json:{code:"assistant_unavailable"}}));
+    await page.route("**/api/backend/assistant/chat*", route => {
+      const chunks = [{type:"start",messageId:"reply"}, {type:"start-step"},
+        {type:"tool-input-available",toolCallId:"moment",toolName:"price_key_moments",input:{}},
+        {type:"tool-output-available",toolCallId:"moment",output:{status:"ok",evidence_id:"ev_moment",snapshot_id:snapshot,
+          data:{ticker:"SYNT",items:[{date:day,move_fraction:0.032} ]}}},
+        {type:"text-start",id:"body"}, {type:"text-delta",id:"body",delta:"{{/data/items/0/move_fraction}} [ev_moment]\n{{attribution}} [inference]"},
+        {type:"text-end",id:"body"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
+      return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+        body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"});
+    });
     const submitted = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
     await composer.press("Enter");
     const request = await submitted;
@@ -107,6 +116,7 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     expect(handoff).toMatchObject({page:"research", role:"key-moment", scope:"broker_total", ticker:"SYNT", lens:"technical",
       snapshotId:snapshot, object:{ticker:"SYNT", published_series_id:series, date:day}});
     expect(handoff.object.start <= day && day <= handoff.object.end).toBe(true);
+    await expect(page.locator(".mx-turn-assistant")).toContainText("3.20%");
     await composer.fill("Which sessions followed?");
     const next = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
     await composer.press("Enter");
@@ -179,4 +189,86 @@ test("delayed earnings cache settles before the first ratings layout", async ({p
   const before = await ratings.boundingBox();
   await expect(page.locator(".mx-earnings-brief")).toBeVisible();
   expect((await ratings.boundingBox())?.y).toBe(before?.y);
+});
+
+test("each crowded daily marker is reachable at its candle", async ({page,isMobile}) => {
+  test.skip(isMobile,"Phones use the event track.");
+  await fixtures(page);
+  const dates = ["2026-01-20","2026-01-21","2026-01-22"];
+  await page.route("**/api/backend/assistant/key-moments/**",route => {
+    const q = new URL(route.request().url()).searchParams;
+    return route.fulfill({json:{data:{published_series_id:series,start:q.get("start"),end:q.get("end"),items:dates.map(date=>({date}))}}});
+  });
+  await page.route("**/api/backend/research/SYNT/prices?**",route => {
+    const fixture = backendFixture(new URL(base + "/prices",route.request().url())) as Record<string,unknown>;
+    const points = Array.from({length:1400},(_,i) => {
+      const date = new Date(Date.UTC(2026,0,30)-(1399-i)*86400000).toISOString().slice(0,10);
+      const close = 100 + (dates.includes(date) ? 0 : Math.sin(i));
+      return {date,close,open:close-.1,high:close+.3,low:close-.3,volume:100};
+    });
+    return route.fulfill({json:{...fixture,points,availableSessions:points.length,snapshotId:snapshot,publishedSeriesId:series,actualInterval:"1d"}});
+  });
+  await page.goto("/research?ticker=SYNT&view=technical&priceRange=ALL&interval=1d");
+  const markers = page.locator(".mx-key-marker");
+  await expect(markers).toHaveCount(3);
+  const xy = await markers.evaluateAll(els => els.map(el => {
+    const r = el.getBoundingClientRect(); return [r.x,r.y];
+  }));
+  expect(Math.max(...xy.map(p=>p[0]))-Math.min(...xy.map(p=>p[0]))).toBeLessThan(18);
+  expect(Math.max(...xy.map(p=>p[1]))-Math.min(...xy.map(p=>p[1]))).toBeGreaterThanOrEqual(56);
+  for (let i=0;i<3;i++) {
+    await markers.nth(i).click({trial:true});
+    await expect(markers.nth(i)).toHaveText(String(i+1));
+  }
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,"desktop-adjacent-moments.png")});
+});
+
+test("a saved index field reopens its exact series and discloses expiry", async ({page},info) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  let expired = false;
+  await page.route("**/api/backend/research/%5ESYNT/citation?**", route => {
+    const query = new URL(route.request().url()).searchParams;
+    expect(Object.fromEntries(query)).toMatchObject({index:"example",series,snapshotId:snapshot,date:day,tool:"price_key_moments"});
+    return expired ? route.fulfill({status:404,json:{detail:"cited-research-unavailable"}}) :
+      route.fulfill({json:{output:{status:"ok",snapshot_id:snapshot,data:{ticker:"^SYNT",items:[{date:day,move_fraction:.041}]}},lines:[]}});
+  });
+  const url = "/research?" + new URLSearchParams({type:"index",index:"example",ticker:"^SYNT",date:day,start:day,end:day,series,snapshotId:snapshot,
+    evidence:"price_key_moments",evidenceId:"ev_saved",field:"/data/items/0/move_fraction"});
+  await page.goto(url);
+  await expect(page.getByText(/4\.10%/)).toBeVisible();
+  expired = true;
+  await page.reload();
+  await expect(page.getByText("Cited research observation unavailable.")).toBeVisible();
+  await expect(page.getByText(/4\.10%/)).toHaveCount(0);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-expired-research.png")});
+});
+
+test("estimate-only brief dates the observation independently of the snapshot", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.route("**/api/backend/assistant/roles/earnings-brief/reading", route => {
+    const evidence = {tool:"research_earnings",evidenceId:"ev_fixture",source:"analysts",
+      arguments:{ticker:"SYNT",snapshotId:snapshot,observedAt:"2026-01-17",lens:"analyst"}};
+    return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({type:"result",
+      reading:{role:"earnings-brief",version:snapshot,snapshotId:snapshot,asOf:"2026-01-30T20:00:00Z",
+        lines:[{en:"Consensus EPS was USD 1.25.",zh:"每股收益一致预期为 USD 1.25。",evidence}]}})+"\n"});
+  });
+  await page.goto("/research?ticker=SYNT&view=analyst");
+  const date = page.locator(".mx-earnings-brief time");
+  await expect(date).toHaveAttribute("datetime","2026-01-17");
+  await expect(date).toContainText("Observed");
+});
+
+test("missing exchange timing stays visible alongside verified chart events", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.route("**/api/backend/assistant/key-moments/**", route => {
+    const params = new URL(route.request().url()).searchParams;
+    return route.fulfill({json:{status:"partial",quality:{issues:["listing_calendar_unavailable"]},
+      data:{published_series_id:series,start:params.get("start"),end:params.get("end"),items:[{date:day}]}}});
+  });
+  await page.goto("/research?ticker=SYNT&view=technical");
+  await expect(page.locator(".mx-track-moment")).toHaveCount(1);
+  await expect(page.getByText("Timed headlines could not be matched to this listing’s trading sessions.")).toBeVisible({timeout:1200});
 });

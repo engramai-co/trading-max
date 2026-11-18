@@ -59,6 +59,8 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
   const { open, close, pageCard, handoff } = useAssistant();
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
+  const [sentScope, setSentScope] = useState<string | null>(null);
+  const routeScope = page + search;
   const input = useRef<HTMLTextAreaElement>(null);
   const historyButton = useRef<HTMLButtonElement>(null);
   const wasHistory = useRef(history);
@@ -99,6 +101,14 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
     setSeen(handoff.sequence);
     setDraft(handoff.draft);
     setContextCard(handoff.card);
+    setSentScope(null);
+  } else if (sentScope !== null && sentScope !== routeScope) {
+    setContextCard(null);
+    setSentScope(null);
+  } else if (sentScope !== null && pageCard?.role === "key-moment" &&
+    (contextCard?.context?.date !== pageCard.context?.date ||
+      contextCard?.context?.published_series_id !== pageCard.context?.published_series_id)) {
+    setContextCard(pageCard);
   }
   const context = chatContext(page, search, timeZone);
   const card: RoleCard = contextCard ?? pageCard ?? {
@@ -115,7 +125,8 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
     setAnnouncement("");
     setDraft("");
     void sendMessage({ text }, { body: { context:turn } });
-    setContextCard(null);
+    setContextCard(submitted.current.card);
+    setSentScope(routeScope);
   }
   const turns = displayTurns(messages);
   return <>

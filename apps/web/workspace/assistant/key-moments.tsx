@@ -1,55 +1,21 @@
 "use client";
+import "./research.css";
 
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import type { ECharts } from "echarts";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import type { components } from "@/lib/api-schema";
+import { Fragment, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import type { MomentWindow, Moments, NumberedMoment } from "./moment-controls";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { readApi } from "../data";
 import { useCopy } from "../foundation";
 import { AnchoredReading, ReadingLines } from "./cards";
-import { useAssistant, usePageRole } from "./context";
+import { usePageRole } from "./context";
 import { useRoleReading } from "./reading";
-import { useResearchOrigin, type PriceObject } from "./research";
+import { placeMarkers } from "./marker-layout";
+import { useResearchOrigin } from "./research";
 
-type CandidateResult = components["schemas"]["Reading_PriceMoments_"];
-type MomentWindow = PriceObject & { start: string; end: string };
-export type NumberedMoment = { date: string; number: number };
-
-export function useKeyMoments(security: PriceObject | null, start: string, end: string, snapshotId?: string) {
-  const { ready } = useAssistant();
-  const enabled = Boolean(ready && security && start && end && snapshotId);
-  const ticker = security?.ticker, seriesId = security?.published_series_id, indexId = security?.index_id;
-  const window = useMemo(() => ticker && seriesId && start && end ?
-    {ticker, published_series_id: seriesId, ...(indexId ? {index_id: indexId} : {}), start, end} : null,
-    [ticker, seriesId, indexId, start, end]);
-  const key = JSON.stringify([snapshotId, window]);
-  const result = useQuery({
-    queryKey: ["research-key-moments", snapshotId, window], enabled, staleTime: Infinity, retry: false,
-    queryFn: ({ signal }) => readApi<CandidateResult>(`/assistant/key-moments/${snapshotId}?` +
-      new URLSearchParams({ ...window!, scope: "broker_total" }), signal),
-  });
-  const [selected, setSelected] = useState<{ date: string; key: string } | null>(null);
-  const button = useRef<HTMLButtonElement | null>(null);
-  const data = enabled ? result.data?.data : null;
-  const items = data && data.published_series_id === security?.published_series_id && data.start === start && data.end === end
-    ? [...data.items].sort((a, b) => a.date.localeCompare(b.date)).slice(0, 3).map(({ date }, i) => ({ date, number: i + 1 })) : [];
-  const current = selected?.key === key ? items.find(m => m.date === selected.date) : undefined;
-  function open(date: string, trigger: HTMLButtonElement) {
-    button.current = trigger;
-    setSelected(current?.date === date ? null : { date, key });
-  }
-  function close() {
-    setSelected(null);
-    if (button.current?.isConnected) button.current.focus({ preventScroll: true });
-  }
-  return { items, current, open, close, window, snapshotId, key };
-}
-
-type Moments = ReturnType<typeof useKeyMoments>;
 type Point = { date: string; category: string; high: number };
-type Mark = NumberedMoment & { x: number; y: number };
+type Mark = NumberedMoment & { x: number; y: number; high: number };
 
 /** ECharts supplies the coordinates after layout, including log scales, zoom and pane resizing. */
 export function MomentOverlay({ moments, chart, points, name }: {
@@ -70,14 +36,15 @@ export function MomentOverlay({ moments, chart, points, name }: {
         instance = chart.current;
         instance.on("rendered", schedule);
       }
-      const next = moments.items.flatMap(m => {
+      const anchors = moments.items.flatMap(m => {
         const point = points.find(p => p.date === m.date);
         if (!point) return [];
         const pixel = instance!.convertToPixel({ gridIndex: 0 }, [point.category, point.high]);
         if (!pixel || !pixel.every(Number.isFinite) || !instance!.containPixel({ gridIndex: 0 }, pixel)) return [];
-        return [{ ...m, x: Math.round(pixel[0]), y: Math.max(11, Math.round(pixel[1]) - 12) }];
+        return [{ ...m, x: Math.round(pixel[0]), high: Math.round(pixel[1]) }];
       });
-      setMarks(old => old.length === next.length && old.every((a, i) => a.date === next[i].date && a.number === next[i].number && a.x === next[i].x && a.y === next[i].y) ? old : next);
+      const next = placeMarkers(anchors, el.clientHeight);
+      setMarks(old => old.length === next.length && old.every((a, i) => a.date === next[i].date && a.number === next[i].number && a.x === next[i].x && a.y === next[i].y && a.high === next[i].high) ? old : next);
     }
     function schedule() { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); }
     const observer = new ResizeObserver(schedule);
@@ -89,10 +56,10 @@ export function MomentOverlay({ moments, chart, points, name }: {
     return () => { cancelAnimationFrame(frame); observer.disconnect(); ready.disconnect(); if (instance && !instance.isDisposed()) instance.off("rendered", schedule); };
   }, [chart, points, moments.items]);
   const active = marks.find(m => m.date === moments.current?.date);
-  return <div className="mx-key-layer" ref={layer}>{marks.map(m => <button key={m.date} type="button"
+  return <div className="mx-key-layer" ref={layer}>{marks.map(m => <Fragment key={m.date}><span aria-hidden="true" className="mx-key-stem" style={{left:m.x, top:Math.min(m.y,m.high), height:Math.abs(m.high-m.y)}}/><button type="button"
     className="mx-key-marker" style={{ left: m.x, top: m.y }} aria-expanded={moments.current?.date === m.date}
     aria-label={t("关键时刻", "Key moment") + " " + m.number + " · " + formatCalendarDate(m.date, locale)}
-    onClick={e => moments.open(m.date, e.currentTarget)}>{m.number}</button>)}
+    onClick={e => moments.open(m.date, e.currentTarget)}>{m.number}</button></Fragment>)}
     {moments.current && moments.window && moments.snapshotId && <div className="mx-key-anchor"
       style={{ left: `clamp(4px, ${(active?.x ?? 180) - 180}px, max(4px, 100% - 364px))`, top: (active?.y ?? 0) + 14 }}>
       <MomentReading key={moments.key + moments.current.date} window={moments.window} date={moments.current.date}

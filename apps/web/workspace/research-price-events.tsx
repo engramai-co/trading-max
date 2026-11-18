@@ -1,6 +1,6 @@
 "use client";
 
-import type { NumberedMoment } from "./assistant/key-moments";
+import type { NumberedMoment } from "./assistant/moment-controls";
 import { Fragment, useId, useState } from "react";
 import type { ResearchPriceSeries } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";

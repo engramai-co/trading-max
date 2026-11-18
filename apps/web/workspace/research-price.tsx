@@ -1,5 +1,5 @@
 "use client";
-import { MomentOverlay, useKeyMoments } from "./assistant/key-moments";
+import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
@@ -744,6 +744,7 @@ export function PriceHistory({
                 : formatDateSpan(points[0].date, points.at(-1)!.date, locale)}
             </span>
           </div>
+          {moments.coverage}
           {showEvents && <PriceEventTrack moments={moments}
             days={full || eventTrack === true ? days : days.filter((day) => day.marker)}
             openEarnings={(event) => update({ view: "analyst", analystView: "events", eventId: event.id, eventDate: event.date, chart: null })}

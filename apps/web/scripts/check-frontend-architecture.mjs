@@ -3,7 +3,7 @@ import { extname, join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 const root = new URL("../", import.meta.url).pathname;
-const deferredStyles = ["app/desktop/desktop.css", "workspace/assistant/readings.css"];
+const deferredStyles = ["app/desktop/desktop.css", "workspace/assistant/readings.css", "workspace/assistant/research.css"];
 const allowedCss = new Set(["app/globals.css", ...deferredStyles]);
 // Authored styles live in ordered surface files that app/globals.css imports.
 const stylesDirectory = "app/styles/";

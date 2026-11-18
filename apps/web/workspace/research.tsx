@@ -1,5 +1,6 @@
 "use client";
-import { EarningsBrief, PositionReading } from "./assistant/research";
+import dynamic from "next/dynamic";
+import { useEarningsBrief, PositionReading } from "./assistant/research-entry";
 
 import { researchShellKey } from "@/lib/dashboard-query";
 import type {
@@ -115,8 +116,11 @@ export function useOverviewPrices(ticker: string, revision: string, enabled: boo
   return useQuery({ ...researchPriceQuery(ticker, revision, "1d", "3M"), enabled });
 }
 
+const CitedResearch = dynamic(() => import("./assistant/cited-research"));
+
 export function ResearchWorkspace() {
   const { params } = useRouteState();
+  if ((params.has("snapshotId") || params.has("unavailable")) && params.has("evidenceId")) return <CitedResearch/>;
   return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;
 }
 
@@ -225,7 +229,8 @@ function SecurityResearchWorkspace() {
     (prices.isPending && !prices.data) || runtime.status === "loading"
   );
   const technicalPrice = tab === "technical" && (isFund || params.get("technicalView") !== "seasonality");
-  const currentLens = !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
+  const earnings = useEarningsBrief(ticker, lensName, lens.data?.runId, Boolean(selected && !isFund && (lensName === "analyst" || lensName === "fundamentals")));
+  const currentLens = !earnings.waiting && !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
     ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
   } : undefined;
   const lastLens = useRetainedResult(currentLens, (a, b) =>
@@ -239,7 +244,7 @@ function SecurityResearchWorkspace() {
   const failure = lens.isError ? lens : shell.isRefetchError ? shell : null;
   const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
   const waitingForResearch = !shown && !technicalPrice && !awaitingHeldFund && (
-    !lens.isError && (overviewWaiting || lens.isPending || fetching)
+    !lens.isError && (earnings.waiting || overviewWaiting || lens.isPending || fetching)
   );
   const exploreHolding = (symbol: string) => {
     const target = instruments.find((i) => i.ticker === symbol);
@@ -694,7 +699,7 @@ function SecurityResearchWorkspace() {
                       {displayTab === "valuation" && !isFund && (
                         <ValuationWorkbench key={ticker} data={displayData} revision={revision} price={price} />
                       )}
-                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && <EarningsBrief ticker={ticker} snapshotId={displayData.runId} lens="fundamentals" />}
+                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && earnings.row}
                       {displayTab === "fundamentals" &&
                         (isFund ? (
                           <FundWorkbench
@@ -727,7 +732,7 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView earningsBrief={tab === "analyst" ? <EarningsBrief ticker={ticker} snapshotId={displayData.runId} lens="analyst" /> : null} key={ticker} data={displayData} revision={revision} price={price} />
+                        <AnalystView earningsBrief={tab === "analyst" ? earnings.row : null} key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
                       {displayTab === "ledger" && (

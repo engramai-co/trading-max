@@ -6,8 +6,8 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { LineSeriesOption } from "echarts";
 import type { ECharts } from "echarts";
-import { MomentOverlay, useKeyMoments } from "./assistant/key-moments";
-import { PositionReading } from "./assistant/research";
+import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
+import { PositionReading } from "./assistant/research-entry";
 import { useRouteState } from "./route-state";
 import { PriceEventTrack } from "./research-price-events";
 import { useRef, useState } from "react";
@@ -247,6 +247,7 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
                 };
               }}
             />
+            {moments.coverage}
             {moments.items.length > 0 && <PriceEventTrack days={[]} moments={moments} />}
             {!preview && (daily || weekly) && <div className="mx-index-research-risk">
               <RiskChart dates={dates} values={drawdown} title={t("回撤", "Drawdown")} signed />

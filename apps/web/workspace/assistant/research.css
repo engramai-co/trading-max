@@ -1,0 +1,66 @@
+.mx-earnings-brief time {
+  margin-inline-start: 8px;
+  color: var(--mx-muted);
+  font-size: 13px;
+  font-weight: 400;
+}
+.mx-key-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.mx-key-marker, .mx-moment-number {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  box-sizing: border-box;
+  padding: 0;
+  border: 1px solid var(--mx-brand);
+  border-radius: 50%;
+  background: var(--mx-surface);
+  color: var(--mx-brand);
+  font: 600 12px/1 var(--font-sans, sans-serif);
+  font-variant-numeric: tabular-nums;
+}
+.mx-key-stem {
+  position: absolute;
+  width: 1px;
+  background: var(--mx-muted);
+}
+.mx-key-marker {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+.mx-key-marker::after {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+.mx-key-marker[aria-expanded="true"], .mx-track-moment[aria-expanded="true"] .mx-moment-number {
+  color: var(--mx-nav-active-ink);
+  background: var(--mx-brand);
+}
+.mx-event-track .mx-moment-number {
+  justify-self: center;
+}
+.mx-key-anchor {
+  position: absolute;
+  width: min(360px, 100%);
+  z-index: 5;
+  pointer-events: auto;
+}
+.mx-plot:has(.mx-key-anchor) {
+  overflow: visible;
+  z-index: 6;
+}
+.mx-key-anchor .mx-anchored-reading {
+  width: 100%;
+}
+@media (max-width: 767px) {
+  .mx-key-marker, .mx-key-stem {
+    display: none;
+  }
+}
