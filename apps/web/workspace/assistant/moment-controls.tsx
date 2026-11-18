@@ -26,7 +26,7 @@ export function useKeyMoments(security: PriceObject | null, start: string, end: 
     [ticker, seriesId, indexId, start, end]);
   const key = JSON.stringify([snapshotId, window]);
   const result = useQuery({
-    queryKey: ["research-key-moments", snapshotId, window], enabled, staleTime: Infinity, retry: false,
+    queryKey: ["assistant-reading", "research-key-moments", snapshotId, window], enabled, staleTime: Infinity, retry: false,
     queryFn: ({ signal }) => readApi<CandidateResult>(`/assistant/key-moments/${snapshotId}?` +
       new URLSearchParams({ ...window!, scope: "broker_total" }), signal),
   });

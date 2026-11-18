@@ -211,6 +211,32 @@ test("withdrawing consent removes the earnings reservation", async ({page}) => {
   await expect.poll(() => ratings.evaluate(el => el.parentElement?.firstElementChild === el)).toBe(true);
 });
 
+for (const lens of ["analyst","technical"]) {
+  test("a settings change cancels the pending research read in " + lens, async ({page}) => {
+    const endpoint = lens === "analyst" ? "/roles/earnings-brief/reading" : "/assistant/key-moments/";
+    await fixtures(page);
+    await page.addInitScript(part => {
+      const fetchOriginal = window.fetch;
+      window.fetch = (input, init) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        if (url.includes(part)) {
+          const signal = init?.signal ?? (input instanceof Request ? input.signal : null);
+          signal?.addEventListener("abort", () => { document.body.dataset.testReadCancelled = "true"; }, {once:true});
+        }
+        return fetchOriginal(input, init);
+      };
+    }, endpoint);
+    await page.route(url => url.pathname.includes(endpoint), () => {});
+    const pending = page.waitForRequest(req => req.url().includes(endpoint));
+    await page.goto("/research?ticker=SYNT&view=" + lens);
+    await pending;
+    await page.route("**/api/backend/profile", route => route.fulfill({json:{assistantEnabled:false}}));
+    await page.evaluate(() => window.dispatchEvent(new StorageEvent("storage",{key:"trading_max-assistant-settings-revision"})));
+    await expect(page.locator("body")).toHaveAttribute("data-test-read-cancelled","true",{timeout:2000});
+    await expect(page.locator(".mx-earnings-brief, .mx-track-moment")).toHaveCount(0);
+  });
+}
+
 test("a later earnings publication preserves the ratings position", async ({page}) => {
   const emptyResponse = page.waitForResponse(response => response.url().endsWith("/earnings-brief/reading"));
   let empty = true;

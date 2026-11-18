@@ -24,7 +24,7 @@ export function useEarningsBrief(ticker: string, lens: string, snapshotId: strin
   const phone = useMediaQuery("(max-width: 767px)");
   const enabled = Boolean(eligible && assistant.ready && snapshotId);
   const query = useQuery({
-    queryKey: ["research-cached-earnings", ticker, snapshotId], enabled, retry: false, staleTime: 60_000,
+    queryKey: ["assistant-reading", "research-cached-earnings", ticker, snapshotId], enabled, retry: false, staleTime: 60_000,
     refetchInterval: enabled ? 30_000 : false, refetchIntervalInBackground: false,
     queryFn: async ({signal}) => {
       const { cachedEarnings, EarningsBrief } = await import("./research");
@@ -47,7 +47,7 @@ export function useEarningsBrief(ticker: string, lens: string, snapshotId: strin
   const reserved = phone ? 144 : 72;
   const row = data?.reading ? <data.EarningsBrief ticker={ticker} lens={lens} reading={data.reading} minHeight={top ? reserved : undefined}/> : null;
   return {
-    before: top && eligible && (enabled || assistant.pending && profile.data?.assistantEnabled) ? row ?? <div aria-hidden="true" style={{minHeight:reserved}}/> : null,
+    before: top && eligible && !assistant.suspended && (enabled || assistant.pending && profile.data?.assistantEnabled) ? row ?? <div aria-hidden="true" style={{minHeight:reserved}}/> : null,
     after: top ? null : row,
   };
 }
