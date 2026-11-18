@@ -7570,6 +7570,137 @@
         ],
         "type": "string"
       },
+      "EventQuality": {
+        "properties": {
+          "issues": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          }
+        },
+        "required": [
+          "issues"
+        ],
+        "title": "EventQuality",
+        "type": "object"
+      },
+      "EventRefreshFailure": {
+        "properties": {
+          "checkedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkedat"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "EventRefreshFailure",
+        "type": "object"
+      },
+      "EventRefreshHealth": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "checkedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkedat"
+          },
+          "failedSources": {
+            "title": "Failedsources",
+            "type": "integer"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/EventRefreshFailure"
+            },
+            "title": "Failures",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "news",
+              "macro"
+            ],
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "checkedAt",
+          "asOf",
+          "failedSources"
+        ],
+        "title": "EventRefreshHealth",
+        "type": "object"
+      },
+      "EventSource": {
+        "properties": {
+          "as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "As Of"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "as_of"
+        ],
+        "title": "EventSource",
+        "type": "object"
+      },
       "EvidenceRef": {
         "additionalProperties": false,
         "properties": {
@@ -10199,6 +10330,13 @@
               }
             ],
             "title": "Bootstraperror"
+          },
+          "eventRefreshes": {
+            "items": {
+              "$ref": "#/components/schemas/EventRefreshHealth"
+            },
+            "title": "Eventrefreshes",
+            "type": "array"
           },
           "latestRunId": {
             "anyOf": [
@@ -23887,6 +24025,349 @@
         "title": "USFundPeer",
         "type": "object"
       },
+      "UpcomingItem": {
+        "properties": {
+          "actual_eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Eps"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "estimated_eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Eps"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "fiscal_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Period"
+          },
+          "instant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instant"
+          },
+          "kind": {
+            "enum": [
+              "macro",
+              "earnings",
+              "ex_dividend",
+              "dividend_pay",
+              "holiday",
+              "half_day"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Url"
+          },
+          "local_date": {
+            "title": "Local Date",
+            "type": "string"
+          },
+          "local_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Time"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "source_as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source As Of"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
+          "time_source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Source Url"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "title_en": {
+            "title": "Title En",
+            "type": "string"
+          },
+          "title_zh": {
+            "title": "Title Zh",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "kind",
+          "evidence_id",
+          "date",
+          "local_date",
+          "local_time",
+          "publisher",
+          "title_en",
+          "title_zh"
+        ],
+        "title": "UpcomingItem",
+        "type": "object"
+      },
+      "UpcomingPage": {
+        "properties": {
+          "end": {
+            "title": "End",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/UpcomingItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "start": {
+            "title": "Start",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "total_items": {
+            "title": "Total Items",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total_items",
+          "next_cursor",
+          "timezone",
+          "start",
+          "end"
+        ],
+        "title": "UpcomingPage",
+        "type": "object"
+      },
+      "UpcomingReading": {
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/UpcomingPage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/EventQuality"
+          },
+          "scope": {
+            "title": "Scope",
+            "type": "string"
+          },
+          "snapshot_id": {
+            "title": "Snapshot Id",
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/EventSource"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "partial",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "status",
+          "evidence_id",
+          "snapshot_id",
+          "scope",
+          "sources",
+          "quality"
+        ],
+        "title": "UpcomingReading",
+        "type": "object"
+      },
       "UserProfile": {
         "properties": {
           "accountLabels": {
@@ -30477,6 +30958,142 @@
           }
         },
         "summary": "Snapshot Artifact"
+      }
+    },
+    "/v1/snapshots/{run_id}/events/upcoming": {
+      "get": {
+        "operationId": "upcoming_v1_snapshots__run_id__events_upcoming_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "run_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[A-Za-z0-9_-]{1,100}$",
+              "title": "Run Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Maximum rows to return.",
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "description": "Maximum rows to return.",
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Use the preceding next_cursor.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "description": "Use the preceding next_cursor.",
+              "maximum": 10000000,
+              "minimum": 0,
+              "title": "Cursor",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+            "in": "query",
+            "name": "scope",
+            "required": true,
+            "schema": {
+              "description": "invest, isa, Trading 212 investment accounts combined (broker_total), imported CFD (cfd), or household including the CFD cash-equity proxy.",
+              "enum": [
+                "invest",
+                "isa",
+                "broker_total",
+                "household",
+                "cfd"
+              ],
+              "title": "Scope",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "title": "Start",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+              "title": "End",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "ticker",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Ticker"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ticker"
+            }
+          },
+          {
+            "in": "query",
+            "name": "timezone",
+            "required": false,
+            "schema": {
+              "default": "Europe/London",
+              "maxLength": 128,
+              "title": "Timezone",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpcomingReading"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upcoming",
+        "tags": [
+          "events"
+        ]
       }
     },
     "/v1/snapshots/{run_id}/insights/daily-returns": {

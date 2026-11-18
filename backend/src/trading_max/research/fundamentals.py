@@ -276,6 +276,7 @@ def _default_analyst(ticker: str) -> Mapping[str, Any]:
         result["earningsEvents"] = earnings_events(
             _frame_to_records(proxy.get_earnings_dates(limit=40)),
             timezone=info.get("exchangeTimezoneName"),
+            observed_at=result["asOf"],
         )
     except Exception as exc:
         result["eventStatus"] = {"state": "missing", "reason": type(exc).__name__}

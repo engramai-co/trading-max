@@ -15,6 +15,8 @@ from typing import Any
 
 import pandas as pd
 
+from trading_max.research.listing import broker_listing
+
 from .fx import FxResolver, normalized_currency, resolve_fx
 
 IDENTITY_COLUMNS = (
@@ -268,6 +270,7 @@ def transaction_marker_rows(
 
     ticker_aliases: dict[str, str] = {}
     isin_aliases: dict[str, str] = {}
+    listings_by_isin: dict[str, set[str]] = {}
     for position in known_positions:
         canonical = _normalized_security_value(position.get("ticker"))
         if not canonical:
@@ -279,6 +282,9 @@ def transaction_marker_rows(
         isin = _normalized_security_value(position.get("isin"))
         if isin:
             isin_aliases[isin] = canonical
+            listing = broker_listing(position.get("broker_ticker"))
+            if listing:
+                listings_by_isin.setdefault(isin, set()).add(listing)
 
     grouped: dict[tuple[str, str], dict[str, Any]] = {}
     for account, transactions in account_transactions.items():
@@ -289,7 +295,14 @@ def transaction_marker_rows(
                 continue
             isin = _normalized_security_value(row.get("ISIN"))
             raw_ticker = _normalized_security_value(row.get("Ticker"))
-            ticker = isin_aliases.get(isin) or ticker_aliases.get(raw_ticker) or raw_ticker
+            explicit_listing = broker_listing(str(row.get("Ticker")))
+            ticker = (
+                isin_aliases.get(isin)
+                or (ticker_aliases.get(raw_ticker) if not isin else None)
+                or raw_ticker
+            )
+            if explicit_listing:
+                ticker = explicit_listing.split(":", 1)[1]
             if not ticker:
                 continue
             timestamp = row.get("Time")
@@ -320,9 +333,12 @@ def transaction_marker_rows(
             marker[f"{side}_quantity"] += quantity_value
             total = row.get("TotalN")
             currency = _currency(row.get("Currency (Total)")) or None
+            listings = listings_by_isin.get(isin, set())
+            listing = explicit_listing or (next(iter(listings)) if len(listings) == 1 else None)
             marker["fills"].append(
                 {
                     "at": timestamp.isoformat(),
+                    **({"listing": listing} if listing else {}),
                     "side": side,
                     "account": str(account).strip().lower(),
                     "quantity": quantity_value,
