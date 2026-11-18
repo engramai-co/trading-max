@@ -963,20 +963,25 @@ async function openDraftBeforeStatusCheck(page: Page) {
   return {panel, draft, send:panel.getByRole("button", {name:"Send"})};
 }
 
-async function holdPassiveStatus(page: Page) {
-  let release!: (status: number) => void;
-  const held = new Promise<number>(resolve => { release = resolve; });
+type StatusOutcome = 200 | 503 | "network error" | "provider_not_configured";
+
+async function holdPassiveStatus(page: Page, time = "2026-03-01T12:00:31Z") {
+  let release!: (status: StatusOutcome) => void;
+  const held = new Promise<StatusOutcome>(resolve => { release = resolve; });
   await page.route("**/api/backend/assistant/status", async route => {
     const status = await held;
+    if (status === "network error") return route.abort("failed");
+    if (status === "provider_not_configured") return route.fulfill({json:{ready:false, code:status}});
     await route.fulfill({status, json:status === 200 ? {ready:true,code:null} : {detail:"Temporarily unavailable"}});
   }, {times:1});
-  await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
+  await page.clock.setFixedTime(new Date(time));
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect(page.locator("#mx-assistant-panel").getByText("Checking connection…")).toBeVisible();
   return release;
 }
 
-test("a passive status failure preserves the draft until readiness recovers", async ({page}) => {
+for (const failure of [503, "network error", "provider_not_configured"] as const) test(
+  "a passive status failure preserves the draft until readiness recovers (" + failure + ")", async ({page}) => {
   const {panel, draft, send} = await openDraftBeforeStatusCheck(page);
   const posts: string[] = [];
   page.on("request", request => {
@@ -986,10 +991,11 @@ test("a passive status failure preserves the draft until readiness recovers", as
   await expect(send).toBeDisabled();
   await page.keyboard.type("s through recovery");
   await expect(draft).toHaveValue("Continues through recovery");
-  fail(503);
+  fail(failure);
   await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
   await expect(draft).toBeHidden();
-  const retry = await holdPassiveStatus(page);
+  if (failure === "provider_not_configured") await expect(panel.getByText("Check the model connection in Settings.")).toBeVisible();
+  const retry = await holdPassiveStatus(page, "2026-03-01T12:01:02Z");
   // Exercise the actual submission handler even if the composer is hidden during confirmation.
   await panel.locator("form").evaluateAll(forms => forms.forEach(form => (form as HTMLFormElement).requestSubmit()));
   expect(posts).toEqual([]);

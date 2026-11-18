@@ -61,9 +61,10 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     enabled: checkStatus, staleTime: statusFreshFor, retry: false,
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
-  // A failed status read leaves the previous approval unconfirmed. Keep the local
-  // thread hidden until a fresh answer arrives, just as for a pending consent signal.
-  const suspended = waitingForConsent || (checkStatus && status.isError);
+  const consentDenied = optedIn === false || status.data?.code === "assistant_disabled" || status.data?.code === "assistant_consent_required";
+  // Keep the local draft hidden through an outage or an unresolved profile.
+  // Only a confirmed loss of consent discards it.
+  const suspended = !ready && (waitingForConsent || !consentDenied);
   const confirmConsent = useCallback(async () => {
     const revision = ++nextRevision.current;
     setExternalRevision(revision);
@@ -125,7 +126,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && !consentDenied, pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }
