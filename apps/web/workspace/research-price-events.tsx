@@ -12,6 +12,28 @@ type Marker = NonNullable<ResearchPriceSeries["tradeMarkers"]>[number];
 type Event = { date: string; id: string; kind: "split" | "dividend" | "earnings"; value?: unknown; currency?: string };
 export type PriceEventDay = { date: string; marker?: Marker; company: Event[]; count: number };
 
+function archivedTrades(marker: Marker) {
+  return (["buy", "sell"] as const).flatMap((side) => {
+    const fills = marker.fills?.filter((fill) => fill.side === side) ?? [];
+    const orders = marker[`${side}Orders`] - fills.length;
+    if (orders <= 0) return [];
+    const itemisedQuantity = fills.reduce((sum, fill) => sum + fill.quantity, 0);
+    const quantity = Number((marker[`${side}Quantity`] - itemisedQuantity).toFixed(8));
+    return [{ side, orders, quantity }];
+  });
+}
+
+export function ArchivedTradeRows({ marker, date }: { marker: Marker; date: string }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  return archivedTrades(marker).map(({ side, quantity, orders }) => <li key={side}>
+    <time dateTime={date}>{formatCalendarDate(date, locale)}</time>
+    <span>{side === "buy" ? t("买入", "Buy") : t("卖出", "Sell")} {number(quantity, 8)} {quantity === 1 ? t("股", "share") : t("股", "shares")}</span>
+    <span>{orders} {orders === 1 ? t("笔", "order") : t("笔", "orders")}</span>
+    <span>{t("旧档案未记录原币金额", "Original amount unavailable in this archive")}</span>
+  </li>);
+}
+
 export function priceEventDays(markers: Marker[], corporate: Record<string, unknown>[], earnings: Record<string, unknown>[]) {
   const days = new Map<string, PriceEventDay>();
   const get = (date: string) => {
@@ -60,27 +82,23 @@ export function PriceEventTrack({ days, openEarnings }: {
           const date = formatCalendarDate(entry.date, locale);
           const label = entry.marker?.kind ?? eventLabel(entry.company[0].kind);
           return <button key={entry.date} type="button" aria-controls={id} aria-expanded={entry === day}
-            aria-label={`${date} · ${label}${entry.count > 1 ? ` (+${entry.count - 1})` : ""}`}
             onClick={() => setSelected(entry === day ? undefined : entry.date)}>
-            <time dateTime={entry.date}>{date}</time>
+            <time dateTime={entry.date}>{date}</time>{" "}
             <strong>{label}{entry.count > 1 ? ` +${entry.count - 1}` : ""}</strong>
           </button>;
         })}
       </div>
       <div id={id} hidden={!day}>
         {day && <ul className="mx-price-event-records">
-          {day.marker?.fills?.length ? day.marker.fills.map((fill, i) => (
+          {day.marker?.fills?.map((fill, i) => (
             <li key={i}>
               <span>{fill.side === "buy" ? t("买入", "Buy") : t("卖出", "Sell")} · {fill.account.toUpperCase()}</span>
               <time dateTime={fill.at}>{formatDate(fill.at, locale, { dateStyle: "medium", timeStyle: "short", timeZone })}</time>
               <span>{number(fill.quantity, 4)} {number(fill.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}</span>
               <strong>{fill.amount == null || !fill.currency ? "—" : `${formatNumber(fill.amount, locale, { maximumFractionDigits: 4 })} ${fill.currency}`}</strong>
             </li>
-          )) : day.marker && <li>
-            <time dateTime={day.date}>{formatCalendarDate(day.date, locale)}</time>
-            <span>{t("买入", "Buy")} {number(day.marker.buyQuantity, 4)} · {t("卖出", "Sell")} {number(day.marker.sellQuantity, 4)}</span>
-            <span>{t("旧档案未记录原币金额", "Original amount unavailable in this archive")}</span>
-          </li>}
+          ))}
+          {day.marker && <ArchivedTradeRows marker={day.marker} date={day.date} />}
           {day.company.map((event, i) => <li key={i}>
             <span>{eventLabel(event.kind)}</span>
             <time dateTime={event.date}>{formatCalendarDate(event.date, locale)}</time>

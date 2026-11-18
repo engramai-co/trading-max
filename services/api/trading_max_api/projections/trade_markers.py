@@ -3,6 +3,7 @@
 from collections import defaultdict
 from collections.abc import Callable
 
+from trading_max.analytics.trade_prices import average_fill_price
 from trading_max.research.listing import LONDON, broker_listing
 
 from ..dashboard_models import ResearchTradeMarker
@@ -16,34 +17,56 @@ def broker_symbol(instrument: str | None) -> str | None:
     return symbol + ".L" if market == LONDON else symbol
 
 
-def _selected_fills(row: dict, ticker: str, selected: list[dict]) -> ResearchTradeMarker:
-    resolved = {**row, "ticker": ticker}
-    if len(selected) != len(row["fills"]):
-        # Some publications combined several listings in a daily summary. A side's
-        # average price is usable only when all its fills belong to this listing.
-        resolved.update(fills=selected, accounts=sorted({f["account"] for f in selected}))
-        for side in ("buy", "sell"):
-            side_fills = [f for f in selected if f["side"] == side]
-            resolved[f"{side}_orders"] = len(side_fills)
-            resolved[f"{side}_quantity"] = round(sum(f["quantity"] for f in side_fills), 8)
-            if not side_fills or len(side_fills) != row[f"{side}_orders"]:
-                resolved[f"{side}_average_price"] = None
-        sides = frozenset(f["side"] for f in selected)
-        resolved["kind"] = {frozenset({"buy"}): "B", frozenset({"sell"}): "S"}.get(sides, "T")
-    return ResearchTradeMarker.model_validate(resolved)
+def _daily_marker(
+    ticker: str, day: str, currency: str, fills: list[dict], aggregates: list[dict]
+) -> ResearchTradeMarker:
+    # Aggregates predate itemised fills. Preserve their known totals and account sets.
+    fills.sort(key=lambda fill: fill["at"])
+    accounts = {f["account"] for f in fills}
+    aggregate_sides = []
+    for row in aggregates:
+        accounts.update(row["accounts"])
+        aggregate_sides.append((row["accounts"], row["kind"]))
+    totals = {}
+    for side in ("buy", "sell"):
+        selected = [f for f in fills if f["side"] == side]
+        archived_orders = sum(row[f"{side}_orders"] for row in aggregates)
+        totals[f"{side}_orders"] = len(selected) + archived_orders
+        totals[f"{side}_quantity"] = round(
+            sum(f["quantity"] for f in selected)
+            + sum(row[f"{side}_quantity"] for row in aggregates),
+            8,
+        )
+        totals[f"{side}_average_price"] = (
+            None if archived_orders else average_fill_price(selected, side, currency)
+        )
+    return ResearchTradeMarker(
+        ticker=ticker,
+        date=day,
+        kind="T"
+        if totals["buy_orders"] and totals["sell_orders"]
+        else "B"
+        if totals["buy_orders"]
+        else "S",
+        accounts=sorted(accounts),
+        fills=fills,
+        aggregate_sides=aggregate_sides,
+        **totals,
+    )
 
 
 def chart_trade_markers(
-    payload: dict, ticker: str, legacy_listings: Callable[[], dict[str, set[str]]]
+    payload: dict, ticker: str, currency: str, published_listings: Callable[[], dict[str, set[str]]]
 ) -> tuple[list[ResearchTradeMarker], dict[str, set[str]] | None]:
     rows = payload.get("rows")
     if not isinstance(rows, list):
         return [], None
     legacy = payload.get("calculation_version") in {None, "trade-markers-v1", "trade-markers-v2"}
-    labels = {ticker, ticker.removesuffix(".L")}
+    labels = {ticker, ticker.partition(".")[0]}
 
     aliases = None
-    matches = []
+    daily_fills = defaultdict(list)
+    daily_aggregates = defaultdict(list)
     unresolved = defaultdict(set)
     for row in rows:
         if not isinstance(row, dict):
@@ -52,7 +75,7 @@ def chart_trade_markers(
         fills = row.get("fills") or []
         if legacy and not any("broker_ticker" in fill for fill in fills):
             if aliases is None:
-                aliases = legacy_listings()
+                aliases = published_listings()
             # US export codes retain their venue when uppercased; a case-erased
             # London code needs a matching broker instrument in this snapshot.
             explicit = broker_symbol(row.get("ticker"))
@@ -60,18 +83,30 @@ def chart_trade_markers(
             if explicit in aliases:
                 candidates = candidates | {explicit}
             if candidates == {ticker}:
-                matches.append(ResearchTradeMarker.model_validate({**row, "ticker": ticker}))
+                if fills:
+                    daily_fills[row["date"]].extend(fills)
+                else:
+                    daily_aggregates[row["date"]].append(row)
             elif ticker in candidates:
                 unresolved[row["date"]].update(row.get("accounts") or [])
             continue
-        selected = []
         for fill in fills:
             instrument = fill.get("broker_ticker")
             symbol = broker_symbol(instrument)
+            fill_label = str(instrument or "").strip().upper()
+            if symbol is None and fill_label in labels:
+                # A CSV may record only a ticker. Resolve the fill's own text, never
+                # the daily marker label (which can follow an ISIN across listings).
+                if aliases is None:
+                    aliases = published_listings()
+                if aliases.get(fill_label) == {ticker}:
+                    symbol = ticker
             if symbol == ticker:
-                selected.append(fill)
-            elif symbol is None and (label in labels or str(instrument or "").upper() in labels):
+                daily_fills[row["date"]].append(fill)
+            elif symbol is None and (label in labels or fill_label in labels):
                 unresolved[row["date"]].add(fill["account"])
-        if selected:
-            matches.append(_selected_fills(row, ticker, selected))
-    return matches, dict(unresolved)
+    markers = [
+        _daily_marker(ticker, day, currency, daily_fills[day], daily_aggregates[day])
+        for day in sorted(daily_fills.keys() | daily_aggregates.keys())
+    ]
+    return markers, dict(unresolved)

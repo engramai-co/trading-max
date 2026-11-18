@@ -810,6 +810,10 @@ class ResearchTradeFill(ApiModel):
 
 
 class ResearchTradeMarker(ApiModel):
+    # Each unitemised legacy row can prove its side for the full set of accounts it covers.
+    aggregate_sides: list[tuple[set[str], Literal["B", "S", "T"]]] = Field(
+        default_factory=list, exclude=True
+    )
     ticker: str
     date: str
     kind: Literal["B", "S", "T"]

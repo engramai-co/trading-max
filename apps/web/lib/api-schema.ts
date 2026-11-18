@@ -6174,8 +6174,12 @@ export interface components {
             date: string;
             /** Kind */
             kind: string;
+            /** Publication Date */
+            publication_date?: string | null;
             /** Reference */
             reference: string;
+            /** Role */
+            role?: "lead" | null;
         };
         /** NavPoint */
         NavPoint: {
