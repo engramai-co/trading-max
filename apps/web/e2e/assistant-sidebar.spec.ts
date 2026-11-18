@@ -10,6 +10,7 @@ function line(section: string, source: string, tool: string, zh: string, en: str
 async function fixtures(page: Page, ready = true) {
   await page.route("**/api/backend/**", route => {
     const url = new URL(route.request().url());
+    if (url.pathname.endsWith("/profile")) return route.fulfill({json:{...backendFixture(url) as object,assistantEnabled:ready}});
     if (url.pathname.endsWith("/assistant/status")) return route.fulfill({json:{ ready, code: ready ? null : "assistant_disabled" }});
     if (url.pathname.endsWith("/reading")) return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result",reading:{
       role: url.pathname.includes("weekly") ? "weekly" : "daily", version:"synthetic", asOf:"2026-01-30T20:00:00Z",
@@ -42,7 +43,7 @@ async function fixtures(page: Page, ready = true) {
   await page.route("**/api/logos/**", route => route.abort());
 }
 test.skip(!process.env.PLAYWRIGHT_BASE_URL?.startsWith("http://127.0.0.1:"), "Requires an isolated web build.");
-test("disabled entry explains consent and links to Settings", async ({ page }) => {
+test("disabled entry explains consent and links to Settings", async ({ page }, info) => {
   await fixtures(page, false);
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
@@ -50,6 +51,7 @@ test("disabled entry explains consent and links to Settings", async ({ page }) =
   await expect(panel.getByRole("link")).toHaveAttribute("href", "/settings?tab=assistant");
   await expect(panel).toContainText("设置");
   await expect(page.locator(".mx-digest")).toHaveCount(0);
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-disabled-settings-hint.png")});
   await page.keyboard.press("Escape");
   await expect(panel).toBeHidden();
 });
@@ -372,4 +374,43 @@ test("earnings citations reopen the exact retained row and disclose expiry", asy
   await page.reload();
   await expect(target).toContainText("Cited publication or event unavailable");
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-earnings.png")});
+});
+
+test("disabled Overview matches main's cold request and script counts", async ({browser}, info) => {
+  const main = process.env.PLAYWRIGHT_MAIN_BASE_URL;
+  test.skip(!main, "Supply the matching main build for the cold-load comparison.");
+  async function cold(origin: string, hint: boolean) {
+    const page = await browser.newPage({viewport:info.project.use.viewport, serviceWorkers:"block"});
+    const requests: string[] = [], scripts: string[] = [];
+    const sizes: Promise<number>[] = [];
+    await fixtures(page, false);
+    page.on("request", request => {
+      const {pathname} = new URL(request.url());
+      if (pathname.startsWith("/api/")) requests.push(pathname);
+    });
+    page.on("response", response => {
+      if (response.ok() && response.request().resourceType() === "script") {
+        scripts.push(new URL(response.url()).pathname);
+        sizes.push(response.body().then(body => body.length));
+      }
+    });
+    await page.goto(origin);
+    await expect(page.locator(".mx-overview-totals")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const coldScripts = scripts.length;
+    if (hint) {
+      await page.locator("[data-assistant-trigger]").click();
+      await expect(page.locator("#mx-assistant-panel a")).toBeVisible();
+      await page.waitForLoadState("networkidle");
+      expect.soft(scripts.slice(coldScripts), "scripts downloaded by the Settings hint").toEqual([]);
+    }
+    const scriptBytes = (await Promise.all(sizes)).reduce((total,n) => total+n,0);
+    await page.close();
+    return {requests:requests.sort(), scripts:coldScripts, scriptBytes};
+  }
+  const baseline = await cold(main!, false);
+  const actual = await cold(process.env.PLAYWRIGHT_BASE_URL!, true);
+  await info.attach("cold-load-counts",{body:JSON.stringify({baseline,actual}),contentType:"application/json"});
+  expect.soft(actual.requests).toEqual(baseline.requests);
+  expect(actual.scripts).toBeLessThanOrEqual(baseline.scripts);
 });

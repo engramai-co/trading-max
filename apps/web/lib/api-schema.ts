@@ -9035,6 +9035,11 @@ export interface components {
             accountLabels?: {
                 [key: string]: string;
             };
+            /**
+             * Assistantenabled
+             * @default false
+             */
+            assistantEnabled: boolean;
             /** Avatarcolor */
             avatarColor: string;
             /**

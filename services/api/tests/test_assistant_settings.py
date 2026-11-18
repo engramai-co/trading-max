@@ -230,6 +230,19 @@ def _enable(repository: SettingsRepository, route: str):
     )
 
 
+def test_workspace_profile_reports_current_opt_in(tmp_path: Path):
+    repository = SettingsRepository(tmp_path)
+    try:
+        assert not repository.get_profile().assistant_enabled
+        _register(repository, "openai", "gpt-5.6-luna")
+        _enable(repository, "openai/gpt-5.6-luna")
+        assert repository.get_profile().assistant_enabled
+        repository.save_assistant_preferences(AssistantPreferencesUpdate(enabled=False))
+        assert not repository.get_profile().assistant_enabled
+    finally:
+        repository.close()
+
+
 def test_resolver_has_no_environment_fallback_and_reports_missing_or_unavailable_credentials(
     tmp_path: Path,
 ) -> None:
