@@ -1,6 +1,8 @@
 """Read dated evidence from a single publication with account-scoped trades."""
 
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from itertools import chain
 from typing import Annotated
 from urllib.parse import quote
 
@@ -198,8 +200,7 @@ def _public(ticker, data, upcoming):
             unit="per_share",
             basis=r.get("basis"),
         )
-    headlines = data[NEWS_KEY].get(ticker, {}).get("items", [])
-    for row in [*headlines, *_rows(evidence.get("news"))]:
+    for row in _headline_rows(data, ticker):
         url_value = web_url(row.get("url"))
         if not url_value or not (row.get("publisher") or row.get("source")):
             continue
@@ -213,6 +214,42 @@ def _public(ticker, data, upcoming):
             provider_id=row.get("id") if row.get("id") != url_value else None,
             role="lead",
         )
+
+
+def _headline_rows(data, ticker):
+    headlines = data[NEWS_KEY].get(ticker, {}).get("items", [])
+    evidence = data[FINANCIALS].get(ticker, {}).get("financials", {}).get("evidence", {})
+    return chain(headlines, _rows(evidence.get("news")))
+
+
+def _article_references(data):
+    """Give each article one reference across all scopes in this publication."""
+    by_url = {}
+    aliases = defaultdict(set)
+    for ticker in data[NEWS_KEY].keys() | data[FINANCIALS].keys():
+        for row in _headline_rows(data, ticker):
+            url, article_id = row.get("url"), row.get("id")
+            if not url or not article_id or article_id == url:
+                continue
+            other = by_url.setdefault(url, article_id)
+            if article_id != other:
+                aliases[article_id].add(other)
+                aliases[other].add(article_id)
+
+    # One canonical URL may appear under several IDs, each with its own syndicated links.
+    canonical = {}
+    for article_id in aliases:
+        if article_id in canonical:
+            continue
+        group = set()
+        pending = [article_id]
+        while pending:
+            item = pending.pop()
+            if item not in group:
+                group.add(item)
+                pending.extend(aliases[item] - group)
+        canonical.update(dict.fromkeys(group, min(group)))
+    return {url: canonical.get(article_id, article_id) for url, article_id in by_url.items()}
 
 
 def _market_days(names, start, end, issues):
@@ -259,14 +296,14 @@ def _listing(row):
     return _listing_symbol(broker_listing(row.get("broker_ticker"))) or row["ticker"].upper()
 
 
-def _trade_symbol(read, args, issues, listing, ticker, raw):
+def _trade_symbol(read, args, issues, listing, ticker, raw, *, marker_ticker=None):
     resolved = _listing_symbol(listing)
     if not args.ticker:
         return resolved or ticker
     if resolved:
         return resolved if resolved == args.ticker else None
     stamp = _stamp(raw)
-    if stamp and ticker in {args.ticker, args.ticker.removesuffix(".L")}:
+    if stamp and {ticker, marker_ticker} & {args.ticker, args.ticker.removesuffix(".L")}:
         instant = datetime.fromisoformat(stamp)
         day = (
             instant.astimezone(read.deps.timezone).date().isoformat()
@@ -289,8 +326,17 @@ def _trades(read, args, codes, issues, keys):
             ticker = row.get("ticker")
             scoped_fills = (f for f in _rows(row.get("fills")) if f.get("account") in accounts)
             for index, fill in enumerate(scoped_fills):
-                listing = fill.get("listing")
-                fill_ticker = _trade_symbol(read, args, issues, listing, ticker, fill.get("at"))
+                instrument = fill.get("broker_ticker")
+                listing = broker_listing(instrument)
+                fill_ticker = _trade_symbol(
+                    read,
+                    args,
+                    issues,
+                    listing,
+                    instrument.upper() if instrument else ticker,
+                    fill.get("at"),
+                    marker_ticker=ticker,
+                )
                 if fill_ticker:
                     yield _entry(
                         "own_trade",
@@ -361,23 +407,27 @@ def _trades(read, args, codes, issues, keys):
 
 def _macros(payload, start, end, issues):
     events = {}
+    revisions = {}
     for name, source in payload.get("sources", {}).items():
         if source.get("error"):
             issues.append(f"{name}_refresh_failed")
+        as_of = source.get("as_of")
+        stamp = _stamp(as_of)
+        observed = datetime.fromisoformat(stamp) if stamp else None
+        if observed is None or observed.tzinfo is None:
+            observed = datetime.min.replace(tzinfo=UTC)
         for row in _rows(source.get("events")):
             result = {
                 **row,
                 "kind": "macro",
                 "ticker": None,
                 "reference": row["id"],
-                "source_as_of": source.get("as_of"),
+                "source_as_of": as_of,
             }
-            # Cancelled entries on ONS's separate index override the upcoming listing.
-            old = events.get(row["id"])
-            if not old or (row["status"] == "cancelled", result["source_as_of"] or "") > (
-                old["status"] == "cancelled",
-                old["source_as_of"] or "",
-            ):
+            # When both indexes were read together, an explicit withdrawal wins.
+            revision = (observed, row["status"] == "cancelled")
+            if row["id"] not in revisions or revision > revisions[row["id"]]:
+                revisions[row["id"]] = revision
                 events[row["id"]] = result
     joint_days = {
         e["date"]
@@ -495,10 +545,10 @@ def event_data(deps, args, *, upcoming):
     # A single syndicated article can appear in several held security feeds.
     # Retain those associations while citing the article once.
     articles = [row for row in entries if row and row["kind"] == "news"]
-    provider_ids = {r["source_url"]: r["provider_id"] for r in articles if r["provider_id"]}
+    references = _article_references(data) if articles else {}
     headlines = {}
     for row in articles:
-        identity = row["provider_id"] or provider_ids.get(row["source_url"]) or row["source_url"]
+        identity = references.get(row["source_url"], row["source_url"])
         story = headlines.setdefault(identity, {**row, "reference": identity, "tickers": []})
         if row["ticker"] not in story["tickers"]:
             story["tickers"].append(row["ticker"])

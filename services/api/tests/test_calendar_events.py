@@ -135,13 +135,15 @@ def publish(store, headline="Synthetic release", *, eps_currency="USD", markers=
                             "account": "invest",
                             "side": "buy",
                             "quantity": 1,
+                            # Older markers could derive this from a current position's ISIN.
+                            "listing": "LSE:ALFA",
                         },
                         {
                             "at": "2026-11-25T14:00:00Z",
                             "account": "isa",
                             "side": "sell",
                             "quantity": 2,
-                            "listing": "LSE:ALFA",
+                            "broker_ticker": "ALFAl_EQ",
                         },
                     ],
                 }
@@ -212,6 +214,10 @@ def test_news_and_trades_are_snapshot_and_account_bound(tmp_path):
     )
     (fill,) = [r for r in rows if r["kind"] == "own_trade"]
     assert fill["account"] == "invest" and fill["quantity"] == 1
+    assert fill["listing_verified"] is False
+    legacy_exact = events.event_data(deps, args("invest", ticker="ALFA.L"), upcoming=False)
+    assert all(r["kind"] != "own_trade" for r in legacy_exact["data"]["items"])
+    assert "trade_listing_unresolved" in legacy_exact["quality"]["issues"]
     earnings = next(r for r in rows if r["kind"] == "earnings")
     assert earnings["fiscal_period"] == "2026-09-30"
     assert earnings["source_as_of"] == "2026-11-26T00:00:00Z"
@@ -412,3 +418,163 @@ def test_cfd_symbol_without_a_venue_stays_in_account_chronology(tmp_path):
     assert [r["ticker"] for r in whole["data"]["items"]] == ["ALFA"]
     exact = events.event_data(deps, args("cfd", ticker="ALFA"), upcoming=False)
     assert exact["data"]["items"] == [] and "trade_listing_unresolved" in exact["quality"]["issues"]
+
+
+def test_analyst_lens_retains_eps_with_unpublished_currency(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import yfinance as yf
+    from trading_max.research.analyst_evidence import earnings_events
+    from trading_max.research.fundamentals import _frame_to_records
+
+    html = """<table>
+      <thead><tr><th>Symbol</th><th>Company</th><th>Earnings Date</th>
+      <th>EPS Estimate</th><th>Reported EPS</th></tr></thead>
+      <tbody><tr><td>ALFA</td><td>Synthetic</td><td>November 25, 2026 at 4 PM EST</td>
+      <td>1.2</td><td>1.1</td></tr></tbody></table>"""
+    proxy = yf.Ticker("ALFA")
+    monkeypatch.setattr(
+        type(proxy._data), "cache_get", lambda self, url: SimpleNamespace(text=html)
+    )
+    observations = earnings_events(
+        _frame_to_records(proxy.get_earnings_dates(limit=40)), timezone="America/New_York"
+    )
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = app.state.store
+    analyst = {"earningsEvents": observations, "reportingCurrency": "USD"}
+    ref = store.immutable_artifacts.put_json(
+        key=events.ANALYST, payload={"rows": [{"ticker": "ALFA", "analyst": analyst}]}
+    )
+    store.publish_typed(scope="research", source="synthetic", artifacts=[ref])
+    with TestClient(app) as client:
+        lens = client.get("/v1/research/ALFA/lens/analyst")
+        assert lens.status_code == 200, lens.text
+        (reported,) = lens.json()["analyst"]["earningsEvents"]
+    assert (reported["actualEps"], reported["estimatedEps"], reported["currency"]) == (
+        1.1,
+        1.2,
+        None,
+    )
+    result = events.event_data(
+        AssistantDepsFactory(store).for_run(), args(ticker="ALFA"), upcoming=False
+    )
+    (reading,) = result["data"]["items"]
+    assert reading["status"] == "reported"
+    assert reading["actual_eps"] is reading["estimated_eps"] is reading["currency"] is None
+    assert "earnings_currency_unavailable" in result["quality"]["issues"]
+
+
+def test_fill_sharing_isin_with_a_different_listing_keeps_its_source_ticker(tmp_path):
+    import pandas as pd
+    from trading_max.analytics.ledger import transaction_marker_rows
+
+    isin = "GB0000000001"
+    tx = pd.DataFrame(
+        [
+            {
+                "Action": "Market buy",
+                "Time": pd.Timestamp("2026-11-25T10:00:00Z"),
+                "ISIN": isin,
+                "Ticker": ticker,
+                "Shares": 1,
+                "PriceN": 10,
+                "TotalN": 10,
+                "Currency (Total)": "GBP",
+            }
+            for ticker in ("ABCEU", "ABCl_EQ")
+        ]
+    )
+    markers = transaction_marker_rows(
+        {"isa": tx}, [{"ticker": "ABC", "broker_ticker": "ABCl_EQ", "isin": isin}]
+    )
+    store = ArtifactStore(tmp_path)
+    publish(store, markers=markers)
+    deps = AssistantDepsFactory(store).for_run()
+    exact = events.event_data(deps, args("isa", ticker="ABC.L"), upcoming=False)
+    assert [r["ticker"] for r in exact["data"]["items"] if r["kind"] == "own_trade"] == ["ABC.L"]
+    assert "trade_listing_unresolved" in exact["quality"]["issues"]
+    account = events.event_data(deps, args("isa"), upcoming=False)
+    assert sorted(
+        (r["ticker"], r["listing_verified"])
+        for r in account["data"]["items"]
+        if r["kind"] == "own_trade"
+    ) == [("ABC.L", True), ("ABCEU", False)]
+
+
+@pytest.mark.parametrize("order", ["active-first", "cancelled-first"])
+def test_macro_uses_last_success_before_cancellation_tiebreak(order):
+    row = {"id": "release", "publisher": "ONS", "title_en": "Retail", "date": "2026-11-25"}
+    active = {"as_of": "2026-11-18T12:00:00+00:00", "events": [{**row, "status": "provisional"}]}
+    cancelled = {
+        "as_of": "2026-11-18T12:30:00+01:00",
+        "checked_at": "2026-11-19T12:00:00Z",
+        "error": "Timeout",
+        "events": [{**row, "status": "cancelled"}],
+    }
+    sources = {"ons-upcoming": active, "ons-cancelled": cancelled}
+    if order == "cancelled-first":
+        sources = dict(reversed(sources.items()))
+
+    def status():
+        issues = []
+        (result,) = events._macros({"sources": sources}, row["date"], row["date"], issues)
+        assert issues == ["ons-cancelled_refresh_failed"]
+        return result["status"]
+
+    assert status() == "provisional"
+    cancelled["as_of"] = "2026-11-18T12:00:00Z"
+    assert status() == "cancelled"
+    cancelled["as_of"] = None
+    assert status() == "provisional"
+
+
+def test_news_merges_shared_urls_and_provider_ids_across_holdings(tmp_path):
+    store = ArtifactStore(tmp_path)
+
+    def headline(article, path):
+        return {
+            "id": article,
+            "url": f"https://example.org/{path}",
+            "title": "Synthetic release",
+            "publisher": "Fixture Press",
+            "date": "2026-11-25",
+        }
+
+    feeds = {
+        "ALFA": [headline("a", "original")],
+        "BETA": [headline("b", "syndicated"), headline("unrelated", "other")],
+        "GAMMA": [headline("b", "original")],
+    }
+    data = {
+        events.NEWS_KEY: {
+            "securities": {t: {"items": rows, "as_of": "2026-11-26"} for t, rows in feeds.items()}
+        },
+        "account/broker_snapshot_metrics.json": {
+            "accounts": {"A": {"positions": [{"ticker": t} for t in feeds]}}
+        },
+    }
+    store.publish_typed(
+        scope="research",
+        source="synthetic",
+        artifacts=[
+            store.immutable_artifacts.put_json(key=key, payload=value)
+            for key, value in data.items()
+        ],
+    )
+    result = events.event_data(
+        AssistantDepsFactory(store).for_run(), args("invest"), upcoming=False
+    )
+    stories = [r for r in result["data"]["items"] if r["kind"] == "news"]
+    assert sorted(r["tickers"] for r in stories) == [["ALFA", "BETA", "GAMMA"], ["BETA"]]
+    assert len({r["evidence_id"] for r in stories}) == 2
+    evidence = next(r["evidence_id"] for r in stories if "ALFA" in r["tickers"])
+    for ticker in feeds:
+        scoped = events.event_data(
+            AssistantDepsFactory(store).for_run(), args(ticker=ticker), upcoming=False
+        )
+        (same,) = [
+            r
+            for r in scoped["data"]["items"]
+            if r["kind"] == "news" and r["source_url"] != "https://example.org/other"
+        ]
+        assert same["evidence_id"] == evidence and same["tickers"] == [ticker]
