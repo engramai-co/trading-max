@@ -274,3 +274,16 @@ test("missing exchange timing stays visible alongside verified chart events", as
   await expect(page.locator(".mx-track-moment")).toHaveCount(1);
   await expect(page.getByText("Timed headlines could not be matched to this listing’s trading sessions.")).toBeVisible({timeout:1200});
 });
+
+test("unavailable listing prices disclose the listing and withhold its moment controls", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  const calls:string[] = [];
+  page.on("request", request => {if (request.url().includes("/assistant/key-moments/")) calls.push(request.url());});
+  await page.route("**/api/backend/research/SYNT/prices?**",route =>
+    route.fulfill({status:404,json:{detail:"security-price-history-unavailable"}}));
+  await page.goto("/research?ticker=SYNT&view=technical");
+  await expect(page.getByText("Price history is unavailable for this listing.")).toBeVisible({timeout:4000});
+  await expect(page.locator(".mx-track-moment, .mx-key-marker")).toHaveCount(0);
+  expect(calls).toEqual([]);
+});

@@ -16,7 +16,7 @@ import { comparisonFigures, fixed, readingTone, signedPercent, telling, volume }
 import { DataBasis } from "./reading-card";
 import { candleSeries, candleValues, previousCloses, priceGapConnectors, priceReading, priceSlots } from "./research-price-candles";
 import { PriceEventTrack, priceEventDays } from "./research-price-events";
-import { compactTick, number, object, objects, percent, str } from "@/workspace/data";
+import { ApiError, compactTick, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
 import { EvidenceTable } from "./evidence-table";
 import {
@@ -87,11 +87,13 @@ export function PriceHistory({
   const fullButton = useRef<HTMLButtonElement>(null);
   const [inlineHeight, setInlineHeight] = useState(550);
   const query = useQuery(researchPriceQuery(ticker, runId, interval));
-  const current = query.data && !query.isPlaceholderData
+  const missingListing = query.error instanceof ApiError && query.error.status === 404 &&
+    query.error.message === "security-price-history-unavailable";
+  const current = !missingListing && query.data && !query.isPlaceholderData
     ? { data: query.data, ticker, interval, range, updatedAt: query.dataUpdatedAt } : undefined;
   const retained = useRetainedResult(current, (a, b) => a.data === b.data &&
     a.ticker === b.ticker && a.interval === b.interval && a.range === b.range && a.updatedAt === b.updatedAt);
-  const shown = previousForIdentity(retained, retained?.ticker, ticker);
+  const shown = missingListing ? undefined : previousForIdentity(retained, retained?.ticker, ticker);
   const priceData = shown?.data;
   const displayedRange = shown?.range ?? range;
   const displayedInterval = shown?.interval ?? interval;
@@ -364,8 +366,10 @@ export function PriceHistory({
       {tools}
       {query.isPending && !priceData ? (
         <Pending shape="chart" height={300} label={t("正在读取价格记录…", "Loading price records…")} />
+      ) : missingListing ? (
+        <Empty title={t("此上市地暂无价格记录。", "Price history is unavailable for this listing.")} />
       ) : query.isError && !priceData ? (
-        <QueryError retry={query.refetch} />
+        <QueryError error={query.error} retry={query.refetch} />
       ) : !priceData || !points.length ? (
         <Empty
           title={t("当前区间没有行情", "No price history in this range")}
