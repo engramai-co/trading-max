@@ -74,6 +74,8 @@ class ChatContext(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    role: str | None = Field(default=None, max_length=64)
+    object: dict[str, Any] | None = Field(default=None, max_length=20)
     page: PageHint | None = None
     scope: AccountScope | None = None
     range: PageRange | None = None
@@ -131,8 +133,18 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
             if value
         }
     try:
-        return ChatContext.model_validate(raw)
-    except ValidationError:
+        context = ChatContext.model_validate(raw)
+        if context.role:
+            from .roles import role_registry
+
+            role = role_registry().get(context.role)
+            if not role:
+                raise ValueError("unknown role")
+            context.object = role.context_schema.model_validate(context.object or {}).model_dump(mode="json")
+        elif context.object:
+            raise ValueError("object requires a role")
+        return context
+    except (ValueError, ValidationError):
         raise HTTPException(status_code=422, detail={"code": "assistant_context_invalid"}) from None
 
 
@@ -257,7 +269,7 @@ class AssistantService:
                     period=context.range,
                     ticker=context.ticker,
                     lens=context.lens,
-                ),
+                ) + (f"\nContinue the {context.role} reading for this object: {context.object}." if context.role else ""),
                 usage_limits=USAGE_LIMITS,
                 timeout=RUN_TIMEOUT_SECONDS,
                 conversation_store=self.store,

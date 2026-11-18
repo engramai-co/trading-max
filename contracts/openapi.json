@@ -15604,6 +15604,41 @@
         "title": "ReadinessResponse",
         "type": "object"
       },
+      "ReadingRequest": {
+        "properties": {
+          "cachedOnly": {
+            "default": false,
+            "title": "Cachedonly",
+            "type": "boolean"
+          },
+          "context": {
+            "additionalProperties": true,
+            "maxProperties": 20,
+            "title": "Context",
+            "type": "object"
+          },
+          "latest": {
+            "default": false,
+            "title": "Latest",
+            "type": "boolean"
+          },
+          "snapshotId": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "pattern": "^[a-zA-Z0-9_-]+$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshotid"
+          }
+        },
+        "title": "ReadingRequest",
+        "type": "object"
+      },
       "RefreshAttention": {
         "properties": {
           "checkedAt": {
@@ -24463,6 +24498,67 @@
           }
         },
         "summary": "Assistant Conversation",
+        "tags": [
+          "assistant"
+        ]
+      }
+    },
+    "/v1/assistant/roles/{role_id}/reading": {
+      "post": {
+        "operationId": "role_reading_v1_assistant_roles__role_id__reading_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "role_id",
+            "required": true,
+            "schema": {
+              "title": "Role Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Newline-delimited reading progress and final evidence-linked result."
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Role Reading",
         "tags": [
           "assistant"
         ]

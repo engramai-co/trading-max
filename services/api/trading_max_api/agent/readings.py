@@ -1,0 +1,159 @@
+"""Generate bounded, evidence-linked readings and cache only complete results."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
+from typing import Literal
+
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent, UsageLimits
+from trading_max.infrastructure import SqliteDatabase
+
+from .deps import AssistantDeps
+from .roles import PageRole, RoleContext, RoleReading, RoleTools
+from .runtime import error_code
+from .service import RUN_TIMEOUT_SECONDS, AssistantService, AssistantUnavailable
+
+DAILY_BRIEF_LIMIT = 12
+
+
+class Selection(BaseModel):
+    # The model selects the most relevant observations. Each figure, wording and
+    # source travel together and cannot be rewritten into a different claim.
+    indices: list[int] = Field(min_length=2, max_length=4)
+
+
+class ReadingEvent(BaseModel):
+    type: Literal["reading", "result", "error", "empty"]
+    reading: RoleReading | None = None
+    code: str | None = None
+
+    def encode(self) -> str:
+        return self.model_dump_json(by_alias=True, exclude_none=True) + "\n"
+
+
+@dataclass
+class ReadingService:
+    assistant: AssistantService
+    database: SqliteDatabase
+    active: set[tuple[str, str, str]] = field(default_factory=set)
+
+    def cached(
+        self, role: PageRole, context: RoleContext, version: str | None
+    ) -> RoleReading | None:
+        key = (role.id, role.object_key(context))
+        with self.database.read() as db:
+            if version is None:
+                row = db.execute(
+                    "SELECT reading_json FROM assistant_readings WHERE role=? AND object_key=? ORDER BY as_of DESC LIMIT 1",
+                    key,
+                ).fetchone()
+            else:
+                row = db.execute(
+                    "SELECT reading_json FROM assistant_readings WHERE role=? AND object_key=? AND version=?",
+                    (*key, version),
+                ).fetchone()
+        return RoleReading.model_validate_json(row[0]) if row else None
+
+    def reserve(self, day: str, role: PageRole, context: RoleContext, slot: str) -> bool:
+        with self.database.transaction(immediate=True) as db:
+            db.execute(
+                "DELETE FROM assistant_brief_attempts WHERE day < date(?, '-14 days')", (day,)
+            )
+            count = db.execute(
+                "SELECT COUNT(*) FROM assistant_brief_attempts WHERE day=?", (day,)
+            ).fetchone()[0]
+            if count >= DAILY_BRIEF_LIMIT:
+                return False
+            return bool(
+                db.execute(
+                    "INSERT OR IGNORE INTO assistant_brief_attempts VALUES (?, ?, ?, ?)",
+                    (day, role.id, role.object_key(context), slot),
+                ).rowcount
+            )
+
+    async def events(
+        self,
+        role: PageRole,
+        context: RoleContext,
+        deps: AssistantDeps,
+        *,
+        cached_only: bool = False,
+        latest: bool = False,
+    ) -> AsyncIterator[ReadingEvent]:
+        status = await self.assistant.status()
+        if not status["ready"]:
+            yield ReadingEvent(type="error", code=status.get("code") or "assistant_unavailable")
+            return
+        saved = self.cached(role, context, None if latest else deps.snapshot_id)
+        if saved:
+            yield ReadingEvent(type="result", reading=saved)
+            return
+        if cached_only or not deps.manifest:
+            yield ReadingEvent(type="empty")
+            return
+        version = deps.manifest.run_id
+        key = (role.id, role.object_key(context), version)
+        if key in self.active or len(self.active) + len(self.assistant._active) >= 2:
+            yield ReadingEvent(type="error", code="assistant_busy")
+            return
+        self.active.add(key)
+        try:
+            yield ReadingEvent(type="reading")
+            facts = await asyncio.to_thread(
+                role.facts, RoleTools(deps, role.allowed_tools), context
+            )
+            if len(facts) < 2:
+                yield ReadingEvent(type="empty")
+                return
+            bound = await self.assistant.bind_model()
+            agent = Agent(output_type=Selection, instructions=role.prompt, retries=1)
+            prompt = json.dumps(
+                [
+                    {"index": i, "section": fact.section, "observation": fact.en}
+                    for i, fact in enumerate(facts)
+                ],
+                ensure_ascii=False,
+            )
+            async with bound.model:
+                result = await agent.run(
+                    prompt,
+                    model=bound.model,
+                    model_settings=bound.settings,
+                    usage_limits=UsageLimits(request_limit=2),
+                    timeout=RUN_TIMEOUT_SECONDS,
+                )
+            indices = result.output.indices
+            if len(set(indices)) != len(indices) or any(i < 0 or i >= len(facts) for i in indices):
+                yield ReadingEvent(type="error", code="provider_invalid_output")
+                return
+            sections = {fact.section for fact in facts if fact.section}
+            lines = [facts[i] for i in indices]
+            if len(sections) <= 4 and not sections.issubset({line.section for line in lines}):
+                yield ReadingEvent(type="error", code="provider_invalid_output")
+                return
+            reading = RoleReading(
+                role=role.id, version=version, as_of=deps.manifest.created_at, lines=lines
+            )
+            if not (await self.assistant.status())["ready"]:
+                yield ReadingEvent(type="error", code="assistant_unavailable")
+                return
+            with self.database.transaction(immediate=True) as db:
+                db.execute(
+                    "INSERT OR REPLACE INTO assistant_readings VALUES (?, ?, ?, ?, ?)",
+                    (*key, reading.as_of.isoformat(), reading.model_dump_json(by_alias=True)),
+                )
+                db.execute(
+                    "DELETE FROM assistant_readings WHERE role=? AND object_key=? AND version NOT IN (SELECT version FROM assistant_readings WHERE role=? AND object_key=? ORDER BY as_of DESC LIMIT 16)",
+                    (*key[:2], *key[:2]),
+                )
+            yield ReadingEvent(type="result", reading=reading)
+        except AssistantUnavailable as exc:
+            yield ReadingEvent(type="error", code=exc.code)
+        except Exception as exc:
+            yield ReadingEvent(type="error", code=error_code(exc))
+        finally:
+            self.active.discard(key)

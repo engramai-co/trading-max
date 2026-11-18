@@ -228,6 +228,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/assistant/roles/{role_id}/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Role Reading */
+        post: operations["role_reading_v1_assistant_roles__role_id__reading_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/assistant/status": {
         parameters: {
             query?: never;
@@ -6373,6 +6390,25 @@ export interface components {
                 [key: string]: unknown;
             } | null;
         };
+        /** ReadingRequest */
+        ReadingRequest: {
+            /**
+             * Cachedonly
+             * @default false
+             */
+            cachedOnly: boolean;
+            /** Context */
+            context?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Latest
+             * @default false
+             */
+            latest: boolean;
+            /** Snapshotid */
+            snapshotId?: string | null;
+        };
         /** RefreshAttention */
         RefreshAttention: {
             /**
@@ -9732,6 +9768,41 @@ export interface operations {
         responses: {
             /** @description Successful Response */
             204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    role_reading_v1_assistant_roles__role_id__reading_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path: {
+                role_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReadingRequest"];
+            };
+        };
+        responses: {
+            /** @description Newline-delimited reading progress and final evidence-linked result. */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
