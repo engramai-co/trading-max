@@ -829,6 +829,8 @@ class BenchmarkPricePoint(ApiModel):
 
 
 class ResearchPriceSeries(ApiModel):
+    # The route ticker can be an alias. Event readers join the actual published bar row.
+    published_bar_ticker: str | None = Field(default=None, exclude=True)
     published_series_id: str | None = None
     ticker: str
     requested_interval: str = "1d"

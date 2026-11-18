@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from itertools import pairwise
 from typing import Annotated, Literal
@@ -19,7 +20,7 @@ from ..dashboard import _benchmark_series
 from ..projections.day_change import measures_broker_observation, within_trading_days
 from ..projections.nav import nav_series
 from ..projections.values import csv_rows
-from ..research import _canonical_ticker, _find, published_price_series_id
+from ..research import published_price_series_id
 from .deps import AssistantDeps
 from .tools import (
     ANALYST,
@@ -466,9 +467,14 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
-    analyst = _mapped(
-        (_find(_rows((read.read(ANALYST) or {}).get("rows")), args.ticker) or {}).get("analyst")
-    )
+    def listing_rows(key):
+        return (
+            row
+            for row in _rows((read.read(key) or {}).get("rows"))
+            if str(row.get("ticker") or "").strip().upper() == args.ticker
+        )
+
+    analyst = _mapped(next(listing_rows(ANALYST), {}).get("analyst"))
     if analyst:
         keys.append(ANALYST)
     if not isinstance(analyst.get("earningsEvents"), list):
@@ -486,11 +492,7 @@ def dated_events(
         if not stamp and epoch is not None and 0 <= epoch < 253402300800:
             stamp = datetime.fromtimestamp(epoch, UTC).date().isoformat()
         add(stamp, "rating_change", row.get("Firm") or row.get("firm"))
-    financials = _mapped(
-        (_find(_rows((read.read(FINANCIALS) or {}).get("rows")), args.ticker) or {}).get(
-            "financials"
-        )
-    )
+    financials = _mapped(next(listing_rows(FINANCIALS), {}).get("financials"))
     filing_evidence = _mapped(financials.get("evidence"))
     filing_rows = filing_evidence.get("filings")
     if isinstance(filing_rows, list):
@@ -509,7 +511,7 @@ def dated_events(
     elif scopes & {"invest", "isa"}:
         issues.append("trade_markers_unavailable")
     for row in _rows(marker_rows):
-        if _canonical_ticker(str(row.get("ticker", ""))) != _canonical_ticker(args.ticker):
+        if str(row.get("ticker") or "").strip().upper() != args.ticker:
             continue
         # Mixed-account aggregate markers cannot stand in for an individual account's trade.
         fills = [f for f in _rows(row.get("fills")) if f.get("account") in scopes]
@@ -595,13 +597,14 @@ def moments_data(deps: AssistantDeps, args: MomentsArgs) -> Json:
         ),
         None,
     )
-    if not key or not series.points:
+    if not key or not series.points or not series.published_bar_ticker:
         return read.missing("published_daily_bars_unavailable")
+    read = replace(read, evidence_context=series_id)
     if args.published_series_id and args.published_series_id != series_id:
         return read.missing("displayed_price_series_mismatch", keys=[key])
     bars = [p.model_dump(mode="json") for p in series.points]
     events, keys, issues = dated_events(
-        read, args.model_copy(update={"ticker": series.ticker}), codes
+        read, args.model_copy(update={"ticker": series.published_bar_ticker}), codes
     )
     events.extend(news_events(read, series.ticker))
     keys.append(NEWS_KEY)
