@@ -99,6 +99,20 @@ on the page. The background writer excludes intraday updates and deduplicates
 material revisions. Prices, event dates, EPS units, currencies and estimates
 come from deterministic tools.
 
+In the Chinese interface, Overview's Business panel offers ✦ 中文摘要 for the
+provider's English company description. Opening it restates two to four of the
+description's sentences in Chinese, one line per sentence, each cited as 披露
+(Disclosure). The sentences come from the pinned publication. A line is rejected
+when a quantity differs from its sentence in value, scale, sign, percentage or
+currency, when it adds a Latin-script word absent from the sentence, or when it
+is not substantive Chinese; the panel then offers Retry. Following a 披露
+citation opens the full description at the cited sentence, highlights it and
+moves focus there. On phones the reading sheet closes first. A citation whose
+sentence is no longer in the current description says so in place. The summary
+is kept per description, so later publications that repeat the same text reuse
+it. In English, for funds, without a description or with MaxAI off, Overview is
+unchanged.
+
 ## Listing venue resolution
 
 Use `trading_max.research.venues.resolve_venue(requested, *claims)` wherever

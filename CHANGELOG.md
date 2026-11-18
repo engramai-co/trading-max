@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.1] - 2026-11-18
+
+### Added
+- With MaxAI enabled in the Chinese interface, the Business panel on Research Overview offers a Chinese summary (中文摘要) of the company's English description. Each line restates one of its sentences and cites it as a disclosure, without adding anything; its quantities must match the sentence exactly. Following a citation opens the description at that sentence. The summary is written only when opened and kept until the description changes.
+
 ## [1.67.0] - 2026-11-18
 
 ### Added

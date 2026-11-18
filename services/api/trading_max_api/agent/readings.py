@@ -31,6 +31,45 @@ class SingleSelection(BaseModel):
     indices: list[Literal[0]] = Field(min_length=1, max_length=1)
 
 
+class Restatement(BaseModel):
+    index: int
+    zh: str = Field(max_length=200)
+
+
+class Restatements(BaseModel):
+    # Each line restates one numbered source sentence. Its English text stays the source's own.
+    items: list[Restatement] = Field(min_length=2, max_length=4)
+
+
+class SingleRestatement(BaseModel):
+    items: list[Restatement] = Field(min_length=1, max_length=1)
+
+
+def _chosen(role: PageRole, facts: list[ReadingLine], output) -> list[ReadingLine] | None:
+    """The tool-backed lines an output names, or None when any of them is invalid."""
+    if role.restate is None:
+        indices, texts = list(output.indices), []
+    else:
+        indices, texts = [item.index for item in output.items], [item.zh for item in output.items]
+    if len(set(indices)) != len(indices) or any(i < 0 or i >= len(facts) for i in indices):
+        return None
+    if role.restate is None:
+        return [facts[i] for i in indices]
+    if not all(role.restate(text, facts[i]) for i, text in zip(indices, texts, strict=True)):
+        return None
+    return [
+        facts[i].model_copy(update={"zh": text.strip()})
+        for i, text in zip(indices, texts, strict=True)
+    ]
+
+
+def _settled(role: PageRole, partial):
+    """Drop the entry that may still be receiving digits or characters."""
+    if role.restate is None:
+        return Selection.model_construct(indices=partial.indices[:-1])
+    return Restatements.model_construct(items=partial.items[:-1])
+
+
 class ReadingEvent(BaseModel):
     type: Literal["reading", "lines", "result", "error", "empty"]
     reading: RoleReading | None = None
@@ -206,18 +245,21 @@ class ReadingService:
             if not permitted() or not reserve():
                 yield ReadingEvent(type="error", code="assistant_disabled")
                 return
+            if role.restate is None:
+                output_type = SingleSelection if single else Selection
+                items = [
+                    {"index": i, "section": fact.section, "observation": fact.en}
+                    for i, fact in enumerate(facts)
+                ]
+            else:
+                output_type = SingleRestatement if single else Restatements
+                items = [{"index": i, "sentence": fact.en} for i, fact in enumerate(facts)]
             agent = Agent(
-                output_type=SingleSelection if single else Selection,
+                output_type=output_type,
                 instructions=role.prompt,
                 retries=1,
             )
-            prompt = json.dumps(
-                [
-                    {"index": i, "section": fact.section, "observation": fact.en}
-                    for i, fact in enumerate(facts)
-                ],
-                ensure_ascii=False,
-            )
+            prompt = json.dumps(items, ensure_ascii=False)
             async with (
                 bound.model,
                 agent.run_stream(
@@ -229,27 +271,21 @@ class ReadingService:
                     timeout=RUN_TIMEOUT_SECONDS,
                 ) as stream,
             ):
-                emitted: list[int] = []
+                emitted: list[ReadingLine] = []
                 async for partial in stream.stream_output():
-                    # The last integer may still be receiving digits. Only send
-                    # complete, valid tool-backed lines to the browser.
-                    complete = partial.indices[:-1]
-                    if (
-                        complete != emitted
-                        and len(set(complete)) == len(complete)
-                        and all(0 <= i < len(facts) for i in complete)
-                    ):
+                    # Only send complete, valid tool-backed lines to the browser.
+                    complete = _chosen(role, facts, _settled(role, partial))
+                    if complete is not None and complete != emitted:
                         if not permitted():
                             yield ReadingEvent(type="error", code="assistant_disabled")
                             return
                         emitted = complete
-                        yield ReadingEvent(type="lines", lines=[facts[i] for i in complete])
-                indices = (await stream.get_output()).indices
-            if len(set(indices)) != len(indices) or any(i < 0 or i >= len(facts) for i in indices):
+                        yield ReadingEvent(type="lines", lines=complete)
+                lines = _chosen(role, facts, await stream.get_output())
+            if lines is None:
                 yield ReadingEvent(type="error", code="provider_invalid_output")
                 return
             sections = {fact.section for fact in facts if fact.section}
-            lines = [facts[i] for i in indices]
             if len(sections) <= 4 and not sections.issubset({line.section for line in lines}):
                 yield ReadingEvent(type="error", code="provider_invalid_output")
                 return

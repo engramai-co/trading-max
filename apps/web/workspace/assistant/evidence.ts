@@ -26,6 +26,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
   research_position: ["/research", "market"], price_key_moments: ["/research", "technical"],
   research_earnings: ["/research", "financials"], research_headline: ["/research", "publisher"],
+  company_profile: ["/research", "disclosure"],
   selected_exposure: ["/holdings","exposure"], selected_daily: ["/analytics","account"],
   selected_fx: ["/analytics","holdings"], sector_headline: ["/sectors","publisher"],
   selected_money: ["/analytics","account"], daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
@@ -162,6 +163,10 @@ export function evidenceHref(ref: Evidence): string | null {
     // Research links name the listing before the section.
     const ticker = decisionEvent ? a.listing : a.ticker;
     if (ticker) params.set("ticker", ticker);
+    // A restated company description cites one sentence of one publication.
+    if (ref.tool === "company_profile") {
+      for (const key of ["sentence", "sentenceId", "snapshotId"]) if (a[key]) params.set(key, a[key]);
+    }
     if (a.analystView) params.set("analystView",a.analystView);
     if (a.date && a.lens === "technical") { params.set("eventDate",a.date); params.set("priceRange","ALL"); params.set("interval","1d"); }
     if (a.event === "filing") params.set("notebook","filings");

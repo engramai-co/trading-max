@@ -78,6 +78,15 @@ const descriptions = {
       ["上次成功更新是什么时候？", "When was the last successful update?"],
     ],
   },
+  "company-summary": {
+    title: ["中文摘要", "Chinese summary"],
+    source: ["正在读取公司资料…", "Reading the company profile…"],
+    questions: [
+      ["主要产品和服务有哪些？", "Which products and services does it list?"],
+      ["在哪些地区经营？", "Where does it operate?"],
+      ["何时成立，总部在哪？", "When was it founded and where is it based?"],
+    ],
+  },
 } as const;
 
 export type InspectionKind = keyof typeof descriptions;
@@ -94,6 +103,10 @@ export type InspectionProps = {
   onUpdate?: () => void;
   unavailable?: boolean;
   returnFocusRef?: RefObject<HTMLElement | null>;
+  /** The page address a follow-up keeps, when the reading's object alone does not name it. */
+  search?: string;
+  /** Leave the page's own opening card in the sidebar. */
+  register?: boolean;
 };
 
 export function Inspection({
@@ -105,7 +118,7 @@ export function Inspection({
   anchored,
   market,
   showMapLine,
-  portal, onUpdate, unavailable, returnFocusRef,
+  portal, onUpdate, unavailable, returnFocusRef, search, register = true,
 }: InspectionProps) {
   const t = useCopy();
   const { continueInSidebar } = useAssistant();
@@ -156,14 +169,15 @@ export function Inspection({
     diagnosis: "health",
     "market-sector": "sectors",
     "market-map": "sectors",
+    "company-summary": "research",
   }[role];
   const origin = useMemo(
     () => ({
       page,
-      search: new URLSearchParams(request.context).toString(),
+      search: search ?? new URLSearchParams(request.context).toString(),
       snapshotId: snapshotId ?? query.data?.snapshotId ?? undefined,
     }),
-    [page, request, snapshotId, query.data?.snapshotId],
+    [page, request, search, snapshotId, query.data?.snapshotId],
   );
   const bound = !unavailable && !expired && Boolean(origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading));
   const card = useMemo<RoleCard>(
@@ -182,7 +196,7 @@ export function Inspection({
     }),
     [hasContext, bound, role, descriptor, object, request, reading, market, origin, t],
   );
-  usePageRole(card);
+  usePageRole(card, register);
   if (!context) return null;
   if (role === "market-map") {
     if (portal && snapshotId && expired) return createPortal(<p role="status">{t("引用的数据版本暂不可用","Cited publication unavailable")}</p>, portal);
@@ -228,7 +242,7 @@ export function Inspection({
   };
   const Container = anchored ? AnchoredReading : InlineReading;
   return (
-    <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef}>
+    <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef} closeOnCitation={role === "company-summary"}>
       {onUpdate && <button type="button" className="mx-text-link" onClick={onUpdate}>{t("解读最新记录","Read updated records")}</button>}
       {unavailable ? <p role="status">{t("引用的区间记录暂不可用","Cited interval unavailable")}</p> : !reading ? (
         <div className="mx-inspection-status" role="status">

@@ -5,7 +5,7 @@ import earlyClose from "../../tests/fixtures/market-early-close.json";
 import historicalEvents from "../../tests/fixtures/historical-events.json";
 import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
-import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText } from "./evidence";
+import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText, sourceLabel } from "./evidence";
 import type { UIMessage } from "ai";
 
 describe("assistant evidence routing", () => {
@@ -491,4 +491,12 @@ it("withholds Broker links without an investing account and a decision identity"
   for (const missing of [{scope:"broker_total"}, {scope:"cfd"}, {side:""}, {date:""}, {ticker:""}, {eventId:""}, {snapshotId:""}]) {
     expect(evidenceHref({tool:"news_and_events", source:"broker", evidenceId:"ev_source", arguments:{...args,...missing}})).toBeNull();
   }
+});
+
+it("cites the restated sentence of a company description on the security's overview", () => {
+  const evidence = {tool:"company_profile", source:"disclosure" as const, evidenceId:"ev_profile",
+    arguments:{ticker:"TEST", lens:"overview", sentence:"1", sentenceId:"6e2b34b5", snapshotId:"saved-run"}};
+  expect(evidenceHref(evidence)).toBe(
+    "/research?ticker=TEST&sentence=1&sentenceId=6e2b34b5&snapshotId=saved-run&view=overview&evidence=company_profile");
+  expect([sourceLabel(evidence, zh => zh), sourceLabel(evidence, (_zh, en) => en)]).toEqual(["披露", "Disclosure"]);
 });

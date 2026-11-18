@@ -173,6 +173,9 @@ class PageRole:
     tool_bindings: Callable[[Any, str | None], ToolBindings] | None = None
 
     allow_single_observation: bool = False
+    # A restating role has the model rewrite chosen source sentences in Chinese. The check
+    # accepts a restatement only when it keeps to the sentence; the English line stays the source.
+    restate: Callable[[str, ReadingLine], bool] | None = None
 
     def bind(self, deps: AssistantDeps, context: RoleContext) -> AssistantDeps:
         selected = self.context_schema.model_validate(context.model_dump())

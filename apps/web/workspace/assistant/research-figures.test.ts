@@ -4,7 +4,7 @@ import { verifiedLines } from "./chat-reply";
 import { evidenceHref } from "./evidence";
 import results from "./research-figures.fixture.json";
 
-// Outputs recorded by running all four research tools on test_research_readings' synthetic publication.
+// Outputs recorded by running the research tools on test_research_readings' synthetic publication.
 type Tool = keyof typeof results;
 function message(tool: Tool, field: string, line?: string): UIMessage {
   const output = results[tool];
@@ -26,12 +26,14 @@ describe("research follow-up citations", () => {
     ["research_earnings","/data/report/surprise","+4.35%","eventId=report"],
     ["research_earnings","/data/estimates/0/mean","$1.25/share","analystView=forecast"],
     ["research_headline","/data/title","Related headline · Issuer publishes outlook","evidence=research_headline"],
+    ["company_profile","/data/sentences/1","The company also offers Widget Cloud, a subscription service.","evidence=company_profile"],
   ] as const)("renders the actual %s field %s and opens its source", (tool, field, expected, href) => {
     const [line] = verifiedLines(message(tool,field));
     expect(line.text).toContain(expected);
     if (field === "/data/change" || field.endsWith("/move_fraction")) expect(line.text).toContain("Split- and dividend-adjusted return");
     if (field === "/data/changes/0/change") for (const value of ["2026-01-31","2026-02-03","$1.00","$1.25"]) expect(line.text).toContain(value);
     expect(evidenceHref(line.evidence!)).toContain(href);
+    if (tool === "company_profile") expect(evidenceHref(line.evidence!)).toContain("sentence=1&sentenceId=6e2b34b5");
     if (tool === "price_key_moments") expect(line.text).toContain("limited coverage");
     if (tool === "research_headline") expect(line.evidence?.publisher).toBe("Example Wire");
   });

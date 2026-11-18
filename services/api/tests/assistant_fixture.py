@@ -57,6 +57,11 @@ def publication(
             "regularMarketPrice": 30,
             "regularMarketTime": datetime(2026, 2, 3, 16, tzinfo=UTC).timestamp(),
             "targetMedianPrice": 40,
+            "longBusinessSummary": (
+                "Synthetic Issuer Inc. designs and sells synthetic widgets in 12 markets. "
+                "The company also offers Widget Cloud, a subscription service. "
+                "It was founded in 1999 and is headquartered in Exampleton."
+            ),
         },
     }
     if research_note is not None:

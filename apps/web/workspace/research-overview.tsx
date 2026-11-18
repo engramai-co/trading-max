@@ -3,9 +3,12 @@ import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 import { ArrowRight } from "@phosphor-icons/react";
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { nextEarningsDate } from "./analyst-data";
+import { useAssistant } from "./assistant/context";
+import { PageInspection } from "./assistant/inspection-entry";
+import { profileSentences, sentenceId } from "./company-profile";
 import { industryName } from "./exposure-names";
 import { Bento, Facts, Metric, Panel, useCopy } from "./foundation";
 import Link from "./link";
@@ -23,6 +26,27 @@ function LensTitle({ label, onOpen }: { label: string; onOpen: () => void }) {
   );
 }
 
+/** The description sentence a MaxAI citation names, when this page shows that company. */
+function useProfileCitation(summary: string, ticker: string) {
+  const { params } = useRouteState();
+  const cited = params.get("evidence") === "company_profile"
+    && (params.get("ticker") ?? ticker).toUpperCase() === ticker.toUpperCase();
+  const id = params.get("sentenceId");
+  const position = Number(params.get("sentence"));
+  const sentences = useMemo(() => profileSentences(summary), [summary]);
+  const index = !cited || !id ? -1
+    : sentenceId(sentences[position] ?? "") === id ? position
+    : sentences.findIndex((sentence) => sentenceId(sentence) === id);
+  return {
+    sentences,
+    index,
+    // A citation without a sentence identity opens the whole description.
+    reveal: cited && Boolean(summary) && (!id || index >= 0),
+    missing: cited && (!summary || (Boolean(id) && index < 0)),
+    key: cited ? [ticker, id, params.get("sentence"), params.get("snapshotId")].join(":") : "",
+  };
+}
+
 export function CompanyOverview({
   data,
   context,
@@ -35,7 +59,9 @@ export function CompanyOverview({
   const t = useCopy(),
     { update } = useRouteState("push");
   const { locale } = useLocale();
+  const { ready } = useAssistant();
   const [expanded, setExpanded] = useState(false);
+  const [summaryOpen, setSummaryOpen] = useState(false);
   const facts = context?.financialFacts ?? data.financialFacts;
   const period =
     facts?.periods?.find((p) => p.id === facts.latestTtm) ??
@@ -63,6 +89,27 @@ export function CompanyOverview({
   const summary = str(info.longBusinessSummary);
   const excerpt = summary.split(/(?<=\.)\s+(?=[A-Z])/).slice(0, 2).join(" ");
   const expandable = excerpt.length < summary.length;
+  // With MaxAI on, the provider's English description can be restated in Chinese.
+  const offerSummary = ready && locale === "zh" && Boolean(summary) && Boolean(data.runId);
+  const citation = useProfileCitation(summary, data.ticker);
+  const description = useRef<HTMLParagraphElement>(null);
+  const missingNote = useRef<HTMLParagraphElement>(null);
+  // A followed citation shows its sentence in place and takes focus there.
+  useEffect(() => {
+    if (!citation.key) return;
+    const target = citation.missing ? missingNote.current
+      : citation.index >= 0 ? description.current?.querySelector<HTMLElement>(`[data-profile-sentence="${citation.index}"]`)
+      : description.current;
+    if (!target) return;
+    target.scrollIntoView({ block: "center", behavior: "instant" });
+    target.focus({ preventScroll: true });
+    target.setAttribute("data-assistant-evidence", "");
+    const clear = setTimeout(() => target.removeAttribute("data-assistant-evidence"), 2800);
+    return () => {
+      clearTimeout(clear);
+      target.removeAttribute("data-assistant-evidence");
+    };
+  }, [citation.key, citation.index, citation.missing]);
   return (
     <Bento className="mx-overview-bento">
       {period && (
@@ -143,7 +190,16 @@ export function CompanyOverview({
             {classification.join(" / ")}
           </p>
           {Boolean(summary) &&
-            (expandable ? (
+            (citation.reveal ? (
+              // The whole description, sentence by sentence, around the cited one.
+              <p ref={description} className="mx-business-description" lang="en" tabIndex={citation.index < 0 ? -1 : undefined}>
+                {citation.sentences.map((sentence, i) => (
+                  <span key={i} className="mx-profile-sentence" data-profile-sentence={i} tabIndex={i === citation.index ? -1 : undefined}>
+                    {sentence}{i < citation.sentences.length - 1 && " "}
+                  </span>
+                ))}
+              </p>
+            ) : expandable ? (
               // The excerpt itself opens and closes the full description. The source
               // profile is English; lang lets screen readers and line breaking follow it.
               <p
@@ -168,6 +224,28 @@ export function CompanyOverview({
                 {summary}
               </p>
             ))}
+          {citation.missing && (
+            <p ref={missingNote} className="mx-citation-missing" role="status" tabIndex={-1}>
+              {t("引用的句子已不在当前公司介绍中。", "The cited sentence is no longer in this company description.")}
+            </p>
+          )}
+          {offerSummary && (
+            <button type="button" className="mx-summary-trigger" aria-expanded={summaryOpen}
+              onClick={() => setSummaryOpen(!summaryOpen)}>
+              ✦ {t("中文摘要", "Chinese summary")}
+            </button>
+          )}
+          {offerSummary && summaryOpen && (
+            <PageInspection
+              role="company-summary"
+              object={data.ticker}
+              context={{ ticker: data.ticker }}
+              snapshotId={data.runId}
+              search={new URLSearchParams({ ticker: data.ticker, view: "overview", scope: "broker_total" }).toString()}
+              register={false}
+              onClose={() => setSummaryOpen(false)}
+            />
+          )}
         </Panel>
         <Panel
           bare

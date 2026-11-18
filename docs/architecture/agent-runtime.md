@@ -282,6 +282,21 @@ one observation when the publication covers a single habit. Their figures, units
 and sources travel together. The browser constructs local evidence links from
 the tool and its checked arguments.
 
+A restating role receives numbered source sentences instead of observations. The
+model chooses two to four of them, or the only one, and restates each in Chinese.
+The role's check fails closed. It accepts a restatement only when it is
+substantive Chinese on one line: no links, markup or other scripts, and Latin
+script only for names its sentence writes verbatim (a sentence in title case names
+nothing). Each quantity is read whole, with its sign, percentage, scale (such as
+万, 亿 or billion) and currency, and must equal a quantity its sentence states; a
+bare $, ¥ or 元 names no currency. Numerals or numbers the check cannot read
+exactly are rejected, and the reader can retry. The English line stays the source
+sentence.
+The Research Overview company summary uses this mode with `company_profile`. It
+cites each line as a disclosure with the sentence's position and a fingerprint of
+its text, and keys its cache by a digest of the description and the version of
+the check, so lines accepted under an earlier check are written again.
+
 `POST /v1/assistant/roles/{role_id}/reading` accepts a context and optional
 snapshot ID. The newline-delimited stream delivers verified lines as model
 selection progresses, then the complete reading, an empty result or a stable
