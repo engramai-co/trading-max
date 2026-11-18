@@ -412,7 +412,7 @@ for (const locale of ["en", "zh"] as const) {
   }
 }
 test("off keeps the original page controls and sends no assistant requests", async ({
-  page,
+  page, isMobile,
 }) => {
   const calls = await setup(page, "en", false, false);
   const requests: string[] = [];
@@ -436,6 +436,9 @@ test("off keeps the original page controls and sends no assistant requests", asy
         ".mx-why,.mx-inline-reading,.mx-reading-sheet,.mx-map-reading,.mx-range-inspect-mobile",
       ),
     ).toHaveCount(0);
+    if (process.env.TM_INSPECTION_SHOTS && url === "/health") {
+      await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS, (isMobile ? "phone" : "desktop") + "-disabled-health.png"), animations:"disabled"});
+    }
   }
   expect(calls).toEqual([]);
   expect(requests).toEqual([]);
@@ -836,6 +839,11 @@ for (const view of ["holdings","money","returns","risk"] as const) {
     }
     if(view==="holdings") expect(data.lookthrough.countryAllocation.length).toBeGreaterThan(0);
     await expect.poll(()=>calls.at(-1)).toMatchObject({role:view==="holdings"?"exposure":"attribution",snapshotId:id});
+    if (process.env.TM_INSPECTION_SHOTS) {
+      const reading = page.locator(isMobile ? ".mx-reading-sheet:visible" : ".mx-inline-reading:visible").last();
+      await reading.locator(".mx-reading-line").first().scrollIntoViewIfNeeded();
+      await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS, (isMobile ? "phone" : "desktop") + "-retained-" + view + ".png"), animations:"disabled"});
+    }
     if (view === "money") {
       if (isMobile) {
         q.set("evidence", "period_performance");
