@@ -215,6 +215,38 @@ test.describe("valuation refresh", () => {
     release();
     await expect(section).toContainText("Cash-flow model inputs are incomplete");
     await expect(heading).toBeFocused();
+    await expect(page.getByRole("link", { name: "Scenario model" })).toHaveAttribute("aria-current", "location");
+  });
+
+  test("a model response never replays a completed scenario bookmark after the reader moves to History", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => { await gate; await route.fallback(); });
+    await page.goto("/research?ticker=SYNT&view=valuation&estimateRef=%2B1y");
+    await expect(page.locator("#research-scenario h2").first()).toBeFocused();
+    await page.keyboard.press("Home");
+    const control = page.locator("#research-history button").first();
+    await control.focus();
+    release();
+    await expect(page.locator("#valuation-assumptions")).toBeAttached();
+    await expect(control).toBeFocused();
+    await expect(page.getByRole("link", { name: "Historical valuation" })).toHaveAttribute("aria-current", "location");
+  });
+
+  test("a worksheet bookmark waits for its heading to mount", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => { await gate; await route.fallback(); });
+    await page.goto("/research?ticker=SYNT&view=valuation&valuationView=worksheet");
+    await expect(page.locator("#research-scenario h2").first()).toBeAttached();
+    await expect(page.locator("#research-worksheet")).toHaveCount(0);
+    release();
+    await expect(page.locator("#research-worksheet h2").first()).toBeFocused();
+    await expect(page.getByRole("link", { name: "Worksheet" })).toHaveAttribute("aria-current", "location");
   });
 
   test("the readout keeps its space and shows the signed gap for a large base value", async ({ page, isMobile }) => {

@@ -61,8 +61,9 @@ export function targetUnitScale(unit: string | null | undefined, currency: strin
 /** A target announced on the split date is already quoted per new share. */
 export function targetSplitScale(
   series: Pick<ResearchPriceSeries, "events" | "points"> | undefined,
-  latestObservation: string,
 ) {
+  const first = series?.points[0]?.date.slice(0, 10);
+  const last = series?.points.at(-1)?.date.slice(0, 10);
   const splits = new Map<string, number | null>();
   for (const point of series?.points ?? []) {
     if (point.split) splits.set(point.date.slice(0, 10), point.split);
@@ -70,12 +71,14 @@ export function targetSplitScale(
   for (const event of series?.events ?? []) {
     if (event.kind === "split") splits.set(str(event.date).slice(0, 10), numeric(event.value));
   }
-  return (day: string, scale: number | null) => {
-    // Without the split history, only amounts from the latest observation share a verified basis.
-    if (scale == null || (!series?.points.length && (!day || day !== latestObservation))) return null;
+  return (day: string, through: string, scale: number | null) => {
+    if (!day || !through || day > through || scale == null) return null;
+    if (day === through) return scale;
+    // A partial history cannot rule out a split between two dated observations.
+    if (!first || !last || day < first || through > last) return null;
     for (const [splitDay, ratio] of splits) {
-      if (splitDay <= day) continue;
-      if (!day || ratio == null || ratio <= 0) return null;
+      if (splitDay <= day || splitDay > through) continue;
+      if (ratio == null || ratio <= 0) return null;
       scale /= ratio;
     }
     return scale;
