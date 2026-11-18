@@ -34,6 +34,7 @@ from ..valuation_drafts import (
     TemplateInputs,
     ValuationDraftStore,
     check_draft_preview,
+    reviewed_publication,
 )
 from ..valuation_evidence import freeze_valuation_evidence
 from .dependencies import app_service, latest_or_503, require_write_auth
@@ -145,7 +146,7 @@ def _prepare(request, ticker, body, share_saved, progress):
         view.family_selection,
     )
     parent = models[0].id if models else None
-    return runner, view, parent
+    return runner, view, parent, manifest
 
 
 class DraftStream(StreamingResponse):
@@ -195,7 +196,7 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                     events.put_nowait(phase)
 
                 check_preferences()
-                runner, view, parent = await asyncio.to_thread(
+                runner, view, parent, manifest = await asyncio.to_thread(
                     _prepare,
                     request,
                     ticker,
@@ -212,26 +213,6 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                         bound.model, bound.settings, bound.cancellation_token
                     )
                 check_preferences()
-                journal = app_service(request, "research_journal")
-
-                def current():
-                    with journal.lock:
-                        manifest = latest_or_503(request)
-                        if manifest.run_id != runner.frozen.binding.snapshot_run_id:
-                            return False
-                        latest = family_valuation_preview(
-                            ticker,
-                            request,
-                            requested_family=body.requested_family,
-                            manifest=manifest,
-                        )
-                        parents = journal.load(ticker).models
-                        return (
-                            latest.id == view.id and (parents[0].id if parents else None) == parent
-                        )
-
-                if not await asyncio.to_thread(current):
-                    raise ValueError("valuation-draft-review-required")
                 proposed = {
                     key: scenario.model_dump(by_alias=False)
                     for key, scenario in body.scenarios.items()
@@ -257,6 +238,15 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                         for key, row in projected.scenarios.items()
                     },
                 )
+                latest = await asyncio.to_thread(
+                    family_valuation_preview,
+                    ticker,
+                    request,
+                    requested_family=body.requested_family,
+                    manifest=manifest,
+                )
+                if latest.id != view.id:
+                    raise ValueError("valuation-draft-review-required")
                 return DraftRecord(
                     result=result,
                     evidence=runner.frozen,
@@ -280,14 +270,23 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                 if not task.done():
                     yield line(phase)
             record = task.result()
-            check_preferences()
-            drafts.put(record)
-            try:
+            journal = app_service(request, "research_journal")
+            with (
+                journal.lock,
+                reviewed_publication(app_service(request, "store"), record.result.snapshot_id),
+            ):
+                parents = journal.load(ticker).models
+                if (parents[0].id if parents else None) != record.parent_model_id:
+                    raise ValueError("valuation-draft-review-required")
                 check_preferences()
-            except ValueError:
-                drafts.discard(record.result.id)
-                raise
-            yield line("complete", result=record.result)
+                drafts.put(record)
+                try:
+                    check_preferences()
+                    complete = line("complete", result=record.result)
+                except Exception:
+                    drafts.discard(record.result.id)
+                    raise
+            yield complete
         except Exception as exc:
             code = _failure(exc)
             yield line("error", code=code)

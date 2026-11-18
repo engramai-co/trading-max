@@ -157,8 +157,10 @@ def research_model_save(
                     ticker,
                     body,
                     app_service(request, "valuation_drafts"),
-                    lambda inputs: family_valuation_preview(ticker, request, inputs),
-                    lambda: latest_or_503(request).run_id,
+                    lambda inputs, manifest: family_valuation_preview(
+                        ticker, request, inputs, manifest=manifest
+                    ),
+                    app_service(request, "store"),
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc

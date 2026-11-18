@@ -634,6 +634,118 @@ def test_new_consensus_after_delivery_requires_review_before_save(desk):
     assert client.get(PATH + "/journal").json()["models"] == []
 
 
+def _reviewed_consensus(client):
+    view, body = inputs(client)
+    draft = post(client, body)[-1]["result"]
+    decisions = {key: {} for key in body["scenarios"]}
+    for proposal in draft["proposals"]:
+        decisions[proposal["scenario"]][proposal["field"]] = "unreviewed"
+    decisions["base"]["revenue_cagr"] = "accepted"
+    body["scenarios"]["base"]["revenueCagr"] = 0.15
+    return {
+        "family": "cash-flow",
+        "formulaVersion": view["formulaVersion"],
+        "scenarios": body["scenarios"],
+        "draftReview": {"id": draft["id"], "decisions": decisions},
+    }
+
+
+def _replace_consensus(store):
+    def update(batches):
+        batches["research/analyst.json"]["rows"][0]["analyst"]["revenueEstimate"][0]["growth"] = (
+            0.31
+        )
+
+    _publish(store, MATURE, inject=update)
+
+
+def test_publication_during_save_calculation_requires_review(desk, monkeypatch):
+    client, state, _, _ = desk
+    body = _reviewed_consensus(client)
+    pinned = state.store.latest_manifest().run_id
+    calculate = research.family_valuation_preview
+    observed = []
+
+    def interleave(*args, **kwargs):
+        _replace_consensus(ArtifactStore(state.store.data_root))
+        observed.append(kwargs.get("manifest"))
+        return calculate(*args, **kwargs)
+
+    monkeypatch.setattr(research, "family_valuation_preview", interleave)
+    response = client.post(PATH + "/models", json=body)
+    assert response.status_code == 409
+    assert response.json()["detail"] == "valuation-draft-review-required"
+    assert [manifest.run_id for manifest in observed] == [pinned]
+    assert client.get(PATH + "/journal").json()["models"] == []
+
+
+@pytest.mark.parametrize("change", ["publication", "parent"])
+def test_publication_or_parent_during_final_desk_projection_prevents_delivery(
+    desk, monkeypatch, change
+):
+    from trading_max.research.valuation_preview import ValuationPreview
+
+    client, state, _, _ = desk
+    view, body = inputs(client)
+    project = valuation_draft.preview
+    calls = 0
+
+    def interleave(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        result = project(*args, **kwargs)
+        if calls == 2:
+            if change == "publication":
+                _replace_consensus(ArtifactStore(state.store.data_root))
+            else:
+                state.research_journal.save_model(ValuationPreview.model_validate(view))
+        return result
+
+    monkeypatch.setattr(valuation_draft, "preview", interleave)
+    assert post(client, body)[-1].get("code") == "valuation-draft-review-required"
+    assert calls == 2
+    assert not list(state.valuation_drafts.root.glob("*.json"))
+
+
+def test_pointer_replacement_waits_for_the_reviewed_journal_commit(desk, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from contextlib import contextmanager
+    from threading import Event
+
+    client, state, _, _ = desk
+    body = _reviewed_consensus(client)
+    writer = ArtifactStore(state.store.data_root)
+    pointer = writer.immutable_snapshots.publication_lock
+    save = state.research_journal._save
+    attempting = Event()
+    finished = Event()
+
+    @contextmanager
+    def writer_lock():
+        attempting.set()
+        with pointer():
+            yield
+
+    def publish():
+        _replace_consensus(writer)
+        finished.set()
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+
+        def commit(journal):
+            pool.submit(publish)
+            assert attempting.wait(5)
+            assert not finished.wait(0.1)
+            save(journal)
+
+        monkeypatch.setattr(writer.immutable_snapshots, "publication_lock", writer_lock)
+        monkeypatch.setattr(state.research_journal, "_save", commit)
+        assert client.post(PATH + "/models", json=body).is_success
+    assert finished.is_set()
+    saved = client.get(PATH + "/journal").json()["models"][0]
+    assert saved["draftAudit"]["draft"]["result"]["snapshotId"] != writer.latest_manifest().run_id
+
+
 def test_new_publication_discards_the_draft_even_if_the_desk_basis_is_unchanged(desk):
     client, state, _, _ = desk
     _, body = inputs(client)

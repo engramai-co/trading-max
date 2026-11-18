@@ -19,12 +19,15 @@ from trading_max.research.valuation_preview import (
     project,
 )
 
+from .artifacts import ArtifactStore
 from .dashboard_models import ValuationRow
+from .models import SnapshotManifest
 from .valuation_assumptions import _atomic_write
 from .valuation_drafts import (
     DraftAudit,
     DraftReview,
     ValuationDraftStore,
+    reviewed_publication,
     verify_decisions,
 )
 
@@ -177,8 +180,8 @@ class ResearchJournalStore:
         ticker: str,
         body: ResearchModelSaveRequest,
         drafts: ValuationDraftStore,
-        calculate: Callable[[ValuationPreviewRequest], ValuationPreview],
-        current_publication: Callable[[], str],
+        calculate: Callable[[ValuationPreviewRequest, SnapshotManifest], ValuationPreview],
+        store: ArtifactStore,
     ) -> ResearchJournal:
         with self.lock:
             review = body.draft_review
@@ -192,10 +195,12 @@ class ResearchJournalStore:
                     drafts.discard(review.id)
                     return state  # the response to an earlier successful save may have been lost
             draft = drafts.get(review.id)
+            manifest = store.latest_manifest()
             parent = state.models[0].id if state.models else None
             if (
                 draft.evidence.binding.ticker != ticker.upper()
-                or draft.evidence.binding.snapshot_run_id != current_publication()
+                or manifest is None
+                or draft.evidence.binding.snapshot_run_id != manifest.run_id
                 or draft.parent_model_id != parent
                 or draft.horizon != body.horizon
                 or draft.formula_version != body.formula_version
@@ -206,14 +211,18 @@ class ResearchJournalStore:
             result = calculate(
                 ValuationPreviewRequest.model_validate(
                     body.model_dump(exclude={"reason", "draft_review", "family_selection"})
-                )
+                ),
+                manifest,
             )
             if not result.scenarios or result.basis != draft.review_basis:
                 raise ValueError("valuation-draft-review-required")
             result.family_selection = draft.result.family_selection
-            saved = self.save_model(
-                result, body.reason, DraftAudit(draft=draft, review=review, request_digest=digest)
-            )
+            with reviewed_publication(store, manifest.run_id):
+                saved = self.save_model(
+                    result,
+                    body.reason,
+                    DraftAudit(draft=draft, review=review, request_digest=digest),
+                )
             drafts.discard(review.id)
             return saved
 

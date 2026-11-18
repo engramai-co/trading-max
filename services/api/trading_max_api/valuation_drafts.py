@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
 from threading import Lock
 from typing import Literal
@@ -26,6 +27,7 @@ from trading_max.research.valuation_preview import (
     ValuationPreview,
 )
 
+from .artifacts import ArtifactStore
 from .valuation_assumptions import _atomic_write
 
 Category = Literal["consensus", "reported", "derived", "template", "judgment"]
@@ -206,6 +208,17 @@ class DraftAudit(DomainModel):
     draft: DraftRecord
     review: DraftReview
     request_digest: str
+
+
+@contextmanager
+def reviewed_publication(store: ArtifactStore, run_id: str):
+    """Hold the publisher's pointer lock through the caller's final commit."""
+    snapshots = store.immutable_snapshots
+    with snapshots.publication_lock():
+        current = snapshots.latest(verify_artifacts=False)
+        if current is None or current.manifest.run_id != run_id:
+            raise ValueError("valuation-draft-review-required")
+        yield
 
 
 class ValuationDraftStore:
