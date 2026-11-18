@@ -54,12 +54,6 @@
       "day": "2026-02-03",
       "markets": [
         {
-          "market": "uk",
-          "move": 0.0,
-          "not_open": true,
-          "contribution": null
-        },
-        {
           "market": "us",
           "move": -0.01,
           "not_open": false,
@@ -67,28 +61,46 @@
         }
       ]
     },
-    "snapshot_id": "synthetic-figures",
     "scope": "market",
     "quality": {
       "issues": []
     },
-    "evidence_id": "ev_global_map"
+    "evidence_id": "ev_global_map",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "observed": "2026-02-03T17:00:00Z",
+      "market": "us",
+      "snapshotId": "synthetic-figures"
+    }
   },
   "update_issue": {
     "status": "ok",
     "data": {
       "finished_at": "2026-02-03T17:00:00+00:00",
       "status": "failed",
-      "failed_broker_reconciliation": true,
+      "failed_broker_reconciliation": false,
+      "failed_stages": [
+        {
+          "id": "research.fundamentals",
+          "zh": "基本面",
+          "en": "Fundamentals"
+        }
+      ],
+      "attempts": 2,
       "completed": 0,
-      "stages": 0
+      "stages": 1
     },
-    "snapshot_id": "synthetic-figures",
     "scope": "broker_total",
     "quality": {
       "issues": []
     },
-    "evidence_id": "ev_update_issue"
+    "evidence_id": "ev_update_issue",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "issue": "job",
+      "job": "example",
+      "snapshotId": "synthetic-figures"
+    }
   },
   "daily_returns": {
     "status": "partial",
@@ -134,5 +146,156 @@
       "issues": []
     },
     "evidence_id": "ev_daily_returns"
+  },
+  "selected_fx": {
+    "status": "ok",
+    "data": {
+      "currency": "GBP",
+      "start": "2026-02-03T12:00:00Z",
+      "end": "2026-02-03T17:00:00Z",
+      "fx_effect_gbp": -34.0,
+      "local_price_effect_gbp": 10.0
+    },
+    "scope": "isa",
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_selected_fx",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "scope": "isa",
+      "benchmark": "QQQ",
+      "range": "1D",
+      "view": "money",
+      "start": "2026-02-03T12:00:00Z",
+      "end": "2026-02-03T17:00:00Z",
+      "snapshotId": "synthetic-figures"
+    }
+  },
+  "selected_daily": {
+    "status": "partial",
+    "data": {
+      "currency": "GBP",
+      "basis": "published_daily_twr",
+      "range": "ALL",
+      "window_twr_fraction": 0.020000000000000018,
+      "window_benchmarks": {
+        "VOO": 0.08000000000000007
+      },
+      "worst_day": {
+        "date": "2026-02-03",
+        "from_date": "2026-02-02",
+        "return_fraction": -0.07272727272727275,
+        "benchmark_return_fractions": {
+          "VOO": 0.018867924528301883
+        },
+        "worst_rank": 1
+      },
+      "window_start": "2026-01-28",
+      "window_end": "2026-02-03",
+      "benchmark": "VOO",
+      "benchmark_currency": "GBP",
+      "benchmark_basis": "adjusted_price_gbp",
+      "items": [
+        {
+          "date": "2026-02-03",
+          "from_date": "2026-02-02",
+          "return_fraction": -0.07272727272727275,
+          "benchmark_return_fractions": {
+            "VOO": 0.018867924528301883
+          },
+          "worst_rank": 1
+        }
+      ],
+      "total_items": 4,
+      "next_cursor": 1
+    },
+    "scope": "invest",
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_selected_daily",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "scope": "invest",
+      "benchmark": "VOO",
+      "range": "ALL",
+      "view": "returns",
+      "start": "2026-01-28",
+      "end": "2026-02-03",
+      "snapshotId": "synthetic-figures"
+    }
+  },
+  "selected_exposure": {
+    "status": "ok",
+    "data": {
+      "name": "United States",
+      "current": {
+        "date": "2026-02-03",
+        "weight_fraction": 1.0
+      },
+      "previous": null,
+      "cutoff": "2026-01-04",
+      "lookthrough_coverage_fraction": 1.0
+    },
+    "scope": "broker_total",
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_selected_exposure",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "dimension": "country",
+      "category": "United States",
+      "group": null,
+      "snapshotId": "synthetic-figures"
+    }
+  },
+  "sector_headline": {
+    "status": "ok",
+    "data": {
+      "items": [
+        {
+          "kind": "news",
+          "title_en": "Synthetic issuer update",
+          "title_zh": "Synthetic issuer update",
+          "date": "2026-02-03",
+          "end_date": null,
+          "instant": "2026-02-03T17:00:00+00:00",
+          "ticker": "TEST",
+          "publisher": "Fixture Press",
+          "source_url": "https://example.org/article",
+          "provider_id": null,
+          "role": "lead",
+          "reference": "https://example.org/article",
+          "tickers": [
+            "TEST"
+          ],
+          "evidence_id": "ev_synthetic_headline",
+          "local_date": "2026-02-03",
+          "local_time": "2026-02-03T17:00:00+00:00"
+        }
+      ],
+      "day": "2026-02-03",
+      "ticker": "TEST"
+    },
+    "scope": "market",
+    "quality": {
+      "issues": [
+        "earnings_unavailable",
+        "financials_unavailable",
+        "security_calendar_unavailable",
+        "trade_markers_unavailable"
+      ]
+    },
+    "evidence_id": "ev_sector_headline",
+    "snapshot_id": "synthetic-figures",
+    "bound_arguments": {
+      "observed": "2026-02-03T17:00:00Z",
+      "market": "us",
+      "grouping": "gics",
+      "sector": "45",
+      "snapshotId": "synthetic-figures"
+    }
   }
 }

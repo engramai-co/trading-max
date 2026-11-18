@@ -125,7 +125,13 @@ describe("page readings in the sidebar", () => {
     ["selected_money","/data/pnl",["ISA","80.00","Cash-flow-adjusted net P&L"]],
     ["exposure_benchmark","/data/weight",["MSCI ACWI (SSAC)","61.00%","2026-02-02"]],
     ["market_sector","/data/contribution",["Information Technology","MSCI World","0.30 pp","2026-02-03"]],
-    ["global_map","/data/markets/1/move",["US","-1.00%","2026-02-03"]],
+    ["global_map","/data/markets/0/move",["US","-1.00%","2026-02-03"]],
+    ["selected_daily","/data/window_benchmarks/VOO",["VOO","GBP","adjusted prices"]],
+    ["selected_exposure","/data/current/weight_fraction",["United States","100.00%","2026-02-03"]],
+    ["selected_fx","/data/fx_effect_gbp",["ISA","Held-share currency effect","34.00"]],
+    ["sector_headline","/data/items/0/title_en",["Headline","Synthetic issuer update"]],
+    ["update_issue","/data/failed_stages/0/en",["Failed stage","Fundamentals"]],
+    ["update_issue","/data/attempts",["Recorded attempts","2"]],
     ["update_issue","/data/finished_at",["Update ended","17:00"]],
     ["daily_returns","/data/worst_day/return_fraction",["Lowest observed daily return","-7.27%","2026-02-02","2026-02-03"]],
     ["daily_returns","/data/window_benchmarks/VOO",["VOO","GBP","adjusted prices","+8.00%"]],
@@ -138,7 +144,7 @@ describe("page readings in the sidebar", () => {
   });
   it("withholds a closed market value, wrong unit and unpublished benchmark",()=>{
     for (const [tool,pointer,output] of [
-      ["global_map","/data/markets/0/move",pageOutputs.global_map],
+      ["global_map","/data/markets/0/move",{...pageOutputs.global_map,data:{...pageOutputs.global_map.data,markets:[{...pageOutputs.global_map.data.markets[0],not_open:true}]}}],
       ["selected_money","/data/pnl",{...pageOutputs.selected_money,data:{...pageOutputs.selected_money.data,currency:"USD"}}],
       ["daily_returns","/data/window_benchmarks/QQQ",pageOutputs.daily_returns],
     ] as const) {

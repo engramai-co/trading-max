@@ -170,7 +170,7 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
     || dateText(field.includes("pnl") ? parent.pnl_as_of : parent.values_as_of) || dateText(data.broker_as_of);
   const fxWindow = tool === "holding_fx_split" && ["invest","isa"].includes(str(parent.scope))
     ? object(object(data.accounts)[str(parent.scope)]) : {};
-  const datedItem = tool==="daily_returns" && (row.group==="worst_day" || row.group==="items");
+  const datedItem = (tool==="daily_returns" || tool==="selected_daily") && (row.group==="worst_day" || row.group==="items");
   const start = (datedItem ? dateText(parent.from_date) : "") || dateText(fxWindow.since) || dateText(parent.since) || dateText(object(parent.period).start) || dateText(parent.start) || dateText(data.window_start) || dateText(data.start);
   const end = (datedItem ? dateText(parent.date) : tool==="holding_fx_split" ? dateText(fxWindow.as_of) || dateText(parent.as_of) : "") || dateText(object(parent.period).end) || dateText(parent.end) || dateText(data.window_end) || dateText(data.end);
   const freshness = tool === "data_freshness";

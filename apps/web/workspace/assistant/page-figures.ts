@@ -34,8 +34,11 @@ export function formatPageField(
       formatDateTime(value, locale, timeZone),
     ];
   }
+  if (tool === "update_issue" && group === "failed_stages" && field === "en" && parent.en && parent.zh) {
+    return [t("失败阶段","Failed stage"), str(locale === "en" ? parent.en : parent.zh)];
+  }
   if (
-    tool === "news_and_events" &&
+    (tool === "news_and_events" || tool === "sector_headline") &&
     group === "items" &&
     parent.kind === "news" &&
     field === "title_en" &&
@@ -89,7 +92,7 @@ export function formatPageField(
       ? [benchmark + " · " + t("权重", "weight"), percent(value, false, 2)]
       : null;
   }
-  if (tool === "daily_returns") {
+  if (tool === "daily_returns" || tool === "selected_daily") {
     if (field === "window_twr_fraction" && !group)
       return [
         t("组合时间加权收益", "Portfolio time-weighted return"),
@@ -132,8 +135,8 @@ export function formatPageField(
       ];
   }
   if (
-    tool === "holding_fx_split" &&
-    ["accounts", "items"].includes(group ?? "") &&
+    ((tool === "holding_fx_split" && ["accounts", "items"].includes(group ?? "")) ||
+      (tool === "selected_fx" && !group && data.start && data.end)) &&
     data.currency === "GBP"
   ) {
     if (field === "fx_effect_gbp")
@@ -197,6 +200,7 @@ export function formatPageField(
     Number.isSafeInteger(value) &&
     value >= 0
   ) {
+    if (field === "attempts") return [t("记录的尝试次数","Recorded attempts"),number(value,0)];
     if (field === "completed")
       return [t("已完成阶段", "Completed stages"), number(value, 0)];
     if (field === "stages")

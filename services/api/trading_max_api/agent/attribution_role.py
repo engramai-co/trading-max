@@ -9,7 +9,7 @@ from trading_max.portfolio_math import portfolio_money, select_portfolio_history
 
 from . import insights, tools
 from .deps import AccountScope
-from .overview_roles import LONDON, line
+from .overview_roles import line
 from .roles import PageRole, RoleContext, RoleTools, bind_selection
 
 
@@ -121,6 +121,8 @@ def selected_fx(ctx: tools.Context, args: AttributionContext):
     read.account_codes(args.scope)
     if len(args.start) == 10 or len(args.end) == 10:
         return read.missing("valuation_instants_unavailable")
+    if not (selected_money(ctx, args).get("data") or {}).get("start"):
+        return read.missing("valuation_instants_unavailable")
     expected = {"invest", "isa"} if args.scope == "broker_total" else {args.scope}
     for period in ("1D", "5D"):
         split = insights.holding_fx_split(
@@ -160,7 +162,7 @@ BENCHMARK_BASES = {
 
 def attribution_facts(read: RoleTools, context: AttributionContext):
     args = {**context.model_dump(), "snapshotId": read.deps.snapshot_id}
-    daily = read.read(selected_daily, context)
+    daily = read.read(selected_daily, {})
     data = daily.get("data") or {}
 
     def observed(
@@ -217,7 +219,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                 )
             )
     if context.view == "money" or not any(f.section == "return" for f in facts):
-        amount = read.read(selected_money, context)
+        amount = read.read(selected_money, {})
         money = amount.get("data") or {}
         if (pnl := money.get("pnl")) is not None:
             proxy = context.scope in {"cfd", "household"}
@@ -257,7 +259,7 @@ def attribution_facts(read: RoleTools, context: AttributionContext):
                 "market",
             )
         )
-    split = read.read(selected_fx, context)
+    split = read.read(selected_fx, {})
     if effects := split.get("data"):
         fx, price = effects["fx_effect_gbp"], effects["local_price_effect_gbp"]
         interval = f"{effects['start']} – {effects['end']}"

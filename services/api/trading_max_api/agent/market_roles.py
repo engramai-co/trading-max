@@ -130,7 +130,7 @@ def sector_headline(ctx: tools.Context, args: SectorContext):
 
 
 def sector_facts(read: RoleTools, context: SectorContext):
-    result = read.read(market_sector, context)
+    result = read.read(market_sector, {})
     data = result.get("data") or {}
     facts = []
 
@@ -187,7 +187,7 @@ def sector_facts(read: RoleTools, context: SectorContext):
             f"Estimated contribution to MSCI World was {contribution * 100:+.2f} pp.",
         )
     if data.get("news_ticker"):
-        event = read.read(sector_headline, context)
+        event = read.read(sector_headline, {})
         if items := (event.get("data") or {}).get("items"):
             row = items[0]
             ticker = data["news_ticker"]
@@ -242,7 +242,7 @@ def global_map(ctx: tools.Context, args: RegionalMapContext):
 
 
 def map_facts(read: RoleTools, context: RegionalMapContext):
-    result = read.read(global_map, context)
+    result = read.read(global_map, {})
     data = result.get("data") or {}
     if not data.get("markets"):
         return []
@@ -250,7 +250,7 @@ def map_facts(read: RoleTools, context: RegionalMapContext):
     for row in data["markets"]:
         market = row["market"]
         selection = context.model_copy(update={"market": market})
-        variant = read.for_variant(selection).read(global_map, selection)
+        variant = read.for_variant(selection).read(global_map, {})
         if markets := (variant.get("data") or {}).get("markets"):
             variants[market] = (markets[0], variant)
     # Each selected editorial angle covers every market in the inspected map.

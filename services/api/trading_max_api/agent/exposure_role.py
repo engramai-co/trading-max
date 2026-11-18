@@ -176,7 +176,7 @@ def exposure_benchmark(ctx: tools.Context, args: ExposureContext):
 
 
 def exposure_version(read: RoleTools, context: ExposureContext):
-    benchmark = read.read(exposure_benchmark, context)
+    benchmark = read.read(exposure_benchmark, {})
     return tools._short_id("exposure_", [read.deps.snapshot_id, benchmark.get("data")])
 
 
@@ -210,7 +210,7 @@ def selected_exposure(ctx: tools.Context, args: ExposureContext):
 
 
 def exposure_facts(read: RoleTools, context: ExposureContext):
-    current = read.read(selected_exposure, context)
+    current = read.read(selected_exposure, {})
     data = current.get("data")
     if not data:
         return []
@@ -266,7 +266,7 @@ def exposure_facts(read: RoleTools, context: ExposureContext):
             )
         )
     if context.dimension in {"country", "sector"}:
-        result = read.read(exposure_benchmark, context)
+        result = read.read(exposure_benchmark, {})
         benchmark = "MSCI ACWI (SSAC)" if context.dimension == "country" else "MSCI World (SWDA)"
         basis = result.get("data")
         zh, en = f"{benchmark} 暂无可比权重。", f"No comparable {benchmark} weight is available."

@@ -22,6 +22,8 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   portfolio_overview: ["/", "account"], period_performance: ["/analytics", "account"], compare_benchmarks: ["/analytics", "market"],
   list_holdings: ["/holdings", "holdings"], position_detail: ["/holdings", "holdings"], lookthrough_exposure: ["/holdings", "exposure"],
   read_research_lens: ["/research", "market"], read_valuation_evidence: ["/research", "financials"], recent_decisions: ["/review", "review"],
+  selected_exposure: ["/holdings","exposure"], selected_daily: ["/analytics","account"],
+  selected_fx: ["/analytics","holdings"], sector_headline: ["/sectors","publisher"],
   selected_money: ["/analytics","account"], daily_returns: ["/analytics", "account"], holding_fx_split: ["/analytics","holdings"],
   dated_exposure: ["/holdings","exposure"], exposure_benchmark: ["/holdings","exposure"],
   market_sector: ["/sectors","market"], global_map: ["/sectors","market"], update_issue: ["/health","health"],
@@ -40,7 +42,7 @@ export function evidenceHref(ref: Evidence) {
   }
   if (path === "/analytics") {
     params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
-    if (["daily_returns","selected_money","holding_fx_split"].includes(ref.tool) && a.start && a.end) {
+    if (["daily_returns","selected_money","holding_fx_split","selected_daily","selected_fx"].includes(ref.tool) && a.start && a.end) {
       params.set("view",a.view ?? "returns"); params.set("inspectFrom",a.start); params.set("inspectTo",a.end);
       if (a.snapshotId) params.set("snapshotId",a.snapshotId);
     }
@@ -60,7 +62,7 @@ export function evidenceHref(ref: Evidence) {
     if (path === "/holdings" && ["invest", "isa"].includes(a.scope)) params.set("account", a.scope === "invest" ? "A" : "B");
     else if (path !== "/holdings") params.set("scope", a.scope);
   }
-  if (["lookthrough_exposure","dated_exposure","exposure_benchmark"].includes(ref.tool)) {
+  if (["lookthrough_exposure","dated_exposure","exposure_benchmark","selected_exposure"].includes(ref.tool)) {
     params.set("view","lookthrough");
     if (a.dimension) params.set("dimension",a.dimension);
     if (a.category) params.set("category",a.category);

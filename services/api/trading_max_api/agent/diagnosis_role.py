@@ -108,7 +108,7 @@ def diagnosis_anchor(read: RoleTools, context: DiagnosisContext):
         if manifest := read.deps.manifest:
             return manifest.run_id, manifest.created_at
         return None
-    result = read.read(update_issue, context)
+    result = read.read(update_issue, {})
     if data := result.get("data"):
         return tools._short_id("job_", [context.job, data]), datetime.fromisoformat(
             data["finished_at"]
@@ -117,7 +117,7 @@ def diagnosis_anchor(read: RoleTools, context: DiagnosisContext):
 
 
 def diagnosis_facts(read: RoleTools, context: DiagnosisContext):
-    result = read.read(update_issue, context)
+    result = read.read(update_issue, {})
     data = result.get("data") or {}
     if not data:
         return []
