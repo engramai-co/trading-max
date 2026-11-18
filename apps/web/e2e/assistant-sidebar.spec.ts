@@ -50,6 +50,8 @@ test("disabled entry explains consent and links to Settings", async ({ page }, i
   const panel = page.locator("#mx-assistant-panel");
   await expect(panel.getByRole("link")).toHaveAttribute("href", "/settings?tab=assistant");
   await expect(panel).toContainText("设置");
+  await expect(panel.getByRole("link")).toBeInViewport();
+  await expect(panel).toHaveCSS("position","fixed");
   await expect(page.locator(".mx-digest")).toHaveCount(0);
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-disabled-settings-hint.png")});
   await page.keyboard.press("Escape");
@@ -441,7 +443,8 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
   await expect(digest).toContainText(/4 Feb 2026.*08:30/);
   const shots = process.env.ASSISTANT_SCREENSHOTS;
   if (shots) {
-    await digest.evaluate(el => el.scrollIntoView({block:"center"}));
+    await digest.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
+    await expect(digest.getByText("Coming up", {exact:true})).toBeInViewport();
     await page.screenshot({path:join(shots,info.project.name+"-weekly-calendar.png")});
   }
   await page.locator("[data-assistant-trigger]").click();
