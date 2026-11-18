@@ -255,6 +255,30 @@ test("cited money and ex-dividend dates open their published evidence", async ({
   await expect(page.locator("[data-reading-event]")).toContainText("引用的数据版本或事件暂不可用");
 });
 
+test("keyboard navigation scrolls the focused History row into view", async ({page, isMobile}, info) => {
+  if (!isMobile) await page.setViewportSize({width:1100, height:900});
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const rows = Array.from({length:48}, (_, i) => ({id:i.toString(16).padStart(32, "0"), title:"Synthetic " + (i + 1)}));
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:rows}));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.getByRole("dialog", {name:ASSISTANT_NAME});
+  await panel.getByRole("button", {name:"Conversation history"}).click();
+  const back = panel.getByRole("button", {name:"Back to conversation"});
+  await expect(back).toBeFocused();
+  const last = panel.getByRole("button", {name:"Delete conversation · Synthetic 48"});
+  await expect(last).toBeAttached();
+  await expect(last).not.toBeInViewport();
+  await page.keyboard.press("Shift+Tab");
+  await expect(last).toBeFocused();
+  await expect(last).toBeInViewport();
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name+"-history-last-focused.png")});
+  await page.keyboard.press("Tab");
+  await expect(back).toBeFocused();
+  await expect(back).toBeInViewport();
+});
+
 test("keyboard Back from History restores focus inside the tablet sidebar", async ({page}, info) => {
   await page.setViewportSize({width:1000,height:800});
   await fixtures(page);

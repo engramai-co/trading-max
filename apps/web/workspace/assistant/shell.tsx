@@ -8,19 +8,19 @@ import { useCopy } from "../foundation";
 import { errorLabel } from "./status-label";
 import { ASSISTANT_NAME } from "../assistant-settings";
 import { useAssistant } from "./context";
-import { focusAssistantControl } from "./focus";
+import { canFocusAssistantControl, focusAssistantControl } from "./focus";
 
 const Sidebar = dynamic(() => import("./sidebar"), { ssr: false });
 
 function cyclePanelTab(event: ReactKeyboardEvent<HTMLDivElement>) {
   if (event.key !== "Tab" || event.defaultPrevented) return;
   const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:enabled, textarea:enabled, [tabindex]"))
-    .filter(control => control.tabIndex >= 0 && control.getClientRects().length > 0);
+    .filter(control => control.tabIndex >= 0 && canFocusAssistantControl(control));
   if (!controls.length) return;
   event.preventDefault();
   const index = controls.indexOf(document.activeElement as HTMLElement);
   const next = event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length;
-  focusAssistantControl(controls[next]);
+  controls[next].focus();
 }
 
 export function AssistantEntry() {
