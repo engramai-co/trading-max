@@ -3615,6 +3615,8 @@ export interface components {
             name?: string | null;
             /** Observed Days */
             observed_days: number | null;
+            /** Ordinal */
+            ordinal: number;
             /** Prior Close Date */
             prior_close_date?: string | null;
             /** Prior Close Gbp */

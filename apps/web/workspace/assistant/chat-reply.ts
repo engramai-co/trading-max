@@ -3,6 +3,7 @@ import type { Locale } from "@/components/locale-provider";
 import { object, str } from "../data";
 import { completedEvidence, type Evidence } from "./evidence";
 import { inferenceText, renderToolField } from "./figures";
+import { reviewFieldLocation } from "./review-figures";
 
 /** Resolve the whole reply before displaying or announcing any part of it. */
 export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZone = "Europe/London") {
@@ -25,7 +26,10 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
       const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone);
       if (!text) return [];
       let evidence = source.ref;
-      if (evidence.tool === "period_performance" && pointer === "/data/period_pnl_gbp") {
+      const review = reviewFieldLocation(evidence.tool, source.output, pointer);
+      if (review) {
+        evidence = {...evidence, arguments:{...evidence.arguments, ...review}};
+      } else if (evidence.tool === "period_performance" && pointer === "/data/period_pnl_gbp") {
         const data = object(source.output.data);
         evidence = {...evidence, arguments:{...evidence.arguments, metric:"period_pnl_gbp",
           start:str(data.window_start), end:str(data.window_end), snapshotId:str(source.output.snapshot_id)}};

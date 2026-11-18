@@ -170,7 +170,7 @@ export function ReviewHabits({
         snapshotId: snapshot,
       },
       questions: [
-        t("哪些决定符合这个习惯？", "Which decisions match this habit?"),
+        t("这个习惯出现过多少次？", "How often did this habit occur?"),
         t("换个复盘区间会怎样？", "How does the other horizon compare?"),
         t("错过的金额怎么算？", "How is the missed amount measured?"),
       ],

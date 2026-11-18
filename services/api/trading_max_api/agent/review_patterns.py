@@ -22,6 +22,7 @@ class HabitArgs(Args):
 def review_patterns(ctx: Context, args: HabitArgs) -> dict:
     """Count verified pre-earnings purchases, untraded falls and same-day baskets.
     Money after an untraded fall is hypothetical, sized to the mean purchase through that day.
+    For sidebar figures use /data/groups/GROUP/count, evaluated, effect_gbp or mean_return.
     """
     read = _Read(ctx.deps, "review_patterns", args, args.scope)
     scopes = sorted(read.account_codes(args.scope))

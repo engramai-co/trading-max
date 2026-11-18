@@ -2,6 +2,7 @@ import type { Locale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
 import { numeric } from "@/lib/numeric";
 import { currency, number, object, objects, percent, str, type Json } from "../data";
+import { renderReviewField } from "./review-figures";
 
 type Words = readonly [en: string, zh: string];
 const word = (words: Words, locale: Locale) => words[locale === "en" ? 0 : 1];
@@ -122,6 +123,7 @@ export function renderToolField(tool: string, output: Json, pointer: string, loc
   if (pointer === "/status") return status === "ok" && limited ? limitedText : word(statusWords[status], locale);
   if (status !== "ok" && status !== "partial") return null;
   if (pointer === "/data/coverage" && coverage) return limited ? limitedText : word(["Complete coverage", "覆盖完整"], locale);
+  if (tool === "review_patterns" || tool === "decision_timing_and_habits") return renderReviewField(tool, output, pointer, locale);
   const row = resolveField(output, pointer);
   if (!row || (row.group === "twr" && row.parent.status !== "ok")) return null;
   const formatted = formatField(tool, row, locale);

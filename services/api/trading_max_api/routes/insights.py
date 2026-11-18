@@ -118,6 +118,7 @@ class Timing(BaseModel):
 
 
 class DecisionTiming(BaseModel):
+    ordinal: int
     listing: str | None = None
     name: str | None = None
     prior_close_date: str | None = None

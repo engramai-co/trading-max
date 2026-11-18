@@ -6563,6 +6563,10 @@
             ],
             "title": "Observed Days"
           },
+          "ordinal": {
+            "title": "Ordinal",
+            "type": "integer"
+          },
           "prior_close_date": {
             "anyOf": [
               {
@@ -6621,6 +6625,7 @@
           }
         },
         "required": [
+          "ordinal",
           "scope",
           "ticker",
           "date",

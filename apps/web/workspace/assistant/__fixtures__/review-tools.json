@@ -1,0 +1,122 @@
+{
+  "decision": {
+    "status": "ok",
+    "data": {
+      "currency": "GBP",
+      "horizon": "20_sessions",
+      "as_of": {
+        "invest": "2026-03-06"
+      },
+      "habits": [
+        {
+          "side": "buy",
+          "decisions": 1,
+          "evaluated": 1,
+          "favourable": 1,
+          "adverse": 0,
+          "unchanged": 0,
+          "favourable_fraction": 1.0,
+          "effect_gbp": 18.0
+        },
+        {
+          "side": "sell",
+          "decisions": 0,
+          "evaluated": 0,
+          "favourable": 0,
+          "adverse": 0,
+          "unchanged": 0,
+          "favourable_fraction": null,
+          "effect_gbp": null
+        }
+      ],
+      "order_size_basis": "mean_security_purchase_order_through_decision_in_account",
+      "items": [
+        {
+          "scope": "invest",
+          "ticker": "TEST",
+          "date": "2026-02-03",
+          "side": "buy",
+          "listing": "TEST",
+          "ordinal": 0,
+          "name": null,
+          "prior_close_date": null,
+          "prior_close_gbp": null,
+          "settled_per_share_gbp": 40.0,
+          "security_return": 0.09,
+          "market_return": 0.03,
+          "horizon": "20_sessions",
+          "observed_days": 22.0,
+          "effect_gbp": 18.0,
+          "hindsight": {
+            "best_date": "2026-02-04",
+            "window_end": "2026-03-04",
+            "best_close_gbp": null,
+            "average_order_gbp": 200.0,
+            "missed_gbp": 12.0
+          }
+        }
+      ],
+      "total_items": 1,
+      "next_cursor": null
+    },
+    "snapshot_id": "synthetic",
+    "scope": "invest",
+    "sources": [
+      {
+        "source_id": "src_synthetic_0",
+        "as_of": "2026-03-06"
+      }
+    ],
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_decision"
+  },
+  "habits": {
+    "status": "ok",
+    "data": {
+      "groups": {
+        "before_earnings": {
+          "count": 1,
+          "evaluated": 1,
+          "effect_gbp": 9.0,
+          "mean_return": 0.045
+        },
+        "untraded_fall": {
+          "count": 1,
+          "evaluated": 1,
+          "effect_gbp": -7.0,
+          "mean_return": null
+        },
+        "basket_buy": {
+          "count": 1,
+          "evaluated": 1,
+          "effect_gbp": 9.0,
+          "mean_return": 0.045
+        }
+      },
+      "revision": "a50947d98109152a974064db",
+      "currency": "GBP",
+      "horizon": "to_date",
+      "as_of": {
+        "invest": "2026-03-06"
+      }
+    },
+    "snapshot_id": "synthetic",
+    "scope": "invest",
+    "sources": [
+      {
+        "source_id": "src_synthetic_0",
+        "as_of": "2026-03-06"
+      },
+      {
+        "source_id": "src_synthetic_1",
+        "as_of": "2026-03-06"
+      }
+    ],
+    "quality": {
+      "issues": []
+    },
+    "evidence_id": "ev_habits"
+  }
+}

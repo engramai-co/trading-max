@@ -1,8 +1,10 @@
 """Synthetic decision-time evidence, material habit changes and pinned cache reuse."""
 
 import asyncio
+import json
 from dataclasses import replace
 from datetime import UTC, datetime
+from pathlib import Path
 
 from pydantic_ai.models.test import TestModel
 from trading_max.analytics.decision_review import CALCULATION_VERSION
@@ -11,7 +13,8 @@ from trading_max.research.news import NEWS_KEY
 from services.api.tests.test_assistant_insights import republish
 from services.api.tests.test_assistant_readings import job, sample
 from services.api.trading_max_api.agent import tools
-from services.api.trading_max_api.agent.review_patterns import EVIDENCE
+from services.api.trading_max_api.agent.insights import ReviewArgs, decision_timing_and_habits
+from services.api.trading_max_api.agent.review_patterns import EVIDENCE, HabitArgs, review_patterns
 from services.api.trading_max_api.agent.review_roles import DecisionContext, HabitsContext, targets
 from services.api.trading_max_api.agent.roles import RoleTools, role_registry
 from services.api.trading_max_api.agent.service import BoundModel
@@ -116,6 +119,34 @@ def setup_review(tmp_path):
         return replace(deps, manifest=republish(store, refs))
 
     return service, publish, row, calls
+
+
+def test_sidebar_fixture_matches_the_completed_review_tools(tmp_path):
+    _, publish, row, _ = setup_review(tmp_path)
+    read = RoleTools.pinned(publish(), frozenset({"decision_timing_and_habits", "review_patterns"}))
+    expected = json.loads(
+        (
+            Path(__file__).resolve().parents[3]
+            / "apps/web/workspace/assistant/__fixtures__/review-tools.json"
+        ).read_text()
+    )
+    results = {
+        "decision": read.read(
+            decision_timing_and_habits,
+            ReviewArgs(
+                scope="invest",
+                ticker="TEST",
+                decision_date=row["date"],
+                side="buy",
+                horizon="20_sessions",
+            ),
+        ),
+        "habits": read.read(review_patterns, HabitArgs(scope="invest", horizon="to_date")),
+    }
+    for name, result in results.items():
+        assert all(
+            result[key] == expected[name][key] for key in ("status", "scope", "data", "quality")
+        )
 
 
 def test_decision_uses_dated_lead_and_hindsight_label_through_test_model(tmp_path):

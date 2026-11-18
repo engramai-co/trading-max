@@ -86,7 +86,10 @@ Supported fields include GBP amounts, fractions (including /data/twr/fraction), 
 position quantity and unit price, benchmark rows, decision amounts, dated events,
 freshness states and available valuation evidence values. For a research lens, select
 items/N/value for a typed price (with currency), technical score, expiry count,
-as-of date, sector, industry or country. Use {{/status}} if values are unavailable.
+as-of date, sector, industry or country. For Review, select /data/items/N/security_return,
+/data/items/N/market_return or /data/items/N/hindsight/missed_gbp from decision_timing_and_habits.
+For review_patterns select /data/groups/GROUP/count, evaluated, mean_return or effect_gbp
+using the actual habit key from its result. Use {{/status}} if values are unavailable.
 To offer a qualitative interpretation choose a suitable reference from this list:
 {{other-drivers}}, {{attribution}}, {{cash-flows}}, {{concentration}}, {{benchmark}},
 {{valuation}}, {{history}}, {{insufficient-evidence}}. End it with a space and [inference].

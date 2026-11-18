@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from bisect import bisect_left
+from collections import Counter
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from itertools import pairwise
@@ -364,6 +365,7 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             issues.append(f"{CODE_SCOPE[code]}_decisions_unavailable")
             continue
         as_of[CODE_SCOPE[code]] = _iso(account.get("as_of"))
+        ordinals: Counter[tuple[str, str, str]] = Counter()
         for row in _rows(account.get("decisions")):
             ticker, day = _text(row.get("ticker"), 64), _iso(row.get("date"))
             side = row.get("side")
@@ -390,10 +392,12 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             suffix = "horizon" if horizon == "20_sessions" else "to_date"
             effect = _number(row.get(f"effect_{suffix}_gbp")) if usable else None
             timing = _mapped(row.get(f"hindsight_{suffix}")) if effect is not None else {}
+            identity = (day, ticker, side)
             rows.append(
                 {
                     "scope": CODE_SCOPE[code],
                     "ticker": ticker,
+                    "ordinal": ordinals[identity],
                     "date": day,
                     "side": side,
                     **(
@@ -428,6 +432,7 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                     else None,
                 }
             )
+            ordinals[identity] += 1
             if effect is not None and not timing:
                 issues.append("hindsight_timing_unavailable")
     if not as_of:
@@ -608,7 +613,9 @@ def dated_exposure(ctx: Context, args: ExposureHistoryArgs) -> Json:
 
 
 def decision_timing_and_habits(ctx: Context, args: ReviewArgs) -> Json:
-    """Read hindsight entry/exit timing and rule-based buy/sell statistics. A missing effect is unscored."""
+    """Read decision outcomes and hindsight timing. A missing effect is unscored.
+    Sidebar references include /data/items/N/market_return and /data/items/N/hindsight/missed_gbp.
+    """
     return review_data(ctx.deps, args)
 
 
