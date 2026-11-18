@@ -322,7 +322,9 @@ def test_archived_money_revisions_do_not_evict_live_history(
         monkeypatch.setattr(module, "load_history", record_build)
         assert client.get(endpoint, params={"run_id": runs[-1]}).is_success
         for run in runs[:-1]:
-            assert client.get(endpoint, params={"run_id": run}).is_success
+            archived = client.get(endpoint, params={"run_id": run})
+            assert archived.is_success
+            assert archived.headers["X-History-Retained"] == "1"
         count = builds.count(runs[-1])
         assert client.get(endpoint, params={"run_id": runs[-1]}).is_success
         assert builds.count(runs[-1]) == count

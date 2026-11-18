@@ -37,6 +37,25 @@ describe("snapshot-pinned history queries", () => {
     await readPreparedHistory(live);
     expect(fetchMock.mock.calls.filter(([path]) => path.includes(live.runId))).toHaveLength(1);
   });
+  it("isolates older publications even when the caller omits the retained hint", async () => {
+    let pruned = false;
+    fetchMock.mockImplementation(async (path, init) => {
+      const run = new URL(path, "http://api").searchParams.get("run_id");
+      if (!run) return new Response(null, {status:404});
+      if (pruned && run.startsWith("old-")) return new Response(null,{status:404});
+      if (init?.method === "HEAD") return new Response(null,{status:204});
+      const output = response(run);
+      if (run.startsWith("old-")) output.headers.set("X-History-Retained","1");
+      return output;
+    });
+    const live = selection("live-without-hint");
+    await readPreparedHistory(live);
+    for (let i = 0; i < 9; i++) await readPreparedHistory(selection("old-"+i));
+    await readPreparedHistory(live);
+    expect(fetchMock.mock.calls.filter(([path]) => path.includes(live.runId))).toHaveLength(1);
+    pruned = true;
+    expect((await GET(new Request("http://localhost/?runId=old-8&range=6M"))).status).toBe(404);
+  });
   it("checks retention before returning cached charts and exact rows", async () => {
     const query = "http://localhost/?runId=prunable&retained=1";
     let retained = true;

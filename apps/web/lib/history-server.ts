@@ -21,12 +21,13 @@ export class HistoryRequestError extends Error {
 
 /** Bounded process cache only; a miss reopens the same immutable snapshot. */
 export async function readPreparedHistory(selection: HistorySelection, retained = false, exactPage = false): Promise<Prepared> {
-  const {entries: cache, pending} = retained ? retainedCache : liveCache;
   const key = JSON.stringify(selection);
+  const archived = retained || retainedCache.entries.has(key);
+  const {entries: cache, pending} = archived ? retainedCache : liveCache;
   for (const [id, entry] of cache) if (entry.expires <= Date.now()) cache.delete(id);
   const existing = cache.get(key);
   if (existing) {
-    if (retained || exactPage) {
+    if (archived || exactPage) {
       const check = await backendFetch(`/v1/dashboard/history?run_id=${encodeURIComponent(selection.runId)}`, {method:"HEAD"});
       if (!check.ok) {
         if (check.status === 404) cache.delete(key);
@@ -51,9 +52,10 @@ export async function readPreparedHistory(selection: HistorySelection, retained 
     const result = prepareHistory(input, selection);
     const bytes = Buffer.byteLength(JSON.stringify(result));
     if (bytes <= BUDGET) {
-      const used = () => [...cache.values()].reduce((sum, entry) => sum + entry.bytes, 0);
-      while (cache.size && (cache.size >= ENTRIES || used() + bytes > BUDGET)) cache.delete(cache.keys().next().value!);
-      cache.set(key, { value: result, bytes, expires: Date.now() + 10 * 60_000 });
+      const output = response.headers.get("X-History-Retained") === "1" ? retainedCache.entries : cache;
+      const used = () => [...output.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+      while (output.size && (output.size >= ENTRIES || used() + bytes > BUDGET)) output.delete(output.keys().next().value!);
+      output.set(key, { value: result, bytes, expires: Date.now() + 10 * 60_000 });
     }
     return result;
   })();

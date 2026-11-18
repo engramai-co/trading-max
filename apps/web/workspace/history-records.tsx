@@ -27,7 +27,7 @@ export function HistoryRecords({ selection, label, retained = false }: { selecti
   const data = query.data;
   return <details className="mx-chart-data" onToggle={(event) => setOpen(event.currentTarget.open)}>
     <summary>{t("查看精确记录", "View exact observations")}</summary>
-    {open && (query.isPending ? <Pending compact /> : query.isError ? <QueryError retry={query.refetch} /> : data && <>
+    {open && ((query.isPending || (retained && query.isFetching)) ? <Pending compact /> : query.isError ? <QueryError retry={query.refetch} /> : data && <>
       <EvidenceTable label={label} totalRows={data.total}
         rows={data.points.map((point, index) => ({ point, index }))}
         columns={[

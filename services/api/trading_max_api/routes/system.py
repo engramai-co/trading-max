@@ -453,17 +453,17 @@ def history_retention(
 )
 def dashboard_history(
     request: Request,
+    response: Response,
     range: HistoryRange = "3M",
     scope: HistoryScope = "total",
     run_id: str | None = Query(default=None, pattern=r"^[A-Za-z0-9_-]{1,100}$"),
 ) -> HistorySnapshot:
     manifest = _dashboard_manifest(request, run_id)
     latest = app_service(request, "store").latest_manifest() if run_id else manifest
-    reader = (
-        "history_reader"
-        if latest and latest.run_id == manifest.run_id
-        else "retained_history_reader"
-    )
+    retained = not latest or latest.run_id != manifest.run_id
+    if retained:
+        response.headers["X-History-Retained"] = "1"
+    reader = "retained_history_reader" if retained else "history_reader"
     return app_service(request, reader).read(manifest, range, scope)
 
 
