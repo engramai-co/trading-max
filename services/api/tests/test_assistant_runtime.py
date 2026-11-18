@@ -199,6 +199,30 @@ def test_chat_streams_a_tool_grounded_answer_and_keeps_history_on_the_server(tmp
     assert client.get("/v1/assistant/conversations/chat1").status_code == 404
 
 
+def test_follow_ups_have_independent_request_tool_and_token_budgets(tmp_path, monkeypatch):
+    from pydantic_ai import UsageLimits
+
+    monkeypatch.setattr(
+        service_module,
+        "USAGE_LIMITS",
+        UsageLimits(request_limit=2, tool_calls_limit=1, total_tokens_limit=10000),
+    )
+    stream, seen = answer_after_tool("lookup_total")
+    app, service = make_app(tmp_path, stream)
+    with TestClient(app) as client:
+        for index in range(6):
+            response = client.post(
+                "/v1/assistant/chat", json=user_turn("long", f"u{index}", f"Turn {index}")
+            )
+            assert any(c["type"] == "data-conversation-saved" for c in events(response.text))
+        assert len(seen) == 12
+        record = anyio.run(service.store.read_record, "long")
+        assert (record.usage.requests, record.usage.tool_calls) == (12, 6)
+        monkeypatch.setattr(service_module, "USAGE_LIMITS", UsageLimits(request_limit=1))
+        response = client.post("/v1/assistant/chat", json=user_turn("long", "too-long", "Again"))
+        assert any(c.get("errorText") == "assistant_limit_reached" for c in events(response.text))
+
+
 def test_unavailable_assistant_and_invalid_ids_are_rejected_before_any_run(tmp_path):
     async def disabled() -> BoundModel:
         raise AssistantUnavailable("assistant_disabled", 403)
