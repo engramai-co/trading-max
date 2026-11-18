@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -137,6 +138,18 @@ def test_draft_review_saves_only_accepted_fields_and_retries_once(desk):
         "draftReview": {"id": result["id"], "decisions": decisions},
     }
     save["scenarios"]["base"]["revenueCagr"] = chosen["value"]
+    changed = {
+        **save,
+        "scenarios": {
+            **save["scenarios"],
+            "bear": {**save["scenarios"]["bear"], "discountRate": 0.33},
+        },
+    }
+    assert (
+        client.post(PATH + "/models", json=changed).json()["detail"]
+        == "valuation-draft-decisions-invalid"
+    )
+    assert client.get(PATH + "/journal").json()["models"] == []
     # A new process can still validate the private pending record.
     state.valuation_drafts = ValuationDraftStore(state.store.data_root)
     for _ in range(2):
@@ -354,3 +367,30 @@ def test_closing_stream_cancels_model_and_releases_workspace(desk):
 
     asyncio.run(exercise())
     assert not state.valuation_drafts.root.exists()
+
+
+@pytest.mark.parametrize("change", [{"fx": 1.16}, {"share_count": 119}, {"restated": True}])
+def test_save_rechecks_fx_shares_and_statements(desk, change):
+    client, state, _, _ = desk
+    issuer = replace(MATURE, reporting="EUR", fx=1.15)
+    _publish(state.store, issuer)
+    view, body = inputs(client)
+    result = post(client, body)[-1]["result"]
+    decisions = {s: {} for s in body["scenarios"]}
+    for p in result["proposals"]:
+        decisions[p["scenario"]][p["field"]] = "unreviewed"
+    _publish(state.store, replace(issuer, **change))
+    response = client.post(
+        PATH + "/models",
+        json={
+            "family": "cash-flow",
+            "formulaVersion": view["formulaVersion"],
+            "scenarios": body["scenarios"],
+            "draftReview": {"id": result["id"], "decisions": decisions},
+        },
+    )
+    assert (
+        response.status_code == 409
+        and response.json()["detail"] == "valuation-draft-review-required"
+    )
+    assert client.get(PATH + "/journal").json()["models"] == []

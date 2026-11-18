@@ -21,7 +21,7 @@ from trading_max.research.valuation_evidence import (
 
 from ..agent.runtime import error_code
 from ..agent.service import AssistantUnavailable
-from ..agent.valuation import DraftAgent, annual_change
+from ..agent.valuation import DraftAgent, annual_revenue_growth
 from ..assistant_settings import ASSISTANT_CONSENT_REVISION
 from ..valuation_drafts import (
     DraftEvent,
@@ -81,7 +81,7 @@ def _prepare(request, ticker, body, share_saved, progress):
         ),
         profile.discount,
     )
-    growth, _ = annual_change(frozen, Metric.REVENUE)
+    growth = annual_revenue_growth(frozen)
     templates = scenario_template_inputs(public, profile, cost, growth)
     prior = next((m for m in models if m.preview.basis.family == frozen.family), None)
     saved = (
@@ -130,6 +130,11 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
         async def generate():
             async with asyncio.timeout(TIMEOUT):
+                # A privacy or route change invalidates the run before another tool result leaves.
+                def progress(phase):
+                    check_preferences()
+                    events.put_nowait(phase)
+
                 check_preferences()
                 runner, view, parent = await asyncio.to_thread(
                     _prepare,
@@ -137,15 +142,9 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                     ticker,
                     body,
                     prefs.share_valuation_assumptions,
-                    events.put_nowait,
+                    progress,
                 )
 
-                # A privacy or route change invalidates the run before another tool result leaves.
-                def progress(phase):
-                    check_preferences()
-                    events.put_nowait(phase)
-
-                runner.progress = progress
                 check_preferences()
                 bound = await app_service(request, "assistant").bind_model()
                 check_preferences()

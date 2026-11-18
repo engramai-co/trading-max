@@ -44,12 +44,12 @@ class Selection(DomainModel):
     candidate_ids: list[Annotated[str, Field(min_length=1, max_length=80)]] = Field(max_length=18)
 
 
-def annual_change(frozen: FrozenValuationEvidence, metric: Metric):
+def annual_revenue_growth(frozen: FrozenValuationEvidence) -> float | None:
     rows = sorted(
         (
             r
             for r in frozen.rows
-            if r.metric == metric
+            if r.metric == Metric.REVENUE
             and r.state == "available"
             and r.period.kind == "annual"
             and r.period.end
@@ -58,12 +58,9 @@ def annual_change(frozen: FrozenValuationEvidence, metric: Metric):
         key=lambda r: r.period.end,
     )
     if len(rows) < 2 or rows[0].currency != rows[-1].currency or rows[0].unit != rows[-1].unit:
-        return None, ()
+        return None
     first, last = rows[0], rows[-1]
-    return annualised_change(first.value, last.value, first.period.end, last.period.end), (
-        first,
-        last,
-    )
+    return annualised_change(first.value, last.value, first.period.end, last.period.end)
 
 
 class DraftAgent:
@@ -142,17 +139,6 @@ class DraftAgent:
                         "saved-assumption",
                         EvidenceGroup.BASIS,
                     )
-            if "share_cagr" in fields:
-                rate, refs = annual_change(frozen, Metric.STATEMENT_SHARES)
-                add(
-                    scenario,
-                    "share_cagr",
-                    rate,
-                    "derived",
-                    "statement-shares",
-                    EvidenceGroup.OPERATING,
-                    refs,
-                )
             for field, metric, source, category in (
                 ("revenue_cagr", Metric.CONSENSUS_REVENUE_GROWTH, "consensus-growth", "consensus"),
                 ("revenue_cagr", Metric.REVENUE_GROWTH, "statement-growth", "derived"),

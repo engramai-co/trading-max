@@ -33,7 +33,6 @@ Source = Literal[
     "consensus-growth",
     "statement-growth",
     "statement-margin",
-    "statement-shares",
     "common-roe",
     "cost-of-equity",
     "book-multiple",

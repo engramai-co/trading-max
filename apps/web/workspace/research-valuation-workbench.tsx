@@ -278,7 +278,7 @@ function ModelEditor({
   const [inputs, setInputs] = useState<Scenarios>(() =>
     Object.fromEntries(keys.map((k) => [k, initial.scenarios[k].inputs])),
   );
-  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs);
+  const drafting = useValuationDraft(initial, requestedFamily, horizon, inputs, revision ?? data.runId);
   const { draft } = drafting;
   const [editingProposal, setEditingProposal] = useState<string | null>(null);
   const residual = initial.basis.family === "residual-income";

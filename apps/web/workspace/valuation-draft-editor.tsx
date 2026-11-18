@@ -13,7 +13,7 @@ import type { Preview, ScenarioInput } from "./research-facts";
 import { inputKey, newReview, readDraft, type Decision, type DraftEvent, type DraftState, type Proposal } from "./valuation-draft";
 
 export function useValuationDraft(initial: Preview, requestedFamily: Preview["basis"]["family"] | undefined,
-  horizon: number, inputs: Record<string, ScenarioInput>) {
+  horizon: number, inputs: Record<string, ScenarioInput>, publication: string | null | undefined) {
   const prefs = useQuery({
     queryKey: ["workspace-assistant-settings"],
     queryFn: ({ signal }) => api<components["schemas"]["AssistantSettingsResponse"]>("/settings/assistant", { signal }),
@@ -21,7 +21,7 @@ export function useValuationDraft(initial: Preview, requestedFamily: Preview["ba
   }).data;
   const enabled = Boolean(prefs?.enabled && prefs.consentRevision >= 2 && prefs.acceptedConsentRevision === prefs.consentRevision);
   const basis = JSON.stringify([initial.id, horizon, requestedFamily]);
-  const runKey = JSON.stringify([basis, inputs, enabled, prefs?.revision]);
+  const runKey = JSON.stringify([basis, publication, inputs, enabled, prefs?.revision]);
   const controller = useRef<AbortController | null>(null);
   const [run, setRun] = useState<{ key: string; phase: DraftEvent["phase"] } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,14 +41,18 @@ export function useValuationDraft(initial: Preview, requestedFamily: Preview["ba
     try {
       const response = await fetch(`/api/backend/research/${encodeURIComponent(initial.basis.ticker)}/valuation-draft`, {
         ...jsonRequest("POST", { previewId: initial.id, horizon, requestedFamily, scenarios: inputs }),
-        signal: request.signal,
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
       });
       const result = await readDraft(response, phase => {
-        if (!request.signal.aborted) setRun({ key: runKey, phase });
+        if (!request.signal.aborted) setRun(current =>
+          current?.key === runKey && current.phase === phase ? current : { key: runKey, phase });
       });
       if (!request.signal.aborted) setDraft({ result, review: newReview(result), before, basis });
     } catch (e) {
-      if (!request.signal.aborted) setError(e instanceof Error ? e.message : "assistant_failed");
+      if (!request.signal.aborted) {
+        setError(e instanceof Error && e.name === "TimeoutError" ? "assistant_timeout" :
+          e instanceof Error ? e.message : "assistant_failed");
+      }
     } finally {
       if (controller.current === request) {
         controller.current = null;
@@ -101,7 +105,6 @@ const categories = { consensus: ["一致预期", "Consensus"], reported: ["报�
 const reasons = {
   "consensus-growth": ["将下一财年营收预期作为前五年增长的参考。", "Uses next fiscal year’s consensus as a reference for five-year growth."],
   "statement-growth": ["沿用最近完整期间的营收增速。","Carries forward the latest complete period’s revenue growth."],
-  "statement-shares": ["按年度报表中股数的复合变化估算。","Uses the annualised share-count change between reported years."],
   "statement-margin": ["沿用本期报表的利润率。","Carries forward the margin from the bound statements."],
   "common-roe": ["用普通股净利润除以同期普通股净资产。","Divides common earnings by common equity for the same period."],
   "cost-of-equity": ["采用当前股权成本估算。","Uses the published cost-of-equity estimate."],

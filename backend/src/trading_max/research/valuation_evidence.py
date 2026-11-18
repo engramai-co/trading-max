@@ -333,7 +333,7 @@ class AssumptionCitation(_FrozenModel):
 class EvaluateValuationRequest(_FrozenModel):
     horizon: Literal[5, 10] = 5
     scenarios: ProposedScenarios
-    citations: tuple[AssumptionCitation, ...] = Field(default=(), max_length=18)
+    citations: tuple[AssumptionCitation, ...] = Field(default=(), max_length=15)
 
 
 class ReverseDCF(_FrozenModel):
