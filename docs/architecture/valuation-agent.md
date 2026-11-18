@@ -119,12 +119,18 @@ currency withholds the comparison.
 The saved period is compared with the current statements for the same
 period. A changed figure is a restatement: the response lists it, and the
 walk measures its effect within the new financial base. The share count is
-compared when it came from the balance sheet. A period that has left the
-statements cannot be checked, and the review says so. Conflicts are four
-quarters that differ from the fiscal year ending on the same day by more than
-0.5%, and provider rows that disagree in the basis period or a newer period
-the model skipped. The model uses the documented period and never blends
-the two sources.
+compared when it came from the balance sheet. A quoted share count stays as
+saved; a switch to the balance-sheet count belongs to the new financial base.
+Each figure the statements still report is compared on its own. When one is
+missing, the review lists the restatements it found, names the missing
+figure and withholds their combined effect. A period that has left the
+statements, or statements in another reporting currency, cannot be checked,
+and the review says which. Conflicts are four quarters that differ from the
+fiscal year ending on the same day by more than 0.5%, and provider rows that
+disagree in the basis period, in the fiscal year it is checked against or in
+a newer period the model skipped. Earnings follow the basis: common earnings
+when reported, otherwise net income. The model uses the documented period and
+never blends the two sources.
 
 Fiscal-year EPS consensus at the save time comes from the estimate archive
 and is compared with the latest observation for the same year end and

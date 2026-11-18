@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { distinct, pair, periodText, signedValue } from "./valuation-maintenance";
+import { distinct, pair, periodText, restatementGapText, signedValue } from "./valuation-maintenance";
 import { sortedLocks } from "./valuation-queries";
 
 describe("new evidence figures", () => {
@@ -33,5 +33,23 @@ describe("new evidence figures", () => {
       { scenario: "bull", field: "share_cagr" }, { scenario: "base", field: "discount_rate" },
       { scenario: "bull", field: "share_cagr" },
     ])).toEqual([{ scenario: "base", field: "discount_rate" }, { scenario: "bull", field: "share_cagr" }]);
+  });
+
+  it("says why a saved period could not be checked for restatements", () => {
+    const zh = (a: string) => a, en = (_: string, b: string) => b;
+    const point = (reportingCurrency: string) => ({ periodId: "ttm:2025-12-31", periodChoice: null, spot: 20,
+      spotSource: "quote" as const, spotAsOf: null, fxRate: 1, reportingCurrency });
+    const review = { restatementCheck: "restated" as const, restatementGap: "metrics-incomplete" as const,
+      uncheckedFigures: ["cash" as const, "freeCashflow" as const], family: "cash-flow" as const,
+      saved: point("USD"), current: point("USD") };
+    expect(restatementGapText(review, en, "en")).toBe("The current statements lack this period's cash & " +
+      "short-term investments and free cash flow, so the combined effect of the restatement cannot be computed.");
+    expect(restatementGapText({ ...review, restatementCheck: "unchanged", uncheckedFigures: ["cash"] }, zh, "zh"))
+      .toBe("最新报表缺少这一期的现金及短期投资，无法核对是否重述。");
+    expect(restatementGapText({ ...review, restatementCheck: "unavailable", restatementGap: "currency-changed",
+      current: point("EUR") }, en, "en")).toBe("The statements now report in EUR rather than USD, so restatements cannot be checked.");
+    expect(restatementGapText({ ...review, restatementCheck: "unavailable", restatementGap: "period-missing" }, zh, "zh"))
+      .toBe("保存时的期间已不在当前报表中，无法核对重述。");
+    expect(restatementGapText({ ...review, restatementCheck: "unchanged", restatementGap: null }, en, "en")).toBeNull();
   });
 });

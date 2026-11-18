@@ -103,7 +103,9 @@ function lens(view: string) {
   };
 }
 
-async function desk(page: Page, { assistant = false } = {}) {
+type Review = ReturnType<typeof maintenance>;
+
+async function desk(page: Page, { assistant = false, amend = (review: Review): object => review } = {}) {
   const state = {
     reviews: [] as { modelId: string; scenarios: Record<Key, Inputs>; lockedInputs: unknown[] }[],
     saves: [] as Record<string, unknown>[],
@@ -132,7 +134,7 @@ async function desk(page: Page, { assistant = false } = {}) {
   await page.route("**/SYNT/valuation-maintenance", (route) => {
     const body = route.request().postDataJSON();
     state.reviews.push(body);
-    return route.fulfill({ json: maintenance(body) });
+    return route.fulfill({ json: amend(maintenance(body)) });
   });
   await page.route("**/SYNT/models", (route) => {
     state.saves.push(route.request().postDataJSON());
@@ -250,4 +252,34 @@ test("a locked assumption is saved with the version and kept out of a MaxAI draf
   await expect.poll(() => state.saves.length).toBe(1);
   expect(state.saves[0]).toMatchObject({ lockedInputs: locks,
     draftReview: { id: "synthetic-draft", decisions: { bull: { revenue_cagr: "accepted" } } } });
+});
+
+test("a partly checked restatement and an unchecked fiscal year say why", async ({ page }, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await desk(page, { amend: (review) => ({
+    ...review,
+    // The current statements no longer report the period's cash, so the combined effect is withheld.
+    scenarios: Object.fromEntries(Object.entries(review.scenarios).map(([key, walk]) =>
+      [key, { ...walk, restated: null, restatementEffect: null }])),
+    restatementGap: "metrics-incomplete", uncheckedFigures: ["cash"],
+    conflicts: [{ kind: "conflicting-source-rows", periodId: "annual:2026-09-30", metric: "revenue",
+      unit: "currency", currency: "USD", blocksComparison: true }],
+  }) });
+  await page.goto("/research?ticker=SYNT&view=valuation");
+  await page.locator("#valuation-assumptions").getByRole("button", { name: "See new evidence", exact: true }).click();
+  const review = page.locator("#valuation-evidence");
+  await expect(review.getByRole("rowheader", { name: "New financial base", exact: true })).toBeVisible();
+  await expect(review.getByRole("rowheader", { name: "Of which restated", exact: true })).toHaveCount(0);
+  await expect(review.locator(".mx-evidence-notes li").first()).toContainText("4.00k → 3.85k USD");
+  await expect(review.locator(".mx-evidence-muted")).toHaveText("The current statements lack this period's cash & " +
+    "short-term investments, so the combined effect of the restatement cannot be computed.");
+  await capture(page, info.project.name + "-partial");
+  await review.getByRole("button", { name: "Restated" }).click();
+  await expect(page.getByRole("dialog")).toContainText("it is included in the new financial base");
+  await expect(page.getByRole("dialog")).not.toContainText("Of which restated");
+  await page.keyboard.press("Escape");
+  await expect(review.locator(".mx-evidence-notes li").nth(1)).toContainText(/FY to 30 Sept? · Revenue two different rows/);
+  await review.getByRole("button", { name: "Conflict" }).click();
+  await expect(page.getByRole("dialog")).toContainText("so the four quarters cannot be checked against it");
 });

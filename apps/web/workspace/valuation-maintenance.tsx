@@ -101,6 +101,38 @@ function conflictText(conflict: Maintenance["conflicts"][number], t: Copy, local
     unitOf(conflict.unit, conflict.currency);
 }
 
+/** "Free cash flow" → "free cash flow" inside an English sentence; acronyms stay. */
+function inSentence(name: string) {
+  return /^[A-Z][a-z]/.test(name) ? name[0].toLowerCase() + name.slice(1) : name;
+}
+
+type GapReview = Pick<Maintenance, "restatementCheck" | "restatementGap" | "uncheckedFigures" | "family" | "saved" | "current">;
+
+/** Why the saved period, or some of its figures, could not be checked for restatements. */
+export function restatementGapText(review: GapReview, t: Copy, locale: Locale) {
+  const gap = review.restatementGap;
+  if (gap === "currency-changed") {
+    const from = review.saved.reportingCurrency ?? "—", to = review.current.reportingCurrency ?? "—";
+    return locale === "zh" ? `报表币种已从 ${from} 改为 ${to}，无法核对重述。`
+      : `The statements now report in ${to} rather than ${from}, so restatements cannot be checked.`;
+  }
+  const names = (review.uncheckedFigures ?? []).map((metric) => figureName(metric, review.family, t));
+  if (gap === "metrics-incomplete" && names.length) {
+    const list = locale === "zh" ? names.join("、")
+      : new Intl.ListFormat("en-GB", { type: "conjunction" }).format(names.map(inSentence));
+    if (review.restatementCheck === "restated") return locale === "zh"
+      ? `最新报表缺少这一期的${list}，重述的合计影响无法计算。`
+      : `The current statements lack this period's ${list}, so the combined effect of the restatement cannot be computed.`;
+    return locale === "zh" ? `最新报表缺少这一期的${list}，无法核对是否重述。`
+      : `The current statements lack this period's ${list}, so ${names.length > 1 ? "they" : "it"} cannot be checked for restatement.`;
+  }
+  if (gap === "metrics-incomplete") return t("最新报表缺少这一期的数字，无法核对重述。",
+    "The current statements lack this period's figures, so restatements cannot be checked.");
+  if (gap === "period-missing") return t("保存时的期间已不在当前报表中，无法核对重述。",
+    "The saved period is no longer in the current statements, so restatements cannot be checked.");
+  return null;
+}
+
 export function EvidenceReview({ review, error, pending, retry, selected, currency, describe, close }: {
   review?: Maintenance;
   error: unknown;
@@ -202,8 +234,10 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
     <ul className="mx-evidence-notes">
       {review.restatements.map((r) => <li key={"r" + r.periodId + r.metric}>
         <Help label={t("重述", "Restated")} tag={<Tag tone="warn">{t("重述", "Restated")}</Tag>}>
-          <p>{t("保存时用的这一期数字在最新报表里变了。它对估值的影响单独列在「其中重述」，计入新财务基数。",
-            "The latest statements report this figure of the saved period differently. Its effect on the values is listed under Of which restated and included in the new financial base.")}</p>
+          <p>{restated ? t("保存时用的这一期数字在最新报表里变了。它对估值的影响单独列在「其中重述」，计入新财务基数。",
+            "The latest statements report this figure of the saved period differently. Its effect on the values is listed under Of which restated and included in the new financial base.")
+            : t("保存时用的这一期数字在最新报表里变了，计入新财务基数。",
+              "The latest statements report this figure of the saved period differently; it is included in the new financial base.")}</p>
         </Help>
         <span>{periodText(r.periodId, locale)} · {figureName(r.metric, review.family, t)} {pair(r.saved, r.current, r.unit, r.currency, locale)}</span>
       </li>)}
@@ -212,6 +246,9 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
           <p>{c.kind === "quarters-vs-fiscal-year"
             ? t("四个季度的合计与同一天结束的年报相差超过 0.5%。模型用四个季度的合计，不把两者混合。",
               "The four quarters and the fiscal year ending on the same day differ by more than 0.5%. The model uses the four quarters and never blends the two.")
+            : c.blocksComparison
+            ? t("数据源对这一财年给出了两行不同的数字，无法用它核对四个季度的合计。",
+              "The source reports two different rows for this fiscal year, so the four quarters cannot be checked against it.")
             : t("数据源对这一期给出了两行不同的数字，这一期不进入模型。",
               "The source reports two different rows for this period, so the model does not use it.")}</p>
         </Help>
@@ -223,9 +260,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
           {" · "}{t("财年 ", "FY ") + formatCalendarDate(e.periodEnd, locale)}{" · "}
           {pair(e.saved, e.current, e.metric === "consensusEps" ? "currency" : "ratio", e.currency, locale)}</span>
       </li>)}
-      {review.restatementCheck === "unavailable" && <li className="mx-evidence-muted">
-        {t("保存时的期间已不在当前报表中，无法核对重述。", "The saved period is no longer in the current statements, so restatements cannot be checked.")}
-      </li>}
+      {review.restatementGap && <li className="mx-evidence-muted">{restatementGapText(review, t, locale)}</li>}
     </ul>
     <details className="mx-evidence-detail">
       <summary>{t("明细", "Details")}</summary>
