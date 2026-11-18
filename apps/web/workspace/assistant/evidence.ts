@@ -1,6 +1,6 @@
 import type { components } from "@/lib/api-schema";
 import type { UIMessage } from "ai";
-import { object, safeUrl, str } from "../data";
+import { object, safeUrl, str, type Json } from "../data";
 
 export const sourceWords = {
   account: ["账户", "Account"], broker: ["券商", "Broker"], holdings: ["持仓", "Holdings"],
@@ -84,24 +84,35 @@ export function displayTurns(messages: UIMessage[]) {
   }
   return turns;
 }
-export function messageEvidence(message: UIMessage) {
-  const refs = new Map<string, Evidence>();
+export function completedEvidence(message: UIMessage) {
+  const refs = new Map<string, { ref: Evidence; output: Json }>();
+  const ambiguous = new Set<string>();
   for (const part of message.parts) {
     const tool = part.type === "dynamic-tool" ? part.toolName : part.type.startsWith("tool-") ? part.type.slice(5) : "";
-    if (!("output" in part) || !destinations[tool]) continue;
-    const id = str(object(part.output).evidence_id);
-    if (!id) continue;
+    if (!("state" in part) || part.state !== "output-available" || !Object.hasOwn(destinations, tool)) continue;
+    const output = object(part.output);
+    const id = str(output.evidence_id);
+    if (!id || ambiguous.has(id)) continue;
     const raw = object(object(part.input).args ?? part.input);
     const args = Object.fromEntries(Object.entries(raw).filter((p): p is [string, string] => typeof p[1] === "string"));
+    const ref: Evidence = { evidenceId: id, tool, arguments: args, source: tool === "read_research_lens" && lensWords[args.lens] || destinations[tool][1] };
     if (tool === "research_headline") {
-      const story = object(object(part.output).data);
+      const story = object(output.data);
       const url = safeUrl(str(story.url));
-      if (url && str(story.publisher)) refs.set(id, {evidenceId:id,tool,source:"publisher",publisher:str(story.publisher),arguments:{...args,url}});
-      continue;
+      if (!url || !str(story.publisher)) continue;
+      ref.publisher = str(story.publisher);
+      ref.arguments = {...args, url};
     }
-    refs.set(id, { evidenceId: id, tool, arguments: args, source: tool === "read_research_lens" && lensWords[args.lens] || destinations[tool][1] });
+    const found = refs.get(id);
+    if (found && (JSON.stringify(found.ref) !== JSON.stringify(ref) || JSON.stringify(found.output) !== JSON.stringify(output))) {
+      refs.delete(id);
+      ambiguous.add(id);
+    } else refs.set(id, {ref, output});
   }
   return refs;
+}
+export function messageEvidence(message: UIMessage) {
+  return new Map(Array.from(completedEvidence(message), ([id, result]) => [id, result.ref]));
 }
 export function chatContext(page: string, search: string, timezone: string) {
   const params = new URLSearchParams(search);
@@ -117,21 +128,4 @@ export function chatContext(page: string, search: string, timezone: string) {
     ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
     ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),
   };
-}
-
-/** A reply is visible only with two to four lines whose trailing references belong to this turn. */
-export function verifiedLines(message: UIMessage) {
-  const references = messageEvidence(message);
-  const raw = message.parts.filter(p => p.type === "text").map(p => p.text).join("").trim();
-  const lines = raw.split(/\n+/).map(s => s.trim()).filter(Boolean);
-  if (lines.length < 2 || lines.length > 4) return [];
-  const result: { text: string; evidence: Evidence | null }[] = [];
-  for (const line of lines) {
-    const match = /^(.+?)\s*\[(inference|ev_[a-zA-Z0-9_-]+)\]$/.exec(line);
-    if (!match || /\[(?:ev_|inference\])/.test(match[1])) return [];
-    const evidence = references.get(match[2]);
-    if (!evidence && (match[2] !== "inference" || /\p{N}/u.test(match[1]))) return [];
-    result.push({text:match[1].trim(), evidence:evidence ?? null});
-  }
-  return result;
 }
