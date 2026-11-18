@@ -145,10 +145,17 @@ listing, including exchange-qualified watchlist aliases. A run captures its
 aliases at the start and reads prices and events from its pinned snapshot.
 Events must match the listing on the published bar row. Timed headlines use the
 first session whose regular close is at or after publication, including early
-closes and holidays. A missing exchange calendar withholds the timed headline.
+closes and holidays. Equity and ETF sessions include the scheduled closing-price
+auction. A lead inside a random uncrossing window stays on that session and
+carries `timing: closing_auction_window`. The schedule describes ordinary
+continuous-trading listings. An instrument-specific suspension, price-monitoring
+extension or execution time would require evidence from the exchange.
+A missing schedule, or a missing instrument type that could change the assigned
+session, withholds the timed headline and reports `listing_calendar_unavailable`.
 A venue code or qualified listing identifies the calendar. Frankfurt shares and
 funds use the 22:00 local close (20:00 on traded public holidays), with the
-exchange's shorter year-end session. Xetra uses its regular 17:30 close.
+exchange's shorter year-end session. On a regular Xetra day the closing auction
+begins at 17:30 and uncrosses between 17:35:00 and 17:35:30.
 [Deutsche Börse trading hours](https://cashmarket.deutsche-boerse.com/cash-en/trading/trading-calendar-and-trading-hours)
 and the [2021 Frankfurt hours change](https://www.cashmarket.deutsche-boerse.com/cash-en/Stay-Informed/circulars-newsletters/deutsche-boerse-circulars/Amendments-to-the-Rules-and-Regulations-of-the-Frankfurter-Wertpapierb-rse-and-further-decisions-of-the-FWB-Management-Board-2841560)
 give the session boundaries.

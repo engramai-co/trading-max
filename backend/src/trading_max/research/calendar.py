@@ -31,41 +31,90 @@ YAHOO_SUFFIX_BY_MIC = {
     "XPAR": ".PA",
     "XMIL": ".MI",
     "XSWX": ".SW",
+    "XDUB": ".IR",
+    "XKRX": ".KS",
+    "XTAI": ".TW",
+    "XCSE": ".CO",
+    "XHEL": ".HE",
+    "XLIS": ".LS",
+    "XOSL": ".OL",
+    "XWBO": ".VI",
     "XNYS": "",
     "XNAS": "",
     "ARCX": "",
 }
 YAHOO_MIC_BY_SUFFIX = {suffix: mic for mic, suffix in YAHOO_SUFFIX_BY_MIC.items() if suffix}
 
-# Provider codes, exchange names and MICs for regular cash-equity sessions.
-# Several US venues share the NYSE regular schedule.
+# Yahoo codes, MICs and the verified OpenFIGI exchange codes used by watchlists.
+# https://www.openfigi.com/about/exchange-codes
 _VENUES = {
-    "XNYS": "XNYS NYQ NYSE NMS NGM NCM NGS NASDAQ NASDAQGS NASDAQGM NASDAQCM XNAS "
-    "ASE XASE AMEX NYSEAMERICAN PCX ARCX NYSEARCA BATS BTS BZX CBOEBZX",
-    "XLON": "XLON LSE LONDON LONDONSTOCKEXCHANGE",
-    "XFRA": "XFRA FRA FRANKFURT",
-    "XETR": "XETR GER XETRA ETR DEUTSCHEBOERSEXETRA",
-    "XAMS": "XAMS AMS EURONEXTAMSTERDAM",
-    "XBRU": "XBRU BRU EURONEXTBRUSSELS",
-    "XMAD": "XMAD MCE BOLSADEMADRID",
-    "XSTO": "XSTO STO STOCKHOLM",
-    "XHKG": "XHKG HKG HKEX HKSE",
-    "XTKS": "XTKS JPX TYO TOKYOSTOCKEXCHANGE",
-    "XASX": "XASX ASX ASX-ALLMARKETS",
-    "XTSE": "XTSE TOR TSX TORONTOSTOCKEXCHANGE",
-    "XPAR": "XPAR PAR EURONEXTPARIS",
-    "XMIL": "XMIL MIL BORSAITALIANA",
-    "XSWX": "XSWX EBS SWX SIXSWISSEXCHANGE",
-    "XDUB": "XDUB ISE",
-    "XKRX": "XKRX KSC KOSPI",
-    "XTAI": "XTAI TAI TWSE",
-    "XCSE": "XCSE CPH",
-    "XHEL": "XHEL HEL",
-    "XLIS": "XLIS LIS",
-    "XOSL": "XOSL OSL",
-    "XWBO": "XWBO VIE",
+    "XNYS": "XNYS NYQ NYSE UN",
+    "XNAS": "XNAS NMS NGM NCM NGS NASDAQ NASDAQGS NASDAQGM NASDAQCM UW UQ UR",
+    "XASE": "XASE ASE AMEX NYSEAMERICAN NYSEMKT UA",
+    "ARCX": "ARCX PCX NYSEARCA ARCA UP",
+    "BATS": "BATS BTS BZX CBOEBZX UF",
+    "BATY": "BATY",
+    "OTCM": "OTCM OTC PNK OQB OQX UV",
+    "XLON": "XLON LSE LON LONDON LONDONSTOCKEXCHANGE LN LI IOB",
+    "XFRA": "XFRA FRANKFURTSTOCKEXCHANGE FRA FRANKFURT GF",
+    "XETR": "XETR GER XETRA ETR DEUTSCHEBOERSEXETRA GY",
+    "XAMS": "XAMS AMSTERDAM AMS EURONEXTAMSTERDAM NA",
+    "XBRU": "XBRU BRUSSELS NYSEEURONEXT-EURONEXTBRUSSELS BRU EURONEXTBRUSSELS BB",
+    "XMAD": "XMAD MADRID MCE BOLSADEMADRID SQ",
+    "XSTO": "XSTO NASDAQOMXNORDIC STO STOCKHOLM SS",
+    "XHKG": "XHKG HONGKONG HKG HKEX HKSE HK",
+    "XTKS": "XTKS TOKYO JPX TYO TOKYOSTOCKEXCHANGE JT",
+    "XASX": "XASX AUSTRALIANSECURITIESEXCHANGE ASX ASX-ALLMARKETS AT",
+    "XTSE": "XTSE TORONTO TOR TSX TORONTOSTOCKEXCHANGE CT",
+    "XPAR": "XPAR PARIS NYSEEURONEXT-EURONEXTPARIS PAR EURONEXTPARIS FP",
+    "XMIL": "XMIL MILAN MIL BORSAITALIANA IM",
+    "XSWX": "XSWX SWISS SWISSEXCHANGE EBS SWX SIXSWISSEXCHANGE SE",
+    "XDUB": "XDUB IRISH IRISHSTOCKEXCHANGE-ALLMARKET DUBLIN ISE ID",
+    "XKRX": "XKRX KSE KSC KOSPI KP",
+    "XKOS": "XKOS KOE KOSDAQ KQ",
+    "XTAI": "XTAI TAIWAN TAIWANSTOCKEXCHANGE TAI TWSE",
+    "XCSE": "XCSE COPENHAGEN OMXNORDICEXCHANGECOPENHAGENA/S CPH DC",
+    "XHEL": "XHEL HELSINKI NASDAQOMXHELSINKILTD. HEL FH",
+    "XLIS": "XLIS LISBON NYSEEURONEXT-EURONEXTLISBON LIS PL",
+    "XOSL": "XOSL OSLO OSLOBORSASA OSL NO",
+    "XWBO": "XWBO VIENNA WIENERBOERSEAG VIE AV",
+    "ROCO": "ROCO TWO TPEX GRETAISECURITIESMARKET",
+    "XNSE": "XNSE NSI NSE NATIONALSTOCKEXCHANGEOFINDIA IS",
+    "XBOM": "XBOM BSE BSELTD BOMBAYSTOCKEXCHANGE BO BOM IB",
+    "XSES": "XSES SES SGX SP",
+    "XSHG": "XSHG SHH",
+    "XSHE": "XSHE SHZ",
+    "XJSE": "XJSE JNB SJ",
+    "BVMF": "BVMF SAO",
+    "XMEX": "XMEX MEX",
+    "XCNQ": "XCNQ CNQ",
+    "NEOE": "NEOE NEO",
+    "XOSE": "XOSE OSA",
 }
 EXCHANGES = {code: mic for mic, codes in _VENUES.items() for code in codes.split()}
+# Some OpenFIGI codes identify a composite. They rule out a foreign listing
+# without identifying a single venue or providing a trading calendar.
+_COMPOSITES = {
+    "US": "XNYS XNAS XASE ARCX BATS BATY OTCM",
+    "CBOE": "BATS BATY",
+    "GR": "XFRA XETR",
+    "JP": "XTKS XOSE",
+    "KS": "XKRX XKOS",
+    "KRX": "XKRX XKOS",
+    "TT": "XTAI ROCO",
+    "IN": "XNSE XBOM",
+    "CN": "XTSE XCNQ NEOE",
+    "AU": "XASX",
+    "SM": "XMAD",
+    "SW": "XSWX",
+    "CH": "XSHG XSHE",
+    "BZ": "BVMF",
+    "MM": "XMEX",
+}
+_VENUE_SETS = {code: frozenset([mic]) for code, mic in EXCHANGES.items()}
+_VENUE_SETS.update({code: frozenset(mics.split()) for code, mics in _COMPOSITES.items()})
+_CALENDARS = {mic: mic for mic in YAHOO_SUFFIX_BY_MIC}
+_CALENDARS.update(dict.fromkeys(("XNYS", "XNAS", "XASE", "ARCX", "BATS"), "XNYS"))
 
 # A schedule covers the recent sessions a quote or broker price can belong to
 # and the coming ones a page can stay open into.
@@ -97,7 +146,17 @@ class SessionSchedule(DomainModel):
 
 
 def calendar_name(exchange: str | None) -> str | None:
-    return EXCHANGES.get("".join(str(exchange or "").upper().split()))
+    return _CALENDARS.get(EXCHANGES.get("".join(str(exchange or "").upper().split())))
+
+
+def listing_venues(symbol: str | None, exchange: str | None) -> frozenset[str]:
+    """Known venues for an exact listing or market composite, independent of schedules."""
+    code = "".join(str(exchange or "").upper().split())
+    if code:
+        return _VENUE_SETS.get(code, frozenset())
+    _, dot, suffix = str(symbol or "").strip().upper().rpartition(".")
+    mic = YAHOO_MIC_BY_SUFFIX.get(dot + suffix)
+    return frozenset([mic]) if mic else frozenset()
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:

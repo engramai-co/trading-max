@@ -6186,6 +6186,8 @@ export interface components {
             reference: string;
             /** Role */
             role?: "lead" | null;
+            /** Timing */
+            timing?: "closing_auction_window" | null;
         };
         /** NavPoint */
         NavPoint: {

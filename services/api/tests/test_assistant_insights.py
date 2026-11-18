@@ -1603,7 +1603,10 @@ def test_relative_daily_range_uses_returns_lens_calendar(bound):
 
 
 @pytest.mark.parametrize(("requested", "published"), [("SYN", "SYN.L"), ("SYN.L", "SYN")])
-def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, requested, published):
+@pytest.mark.parametrize(("us", "london"), [("NYSE", "LSE"), ("UN", "LN"), ("US", "LN")])
+def test_missing_chart_cannot_borrow_a_known_other_venue(
+    bound, monkeypatch, requested, published, us, london
+):
     app, _ = distinct_listing_events(bound, london_report=True)
     store = app.state.store
     technical = store.read_json(store.latest_manifest().run_id, tools.TECHNICAL)
@@ -1616,11 +1619,13 @@ def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, req
             )
         },
     )
-    app.state.watchlist.add(
-        SecuritySearchResult(
-            ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+    app.state.watchlist.remove("SYN.L")
+    for symbol, venue in [("SYN", us), ("SYN.L", london)]:
+        app.state.watchlist.add(
+            SecuritySearchResult(
+                ticker=symbol, name="Synthetic", exchange=venue, bloomberg_ticker="", figi=""
+            )
         )
-    )
 
     def missing_live(symbol, *args, **kwargs):
         assert symbol == requested
@@ -1743,3 +1748,181 @@ def test_evening_headline_uses_observed_german_venue(bound, venue, session):
     ]
     assert dates == ([session] if session else [])
     assert ("listing_calendar_unavailable" in reading["quality"]["issues"]) == (session is None)
+
+
+@pytest.mark.parametrize(
+    ("symbol", "name"),
+    [
+        ("SYN", "Irish"),
+        ("SYN", "Taiwan"),
+        ("SYN", "KSE"),
+        ("SYN.IR", None),
+        ("SYN.TW", None),
+        ("SYN.KS", None),
+        ("SYN.VI", "UNVERIFIED"),
+    ],
+)
+def test_legacy_venue_names_and_qualified_symbols_align_timed_leads(bound, symbol, name):
+    app, initial, _ = bound
+    store = app.state.store
+    friday = DATES[-3]
+    rows = store.read_json(initial.run_id, tools.TECHNICAL)["rows"]
+    article = {
+        "id": "story",
+        "title": "Synthetic update",
+        "publisher": "Wire",
+        "url": "https://example.test/update",
+        "date": friday,
+        "instant": friday + "T04:00:00Z",
+    }
+    payloads = {
+        tools.TECHNICAL: {"rows": [{**rows[0], "ticker": symbol, "exchange": None}]},
+        tools.FUNDAMENTALS: {"rows": [{"ticker": symbol, "metrics": {"fullExchangeName": name}}]},
+        NEWS_KEY: {"securities": {symbol: {"items": [article], "as_of": friday}}},
+    }
+    manifest = republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in payloads.items()},
+    )
+    reading = (
+        TestClient(app)
+        .get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"ticker": symbol, "scope": "cfd", "start": DATES[0], "end": DATES[-1]},
+        )
+        .json()
+    )
+    events = [e for day in reading["data"]["items"] for e in day["events"] if e["kind"] == "news"]
+    if name == "UNVERIFIED":
+        assert not events and "listing_calendar_unavailable" in reading["quality"]["issues"]
+    else:
+        assert [(e["date"], e["role"]) for e in events] == [(friday, "lead")]
+
+
+@pytest.mark.parametrize(
+    ("mic", "kind", "day", "after", "before", "inside", "late"),
+    [
+        (
+            "XHKG",
+            "EQUITY",
+            "2026-01-30",
+            "2026-02-02",
+            "16:04:00+08:00",
+            "16:09:00+08:00",
+            "16:10:01+08:00",
+        ),
+        (
+            "XHKG",
+            "ETF",
+            "2026-12-24",
+            "2026-12-28",
+            "12:04:00+08:00",
+            "12:09:00+08:00",
+            "12:10:01+08:00",
+        ),
+        (
+            "XWBO",
+            "EQUITY",
+            "2026-01-30",
+            "2026-02-02",
+            "17:32:00+01:00",
+            "17:35:15+01:00",
+            "17:35:31+01:00",
+        ),
+        (
+            "XWBO",
+            "ETF",
+            "2026-01-30",
+            "2026-02-02",
+            "17:31:59+01:00",
+            "17:32:15+01:00",
+            "17:32:31+01:00",
+        ),
+    ],
+)
+def test_headlines_disclose_closing_auction_uncertainty(
+    bound, monkeypatch, mic, kind, day, after, before, inside, late
+):
+    _, _, deps = bound
+    args = ins.MomentsArgs(scope="invest", ticker="TEST", start=day, end=after)
+    read = tools._Read(deps, "price_key_moments", args, args.scope)
+    series = deps.price_series("TEST", deps.manifest).model_copy(
+        update={"exchange_calendar": mic, "published_bar_exchange": mic}
+    )
+    news = {
+        "securities": {
+            "TEST": {
+                "as_of": day,
+                "items": [
+                    {
+                        "id": key,
+                        "title": key,
+                        "url": "https://example.test/" + key,
+                        "publisher": "Wire",
+                        "date": day,
+                        "instant": day + "T" + stamp,
+                    }
+                    for key, stamp in (("before", before), ("inside", inside), ("late", late))
+                ],
+            }
+        }
+    }
+    data = {
+        NEWS_KEY: news,
+        tools.FUNDAMENTALS: {"rows": [{"ticker": "TEST", "metrics": {"quoteType": kind}}]},
+    }
+    monkeypatch.setattr(tools._Read, "read", lambda self, key: data.get(key))
+    events, _, _ = ins.dated_events(read, args, set(), series)
+    assert {
+        e["reference"]: (e["date"], e.get("timing"), e["role"])
+        for e in events
+        if e["kind"] == "news"
+    } == {
+        "before": (day, None, "lead"),
+        "inside": (day, "closing_auction_window", "lead"),
+        "late": (after, None, "lead"),
+    }
+
+
+def test_pinned_fund_bars_choose_the_etf_auction_with_no_fundamentals(bound):
+    app, initial, _ = bound
+    store = app.state.store
+    day = DATES[-3]
+    ticker = "SYN"
+    points = store.read_json(initial.run_id, tools.TECHNICAL)["rows"][0]["price_series"]
+    article = {
+        "id": "vienna-fund",
+        "title": "Fund update",
+        "publisher": "Wire",
+        "url": "https://example.test/fund",
+        "date": day,
+        "instant": day + "T16:32:15Z",
+    }
+    payloads = {
+        FUND_PRICES_KEY: {
+            "rows": [{"ticker": ticker, "currency": "EUR", "mic": "XWBO", "price_series": points}]
+        },
+        NEWS_KEY: {"securities": {ticker: {"items": [article], "as_of": day}}},
+    }
+    manifest = republish(
+        store,
+        {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in payloads.items()},
+    )
+    reading = (
+        TestClient(app)
+        .get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"ticker": ticker, "scope": "cfd", "start": DATES[0], "end": DATES[-1]},
+        )
+        .json()
+    )
+    events = [event for row in reading["data"]["items"] for event in row["events"]]
+    assert events == [
+        {
+            "date": day,
+            "kind": "news",
+            "role": "lead",
+            "reference": "vienna-fund",
+            "timing": "closing_auction_window",
+        }
+    ]
