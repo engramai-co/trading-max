@@ -19,7 +19,7 @@ type Context = {
   publication?: string | null;
   currentBasis: string | null;
 };
-export type DraftView = {draft: DraftState | null; error: string | null; phase: DraftEvent["phase"] | null; stale: boolean};
+export type DraftView = {cancelled: boolean; draft: DraftState | null; error: string | null; phase: DraftEvent["phase"] | null; stale: boolean};
 export type DraftActions = {
   start: (before: Preview) => Promise<void>;
   cancel: () => void;
@@ -37,7 +37,9 @@ export function DraftController({initial, requestedFamily, horizon, inputs, publ
   const error = failure?.key === runKey ? failure.code : null;
   const [draft, setDraft] = useState<DraftState | null>(null);
   useLayoutEffect(() => () => controller.current?.abort(), [runKey]);
+  const [cancelledAt, setCancelledAt] = useState<string>();
   const cancel = () => {
+    setCancelledAt(runKey);
     controller.current?.abort();
     controller.current = null;
     setRun(null);
@@ -47,6 +49,7 @@ export function DraftController({initial, requestedFamily, horizon, inputs, publ
     const request = new AbortController();
     controller.current = request;
     setFailure(null);
+    setCancelledAt(undefined);
     setRun({ key: runKey, phase: "preparing" });
     try {
       const response = await fetch(`/api/backend/research/${encodeURIComponent(initial.basis.ticker)}/valuation-draft`, {
@@ -85,13 +88,15 @@ export function DraftController({initial, requestedFamily, horizon, inputs, publ
   }
   function reset() {
     cancel();
+    setCancelledAt(undefined);
     setDraft(null);
     setFailure(null);
   }
   const phase = run?.key === runKey ? run.phase : null;
   const stale = Boolean(draft && (draft.basis !== basis || draft.result.snapshotId !== publication)) || error === "valuation-draft-review-required";
   useImperativeHandle(actions, () => ({start, cancel, reset, decide}));
-  useLayoutEffect(() => { onChange({draft, error, phase, stale}); }, [draft, error, phase, stale, onChange]);
+  const cancelled = cancelledAt === runKey;
+  useLayoutEffect(() => { onChange({draft, error, phase, stale, cancelled}); }, [draft, error, phase, stale, cancelled, onChange]);
   return null;
 }
 
@@ -101,19 +106,20 @@ const phases = {
   market: ["正在读取市场参照…", "Reading market references…"], evaluating: ["正在计算情景估值…", "Calculating scenarios…"],
 } as const;
 
-export function DraftStatus({ phase, error }: {phase: DraftEvent["phase"] | null; error: string | null}) {
+export function DraftStatus({phase, error, cancelled, summary}: Pick<DraftView, "phase" | "error" | "cancelled"> & {summary: string | null}) {
   const t = useCopy();
+  let message = summary ?? (cancelled ? t("已取消起草。", "Draft cancelled.") : "");
   if (phase && phase in phases) {
-    const [zh,en] = phases[phase as keyof typeof phases];
-    return <p className="mx-draft-status" role="status">{t(zh,en)}</p>;
-  }
-  if (!error || error === "valuation-draft-review-required") return null;
-  const message = draftBlockMessage(error, t) ?? (error === "assistant_busy" ? t("已有估值草稿正在生成。", "Another valuation draft is running.")
+    const [zh, en] = phases[phase as keyof typeof phases];
+    message = t(zh, en);
+  } else if (error && error !== "valuation-draft-review-required") {
+    message = draftBlockMessage(error, t) ?? (error === "assistant_busy" ? t("已有估值草稿正在生成。", "Another valuation draft is running.")
     : error === "valuation-evidence-unavailable" ? t("缺少可核对的公开报价或报表。", "A verified public quote or statement is missing.")
     : error === "assistant_timeout" || error === "assistant_limit_reached" ? t("本次起草已达用量或时间上限。", "The draft reached its time or usage limit.")
     : error === "valuation-draft-settings-changed" ? t("模型设置已改变，请重新起草。", "Model settings changed. Start a new draft.")
     : t("起草中断，可重新起草。", "Draft interrupted. Try drafting again."));
-  return <p className="mx-draft-status" role="alert">{message}</p>;
+  }
+  return <p className="mx-draft-status" role="status" aria-live="polite" aria-atomic="true">{message}</p>;
 }
 
 const categories = { consensus: ["一致预期", "Consensus"], reported: ["报告值", "Reported"],

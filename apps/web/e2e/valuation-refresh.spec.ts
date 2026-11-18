@@ -988,14 +988,28 @@ test("cancel a valuation draft and discard a late proposal", async ({ page }) =>
     await delayed;
     await route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify(draftResponse) + "\n" }).catch(() => {});
   });
+  await page.route("**/SYNT/valuation-preview*", route => route.fulfill({
+    json:{...preview("SYNT",100,"2026-11-04T15:40:00Z",true,{}),defaultSource:"saved-model"},
+  }));
   await page.goto("/research?ticker=SYNT&view=valuation");
   const editor = page.locator("#valuation-assumptions");
-  await editor.getByRole("button",{name:"✦ Draft",exact:true}).click();
+  const entry = editor.getByRole("button",{name:"✦ Draft",exact:true});
+  await expect(entry).toHaveAttribute("title","Review new evidence");
+  const status = editor.locator('[role="status"][aria-atomic="true"]');
+  await expect(status).toHaveText("");
+  await status.evaluate(el => el.setAttribute("data-original-region", "true"));
+  await entry.click();
+  await expect(status).toContainText("Reading valuation basis");
   await editor.getByRole("button",{name:"Cancel draft",exact:true}).click();
+  await expect(status).toContainText("Draft cancelled");
+  await expect(status).toHaveAttribute("data-original-region","true");
   release();
   await expect(editor.getByRole("button",{name:"✦ Draft",exact:true})).toBeVisible();
   await expect(editor.locator(".mx-draft-row")).toHaveCount(0);
   await expect(editor.getByLabel("Revenue growth · years 1–5")).toHaveValue("10%");
+  await entry.click();
+  await expect(status).toContainText("proposed");
+  await expect(status).toHaveAttribute("data-original-region","true");
 });
 
 async function reviewDraft(page: Page) {

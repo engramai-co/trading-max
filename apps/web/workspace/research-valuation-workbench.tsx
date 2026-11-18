@@ -73,7 +73,7 @@ import {
 } from "./valuation-queries";
 
 type DraftModule = typeof import("./valuation-draft-editor");
-const emptyReview: DraftView = {draft:null, error:null, stale:false, phase:null};
+const emptyReview: DraftView = {draft:null, error:null, stale:false, phase:null, cancelled:false};
 
 const keys = ["bear", "base", "bull"] as const;
 type Scenarios = Record<string, ScenarioInput>;
@@ -571,11 +571,11 @@ function ModelEditor({
       {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
         {t("放弃草稿", "Discard draft")}
       </Button> : <Button variant="default" size="compact-xs"
+        title={initial.defaultSource === "saved-model" ? t("看新证据", "Review new evidence") : undefined}
         aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
         disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
         onClick={() => { if (drafting.phase) actions.current?.cancel(); else { setEditingProposal(null); void actions.current?.start(result); } }}>
-        {drafting.phase ? t("取消起草", "Cancel draft") : initial.defaultSource === "saved-model"
-          ? t("✦ 看新证据", "✦ Review new evidence") : t("✦ 起草", "✦ Draft")}
+        {drafting.phase ? t("取消起草", "Cancel draft") : t("✦ 起草", "✦ Draft")}
       </Button>, draftAction)}
       {draftModule && draftBlock && <p className="mx-draft-status" id="valuation-draft-block">{draftBlockMessage(draftBlock, t, "complete-ttm-currency-and-share-count-required")}</p>}
       {output && createPortal(
@@ -702,10 +702,10 @@ function ModelEditor({
               </div>
             </details>
           </Panel>, output)}
-          {draft && !drafting.phase && <p className="mx-draft-status" role="status">{changes.length ?
-            t("{changes} 处改动 · 已接受 {accepted}", "{changes} proposed · {accepted} accepted").replace("{changes}", String(changes.length)).replace("{accepted}", String(accepted)) :
-            t("此次起草保留了当前假设。", "The draft retains the current assumptions.")}</p>}
-          {draftModule && <draftModule.DraftStatus phase={drafting.phase} error={failedBlock ? null : drafting.error} />}
+          {draftModule && <draftModule.DraftStatus phase={drafting.phase} error={failedBlock ? null : drafting.error}
+            cancelled={drafting.cancelled} summary={!draft ? null : changes.length ?
+              t("{changes} 处改动 · 已接受 {accepted}", "{changes} proposed · {accepted} accepted").replace("{changes}", String(changes.length)).replace("{accepted}", String(accepted)) :
+              t("此次起草保留了当前假设。", "The draft retains the current assumptions.")} />}
           {reReview}
           <Segments
             label={t("编辑情景", "Edit scenario")}
