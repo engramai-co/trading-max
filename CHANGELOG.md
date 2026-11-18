@@ -9,7 +9,7 @@ All notable public Trading Max releases are recorded here.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
-- Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Average execution prices use the chart’s currency.
+- Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
 - Each assistant follow-up gets its own request, token and tool allowance while keeping the conversation history.
 
 ## [1.54.0] - 2026-11-18

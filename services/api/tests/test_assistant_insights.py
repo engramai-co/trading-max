@@ -19,6 +19,7 @@ from trading_max.analytics.fx import FxQuote
 from trading_max.analytics.key_moments import key_moments
 from trading_max.analytics.ledger import load_transactions, transaction_marker_rows
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
+from trading_max.research.held_funds import FUND_PRICES_KEY
 
 from services.api.tests.assistant_fixture import DATES, publication
 from services.api.tests.test_assistant_tools import _call
@@ -31,7 +32,7 @@ from services.api.trading_max_api.artifacts import ArtifactStore
 from services.api.trading_max_api.config import Settings
 from services.api.trading_max_api.credentials import InMemoryCredentialStore
 from services.api.trading_max_api.dashboard import build_dashboard_data
-from services.api.trading_max_api.dashboard_models import ResearchTradeMarker
+from services.api.trading_max_api.dashboard_models import ResearchPriceSeries, ResearchTradeMarker
 from services.api.trading_max_api.history_reader import HistoryReader
 from services.api.trading_max_api.models import SecuritySearchResult
 
@@ -819,24 +820,81 @@ def test_replayed_day_uses_priced_shares_for_its_combined_average(bound):
     assert len(marker["fills"]) == 3
 
 
-def publish_trade_chart(bound, rows, *, currency="GBP", version="trade-markers-v4"):
+def publish_trade_chart(
+    bound,
+    rows,
+    *,
+    currency="GBP",
+    version="trade-markers-v4",
+    ticker="SYN.L",
+    price_key=tools.TECHNICAL,
+):
     app, initial, _ = bound
     store = app.state.store
     technical = store.read_json(initial.run_id, tools.TECHNICAL)
-    technical["rows"][0].update(ticker="SYN.L", currency=currency)
+    technical["rows"][0].update(ticker=ticker, currency=currency)
     manifest = republish(
         store,
         {
             key: store.immutable_artifacts.put_json(key=key, payload=payload)
             for key, payload in (
-                (tools.TECHNICAL, technical),
+                (price_key, technical),
                 (ins.TRADE_MARKERS, {"calculation_version": version, "rows": rows}),
             )
         },
     )
-    series = TestClient(app).get("/v1/research/SYN.L/prices").json()
+    series = TestClient(app).get(f"/v1/research/{ticker}/prices").json()
     assert series["currency"] == currency
     return app, manifest, series
+
+
+@pytest.mark.parametrize(
+    ("ticker", "instrument", "key", "provider"),
+    [
+        ("SYN.L", "SYNl_EQ", tools.TECHNICAL, "get"),
+        ("SPY", "SPY_US_EQ", FUND_PRICES_KEY, "alpaca_etf"),
+    ],
+)
+@pytest.mark.parametrize(
+    ("quote", "usd_per_gbp", "expected"),
+    [("USD", None, 30), ("EUR", "1.4", 35), ("EUR", None, None)],
+)
+def test_live_chart_prices_fills_in_its_returned_currency(
+    bound, monkeypatch, ticker, instrument, key, provider, quote, usd_per_gbp, expected
+):
+    rows = broker_markers([(instrument, "Market buy", 2, 30)])
+    fill = rows[0]["fills"][0]
+    fill.update(price_currency=quote, currency="GBP", amount=50, exchange_rate=1.2)
+    if usd_per_gbp:
+        fill["price_fx"] = {
+            "USD": FxQuote(
+                "USD", Decimal(usd_per_gbp), datetime.fromisoformat(fill["at"]), "synthetic-close"
+            ).as_dict()
+        }
+    app, manifest, daily = publish_trade_chart(bound, rows, ticker=ticker, price_key=key)
+    assert daily["tradeMarkers"][0]["buyAveragePrice"] == 25
+
+    def hourly(symbol, interval, **kwargs):
+        assert (symbol, interval) == (ticker, "60m")
+        return ResearchPriceSeries.model_validate(
+            {
+                **daily,
+                "currency": "USD",
+                "actualInterval": interval,
+                "tradeMarkers": [],
+                "points": [{**daily["points"][-1], "date": DATES[-1] + "T14:00:00Z", "close": 30}],
+            }
+        )
+
+    monkeypatch.setattr(app.state.security_prices, provider, hourly)
+    live = TestClient(app).get(f"/v1/research/{ticker}/prices?interval=60m").json()
+    assert (live["currency"], live["actualInterval"]) == ("USD", "60m")
+    (marker,) = live["tradeMarkers"]
+    assert marker["fills"] == daily["tradeMarkers"][0]["fills"]
+    assert marker["buyAveragePrice"] == expected
+    assert (
+        app.state.research.price_series(ticker, manifest).trade_markers[0].buy_average_price == 25
+    )
 
 
 @pytest.mark.parametrize(

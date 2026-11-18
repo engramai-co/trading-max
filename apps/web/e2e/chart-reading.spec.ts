@@ -17,6 +17,14 @@ const day = bars.at(-4)!.date;
 const splitDay = bars.at(-7)!.date;
 const markers: NonNullable<ResearchPriceSeries["tradeMarkers"]> = [
   {
+    ticker: "AAPL", date: bars.at(-9)!.date, kind: "T", accounts: ["isa", "invest"],
+    buyOrders: 1, sellOrders: 3, buyQuantity: 2, sellQuantity: 4.5, buyAveragePrice: 100, sellAveragePrice: null,
+    fills: [
+      { at: bars.at(-9)!.date + "T13:00:00Z", side: "buy", account: "isa", quantity: 2, amount: 200, currency: "USD" },
+      { at: bars.at(-9)!.date + "T14:00:00Z", side: "sell", account: "isa", quantity: 1.25, amount: 125, currency: "USD" },
+    ],
+  },
+  {
     ticker: "AAPL", date: bars.at(-8)!.date, kind: "B", accounts: ["invest"],
     buyOrders: 1, sellOrders: 0, buyQuantity: 1, sellQuantity: 0, buyAveragePrice: 141, sellAveragePrice: null,
     fills: [{ at: bars.at(-8)!.date + "T15:35:00Z", side: "buy", account: "invest", quantity: 1, amount: 141, currency: "EUR" }],
@@ -165,6 +173,22 @@ test.describe("primary chart reading", () => {
       await expect(chartPanel.getByRole("button", { name: "Full chart", exact: true })).toBeFocused();
     });
   }
+
+  test("expanding a mixed archive day shows the remaining trades and itemised fills", async ({ page }, info) => {
+    await mockPrices(page);
+    await page.goto("/research?ticker=AAPL&view=technical");
+    const track = page.getByRole("region", { name: "Event timeline" });
+    const marker = track.getByRole("button", { name: / · T \(\+3\)/ });
+    await marker.focus();
+    await page.keyboard.press("Enter");
+    await expect(track.getByRole("listitem").filter({ hasText: "Buy · ISA" })).toContainText("200 USD");
+    await expect(track.getByRole("listitem").filter({ hasText: "Sell · ISA" })).toContainText("125 USD");
+    const archive = track.getByRole("listitem").filter({ hasText: "Original amount unavailable in this archive" });
+    await expect(archive).toContainText("Sell 3.25 shares");
+    await expect(archive).toContainText("2 orders");
+    await expect(archive).not.toContainText("Buy");
+    if (process.env.CHART_QA_DIR) await track.screenshot({ path: join(process.env.CHART_QA_DIR, `mixed-archive-${info.project.name}.png`) });
+  });
 
   test("a response with no OHLC is visibly identified as closing prices", async ({ page }) => {
     await mockPrices(page, "no OHLC");
