@@ -268,6 +268,35 @@ test.describe("decision review", () => {
     await expect(more).toBeHidden();
     await expect(entry.getByRole("link")).toBeFocused();
   });
+
+  for (const locale of ["zh", "en"] as const) {
+    test("the horizon switch's help says how each window is measured, in " + locale, async ({ page }) => {
+      const zh = locale === "zh";
+      await page.addInitScript((lang) => localStorage.setItem("trading_max-locale", lang), locale);
+      await page.goto("/review?account=A");
+      const help = page.locator(".mx-horizon-switch").getByRole("button", { name: zh ? "对照时点说明" : "Compare at explained" });
+      await help.click();
+      const card = page.getByRole("dialog", { name: zh ? "对照时点" : "Compare at" });
+      for (const words of zh ? [
+        "每笔买卖都和“不做这笔交易”比",
+        "买入后上涨记为赚，下跌记为亏；卖出后上涨记为少赚，下跌记为少亏",
+        "“20 个交易日后”从决定当天的收盘算到之后第 20 个交易日的收盘",
+        "“至今”算到最近一个收盘",
+        "不满 20 个交易日的决定不计入成绩，在时间轴上是零线上的空心点",
+        "“最近”里的金额不随切换变化，总是按至今计算",
+      ] : [
+        "Each buy or sell is compared with not making that trade",
+        "after a sell, a rise is a gain given up and a fall a loss avoided",
+        "“20 trading days” runs from the close on the day of the decision to the close 20 trading days later",
+        "“To date” runs to the latest close",
+        "Decisions younger than 20 trading days are not scored and show as hollow points on the timeline’s zero line",
+        "Amounts under “Recently” do not follow the switch",
+      ]) await expect(card).toContainText(words);
+      await page.keyboard.press("Escape");
+      await expect(card).toBeHidden();
+      await expect(help).toBeFocused();
+    });
+  }
 });
 
 test.describe("a link to one decision", () => {

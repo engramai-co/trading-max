@@ -4,6 +4,9 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Added
+- A “?” beside Review’s 20 trading days / To date switch explains what each buy or sell is compared with, how both windows are measured, why decisions without a result yet sit as hollow points at zero on the timeline, and that amounts under Recently always read to date.
+
 ## [1.64.0] - 2026-11-18
 
 ### Changed

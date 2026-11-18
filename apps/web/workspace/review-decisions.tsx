@@ -25,7 +25,7 @@ import { currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
 import { readingHtml, readingText, type Reading } from "./chart-readout";
 import { EvidenceTable } from "./evidence-table";
-import { Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
+import { Help, Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
 import Link from "./link";
 import { filingLabel, ratingLabel } from "./market-terms";
 import { READING_TOOLTIP } from "./reading-tooltip";
@@ -784,20 +784,41 @@ export function useDecisionHorizon(
   };
 }
 
-/** The horizon a review compares at: after its trading days, or to date. */
+/** The horizon a review compares at, after its trading days or to date, and how each is measured. */
 export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; days: number; onChange: (value: Horizon) => void }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const after = locale === "zh" ? `${days} 个交易日后` : `${days} trading days`;
   return (
-    <Segments
-      label={t("对照时点", "Compare at")}
-      value={horizon}
-      onChange={onChange}
-      options={[
-        { value: "horizon", label: locale === "zh" ? `${days} 个交易日后` : `${days} trading days` },
-        { value: "date", label: t("至今", "To date") },
-      ]}
-    />
+    <span className="mx-horizon-switch">
+      <Segments
+        label={t("对照时点", "Compare at")}
+        value={horizon}
+        onChange={onChange}
+        options={[
+          { value: "horizon", label: after },
+          { value: "date", label: t("至今", "To date") },
+        ]}
+      />
+      <Help label={t("对照时点", "Compare at")}>
+        <p>
+          {t(
+            "每笔买卖都和“不做这笔交易”比，按期间的价格变动加上分红计算：买入后上涨记为赚，下跌记为亏；卖出后上涨记为少赚，下跌记为少亏。",
+            "Each buy or sell is compared with not making that trade, counting the price move plus any dividends in the window: after a buy, a rise is a gain and a fall a loss; after a sell, a rise is a gain given up and a fall a loss avoided.",
+          )}
+        </p>
+        <p>
+          {locale === "zh"
+            ? `“${after}”从决定当天的收盘算到之后第 ${days} 个交易日的收盘，每笔决定的窗口一样长，可以直接相互比较；“至今”算到最近一个收盘。`
+            : `“${after}” runs from the close on the day of the decision to the close ${days} trading days later, so every decision has the same window and they compare directly. “To date” runs to the latest close.`}
+        </p>
+        <p>
+          {locale === "zh"
+            ? `不满 ${days} 个交易日的决定不计入成绩，在时间轴上是零线上的空心点；选“至今”时，只有之后还没有收盘的决定如此。“最近”里的金额不随切换变化，总是按至今计算。`
+            : `Decisions younger than ${days} trading days are not scored and show as hollow points on the timeline’s zero line; under “To date”, only decisions with no close after them yet do. Amounts under “Recently” do not follow the switch: they are always to date.`}
+        </p>
+      </Help>
+    </span>
   );
 }
 
