@@ -3497,6 +3497,13 @@ export interface components {
             /** Validationtoken */
             validationToken: string;
         };
+        /** DeskReading */
+        DeskReading: {
+            /** Upside */
+            upside: number;
+            /** Value */
+            value: number;
+        };
         /** DraftAudit */
         DraftAudit: {
             draft: components["schemas"]["DraftRecord"];
@@ -3563,6 +3570,10 @@ export interface components {
         };
         /** DraftResult */
         DraftResult: {
+            /** Deskreadings */
+            deskReadings: {
+                [key: string]: components["schemas"]["DeskReading"];
+            };
             /** Evidence */
             evidence: {
                 [key: string]: components["schemas"]["EvidenceItem"];

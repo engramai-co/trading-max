@@ -27,7 +27,7 @@ from trading_max.research.valuation_evidence import (
 )
 from trading_max.research.valuation_preview import LEGACY_VERSION, ScenarioInputs
 
-from ..valuation_drafts import DraftResult, Proposal, SavedOrigin, TemplateInputs, TemplateOrigin
+from ..valuation_drafts import DraftSelection, Proposal, SavedOrigin, TemplateInputs, TemplateOrigin
 
 LIMITS = UsageLimits(request_limit=7, tool_calls_limit=6, total_tokens_limit=80_000)
 INSTRUCTIONS = """Draft valuation assumptions for this listing. Read get_valuation_basis first.
@@ -313,7 +313,7 @@ class DraftAgent:
 
     async def run(
         self, model: Model, settings: ModelSettings, cancellation_token: CancellationToken | None
-    ) -> DraftResult:
+    ) -> DraftSelection:
         agent = Agent(output_type=[str, DeferredToolRequests], instructions=INSTRUCTIONS, retries=0)
 
         @agent.tool_plain
@@ -370,7 +370,7 @@ class DraftAgent:
         for origin in origins.values():
             if isinstance(origin, TemplateOrigin):
                 cited.update(origin.evidence_ids)
-        return DraftResult(
+        return DraftSelection(
             snapshot_id=self.frozen.binding.snapshot_run_id,
             family=self.frozen.family,
             family_selection=self.family_selection,

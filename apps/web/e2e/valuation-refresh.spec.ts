@@ -826,7 +826,7 @@ const draftProposals = [
   { scenario: "base", field: "target_fcf_margin", value: 0.12, category: "derived", source: "statement-margin", evidenceIds: ["statement", "revenue"] },
   { scenario: "bear", field: "discount_rate", value: 0.12, category: "template", source: "sector-template", originId: "template", evidenceIds: [] },
 ];
-const draftResponse = { phase: "complete", result: { id: "synthetic-draft", snapshotId:"synthetic-run", family:"cash-flow", familySelection:"automatic", proposals: draftProposals,
+const draftResponse = { phase: "complete", result: { id: "synthetic-draft", snapshotId:"synthetic-run", family:"cash-flow", familySelection:"automatic", proposals: draftProposals, deskReadings:{base:{value:183, upside:.83}, bear:{value:141,upside:.41}, bull:{value:150,upside:.5}},
   origins: { template: { source: "sector-template", inputs: { profile:"hardware", effectiveDiscountRate:.1, annualRevenueGrowth:.1,
     growthCap:.3, marginCap:.18, shareCagr:.01, exitMultiple:16, basis:{startMargin:.12} },
     scenarios:{bear:{discountRate:.12}}, evidenceIds:["statement"] } },
@@ -885,6 +885,8 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     const growth = en ? "Revenue growth · years 1–5" : "前五年营收增长";
     const margin = en ? "Target FCF margin" : "目标现金流率";
     const accept = editor.getByRole("button", {name: (en ? "Accept " : "接受 ") + growth, exact: true});
+    await expect(page.locator(".mx-scenario-cards button[aria-pressed=true] .mx-draft-reading")).toContainText("183.00");
+    await expect(page.locator(".mx-draft-reading")).toHaveCount(2);
     await accept.focus();
     await accept.press("Enter");
     await expect(accept).toHaveAttribute("aria-pressed","true");
@@ -937,7 +939,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
         equity: {...draftResponse.result.evidence.revenue, metric:"commonEquity"},
       };
       return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({phase:"complete", result:{
-        id:"bank-draft", snapshotId:"synthetic-run", family:"residual-income", familySelection:"automatic", origins:{}, evidence,
+        id:"bank-draft", deskReadings:{base:{value:175,upside:.75}}, snapshotId:"synthetic-run", family:"residual-income", familySelection:"automatic", origins:{}, evidence,
         proposals:[{scenario:"base", field:"initial_roe", category:"derived", source:"common-roe",
           value:0.2, evidenceIds:["earnings","equity"]}],
       }})+"\n"});

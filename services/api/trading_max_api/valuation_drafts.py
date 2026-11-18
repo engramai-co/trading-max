@@ -114,7 +114,7 @@ class Proposal(DomainModel):
     evidence_ids: tuple[EvidenceId, ...] = ()
 
 
-class DraftResult(DomainModel):
+class DraftSelection(DomainModel):
     snapshot_id: str
     family: Family
     family_selection: Literal["automatic", "override"]
@@ -159,6 +159,15 @@ class DraftResult(DomainModel):
             if value != p.value:
                 raise ValueError("valuation-draft-proposal-value-mismatch")
         return self
+
+
+class DeskReading(DomainModel):
+    value: FiniteFloat
+    upside: FiniteFloat
+
+
+class DraftResult(DraftSelection):
+    desk_readings: dict[Scenario, DeskReading]
 
 
 class DraftEvent(DomainModel):

@@ -26,9 +26,11 @@ from ..agent.valuation import DraftAgent, annual_revenue_growth
 from ..assistant_settings import ASSISTANT_CONSENT_REVISION
 from ..valuation_drafts import (
     DRAFT_BLOCK_REASONS,
+    DeskReading,
     DraftEvent,
     DraftInput,
     DraftRecord,
+    DraftResult,
     TemplateInputs,
     ValuationDraftStore,
     check_draft_preview,
@@ -206,7 +208,9 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                 bound = await app_service(request, "assistant").bind_model()
                 check_preferences()
                 async with bound.model:
-                    result = await runner.run(bound.model, bound.settings, bound.cancellation_token)
+                    selection = await runner.run(
+                        bound.model, bound.settings, bound.cancellation_token
+                    )
                 check_preferences()
                 journal = app_service(request, "research_journal")
 
@@ -228,6 +232,29 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
 
                 if not await asyncio.to_thread(current):
                     raise ValueError("valuation-draft-review-required")
+                proposed = dict(body.scenarios)
+                for proposal in selection.proposals:
+                    scenario = proposed[proposal.scenario]
+                    proposed[proposal.scenario] = scenario.model_copy(
+                        update={proposal.field: proposal.value}
+                    )
+                projected = preview(
+                    view.basis,
+                    ValuationPreviewRequest(
+                        family=view.basis.family,
+                        horizon=body.horizon,
+                        scenarios=proposed,
+                        formula_version=view.formula_version,
+                    ),
+                )
+                check_draft_preview(projected)
+                result = DraftResult(
+                    **selection.model_dump(),
+                    desk_readings={
+                        key: DeskReading(value=row.value, upside=row.upside)
+                        for key, row in projected.scenarios.items()
+                    },
+                )
                 return DraftRecord(
                     result=result,
                     evidence=runner.frozen,

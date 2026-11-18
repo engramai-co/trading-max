@@ -6235,6 +6235,25 @@
         "title": "DeepSeekIntegrationRequest",
         "type": "object"
       },
+      "DeskReading": {
+        "additionalProperties": false,
+        "properties": {
+          "upside": {
+            "title": "Upside",
+            "type": "number"
+          },
+          "value": {
+            "title": "Value",
+            "type": "number"
+          }
+        },
+        "required": [
+          "value",
+          "upside"
+        ],
+        "title": "DeskReading",
+        "type": "object"
+      },
       "DraftAudit": {
         "additionalProperties": false,
         "properties": {
@@ -6440,6 +6459,20 @@
       "DraftResult": {
         "additionalProperties": false,
         "properties": {
+          "deskReadings": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/DeskReading"
+            },
+            "propertyNames": {
+              "enum": [
+                "bear",
+                "base",
+                "bull"
+              ]
+            },
+            "title": "Deskreadings",
+            "type": "object"
+          },
           "evidence": {
             "patternProperties": {
               "^ve_[a-f0-9]{64}$": {
@@ -6504,7 +6537,8 @@
           "id",
           "proposals",
           "origins",
-          "evidence"
+          "evidence",
+          "deskReadings"
         ],
         "title": "DraftResult",
         "type": "object"

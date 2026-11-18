@@ -129,6 +129,25 @@ def test_draft_review_saves_only_accepted_fields_and_retries_once(desk):
     assert len(transcript) == 5
     assert "0.538945" not in json.dumps(transcript)
     result = events[-1]["result"]
+    full = json.loads(json.dumps(body["scenarios"]))
+    for proposal in result["proposals"]:
+        head, *parts = proposal["field"].split("_")
+        full[proposal["scenario"]][head + "".join(word.title() for word in parts)] = proposal[
+            "value"
+        ]
+    projected = client.post(
+        PATH.replace("/v1/", "/v2/") + "/valuation-preview",
+        json={
+            "family": result["family"],
+            "formulaVersion": view["formulaVersion"],
+            "horizon": body["horizon"],
+            "scenarios": full,
+        },
+    ).json()
+    assert result["deskReadings"] == {
+        key: {field: row[field] for field in ("value", "upside")}
+        for key, row in projected["scenarios"].items()
+    }
     assert len(result["proposals"]) == 18
     chosen = next(
         p for p in result["proposals"] if p["scenario"] == "base" and p["field"] == "revenue_cagr"

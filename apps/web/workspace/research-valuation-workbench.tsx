@@ -444,8 +444,12 @@ function ModelEditor({
   </div>;
   const changes = draft?.result.proposals.filter(p => p.value !== draft.before.scenarios[p.scenario].inputs[inputKey[p.field]]) ?? [];
   const accepted = changes.filter(p => draft?.review.decisions[p.scenario][p.field] === "accepted").length;
-  const stagedScenarios = useMemo(() => draft ? Object.keys(draft.review.decisions).filter(key =>
-    Object.values(draft.review.decisions[key]).some(d => d === "accepted" || d === "edited")) : [], [draft]);
+  const reviewed = changes.some(p => draft?.review.decisions[p.scenario][p.field] !== "unreviewed");
+  const stagedScenarios = [...new Set(changes.filter(p => !reviewed ||
+    ["accepted", "edited"].includes(draft!.review.decisions[p.scenario][p.field])).map(p => p.scenario))];
+  const comparison = draft && !reviewed ? { ...result, scenarios: Object.fromEntries(
+    Object.entries(result.scenarios).map(([key, row]) => [key, {...row, ...draft.result.deskReadings[key]}]),
+  ) } : result;
   const scenarioNames: Record<string, string> = {
     bear: t("保守", "Bear"),
     base: t("中性", "Base"),
@@ -579,7 +583,7 @@ function ModelEditor({
             }
           >
             <ValuationScenarioComparison
-              preview={result}
+              preview={comparison}
               beforeDraft={draft?.before}
               stagedScenarios={stagedScenarios}
               calculatingDraft={busy || query.isError || staleDraft}
