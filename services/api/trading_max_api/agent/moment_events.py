@@ -5,13 +5,15 @@ from datetime import datetime
 from trading_max.research.closing_auctions import headline_session
 from trading_max.research.held_funds import observed_product
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
-from trading_max.research.venues import resolve_venue, row_claims
+from trading_max.research.venues import row_claims
 
 from .events import headline_stories, listed_dividends, listed_headlines
 from .tools import EARNINGS, FINANCIALS, FUNDAMENTALS, _mapped, _Read, _rows
 
 
-def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence):
+def listing_moment_events(
+    read: _Read, args, series, calendar, metrics, evidence, pinned, news_rows
+):
     keys = []
     issues = []
     events = []
@@ -23,26 +25,15 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
     if not calendar:
         issues.append("security_calendar_unavailable")
 
-    def feed(key):
-        return _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
-
-    news = feed(NEWS_KEY)
-    status = feed(NEWS_STATUS_KEY)
+    news, rejected = pinned.event_row(news_rows[NEWS_KEY])
+    if rejected:
+        issues.append("listing_calendar_unavailable")
+    status = news_rows[NEWS_STATUS_KEY]
     if news:
         keys.append(NEWS_KEY)
     if status:
         keys.append(NEWS_STATUS_KEY)
-    claims = [
-        *series.venue_claims,
-        *row_claims(
-            ticker,
-            {"mic": series.published_bar_mic, "exchange": series.published_bar_exchange},
-            metrics,
-        ),
-    ]
-    for source in (news, status, calendar, evidence):
-        claims.extend(row_claims(ticker, source))
-    venue = resolve_venue(args.ticker, *claims)
+    venue = pinned.venue()
     if venue.conflict:
         return [], keys, ["listing_calendar_unavailable"]
     dividend_status = _mapped(_mapped(evidence.get("status")).get("dividends")).get("state")
@@ -88,8 +79,12 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
     raw_rows = [*_rows(news.get("items")), *_rows(evidence.get("news"))]
     if evidence.get("news"):
         keys.append(FINANCIALS)
-    rows = [row for row in listed_headlines(ticker, raw_rows) if row]
-    exchange = venue.calendar
+    rows = []
+    for raw in raw_rows:
+        for row in listed_headlines(ticker, [raw]):
+            if row:
+                row["calendar"] = pinned.venue(*row_claims(ticker, raw)).calendar
+                rows.append(row)
     asset_type = observed_product(
         series.published_bar_asset_type, metrics.get("quoteType"), fund=series.published_fund_row
     )
@@ -103,7 +98,7 @@ def listing_moment_events(read: _Read, args, series, calendar, metrics, evidence
         published = row["date"]
         day, timing = (
             headline_session(
-                exchange, datetime.fromisoformat(row["instant"]), asset_type, segment=segment
+                row["calendar"], datetime.fromisoformat(row["instant"]), asset_type, segment=segment
             )
             if row["instant"]
             else (published, None)

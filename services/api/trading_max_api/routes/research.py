@@ -508,10 +508,13 @@ def research_prices(
     research = app_service(request, "research")
     ticker = ticker.upper()
     exchanges = research.watchlist.listing_exchanges()
-    listing = research.held_fund(ticker, manifest, exchanges)
+    pinned = research.pin_listing(ticker, manifest, exchanges=exchanges)
+    if pinned.venue().conflict:
+        raise HTTPException(status_code=404, detail="published_daily_bars_unavailable")
+    listing = pinned.held
     # Comparison ETFs and confirmed held US ETF listings use Alpaca's price
     # chart. The typed snapshot remains the source for broker events and research.
-    symbol = listing.ticker if listing else ticker
+    symbol = pinned.ticker
     reference = us_fund(symbol) if listing is None else None
     market_etf = is_alpaca_listing(symbol) and (
         reference is not None
@@ -522,7 +525,7 @@ def research_prices(
 
     def live_window(series: ResearchPriceSeries) -> ResearchPriceSeries:
         try:
-            venue = research.price_venue(ticker, series, manifest, exchanges, listing, reference)
+            venue = research.price_venue(pinned, series)
         except VenueConflict as exc:
             raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
         series.exchange_calendar = venue.calendar
@@ -542,7 +545,7 @@ def research_prices(
         # Prefer the listing's published technical history when it was researched
         # directly. Otherwise use the shared close-only chart and budget.
         try:
-            published = research.price_series(ticker, manifest, limit=limit, exchanges=exchanges)
+            published = research.price_series(ticker, manifest, limit=limit, pinned=pinned)
         except VenueConflict as exc:
             raise HTTPException(status_code=404, detail="published_daily_bars_unavailable") from exc
         except FileNotFoundError:
@@ -636,7 +639,7 @@ def research_prices(
         except Exception:
             fallback_reason = "requested-interval-unavailable-daily-history-retained"
     try:
-        result = research.price_series(ticker, manifest, limit=limit, exchanges=exchanges)
+        result = research.price_series(ticker, manifest, limit=limit, pinned=pinned)
         result.requested_interval = interval
         result.coverage_reason = fallback_reason
         result.coverage_start = result.points[0].date if result.points else None

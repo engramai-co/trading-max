@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from contextlib import suppress
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, Protocol
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from trading_max.research.venues import VenueClaim
-
 from ..dashboard_models import ResearchPriceSeries
 from ..models import SnapshotManifest
+from ..research_listing import PinnedListing
+
+ListingReader = Callable[[str, SnapshotManifest], PinnedListing]
 
 AccountScope = Literal["invest", "isa", "broker_total", "household", "cfd"]
 ALL_ACCOUNT_SCOPES: frozenset[AccountScope] = frozenset(
@@ -49,7 +50,7 @@ class AssistantDeps:
     captured_at: datetime | None = None
     price_series: PublishedPriceReader | None = None
 
-    listing_exchanges: dict[str, tuple[VenueClaim, ...]] = field(default_factory=dict)
+    pin_listing: ListingReader | None = None
 
     @property
     def snapshot_id(self) -> str | None:
@@ -63,9 +64,7 @@ class AssistantDepsFactory:
     store: AssistantSnapshotSource
     allowed_scopes: frozenset[AccountScope] = ALL_ACCOUNT_SCOPES
 
-    bind_price_series: (
-        Callable[[], tuple[PublishedPriceReader, dict[str, tuple[VenueClaim, ...]]]] | None
-    ) = None
+    bind_price_series: Callable[[], tuple[PublishedPriceReader, ListingReader]] | None = None
 
     def for_run(self, page_hint: str | None = None, timezone: str | None = None) -> AssistantDeps:
         zone = DEFAULT_TIMEZONE
@@ -74,15 +73,15 @@ class AssistantDepsFactory:
                 zone = ZoneInfo(timezone)
         manifest = self.store.latest_manifest()
         price_series = None
-        exchanges = {}
+        pin_listing = None
         if self.bind_price_series is not None:
             # An unreadable watchlist prevents safe chart routing for this run.
             # The other tools read their own immutable snapshot artifacts.
             with suppress(OSError, ValueError):
-                price_series, exchanges = self.bind_price_series()
+                price_series, pin_listing = self.bind_price_series()
         return AssistantDeps(
             price_series=price_series,
-            listing_exchanges=exchanges,
+            pin_listing=pin_listing,
             manifest=manifest.model_copy(deep=True) if manifest is not None else None,
             allowed_scopes=frozenset(self.allowed_scopes),
             store=self.store,

@@ -14,6 +14,7 @@ from trading_max.analytics.key_moments import key_moments
 from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
+from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 from trading_max.research.venues import VenueConflict
 
 from ..dashboard import _benchmark_series
@@ -22,6 +23,7 @@ from ..projections.day_change import measures_broker_observation, within_trading
 from ..projections.nav import nav_series
 from ..projections.values import csv_rows
 from ..research import published_price_series_id
+from ..research_listing import PinnedListing
 from .deps import AssistantDeps
 from .moment_events import listing_moment_events
 from .tools import (
@@ -473,8 +475,30 @@ def dated_events(
             return
         events.append({"date": stamp[:10], "kind": kind, "reference": _text(str(reference), 240)})
 
+    ticker = series.published_bar_ticker or args.ticker
+    pinned = PinnedListing(
+        args.ticker, series.ticker, ticker, series.venue_claims, (series.ticker,)
+    )
+    source_rows = {
+        key: _ticker_row(read.read(key), ticker) or {}
+        for key in (
+            ANALYST,
+            EARNINGS,
+            FUNDAMENTALS,
+            FINANCIALS,
+        )
+    }
+    news_rows = {
+        key: _mapped(_mapped((read.read(key) or {}).get("securities")).get(ticker))
+        for key in (NEWS_KEY, NEWS_STATUS_KEY)
+    }
+    pinned = pinned.with_event_claims(*source_rows.values(), *news_rows.values())
+
     def listing_row(key):
-        return _ticker_row(read.read(key), series.published_bar_ticker or args.ticker) or {}
+        row, rejected = pinned.event_row(source_rows[key])
+        if rejected:
+            issues.append("listing_calendar_unavailable")
+        return row
 
     analyst = _mapped(listing_row(ANALYST).get("analyst"))
     if analyst:
@@ -512,6 +536,8 @@ def dated_events(
         _mapped(listing_row(EARNINGS).get("calendar")),
         _mapped(fundamental.get("metrics") or fundamental.get("info")),
         filing_evidence,
+        pinned,
+        news_rows,
     )
     keys.extend(extra_keys)
     issues.extend(extra_issues)

@@ -456,3 +456,85 @@ def test_event_parent_claim_blocks_wrong_listing_rating_and_earnings(bound):
         all_events(reading),
         "listing_calendar_unavailable" in reading["quality"]["issues"],
     ) == ([], True)
+
+
+def test_conflicting_event_parents_are_withheld_in_research_endpoints(bound):
+    app, initial, _ = bound
+    ticker = "SYN.L"
+    publish(
+        app,
+        {
+            tools.TECHNICAL: {"rows": [base_row(app, initial, ticker, exchange="LSE")]},
+            tools.EARNINGS: {
+                "rows": [
+                    {"ticker": ticker, "mic": "XNYS", "calendar": {"Earnings Date": ["2027-01-07"]}}
+                ]
+            },
+            tools.FINANCIALS: {
+                "rows": [
+                    {
+                        "ticker": ticker,
+                        "mic": "XNYS",
+                        "financials": {"evidence": {"news": [story()]}},
+                    }
+                ]
+            },
+        },
+    )
+    client = TestClient(app)
+    assert client.get(f"/v1/research/{ticker}/events").json() == []
+    lens = client.get(f"/v1/research/{ticker}/lens/technical").json()
+    assert lens["nextEarningsDate"] is None
+    documents = client.get(f"/v1/research/{ticker}/lens/ledger?detail=documents").json()
+    assert not (documents.get("researchEvidence") or {}).get("news")
+
+
+def test_nested_items_keep_only_the_pinned_listing(bound):
+    app, initial, _ = bound
+    ticker = "SYN.L"
+    manifest = publish(
+        app,
+        {
+            tools.TECHNICAL: {"rows": [base_row(app, initial, ticker, exchange="LSE")]},
+            tools.ANALYST: {
+                "rows": [
+                    {
+                        "ticker": ticker,
+                        "analyst": {
+                            "earningsEvents": [
+                                {
+                                    "mic": "XNYS",
+                                    "id": "wrong",
+                                    "date": FRIDAY,
+                                    "status": "reported",
+                                },
+                                {
+                                    "mic": "XLON",
+                                    "id": "right",
+                                    "date": MONDAY,
+                                    "status": "reported",
+                                },
+                            ]
+                        },
+                    }
+                ]
+            },
+            NEWS_KEY: {
+                "securities": {
+                    ticker: {
+                        "as_of": FRIDAY,
+                        "items": [
+                            {**story(), "mic": "XNYS", "title": "Wrong issue"},
+                        ],
+                    }
+                }
+            },
+        },
+    )
+    history = entries(app, ticker, upcoming=False)
+    assert not any(
+        e["kind"] == "news" or (e["kind"] == "earnings" and e["date"] == FRIDAY)
+        for e in history["data"]["items"]
+    )
+    assert any(e["kind"] == "earnings" and e["date"] == MONDAY for e in history["data"]["items"])
+    assert {e["reference"] for e in all_events(moments(app, manifest, ticker))} == {"right"}

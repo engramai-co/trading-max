@@ -79,6 +79,7 @@ from .projections.broker import overlay_live_broker_snapshot
 from .projections.research import option_rows, valuation_rows
 from .projections.research import technical_rows as project_technical_rows
 from .projections.trade_markers import broker_symbol, chart_trade_markers
+from .research_listing import PinnedListing, exact_row
 from .watchlist import WatchlistStore
 
 if TYPE_CHECKING:
@@ -2500,68 +2501,77 @@ class ResearchLedger:
             alerts=self.alerts(selected_ticker, manifest),
         )
 
-    def bind_price_series(self):
-        """Freeze the chart's routing aliases before a snapshot-bound assistant run."""
-        exchanges = self.watchlist.listing_exchanges()
-        return partial(self.price_series, exchanges=exchanges), exchanges
-
-    def price_series(
-        self,
-        ticker: str,
-        manifest: SnapshotManifest,
-        *,
-        limit: int = 504,
-        exchanges: dict[str, tuple[VenueClaim, ...]] | None = None,
-    ) -> ResearchPriceSeries:
+    def pin_listing(self, ticker, manifest, *, exchanges=None) -> PinnedListing:
+        """Select the chart row once, retaining its original symbol and all venue claims."""
+        requested = ticker.strip().upper()
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
-        ticker = ticker.strip().upper()
-        listing = self.held_fund(ticker, manifest, exchanges)
-        resolved = listing.ticker if listing else self._route_ticker(ticker, exchanges)
-        series = self._published_price_series(resolved, manifest, limit=limit)
-        venue = self.price_venue(ticker, series, manifest, exchanges, listing, us_fund(resolved))
-        series.exchange_calendar = venue.calendar
-        return series
-
-    def price_venue(self, requested, series, manifest, exchanges, listing=None, reference=None):
-        """Validate the original request against the observed row, including exact fundamentals."""
-        published = series.published_bar_ticker or series.ticker
-        claims = list(series.venue_claims)
-        for ticker in {requested, published, series.ticker}:
-            claims.append(VenueClaim("symbol", ticker, ticker))
-            claims.extend(exchanges.get(ticker, ()))
-            for key in ("research/fundamentals.json", FUND_PRICE_DIRECTORY_KEY):
-                for row in self._cached_rows(manifest, key, _fundamentals_rows):
-                    if str(row.get("ticker") or "").upper() == ticker.upper():
-                        claims.extend(
-                            row_claims(ticker, row, row.get("metrics") or row.get("info"))
-                        )
-            if not series.published_series_id:
-                technical = self._published_technicals(manifest)
-                for row in technical.get("rows", []):
-                    if row.get("ticker") == ticker:
-                        claims.extend(row_claims(ticker, row))
-        if series.source == ALPACA_SIP:
-            claims.append(VenueClaim("region", "US", published))
+        listing = self.held_fund(requested, manifest, exchanges)
+        route = listing.ticker if listing else self._route_ticker(requested, exchanges)
+        reference = us_fund(route)
+        technicals = self._published_technicals(manifest)
+        technical = _find(technicals.get("rows") or [], route)
+        fund_price = self._fund_price(manifest, route, listing, with_points=True)
+        source = fund_price or (None if listing or reference else technical)
+        published = str((source or {}).get("ticker") or route).upper()
+        claims = []
+        for symbol in dict.fromkeys((requested, route, published)):
+            claims.extend(exchanges.get(symbol, ()))
+            claims.append(VenueClaim("symbol", symbol, symbol))
+        for row in (
+            source,
+            exact_row(technicals.get("rows") or [], published),
+            self._fund_price(manifest, published, listing),
+            exact_row(
+                self._cached_rows(manifest, "research/fundamentals.json", _fundamentals_rows),
+                published,
+            ),
+        ):
+            if row:
+                claims.extend(row_claims(published, row))
         if listing:
             claims.extend(row_claims(listing.ticker, {"mic": listing.mic}))
             claims.append(watchlist_claim(listing.ticker, listing.exchange))
         if reference:
-            claims.append(provider_claim(reference.exchange, published))
-        venue = resolve_venue(
+            claims.append(provider_claim(reference.exchange, route))
+        return PinnedListing(
             requested,
-            *claims,
-            *row_claims(
-                published,
-                {
-                    "mic": series.published_bar_mic,
-                    "exchange": series.published_bar_exchange,
-                },
-            ),
+            route,
+            published,
+            tuple(claims),
+            (route,) if route != requested else (),
+            listing,
+            source,
+            bool(fund_price),
         )
+
+    def bind_price_series(self):
+        """Freeze the chart and event routing together before a snapshot-bound run."""
+        exchanges = self.watchlist.listing_exchanges()
+        return partial(self.price_series, exchanges=exchanges), partial(
+            self.pin_listing, exchanges=exchanges
+        )
+
+    def price_series(self, ticker, manifest, *, limit=504, exchanges=None, pinned=None):
+        pinned = pinned or self.pin_listing(ticker, manifest, exchanges=exchanges)
+        if pinned.venue().conflict:
+            raise VenueConflict(f"incompatible venue claims for {ticker}")
+        series = self._published_price_series(pinned, manifest, limit=limit)
+        venue = self.price_venue(pinned, series)
+        series.exchange_calendar = venue.calendar
+        return series
+
+    @staticmethod
+    def price_venue(pinned, series):
+        """Live provider claims refine the same raw price evidence as the published chart."""
+        observed = series.published_bar_ticker or series.ticker
+        claims = [*series.venue_claims, VenueClaim("identity", observed, pinned.ticker)]
+        if series.source == ALPACA_SIP:
+            claims.append(VenueClaim("region", "US", observed))
+        venue = pinned.venue(*claims)
         if venue.conflict:
-            raise VenueConflict(f"incompatible venue claims for {requested}")
-        series.venue_claims = tuple(claims)
+            raise VenueConflict(f"incompatible venue claims for {pinned.requested}")
+        series.venue_claims = (*pinned.claims, *claims)
         return venue
 
     def _published_technicals(self, manifest: SnapshotManifest) -> JsonObject:
@@ -2628,26 +2638,19 @@ class ResearchLedger:
         )
 
     def _published_price_series(
-        self, ticker: str, manifest: SnapshotManifest, *, limit: int = 504
+        self, pinned: PinnedListing, manifest: SnapshotManifest, *, limit: int = 504
     ) -> ResearchPriceSeries:
-        """Read a chart's resolved ticker entirely from the pinned publication."""
-        exact = [listing for listing in self._held_funds(manifest) if listing.ticker == ticker]
-        if len(exact) > 1:
+        """Read the price row selected with the rest of this listing's evidence."""
+        ticker = pinned.route
+        if sum(listing.ticker == ticker for listing in self._held_funds(manifest)) > 1:
             raise FileNotFoundError(f"ambiguous published fund listing for {ticker}")
-        listing = exact[0] if exact else None
-        fund_price = self._fund_price(manifest, ticker, listing, with_points=True)
+        fund_price = pinned.fund_bars
         artifact = _artifact(manifest, FUND_PRICES_KEY if fund_price else "research/technical.json")
         cache_key = (manifest.run_id, ticker)
         if cached := self._price_series_cache.get(cache_key):
             return _visible_price_sessions(cached, limit)
         raw = {} if fund_price else self._published_technicals(manifest)
-        raw_rows = raw.get("rows")
-        rows = raw_rows if isinstance(raw_rows, list) else []
-        source = fund_price or (
-            None
-            if listing or us_fund(ticker)
-            else _find([row for row in rows if isinstance(row, dict)], ticker)
-        )
+        source = pinned.price_row
         if source is None:
             raise FileNotFoundError(f"technical research not found for {ticker}")
         bar_ticker = str(source["ticker"]).strip().upper()
