@@ -24,7 +24,7 @@ from trading_max.reference.security_master import SecurityDescriptor, SecurityMa
 from trading_max.research.facts import build_financial_facts
 from trading_max.research.listing import quote_listing
 from trading_max.research.statement_valuation import statement_row
-from trading_max.research.valuation_basis import catalog_security_type, classify
+from trading_max.research.valuation_basis import classify
 
 JsonObject = dict[str, Any]
 InfoLoader = Callable[[str], Mapping[str, Any]]
@@ -591,17 +591,12 @@ def build_valuation(
         )
         cost_of_equity, discount_inputs = _company_cost_of_equity(metrics, sector)
         if facts is not None:
-            security = (
-                security_master.resolve(
-                    SecurityDescriptor(
-                        ticker=ticker,
-                        name=str(fundamental.get("name") or ""),
-                        exchange=str(metrics.get("fullExchangeName") or ""),
-                    )
-                )
-                if security_master
-                else None
+            descriptor = SecurityDescriptor(
+                ticker=ticker,
+                name=str(fundamental.get("name") or ""),
+                exchange=str(metrics.get("fullExchangeName") or ""),
             )
+            security = security_master.resolve(descriptor) if security_master else None
             family, classification = classify(
                 ticker,
                 security.gics.sub_industry_code if security and security.gics else "",
@@ -637,7 +632,9 @@ def build_valuation(
                         ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
                     ),
                     filing_evidence=financial_rows.get(ticker, {}).get("evidence") or {},
-                    security_type=catalog_security_type(ticker, security),
+                    security_type=security_master.listing_security_type(descriptor)
+                    if security_master
+                    else "",
                 )
             )
             continue

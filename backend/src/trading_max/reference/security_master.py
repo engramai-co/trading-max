@@ -24,6 +24,8 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 
+from .venues import listing_mic
+
 ResolutionMethod = Literal[
     "isin",
     "figi",
@@ -137,6 +139,10 @@ class ResolvedSecurityEntity(DomainModel):
 class SecurityMasterResolver(Protocol):
     def resolve(self, security: SecurityDescriptor) -> ResolvedSecurityEntity:
         """Resolve one observed instrument to an economic issuer."""
+
+    def listing_security_type(self, security: SecurityDescriptor) -> str:
+        """Return an instrument type established for the quoted ticker and venue."""
+        ...
 
     def gics_lookup(self, security: SecurityDescriptor) -> GicsClassification | None:
         """Return sourced GICS metadata for the resolved issuer, if known."""
@@ -568,6 +574,34 @@ class CatalogSecurityMaster:
             if len(narrowed) == 1:
                 return narrowed[0], "name"
         return None
+
+    def listing_security_type(self, security: SecurityDescriptor) -> str:
+        """Use a catalog type only when its scope is one exact quoted listing.
+
+        Older catalogs attach types to the entity, so an entity spanning several
+        instruments cannot attribute that type to any one of its listings.
+        """
+        ticker = _identifier(security.ticker)
+        venue = listing_mic(security.exchange, security.mic)
+        if not ticker or not venue:
+            return ""
+        target = (ticker, venue)
+        matches = []
+        for record in self._ticker_index.get(ticker, ()):
+            listings = {
+                (_identifier(item.ticker), listing_mic(item.exchange, item.mic))
+                for item in record.listings
+            }
+            if target in listings:
+                if listings != {target} or _identifier(record.canonical_ticker) != ticker:
+                    return ""
+                matches.append(record)
+        if len(matches) != 1:
+            return ""
+        record = matches[0]
+        return " ".join(
+            (record.security_type, record.provider_security_type, record.provider_security_type2)
+        )
 
     def resolve(self, security: SecurityDescriptor) -> ResolvedSecurityEntity:
         matched = self._match(security)

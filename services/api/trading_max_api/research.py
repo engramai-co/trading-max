@@ -38,7 +38,6 @@ from trading_max.research.listing import broker_listing
 from trading_max.research.option_terms import chain_availability
 from trading_max.research.trailing_pe import TrailingPeHistory
 from trading_max.research.valuation_basis import (
-    catalog_security_type,
     classify,
     share_unit,
 )
@@ -155,10 +154,9 @@ def retained_share_unit(
                     read_json(manifest.run_id, SECURITY_MASTER_KEY)
                 )
             )
-            record = catalog.resolve(
+            security_type = catalog.listing_security_type(
                 SecurityDescriptor(ticker=quote.ticker, name=name, exchange=quote.exchange or "")
             )
-            security_type = catalog_security_type(quote.ticker, record)
     return share_unit(listing, units, security_type)
 
 

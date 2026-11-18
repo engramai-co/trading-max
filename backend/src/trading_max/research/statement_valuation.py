@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 from trading_max.reference.quote_units import major_quote_unit
 
 from .facts import FinancialFacts, fingerprint, number
-from .listing import BP_LISTING_SOURCE, REVIEWED_ORDINARY_SOURCES
+from .listing import REVIEWED_ORDINARY_SOURCES, REVIEWED_RECEIPT_SOURCES
 from .valuation_basis import (
     EXCLUDED_ASSETS,
     Family,
@@ -237,8 +237,7 @@ def statement_row(
     source_url = (
         filing_evidence.get("shareUnitFiling")
         if filed_units.get(listing)
-        else REVIEWED_ORDINARY_SOURCES.get(listing)
-        or (BP_LISTING_SOURCE if listing == "US:BP" else None)
+        else REVIEWED_ORDINARY_SOURCES.get(listing) or REVIEWED_RECEIPT_SOURCES.get(listing)
     )
     stored = {
         "family": family,

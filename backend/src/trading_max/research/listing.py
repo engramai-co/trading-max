@@ -16,10 +16,11 @@ LONDON = "LSE"
 
 # US broker bindings use a country-level ID. Receipt terms apply only on
 # the reviewed exchange, so disambiguate the venue before issuing that ID.
-_NYSE = frozenset({"NYQ", "NYSE"})
-_NASDAQ = frozenset({"NASDAQ", "NMS", "NGM", "NCM", "NASDAQGS", "NASDAQGM", "NASDAQCM"})
+_NYSE = frozenset({"NYQ", "NYSE", "XNYS", "NEW YORK STOCK EXCHANGE"})
+_NASDAQ = frozenset({"NASDAQ", "XNAS", "NMS", "NGM", "NCM", "NASDAQGS", "NASDAQGM", "NASDAQCM"})
 REVIEWED_RECEIPTS = {
     "US:BP": (_NYSE, 6),
+    "US:SHEL": (_NYSE, 2),
     "US:TSM": (_NYSE, 5),
     "US:BABA": (_NYSE, 8),
     "US:NOK": (_NYSE, 1),
@@ -32,6 +33,14 @@ REVIEWED_RECEIPTS = {
 BP_LISTING_SOURCE = (
     "https://www.bp.com/investors/shareholder-and-dividend-information/share-listing-information"
 )
+REVIEWED_RECEIPT_SOURCES = {
+    "US:SHEL": "https://www.shell.com/investors/information-for-shareholders/shareholder-faqs.html",
+    "US:BP": BP_LISTING_SOURCE,
+    "US:TSM": "https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf",
+    "US:BABA": "https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm",
+    "US:NOK": "https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf",
+    "US:ARM": "https://investors.arm.com/node/8281/html",
+}
 REVIEWED_ORDINARY_SOURCES = {
     "LSE:BP": BP_LISTING_SOURCE,
     "XCSE:NOVO-B.CO": "https://annualreport.novonordisk.com/2025/strategic-aspirations/financial-performance.html",

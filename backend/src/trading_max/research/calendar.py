@@ -11,60 +11,7 @@ from exchange_calendars.errors import CalendarError
 from pydantic import Field
 
 from trading_max.domain import DomainModel
-
-EXCHANGES = {
-    "NMS": "XNYS",
-    "NGM": "XNYS",
-    "NCM": "XNYS",
-    "NYQ": "XNYS",
-    "ASE": "XNYS",
-    "PCX": "XNYS",
-    "NASDAQ": "XNYS",
-    "NYSE": "XNYS",
-    "LSE": "XLON",
-    "LONDON": "XLON",
-    "HKG": "XHKG",
-    "JPX": "XTKS",
-    "TOR": "XTSE",
-    "ASX": "XASX",
-    "GER": "XETR",
-    "XETRA": "XETR",
-    "FRA": "XFRA",
-    "FRANKFURT": "XFRA",
-    "NASDAQGS": "XNYS",
-    "NASDAQGM": "XNYS",
-    "NASDAQCM": "XNYS",
-    "NYSE AMERICAN": "XNYS",
-    "NYSEARCA": "XNYS",
-    "CPH": "XCSE",
-    "COPENHAGEN": "XCSE",
-    "STO": "XSTO",
-    "STOCKHOLM": "XSTO",
-    "HEL": "XHEL",
-    "HELSINKI": "XHEL",
-    "OSL": "XOSL",
-    "OSLO": "XOSL",
-    "LIS": "XLIS",
-    "LISBON": "XLIS",
-    "VIE": "XWBO",
-    "VIENNA": "XWBO",
-    "WSE": "XWAR",
-    "WARSAW": "XWAR",
-    "PARIS": "XPAR",
-    "AMSTERDAM": "XAMS",
-    "BRU": "XBRU",
-    "BRUSSELS": "XBRU",
-    "MIL": "XMIL",
-    "MILAN": "XMIL",
-    "MCE": "XMAD",
-    "MADRID": "XMAD",
-    "EBS": "XSWX",
-    "SWISS": "XSWX",
-    "ISE": "XDUB",
-    "IRISH": "XDUB",
-    "PAR": "XPAR",
-    "AMS": "XAMS",
-}
+from trading_max.reference.venues import venue_mic
 
 # Session scheduling can fall back to a time zone when the venue is absent.
 ZONES = {
@@ -116,7 +63,8 @@ class SessionSchedule(DomainModel):
 
 
 def calendar_name(exchange: str | None) -> str | None:
-    return EXCHANGES.get(str(exchange or "").upper())
+    mic = venue_mic(exchange)
+    return "XNYS" if mic in {"XNAS", "XASE", "ARCX"} else mic
 
 
 def listing_calendar(symbol: str | None, exchange: str | None, timezone: str | None) -> str | None:

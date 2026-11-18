@@ -4,8 +4,6 @@ import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
-from trading_max.reference.security_master import ResolvedSecurityEntity
-
 from .facts import FinancialFacts, FinancialPeriod, MetricObservation, number
 from .listing import EQUAL_DISTRIBUTION_CLASSES, REVIEWED_ORDINARY_SOURCES, REVIEWED_RECEIPTS
 
@@ -121,14 +119,6 @@ def statement_basis(
                 # window and fiscal year has been exhausted.
                 incomplete_cash = (p, values)
     return incomplete_cash
-
-
-def catalog_security_type(ticker: str, security: ResolvedSecurityEntity | None) -> str:
-    if not security or security.method != "ticker" or security.canonical_ticker.upper() != ticker:
-        return ""
-    return " ".join(
-        (security.security_type, security.provider_security_type, security.provider_security_type2)
-    )
 
 
 def share_unit(
