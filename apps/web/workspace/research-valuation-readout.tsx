@@ -16,30 +16,58 @@ export type ModelReading = {
   busy: boolean;
 };
 
-export function ValuationReadout({ data, reading }: { data: ResearchLensSnapshot; reading?: ModelReading }) {
+function ReverseReading({ result }: { result?: Preview }) {
+  const t = useCopy();
+  const metric = result?.reverseMetric ?? "revenue-growth";
+  const inputs = result?.scenarios.base?.inputs;
+  if (metric === "year-five-revenue" && result) {
+    return <Metric label={t("现价隐含的第五年营收", "Year-five revenue implied by price")}
+      value={currency(result.reverseValue, result.basis.currency, 0)}
+      note={t("目标利润率", "Target margin") + " " + percent(result.reverseInputs?.targetFcfMargin)
+        + " · " + t("退出倍数", "Exit multiple") + " " + number(result.reverseInputs?.exitFcfMultiple, 1) + "×"}
+      help={t("报告期营收为零。按前五年无中期分配和给定退出倍数计算所需营收。",
+        "Reported revenue was zero. The required revenue assumes no interim distributions and applies the exit multiple to year-five earnings.")} />;
+  }
+  const roe = metric === "initial-roe";
+  const margin = metric === "target-margin";
+  const label = roe ? t("现价隐含的第一年 ROE", "Year-one ROE implied by price")
+    : margin ? t("现价隐含的目标利润率", "Target margin implied by price")
+      : t("价格隐含增长", "Price-implied growth");
+  const assumption = roe ? inputs?.initialRoe : margin ? inputs?.targetFcfMargin : inputs?.revenueCagr;
+  const limits = result?.reverseLimits ?? (metric === "revenue-growth" ? [-0.3, 0.8] : null);
+  const bound = result?.reverseMetric ? result.reverseBound : result?.impliedGrowthBound;
+  const value = result?.reverseMetric ? result.reverseValue : result?.impliedGrowth;
+  const reason = result?.reverseMetric ? result.reverseReason : result?.impliedGrowthReason;
+  const unavailable = reason === "opening-cash-required-for-burn"
+    ? t("缺少期初现金", "Opening cash unavailable")
+    : reason ? t("无法确定唯一解", "No unique estimate") : null;
+  return <Metric label={label} value={limits && bound === "above" ? ">" + percent(limits[1])
+    : limits && bound === "below" ? "<" + percent(limits[0]) : percent(value)}
+    note={[t("模型假设", "Model assumption") + " " + percent(assumption), unavailable].filter(Boolean).join(" · ")}
+    help={t("固定中性情景的其他假设，求解让模型价值等于现价的输入值。",
+      "The input that makes the model value equal the current price, holding the other base assumptions fixed.")}
+    helpBasis={limits && t("求解区间", "Search range") + " " + percent(limits[0]) + " – " + percent(limits[1])} />;
+}
+
+export function ValuationReadout({ data, preview, reading }: { data: ResearchLensSnapshot; preview?: Preview; reading?: ModelReading }) {
   const t = useCopy();
   const { locale } = useLocale();
   const history = data.trailingPeHistory;
   const latest = history?.points.at(-1);
   const rank = history?.distribution?.latestPercentile;
-  const result = reading?.result;
+  const result = reading?.result ?? preview;
   const base = result?.scenarios.base;
-  const implied = result?.impliedGrowthBound === "above" ? ">80%"
-    : result?.impliedGrowthBound === "below" ? "<−30%" : percent(result?.impliedGrowth);
   const percentile = latest?.pe != null && rank != null ? t("历史分位 P", "Percentile P") + number(rank * 100, 0) : null;
   const status = reading?.busy ? t("计算中…", "Calculating…") : reading?.stale ? t("上次结果", "Previous result") : null;
   const modelSource = reading?.edited ? t("本次调整", "Current edit") : reading?.source;
   return <Panel className="mx-valuation-readout">
     <Metric label={t("滚动 P/E", "Trailing P/E")} value={latest?.pe == null ? "—" : number(latest.pe, 1) + "×"}
       note={[percentile, latest && formatCalendarDate(latest.date, locale)].filter(Boolean).join(" · ")} />
-    <Metric label={t("价格隐含增长", "Price-implied growth")} value={implied}
-      note={t("模型假设", "Model assumption") + " " + percent(base?.inputs.revenueCagr)}
-      help={t("固定中性情景的其他假设，求解让模型价值等于现价的前五年营收增长率。",
-        "The annual revenue growth for years 1–5 that matches the current price with the other base assumptions held fixed.")} />
+    <ReverseReading result={result} />
     <Metric label={t("中性情景", "Base scenario")} value={base && result ? <>
       {currency(base.value, result.basis.currency, 2)}
       {base.upside != null && <small className={"mx-metric-change mx-" + tone(base.upside)}>{percent(base.upside, true)}</small>}
     </> : "—"}
-      note={<span>{[status, modelSource, result && result.horizon + t(" 年", "Y")].filter(Boolean).join(" · ")}</span>} />
+      note={<span>{[status, modelSource, base && result && result.horizon + t(" 年", "Y")].filter(Boolean).join(" · ")}</span>} />
   </Panel>;
 }

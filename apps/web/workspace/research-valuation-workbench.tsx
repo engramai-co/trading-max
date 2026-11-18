@@ -88,17 +88,52 @@ export function ValuationWorkbench({
   const [dirty, setDirty] = useState(false);
   const retained = useRetainedResult(state.view === "editor" ? state.preview : undefined, Object.is,
     (next, previous) => !dirty || next.basis.ticker !== previous.basis.ticker || editorIdentity(next) === editorIdentity(previous));
-  const preview = retained?.basis.ticker === data.ticker ? retained : undefined;
+  const preview = retained?.basis.ticker === data.ticker && (!family || retained.basis.family === family)
+    ? retained : undefined;
   const [reading, setReading] = useState<ModelReading>();
-  const modelAvailable = preview && (!financial || dirty);
-  return <ResearchReading parameter="valuationView" sections={modelAvailable ? valuationSections : valuationSections.slice(0, 2)}>
-    <ValuationReadout data={data} reading={modelAvailable && reading?.initial === preview ? reading : undefined} />
+  const reverseOnly = preview?.reverseMetric === "year-five-revenue";
+  const chooser = (
+    <Select
+      label={t("估值模型", "Valuation model")}
+      value={family ?? preview?.basis.family ?? null}
+      placeholder={t("自动选择", "Automatic")}
+      allowDeselect={false}
+      data={[
+        { value: "cash-flow", label: t("股权现金流", "Equity cash flow") },
+        { value: "net-income", label: t("净利润", "Net income") },
+        { value: "residual-income", label: t("剩余收益", "Residual income") },
+      ]}
+      onChange={(value) => {
+        setDirty(false);
+        setFamily(value as Preview["basis"]["family"]);
+      }}
+    />
+  );
+  const reason = query.error instanceof ApiError && query.error.status === 422 ? query.error.message : null;
+  const missing =
+    reason === "currency-conversion-unavailable"
+      ? t("缺少报表币种到报价币种的汇率", "The reporting-to-quote exchange rate is missing")
+      : reason === "opening-cash-required-for-burn"
+        ? t("估算融资所需的期初现金余额缺失", "Opening cash is missing for the financing calculation")
+        : reason === "positive-common-equity-and-common-income-required"
+          ? t(
+              "需要同期普通股净利润与正的普通股净资产",
+              "Common earnings and positive common equity are required for the same period",
+            )
+          : t(
+              "此模型缺少完整同期报表、报价或上市股数",
+              "Matching statements, a quote and verified listing shares are required",
+            );
+
+  return <ResearchReading parameter="valuationView" sections={preview && !reverseOnly ? valuationSections : valuationSections.slice(0, 2)}>
+    <ValuationReadout data={data} preview={preview} reading={reading?.initial === preview ? reading : undefined} />
     <div id="research-history">
       <PeHistoryChart key={data.ticker} trailing={data.trailingPeHistory} forward={data.forwardPeHistory}
         sales={<FilingMultiples data={data} price={price} mode="ps" />}
         disclosure={<FilingMultiples data={data} price={price} mode="pe" />} />
     </div>
-    {modelAvailable ? <ModelEditor
+    {preview && !reverseOnly ? <ModelEditor
+      chooser={chooser}
       key={editorIdentity(preview)}
       initial={preview}
       onDirty={setDirty}
@@ -108,18 +143,25 @@ export function ValuationWorkbench({
       refreshing={query.isFetching}
       onRetry={query.isError ? () => void query.refetch() : undefined}
     /> : <div id="research-scenario">
-        {!financial && <Panel title={t("情景模型", "Scenario model")}>
-          {state.view === "error" ? <>
-            <Empty title={t("当前数据不足以建立现金流模型", "Cash-flow model inputs are incomplete")} />
-            <QueryError retry={query.refetch} />
-          </> : <Pending />}
-        </Panel>}
-        {(financial || state.view === "error") && <ModelAlternatives data={data} financial={financial} />}
+      <Panel title={t("情景模型", "Scenario model")} id="valuation-assumptions">
+        {chooser}
+        {reverseOnly && preview ? <Facts rows={[
+          [t("期间", "Period"), preview.basis.periodId ?? "—"],
+          [t("目标利润率", "Target margin"), percent(preview.reverseInputs?.targetFcfMargin)],
+          [t("退出倍数", "Exit multiple"), number(preview.reverseInputs?.exitFcfMultiple, 1)],
+          [t("股权成本", "Cost of equity"), percent(preview.reverseInputs?.discountRate)],
+          [t("股数变化", "Share change"), percent(preview.reverseInputs?.shareCagr)],
+        ]} /> : state.view === "error" ? (
+          reason ? <Empty title={missing} /> : <QueryError error={query.error} retry={query.refetch} />
+        ) : <Pending />}
+      </Panel>
+      {!preview && state.view === "error" && <ModelAlternatives data={data} financial={family === "residual-income"} />}
     </div>}
   </ResearchReading>;
 }
 
 function ModelEditor({
+  chooser,
   initial,
   onReading,
   onDirty,
@@ -128,6 +170,7 @@ function ModelEditor({
   refreshing,
   onRetry,
 }: {
+  chooser: React.ReactNode;
   initial: Preview;
   onReading: (reading: ModelReading) => void;
   onDirty: (dirty: boolean) => void;
@@ -304,15 +347,6 @@ function ModelEditor({
       suffix: "",
     });
   const base = result.scenarios.base;
-  const reverse = result.reverseMetric;
-  const reverseTitle =
-    reverse === "initial-roe"
-      ? t("现价隐含的第一年 ROE", "Year-one ROE implied by price")
-      : reverse === "target-margin"
-        ? t("现价隐含的目标利润率", "Target margin implied by price")
-        : t("价格隐含的增长", "Growth implied by price");
-  const reverseBound = result.reverseBound ?? result.impliedGrowthBound;
-  const limits = result.reverseLimits ?? [-0.3, 0.8];
   const methodology = initial.formulaVersion === "equity-proxy-projection-v1"
     ? t("保存的公式按三年调整利润率，股数按年度股数变化调整。", "The saved formula moves margin to its target over three years and applies the assumed annual share-count change.")
     : residual
@@ -495,6 +529,7 @@ function ModelEditor({
           className="mx-model-inputs"
           help={methodology}
         >
+          {chooser}
           <Segments
             label={t("编辑情景", "Edit scenario")}
             value={selected}
@@ -646,50 +681,62 @@ function ModelEditor({
           </Button>
           {save.isError && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
         </Panel>
-        <div className="mx-model-reference-grid">
+      <div className="mx-model-reference-grid">
         <Panel
           title={t("经营参考", "Operating reference")}
           action={
             <span className="mx-unit">
-              {referencePeriod?.label} · {result.basis.currency}
+              {[
+                result.basis.periodChoice === "previous-four-quarters"
+                  ? t("上个完整四季", "Earlier complete four quarters")
+                  : result.basis.periodChoice === "latest-fiscal-year"
+                    ? t("上一财年", "Last fiscal year")
+                    : result.basis.periodChoice === "previous-fiscal-year" ? t("较早完整财年", "Earlier complete fiscal year") : referencePeriod?.label,
+                referencePeriod?.actualEnd ?? referencePeriod?.providerEnd ?? result.basis.periodId?.split(":")[1],
+                result.basis.currency,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
             </span>
           }
-          help={t(
-            "模型从最近四个完整季度的经营现金流减资本开支出发，使用股权资本成本。它是股权现金流代理，没有完整建模借款、偿债和回购融资；现金、债务不在结果上直接加减。目标现金流率在三年内逐渐达到；十年模式第六年起增长逐渐收敛至 3%。",
-            "The model starts with operating cash flow less capital expenditure over four complete quarters and discounts at cost of equity. It is an equity cash-flow proxy, without a complete borrowing, repayment or buyback financing model. Cash and debt are not directly added or subtracted. Margins converge over three years; ten-year growth fades toward 3% from year six.",
-          )}
+          help={methodology}
         >
           <div className="mx-metric-grid">
+            {residual ? <Metric label={t("普通股净利润", "Common earnings")} value={compact(result.basis.commonEarnings, locale)} /> :
+              <Metric label={t("营收", "Revenue")} value={compact(result.basis.revenue, locale)} />}
             <Metric
-              label={t("营收", "Revenue")}
-              value={compact(result.basis.revenue, locale)}
-            />
-            <Metric
-              label={t("自由现金流率", "FCF margin")}
-              value={percent(result.basis.startMargin, false, 2)}
+              label={residual ? t("每股净资产", "Book value per share") : marginLabel}
+              value={
+                residual
+                  ? currency(result.basis.bookPerShare, result.basis.currency, 2)
+                  : percent(result.basis.startMargin, false, 2)
+              }
             />
           </div>
           <details className="mx-chart-data">
-            <summary>
-              {t("基数与资本结构", "Basis & capital structure")}
-            </summary>
+            <summary>{t("基数与资本结构", "Basis & capital structure")}</summary>
             <Facts
               rows={[
                 [
-                  t("模型股数", "Model share count"),
-                  number(result.basis.shares, 0),
+                  t("报表 → 报价", "Reporting → quote"),
+                  `${result.basis.reportingCurrency ?? result.basis.currency} → ${result.basis.currency} · ${result.basis.fxRate ?? "—"}`,
                 ],
+                ...(result.basis.ordinaryPerReceipt
+                  ? ([
+                      [
+                        t("每份存托凭证对应普通股", "Ordinary shares per receipt"),
+                        String(result.basis.ordinaryPerReceipt),
+                      ],
+                    ] as [string, string][])
+                  : []),
+                [t("模型股数", "Model share count"), number(result.basis.shares, 0)],
                 [
                   t("现金及短期投资", "Cash & short-term investments"),
-                  compact(latestFact("cash"), locale) +
-                    " " +
-                    (data.financialFacts?.currency ?? ""),
+                  compact(latestFact("cash"), locale) + " " + (data.financialFacts?.currency ?? ""),
                 ],
                 [
                   t("总债务", "Total debt"),
-                  compact(latestFact("debt"), locale) +
-                    " " +
-                    (data.financialFacts?.currency ?? ""),
+                  compact(latestFact("debt"), locale) + " " + (data.financialFacts?.currency ?? ""),
                 ],
               ]}
             />
@@ -701,7 +748,7 @@ function ModelEditor({
             </a>
           </details>
         </Panel>
-        <GrowthContext data={data} analyst={analyst} />
+        {!residual && <GrowthContext data={data} analyst={analyst} />}
       </div>
       </div>
       <div id="research-sensitivity"><ValuationSensitivity result={result} /></div>
