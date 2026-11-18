@@ -202,3 +202,14 @@ it.each(["earnings","dividend","ex_dividend","dividend_pay","rating_change","mac
   expect(line?.text).toContain("2026-01-15");
   expect(line?.evidence?.arguments).toMatchObject({eventId:"ev_row",snapshotId:"older"});
 });
+
+it("resolves the saved event identity when the same retained result is presented in a different order", async () => {
+  const {researchFigure} = await import("./research-figures");
+  const row = {kind:"earnings",ticker:"TEST",title_zh:"财报",date:"2026-02-01"};
+  const observation = {status:"ok",scope:"isa",snapshot_id:"older",data:{items:[
+    {...row,title_en:"Other earnings",evidence_id:"ev_other"},
+    {...row,title_en:"Selected earnings",evidence_id:"ev_selected"},
+  ]}};
+  const cited = {tool:"news_and_events",source:"financials" as const,evidenceId:"ev_result",arguments:{eventId:"ev_selected"}};
+  expect(researchFigure(cited,observation,"/data/items/0/title_en","en","Europe/London")?.text).toContain("Selected earnings");
+});

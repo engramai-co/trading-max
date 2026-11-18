@@ -44,7 +44,9 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
   if (eventsTool) {
     const selected = /^\/data\/items\/(0|[1-9]\d?)\/(title_en|title_zh|date)$/.exec(path);
     if (!selected) return undefined;
-    const row = objects(data.items)[Number(selected[1])];
+    const events = objects(data.items);
+    const row = ref.arguments?.eventId ? events.find(event => event.evidence_id === ref.arguments?.eventId)
+      : events[Number(selected[1])];
     const kind = str(row?.kind);
     if (!row || !Object.hasOwn(eventLabels,kind) || !str(row.evidence_id)) return null;
     const [, , source,lens] = eventLabels[kind];
@@ -74,7 +76,12 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
   }
   if (tool === "price_key_moments") {
     const nested = /^\/data\/items\/(0|[1-9]\d?)\/events\/(0|[1-9]\d?)\/(kind|date|reference)$/.exec(path);
-    if (nested) return priceEvent(objects(objects(data.items)[Number(nested[1])]?.events)[Number(nested[2])] ?? {});
+    if (nested) {
+      const events = objects(objects(data.items)[Number(nested[1])]?.events);
+      const event = ref.arguments?.eventId ? events.find(e => e.reference === ref.arguments?.eventId && e.kind === ref.arguments?.event)
+        : events[Number(nested[2])];
+      return priceEvent(event ?? {});
+    }
     const after = /^\/data\/following\/(0|[1-9]\d?)\/return_fraction$/.exec(path);
     if (after) {
       const row = objects(data.following)[Number(after[1])];
