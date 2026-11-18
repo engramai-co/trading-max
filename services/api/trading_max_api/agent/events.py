@@ -549,7 +549,12 @@ def event_data(deps, args, *, upcoming):
     headlines = {}
     for row in articles:
         identity = references.get(row["source_url"], row["source_url"])
-        story = headlines.setdefault(identity, {**row, "reference": identity, "tickers": []})
+        story = headlines.get(identity)
+        if story is None:
+            story = headlines[identity] = {**row, "reference": identity, "tickers": []}
+        elif row["instant"] and not story["instant"]:
+            # The published instant determines which local day contains this article.
+            story.update(row)
         if row["ticker"] not in story["tickers"]:
             story["tickers"].append(row["ticker"])
     entries = [r for r in entries if r and r["kind"] != "news"] + list(headlines.values())
