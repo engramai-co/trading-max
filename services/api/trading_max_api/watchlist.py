@@ -334,6 +334,17 @@ class WatchlistStore:
     def categories(self) -> list[WatchlistCategory]:
         return sorted(self.load().categories, key=lambda item: (item.order, item.id))
 
+    def listing_exchanges(self) -> dict[str, str]:
+        """Capture listing aliases for chart routing without changing workspace state."""
+        with self._lock:
+            signature = self._path_signature(self.path)
+            if signature is None:
+                return {}
+            state = self._cache
+            if state is None or not self._cache_signature or self._cache_signature[0] != signature:
+                state = WatchlistState.model_validate_json(self.path.read_bytes())
+            return {item.ticker: item.exchange for item in state.items}
+
     def items(self) -> list[WatchlistItem]:
         state = self.load()
         category_order = {item.id: item.order for item in state.categories}

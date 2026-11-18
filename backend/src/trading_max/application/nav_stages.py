@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import csv
 import io
+from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
+from functools import lru_cache
 from pathlib import Path
 
 from trading_max.analytics.accounts import metrics_from_snapshot_file
@@ -12,6 +15,8 @@ from trading_max.analytics.cash_flow_history import AccountCashFlowHistory, acco
 from trading_max.analytics.day_attribution import (
     LONDON,
     DayBaseline,
+    ShareMovement,
+    ShareMovements,
     baseline_from_accounts,
     observed_day,
     update_day_attribution,
@@ -36,6 +41,7 @@ from trading_max.analytics.intraday_reconstruction import (
     IntradayPriceLoader,
     reconstruct_intraday_account,
 )
+from trading_max.analytics.ledger import is_buy, is_sell, load_transactions
 from trading_max.analytics.nav import append_valuation
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import (
@@ -43,6 +49,7 @@ from trading_max.infrastructure import (
     SnapshotStore,
 )
 from trading_max.ingestion.brokers.trading212 import (
+    Trading212ExportError,
     latest_cash_transactions_path,
     latest_export_path,
 )
@@ -617,11 +624,42 @@ WINDOW_ATTRIBUTION_KEY = "account/attribution/window.json"
 OPENING_CANDIDATES = 12
 
 
+@lru_cache(maxsize=4)
+def broker_share_movements(path: Path, modified_ns: int, size: int) -> ShareMovements:
+    """Index executed buys, sells and split legs once per official export revision."""
+    rows = load_transactions([path]).fillna({"ISIN": ""})
+    result = defaultdict(list)
+    for _, row in rows.iterrows():
+        label = str(row["Action"]).strip().lower()
+        if is_buy(label):
+            action = "buy"
+        elif is_sell(label):
+            action = "sell"
+        elif label in ("stock split close", "stock split open"):
+            action = "split_close" if label.endswith("close") else "split_open"
+        else:
+            continue
+        quantity = Decimal(str(row["Shares"]))
+        result[str(row["Ticker"]).upper()].append(
+            ShareMovement(
+                row["Time"].to_pydatetime(),
+                str(row.get("ISIN") or ""),
+                action,
+                quantity if quantity.is_finite() else Decimal(0),
+            )
+        )
+    # Broker exports can timestamp both split legs at the same instant.
+    return {
+        key: tuple(sorted(moves, key=lambda m: (m.observed_at, m.action == "split_open")))
+        for key, moves in result.items()
+    }
+
+
 class AccountDayAttributionStage:
     """Attribute each position's change over the trading day and the 5D window."""
 
     name = "accounts.day_attribution"
-    version = "day-attribution-v4"
+    version = "day-attribution-v7"
     required_for = frozenset({"intraday", "accounts", "all"})
     dependencies = ("accounts.snapshot",)
 
@@ -699,16 +737,33 @@ class AccountDayAttributionStage:
             return StageResult()
         previous = _previous_json(self.artifacts, self.snapshots, DAY_BASELINE_KEY)
         previous_window = _previous_json(self.artifacts, self.snapshots, WINDOW_BASELINES_KEY)
+        share_movements = {}
+        movement_warnings = []
+        if self.state_root is not None:
+            for code, profile in profiles.items():
+                try:
+                    path = latest_export_path(profile, data_root=self.state_root / "trading212")
+                    if path:
+                        stat = path.stat()
+                        share_movements[code] = broker_share_movements(
+                            path, stat.st_mtime_ns, stat.st_size
+                        )
+                except (OSError, ValueError, Trading212ExportError):
+                    movement_warnings.append(
+                        f"{code}: trade and split export unavailable; using broker position basis"
+                    )
         try:
             baseline, attribution = update_day_attribution(
                 previous.payload if previous is not None else None,
                 accounts,
+                share_movements=share_movements,
             )
             window_baselines, window = update_window_attribution(
                 previous_window.payload if previous_window is not None else None,
                 baseline,
                 accounts,
                 history=lambda day: self._raw_opening(profiles, day),
+                share_movements=share_movements,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise StageExecutionError("account.day_attribution_invalid", str(exc)) from exc
@@ -722,7 +777,10 @@ class AccountDayAttributionStage:
             ),
             f"day attribution waits for a {attribution.day} observation": behind,
         }
-        warnings = [f"{reason}: {', '.join(codes)}" for reason, codes in reasons.items() if codes]
+        warnings = [
+            *movement_warnings,
+            *(f"{reason}: {', '.join(codes)}" for reason, codes in reasons.items() if codes),
+        ]
         stored_baseline = self.artifacts.put_json(
             key=DAY_BASELINE_KEY,
             payload=baseline.model_dump(mode="json", by_alias=False),

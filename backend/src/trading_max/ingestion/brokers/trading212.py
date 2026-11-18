@@ -364,6 +364,7 @@ class BrokerPosition(DomainModel):
     total_cost_gbp: Decimal
     unrealized_profit_loss_gbp: Decimal
     fx_impact_gbp: Decimal | None = None
+    average_price_paid: Decimal | None = None
 
     @field_validator(
         "quantity",
@@ -1199,6 +1200,8 @@ def _optional_cash_component(payload: object, field: str) -> Decimal:
 def _position_from_payload(payload: Mapping[str, Any]) -> BrokerPosition:
     instrument = payload.get("instrument") or {}
     wallet = payload.get("walletImpact") or {}
+    if wallet.get("currency") not in (None, "", "GBP"):
+        raise Trading212Error("position: wallet impact must be in GBP")
     broker_ticker = str(instrument.get("ticker") or "")
     ticker = broker_ticker
     if ticker.endswith("_US_EQ"):
@@ -1212,13 +1215,14 @@ def _position_from_payload(payload: Mapping[str, Any]) -> BrokerPosition:
         isin=str(instrument.get("isin") or ""),
         quantity=_required_broker_number(payload, "quantity", context="position"),
         current_price=_required_broker_number(payload, "currentPrice", context="position"),
-        price_currency=str(instrument.get("currency") or "GBP"),
+        price_currency=str(instrument.get("currency") or ""),
         current_value_gbp=_required_broker_number(wallet, "currentValue", context="position"),
         total_cost_gbp=_required_broker_number(wallet, "totalCost", context="position"),
         unrealized_profit_loss_gbp=_required_broker_number(
             wallet, "unrealizedProfitLoss", context="position"
         ),
         fx_impact_gbp=wallet.get("fxImpact"),
+        average_price_paid=payload.get("averagePricePaid"),
     )
 
 

@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from trading_max.analytics.day_attribution import (
+    ShareMovement,
     baseline_from_accounts,
     trading_day,
     update_day_attribution,
@@ -26,6 +27,10 @@ def _account(fetched_at: str, *positions: tuple[str, str, str]):
             for ticker, quantity, value in positions
         ],
     }
+
+
+def _fill(action, quantity, at="2026-11-02T12:00:00Z"):
+    return ShareMovement(datetime.fromisoformat(at), "", action, Decimal(quantity))
 
 
 def _contributions(attribution, code="A"):
@@ -98,6 +103,7 @@ def test_shares_traded_during_the_day_stay_out_of_the_position_contribution():
     _, attribution = update_day_attribution(
         opening.model_dump(mode="json", by_alias=False),
         {"A": _account("2026-11-02T15:40:00Z", ("NVDA", "15", "2100.00"))},
+        share_movements={"A": {"NVDA": (_fill("buy", 5),)}},
     )
     # Only the 10 shares held since the open count: 10 x (140 - 150).
     assert _contributions(attribution) == {"NVDA": Decimal("-100.00")}
@@ -125,6 +131,7 @@ def test_contribution_carries_the_opening_value_of_the_shares_it_covers():
                 "2026-11-02T15:40:00Z", ("NVDA", "15", "2100.00"), ("SOFI", "30", "330.00")
             )
         },
+        share_movements={"A": {"NVDA": (_fill("buy", 5),), "SOFI": (_fill("sell", 20),)}},
     )
     rows = {row.ticker: row for row in attribution.accounts["A"].contributions}
     assert (rows["NVDA"].contribution_gbp, rows["NVDA"].opening_value_gbp) == (
@@ -258,12 +265,16 @@ def test_an_opening_stored_under_a_later_trading_day_never_opens_it():
     assert _contributions(attribution, "B") == {"EQGB": Decimal("2.00")}
 
 
-def _window(previous, current, *, history=None):
+def _window(previous, current, *, history=None, share_movements=None):
     """Open or carry the day, then chain the 5D window up to the current observation."""
 
     baseline, _ = update_day_attribution(previous and previous["day"], current)
     window_baselines, window = update_window_attribution(
-        previous and previous["window"], baseline, current, history=history
+        previous and previous["window"],
+        baseline,
+        current,
+        history=history,
+        share_movements=share_movements,
     )
     state = {
         "day": baseline.model_dump(mode="json", by_alias=False),
@@ -326,7 +337,9 @@ def test_window_chains_daily_openings_across_days():
     # Bought 10 more NVDA on Monday; Tuesday opens with 20 shares at 145.
     state, _ = _window(state, {"A": _account("2026-11-03T00:10:00Z", ("NVDA", "20", "2900.00"))})
     state, window = _window(
-        state, {"A": _account("2026-11-03T15:00:00Z", ("NVDA", "20", "3000.00"))}
+        state,
+        {"A": _account("2026-11-03T15:00:00Z", ("NVDA", "20", "3000.00"))},
+        share_movements={"A": {"NVDA": (_fill("buy", 10),)}},
     )
     # Monday segment: 10 shares x (145 - 150) = -50; Tuesday: 20 x (150 - 145) = +100.
     assert _contributions(window) == {"NVDA": Decimal("50.00")}
@@ -413,3 +426,188 @@ def test_window_never_starts_from_an_opening_stored_under_another_trading_day():
         for day in state["window"]["days"]
         if "A" in day["accounts"]
     } == {"2026-11-06": "2026-11-06", "2026-11-09": "2026-11-09"}
+
+
+def test_fx_effect_reconciles_to_position_contribution_for_held_shares_and_chained_days():
+    def account(day, quantity, native, gbp_per_usd):
+        value = int(quantity * native * gbp_per_usd)
+        result = _account(day, ("SYN", str(quantity), str(value)))
+        result["positions"][0].update(current_price=str(native), price_currency="USD")
+        return {"B": result}
+
+    first = account("2026-11-02T08:00:00Z", 10, 100, 0.8)
+    next_day = account("2026-11-03T08:00:00Z", 15, 110, 0.7)
+    last = account("2026-11-03T16:00:00Z", 12, 120, 0.75)
+    opening, _ = update_day_attribution(None, first)
+    saved, _ = update_window_attribution(None, opening, first)
+    second, _ = update_day_attribution(_saved(opening), next_day)
+    fills = {"B": {"SYN": (_fill("buy", 5), _fill("sell", 3, "2026-11-03T12:00:00Z"))}}
+    _, daily = update_day_attribution(_saved(second), last, share_movements=fills)
+    _, window = update_window_attribution(_saved(saved), second, last, share_movements=fills)
+    row = daily.accounts["B"].contributions[0]
+    assert (row.local_price_effect_gbp, row.fx_effect_gbp, row.contribution_gbp) == (90, 66, 156)
+    # First segment's ten held shares gained £70 on price and lost £100 in FX.
+    chained = window.accounts["B"].contributions[0]
+    assert (chained.local_price_effect_gbp, chained.fx_effect_gbp, chained.contribution_gbp) == (
+        160,
+        -34,
+        126,
+    )
+    old, _ = update_day_attribution(
+        None, {"B": _account("2026-11-03T08:00:00Z", ("SYN", "15", "1155"))}
+    )
+    _, mixed = update_day_attribution(_saved(old), last, share_movements=fills)
+    assert mixed.accounts["B"].contributions[0].fx_effect_gbp is None
+
+
+def test_open_position_uses_broker_fx_then_native_cost_basis():
+    from trading_max.analytics.accounts import _position_metrics
+    from trading_max.ingestion.brokers.trading212 import _position_from_payload
+
+    raw = {
+        "instrument": {"ticker": "SYN_US_EQ", "currency": "USD"},
+        "quantity": 10,
+        "currentPrice": 110,
+        "averagePricePaid": 100,
+        "walletImpact": {"totalCost": 800, "currentValue": 770, "unrealizedProfitLoss": -30},
+    }
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp == -100
+    raw["walletImpact"]["fxImpact"] = -99
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp == -99
+    del raw["averagePricePaid"], raw["walletImpact"]["fxImpact"]
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp is None
+    raw["instrument"]["currency"] = "GBX"
+    assert _position_metrics(_position_from_payload(raw)).fx_impact_gbp == 0
+
+
+def test_split_changes_share_units_before_daily_and_window_fx_and_withholds_uncertain_units():
+    def account(at, qty, price, pounds, average, cost):
+        result = _account(at, ("SYN", str(qty), str(pounds)))
+        result["positions"][0].update(
+            current_price=str(price),
+            price_currency="USD",
+            average_price_paid=average,
+            total_cost_gbp=cost,
+        )
+        return {"A": result}
+
+    before = account("2026-11-02T08:00:00Z", 10, 100, 800, 80, 640)
+    after = account("2026-11-02T17:00:00Z", 20, 50, 700, 40, 640)
+    opening, _ = update_day_attribution(None, before)
+    _, daily = update_day_attribution(_saved(opening), after)
+    _, five = update_window_attribution(None, opening, after)
+    for result in (daily, five):
+        row = result.accounts["A"].contributions[0]
+        assert (row.contribution_gbp, row.local_price_effect_gbp, row.fx_effect_gbp) == (
+            -100,
+            0,
+            -100,
+        )
+    next_day = account("2026-11-03T08:00:00Z", 20, 55, 770, 40, 640)
+    saved, _ = update_window_attribution(None, opening, before)
+    new_opening, _ = update_day_attribution(_saved(opening), next_day)
+    _, window = update_window_attribution(_saved(saved), new_opening, next_day)
+    row = window.accounts["A"].contributions[0]
+    assert (row.contribution_gbp, row.local_price_effect_gbp, row.fx_effect_gbp) == (-30, 70, -100)
+    after["A"]["positions"][0]["average_price_paid"] = None
+    _, daily = update_day_attribution(_saved(opening), after)
+    _, five = update_window_attribution(None, opening, after)
+    for result in (daily, five):
+        assert result.accounts["A"].contributions == []
+        assert result.accounts["A"].unreconciled_instruments == ["SYN_US_EQ"]
+
+
+def test_reported_broker_split_reconciles_exact_share_units_across_window(tmp_path):
+    from trading_max.application.nav_stages import broker_share_movements
+
+    path = tmp_path / "synthetic.csv"
+    path.write_text(
+        "Action,Time (UTC),Ticker,ISIN,No. of shares,Total\n"
+        "Stock split close,2026-11-03T07:01:00Z,SYN,TEST00000001,10,0\n"
+        "Stock split open,2026-11-03T07:01:01Z,SYN,TEST00000001,20,0\n"
+    )
+    legs = {"A": broker_share_movements(path, path.stat().st_mtime_ns, path.stat().st_size)}
+
+    def account(at, qty, price, value):
+        raw = _account(at, ("SYN", str(qty), str(value)))
+        raw["positions"][0].update(
+            isin="TEST00000001", current_price=str(price), price_currency="USD"
+        )
+        return {"A": raw}
+
+    first = account("2026-11-02T09:00:00Z", 10, 100, 800)
+    opening, _ = update_day_attribution(None, first)
+    saved, _ = update_window_attribution(None, opening, first)
+    for qty in (20, 17):
+        after = account("2026-11-03T08:00:00Z", qty, 50, qty * 35)
+        today, _ = update_day_attribution(_saved(opening), after)
+        _, window = update_window_attribution(_saved(saved), today, after, share_movements=legs)
+        if qty == 20:
+            row = window.accounts["A"].contributions[0]
+            assert (row.contribution_gbp, row.local_price_effect_gbp, row.fx_effect_gbp) == (
+                -100,
+                0,
+                -100,
+            )
+        else:
+            assert not window.accounts["A"].contributions
+            assert window.accounts["A"].unreconciled_instruments == ["SYN_US_EQ"]
+
+
+def test_unverified_five_for_four_share_change_cannot_create_a_price_loss():
+    before = _account("2026-11-02T08:00:00Z", ("SYN", "4", "320"))
+    after = _account("2026-11-02T16:00:00Z", ("SYN", "5", "300"))
+    for raw, price in ((before, 100), (after, 80)):
+        raw["positions"][0].update(current_price=price, price_currency="USD")
+    opening, _ = update_day_attribution(None, {"A": before})
+    _, day = update_day_attribution(_saved(opening), {"A": after})
+    assert day.accounts["A"].unreconciled_instruments == ["SYN_US_EQ"]
+    assert not day.accounts["A"].contributions
+
+
+def test_legacy_opening_with_changed_share_units_requires_reconciling_broker_activity(tmp_path):
+    from trading_max.application.nav_stages import broker_share_movements
+
+    before = _account("2026-11-02T08:00:00Z", ("SYN", "10", "800"))
+    after = _account("2026-11-02T16:00:00Z", ("SYN", "20", "700"))
+    after["positions"][0].update(current_price=50, price_currency="USD", isin="TEST00000001")
+    opening, _ = update_day_attribution(None, {"A": before})
+    saved = _saved(opening)
+    old = saved["accounts"]["A"]["positions"][0]
+    for attr in ("isin", "average_price_paid", "total_cost_gbp", "price_currency", "local_price"):
+        old.pop(attr)
+    _, ambiguous = update_day_attribution(saved, {"A": after})
+    assert not ambiguous.accounts["A"].contributions
+    assert ambiguous.accounts["A"].unreconciled_instruments == ["SYN_US_EQ"]
+    path = tmp_path / "fills.csv"
+    path.write_text(
+        "Action,Time (UTC),Ticker,ISIN,No. of shares,Total\n"
+        "Stock split close,2026-11-02T12:00:00Z,SYN,TEST00000001,10,0\n"
+        "Stock split open,2026-11-02T12:00:01Z,SYN,TEST00000001,20,0\n"
+    )
+    legs = {"A": broker_share_movements(path, path.stat().st_mtime_ns, path.stat().st_size)}
+    _, resolved = update_day_attribution(saved, {"A": after}, share_movements=legs)
+    assert _contributions(resolved) == {"SYN": Decimal("-100")}
+
+
+def test_executed_purchase_quantities_reconcile_despite_native_quote_fall(tmp_path):
+    from trading_max.application.nav_stages import broker_share_movements
+
+    before = _account("2026-11-02T08:00:00Z", ("SYN", "10", "800"))
+    after = _account("2026-11-02T16:00:00Z", ("SYN", "20", "1440"))
+    for account, price in ((before, 100), (after, 55)):
+        account["positions"][0].update(
+            current_price=price, price_currency="USD", isin="TEST00000001"
+        )
+    path = tmp_path / "fills.csv"
+    path.write_text(
+        "Action,Time (UTC),Ticker,ISIN,No. of shares,Total\n"
+        "Market buy,2026-11-02T10:00:00Z,SYN,TEST00000001,6,300\n"
+        "Limit buy,2026-11-02T12:00:00Z,SYN,TEST00000001,4,200\n"
+    )
+    legs = {"A": broker_share_movements(path, path.stat().st_mtime_ns, path.stat().st_size)}
+    opening, _ = update_day_attribution(None, {"A": before})
+    _, daily = update_day_attribution(_saved(opening), {"A": after}, share_movements=legs)
+    _, window = update_window_attribution(None, opening, {"A": after}, share_movements=legs)
+    for result in (daily, window):
+        assert _contributions(result) == {"SYN": Decimal("-80")}
