@@ -62,17 +62,17 @@ class ReadingService:
                 ).fetchone()
         return RoleReading.model_validate_json(row[0]) if row else None
 
-    def has_publication(self, role: PageRole, context: RoleContext, snapshot_id: str) -> bool:
-        """Read only an existence flag for this role, object and retained publication."""
+    def publication_version(
+        self, role: PageRole, context: RoleContext, snapshot_id: str
+    ) -> str | None:
+        """The completed writer's version for this exact immutable publication."""
         with self.database.read() as db:
-            return (
-                db.execute(
-                    "SELECT 1 FROM assistant_readings WHERE role=? AND object_key=? "
-                    "AND json_extract(reading_json, '$.snapshotId')=? LIMIT 1",
-                    ("scheduled:" + role.cache_id, role.object_key(context), snapshot_id),
-                ).fetchone()
-                is not None
-            )
+            row = db.execute(
+                "SELECT version FROM assistant_readings WHERE role=? AND object_key=? "
+                "AND json_extract(reading_json, '$.snapshotId')=? ORDER BY as_of DESC LIMIT 1",
+                ("scheduled:" + role.cache_id, role.object_key(context), snapshot_id),
+            ).fetchone()
+        return row[0] if row else None
 
     def reserve(self, day: str, role: PageRole, context: RoleContext, slot: str) -> bool:
         with self.database.transaction(immediate=True) as db:
@@ -126,6 +126,14 @@ class ReadingService:
             material = role.data_version is not None and (not latest or match_data_version)
             if material and version:
                 version = await asyncio.to_thread(role.data_version, tools, context)
+                if (
+                    not version
+                    and cached_only
+                    and latest
+                    and match_data_version
+                    and role.id == "earnings-brief"
+                ):
+                    version = self.publication_version(role, context, deps.snapshot_id)
         except (ModelRetry, ValueError):
             yield ReadingEvent(type="error", code="assistant_context_invalid")
             return

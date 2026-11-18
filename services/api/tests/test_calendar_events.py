@@ -836,3 +836,16 @@ def test_current_scheduled_publication_reserves_space_for_a_ratings_only_lens(tm
     ratings = client.get(lens).json()
     assert ratings["analyst"]["recommendations"] == [{"period": "0m", "buy": 2}]
     assert ratings["earningsBriefEligible"]
+
+    async def ready():
+        return {"ready": True}
+
+    app.state.assistant.check_ready = ready
+    query = {
+        "context": {"ticker": "ALFA"},
+        "snapshotId": publication.run_id,
+        "latest": True,
+        "cachedOnly": True,
+    }
+    response = client.post("/v1/assistant/roles/earnings-brief/reading", json=query)
+    assert json.loads(response.text)["type"] == "result"

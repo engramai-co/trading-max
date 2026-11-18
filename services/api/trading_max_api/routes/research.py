@@ -813,7 +813,7 @@ def research_lens(
         and app_service(request, "settings_repository").get_profile().assistant_enabled
     ):
         role = role_registry()["earnings-brief"]
-        if app_service(request, "assistant_readings").has_publication(
+        if app_service(request, "assistant_readings").publication_version(
             role, SecurityContext(ticker=payload.ticker), payload.run_id
         ):
             payload = payload.model_copy(update={"earnings_brief_eligible": True})
