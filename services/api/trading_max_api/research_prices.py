@@ -177,13 +177,14 @@ class SecurityPriceHistory:
                         }
                     )
         result = ResearchPriceSeries(
-            ticker=ticker,
+            ticker=str(metadata.get("symbol") or ticker).upper(),
             as_of=points[-1]["date"],
             currency=code,
             available_sessions=len({p["date"][:10] for p in points}),
             points=points,
             requested_interval=interval,
             actual_interval=interval,
+            quote_exchange=metadata.get("exchangeName"),
             timezone=metadata.get("exchangeTimezoneName"),
             exchange_calendar=calendar_name(metadata.get("exchangeName")),
             fetched_at=datetime.now(UTC).isoformat(),

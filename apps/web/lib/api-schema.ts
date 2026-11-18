@@ -7847,6 +7847,8 @@ export interface components {
             points: components["schemas"]["PriceSeriesPoint"][];
             /** Publishedseriesid */
             publishedSeriesId?: string | null;
+            /** Quoteexchange */
+            quoteExchange?: string | null;
             /**
              * Requestedinterval
              * @default 1d

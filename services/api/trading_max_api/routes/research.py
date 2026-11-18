@@ -554,9 +554,9 @@ def research_prices(
     def price_window(series, selected_window):
         return project_window(research.observe_prices(series, manifest.run_id), selected_window)
 
-    listing = research.held_fund(ticker, manifest)
-    if listing:
-        ticker = listing.ticker
+    selected = research.price_listing(ticker, manifest)
+    listing = selected.fund
+    ticker = selected.ticker
     # Comparison ETFs and confirmed held US ETF listings use Alpaca's price
     # chart. The typed snapshot remains the source for broker events and research.
     symbol = ticker.upper()
@@ -569,6 +569,7 @@ def research_prices(
     security_prices = app_service(request, "security_prices")
 
     def live_window(series: ResearchPriceSeries) -> ResearchPriceSeries:
+        selected.verify(series, live=True)
         series.points = series.points[-limit:]
         series.coverage_start = series.points[0].date if series.points else None
         series.coverage_end = series.points[-1].date if series.points else None
@@ -580,12 +581,17 @@ def research_prices(
     if market_etf:
         result = security_prices.alpaca_etf(symbol, interval)
         if result is not None:
-            return live_window(result)
+            try:
+                return live_window(result)
+            except FileNotFoundError:
+                pass
     if reference is not None:
         # Prefer the listing's published technical history when it was researched
         # directly. Otherwise use the shared close-only chart and budget.
         try:
-            published = research.price_series(reference.ticker, manifest, limit=limit)
+            published = selected.verify(
+                research.published_price_series(reference.ticker, manifest, limit=limit)
+            )
         except FileNotFoundError:
             published = None
         if published:
@@ -657,7 +663,7 @@ def research_prices(
         except Exception:
             fallback_reason = "requested-interval-unavailable-daily-history-retained"
     try:
-        result = research.price_series(ticker, manifest, limit=limit)
+        result = selected.verify(research.published_price_series(ticker, manifest, limit=limit))
         result.requested_interval = interval
         result.coverage_reason = fallback_reason
         result.coverage_start = result.points[0].date if result.points else None

@@ -19558,6 +19558,17 @@
             ],
             "title": "Publishedseriesid"
           },
+          "quoteExchange": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoteexchange"
+          },
           "requestedInterval": {
             "default": "1d",
             "title": "Requestedinterval",

@@ -833,6 +833,7 @@ class BenchmarkPricePoint(ApiModel):
 
 
 class ResearchPriceSeries(ApiModel):
+    quote_exchange: str | None = None
     observed_series_id: str | None = None
     snapshot_id: str | None = None
     # The route ticker can be an alias. Event readers join the actual published bar row.

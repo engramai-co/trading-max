@@ -1607,7 +1607,11 @@ def test_missing_chart_cannot_borrow_a_known_other_venue(bound, monkeypatch, req
     app, _ = distinct_listing_events(bound, london_report=True)
     store = app.state.store
     technical = store.read_json(store.latest_manifest().run_id, tools.TECHNICAL)
-    technical["rows"] = [row for row in technical["rows"] if row["ticker"] == published]
+    technical["rows"] = [
+        {**row, "exchange": "LSE" if published.endswith(".L") else "NYSE"}
+        for row in technical["rows"]
+        if row["ticker"] == published
+    ]
     manifest = republish(
         store,
         {

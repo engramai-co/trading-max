@@ -6,6 +6,7 @@ import threading
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from functools import partial
 from typing import TYPE_CHECKING, Any
@@ -591,6 +592,27 @@ def _enrich_fundamentals(
                     ]
         enriched.append(item)
     return enriched
+
+
+@dataclass(frozen=True)
+class PriceListing:
+    ticker: str
+    venue: str | None
+    fund: FundListingIdentity | None
+
+    def verify(self, series: ResearchPriceSeries, *, live=False) -> ResearchPriceSeries:
+        symbol = series.published_bar_ticker or series.ticker
+        reported = (
+            series.quote_exchange or series.published_bar_exchange or series.exchange_calendar
+        )
+        observed = venue_mic(reported) or listing_calendar(None if live else symbol, reported, None)
+        if (
+            _canonical_ticker(symbol) != _canonical_ticker(self.ticker)
+            or self.venue
+            and self.venue != observed
+        ):
+            raise FileNotFoundError(f"unverified price listing for {self.ticker}")
+        return series
 
 
 class ResearchLedger:
@@ -2527,6 +2549,8 @@ class ResearchLedger:
                 series.source,
                 series.adjustment,
                 series.currency,
+                series.quote_exchange or series.exchange_calendar,
+                series.events,
                 [[p.date, p.open, p.high, p.low, p.close, p.volume] for p in series.points],
             ]
         )
@@ -2540,6 +2564,30 @@ class ResearchLedger:
         with self._history_lock:
             return self._observed_prices.get((run_id, ticker, identity))
 
+    def retained_price_series(self, identity, ticker, manifest, *, limit=2000):
+        """Recover the chart route named by the saved series, using only its publication."""
+        rows = self._published_technicals(manifest).get("rows") or []
+        symbols = {
+            str(r["ticker"]).upper() for r in rows if isinstance(r, dict) and r.get("ticker")
+        }
+        symbols.update(fund.ticker for fund in self._held_funds(manifest))
+        aliases = {
+            symbol for symbol in symbols if _canonical_ticker(symbol) == _canonical_ticker(ticker)
+        }
+        for symbol in dict.fromkeys([ticker, *sorted(aliases)]):
+            if not any(
+                ref and published_price_series_id(ref.sha256, symbol) == identity
+                for ref in (
+                    _artifact(manifest, FUND_PRICES_KEY),
+                    _artifact(manifest, "research/technical.json"),
+                )
+            ):
+                continue
+            series = self.published_price_series(symbol, manifest, limit=limit)
+            if series.published_series_id == identity:
+                return series
+        raise FileNotFoundError("cited chart unavailable")
+
     def bind_price_series(self):
         """Freeze the chart's routing aliases before a snapshot-bound assistant run."""
         return partial(self.price_series, exchanges=self.watchlist.listing_exchanges())
@@ -2552,20 +2600,21 @@ class ResearchLedger:
         limit: int = 504,
         exchanges: dict[str, str] | None = None,
     ) -> ResearchPriceSeries:
+        selected = self.price_listing(ticker, manifest, exchanges)
+        return selected.verify(self.published_price_series(selected.ticker, manifest, limit=limit))
+
+    def price_listing(self, ticker, manifest, exchanges=None) -> PriceListing:
         if exchanges is None:
             exchanges = self.watchlist.listing_exchanges()
         ticker = ticker.strip().upper()
-        requested_venue = listing_calendar(ticker, exchanges.get(ticker), None)
-        listing = self.held_fund(ticker, manifest, exchanges)
-        resolved = listing.ticker if listing else self._route_ticker(ticker, exchanges)
-        series = self.published_price_series(resolved, manifest, limit=limit)
-        published = series.published_bar_ticker
-        published_venue = series.exchange_calendar or listing_calendar(
-            published, exchanges.get(published or ""), None
+        fund = self.held_fund(ticker, manifest, exchanges)
+        requested = listing_calendar(ticker, None, None)
+        resolved = (
+            fund.ticker if fund else ticker if requested else self._route_ticker(ticker, exchanges)
         )
-        if requested_venue and published_venue and requested_venue != published_venue:
-            raise FileNotFoundError(f"published bars belong to another venue for {ticker}")
-        return series
+        exchange = fund.mic if fund else exchanges.get(resolved)
+        venue = requested or venue_mic(exchange) or listing_calendar(resolved, exchange, None)
+        return PriceListing(resolved, venue, fund)
 
     def _published_technicals(self, manifest: SnapshotManifest) -> JsonObject:
         key = "research/technical.json"

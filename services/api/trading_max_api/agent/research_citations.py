@@ -1,6 +1,7 @@
 """Reopen a saved research observation against its retained publication and chart."""
 
 from dataclasses import replace
+from functools import partial
 from typing import Literal
 
 from fastapi import HTTPException, Request
@@ -54,6 +55,13 @@ def resolve_citation(request: Request, ticker: Ticker, query: CitationQuery) -> 
         deps = replace(
             request.app.state.assistant.deps_for_run("research", query.timezone), manifest=manifest
         )
+        if query.series and not query.index:
+            deps = replace(
+                deps,
+                price_series=partial(
+                    request.app.state.research.retained_price_series, query.series
+                ),
+            )
         if query.tool in {"news_and_events", "upcoming_events"}:
             args = EventArgs(
                 scope=query.scope,
