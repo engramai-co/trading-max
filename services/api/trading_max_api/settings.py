@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from pydantic_ai import CancellationToken
 from trading_max.infrastructure import SqliteDatabase
 
 from .assistant_settings import (
@@ -79,8 +82,20 @@ class SettingsRepository:
 
     def __init__(self, data_root: Path) -> None:
         self.database = SqliteDatabase(data_root / "trading_max.db", migrations_dir=MIGRATIONS)
+        self._assistant_access = CancellationToken()
+        # Dispatch reads one row without waiting for a writer or sharing its transaction.
+        self._dispatch_reader = sqlite3.connect(
+            self.database.path.as_uri() + "?mode=ro",
+            uri=True,
+            timeout=0,
+            check_same_thread=False,
+            isolation_level=None,
+        )
+        self._dispatch_lock = threading.Lock()
 
     def close(self) -> None:
+        with self._dispatch_lock:
+            self._dispatch_reader.close()
         self.database.close()
 
     @staticmethod
@@ -354,8 +369,11 @@ class SettingsRepository:
             enabled=bool(row["enabled"]),
             route=row["route"],
             reasoning=row["reasoning"],
+            background_briefs_enabled=bool(row["background_briefs_enabled"]),
+            share_valuation_assumptions=bool(row["share_valuation_assumptions"]),
             accepted_consent_revision=row["accepted_consent_revision"],
             accepted_at=_parse_datetime(row["accepted_at"]),
+            accepted_destination=row["accepted_destination"],
             revision=int(row["revision"]),
             updated_at=_parse_datetime(row["updated_at"]) or _now(),
         )
@@ -366,6 +384,41 @@ class SettingsRepository:
                 "SELECT * FROM assistant_preferences WHERE preference_id = 'local'"
             ).fetchone()
         return self._assistant_preferences(row)
+
+    def assistant_connection_snapshot(
+        self,
+    ) -> tuple[AssistantPreferences, IntegrationSummary | None, CancellationToken]:
+        with self.database.transaction():
+            current = self.get_assistant_preferences()
+            provider = (current.route or "").partition("/")[0]
+            integration = self.get_integration(provider) if provider else None
+            return current, integration, self._assistant_access
+
+    def assistant_dispatch_state(
+        self, integration_id: str
+    ) -> tuple[int, int | None, int, int | None]:
+        with self._dispatch_lock:
+            return self._dispatch_reader.execute(
+                """SELECT p.enabled, p.accepted_consent_revision, p.revision, i.revision
+                   FROM assistant_preferences p LEFT JOIN integration_settings i ON i.integration_id = ?
+                   WHERE p.preference_id = 'local'""",
+                (integration_id,),
+            ).fetchone()
+
+    def _cancel_assistant_access(self) -> None:
+        # Called under the same writer lock as the preferences and integration changes.
+        previous, self._assistant_access = self._assistant_access, CancellationToken()
+        previous.cancel()
+
+    def _assistant_integration_changed(self, connection: sqlite3.Connection, provider: str) -> None:
+        if (
+            provider in PROVIDER_REGISTRY
+            and connection.execute(
+                "UPDATE assistant_preferences SET revision = revision + 1, updated_at = ? WHERE route LIKE ?",
+                (_iso(), provider + "/%"),
+            ).rowcount
+        ):
+            self._cancel_assistant_access()
 
     def save_assistant_preferences(
         self,
@@ -386,29 +439,73 @@ class SettingsRepository:
             enabled = previous.enabled if update.enabled is None else update.enabled
             route_id = changes.get("route", previous.route)
             reasoning = changes.get("reasoning", previous.reasoning)
+            background = (
+                previous.background_briefs_enabled
+                if update.background_briefs_enabled is None
+                else update.background_briefs_enabled
+            )
+            assumptions = (
+                previous.share_valuation_assumptions
+                if update.share_valuation_assumptions is None
+                else update.share_valuation_assumptions
+            )
+            provider_changed = (route_id or "").partition("/")[0] != (
+                previous.route or ""
+            ).partition("/")[0]
             consent = changes.get("accepted_consent_revision", previous.accepted_consent_revision)
-            if "accepted_consent_revision" in changes and consent not in (
-                None,
-                ASSISTANT_CONSENT_REVISION,
-            ):
+            consent_updated = "accepted_consent_revision" in changes
+            if consent_updated and consent not in (None, ASSISTANT_CONSENT_REVISION):
                 raise AssistantSettingsError(
                     "assistant_consent_required", "accept the current assistant consent revision"
                 )
+            if consent_updated and consent is None and update.enabled is None:
+                enabled = False
+            if provider_changed and not consent_updated:
+                consent = None
             if enabled and consent != ASSISTANT_CONSENT_REVISION:
                 raise AssistantSettingsError(
                     "assistant_consent_required", "accept the current assistant consent revision"
                 )
-            if enabled or ("route" in changes and route_id is not None):
+            granting_consent = consent_updated and consent is not None
+            accepted_destination = previous.accepted_destination if consent is not None else None
+            if enabled or granting_consent or ("route" in changes and route_id is not None):
                 route = parse_assistant_route(route_id)
                 route_id = route.route_id
-                if enabled:
-                    validate_assistant_integration(route, self.get_integration(route.provider))
-            if (enabled, route_id, reasoning, consent) == (
+                spec = PROVIDER_REGISTRY[route.provider]
+                destination = spec.base_url
+                if enabled or (granting_consent and spec.local):
+                    _, destination = validate_assistant_integration(
+                        route, self.get_integration(route.provider)
+                    )
+                if granting_consent:
+                    if (spec.local or update.expected_consent_destination is not None) and (
+                        update.expected_consent_destination != destination
+                    ):
+                        raise AssistantSettingsError(
+                            "assistant_preferences_conflict",
+                            "review the current assistant destination",
+                        )
+                    accepted_destination = destination
+                if enabled and accepted_destination != destination:
+                    raise AssistantSettingsError(
+                        "assistant_consent_required", "accept the current assistant destination"
+                    )
+            access_changed = (
+                enabled,
+                route_id,
+                reasoning,
+                assumptions,
+                consent,
+                accepted_destination,
+            ) != (
                 previous.enabled,
                 previous.route,
                 previous.reasoning,
+                previous.share_valuation_assumptions,
                 previous.accepted_consent_revision,
-            ):
+                previous.accepted_destination,
+            )
+            if not access_changed and background == previous.background_briefs_enabled:
                 return previous
             now = _now()
             accepted_at = (
@@ -416,18 +513,24 @@ class SettingsRepository:
                 if consent is None
                 else previous.accepted_at
                 if consent == previous.accepted_consent_revision
+                and accepted_destination == previous.accepted_destination
+                and not provider_changed
                 else now
             )
             revision = previous.revision + 1
             row = connection.execute(
                 """UPDATE assistant_preferences SET enabled = ?, route = ?, reasoning = ?,
-                   accepted_consent_revision = ?, accepted_at = ?, revision = ?, updated_at = ?
+                   background_briefs_enabled = ?, share_valuation_assumptions = ?,
+                   accepted_consent_revision = ?, accepted_destination = ?, accepted_at = ?, revision = ?, updated_at = ?
                    WHERE preference_id = 'local' RETURNING *""",
                 (
                     int(enabled),
                     route_id,
                     reasoning,
+                    int(background),
+                    int(assumptions),
                     consent,
+                    accepted_destination,
                     _iso(accepted_at) if accepted_at is not None else None,
                     revision,
                     _iso(now),
@@ -441,6 +544,8 @@ class SettingsRepository:
                 revision=revision,
                 metadata={"enabled": enabled, "accepted_consent_revision": consent},
             )
+            if access_changed:
+                self._cancel_assistant_access()
             return self._assistant_preferences(row)
 
     def get_route_policy(self) -> LLMRoutePolicy:
@@ -607,6 +712,17 @@ class SettingsRepository:
                     now,
                 ),
             )
+            spec = PROVIDER_REGISTRY.get(provider)
+            if spec is not None and spec.local:
+                # A replacement endpoint needs fresh consent even if the model ID stays the same.
+                connection.execute(
+                    """UPDATE assistant_preferences SET enabled = 0, accepted_consent_revision = NULL,
+                       accepted_destination = NULL, accepted_at = NULL
+                       WHERE route LIKE ? AND accepted_consent_revision IS NOT NULL
+                       AND accepted_destination IS NOT ?""",
+                    (provider + "/%", base_url or spec.base_url),
+                )
+            self._assistant_integration_changed(connection, provider)
             self._audit(
                 connection,
                 actor=actor,
@@ -650,6 +766,7 @@ class SettingsRepository:
             ).fetchone()
             if row is None:
                 raise ValueError("integration is not configured")
+            self._assistant_integration_changed(connection, provider)
             self._audit(
                 connection,
                 actor="local",
@@ -681,6 +798,7 @@ class SettingsRepository:
                 "DELETE FROM integration_settings WHERE integration_id = ?",
                 (integration_id,),
             )
+            self._assistant_integration_changed(connection, provider)
             self._audit(
                 connection,
                 actor=actor,

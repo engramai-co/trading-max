@@ -36,6 +36,8 @@ class UpcomingItem(BaseModel):
     time_source_url: str | None = None
     source_as_of: str | None = None
     credit: str | None = None
+    licence_url: str | None = None
+    fiscal_period: str | None = None
     status: str | None = None
     estimated_eps: float | None = None
     actual_eps: float | None = None

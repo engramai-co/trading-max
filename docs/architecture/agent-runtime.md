@@ -65,15 +65,16 @@ fallback to another provider.
 | --- | --- | --- |
 | POST | `/v1/assistant/chat?page=&tz=` | Run a turn; AI SDK UI message stream. Requires the write token. |
 | GET | `/v1/assistant/status` | Whether a turn could start now, and why not, without calling the model. |
-| GET | `/v1/assistant/conversations` | Recent conversations with titles. |
+| GET, DELETE | `/v1/assistant/conversations` | List recent conversations or delete all conversations and messages in the workspace. |
 | GET | `/v1/assistant/conversations/{id}` | One conversation as AI SDK UI messages. |
 | DELETE | `/v1/assistant/conversations/{id}` | Delete a conversation and its messages. |
-| GET, PUT | `/v1/settings/assistant` | Enablement, route, reasoning effort and consent. |
+| GET, PUT | `/v1/settings/assistant` | Enablement, route, reasoning effort, consent, background briefs and sharing saved valuation assumptions. |
 
-The web app proxies these under `/api/backend/assistant/`; the chat route passes
-the stream through without buffering or compression.
+The web app proxies assistant and settings routes under `/api/backend`.
+The chat route passes the stream through without buffering or compression.
 
-The assistant connection test in Settings makes one small exchange in which the
+The saved-model test in Settings requires an enabled assistant and current
+consent for that model and endpoint. It makes a small exchange in which the
 model must call a tool. Models that only return text fail it with
 `assistant_tools_unsupported`, rather than failing later on every question.
 
@@ -145,7 +146,22 @@ have no matching published daily series identifier.
 ## Privacy
 
 The assistant is off until the user enables it and accepts the current consent
-revision. The selected provider receives tool results, not raw stores, limited
+revision. Settings names the recipient and asks for consent again when the
+provider or local endpoint changes. Turning the assistant off or withdrawing
+consent cancels active turns. Every outgoing provider request, including each
+retry, checks the bound preferences and integration against the workspace.
+Chats and saved-model tests share a cancellation token for the selected
+connection. Changing that connection advances its persisted revision. Queued
+requests check the revision before sending HTTP headers and again before sending
+the body. A saved API key must match the integration's recorded fingerprint.
+Clients granting consent to a local model must send the endpoint shown to the
+user in `expectedConsentDestination`. A changed endpoint returns a conflict.
+Turning the assistant off retains consent. Both actions keep conversations
+available for separate deletion.
+Background writing and sharing saved valuation assumptions each have a
+default-on preference. Both require enablement and current consent.
+
+The selected provider receives tool results, not raw stores, limited
 to what the question needs. Conversations stay in the workspace database;
 deleting one removes its messages there, though backups taken earlier keep
 their copy. Pydantic AI instrumentation stays off and no vendor tracing is used.
@@ -247,24 +263,24 @@ publisher's calendar day. Timed rows include the source instant and local time.
 An earnings window retains both ends when the provider has not set a single day.
 
 Scheduled research records Yahoo-compatible headline metadata with the shared
-Yahoo request budget. Fresh disclosure observations are reused. The rolling
+Yahoo request budget. The news and disclosure loaders verify the HTTP status and ticker-stream envelope before accepting an empty result. The rolling
 news history retains up to 500 headlines per listing for up to a year. Account
 activity stays in the published local ledger. Official-calendar requests contain
 no tickers or portfolio data. An unsuccessful refresh preserves the last
 successful rows and their original observation time. Data status shows their
-freshness and the number of failed sources.
+freshness, the failed publishers and their last attempt. Headline content retains its immutable reference across metadata-only refreshes.
 
 ### Official macro calendars
 
 The local worker checks the following keyless release schedules at most once
 per 20 hours for a 180-day window. Calendar rows carry the publisher, original
-link, translated label, source credit and scheduling status. Coverage follows
+link, translated label, source credit and scheduling status. ONS provisional months retain month precision (for example, `2026-12`) in the API and assistant evidence. Coverage follows
 the publisher's announced horizon. Individual announcements can change.
 
 | Market | Sources |
 | --- | --- |
 | United States | BEA release iCalendar, Census indicator tables, Federal Reserve meeting and monthly announcements, BLS release schedules on the public FRED calendar (Central time) |
-| United Kingdom | Office for National Statistics release calendar under the Open Government Licence v3.0, Bank of England MPC dates for personal and internal non-commercial use |
+| United Kingdom | Office for National Statistics release calendar under the [Open Government Licence v3.0](https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/), Bank of England MPC dates for personal and internal non-commercial use |
 | Euro area | European Commission, Eurostat Euro indicators iCalendar (category 2, date only), European Central Bank Governing Council and statistical schedules |
 | Japan | Statistics Bureau and METI via e-Stat, Cabinet Office GDP, Bank of Japan monetary policy meetings |
 | Hong Kong | Census and Statistics Department, © Government of the Hong Kong SAR. Visible dates from its English press release index |
@@ -273,3 +289,23 @@ the publisher's announced horizon. Individual announcements can change.
 Trading Max translates or abridges display labels. The publisher's original
 schedule is authoritative. Eurostat bears no responsibility for translations.
 Only calendar metadata and Yahoo-compatible headline metadata are stored.
+
+To check the Hong Kong TLS path, run the following from the source checkout.
+It uses the scheduled worker's verified HTTP client, reads public calendar
+metadata and prints the count of parsed events. The C&SD hostname resolves to
+rotating CDN addresses. A hostname mismatch causes one new connection to the
+same hostname. A second mismatch fails the source and preserves its last
+verified calendar.
+
+```bash
+uv run python - <<'PY'
+from datetime import date
+from trading_max.research.calendars.catalog import sources
+from trading_max.research.calendars.refresh import official_reader, parse
+
+today = date.today()
+source = next(s for s in sources(today) if s.key == "hk")
+with official_reader() as read:
+    print(len(parse(source, read(source.url), today)))
+PY
+```

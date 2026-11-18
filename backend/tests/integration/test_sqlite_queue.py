@@ -411,33 +411,9 @@ def test_concurrent_database_startup_applies_migrations_once(tmp_path: Path) -> 
     versions = database.connection.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()
-    assert [row["version"] for row in versions] == [
-        "0001_initial.sql",
-        "0002_queue_metadata.sql",
-        "0003_job_cancellation.sql",
-        "0004_worker_heartbeat.sql",
-        "0005_stage_cache.sql",
-        "0006_analysis_state.sql",
-        "0007_intraday_jobs.sql",
-        "0008_settings_profile_integrations.sql",
-        "0009_llm_provider_routing.sql",
-        "0010_analysis_route_provenance.sql",
-        "0011_analysis_adapter_provenance.sql",
-        "0012_analysis_lens_identity.sql",
-        "0013_cfd_account_label.sql",
-        "0014_automation_preferences.sql",
-        "0015_cfd_job_scope.sql",
-        "0016_three_scope_automation.sql",
-        "0017_three_scope_jobs.sql",
-        "0018_alpaca_market_data.sql",
-        "0019_pi_model_connections.sql",
-        "0020_openai_oauth.sql",
-        "0021_estimate_history.sql",
-        "0022_eodhd_market_data.sql",
-        "0023_assistant_providers.sql",
-        "0024_assistant_conversations.sql",
-        "0026_assistant_readings.sql",
-    ]
+    assert [row["version"] for row in versions] == sorted(
+        path.name for path in MIGRATIONS.glob("*.sql")
+    )
     profile = database.connection.execute(
         "SELECT account_labels_json FROM user_profile WHERE profile_id = 'local'"
     ).fetchone()

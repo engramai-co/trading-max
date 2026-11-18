@@ -68,6 +68,17 @@ async def assistant_conversations(request: Request) -> list[AssistantConversatio
     return [AssistantConversation.model_validate(row) for row in rows]
 
 
+@router.delete(
+    "/v1/assistant/conversations",
+    dependencies=[Depends(require_write_auth)],
+    status_code=204,
+    response_class=Response,
+)
+async def delete_assistant_conversations(request: Request) -> Response:
+    await _service(request).delete_conversations()
+    return Response(status_code=204)
+
+
 @router.get(
     "/v1/assistant/conversations/{conversation_id}",
     response_model=AssistantConversationMessages,

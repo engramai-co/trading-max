@@ -24,7 +24,10 @@ from trading_max.ingestion.brokers.trading212 import (
 )
 
 from ..agent.probe import check_assistant_connection
-from ..assistant_settings import ASSISTANT_CONSENT_REVISION, AssistantSettingsError
+from ..assistant_settings import (
+    ASSISTANT_CONSENT_REVISION,
+    AssistantSettingsError,
+)
 from ..credentials import CredentialStoreError, secret_fingerprint
 from ..llm_routing import (
     PROVIDER_REGISTRY,
@@ -74,7 +77,7 @@ from ..models import (
 )
 from ..provider_runtime import (
     ProviderRuntimeError,
-    assistant_provider_credentials,
+    resolve_assistant_connection,
 )
 from ..valuation_assumptions import (
     ValuationAssumptionsHistoryEntry,
@@ -249,6 +252,8 @@ def _safe_integration_error(exc: Exception) -> HTTPException:
         code = "provider_invalid_output"
     else:
         code = "integration_test_failed"
+    if code in {"assistant_consent_required", "assistant_disabled", "assistant_settings_changed"}:
+        return HTTPException(status_code=403, detail={"code": code})
     status_code = (
         503
         if code
@@ -824,29 +829,29 @@ def _assistant_candidate_digest(request: Request, candidate: AssistantIntegratio
     dependencies=[Depends(require_write_auth)],
 )
 async def test_assistant_provider(
-    provider: str, body: AssistantIntegrationCandidate, request: Request
+    provider: str, body: AssistantIntegrationCandidate, request: Request, saved: bool = False
 ) -> IntegrationTestResult:
     spec = _llm_spec_or_404(provider, workload="assistant")
     candidate = _assistant_candidate(body, spec)
-    key = candidate.api_key
-    codex_credentials = None
+    use_saved = saved or (candidate.api_key is None and not spec.local)
     try:
-        if key is None and not spec.local:
-            key, codex_credentials = await run_in_threadpool(
-                assistant_provider_credentials,
+        if use_saved:
+            connection = await run_in_threadpool(
+                resolve_assistant_connection,
                 app_service(request, "settings"),
-                spec,
+                app_service(request, "settings_repository"),
                 app_service(request, "credential_store"),
+                requested_route=f"{spec.provider}/{candidate.model}",
             )
-        await check_assistant_connection(
-            llm.ModelConnection(
+            model_connection = connection.to_model_connection()
+        else:
+            model_connection = llm.ModelConnection(
                 provider=spec.provider,
                 model=candidate.model,
                 base_url=candidate.base_url or spec.base_url,
-                api_key=key,
-                codex_credentials=codex_credentials,
+                api_key=candidate.api_key,
             )
-        )
+        await check_assistant_connection(model_connection)
     except Exception as exc:
         raise _safe_integration_error(exc) from None
     return IntegrationTestResult(
@@ -861,7 +866,7 @@ async def test_assistant_provider(
                 integration_id=spec.credential_ref,
                 digest=_assistant_candidate_digest(request, candidate),
             )
-            if spec.local or candidate.api_key is not None
+            if not use_saved
             else None
         ),
     )

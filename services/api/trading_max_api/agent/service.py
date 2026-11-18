@@ -203,11 +203,14 @@ class AssistantService:
     def release(self, conversation_id: str) -> None:
         self._active.pop(conversation_id, None)
 
-    def claim(self, key: str) -> None:
-        """Share the same concurrency limit across chats and role readings."""
+    def _expire_abandoned_runs(self) -> None:
         horizon = time.monotonic() - RUN_TIMEOUT_SECONDS - 30
         for stale in [name for name, started in self._active.items() if started < horizon]:
             self.release(stale)
+
+    def claim(self, key: str) -> None:
+        """Share the same concurrency limit across chats and role readings."""
+        self._expire_abandoned_runs()
         if key in self._active:
             raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
         if len(self._active) >= MAX_ACTIVE_RUNS:
@@ -264,6 +267,7 @@ class AssistantService:
                 sdk_version=SDK_VERSION,
                 model=model,
                 model_settings=bound.settings,
+                cancellation_token=bound.cancellation_token,
                 deps=deps,
                 instructions=run_context(
                     now=self.clock(),
@@ -326,6 +330,12 @@ class AssistantService:
             message.model_dump(mode="json", by_alias=True, exclude_none=True)
             for message in messages
         ]
+
+    async def delete_conversations(self) -> None:
+        self._expire_abandoned_runs()
+        if self._active:
+            raise HTTPException(status_code=409, detail={"code": "assistant_busy"})
+        await self.store.delete_scope(CONVERSATION_SCOPE)
 
     async def delete(self, conversation_id: str) -> None:
         _check_conversation_id(conversation_id)

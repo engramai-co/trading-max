@@ -19,7 +19,10 @@ test.describe("published event source freshness", () => {
           health: { status: "ok", latestRunId: "fixture", worker, queue, artifactAgeSeconds: 120,
             eventRefreshes: [
               { kind: "news", checkedAt: clock, asOf: clock, failedSources: 0 },
-              { kind: "macro", checkedAt: clock, asOf: "2026-11-17T08:00:00Z", failedSources: failures },
+              { kind: "macro", checkedAt: clock, asOf: "2026-11-17T08:00:00Z", failedSources: failures, failures: [
+                { source: "Office for National Statistics (ons-upcoming)", checkedAt: clock },
+                ...(failures === 2 ? [{ source: "Bank of Japan (boj)", checkedAt: clock }] : []),
+              ] },
             ] },
           readiness: { status: "ready", latestRunId: "fixture", worker, queue }, refresh: {}, jobs: [], errors: [],
         } }));
@@ -27,6 +30,9 @@ test.describe("published event source freshness", () => {
         const summary = page.locator("summary", { hasText: locale === "en" ? "News and calendar freshness" : "新闻与日历数据时间" });
         const block = page.locator("details").filter({ has: summary });
         await expect(block.getByText(locale === "en" ? (failures === 1 ? "1 source refresh failed" : "2 source refreshes failed") : `${failures} 个来源更新失败`)).toBeVisible();
+        await expect(block.getByText("Office for National Statistics (ons-upcoming)", { exact: true })).toBeVisible();
+        await expect(block.getByText(locale === "en" ? "Last attempt" : "上次尝试", { exact: true })).toHaveCount(failures);
+        if (failures === 2) await expect(block.getByText("Bank of Japan (boj)", { exact: true })).toBeVisible();
         await summary.focus();
         await page.keyboard.press("Enter");
         await expect(block).not.toHaveAttribute("open", "");

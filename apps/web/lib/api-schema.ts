@@ -203,7 +203,8 @@ export interface paths {
         get: operations["assistant_conversations_v1_assistant_conversations_get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /** Delete Assistant Conversations */
+        delete: operations["delete_assistant_conversations_v1_assistant_conversations_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2341,14 +2342,20 @@ export interface components {
         AssistantPreferencesUpdate: {
             /** Acceptedconsentrevision */
             acceptedConsentRevision?: number | null;
+            /** Backgroundbriefsenabled */
+            backgroundBriefsEnabled?: boolean | null;
             /** Enabled */
             enabled?: boolean | null;
+            /** Expectedconsentdestination */
+            expectedConsentDestination?: string | null;
             /** Expectedrevision */
             expectedRevision?: number | null;
             /** Reasoning */
             reasoning?: ("minimal" | "low" | "medium" | "high" | "xhigh") | null;
             /** Route */
             route?: string | null;
+            /** Sharevaluationassumptions */
+            shareValuationAssumptions?: boolean | null;
         };
         /** AssistantProviderDescriptor */
         AssistantProviderDescriptor: {
@@ -2381,6 +2388,10 @@ export interface components {
             acceptedAt: string | null;
             /** Acceptedconsentrevision */
             acceptedConsentRevision: number | null;
+            /** Accepteddestination */
+            acceptedDestination: string | null;
+            /** Backgroundbriefsenabled */
+            backgroundBriefsEnabled: boolean;
             /** Consentrevision */
             consentRevision: number;
             /** Enabled */
@@ -2395,6 +2406,8 @@ export interface components {
             revision: number;
             /** Route */
             route: string | null;
+            /** Sharevaluationassumptions */
+            shareValuationAssumptions: boolean;
             /**
              * Updatedat
              * Format: date-time
@@ -3908,6 +3921,13 @@ export interface components {
             /** Reason Code */
             reason_code?: string | null;
         };
+        /** EventRefreshFailure */
+        EventRefreshFailure: {
+            /** Checkedat */
+            checkedAt?: string | null;
+            /** Source */
+            source: string;
+        };
         /** EventRefreshHealth */
         EventRefreshHealth: {
             /** Asof */
@@ -3916,6 +3936,8 @@ export interface components {
             checkedAt: string | null;
             /** Failedsources */
             failedSources: number;
+            /** Failures */
+            failures?: components["schemas"]["EventRefreshFailure"][];
             /**
              * Kind
              * @enum {string}
@@ -9377,6 +9399,8 @@ export interface components {
             estimated_eps?: number | null;
             /** Evidence Id */
             evidence_id: string;
+            /** Fiscal Period */
+            fiscal_period?: string | null;
             /** Instant */
             instant?: string | null;
             /**
@@ -9384,6 +9408,8 @@ export interface components {
              * @enum {string}
              */
             kind: "macro" | "earnings" | "ex_dividend" | "dividend_pay" | "holiday" | "half_day";
+            /** Licence Url */
+            licence_url?: string | null;
             /** Local Date */
             local_date: string;
             /** Local Time */
@@ -10324,6 +10350,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AssistantConversation"][];
+                };
+            };
+        };
+    };
+    delete_assistant_conversations_v1_assistant_conversations_delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                authorization?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -12833,7 +12888,9 @@ export interface operations {
     };
     test_assistant_provider_v1_settings_llm_providers__provider__assistant_test_post: {
         parameters: {
-            query?: never;
+            query?: {
+                saved?: boolean;
+            };
             header?: {
                 authorization?: string | null;
             };

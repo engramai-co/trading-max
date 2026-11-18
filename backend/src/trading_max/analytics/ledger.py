@@ -295,7 +295,14 @@ def transaction_marker_rows(
                 continue
             isin = _normalized_security_value(row.get("ISIN"))
             raw_ticker = _normalized_security_value(row.get("Ticker"))
-            ticker = isin_aliases.get(isin) or ticker_aliases.get(raw_ticker) or raw_ticker
+            explicit_listing = broker_listing(str(row.get("Ticker")))
+            ticker = (
+                isin_aliases.get(isin)
+                or (ticker_aliases.get(raw_ticker) if not isin else None)
+                or raw_ticker
+            )
+            if explicit_listing:
+                ticker = explicit_listing.split(":", 1)[1]
             if not ticker:
                 continue
             timestamp = row.get("Time")
@@ -327,10 +334,11 @@ def transaction_marker_rows(
             total = row.get("TotalN")
             currency = _currency(row.get("Currency (Total)")) or None
             listings = listings_by_isin.get(isin, set())
+            listing = explicit_listing or (next(iter(listings)) if len(listings) == 1 else None)
             marker["fills"].append(
                 {
                     "at": timestamp.isoformat(),
-                    **({"listing": next(iter(listings))} if len(listings) == 1 else {}),
+                    **({"listing": listing} if listing else {}),
                     "side": side,
                     "account": str(account).strip().lower(),
                     "quantity": quantity_value,

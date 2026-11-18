@@ -200,11 +200,17 @@ class JobRecord(ApiModel):
     stages: list[JobStageRecord] = Field(default_factory=list)
 
 
+class EventRefreshFailure(ApiModel):
+    source: str
+    checked_at: datetime | None = None
+
+
 class EventRefreshHealth(ApiModel):
     kind: Literal["news", "macro"]
     checked_at: datetime | None
     as_of: str | None
     failed_sources: int
+    failures: list[EventRefreshFailure] = Field(default_factory=list)
 
 
 class HealthResponse(ApiModel):
@@ -719,7 +725,10 @@ class AssistantPreferences(ApiModel):
     enabled: bool
     route: str | None
     reasoning: AssistantReasoning | None
+    background_briefs_enabled: bool
+    share_valuation_assumptions: bool
     accepted_consent_revision: int | None
+    accepted_destination: str | None
     accepted_at: datetime | None
     revision: int
     updated_at: datetime
@@ -729,7 +738,10 @@ class AssistantPreferencesUpdate(ApiModel):
     enabled: bool | None = None
     route: str | None = Field(default=None, max_length=_MAX_ASSISTANT_ROUTE_LENGTH)
     reasoning: AssistantReasoning | None = None
+    background_briefs_enabled: bool | None = None
+    share_valuation_assumptions: bool | None = None
     accepted_consent_revision: int | None = Field(default=None, ge=1, strict=True)
+    expected_consent_destination: str | None = Field(default=None, max_length=2_000)
     expected_revision: int | None = Field(default=None, ge=1)
 
 

@@ -2126,6 +2126,17 @@
             ],
             "title": "Acceptedconsentrevision"
           },
+          "backgroundBriefsEnabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Backgroundbriefsenabled"
+          },
           "enabled": {
             "anyOf": [
               {
@@ -2136,6 +2147,18 @@
               }
             ],
             "title": "Enabled"
+          },
+          "expectedConsentDestination": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedconsentdestination"
           },
           "expectedRevision": {
             "anyOf": [
@@ -2178,6 +2201,17 @@
               }
             ],
             "title": "Route"
+          },
+          "shareValuationAssumptions": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sharevaluationassumptions"
           }
         },
         "title": "AssistantPreferencesUpdate",
@@ -2282,6 +2316,21 @@
             ],
             "title": "Acceptedconsentrevision"
           },
+          "acceptedDestination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepteddestination"
+          },
+          "backgroundBriefsEnabled": {
+            "title": "Backgroundbriefsenabled",
+            "type": "boolean"
+          },
           "consentRevision": {
             "title": "Consentrevision",
             "type": "integer"
@@ -2337,6 +2386,10 @@
             ],
             "title": "Route"
           },
+          "shareValuationAssumptions": {
+            "title": "Sharevaluationassumptions",
+            "type": "boolean"
+          },
           "updatedAt": {
             "format": "date-time",
             "title": "Updatedat",
@@ -2347,7 +2400,10 @@
           "enabled",
           "route",
           "reasoning",
+          "backgroundBriefsEnabled",
+          "shareValuationAssumptions",
           "acceptedConsentRevision",
+          "acceptedDestination",
           "acceptedAt",
           "revision",
           "updatedAt",
@@ -7541,6 +7597,31 @@
         "title": "EventQuality",
         "type": "object"
       },
+      "EventRefreshFailure": {
+        "properties": {
+          "checkedAt": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkedat"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source"
+        ],
+        "title": "EventRefreshFailure",
+        "type": "object"
+      },
       "EventRefreshHealth": {
         "properties": {
           "asOf": {
@@ -7569,6 +7650,13 @@
           "failedSources": {
             "title": "Failedsources",
             "type": "integer"
+          },
+          "failures": {
+            "items": {
+              "$ref": "#/components/schemas/EventRefreshFailure"
+            },
+            "title": "Failures",
+            "type": "array"
           },
           "kind": {
             "enum": [
@@ -23991,6 +24079,17 @@
             "title": "Evidence Id",
             "type": "string"
           },
+          "fiscal_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Period"
+          },
           "instant": {
             "anyOf": [
               {
@@ -24013,6 +24112,17 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Url"
           },
           "local_date": {
             "title": "Local Date",
@@ -25722,7 +25832,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.53.1"
+    "version": "1.54.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -26244,6 +26354,46 @@
       }
     },
     "/v1/assistant/conversations": {
+      "delete": {
+        "operationId": "delete_assistant_conversations_v1_assistant_conversations_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Assistant Conversations",
+        "tags": [
+          "assistant"
+        ]
+      },
       "get": {
         "operationId": "assistant_conversations_v1_assistant_conversations_get",
         "responses": {
@@ -30405,6 +30555,16 @@
             "schema": {
               "title": "Provider",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "saved",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Saved",
+              "type": "boolean"
             }
           },
           {

@@ -7,9 +7,10 @@ from urllib.parse import quote
 from exchange_calendars.errors import CalendarError
 from pydantic import AfterValidator, StringConstraints, model_validator
 from trading_max.research.calendar import listing_calendar, market_calendar
+from trading_max.research.calendars.events import window_bounds
 from trading_max.research.calendars.refresh import MACRO_KEY
 from trading_max.research.listing import LONDON, broker_listing
-from trading_max.research.news import NEWS_KEY, web_url
+from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY, web_url
 
 from .tools import (
     ANALYST,
@@ -111,16 +112,24 @@ def _public(ticker, data, upcoming):
         recorded.add(e.get("date"))
         if upcoming and e.get("status") == "reported":
             continue
+        currency = e.get("currency") or e.get("epsCurrency")
         yield add(
             "earnings",
             "Earnings",
             "业绩公布",
             e.get("instant") or e.get("date"),
             status=e.get("status"),
-            estimated_eps=_number(e.get("estimatedEps")),
-            actual_eps=_number(e.get("actualEps")),
+            estimated_eps=_number(e.get("estimatedEps")) if currency else None,
+            actual_eps=_number(e.get("actualEps")) if currency else None,
+            currency_missing=e.get("epsCurrencyMissing")
+            or (
+                not currency
+                and any(_number(e.get(k)) is not None for k in ("estimatedEps", "actualEps"))
+            ),
+            fiscal_period=e.get("fiscalPeriod"),
+            source_as_of=e.get("asOf") or analyst.get("asOf"),
             # A company's filing currency can differ from the EPS series for a listing.
-            currency=e.get("currency") or e.get("epsCurrency"),
+            currency=currency,
             unit="per_share",
         )
     cal = data[EARNINGS].get(ticker, {}).get("calendar", {})
@@ -190,12 +199,10 @@ def _public(ticker, data, upcoming):
             basis=r.get("basis"),
         )
     headlines = data[NEWS_KEY].get(ticker, {}).get("items", [])
-    seen = set()
     for row in [*headlines, *_rows(evidence.get("news"))]:
         url_value = web_url(row.get("url"))
-        if not url_value or url_value in seen or not (row.get("publisher") or row.get("source")):
+        if not url_value or not (row.get("publisher") or row.get("source")):
             continue
-        seen.add(url_value)
         yield add(
             "news",
             row.get("title"),
@@ -203,6 +210,7 @@ def _public(ticker, data, upcoming):
             row.get("instant") or row.get("publishedAt") or row.get("date"),
             url=url_value,
             publisher=row.get("publisher") or row.get("source"),
+            provider_id=row.get("id") if row.get("id") != url_value else None,
             role="lead",
         )
 
@@ -240,12 +248,34 @@ def _market_days(names, start, end, issues):
             day += timedelta(days=1)
 
 
-def _listing(row):
-    listing = broker_listing(row.get("broker_ticker"))
-    if listing:
+def _listing_symbol(listing):
+    if isinstance(listing, str) and listing.startswith(("LSE:", "US:")):
         market, symbol = listing.split(":", 1)
         return symbol + ".L" if market == LONDON else symbol
-    return row["ticker"].upper()
+    return None
+
+
+def _listing(row):
+    return _listing_symbol(broker_listing(row.get("broker_ticker"))) or row["ticker"].upper()
+
+
+def _trade_symbol(read, args, issues, listing, ticker, raw):
+    resolved = _listing_symbol(listing)
+    if not args.ticker:
+        return resolved or ticker
+    if resolved:
+        return resolved if resolved == args.ticker else None
+    stamp = _stamp(raw)
+    if stamp and ticker in {args.ticker, args.ticker.removesuffix(".L")}:
+        instant = datetime.fromisoformat(stamp)
+        day = (
+            instant.astimezone(read.deps.timezone).date().isoformat()
+            if instant.tzinfo
+            else stamp[:10]
+        )
+        if args.start <= day <= args.end:
+            issues.append("trade_listing_unresolved")
+    return None
 
 
 def _trades(read, args, codes, issues, keys):
@@ -260,11 +290,8 @@ def _trades(read, args, codes, issues, keys):
             scoped_fills = (f for f in _rows(row.get("fills")) if f.get("account") in accounts)
             for index, fill in enumerate(scoped_fills):
                 listing = fill.get("listing")
-                fill_ticker = ticker
-                if listing and ":" in listing:
-                    venue, symbol = listing.split(":", 1)
-                    fill_ticker = symbol + ".L" if venue == LONDON else symbol
-                if not args.ticker or fill_ticker == args.ticker:
+                fill_ticker = _trade_symbol(read, args, issues, listing, ticker, fill.get("at"))
+                if fill_ticker:
                     yield _entry(
                         "own_trade",
                         "Broker fill",
@@ -273,6 +300,7 @@ def _trades(read, args, codes, issues, keys):
                         ticker=fill_ticker,
                         publisher="Trading 212",
                         account=fill["account"],
+                        listing_verified=bool(_listing_symbol(listing)),
                         side=fill.get("side"),
                         quantity=_number(fill.get("quantity")),
                         amount=_number(fill.get("amount")),
@@ -281,7 +309,15 @@ def _trades(read, args, codes, issues, keys):
                     )
             if (
                 not row.get("fills")
-                and (not args.ticker or args.ticker == ticker)
+                and args.ticker
+                and args.ticker.removesuffix(".L") == ticker
+                and args.start <= str(row.get("date") or "") <= args.end
+                and accounts.intersection(row.get("accounts") or [])
+            ):
+                issues.append("trade_listing_unresolved")
+            if (
+                not row.get("fills")
+                and not args.ticker
                 and row.get("accounts")
                 and set(row["accounts"]) <= accounts
             ):
@@ -292,6 +328,7 @@ def _trades(read, args, codes, issues, keys):
                     row.get("date"),
                     ticker=ticker,
                     publisher="Trading 212",
+                    listing_verified=False,
                     side=row.get("kind"),
                 )
     if "C" in codes:
@@ -301,14 +338,13 @@ def _trades(read, args, codes, issues, keys):
             issues.append("cfd_ledger_unavailable")
         for row in _rows((ledger or {}).get("events")):
             ticker = row.get("symbol")
-            if (
-                ticker
-                and (not args.ticker or ticker == args.ticker)
-                and (
-                    row.get("record_type") in {"Closed position", "closed_position"}
-                    or (row.get("record_type") == "Order" and row.get("order_status") == "EXECUTED")
-                )
+            if row.get("record_type") in {"Closed position", "closed_position"} or (
+                row.get("record_type") == "Order" and row.get("order_status") == "EXECUTED"
             ):
+                listing = broker_listing(row.get("instrument")) or broker_listing(ticker)
+                ticker = _trade_symbol(read, args, issues, listing, ticker, row.get("occurred_at"))
+                if not ticker:
+                    continue
                 yield _entry(
                     "own_trade",
                     "Imported CFD trade",
@@ -317,6 +353,7 @@ def _trades(read, args, codes, issues, keys):
                     ticker=ticker,
                     publisher="Trading 212",
                     account="cfd",
+                    listing_verified=bool(listing),
                     side=row.get("direction"),
                     quantity=_number(row.get("units")),
                 )
@@ -328,8 +365,6 @@ def _macros(payload, start, end, issues):
         if source.get("error"):
             issues.append(f"{name}_refresh_failed")
         for row in _rows(source.get("events")):
-            if row["date"] > end or (row.get("end_date") or row["date"]) < start:
-                continue
             result = {
                 **row,
                 "kind": "macro",
@@ -338,7 +373,11 @@ def _macros(payload, start, end, issues):
                 "source_as_of": source.get("as_of"),
             }
             # Cancelled entries on ONS's separate index override the upcoming listing.
-            if row["id"] not in events or row["status"] == "cancelled":
+            old = events.get(row["id"])
+            if not old or (row["status"] == "cancelled", result["source_as_of"] or "") > (
+                old["status"] == "cancelled",
+                old["source_as_of"] or "",
+            ):
                 events[row["id"]] = result
     joint_days = {
         e["date"]
@@ -349,7 +388,9 @@ def _macros(payload, start, end, issues):
     return [
         e
         for e in events.values()
-        if not (
+        if window_bounds(e["date"], e.get("end_date"))[0] <= end
+        and window_bounds(e["date"], e.get("end_date"))[1] >= start
+        and not (
             e["publisher"] == "U.S. Census Bureau"
             and e["date"] in joint_days
             and "international trade in goods and services" in e["title_en"].lower()
@@ -386,7 +427,13 @@ def event_data(deps, args, *, upcoming):
         data[key] = _indexed(raw)
     raw = read.read(NEWS_KEY)
     keys.append(NEWS_KEY)
-    data[NEWS_KEY] = (raw or {}).get("securities", {})
+    diagnostics = read.read(NEWS_STATUS_KEY)
+    if diagnostics:
+        keys.append(NEWS_STATUS_KEY)
+    data[NEWS_KEY] = {
+        ticker: {**row, **(diagnostics or {}).get("securities", {}).get(ticker, {})}
+        for ticker, row in (raw or {}).get("securities", {}).items()
+    }
     if raw is None and not upcoming:
         issues.append("security_news_unavailable")
     # This is the pinned universe of the last scheduled research run. A
@@ -406,12 +453,7 @@ def event_data(deps, args, *, upcoming):
         if not data[EARNINGS].get(ticker, {}).get("calendar"):
             issues.append("security_calendar_unavailable")
         for entry in _public(ticker, data, upcoming):
-            if (
-                entry
-                and entry["kind"] == "earnings"
-                and any(entry.get(k) is not None for k in ("estimated_eps", "actual_eps"))
-                and not entry.get("currency")
-            ):
+            if entry and entry["kind"] == "earnings" and entry.pop("currency_missing", False):
                 issues.append("earnings_currency_unavailable")
             entries.append(entry)
     if upcoming:
@@ -452,13 +494,14 @@ def event_data(deps, args, *, upcoming):
         entries.extend(_trades(read, args, codes, issues, keys))
     # A single syndicated article can appear in several held security feeds.
     # Retain those associations while citing the article once.
+    articles = [row for row in entries if row and row["kind"] == "news"]
+    provider_ids = {r["source_url"]: r["provider_id"] for r in articles if r["provider_id"]}
     headlines = {}
-    for row in entries:
-        if row and row["kind"] == "news":
-            url = row["source_url"]
-            if url not in headlines:
-                headlines[url] = {**row, "tickers": []}
-            headlines[url]["tickers"].append(row["ticker"])
+    for row in articles:
+        identity = row["provider_id"] or provider_ids.get(row["source_url"]) or row["source_url"]
+        story = headlines.setdefault(identity, {**row, "reference": identity, "tickers": []})
+        if row["ticker"] not in story["tickers"]:
+            story["tickers"].append(row["ticker"])
     entries = [r for r in entries if r and r["kind"] != "news"] + list(headlines.values())
     rows = {}
     for row in entries:
@@ -468,9 +511,11 @@ def event_data(deps, args, *, upcoming):
             else None
         )
         day = local.date().isoformat() if local else row["date"]
-        if args.start > (row.get("end_date") or day) or day > args.end:
+        first, last = window_bounds(day, row.get("end_date"))
+        if args.start > last or first > args.end:
             continue
-        evidence = _short_id("ev_", [deps.snapshot_id, row])
+        identity = ["news", row["reference"]] if row["kind"] == "news" else row
+        evidence = _short_id("ev_", [deps.snapshot_id, identity])
         rows[evidence] = {
             **row,
             "evidence_id": evidence,

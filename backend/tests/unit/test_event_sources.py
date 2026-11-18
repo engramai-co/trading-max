@@ -81,7 +81,15 @@ CATALOG = {s.key: s for s in sources(NOW.date())}
 def test_calendar_rows(key, file, title, day, clock):
     s = CATALOG[key]
     events = parse(s, (FIXTURES / file).read_bytes(), NOW.date())
-    found = next(r for r in events if r.title_en == title and r.date.isoformat() == day)
+    found = next(
+        r
+        for r in events
+        if (
+            r.title_en == title
+            or (key.startswith("estat-") and r.title_en.startswith(title + " ("))
+        )
+        and r.date.isoformat() == day
+    )
     assert (found.instant.strftime("%H:%M") if found.instant else None) == clock
     assert found.title_zh and found.credit and found.source_url.startswith("https://")
     if key == "ecb":
@@ -95,7 +103,7 @@ def test_calendar_rows(key, file, title, day, clock):
     if key in {"hk", "ons-upcoming"}:
         assert len(events) == 1
     if key == "estat-cpi":
-        assert [(r.title_en, r.date.day) for r in events] == [
+        assert [(r.title_en.split(" (")[0], r.date.day) for r in events] == [
             ("National CPI", 20),
             ("Tokyo CPI", 27),
         ]
@@ -217,6 +225,7 @@ def test_yahoo_budget_precision_retention_and_security_filter():
     cached = {
         "TEST": {
             "asOf": NOW.isoformat(),
+            "status": {"news": {"state": "verified"}},
             "news": [
                 {
                     "title": "Cached headline",
@@ -271,7 +280,13 @@ def test_scheduled_stages_publish_and_reuse_original_observation(tmp_path, monke
             "rows": [
                 {
                     "ticker": "FIXTURE",
-                    "financials": {"evidence": {"news": [], "asOf": NOW.isoformat()}},
+                    "financials": {
+                        "evidence": {
+                            "news": [],
+                            "asOf": NOW.isoformat(),
+                            "status": {"news": {"state": "verified"}},
+                        }
+                    },
                 }
             ]
         },
@@ -285,15 +300,21 @@ def test_scheduled_stages_publish_and_reuse_original_observation(tmp_path, monke
     )
     registry = runtime.registry()
     first = [
-        registry.get(n).run(context).artifacts[0]
+        ref
         for n in scheduled
         if n in {"research.macro_calendar", "research.security_news"}
+        for ref in registry.get(n).run(context).artifacts
     ]
-    assert len(first) == 2
+    assert len(first) == 4
     snapshot = runtime.snapshots.publish(
         scope="research", source="synthetic", artifacts=first, created_at=NOW
     )
-    assert {ref.key for ref in snapshot.manifest.artifacts} == {event_stages.MACRO_KEY, NEWS_KEY}
+    assert {ref.key for ref in snapshot.manifest.artifacts} == {
+        event_stages.MACRO_KEY,
+        NEWS_KEY,
+        event_stages.MACRO_STATUS_KEY,
+        event_stages.NEWS_STATUS_KEY,
+    }
     assert all(ref.as_of == NOW.isoformat() for ref in first)
     news = registry.get("research.security_news").run(context)
     assert news.artifacts[0].artifact_id == next(r.artifact_id for r in first if r.key == NEWS_KEY)
@@ -305,3 +326,197 @@ def test_central_release_time_during_us_uk_clock_change_gap():
     assert (
         row.instant.astimezone(ZoneInfo("Europe/London")).isoformat() == "2026-03-19T12:30:00+00:00"
     )
+
+
+def test_ons_revised_time_provisional_month_and_licence():
+    revised, month_only = parse(
+        CATALOG["ons-upcoming"], (FIXTURES / "ons-precision.json").read_bytes(), NOW.date()
+    )
+    assert revised.instant.isoformat() == "2026-11-24T09:30:00+00:00"
+    assert month_only.model_dump(mode="json")["date"] == "2026-12"
+    assert month_only.instant is None
+    assert (
+        revised.licence_url
+        == "https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/"
+    )
+
+
+@pytest.mark.parametrize("key", ["estat-cpi", "estat-labour"])
+def test_estat_retains_period_and_stage_in_both_languages(key):
+    rows = parse(CATALOG[key], (FIXTURES / (key + "-periods.html")).read_bytes(), NOW.date())
+    assert len({r.title_en for r in rows}) == len({r.title_zh for r in rows}) == len(rows)
+    assert any("annual" in r.title_en.lower() and "年平均" in r.title_zh for r in rows)
+    if key == "estat-labour":
+        assert any("detailed" in r.title_en.lower() and "详细" in r.title_zh for r in rows)
+
+
+@pytest.mark.parametrize(
+    ("code", "body"),
+    [(503, "<html>Unavailable</html>"), (200, "{}"), (200, '{"data":{"tickerStream":{}}}')],
+)
+def test_yahoo_invalid_response_survives_disclosure_reuse_and_health(
+    tmp_path, monkeypatch, code, body
+):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    import httpx
+    from fastapi.testclient import TestClient
+    from trading_max.application import StageContext, TypedWorkerRuntime, event_stages
+    from trading_max.research import disclosures, news
+
+    from services.api.trading_max_api.app import create_app
+    from services.api.trading_max_api.config import Settings
+    from services.api.trading_max_api.credentials import InMemoryCredentialStore
+
+    response = httpx.Response(
+        code, content=body, request=httpx.Request("POST", "https://finance.yahoo.com/xhr/ncp")
+    )
+    proxy = SimpleNamespace(ticker="FIX.L", _data=SimpleNamespace(post=lambda *a, **kw: response))
+    monkeypatch.setattr(news.yf, "Ticker", lambda _: proxy)
+    evidence = disclosures.ResearchEvidenceProvider(tmp_path / "disclosures")("FIX.L", {})
+    assert evidence["status"]["news"]["state"] == "missing"
+    observed = (NOW - timedelta(hours=8)).isoformat()
+    story = {
+        "id": "fixture",
+        "date": "2026-11-17",
+        "instant": None,
+        "title": "Synthetic",
+        "publisher": "Fixture",
+        "url": "https://example.org/story",
+    }
+    prior = {"securities": {"FIX.L": {"checked_at": observed, "as_of": observed, "items": [story]}}}
+    budget = SimpleNamespace(yahoo_request=nullcontext)
+    for cache in (None, {"FIX.L": {**evidence, "asOf": NOW.isoformat()}}):
+        row = news.refresh_news(prior, ["FIX.L"], NOW, budget, financials=cache)["securities"][
+            "FIX.L"
+        ]
+        assert row["as_of"] == observed and row["items"] == [story] and row["error"]
+    runtime = TypedWorkerRuntime(tmp_path)
+    ref = runtime.artifacts.put_json(key=news.NEWS_KEY, payload=prior).ref
+    runtime.snapshots.publish(scope="research", source="synthetic", artifacts=[ref])
+    stage = runtime.registry().get("research.security_news")
+    monkeypatch.setattr(event_stages, "datetime", Mock(now=lambda tz: NOW))
+    result = stage.run(
+        StageContext(job_id="fixture", scope="research", trigger="research", tickers=("FIX.L",))
+    )
+    runtime.snapshots.publish(scope="research", source="synthetic", artifacts=result.artifacts)
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    with TestClient(app) as client:
+        (health,) = client.get("/health").json()["eventRefreshes"]
+    assert health["failedSources"] == 1 and health["asOf"] == observed
+    assert health["failures"][0]["source"] == "Yahoo Finance"
+    assert "FIX.L" not in str(health)
+
+
+@pytest.mark.parametrize("storage", ["legacy", "compressed", "chunked"])
+def test_news_reuses_content_ref_when_only_refresh_time_changes(tmp_path, monkeypatch, storage):
+    from unittest.mock import Mock
+
+    from trading_max.application import StageContext, TypedWorkerRuntime, event_stages
+    from trading_max.research.news import NEWS_KEY
+
+    monkeypatch.setenv("TRADING_MAX_ARTIFACT_STORAGE", storage)
+    runtime = TypedWorkerRuntime(tmp_path)
+    assert runtime.artifacts.storage_mode == storage
+    stage = runtime.registry().get("research.security_news")
+    context = StageContext(
+        job_id="fixture", scope="research", trigger="research", tickers=("TEST",)
+    )
+    clock = NOW
+
+    def refresh(prior, context, now):
+        return {
+            "securities": {
+                f"FIX{n}": {
+                    "items": [
+                        {"id": f"article-{n}-{i}", "title": f"Synthetic observation {n}-{i}"}
+                        for i in range(500)
+                    ],
+                    "checked_at": clock.isoformat(),
+                    "as_of": clock.isoformat(),
+                    "error": None,
+                }
+                for n in range(100)
+            }
+        }
+
+    monkeypatch.setattr(event_stages, "datetime", Mock(now=lambda zone: clock))
+    monkeypatch.setattr(stage, "refresh", refresh)
+    first = stage.run(context).artifacts
+    runtime.snapshots.publish(scope="research", source="synthetic", artifacts=first)
+    clock += timedelta(hours=8)
+    second = stage.run(context).artifacts
+    old = {r.key: r.artifact_id for r in first}
+    new = {r.key: r.artifact_id for r in second}
+    assert new[NEWS_KEY] == old[NEWS_KEY]
+    assert {k for k in new if old[k] != new[k]} == {"research/security_news_status.json"}
+
+
+def test_hk_reconnect_still_requires_valid_hostname(monkeypatch):
+    import ssl
+
+    import httpx
+    from trading_max.research.calendars import refresh as module
+
+    responses = [False, True, False, False]
+    attempts = []
+
+    class StrictClient:
+        def __init__(self, **kwargs):
+            assert kwargs.get("verify", True) is True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        @contextmanager
+        def stream(self, method, url):
+            assert url == httpx.URL(CATALOG["hk"].url)
+            attempts.append(url.host)
+            if not responses.pop(0):
+                exc = ssl.SSLCertVerificationError(1, "hostname mismatch")
+                exc.verify_code = 62
+                raise httpx.ConnectError("TLS verification failed") from exc
+            yield httpx.Response(
+                200, request=httpx.Request(method, url), content=(FIXTURES / "hk.json").read_bytes()
+            )
+
+    monkeypatch.setattr(module.httpx, "Client", StrictClient)
+    with module.official_reader() as fetch:
+        assert parse(CATALOG["hk"], fetch(CATALOG["hk"].url), NOW.date())
+        with pytest.raises(httpx.ConnectError):
+            fetch(CATALOG["hk"].url)
+    assert attempts == ["www.censtatd.gov.hk"] * 4
+
+
+def test_verified_empty_stream_and_unverified_legacy_disclosure_cache(monkeypatch):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    import httpx
+    from trading_max.research import news
+
+    calls = []
+
+    def post(url, body):
+        calls.append((url, body))
+        return httpx.Response(
+            200, json={"data": {"tickerStream": {"stream": []}}}, request=httpx.Request("POST", url)
+        )
+
+    monkeypatch.setattr(
+        news.yf, "Ticker", lambda t: SimpleNamespace(ticker=t, _data=SimpleNamespace(post=post))
+    )
+    cache = {"asOf": NOW.isoformat(), "news": [], "status": {}}
+    result = news.refresh_news(
+        {}, ["TEST"], NOW, SimpleNamespace(yahoo_request=nullcontext), financials={"TEST": cache}
+    )
+    assert (
+        result["securities"]["TEST"]["as_of"] == NOW.isoformat()
+        and not result["securities"]["TEST"]["error"]
+    )
+    assert len(calls) == 1 and calls[0][1]["serviceConfig"]["s"] == ["TEST"]

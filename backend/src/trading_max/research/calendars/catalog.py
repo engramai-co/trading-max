@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from datetime import date, timedelta
 from urllib.parse import urlencode
 
+HK_URL = "https://www.censtatd.gov.hk/data/en/press_release/press_release_index.json"
+
 
 @dataclass(frozen=True)
 class CalendarSource:
@@ -15,15 +17,18 @@ class CalendarSource:
     url: str
     parser: str
     credit: str
+    licence_url: str | None = None
 
 
 def sources(today: date) -> list[CalendarSource]:
     end = today + timedelta(days=180)
     result = []
 
-    def add(key, market, publisher, zone, url, parser=None, credit=None):
+    def add(key, market, publisher, zone, url, parser=None, credit=None, licence_url=None):
         result.append(
-            CalendarSource(key, market, publisher, zone, url, parser or key, credit or publisher)
+            CalendarSource(
+                key, market, publisher, zone, url, parser or key, credit or publisher, licence_url
+            )
         )
 
     ny = "America/New_York"
@@ -83,6 +88,7 @@ def sources(today: date) -> list[CalendarSource]:
             f"https://api.beta.ons.gov.uk/v1/search/releases?release-type=type-{state}&{query}",
             "ons",
             "Office for National Statistics. Contains public sector information licensed under the Open Government Licence v3.0.",
+            licence_url="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
         )
     add(
         "boe",
@@ -136,7 +142,7 @@ def sources(today: date) -> list[CalendarSource]:
         "HK",
         "Census and Statistics Department",
         "Asia/Hong_Kong",
-        "https://www.censtatd.gov.hk/data/en/press_release/press_release_index.json",
+        HK_URL,
         credit="Census and Statistics Department, © Government of the Hong Kong SAR. Display labels adapted by Trading Max.",
     )
     add(

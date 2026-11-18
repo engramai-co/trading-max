@@ -18,6 +18,7 @@ import {
   LinkSimple,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import Link from "./link";
 import { useState } from "react";
 import type {
@@ -53,7 +54,10 @@ import { IndexMarketData } from "./settings-index-data";
 import { ReconstructionMarketData } from "./settings-market-data";
 
 import { LocalOnboarding } from "./local-onboarding";
+import { ASSISTANT_NAME } from "./assistant-settings";
 import { settingsKey } from "./settings-query";
+
+const AssistantPreferences = dynamic(() => import("./settings-assistant").then((module) => module.AssistantPreferences), { loading: () => <Pending /> });
 
 type Connection =
   | {
@@ -77,9 +81,20 @@ type TestResult = {
 export function SettingsWorkspace({ localWorkspace = false, desktop = false }: { localWorkspace?: boolean; desktop?: boolean }) {
   const t = useCopy();
   const { params, update } = useRouteState();
+  const tabs = [
+    { value: "accounts", label: t("账户与数据", "Accounts & data") },
+    { value: "models", label: t("模型连接", "Model connections") },
+    { value: "assistant", label: ASSISTANT_NAME },
+    { value: "automation", label: t("更新计划", "Update schedule") },
+    { value: "preferences", label: t("个人偏好", "Preferences") },
+  ];
+  const view = tabs.some((tab) => tab.value === params.get("tab"))
+    ? params.get("tab")!
+    : "accounts";
   const client = useQueryClient();
   const query = useQuery({
     queryKey: settingsKey,
+    enabled: view !== "assistant",
     queryFn: () => api<IntegrationOverview>("/settings/integrations"),
     retry: 1,
   });
@@ -88,15 +103,6 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
   const [saved, setSaved] = useState<"saved" | "disconnected" | null>(null);
   const [offerModelConnection, setOfferModelConnection] = useState(true);
   const [selectedProvider, setSelectedProvider] = useState("openai");
-  const tabs = [
-    { value: "accounts", label: t("账户与数据", "Accounts & data") },
-    { value: "models", label: t("模型连接", "Model connections") },
-    { value: "automation", label: t("更新计划", "Update schedule") },
-    { value: "preferences", label: t("个人偏好", "Preferences") },
-  ];
-  const view = tabs.some((tab) => tab.value === params.get("tab"))
-    ? params.get("tab")!
-    : "accounts";
   const data = query.data;
   const hasModelConnection = data?.llmProviders.some((provider) =>
     data.integrations.some((item) => item.provider === provider.provider &&
@@ -138,7 +144,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
               )}
         </Notice>
       )}
-      {query.isError && data && (
+      {view !== "assistant" && query.isError && data && (
         // A failed reload keeps the loaded page; one notice says so for every panel and offers the retry.
         <Notice tone="bad">
           {t("设置未能重新载入。", "Settings could not be reloaded.")}{" "}
@@ -147,7 +153,9 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
           </button>
         </Notice>
       )}
-      {query.isPending ? (
+      {view === "assistant" ? (
+        <AssistantPreferences openModels={() => update({ tab: "models" })} />
+      ) : query.isPending ? (
         <Pending />
       ) : !data ? (
         // A failed refresh keeps the loaded settings, with any focused control or chosen file, in place.

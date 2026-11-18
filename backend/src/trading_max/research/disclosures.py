@@ -478,7 +478,7 @@ class ResearchEvidenceProvider:
             return list(pool.map(read, selected))
 
     def __call__(self, ticker: str, financials: dict[str, Any]) -> dict[str, Any]:
-        cache = self.root / (fingerprint([ticker, "evidence-v9"]) + ".json")
+        cache = self.root / (fingerprint([ticker, "evidence-v10"]) + ".json")
         if cache.is_file() and time.time() - cache.stat().st_mtime < 6 * 3600:
             return json.loads(self._read_cache(cache))
         proxy = yf.Ticker(ticker)
@@ -670,16 +670,17 @@ class ResearchEvidenceProvider:
         except Exception as exc:
             result["status"]["dividends"] = {"state": "missing", "reason": type(exc).__name__}
         try:
+            from .news import headline, verified_news
+
             seen = set()
             with self.news_request():
-                news_rows = proxy.news or []
+                news_rows = verified_news(proxy)
             for row in news_rows:
-                news = row.get("content") or {}
-                url = (news.get("canonicalUrl") or {}).get("url")
-                identity = (
-                    re.sub(r"\W+", "", str(news.get("title") or "").casefold()),
-                    str(news.get("pubDate") or "")[:10],
-                )
+                news = headline(row)
+                if not news:
+                    continue
+                url = news["url"]
+                identity = news["id"]
                 if (
                     not url
                     or url in seen
@@ -691,14 +692,15 @@ class ResearchEvidenceProvider:
                 seen.add(identity)
                 result["news"].append(
                     {
-                        "id": row.get("id"),
-                        "title": news.get("title"),
+                        "id": identity,
+                        "title": news["title"],
                         "url": url,
-                        "publishedAt": news.get("pubDate"),
-                        "source": (news.get("provider") or {}).get("displayName"),
+                        "publishedAt": news["instant"] or news["date"],
+                        "source": news["publisher"],
                         "entityAssociation": "provider-security-feed",
                     }
                 )
+            result["status"]["news"] = {"state": "verified"}
         except Exception as exc:
             result["status"]["news"] = {"state": "missing", "reason": type(exc).__name__}
         self.root.mkdir(parents=True, exist_ok=True)

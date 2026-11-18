@@ -544,3 +544,32 @@ def test_single_turn_rejects_excess_usage_before_saving(tmp_path, monkeypatch, b
     assert [c["errorText"] for c in chunks if c["type"] == "error"] == ["assistant_limit_reached"]
     assert not any(c["type"] == "data-conversation-saved" for c in chunks)
     assert anyio.run(service.store.read_record, "over") is None
+
+
+def test_delete_all_conversations_clears_the_workspace_beyond_the_recent_list(
+    tmp_path, monkeypatch
+):
+    stream, _ = answer_after_tool("lookup_total")
+    app, service = make_app(tmp_path, stream)
+    client = TestClient(app)
+    path = "/v1/assistant/conversations"
+    for chat in ("first", "second"):
+        client.post(
+            "/v1/assistant/chat", json=user_turn(chat, "u1", "Synthetic question")
+        ).raise_for_status()
+    monkeypatch.setattr(service_module, "LIST_LIMIT", 1)
+    assert len(client.get(path).json()) == 1
+    app.state.settings.api_token = "synthetic-token"
+    assert client.delete(path).status_code == 401
+    headers = {"Authorization": "Bearer synthetic-token"}
+    service._active["ongoing"] = time.monotonic()  # noqa: SLF001 - synthetic active turn
+    assert client.delete(path, headers=headers).status_code == 409
+    service._active.clear()  # noqa: SLF001
+    assert client.delete(path, headers=headers).status_code == 204
+    assert client.delete(path, headers=headers).status_code == 204
+    assert client.get(path).json() == []
+    with service.store._database.read() as connection:  # noqa: SLF001 - check stored messages
+        assert (
+            connection.execute("SELECT COUNT(*) FROM assistant_conversation_entries").fetchone()[0]
+            == 0
+        )
