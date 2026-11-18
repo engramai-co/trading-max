@@ -195,14 +195,15 @@ def _retained_analytics(
 ) -> DashboardLensSnapshot:
     run = manifest.run_id
     broker = store.read_json(run, "account/broker_snapshot_metrics.json")
-    nav = daily_nav(store, run, broker["accounts"])
+    try:
+        nav = daily_nav(store, run, broker["accounts"], scope=scope)
+    except FileNotFoundError:
+        raise HTTPException(404, "Cited account history unavailable") from None
     risk = projection == "risk"
-    metric = scope + ("_drawdown" if risk else "_twr")
-    omit = {
-        key: None
-        for key in NavPoint.model_fields
-        if key not in {"date", "flow_status", "intraday", scope, metric}
-    }
+    fields = {"date", "flow_status", "intraday", scope, scope + "_twr"}
+    if risk:
+        fields.add(scope + "_drawdown")
+    omit = {key: None for key in NavPoint.model_fields if key not in fields}
     base = {
         "view": "analytics",
         "run_id": run,

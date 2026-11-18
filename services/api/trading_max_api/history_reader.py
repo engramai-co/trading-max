@@ -52,13 +52,18 @@ class HistorySnapshot(ApiModel):
     intraday_nav: list[NavPoint]
 
 
-def daily_nav(store: ArtifactStore, run: str, accounts: dict) -> list[NavPoint]:
+def daily_nav(
+    store: ArtifactStore, run: str, accounts: dict, *, scope: HistoryScope | None = None
+) -> list[NavPoint]:
     c_text = None
-    with suppress(FileNotFoundError):
-        c_text = store.read_text(run, _KEYS[2])
+    if scope in (None, "cfd", "household"):
+        with suppress(FileNotFoundError):
+            c_text = store.read_text(run, _KEYS[2])
     daily = nav_series(
-        store.read_text(run, _KEYS[0]) if "A" in accounts else "",
-        store.read_text(run, _KEYS[1]) if "B" in accounts else "",
+        store.read_text(run, _KEYS[0]) if "A" in accounts and scope not in ("isa", "cfd") else "",
+        store.read_text(run, _KEYS[1])
+        if "B" in accounts and scope not in ("invest", "cfd")
+        else "",
         c_text,
     )
     return [NavPoint.model_validate(p) for p in daily]

@@ -258,6 +258,14 @@ def test_retained_risk_and_holdings_use_only_page_records(
             app.state, "cached_dashboard", lambda *a, **kw: pytest.fail("loaded full dashboard")
         )
         base = {"run_id": run, "detail": "summary"}
+        source = app.state.store.read_text
+
+        def only_isa(run_id, key):
+            if key.endswith(("daily_nav_a.csv", "daily_nav_c.csv")):
+                raise FileNotFoundError(key)
+            return source(run_id, key)
+
+        monkeypatch.setattr(app.state.store, "read_text", only_isa)
         selected = client.get(
             "/v1/dashboard/lens/analytics", params={**base, "scope": "isa", "projection": "risk"}
         )
@@ -267,7 +275,11 @@ def test_retained_risk_and_holdings_use_only_page_records(
         assert [(p["date"], p.get("isaDrawdown")) for p in risk["nav"]] == [
             (p["date"], p.get("isaDrawdown")) for p in live["nav"]
         ]
-        assert all(set(p) <= {"date", "isa", "isaDrawdown", "flowStatus"} for p in risk["nav"])
+        assert [p.get("isaTwr") for p in risk["nav"]] == [p.get("isaTwr") for p in live["nav"]]
+        assert any(p.get("isaTwr") is not None for p in risk["nav"])
+        assert all(
+            set(p) <= {"date", "isa", "isaTwr", "isaDrawdown", "flowStatus"} for p in risk["nav"]
+        )
         assert not {"accounts", "benchmarkSeries", "holdings"} & risk.keys()
         holdings = client.get("/v1/dashboard/lens/holdings-lookthrough", params=base)
         assert holdings.status_code == 200
