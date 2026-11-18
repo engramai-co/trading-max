@@ -1,6 +1,7 @@
 import type { Json } from "@/workspace/data";
 import { currency, number, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
+import { fixed } from "./reading-format";
 import type { FinancialFacts } from "./research-facts";
 
 export type StatementUnit = "money" | "shares" | "ratio" | "per-share";
@@ -34,16 +35,37 @@ export function statementValue(
   return number(Number(value) / (millions ? 1_000_000 : 1), millions ? 1 : 0);
 }
 
-/** Unknown quote currencies must never acquire an assumed dollar symbol. */
+/** Provider quote units are case-sensitive: GBp is pence, GBP is pounds. */
+export function quoteUnit(unit: unknown) {
+  const raw = typeof unit === "string" ? unit.trim() : "";
+  if (["GBp", "GBX", "GBx"].includes(raw)) return { currency: "GBP", divisor: 100 };
+  return { currency: /^[a-z]{3}$/i.test(raw) ? raw.toUpperCase() : "", divisor: 1 };
+}
+
+export function quoteAmount(value: unknown, unit: unknown) {
+  const amount = numeric(value);
+  const { currency, divisor } = quoteUnit(unit);
+  return amount == null || !currency ? null : amount / divisor;
+}
+
+/** Use figures alone when the panel already names the display currency. */
 export function quoteValue(
   value: unknown,
-  code: unknown,
-  unknownLabel: string,
+  unit: unknown,
+  { style = "money", digits = 2, unknownLabel = "—" }: {
+    style?: "money" | "figure" | "number" | "code";
+    digits?: number;
+    unknownLabel?: string;
+  } = {},
 ) {
-  if (numeric(value) == null) return "—";
-  return typeof code === "string" && code.trim()
-    ? currency(value, code, 2)
-    : number(value, 2) + " · " + unknownLabel;
+  const n = numeric(value);
+  if (n == null) return "—";
+  const { currency: code, divisor } = quoteUnit(unit);
+  if (!code) return unknownLabel;
+  const amount = n / divisor;
+  if (style === "money") return currency(amount, code, digits);
+  if (style === "figure") return fixed(amount, digits);
+  return number(amount, digits) + (style === "code" ? " " + code : "");
 }
 
 /** TTM uses four known fiscal quarters; balances are a point-in-time stock. */

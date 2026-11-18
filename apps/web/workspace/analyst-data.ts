@@ -1,6 +1,7 @@
 import type { ResearchPriceSeries } from "@/lib/types";
 import { numeric } from "@/lib/numeric";
 import { object, objects, str, type Json } from "@/workspace/data";
+import { quoteUnit } from "./financial-values";
 import { exchangeDate } from "./research-clock";
 
 export const ratingKeys = [
@@ -52,10 +53,10 @@ export function ratingSummary(rows: Json[]) {
 /** Analyst targets arrive in the listing's native quote unit. */
 export function targetUnitScale(unit: string | null | undefined, currency: string | null | undefined) {
   if (!currency) return null;
-  if (unit === "GBp" || unit === "GBX" || unit === "GBx") return currency === "GBP" ? 0.01 : null;
   // Older snapshots may lack the native unit. A GBP quote alone is ambiguous.
   if (!unit) return currency === "GBP" ? null : 1;
-  return unit.toUpperCase() === currency ? 1 : null;
+  const native = quoteUnit(unit);
+  return native.currency === currency ? 1 / native.divisor : null;
 }
 
 /** A target announced on the split date is already quoted per new share. */

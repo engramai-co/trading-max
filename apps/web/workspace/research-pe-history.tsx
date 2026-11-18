@@ -11,7 +11,7 @@ import type { ChartReadout, Reading, ReadingItem } from "./chart-readout";
 import { PercentileBand } from "./percentile-band";
 import { Empty, Panel, Segments, useCopy } from "./foundation";
 import { epsFigure } from "./reading-figures";
-import { fixed } from "./reading-format";
+import { quoteValue } from "./financial-values";
 
 type Trailing = NonNullable<ResearchLensSnapshot["trailingPeHistory"]>;
 type Forward = NonNullable<ResearchLensSnapshot["forwardPeHistory"]>;
@@ -41,7 +41,7 @@ function peReading(
       flag: eps?.method === "derivedFourthQuarter" ? t("推算 Q4", "Inferred Q4") : undefined,
       primary: { value: value(eps?.eps) },
       groups: [[...rank,
-        { label: t("收盘价", "Close"), value: fixed(point.trailing.close) },
+        { label: t("收盘价", "Close"), value: quoteValue(point.trailing.close, trailing.currency) },
         { label: "EPS (TTM)", value: epsFigure(eps?.eps) }]],
     };
   }
@@ -52,7 +52,7 @@ function peReading(
       flag: vendor ? t("备用口径", "Fallback") : undefined,
       primary: { value: value(point.forward.eps) },
       groups: [[...rank,
-        { label: t("价格", "Price"), value: fixed(point.forward.price) },
+        { label: t("价格", "Price"), value: quoteValue(point.forward.price, forward.currency) },
         { label: vendor ? t("远期 EPS", "Forward EPS") : "EPS (NTM)", value: epsFigure(point.forward.eps) }]],
     };
   }

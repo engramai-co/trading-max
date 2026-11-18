@@ -24,7 +24,7 @@ import { Plot } from "./charts";
 import type { ChartReadout, Reading, ReadingItem, ReadingMark } from "./chart-readout";
 import { compact, compactTick, number, object, percent, str } from "@/workspace/data";
 import { EvidenceTable } from "./evidence-table";
-import { quoteValue } from "./financial-values";
+import { quoteUnit, quoteValue } from "./financial-values";
 import {
   Empty,
   Facts,
@@ -36,7 +36,7 @@ import {
 } from "./foundation";
 import { nearMoneyStrikes } from "./research-math";
 import { minus } from "./reading-figures";
-import { fixed, readingTone, signedNumber, signedPounds } from "./reading-format";
+import { readingTone, signedNumber, signedPounds } from "./reading-format";
 import { usFundRelation } from "./research-fund-reference";
 import { useRouteState } from "./route-state";
 
@@ -168,7 +168,7 @@ function gammaAt(line: GammaLine, spot: number) {
  * One spot scenario. A single expiration needs no label; several lead with the first and key
  * every row to its line. Net gamma is not a gain or loss, so it stays in ink.
  */
-export function gammaReading(colours: ChartColours, lines: readonly GammaLine[], spot: number, locale: Locale): Reading | null {
+export function gammaReading(colours: ChartColours, lines: readonly GammaLine[], spot: number, locale: Locale, unit: string): Reading | null {
   const rows = lines.flatMap((line, index): ReadingItem[] => {
     const net = gammaAt(line, spot);
     if (net == null) return [];
@@ -181,7 +181,7 @@ export function gammaReading(colours: ChartColours, lines: readonly GammaLine[],
   });
   const [lead, ...rest] = rows;
   if (!lead) return null;
-  return { time: fixed(spot, 2), primary: lines.length > 1 ? lead : { value: lead.value }, ...(rest.length ? { groups: [rest] } : {}) };
+  return { time: quoteValue(spot, unit, { style: "figure" }), primary: lines.length > 1 ? lead : { value: lead.value }, ...(rest.length ? { groups: [rest] } : {}) };
 }
 
 export function gammaMarks(colours: ChartColours, lines: readonly GammaLine[], spot: number): ReadingMark[] {
@@ -214,7 +214,7 @@ export function payoffSeries(colours: ChartColours, name: string, points: Readon
 /** A hypothetical result at one underlying price: signed and toned, pounds as £, other currencies as the axis names them. */
 export function payoffReading(atExpiry: string, price: number, result: number, currencyCode: string): Reading {
   return {
-    time: atExpiry + " " + fixed(price, 2),
+    time: atExpiry + " " + quoteValue(price, currencyCode, { style: "figure" }),
     primary: { value: currencyCode === "GBP" ? signedPounds(result) : signedNumber(result, 2), tone: readingTone(result, 2) },
   };
 }
@@ -229,12 +229,12 @@ function quoted(c: Contract) {
 function usableIv(c: Contract) {
   return quoted(c) && c.impliedVolatility != null && c.impliedVolatility > 0.0001;
 }
-function cell(c: Contract | undefined, key: string) {
+function cell(c: Contract | undefined, key: string, unit: string, style: "figure" | "money" = "figure") {
   if (!c) return "—";
   if (!quoted(c) && ["bid", "ask", "iv", "delta", "gamma"].includes(key)) return "—";
   if (key === "ask" && !(c.ask! > 0)) return "—";
   if (key === "iv") return usableIv(c) ? percent(c.impliedVolatility) : "—";
-  if (key === "spread") return validQuote(c) ? number(c.ask! - c.bid!, 2) : "—";
+  if (key === "spread") return validQuote(c) ? quoteValue(c.ask! - c.bid!, unit, { style }) : "—";
   const value = {
     bid: c.bid,
     ask: c.ask,
@@ -244,6 +244,7 @@ function cell(c: Contract | undefined, key: string) {
     delta: c.delta,
     gamma: c.gamma,
   }[key as "bid"];
+  if (["bid", "ask", "last"].includes(key)) return quoteValue(value, unit, { style });
   return number(
     value,
     key === "oi" || key === "volume" ? 0 : key === "gamma" ? 5 : 2,
@@ -324,9 +325,10 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const mode = params.get("optionView") ?? "chain";
   const scoped = options.contracts.filter((c) => selected.includes(c.expiry));
   const filtered = liquid ? scoped.filter(validQuote) : scoped;
-  const cc = options.currency || (peer ? "USD" : data.context?.quote?.currency) || "";
+  const cc = options.currency || "";
+  const displayCurrency = quoteUnit(cc).currency;
   const value = (v: unknown) =>
-    quoteValue(v, cc, t("币种未提供", "Currency unavailable"));
+    quoteValue(v, cc, { unknownLabel: t("币种未提供", "Currency unavailable") });
   const calls = scoped.filter((c) => c.side === "call"),
     puts = scoped.filter((c) => c.side === "put");
   const coi = sum(calls.map((c) => c.openInterest)),
@@ -350,7 +352,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const interestReadout: ChartReadout = {
     positions: interest.strikes.map((_, i) => i),
     read: (i) => interest.strikes[i] == null ? null
-      : { time: t("行权价", "Strike") + " " + number(interest.strikes[i], 2), groups: [interestAt(i)] },
+      : { time: t("行权价", "Strike") + " " + quoteValue(interest.strikes[i], cc, { style: "code", digits: 8 }), groups: [interestAt(i)] },
     latest: interestNearest >= 0 ? interestAt(interestNearest).map((row) => row.label + " " + row.value).join(" · ") : "—",
   };
   // Net gamma per 1% move across spot scenarios, one line per selected expiration.
@@ -360,10 +362,10 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const gammaSpots = [...new Set(gammaLines.flatMap((line) => line.profile.map((p) => p.spot)))].sort((a, b) => a - b);
   const gammaNearest = gammaSpots.reduce<number | null>((best, spot) =>
     best == null || Math.abs(spot - options.spot) < Math.abs(best - options.spot) ? spot : best, null);
-  const gammaLatest = gammaNearest == null ? null : gammaReading(colours, gammaLines, gammaNearest, locale);
+  const gammaLatest = gammaNearest == null ? null : gammaReading(colours, gammaLines, gammaNearest, locale, cc);
   const gammaReadout: ChartReadout = {
     positions: gammaSpots,
-    read: (spot) => gammaReading(colours, gammaLines, spot, locale),
+    read: (spot) => gammaReading(colours, gammaLines, spot, locale, cc),
     marks: (spot) => gammaMarks(colours, gammaLines, spot),
     latest: gammaLatest
       ? [gammaLatest.primary!, ...(gammaLatest.groups?.[0] ?? [])].map((row) => [row.label, row.value].filter(Boolean).join(" ")).join(" · ")
@@ -572,7 +574,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                       <tr>
                         <th colSpan={activeCols.length}>{t("看涨", "Calls")}</th>
                         <th className="mx-strike">
-                          {t("行权价", "Strike")} · {cc}
+                          {t("行权价", "Strike")} · {displayCurrency}
                         </th>
                         <th colSpan={activeCols.length}>{t("看跌", "Puts")}</th>
                       </tr>
@@ -619,14 +621,14 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                                   tabIndex={k === activeCols[0] ? 0 : -1}
                                   className="mx-cell-button"
                                   onClick={() => setDetail(call!)}
-                                  aria-label={`${t("看涨", "Call")} ${strike} ${columnNames[k]} ${cell(call, k)}`}
+                                  aria-label={`${t("看涨", "Call")} ${value(strike)} ${columnNames[k]} ${cell(call, k, cc)}`}
                                 >
-                                  {cell(call, k)}
+                                  {cell(call, k, cc)}
                                 </button>
                               </td>
                             ))}
                             <th scope="row" className="mx-strike">
-                              {number(strike, 2)}
+                              {quoteValue(strike, cc, { style: "figure" })}
                               {strike === nearest && (
                                 <small>{t("近现价", "Nearest spot")}</small>
                               )}
@@ -643,9 +645,9 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                                   tabIndex={k === activeCols[0] ? 0 : -1}
                                   className="mx-cell-button"
                                   onClick={() => setDetail(put!)}
-                                  aria-label={`${t("看跌", "Put")} ${strike} ${columnNames[k]} ${cell(put, k)}`}
+                                  aria-label={`${t("看跌", "Put")} ${value(strike)} ${columnNames[k]} ${cell(put, k, cc)}`}
                                 >
-                                  {cell(put, k)}
+                                  {cell(put, k, cc)}
                                 </button>
                               </td>
                             ))}
@@ -679,8 +681,8 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     grid: { left: 72, right: 24, top: 42, bottom: 54 },
                     xAxis: {
                       type: "category",
-                      name: t("行权价", "Strike"),
-                      data: interest.strikes,
+                      name: t("行权价", "Strike") + " · " + displayCurrency,
+                      data: interest.strikes.map((strike) => quoteValue(strike, cc, { style: "figure" })),
                     },
                     yAxis: { type: "value", name: t("合约数", "Contracts") },
                     series: interestSeries(c, sideNames, interest.counts),
@@ -727,7 +729,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     option={(c) => ({
                       legend: { top: 0, type: "scroll", data: gammaLines.map((line) => line.name) },
                       grid: { left: 80, right: 24, top: 44, bottom: 48 },
-                      xAxis: { type: "value", name: cc, scale: true },
+                      xAxis: { type: "value", name: displayCurrency, scale: true, axisLabel: { formatter: (v: number) => quoteValue(v, cc, { style: "figure" }) } },
                       yAxis: {
                         type: "value",
                         name: `${cc} / 1%`,
@@ -827,8 +829,8 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
         {detail && (
           <Facts
             rows={[
-              [`${columnNames.bid} / ${columnNames.ask}`, `${cell(detail, "bid")} / ${cell(detail, "ask")}`],
-              [columnNames.last, number(detail.lastPrice)],
+              [`${columnNames.bid} / ${columnNames.ask}`, `${cell(detail, "bid", cc, "money")} / ${cell(detail, "ask", cc, "money")}`],
+              [columnNames.last, value(detail.lastPrice)],
               [t("最后成交", "Last trade"), when(detail.lastTradeAt)],
               [t("报价时间", "Quote time"), when(detail.quoteAsOf)],
               [t("OI 时间", "OI timestamp"), when(detail.openInterestAsOf)],
@@ -993,7 +995,7 @@ function Volatility({
         ]}
         rows={term.map((r) => [
           formatCalendarDate(r.expiry, locale),
-          number(r.strike),
+          quoteValue(r.strike, options.currency),
           percent(r.call),
           percent(r.put),
         ])}
@@ -1086,7 +1088,7 @@ function Payoff({
     positions: points,
     read: (price) => payoffReading(atExpiry, price, pnl(price), currencyCode),
     marks: (price) => [{ value: pnl(price), colour: colours.brand }],
-    latest: atExpiry + " " + fixed(spot, 2) + " · " + payoffReading(atExpiry, spot, pnl(spot), currencyCode).primary!.value,
+    latest: atExpiry + " " + quoteValue(spot, currencyCode, { style: "figure" }) + " · " + payoffReading(atExpiry, spot, pnl(spot), currencyCode).primary!.value,
   } : undefined;
   return (
     <Stack mt="lg">
@@ -1096,7 +1098,7 @@ function Payoff({
           searchable
           data={eligible.map((c) => ({
             value: c.contractSymbol!,
-            label: `${c.side.toUpperCase()} ${c.strike} · ${formatCalendarDate(c.expiry, locale)}`,
+            label: `${c.side.toUpperCase()} ${quoteValue(c.strike, currencyCode, { style: "number", digits: 8 })} · ${formatCalendarDate(c.expiry, locale)}`,
           }))}
           value={selected}
           onChange={setSelected}
@@ -1161,7 +1163,7 @@ function Payoff({
             readout={payoffReadout}
             option={(c) => ({
               grid: { left: 80, right: 24, top: 30, bottom: 48 },
-              xAxis: { type: "value", name: currencyCode },
+              xAxis: { type: "value", name: quoteUnit(currencyCode).currency, axisLabel: { formatter: (v: number) => quoteValue(v, currencyCode, { style: "figure" }) } },
               yAxis: {
                 type: "value",
                 name: `P/L · ${currencyCode}`,
@@ -1176,7 +1178,7 @@ function Payoff({
               `P/L · ${currencyCode}`,
             ]}
             rows={[0, spot * 0.75, spot, spot * 1.25, max].map((p) => [
-              number(p),
+              quoteValue(p, currencyCode),
               number(pnl(p)),
             ])}
           />

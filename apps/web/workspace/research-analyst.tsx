@@ -1,4 +1,5 @@
 "use client";
+import { quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
@@ -19,7 +20,7 @@ import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { readingText, type Reading, type ReadingItem } from "./chart-readout";
 import { fixed, readingTone, signedNumber, signedPercent, telling } from "./reading-format";
 import { DataBasis } from "./reading-card";
-import { currency, number, object, objects, percent, safeUrl, str } from "@/workspace/data";
+import { number, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Empty, Panel, TextLink, useCopy } from "./foundation";
@@ -550,7 +551,7 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
             },
             {
               label: t("公布目标价", "Target at announcement"),
-              value: (r) => currency(targetAmount(r.target, unitScale), quote?.currency ?? "", 2),
+              value: (r) => quoteValue(targetAmount(r.target, unitScale), quote?.currency),
               numeric: true,
             },
           ]}
