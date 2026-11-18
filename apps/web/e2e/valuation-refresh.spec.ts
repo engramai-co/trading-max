@@ -198,6 +198,55 @@ async function synthetic(page: Page, running = true) {
 test.describe("valuation refresh", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
 
+  test("a legacy estimate reference focuses the scenario while the model loads and after a 422", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => {
+      await gate;
+      await route.fulfill({ status: 422, json: { detail: "synthetic missing inputs" } });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation&estimateRef=%2B1y");
+    const section = page.locator("#research-scenario");
+    await expect(section).toBeAttached();
+    const heading = section.getByRole("heading").first();
+    await expect.soft(heading).toBeFocused({ timeout: 1200 });
+    release();
+    await expect(section).toContainText("Cash-flow model inputs are incomplete");
+    await expect(heading).toBeFocused();
+  });
+
+  test("the readout keeps its space and shows the signed gap for a large base value", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 320, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    await page.route("**/SYNT/valuation-preview*", async (route) => {
+      await gate;
+      const model = preview("SYNT", 150000, "2026-11-04", true, {});
+      model.basis.currency = "JPY";
+      model.scenarios.base.value = 135956.78;
+      model.scenarios.base.upside = model.scenarios.base.value / model.basis.spot - 1;
+      await route.fulfill({ json: model });
+    });
+    await page.goto("/research?ticker=SYNT&view=valuation");
+    const history = page.locator("#research-history");
+    await expect(history).toBeVisible();
+    const before = await history.boundingBox();
+    release();
+    const readout = page.locator(".mx-valuation-readout");
+    await expect(readout).toContainText("135,956.78");
+    await expect.soft(readout).toContainText(/[-−]9.4%/);
+    expect.soft(Math.abs((await history.boundingBox())!.y - before!.y)).toBeLessThan(1);
+    if (isMobile) {
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+      const metrics = await readout.locator(".mx-metric").evaluateAll((items) => items.map((node) => node.getBoundingClientRect().top));
+      expect(metrics[1]).toBeGreaterThan(metrics[0]);
+    }
+  });
+
   test("a failed broker refresh keeps edited assumptions and retries inline", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     const state = await synthetic(page);

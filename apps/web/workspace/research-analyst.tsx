@@ -7,9 +7,12 @@ import { Button, Group, Select, TextInput } from "@mantine/core";
 import { useState, type ReactNode } from "react";
 import {
   nextEarningsDate,
+  estimateChange90,
   normalizeRatingRow,
   ratingKeys,
   recommendationChange,
+  targetAmount,
+  targetUnitScale,
 } from "./analyst-data";
 import { analystSections, DeferredPlot, ResearchReading } from "./research-reading";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
@@ -268,7 +271,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
   if (!trend.length) return null;
   const key = (r: Record<string, unknown>) => str(r.index ?? r.period);
   const selected =
-    trend.find((r) => key(r) === params.get("forecastPeriod")) ?? trend[0];
+    trend.find((r) => key(r) === (params.get("forecastPeriod") ?? "0q")) ?? trend[0];
   const code =
     str(
       objects(a.earningsEstimate).find((r) => key(r) === key(selected))
@@ -364,6 +367,7 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
             numeric: true,
           }))}
         />
+        <p>{t("90 天 EPS 预期变化", "90-day EPS estimate change")} {percent(estimateChange90(selected), true)}</p>
         {r && (
           <p>
             {locale === "zh"
@@ -486,6 +490,8 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
   const { locale } = useLocale();
   const [firm, setFirm] = useState(""),
     [action, setAction] = useState("all");
+  const quote = data.context?.quote;
+  const unitScale = targetUnitScale(quote?.quoteUnit, quote?.currency);
   const changes = objects(object(data.analyst).upgradesDowngrades)
     .map(recommendationChange)
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -543,11 +549,8 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
                 `${r.from ? ratingLabel(r.from, t) : "—"} → ${r.to ? ratingLabel(r.to, t) : "—"}`,
             },
             {
-              label: t("目标价", "Target"),
-              value: (r) =>
-                r.target != null && r.target > 0
-                  ? currency(r.target, data.context?.quote.currency ?? "", 2)
-                  : "—",
+              label: t("公布目标价", "Target at announcement"),
+              value: (r) => currency(targetAmount(r.target, unitScale), quote?.currency ?? "", 2),
               numeric: true,
             },
           ]}
@@ -566,6 +569,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
   const a = object(data.analyst);
   const rows = objects(a.earningsEvents);
   const selected = rows.find((r) => r.id === params.get("eventId"));
+  const displayed = selected ? [selected] : rows;
   const next = nextEarningsDate(data, new Date());
   const filings = objects(object(data.researchEvidence).filings).filter(
     (f) =>
@@ -575,6 +579,9 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
   );
   return (
     <Panel title={t("财报事件", "Earnings events")}>
+      {rows.length > 0 && next && !displayed.some((event) => str(event.date).slice(0, 10) === next) && (
+        <p>{t("下次财报 ", "Next earnings ") + formatCalendarDate(next, locale)}</p>
+      )}
       {!rows.length ? (
         <Empty
           title={
@@ -587,7 +594,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
         <EvidenceTable
           compactRecords
           label={t("财报日历", "Earnings calendar")}
-          rows={selected ? [selected] : rows}
+          rows={displayed}
           columns={[
             {
               label: t("事件日期", "Event date"),

@@ -78,6 +78,12 @@
 .mx-valuation-readout .mx-number {
   font-size: clamp(18px, 2.3cqi, 28px);
 }
+.mx-valuation-readout .mx-metric-note {
+  min-height: 1lh;
+}
+.mx-valuation-readout .mx-metric-change {
+  white-space: nowrap;
+}
 .mx-reading-sections .mx-expectations {
   --mx-rating-0: var(--mx-muted);
   --mx-rating-1: color-mix(in srgb, var(--mx-muted) 85%, var(--mx-surface));
@@ -187,14 +193,29 @@
   .mx-compact-records abbr {
     text-decoration: none;
   }
+  .mx-valuation-readout {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .mx-valuation-readout > .mx-metric {
-    padding-inline: 8px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) fit-content(70%);
+    align-items: baseline;
+    gap: 0 6px;
+    padding: 8px 0;
+    border: 0;
+    border-block-start: 1px solid var(--mx-border);
   }
-  .mx-valuation-readout > .mx-metric:last-child {
-    padding-inline-end: 0;
+  .mx-valuation-readout .mx-metric-note {
+    grid-column: 1 / -1;
+    text-align: end;
+    margin-top: 0;
   }
-  .mx-valuation-readout .mx-number {
-    font-size: clamp(15px, 4.5cqi, 20px);
+  .mx-page .mx-valuation-readout .mx-number {
+    min-width: 0;
+    text-align: end;
+    overflow-wrap: anywhere;
+    margin: 0;
+    font-size: 18px;
   }
   .mx-reading-sections .mx-table {
     width: max-content;
