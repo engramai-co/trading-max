@@ -433,7 +433,7 @@ def dashboard_lens(
         )
     manifest = _dashboard_manifest(request, run_id)
     dashboard_data = request.app.state.cached_dashboard(
-        manifest, include_history=detail != "summary"
+        manifest, include_history=detail != "summary", retained=review_pin
     )
     base = {
         "view": view,

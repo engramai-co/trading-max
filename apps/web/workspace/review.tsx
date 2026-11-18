@@ -111,16 +111,24 @@ export function ReviewWorkspace() {
   const scope = reviewScope(params.get("account"));
   const all = scope === "all";
   const snapshotId = params.get("snapshotId");
-  const overview = useDashboardLens("review", undefined, all, snapshotId ? ACCOUNT_REVIEW_SELECTION : undefined, snapshotId ?? undefined);
-  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all, ACCOUNT_REVIEW_SELECTION, snapshotId ?? undefined);
+  const pinned = snapshotId !== null;
+  const decisionParamValue = params.get("decision");
+  const reference = parseDecisionParam(decisionParamValue);
+  const validScope = params.get("account") === null || params.get("account") === scope;
+  const canRead = !pinned || (!!snapshotId && validScope && scope !== "C" &&
+    (decisionParamValue === null || (!all && !!reference)));
+  const overview = useDashboardLens("review", undefined, all && canRead, pinned ? ACCOUNT_REVIEW_SELECTION : undefined, snapshotId ?? undefined);
+  const single = useDashboardLens("account-analysis", all ? "A" : scope, !all && canRead, ACCOUNT_REVIEW_SELECTION, snapshotId ?? undefined);
   const query = all ? overview : single;
   const current = useMemo(
     () => query.data && { scope, data: query.data, updatedAt: query.dataUpdatedAt },
     [scope, query.data, query.dataUpdatedAt],
   );
   // Another scope keeps showing the last one until its own review arrives.
-  const retained = useRetainedResult(current);
-  const result = snapshotId && (query.isError || retained?.data.runId !== snapshotId || retained.scope !== scope) ? undefined : retained;
+  const live = useRetainedResult(pinned ? undefined : current);
+  // Recheck retention before revealing even a previously cached citation.
+  const confirmed = !query.isFetching && !query.isError && current?.data.runId === snapshotId;
+  const result = pinned ? (confirmed ? current : undefined) : live;
   const publicationFailure = usePublicationFailure(result?.updatedAt ?? 0);
   const failure = query.isError && result ? { updatedAt: result.updatedAt, retry: query.refetch } : publicationFailure;
   // Horizon choices live here, keyed by account and decision, so they outlive the panels that use them.
@@ -133,11 +141,11 @@ export function ReviewWorkspace() {
   );
   const rows = useMemo(() => ledgerRows.filter(row => !row.unpriced), [ledgerRows]);
   const {ready, consented, pending: readinessPending} = useAssistant();
-  const reference = parseDecisionParam(params.get("decision"));
   const ordinal = params.get("reviewOrdinal");
   // A cited decision can disambiguate two listings with the same ticker on one day.
   const focus = shown === "all" || shown === "C" ? undefined : ordinal && /^\d{1,4}$/.test(ordinal) && reference
     ? ledgerRows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(ready || snapshotId ? ledgerRows : rows,reference);
+  const missingDecision = pinned && (!canRead || (decisionParamValue !== null && !!result && !focus));
   const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
   const requestedHorizon = ready || snapshotId ? params.get("reviewWindow") : null;
   const horizon = requestedHorizon === "to_date" ? "date" : requestedHorizon === "20_sessions" ? "horizon" : localHorizon;
@@ -198,10 +206,12 @@ export function ReviewWorkspace() {
         </span>
       }
     >
-      {!result && query.isPending ? (
+      {missingDecision ? (
+        <Empty title={t("引用的交易决定暂不可用", "Cited decision unavailable")} />
+      ) : !result && (query.isPending || (pinned && query.isFetching)) ? (
         <Pending shape="review" label={t("正在读取账户复盘…", "Loading account reviews…")} />
       ) : !result || !data ? (
-        <QueryError retry={query.refetch} title={snapshotId ? t("引用的数据版本暂不可用", "Cited publication unavailable") : undefined} />
+        pinned ? <Empty title={t("引用的数据版本暂不可用", "Cited publication unavailable")} /> : <QueryError retry={query.refetch} />
       ) : (
         <div className="mx-data-body mx-review-body" aria-busy={result.scope !== scope || undefined}>
           {shown === "C" ? (

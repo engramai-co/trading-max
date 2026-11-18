@@ -22,6 +22,8 @@ Saved citations pass a retained publication ID for Returns, the combined Review
 summary or a single account’s Review summary. Each lookup revalidates the
 manifest. The citation shows an unavailable state if its publication expired.
 
+Invest and ISA decision citations pass the published `run_id` to the single-account summary. Each read checks retention before returning the account review. An expired publication or an unmatched decision displays its unavailable state.
+
 ## On-demand portfolio history
 
 `GET /v1/dashboard/history?run_id=…&range=6M&scope=total` reads a pinned typed

@@ -731,16 +731,20 @@ def test_recorded_event_citation_matches_its_row_listing_and_retained_publicatio
 
 
 @pytest.mark.parametrize(
-    ("ticker", "kind"), [("WATCH", "ex_dividend"), ("WATCH", "dividend_pay"), ("ALFA", "dividend")]
+    ("ticker", "kind"),
+    [
+        ("WATCH", "ex_dividend"),
+        ("WATCH", "dividend_pay"),
+        ("ALFA", "dividend"),
+        ("ALFA", "earnings"),
+    ],
 )
-def test_cited_dividend_returns_the_original_single_row(tmp_path, ticker, kind):
+def test_cited_holding_event_returns_the_original_single_row(tmp_path, ticker, kind):
     app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
     store = ArtifactStore(tmp_path)
     original = publish(store)
     deps = AssistantDepsFactory(store).for_run()
-    items = events.event_data(deps, args(ticker=ticker), upcoming=kind != "dividend")["data"][
-        "items"
-    ]
+    items = events.event_data(deps, args(ticker=ticker), upcoming=False)["data"]["items"]
     cited = next(row for row in items if row["kind"] == kind)
     query = {"ticker": ticker, "kind": kind, "event_id": cited["evidence_id"]}
     publish(store)

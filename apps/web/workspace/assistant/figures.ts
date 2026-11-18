@@ -89,18 +89,26 @@ const calendarStatuses: Record<string, Words> = {
   postponed: ["postponed", "已推迟"], provisional: ["provisional", "暂定"],
 };
 
+const historicalSources: Record<string, Evidence["source"]> = {
+  news:"publisher", filing:"disclosure", rating_change:"analysts", own_trade:"broker",
+};
+
 export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
   if (output.status !== "ok" && output.status !== "partial") return null;
   const field = resolveField(output, pointer);
   if (!field || field.group !== "items") return null;
   const row = field.parent;
   const historical = ref.tool === "news_and_events";
-  if (historical && (row.kind !== "dividend" || !str(row.ticker) || !str(output.snapshot_id))) return null;
+  const kind = citedEventKind(str(row.kind));
+  if (historical && (!str(row.ticker) || !str(output.snapshot_id))) return null;
+  if (historical && !kind && !Object.hasOwn(historicalSources, str(row.kind))) return null;
+  const dividend = historical && kind === "dividend";
+  if (historical && !dividend && !(["date", "local_date", "end_date", "instant", "local_time"].includes(field.field) && dateText(field.value))) return null;
   let detail = "";
-  if (historical && ["amount", "currency", "unit"].includes(field.field)) {
+  if (dividend && ["amount", "currency", "unit"].includes(field.field)) {
     detail = dividendAmount(row.amount, row.currency, row.unit, locale) ?? "";
     if (!detail) return null;
-  } else if (historical && field.field === "basis") {
+  } else if (dividend && field.field === "basis") {
     detail = dividendBasis(row.basis, locale) ?? "";
     if (!detail) return null;
   } else if (!["date","end_date","local_date","instant","local_time","title_en","title_zh","status"].includes(field.field)) return null;
@@ -108,7 +116,12 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const title = str(row[locale === "zh" ? "title_zh" : "title_en"]);
   if (!day || !title || !row.evidence_id) return null;
   const ticker = str(row.ticker);
-  const start = row.instant && dateText(row.instant) ? formatDateTimeInTimeZone(str(row.instant), locale, timeZone) : day;
+  // A selected historical date is the published day. A selected instant uses the reader's time zone.
+  let start = day;
+  if (historical && field.field === "local_date") start = calendarDate(row.local_date);
+  else if (!(historical && field.field === "date") && dateText(row.instant)) {
+    start = formatDateTimeInTimeZone(str(row.instant), locale, timeZone);
+  }
   const end = calendarDate(row.end_date);
   const when = end && end !== day ? start + " – " + end : start;
   const status = str(row.status);
@@ -116,7 +129,6 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   const eventTitle = label ? title + (locale === "zh" ? "（" + label + "）" : " (" + label + ")") : title;
   const args: Record<string,string> = {snapshotId:str(output.snapshot_id),eventId:str(row.evidence_id),date:str(row.local_date) || day};
   let source: Evidence["source"] = "calendar";
-  const kind = citedEventKind(str(row.kind));
   if (kind) {
     source = kind === "earnings" ? "financials" : "disclosure";
     args.holdingTicker = ticker;
@@ -124,9 +136,18 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
     if (kind === "earnings" && !row.research_event_id) args.event = "earningsWindow";
     if (row.research_event_id) args.researchEventId = str(row.research_event_id);
     if (row.end_date) args.endDate = str(row.end_date);
+  } else if (historical) {
+    args.event = str(row.kind);
+    source = historicalSources[args.event];
+    if (row.source_url) args.url = str(row.source_url);
+    if (args.event === "own_trade") {
+      args.scope = str(row.account) || str(output.scope);
+      args.ticker = ticker;
+      args.side = str(row.side);
+    }
   } else if (row.source_url) args.url = str(row.source_url);
   const limited = output.status === "partial" ? word(["limited coverage","覆盖不完整"], locale) : "";
-  return {text:[ticker || str(row.market),eventTitle,when,detail,limited].filter(Boolean).join(" · "), evidence:{...ref, source, arguments:args}};
+  return {text:[ticker || str(row.market),eventTitle,when,detail,limited].filter(Boolean).join(" · "), evidence:{...ref, source, ...(source === "publisher" ? {publisher:str(row.publisher)} : {}), arguments:args}};
 }
 
 function money(value: number, unit: unknown, digits = 2) {
