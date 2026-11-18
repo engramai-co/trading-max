@@ -184,7 +184,7 @@ export function ValuationWorkbench({
   const reason = query.error instanceof ApiError && query.error.status === 422 ? query.error.message : null;
   const missing =
     reason === "listed-share-unit-unverified"
-      ? t("尚未核实该上市证券的股份单位", "Share unit unverified for this listing")
+      ? t("上市股数口径未核实", "Share unit unverified for this listing")
       : reason === "currency-conversion-unavailable"
         ? t("缺少报表币种到报价币种的汇率", "The reporting-to-quote exchange rate is missing")
         : reason === "opening-cash-required-for-burn"

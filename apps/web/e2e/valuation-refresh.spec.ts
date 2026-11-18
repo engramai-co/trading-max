@@ -604,7 +604,7 @@ for (const locale of ["en", "zh"] as const) {
     const panel = page.locator("#valuation-assumptions");
     error = "listed-share-unit-unverified";
     await page.reload();
-    const missingUnit = locale === "en" ? "Share unit unverified for this listing" : "尚未核实该上市证券的股份单位";
+    const missingUnit = locale === "en" ? "Share unit unverified for this listing" : "上市股数口径未核实";
     await expect(panel).toContainText(missingUnit);
     await expect(row).toContainText(missingUnit);
     error = "complete-ttm-currency-and-share-count-required";
