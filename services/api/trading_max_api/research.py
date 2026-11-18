@@ -15,6 +15,7 @@ from trading_max.infrastructure.singleflight import SingleFlightCache
 from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
 from trading_max.reference.quote_units import major_quote_unit
 from trading_max.reference.security_master import SecurityDescriptor
+from trading_max.reference.venues import venue_mic
 from trading_max.research.calendar import listing_calendar, session_schedule
 from trading_max.research.facts import (
     DatasetClock,
@@ -134,13 +135,18 @@ def retained_share_unit(
     listing = quote.listing
     if not listing or (stored.get("listing") and stored["listing"] != listing):
         return None
+    units = (financials.get("evidence") or {}).get("listedShareUnits") or {}
+    mic = venue_mic(quote.exchange)
+    if mic and stored.get("shareUnitVenue") == mic and stored.get("listing") == listing:
+        if stored.get("isAdr") or stored.get("shareUnit") == "receipt":
+            return "receipt"
+        if stored.get("shareUnit") == "ordinary":
+            return share_unit(listing, units, "Ordinary Shares")
+        return None
+    # Earlier rows did not record the venue used for the catalog decision.
+    # Re-establish the unit from the pinned sources before using their counts.
     if stored.get("isAdr"):
         return "receipt"
-    units = (financials.get("evidence") or {}).get("listedShareUnits") or {}
-    if "shareUnit" in stored:
-        if stored.get("listing") != listing or stored["shareUnit"] != "ordinary":
-            return None
-        return share_unit(listing, units, "Ordinary Shares")
     security_type = ""
     ref = _artifact(manifest, SECURITY_MASTER_KEY)
     if (
@@ -1817,23 +1823,26 @@ class ResearchLedger:
                 ),
                 ticker,
             )
-            if valuation and view == "valuation" and not valuation["assumptions"].get("family"):
-                family, classification = classify(ticker, "", raw)
+            if valuation and view == "valuation":
+                stored = valuation["assumptions"]
+                selection = {}
+                if not stored.get("family"):
+                    family, classification = classify(ticker, "", raw)
+                    selection = {"family": family, "classification": classification}
                 unit = retained_share_unit(
                     self.store.read_json,
                     manifest,
                     quote,
-                    valuation["assumptions"],
+                    stored,
                     raw,
                     fundamental.get("name") or "",
                 )
                 valuation = {
                     **valuation,
                     "assumptions": {
-                        **valuation["assumptions"],
-                        "family": family,
-                        "classification": classification,
-                        "issuerName": fundamental.get("name") or "",
+                        **stored,
+                        **selection,
+                        "issuerName": stored.get("issuerName") or fundamental.get("name") or "",
                         "listing": quote.listing,
                         "shareUnit": unit,
                         "isAdr": unit == "receipt",

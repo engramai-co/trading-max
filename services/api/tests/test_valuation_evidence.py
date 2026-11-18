@@ -167,6 +167,7 @@ def _publish(store, issuer, *, created_at=None, inject=None):
             "assumptions": {
                 "sharesOutstanding": issuer.share_count,
                 "shareUnit": "ordinary",
+                "shareUnitVenue": "XLON" if london else "XNYS",
                 "listing": issuer.listing,
                 "fxRate": issuer.fx,
                 "discountRate": 0.6,
@@ -968,6 +969,10 @@ def _batch_row(batches, issuer, listing=None, *, security_master=None, assumptio
         ("SYN.LS", "Lisbon", "Europe/Lisbon", "EUR", "XLIS"),
         ("SYN.VI", "Vienna", "Europe/Amsterdam", "EUR", "XWBO"),
         ("SYN.WA", "Warsaw", "Europe/Warsaw", "PLN", "XWAR"),
+        ("0001.HK", "HKSE", "Asia/Hong_Kong", "HKD", "XHKG"),
+        ("1001.T", "Tokyo", "Asia/Tokyo", "JPY", "XTKS"),
+        ("001001.KS", "KSC", "Asia/Seoul", "KRW", "XKRX"),
+        ("001002.KQ", "KOSDAQ", "Asia/Seoul", "KRW", "XKRX"),
     ],
 )
 def test_local_ordinary_venue_serves_batch_and_preview(tmp_path, symbol, venue, zone, ccy, market):
@@ -1170,11 +1175,15 @@ def test_retained_share_basis_needs_positive_listing_evidence(
         assert result.basis.ordinary_per_receipt == (6 if ticker == "BP" else None)
 
 
-@pytest.mark.parametrize("reader", ["batch", "retained_preview", "frozen_evidence"])
+@pytest.mark.parametrize(
+    "reader",
+    ["batch", "retained_preview", "frozen_evidence", "published_preview", "published_evidence"],
+)
 @pytest.mark.parametrize(
     ("ticker", "catalog_venue", "listed_ticker", "expected_shares"),
     [
         ("SHEL", "LSE", "SHEL", 30),
+        ("SHEL.L", "LSE", "SHEL", 60),
         ("SYN", "LSE", "SYN", None),
         ("SYN", "NasdaqGS", "SYN", None),
         ("SYN", "NYSE", "OTHER", None),
@@ -1185,7 +1194,8 @@ def test_retained_share_basis_needs_positive_listing_evidence(
 def test_catalog_share_type_requires_the_quoted_listing(
     tmp_path, reader, ticker, catalog_venue, listed_ticker, expected_shares
 ):
-    issuer = replace(MATURE, ticker=ticker, share_count=60, quarterly_ocf=75)
+    template = LONDON if ticker.endswith(".L") else MATURE
+    issuer = replace(template, ticker=ticker, share_count=60, quarterly_ocf=75)
     catalog = _ordinary_catalog(ticker, catalog_venue, listed_ticker=listed_ticker)
     params = {
         "revenueCagr": 0,
@@ -1216,8 +1226,15 @@ def test_catalog_share_type_requires_the_quoted_listing(
             )
         else:
             row = batches["research/valuation.json"]["rows"][0]
-            row["assumptions"].pop("listing")
-            row["assumptions"].pop("shareUnit")
+            row["assumptions"].pop("shareUnitVenue")
+            if reader.startswith("published"):
+                # The previous batch could persist the permissive catalog decision.
+                row["assumptions"].update(
+                    family="cash-flow", shareUnit="ordinary", listing=issuer.listing
+                )
+            else:
+                row["assumptions"].pop("listing")
+                row["assumptions"].pop("shareUnit")
             row["scenarios"] = scenarios
 
     binding = _publish(store, issuer, inject=inject)
@@ -1226,7 +1243,7 @@ def test_catalog_share_type_requires_the_quoted_listing(
             assert batch["ev5"] is None
             return
         shares, value = batch["assumptions"]["sharesOutstanding"], batch["ev5"]
-    elif reader == "retained_preview":
+    elif reader.endswith("preview"):
         app = FastAPI()
         app.include_router(router)
         app.state.store = store

@@ -64,6 +64,8 @@ class SessionSchedule(DomainModel):
 
 def calendar_name(exchange: str | None) -> str | None:
     mic = venue_mic(exchange)
+    if mic == "XKOS":
+        return "XKRX"
     return "XNYS" if mic in {"XNAS", "XASE", "ARCX"} else mic
 
 

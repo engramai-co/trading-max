@@ -24,7 +24,9 @@ def period_choice(facts: FinancialFacts, period: FinancialPeriod) -> PeriodChoic
     return "latest-four-quarters" if period.provider_end == latest else "previous-four-quarters"
 
 
-RECEIPT_RATIOS = {listing: ratio for listing, (_, ratio) in REVIEWED_RECEIPTS.items()}
+RECEIPT_RATIOS = {
+    listing: terms.ordinary_per_receipt for listing, terms in REVIEWED_RECEIPTS.items()
+}
 
 EXCLUDED_ASSETS = {"ETF", "ETP", "MUTUALFUND", "INDEX"}
 # Exact US listings. See docs/architecture/valuation-model.md for filing references.

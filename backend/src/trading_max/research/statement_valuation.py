@@ -8,9 +8,10 @@ if TYPE_CHECKING:
     from .fundamentals import _SectorProfile
 
 from trading_max.reference.quote_units import major_quote_unit
+from trading_max.reference.venues import venue_mic
 
 from .facts import FinancialFacts, fingerprint, number
-from .listing import REVIEWED_ORDINARY_SOURCES, REVIEWED_RECEIPT_SOURCES
+from .listing import REVIEWED_ORDINARY_SOURCES, REVIEWED_RECEIPTS
 from .valuation_basis import (
     EXCLUDED_ASSETS,
     Family,
@@ -234,10 +235,11 @@ def statement_row(
     unit = share_unit(listing, filed_units, security_type)
     is_adr = unit == "receipt"
     ordinary_listing = unit == "ordinary"
+    receipt = REVIEWED_RECEIPTS.get(listing)
     source_url = (
         filing_evidence.get("shareUnitFiling")
         if filed_units.get(listing)
-        else REVIEWED_ORDINARY_SOURCES.get(listing) or REVIEWED_RECEIPT_SOURCES.get(listing)
+        else REVIEWED_ORDINARY_SOURCES.get(listing) or (receipt.source if receipt else None)
     )
     stored = {
         "family": family,
@@ -251,6 +253,7 @@ def statement_row(
         "discountRateInputs": discount_inputs,
         "listing": listing,
         "shareUnitFiling": source_url,
+        "shareUnitVenue": venue_mic(metrics.get("fullExchangeName")),
         "issuerName": name,
         "isAdr": is_adr,
         "shareUnit": unit,
@@ -315,6 +318,7 @@ def statement_row(
         freeCashflowMargin=basis.start_margin,
         cashFlowType=basis.cash_flow_type,
         ordinaryPerReceipt=basis.ordinary_per_receipt,
+        ordinaryPerReceiptSource=receipt.source if receipt else None,
         formulaVersion=VALUATION_FORMULA_VERSION,
         reverseMetric=five.reverse_metric,
         reverseValue=five.reverse_value,

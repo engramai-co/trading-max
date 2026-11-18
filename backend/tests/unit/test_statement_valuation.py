@@ -318,3 +318,32 @@ def test_ordinary_designation_cannot_establish_equivalent_distribution_rights():
     assert share_unit("XCSE:SYN-B.CO", {}, "Common Stock") is None
     assert share_unit("US:SYN", {"US:SYN": "ordinary", "US:SYNX": "ordinary"}) is None
     assert share_unit("XCSE:NOVO-B.CO", {"XCSE:NOVO-B.CO": "receipt"}) == "receipt"
+
+
+def test_catalog_listing_type_preserves_local_symbol_and_withholds_ambiguous_entities():
+    from trading_max.reference import CatalogSecurityMaster, SecurityMasterCatalog
+    from trading_max.reference.security_master import SecurityDescriptor
+
+    def lookup(listings, *, ticker="SHEL.L", exchange="London", canonical="SHEL"):
+        record = {
+            "entityId": "synthetic",
+            "canonicalTicker": canonical,
+            "entityName": "Synthetic",
+            "providerSecurityType": "Common Stock",
+            "source": "synthetic",
+            "listings": [{**item, "source": "synthetic"} for item in listings],
+        }
+        catalog = CatalogSecurityMaster(SecurityMasterCatalog.model_validate({"records": [record]}))
+        return catalog.listing_security_type(SecurityDescriptor(ticker=ticker, exchange=exchange))
+
+    london = {"ticker": "SHEL", "mic": "XLON"}
+    nyse = {"ticker": "SHEL", "exchange": "NYSE"}
+    assert "Common Stock" in lookup([london])
+    assert quote_listing("001002.KQ", "KSC", "Asia/Seoul") is None
+    assert quote_listing("001001.KS", "KOSDAQ", "Asia/Seoul") is None
+    assert quote_listing("SYN.DE", "Frankfurt", "Europe/Berlin") is None
+    assert not lookup([london], ticker="SHEL", exchange="NYSE")
+    assert not lookup([london, nyse], ticker="SHEL", exchange="NYSE")
+    assert not lookup(
+        [{"ticker": "SHEL", "exchange": "London", "mic": "XNYS"}], ticker="SHEL", exchange="NYSE"
+    )

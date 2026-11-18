@@ -597,6 +597,8 @@ def build_valuation(
                 exchange=str(metrics.get("fullExchangeName") or ""),
             )
             security = security_master.resolve(descriptor) if security_master else None
+            # An issuer-only resolver can classify the business but cannot prove its share unit.
+            listing_type = getattr(security_master, "listing_security_type", None)
             family, classification = classify(
                 ticker,
                 security.gics.sub_industry_code if security and security.gics else "",
@@ -632,9 +634,7 @@ def build_valuation(
                         ticker, metrics.get("fullExchangeName"), metrics.get("exchangeTimezoneName")
                     ),
                     filing_evidence=financial_rows.get(ticker, {}).get("evidence") or {},
-                    security_type=security_master.listing_security_type(descriptor)
-                    if security_master
-                    else "",
+                    security_type=listing_type(descriptor) if listing_type else "",
                 )
             )
             continue

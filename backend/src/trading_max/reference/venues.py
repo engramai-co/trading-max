@@ -15,7 +15,16 @@ _VENUES = {
     "LSE": "XLON",
     "LONDON": "XLON",
     "HKG": "XHKG",
+    "HKSE": "XHKG",
     "JPX": "XTKS",
+    "TOKYO": "XTKS",
+    "KSC": "XKRX",
+    "KSE": "XKRX",
+    "KOSPI": "XKRX",
+    "KOREA EXCHANGE (STOCK MARKET)": "XKRX",
+    "KOE": "XKOS",
+    "KOSDAQ": "XKOS",
+    "KOREA EXCHANGE (KOSDAQ)": "XKOS",
     "TOR": "XTSE",
     "ASX": "XASX",
     "GER": "XETR",
@@ -72,3 +81,37 @@ def listing_mic(exchange: str, mic: str) -> str | None:
         return named
     identified = venue_mic(mic)
     return identified if named is None or named == identified else None
+
+
+_SUFFIXES = {
+    "XLON": (".L",),
+    "XHKG": (".HK",),
+    "XTKS": (".T",),
+    "XKRX": (".KS",),
+    "XKOS": (".KQ",),
+    "XPAR": (".PA",),
+    "XAMS": (".AS",),
+    "XBRU": (".BR",),
+    "XETR": (".DE",),
+    "XFRA": (".F",),
+    "XMIL": (".MI",),
+    "XMAD": (".MC",),
+    "XSWX": (".SW",),
+    "XDUB": (".IR",),
+    "XCSE": (".CO",),
+    "XSTO": (".ST",),
+    "XHEL": (".HE",),
+    "XOSL": (".OL",),
+    "XLIS": (".LS",),
+    "XWBO": (".VI",),
+    "XWAR": (".WA",),
+}
+
+
+def local_venue_symbol(ticker: str, mic: str | None) -> str:
+    """Remove only a quote-provider suffix that belongs to this venue."""
+    ticker = ticker.strip().upper()
+    for suffix in _SUFFIXES.get(mic, ()):
+        if len(ticker) > len(suffix) and ticker.endswith(suffix):
+            return ticker.removesuffix(suffix)
+    return ticker

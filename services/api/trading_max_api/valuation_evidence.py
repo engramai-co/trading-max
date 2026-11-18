@@ -163,6 +163,7 @@ def _read_row(
                 "family": stored.get("family"),
                 "isAdr": stored.get("isAdr"),
                 "listing": stored.get("listing"),
+                "shareUnitVenue": stored.get("shareUnitVenue"),
                 **({"shareUnit": stored["shareUnit"]} if "shareUnit" in stored else {}),
                 "quotedSharesOutstanding": stored.get("quotedSharesOutstanding"),
                 "sharesOutstanding": stored.get("sharesOutstanding"),

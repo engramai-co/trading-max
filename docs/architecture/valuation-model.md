@@ -44,8 +44,11 @@ Apply the stored reporting-to-quote FX rate once to statement amounts. If the
 currencies differ, a missing rate blocks valuation. An ordinary-share quote needs
 an identified listing and a positive share-class identification. The existing SEC cover parser joins the trading
 symbol, exchange and security title within one XBRL context. The latest
-parsed filing or the exact canonical ticker’s explicit security-master type
-can establish a common or ordinary share. A receipt flag takes precedence.
+parsed filing or an explicit catalog type attached to the quoted symbol and
+venue can establish an ordinary share. Venue matching uses the exchange MIC
+and recognises provider aliases such as NYQ for NYSE. The catalog stores types
+at issuer level, so a record covering several listings cannot by itself
+establish which instrument has that type. A receipt flag takes precedence.
 For a verified ordinary line, use period-end ordinary shares from the same
 consolidated statement period as the forecast inputs. If the period omits the
 count for a single-class company, use the quote's shares outstanding or the
@@ -72,20 +75,25 @@ their economic units are established.
 ordinary shares per receipt on that venue. A one-to-one receipt may also use a
 quoted count. The NYSE lines for TSM, Alibaba, Nokia and BP represent five,
 eight, one and six ordinary shares respectively. Arm's Nasdaq ADS represents
-one ordinary share. A US time zone alone cannot identify a receipt venue.
+one ordinary share. Shell’s NYSE ADS represents two ordinary shares. A US
+time zone alone cannot identify a receipt venue.
 BP's London line is an ordinary share quoted in pence. Its USD statements
 use the stored USD-to-GBP rate once.
 [TSMC](https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf) ·
 [Alibaba](https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm) ·
 [Nokia](https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf) ·
 [Arm](https://investors.arm.com/node/8281/html) ·
-[BP listing and ADS terms](https://www.bp.com/investors/shareholder-and-dividend-information/share-listing-information)
+[BP listing and ADS terms](https://www.bp.com/investors/shareholder-and-dividend-information/share-listing-information) ·
+[Shell shareholder FAQ](https://www.shell.com/investors/information-for-shareholders/shareholder-faqs.html)
 
 **Retained snapshots.** Before the first new batch, the desk and evidence
 reader can recover the unit from an exact filed designation, the security
 master in that snapshot, or issuer-reviewed terms for the quoted listing.
 FX is checked separately against the reporting currency, quote currency and
-financial facts. A completed old worksheet and a matching currency provide
+financial facts. A new batch records the venue used for the share-unit decision.
+When a retained row lacks that venue or quotes a different venue, the readers
+verify the unit again against the pinned sources and the reviewed listing terms.
+A completed old worksheet and a matching currency provide
 no share-class evidence. An unidentified unit withholds the per-share result.
 
 ## Selecting a family

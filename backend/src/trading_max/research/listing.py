@@ -9,37 +9,46 @@ decides. A listing either side cannot place is unknown and matches nothing.
 
 from __future__ import annotations
 
+from typing import NamedTuple
+
+from trading_max.reference.venues import local_venue_symbol, venue_mic
+
 from .calendar import calendar_name, listing_calendar
 
 US = "US"
 LONDON = "LSE"
 
-# US broker bindings use a country-level ID. Receipt terms apply only on
-# the reviewed exchange, so disambiguate the venue before issuing that ID.
-_NYSE = frozenset({"NYQ", "NYSE", "XNYS", "NEW YORK STOCK EXCHANGE"})
-_NASDAQ = frozenset({"NASDAQ", "XNAS", "NMS", "NGM", "NCM", "NASDAQGS", "NASDAQGM", "NASDAQCM"})
-REVIEWED_RECEIPTS = {
-    "US:BP": (_NYSE, 6),
-    "US:SHEL": (_NYSE, 2),
-    "US:TSM": (_NYSE, 5),
-    "US:BABA": (_NYSE, 8),
-    "US:NOK": (_NYSE, 1),
-    "US:ARM": (_NASDAQ, 1),
-}
+
+class ReceiptTerms(NamedTuple):
+    mic: str
+    ordinary_per_receipt: int
+    source: str
 
 
-# Issuer-confirmed terms, keyed to the quoted venue and symbol. Novo and
-# Volvo have company-wide statements covering both A and B shares.
+# US broker bindings use a country-level ID. Receipt terms apply only on the
+# reviewed venue, so disambiguate it before issuing that ID.
 BP_LISTING_SOURCE = (
     "https://www.bp.com/investors/shareholder-and-dividend-information/share-listing-information"
 )
-REVIEWED_RECEIPT_SOURCES = {
-    "US:SHEL": "https://www.shell.com/investors/information-for-shareholders/shareholder-faqs.html",
-    "US:BP": BP_LISTING_SOURCE,
-    "US:TSM": "https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf",
-    "US:BABA": "https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm",
-    "US:NOK": "https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf",
-    "US:ARM": "https://investors.arm.com/node/8281/html",
+REVIEWED_RECEIPTS = {
+    "US:BP": ReceiptTerms("XNYS", 6, BP_LISTING_SOURCE),
+    "US:SHEL": ReceiptTerms(
+        "XNYS",
+        2,
+        "https://www.shell.com/investors/information-for-shareholders/shareholder-faqs.html",
+    ),
+    "US:TSM": ReceiptTerms(
+        "XNYS", 5, "https://investor.tsmc.com/sites/ir/sec-filings/2025_20F%20Report.pdf"
+    ),
+    "US:BABA": ReceiptTerms(
+        "XNYS",
+        8,
+        "https://www.sec.gov/Archives/edgar/data/1577552/000119312526231755/baba-20260331.htm",
+    ),
+    "US:NOK": ReceiptTerms(
+        "XNYS", 1, "https://www.nokia.com/system/files/2026-03/nokia-form-20-f-2025.pdf"
+    ),
+    "US:ARM": ReceiptTerms("XNAS", 1, "https://investors.arm.com/node/8281/html"),
 }
 REVIEWED_ORDINARY_SOURCES = {
     "LSE:BP": BP_LISTING_SOURCE,
@@ -74,31 +83,13 @@ def quote_listing(symbol: str | None, exchange: str | None, timezone: str | None
     if code and "." not in code and calendar_name(exchange) == "XNYS":
         listing = f"{US}:{code}"
         receipt = REVIEWED_RECEIPTS.get(listing)
-        if receipt and str(exchange).upper() not in receipt[0]:
+        if receipt and venue_mic(exchange) != receipt.mic:
             return None
         return listing
-    # Retain the provider suffix and require the exchange to corroborate it.
-    suffixes = {
-        "XHKG": (".HK",),
-        "XTKS": (".T",),
-        "XKRX": (".KS", ".KQ"),
-        "XPAR": (".PA",),
-        "XAMS": (".AS",),
-        "XBRU": (".BR",),
-        "XETR": (".DE",),
-        "XFRA": (".F", ".DE"),
-        "XMIL": (".MI",),
-        "XMAD": (".MC",),
-        "XSWX": (".SW",),
-        "XDUB": (".IR",),
-        "XCSE": (".CO",),
-        "XSTO": (".ST",),
-        "XHEL": (".HE",),
-        "XOSL": (".OL",),
-        "XLIS": (".LS",),
-        "XWBO": (".VI",),
-        "XWAR": (".WA",),
-    }
-    if code.endswith(suffixes.get(calendar, ())):
+    # KOSDAQ shares the Korean trading calendar but has its own listing MIC.
+    mic = venue_mic(exchange)
+    if not mic and calendar == "XKRX" and code.endswith(".KQ"):
+        mic = "XKOS"
+    if local_venue_symbol(code, mic or calendar) != code:
         return f"{calendar}:{code}"
     return None

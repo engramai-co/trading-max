@@ -7,6 +7,7 @@ All notable public Trading Max releases are recorded here.
 ### Changed
 - The Research Desk values banks and insurers from common book value and residual income, trading platforms from earnings, and other companies from equity cash flow. Choose the model in the desk and inspect its period, currency and share basis. A missing quarter falls back to an earlier complete year of statements. Cash-flow and earnings models with reported zero revenue show the year-five revenue implied by price.
 - Valuations fall for the eleven cash-burning companies previously modelled from a zero starting margin. Their actual losses now enter the forecast and financing beyond available cash dilutes later returns.
+- Per-share valuations check the quoted symbol and exchange before using a catalog share type. Shell’s New York valuation uses two ordinary shares per ADS, and its London valuation uses one ordinary share.
 - A saved model can serve as the overview baseline. Model upside uses its five-year base value and the batch price. Clearing the baseline restores the automatic reading.
 
 ## [1.56.0] - 2026-11-18

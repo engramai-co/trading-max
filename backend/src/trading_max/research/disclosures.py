@@ -526,7 +526,7 @@ class ResearchEvidenceProvider:
             return list(pool.map(read, selected))
 
     def __call__(self, ticker: str, financials: dict[str, Any]) -> dict[str, Any]:
-        cache = self.root / (fingerprint([ticker, "evidence-v10"]) + ".json")
+        cache = self.root / (fingerprint([ticker, "evidence-v11"]) + ".json")
         if cache.is_file() and time.time() - cache.stat().st_mtime < 6 * 3600:
             return json.loads(self._read_cache(cache))
         proxy = yf.Ticker(ticker)

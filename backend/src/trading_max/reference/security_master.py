@@ -24,7 +24,7 @@ from pydantic import Field
 
 from trading_max.domain import DomainModel
 
-from .venues import listing_mic
+from .venues import listing_mic, local_venue_symbol
 
 ResolutionMethod = Literal[
     "isin",
@@ -139,10 +139,6 @@ class ResolvedSecurityEntity(DomainModel):
 class SecurityMasterResolver(Protocol):
     def resolve(self, security: SecurityDescriptor) -> ResolvedSecurityEntity:
         """Resolve one observed instrument to an economic issuer."""
-
-    def listing_security_type(self, security: SecurityDescriptor) -> str:
-        """Return an instrument type established for the quoted ticker and venue."""
-        ...
 
     def gics_lookup(self, security: SecurityDescriptor) -> GicsClassification | None:
         """Return sourced GICS metadata for the resolved issuer, if known."""
@@ -585,15 +581,24 @@ class CatalogSecurityMaster:
         venue = listing_mic(security.exchange, security.mic)
         if not ticker or not venue:
             return ""
-        target = (ticker, venue)
+        symbol = local_venue_symbol(ticker, venue)
+        target = (symbol, venue)
+        candidates = {
+            record.entity_id: record
+            for key in {ticker, symbol}
+            for record in self._ticker_index.get(key, ())
+        }
         matches = []
-        for record in self._ticker_index.get(ticker, ()):
-            listings = {
-                (_identifier(item.ticker), listing_mic(item.exchange, item.mic))
-                for item in record.listings
-            }
+        for record in candidates.values():
+            listings = set()
+            for item in record.listings:
+                mic = listing_mic(item.exchange, item.mic)
+                listings.add((local_venue_symbol(item.ticker, mic), mic))
             if target in listings:
-                if listings != {target} or _identifier(record.canonical_ticker) != ticker:
+                if (
+                    listings != {target}
+                    or local_venue_symbol(record.canonical_ticker, venue) != symbol
+                ):
                     return ""
                 matches.append(record)
         if len(matches) != 1:
