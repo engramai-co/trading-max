@@ -86,9 +86,8 @@ test("the journal opens a saved version's new evidence in the valuation", async 
 });
 
 async function settings(page: Page) {
-  const profile = { profileId: "local", displayName: "Synthetic", initials: "S", avatarColor: "#1768e5", locale: "en",
-    baseCurrency: "GBP", timezone: "Europe/London", accountLabels: {}, revision: 1, updatedAt: "2026-11-04T12:00:00Z",
-    assistantEnabled: false };
+  const profile = { profileId: "local", displayName: "Synthetic", initials: "S", locale: "en", baseCurrency: "GBP",
+    timezone: "Europe/London", accountLabels: {}, revision: 1, updatedAt: "2026-11-04T12:00:00Z", assistantEnabled: false };
   let automation = {
     liveEnabled: false, liveTimezone: "Europe/London", liveIntervalSeconds: 600, liveWindowStart: "00:00", liveWindowEnd: "00:00",
     liveWeekdays: [1, 2, 3, 4, 5], performanceEnabled: true, performanceTimezone: "Europe/London", performanceIntervalSeconds: 3600,
