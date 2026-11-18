@@ -707,6 +707,91 @@ def test_publication_or_parent_during_final_desk_projection_prevents_delivery(
     assert not list(state.valuation_drafts.root.glob("*.json"))
 
 
+def test_contended_draft_delivery_allows_a_concurrent_health_probe(desk, monkeypatch):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Event
+
+    client, state, _, _ = desk
+    _, body = inputs(client)
+    journal = state.research_journal
+    lock = journal.lock
+    projected, held, waiting = Event(), Event(), Event()
+    calculate = valuation_draft.family_valuation_preview
+    calls = 0
+
+    @client.app.get("/health-probe")
+    async def health_probe():
+        return {"ready": True}
+
+    def final_projection(*args, **kwargs):
+        nonlocal calls
+        result = calculate(*args, **kwargs)
+        calls += 1
+        if calls == 2:
+            projected.set()
+            assert held.wait(5)
+        return result
+
+    class ObservedLock:
+        def __enter__(self):
+            if held.is_set():
+                waiting.set()
+            return lock.__enter__()
+
+        def __exit__(self, *exc):
+            return lock.__exit__(*exc)
+
+    monkeypatch.setattr(journal, "lock", ObservedLock())
+    monkeypatch.setattr(valuation_draft, "family_valuation_preview", final_projection)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        delivery = pool.submit(post, client, body)
+        assert projected.wait(5)
+        with lock:
+            held.set()
+            assert waiting.wait(5)
+            probe = pool.submit(client.get, "/health-probe")
+            assert probe.result(timeout=0.4).json() == {"ready": True}
+        assert delivery.result(timeout=5)[-1]["phase"] == "complete"
+
+
+def test_large_review_history_keeps_the_publication_lock_brief(desk, monkeypatch):
+    from contextlib import contextmanager
+    from time import perf_counter
+    from uuid import uuid4
+
+    client, state, _, _ = desk
+    first = _reviewed_consensus(client)
+    assert client.post(PATH + "/models", json=first).is_success
+    journal = state.research_journal
+    history = journal.load("SYNM")
+    previous = history.models[0]
+    for i in range(249):
+        older = previous.model_copy(deep=True)
+        older.id = f"older-{i}"
+        older.draft_audit.review.id = older.draft_audit.draft.result.id = uuid4()
+        history.models.append(older)
+    journal._save(history)
+    body = _reviewed_consensus(client)
+    snapshots = state.store.immutable_snapshots
+    pointer = snapshots.publication_lock
+    durations = []
+
+    @contextmanager
+    def timed_lock():
+        with pointer():
+            start = perf_counter()
+            try:
+                yield
+            finally:
+                durations.append(perf_counter() - start)
+
+    monkeypatch.setattr(snapshots, "publication_lock", timed_lock)
+    response = client.post(PATH + "/models", json=body)
+    assert response.is_success
+    assert len(durations) == 1
+    assert durations[0] < 0.1
+
+
 def test_pointer_replacement_waits_for_the_reviewed_journal_commit(desk, monkeypatch):
     from concurrent.futures import ThreadPoolExecutor
     from contextlib import contextmanager
@@ -716,7 +801,10 @@ def test_pointer_replacement_waits_for_the_reviewed_journal_commit(desk, monkeyp
     body = _reviewed_consensus(client)
     writer = ArtifactStore(state.store.data_root)
     pointer = writer.immutable_snapshots.publication_lock
-    save = state.research_journal._save
+    from pathlib import Path
+
+    target = state.research_journal._path("SYNM")
+    replace_file = Path.replace
     attempting = Event()
     finished = Event()
 
@@ -732,14 +820,15 @@ def test_pointer_replacement_waits_for_the_reviewed_journal_commit(desk, monkeyp
 
     with ThreadPoolExecutor(max_workers=1) as pool:
 
-        def commit(journal):
-            pool.submit(publish)
-            assert attempting.wait(5)
-            assert not finished.wait(0.1)
-            save(journal)
+        def commit(source, destination):
+            if destination == target:
+                pool.submit(publish)
+                assert attempting.wait(5)
+                assert not finished.wait(0.1)
+            return replace_file(source, destination)
 
         monkeypatch.setattr(writer.immutable_snapshots, "publication_lock", writer_lock)
-        monkeypatch.setattr(state.research_journal, "_save", commit)
+        monkeypatch.setattr(Path, "replace", commit)
         assert client.post(PATH + "/models", json=body).is_success
     assert finished.is_set()
     saved = client.get(PATH + "/journal").json()["models"][0]

@@ -258,6 +258,25 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                     original=body.scenarios,
                 )
 
+        def deliver(record):
+            complete = line("complete", result=record.result)
+            journal = app_service(request, "research_journal")
+            with journal.lock:
+                parents = journal.load(ticker).models
+                if (parents[0].id if parents else None) != record.parent_model_id:
+                    raise ValueError("valuation-draft-review-required")
+                with reviewed_publication(app_service(request, "store"), record.result.snapshot_id):
+                    anyio.from_thread.check_cancelled()
+                    check_preferences()
+                    drafts.put(record)
+                    try:
+                        anyio.from_thread.check_cancelled()
+                        check_preferences()
+                    except BaseException:
+                        drafts.discard(record.result.id)
+                        raise
+            return complete
+
         task = asyncio.create_task(generate())
         try:
             phase = "preparing"
@@ -270,23 +289,7 @@ async def valuation_draft(ticker: str, body: DraftInput, request: Request):
                 if not task.done():
                     yield line(phase)
             record = task.result()
-            journal = app_service(request, "research_journal")
-            with (
-                journal.lock,
-                reviewed_publication(app_service(request, "store"), record.result.snapshot_id),
-            ):
-                parents = journal.load(ticker).models
-                if (parents[0].id if parents else None) != record.parent_model_id:
-                    raise ValueError("valuation-draft-review-required")
-                check_preferences()
-                drafts.put(record)
-                try:
-                    check_preferences()
-                    complete = line("complete", result=record.result)
-                except Exception:
-                    drafts.discard(record.result.id)
-                    raise
-            yield complete
+            yield await anyio.to_thread.run_sync(deliver, record)
         except Exception as exc:
             code = _failure(exc)
             yield line("error", code=code)

@@ -13,6 +13,7 @@ import os
 import tempfile
 import threading
 import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -106,7 +107,9 @@ def _scenario_diff(
     return changes
 
 
-def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
+@contextmanager
+def _prepared_write(path: Path, payload: dict[str, Any]):
+    """Stage a private replacement on the destination filesystem."""
     path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary = tempfile.mkstemp(
         prefix=f".{path.name}.",
@@ -122,10 +125,14 @@ def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
                 indent=2,
             )
             handle.write("\n")
-        Path(temporary).replace(path)
-    except Exception:
+        yield Path(temporary)
+    finally:
         Path(temporary).unlink(missing_ok=True)
-        raise
+
+
+def _atomic_write(path: Path, payload: dict[str, Any]) -> None:
+    with _prepared_write(path, payload) as temporary:
+        temporary.replace(path)
 
 
 class ValuationAssumptionsStore:

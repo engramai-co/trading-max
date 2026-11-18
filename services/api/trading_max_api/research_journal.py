@@ -22,7 +22,7 @@ from trading_max.research.valuation_preview import (
 from .artifacts import ArtifactStore
 from .dashboard_models import ValuationRow
 from .models import SnapshotManifest
-from .valuation_assumptions import _atomic_write
+from .valuation_assumptions import _atomic_write, _prepared_write
 from .valuation_drafts import (
     DraftAudit,
     DraftReview,
@@ -217,36 +217,38 @@ class ResearchJournalStore:
             if not result.scenarios or result.basis != draft.review_basis:
                 raise ValueError("valuation-draft-review-required")
             result.family_selection = draft.result.family_selection
-            with reviewed_publication(store, manifest.run_id):
-                saved = self.save_model(
-                    result,
-                    body.reason,
-                    DraftAudit(draft=draft, review=review, request_digest=digest),
-                )
+            audit = DraftAudit(draft=draft, review=review, request_digest=digest)
+            state.models.insert(0, self._model_version(result, body.reason, audit))
+            path = self._path(ticker)
+            with (
+                _prepared_write(path, state.model_dump(mode="json")) as temporary,
+                reviewed_publication(store, manifest.run_id),
+            ):
+                temporary.replace(path)
             drafts.discard(review.id)
-            return saved
+            return state
+
+    @staticmethod
+    def _model_version(
+        model: ValuationPreview, reason: str, audit: DraftAudit | None
+    ) -> SavedResearchModel:
+        reason = reason.strip()
+        model_id = fingerprint([model.id, reason]) if reason else model.id
+        if model.family_selection == "override":
+            model_id = fingerprint([model_id, "family-override"])
+        if audit:
+            model_id = fingerprint([model_id, str(audit.review.id)])
+        return SavedResearchModel(
+            id=model_id, saved_at=datetime.now(UTC), preview=model, reason=reason, draft_audit=audit
+        )
 
     def save_model(
         self, model: ValuationPreview, reason: str = "", audit: DraftAudit | None = None
     ) -> ResearchJournal:
         with self.lock:
             state = self.load(model.basis.ticker)
-            reason = reason.strip()
-            model_id = fingerprint([model.id, reason]) if reason else model.id
-            if model.family_selection == "override":
-                model_id = fingerprint([model_id, "family-override"])
-            if audit:
-                model_id = fingerprint([model_id, str(audit.review.id)])
-            if not any(m.id == model_id for m in state.models):
-                state.models.insert(
-                    0,
-                    SavedResearchModel(
-                        id=model_id,
-                        saved_at=datetime.now(UTC),
-                        preview=model,
-                        reason=reason,
-                        draft_audit=audit,
-                    ),
-                )
+            version = self._model_version(model, reason, audit)
+            if not any(m.id == version.id for m in state.models):
+                state.models.insert(0, version)
                 self._save(state)
             return state
