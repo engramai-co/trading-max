@@ -120,6 +120,7 @@ class DraftAgent:
         if saved:
             origins.append(SavedOrigin(model_id=saved_model_id, scenarios=saved))
         self.origins = {fingerprint(origin.model_dump(mode="json")): origin for origin in origins}
+        self.provider_origins = {key: uuid4().hex for key in self.origins}
         origin_ids = {origin.source: key for key, origin in self.origins.items()}
 
         def add(scenario, field, value, category, source, group, evidence=()):
@@ -226,14 +227,22 @@ class DraftAgent:
                 **(
                     {
                         "origins": {
-                            key: origin.model_dump(mode="json", exclude_none=True)
+                            self.provider_origins[key]: origin.model_dump(
+                                mode="json", exclude={"model_id"}, exclude_none=True
+                            )
                             for key, origin in self.origins.items()
                         }
                     }
                     if group == EvidenceGroup.BASIS
                     else {}
                 ),
-                "candidates": {k: p.model_dump(mode="json") for k, p in candidates.items()},
+                "candidates": {
+                    key: {
+                        **p.model_dump(mode="json"),
+                        "originId": self.provider_origins.get(p.origin_id),
+                    }
+                    for key, p in candidates.items()
+                },
             }
         )
 

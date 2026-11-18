@@ -495,7 +495,25 @@ def test_saved_source_records_respect_the_privacy_switch(desk):
         result = post(client, body)[-1]["result"]
         origins = [r for r in result["origins"].values() if r["source"] == "saved-assumption"]
         assert bool(origins) is shared
+        assert journal["models"][0]["id"] not in json.dumps(transcript)
         if shared:
+            basis = transcript[0]
+            assert set(basis) == {
+                "family",
+                "listing",
+                "horizon",
+                "asOf",
+                "items",
+                "origins",
+                "candidates",
+            }
+            key, shared_origin = next(
+                (k, v) for k, v in basis["origins"].items() if v["source"] == "saved-assumption"
+            )
+            assert set(shared_origin) == {"source", "scenarios"}
+            assert key not in result["origins"] and key in {
+                p["originId"] for p in basis["candidates"].values()
+            }
             assert origins[0]["modelId"] == journal["models"][0]["id"]
             assert origins[0]["scenarios"]["base"]["discountRate"] == 0.345678
         assert ("0.345678" in json.dumps(transcript)) == shared
