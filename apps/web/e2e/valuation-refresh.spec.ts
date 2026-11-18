@@ -1158,6 +1158,55 @@ test.describe("frozen draft review", () => {
     await expect.poll(async () => (await settledStroke(plot, "bull")).end).toBeGreaterThan(offered[1].end);
   });
 
+  test("a newly settled Bear endpoint fits while Base is still pending", async ({page}, info) => {
+    await page.clock.install();
+    const {editor, entry} = await reviewDraft(page);
+    const {result} = draftResponse;
+    await page.route("**/SYNT/valuation-draft", route => route.fulfill({contentType:"application/x-ndjson",
+      body:JSON.stringify({...draftResponse, result:{...result,
+        proposals:[...result.proposals, {...draftProposals[0], scenario:"bear", value:.82, evidenceIds:["bear-growth"]}],
+        evidence:{...result.evidence, "bear-growth":{...result.evidence.estimate, value:.82}},
+        deskReadings:{...result.deskReadings, bear:{value:210, upside:1.1}},
+      }})+"\n"}));
+    await entry.click();
+    const comparison = page.locator(".mx-scenario-comparison");
+    const plot = comparison.getByRole("group", {name:/Scenario valuations relative to current price/});
+    await comparison.scrollIntoViewIfNeeded();
+    await expect(plot).toHaveAttribute("data-tm-chart-ready","true");
+    const originalBull = await settledStroke(plot, "bull");
+    const bear = Promise.withResolvers<Route>();
+    const base = Promise.withResolvers<Route>();
+    await page.route("**/SYNT/valuation-preview*", route => {
+      if (route.request().method() !== "POST") return route.fallback();
+      const request = route.request().postDataJSON();
+      (request.scenarios.base.revenueCagr === defaults.revenueCagr ? bear : base).resolve(route);
+    });
+    const accept = editor.getByRole("button", {name:"Accept Revenue growth · years 1–5"});
+    await editor.getByRole("button", {name:"Bear", exact:true}).click();
+    await accept.click();
+    const first = await bear.promise;
+    await editor.getByRole("button", {name:"Base", exact:true}).click();
+    // Deliver Bear after the Base edit but before its debounce switches requests.
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));
+    await accept.press("Enter");
+    const delivered = page.waitForResponse(response => response.request() === first.request());
+    await first.fallback();
+    await (await delivered).finished();
+    await page.clock.runFor(64);
+    await page.clock.resume();
+    const second = await base.promise;
+    await expect(plot).toHaveAccessibleName(/Bear · Draft.*Base · Pending/);
+    await plot.press("End");
+    await expect(comparison.getByRole("status")).toContainText("Bear · Draft: +410%");
+    await expect(comparison.locator(".mx-draft-reading").first()).toContainText("+410.00%");
+    await expect.poll(async () => (await settledStroke(plot, "bull")).end).toBeLessThan(originalBull.end);
+    const overlap = await settledStroke(plot, "bear");
+    await captureDraft(page, info.project.name, "en", "light", "overlap", ".mx-scenario-comparison");
+    await second.fallback();
+    await expect(plot).toHaveAccessibleName(/Base · Draft/);
+    await expect.poll(async () => Math.abs((await settledStroke(plot, "bear")).end - overlap.end)).toBeLessThanOrEqual(1);
+  });
+
   test("hovering settled line bodies and endpoints highlights their own cards", async ({page, isMobile}, info) => {
     test.skip(isMobile, "Continuous mouse hover is verified on desktop.");
     const {comparison, plot, accept, release} = await pendingBaseReview(page);

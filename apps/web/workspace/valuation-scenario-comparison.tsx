@@ -59,8 +59,9 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
     if (key) chart.current?.dispatchAction({ type: "highlight", seriesId: key });
   };
   const visibleExtent = Math.max(0.25, Math.ceil(Math.max(0, ...plotted.map((key) => Math.abs(preview.scenarios[key].upside))) / 0.25) * 0.25);
-  // Removing a pending line must leave spot and the settled endpoints in place.
-  const extent = useRetainedResult(pendingScenarios.length ? undefined : visibleExtent) ?? visibleExtent;
+  // Keep the scale during recalculation unless a newly settled line needs more room.
+  const extent = useRetainedResult(visibleExtent, Object.is,
+    (next, previous) => pendingScenarios.length === 0 || next >= previous) ?? visibleExtent;
   // Unlevered equity cannot lose more than 100%, so the downside scale never extends below -100%.
   const minBound = -Math.min(1, extent);
   const maxBound = extent;
