@@ -152,7 +152,55 @@ _FIGI = _codes(
 _NASDAQ = frozenset({"XNMS", "XNGS", "XNCM"})
 _MICS = {
     mic: frozenset({mic})
-    for mic in set(YAHOO_SUFFIX_BY_MIC) | set(_FIGI.values()) | {"BATY", "XOSE"}
+    for mic in [
+        "ARCX",
+        "BATS",
+        "BATY",
+        "BVMF",
+        "NEOE",
+        "OTCM",
+        "ROCO",
+        "XAMS",
+        "XASE",
+        "XASX",
+        "XBOM",
+        "XBRU",
+        "XCNQ",
+        "XCSE",
+        "XDUB",
+        "XETR",
+        "XFRA",
+        "XHEL",
+        "XHKG",
+        "XJSE",
+        "XKOS",
+        "XKRX",
+        "XLIS",
+        "XLON",
+        "XMAD",
+        "XMCE",
+        "XMEX",
+        "XMIL",
+        "XNCM",
+        "XNGS",
+        "XNMS",
+        "XNSE",
+        "XNYS",
+        "XOSE",
+        "XOSL",
+        "XPAR",
+        "XSES",
+        "XSHG",
+        "XSHE",
+        "XSOM",
+        "XSTO",
+        "XSWX",
+        "XTAI",
+        "XTKS",
+        "XTSE",
+        "XTSX",
+        "XWBO",
+    ]
 }
 _MICS["XNAS"] = _NASDAQ
 
@@ -334,20 +382,45 @@ def provider_claim(value, listing=None):
     return VenueClaim(source, value, listing)
 
 
+def yahoo_venue_metadata(metadata):
+    """Persist the Yahoo chart identity separately from the historical display column."""
+    return {
+        key: metadata[key]
+        for key in ("symbol", "mic", "exchangeName", "fullExchangeName")
+        if metadata.get(key)
+    }
+
+
 def row_claims(listing, row, metrics=None):
-    metrics = metrics or {}
-    return (
+    metrics = metrics or row.get("metrics") or row.get("info") or {}
+    provider = row.get("provider_venue") or row.get("providerVenue") or {}
+    claims = [
         VenueClaim("symbol", listing, listing),
-        VenueClaim("symbol", row.get("yf_ticker"), listing),
+        VenueClaim("symbol", row.get("ticker"), listing),
+        VenueClaim("symbol", row.get("yf_ticker") or row.get("yfTicker"), listing),
         VenueClaim("symbol", metrics.get("symbol"), listing),
         VenueClaim("mic", metrics.get("mic"), listing),
-        VenueClaim("yahoo", row.get("exchangeName"), listing),
-        VenueClaim("mic", row.get("mic"), listing),
-        provider_claim(row.get("exchange"), listing),
-        VenueClaim("yahoo", row.get("fullExchangeName"), listing),
         VenueClaim("fundamentals", metrics.get("exchange"), listing),
+        VenueClaim("fundamentals", metrics.get("exchangeName"), listing),
         VenueClaim("fundamentals", metrics.get("fullExchangeName"), listing),
-    )
+    ]
+    # New price rows keep both raw provider values. The display exchange on
+    # older publications can be a MIC, a reference name or a provider code.
+    if row.get("exchange") and row["exchange"] not in (
+        provider.get("exchangeName"),
+        provider.get("fullExchangeName"),
+    ):
+        claims.append(provider_claim(row["exchange"], listing))
+    for observed in (row, provider):
+        claims.extend(
+            (
+                VenueClaim("symbol", observed.get("symbol"), listing),
+                VenueClaim("mic", observed.get("mic"), listing),
+                VenueClaim("yahoo", observed.get("exchangeName"), listing),
+                VenueClaim("yahoo", observed.get("fullExchangeName"), listing),
+            )
+        )
+    return tuple(claim for claim in claims if claim.value)
 
 
 def resolve_venue(requested: str | None, *claims: VenueClaim) -> VenueResolution:

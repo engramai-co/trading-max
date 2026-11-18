@@ -233,7 +233,7 @@ class FundPriceStage:
     """Project listing prices from the same completed bars as technical research."""
 
     name = "research.fund_prices"
-    version = "fund-prices-v4"
+    version = "fund-prices-v5"
     required_for = frozenset({"all", "research"})
     dependencies = ("market.snapshot",)
 
@@ -259,6 +259,11 @@ class FundPriceStage:
                     "as_of": as_of,
                     "spot": row["price"],
                     "asset_type": row.get("asset_type") or None,
+                    **(
+                        {"provider_venue": row["provider_venue"]}
+                        if row.get("provider_venue")
+                        else {}
+                    ),
                     **(
                         {"market_segment": row["market_segment"]}
                         if row.get("market_segment")
@@ -311,7 +316,7 @@ class MarketSnapshotStage:
     """Fetch the watchlist once and publish a reusable market input artifact."""
 
     name = "market.snapshot"
-    version = "market-snapshot-v13"
+    version = "market-snapshot-v14"
     required_for = frozenset({"all", "research"})
     dependencies: tuple[str, ...] = ()
 

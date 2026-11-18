@@ -105,7 +105,7 @@ class SecurityPriceHistory:
             return 0 <= age < (300 if interval != "1wk" else 3600)
 
         def load() -> ResearchPriceSeries:
-            path = self.root / (fingerprint(["listing-venue-v1", ticker, cache_interval]) + ".json")
+            path = self.root / (fingerprint(["listing-venue-v2", ticker, cache_interval]) + ".json")
             with suppress(OSError, ValueError, KeyError):
                 saved = ResearchPriceSeries.model_validate_json(path.read_text())
                 if fresh(saved):
@@ -142,9 +142,7 @@ class SecurityPriceHistory:
         metadata = proxy.get_history_metadata() or {}
         published = str(metadata.get("symbol") or ticker).upper()
         exchange = metadata.get("exchangeName")
-        claims = row_claims(
-            published, {"exchange": exchange, "fullExchangeName": metadata.get("fullExchangeName")}
-        )
+        claims = row_claims(published, metadata)
         venue = resolve_venue(ticker, *claims)
         if venue.conflict or published != ticker:
             raise VenueConflict("public history belongs to a different listing")

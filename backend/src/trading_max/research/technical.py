@@ -22,7 +22,7 @@ from trading_max.reference.quote_units import major_quote_unit
 from trading_max.research.calendar import completed_daily_bars, completed_months
 from trading_max.research.option_terms import contract_terms, treasury_rate
 from trading_max.research.technical_scoring import technical_score
-from trading_max.research.venues import resolve_venue, row_claims
+from trading_max.research.venues import resolve_venue, row_claims, yahoo_venue_metadata
 
 
 class MarketDataError(RuntimeError):
@@ -54,6 +54,7 @@ class TechnicalResearchArtifact(DomainModel):
     price_series: list[dict[str, Any]] = Field(default_factory=list)
     asset_type: str = ""
     market_segment: str | None = None
+    provider_venue: dict[str, str] = Field(default_factory=dict)
     exchange: str = ""
     timezone: str = ""
     technical_score: int | None = Field(default=None, ge=0, le=100)
@@ -284,6 +285,7 @@ def history(ticker: str, period: str = "3y", *, minimum_rows: int = 65) -> pd.Da
     quote_currency = str(metadata.get("currency") or "")
     # Provider GBp/GBX prices are pence. Normalize every OHLC column together.
     currency, divisor = major_quote_unit(quote_currency)
+    frame.attrs["provider_venue"] = yahoo_venue_metadata(metadata)
     frame.attrs["market_segment"] = metadata.get("marketSegment")
     frame.attrs["exchange"] = str(
         metadata.get("exchangeName") or metadata.get("fullExchangeName") or ""
@@ -649,6 +651,7 @@ def analyze_ticker(
     score, state = technical_score(metrics)
     metrics["technical_score"] = score
     metrics["technical_state"] = state
+    metrics["provider_venue"] = frame.attrs.get("provider_venue") or {}
     metrics["market_segment"] = frame.attrs.get("market_segment")
     metrics["asset_type"] = asset_type
     metrics["exchange"] = str(frame.attrs.get("exchange") or "")
