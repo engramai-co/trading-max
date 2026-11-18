@@ -95,8 +95,10 @@ FX is checked separately against the reporting currency, quote currency and
 financial facts. A new batch records the venue used for the share-unit decision.
 When a retained row lacks that venue or quotes a different venue, the readers
 verify the unit again against the pinned sources and the reviewed listing terms.
-A row that recorded only Nasdaq's operating MIC is verified again when the
-quote names a tier, because earlier batches recorded every tier as XNAS.
+A row that recorded only Nasdaq's operating MIC is always verified again, even
+when the quote names only Nasdaq, because earlier batches recorded every tier
+as XNAS. Two tiers or two catalog records for the quoted symbol leave the unit
+unidentified, as does a snapshot without a catalog listing or filed designation.
 A completed old worksheet and a matching currency provide
 no share-class evidence. An unidentified unit withholds the per-share result.
 

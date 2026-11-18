@@ -9,7 +9,7 @@ All notable public Trading Max releases are recorded here.
 - Financials & business and Estimates & events open with a dated earnings brief that names verified consensus changes. Consented workspaces write it in the background when a held or research-list company reports results or its estimates change.
 
 ### Changed
-- Per-share valuations tell Nasdaq's listing tiers apart. A catalogue entry under Nasdaq's general market code still applies to the quoted tier, and saved valuations that recorded only the general code are checked again against their own publication.
+- Per-share valuations tell Nasdaq's listing tiers apart. A catalogue entry under Nasdaq's general market code still applies to the quoted tier. Saved valuations that recorded only the general code are checked again against their own publication, even when the quote names only Nasdaq. They stay unavailable if that publication lists the security on two tiers or in two catalogue entries, or holds no share-class evidence.
 
 ### Fixed
 - Research keeps unverified listing prices off the chart and shows the reason in place. Keyboard follow-ups move focus to the composer.

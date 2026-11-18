@@ -151,14 +151,18 @@ def retained_share_unit(
         return None
     units = (financials.get("evidence") or {}).get("listedShareUnits") or {}
     mic = venue_mic(quote.exchange)
-    if mic and stored.get("shareUnitVenue") == mic and stored.get("listing") == listing:
+    # Nasdaq's operating MIC covers all of its listing tiers, and earlier batches
+    # recorded every tier under it. Only a single recorded venue can vouch for the unit.
+    single_venue = bool(mic) and resolve_venue(None, VenueClaim("mic", mic)).venues == {mic}
+    if single_venue and stored.get("shareUnitVenue") == mic and stored.get("listing") == listing:
         if stored.get("isAdr") or stored.get("shareUnit") == "receipt":
             return "receipt"
         if stored.get("shareUnit") == "ordinary":
             return share_unit(listing, units, "Ordinary Shares")
         return None
-    # Earlier rows did not record the venue used for the catalog decision.
-    # Re-establish the unit from the pinned sources before using their counts.
+    # Earlier rows did not record the venue used for the catalog decision, or
+    # recorded only Nasdaq's operating MIC. Re-establish the unit from the pinned
+    # catalog or filing before using their counts.
     if stored.get("isAdr"):
         return "receipt"
     security_type = ""
