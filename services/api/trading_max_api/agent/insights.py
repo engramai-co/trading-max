@@ -486,7 +486,7 @@ def dated_events(
             },
         ),
     )
-    pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker,))
+    pinned = PinnedListing(args.ticker, series.ticker, ticker, claims, (series.ticker, ticker))
     source_rows = {
         key: _ticker_row(read.read(key), ticker) or {}
         for key in (

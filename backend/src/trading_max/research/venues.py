@@ -445,6 +445,7 @@ def resolve_venue(
     """Intersect explicit claims. Use a market default only within its own unqualified listing."""
     explicit = defaultdict(list)
     defaults = defaultdict(list)
+    accepted = {_code(symbol) for symbol in (requested, *aliases) if symbol}
     unknown = False
     specific = False
     consolidated_us = False
@@ -456,7 +457,7 @@ def resolve_venue(
             continue
         owner = _code(listing or requested)
         if source == "identity":
-            if code != owner and not {code, owner} <= {_code(requested), *map(_code, aliases)}:
+            if requested and not {code, owner} <= accepted:
                 return VenueResolution(frozenset(), conflict=True)
             continue
         if (source == "symbol" and code.endswith(".IL")) or (

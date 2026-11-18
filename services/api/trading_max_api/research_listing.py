@@ -1,6 +1,7 @@
 """A listing and its evidence as selected from one immutable publication."""
 
 from dataclasses import dataclass, replace
+from functools import cached_property
 
 from trading_max.research.held_funds import FundListingIdentity
 from trading_max.research.venues import VenueClaim, resolve_venue, row_claims
@@ -17,7 +18,13 @@ class PinnedListing:
     price_row: dict | None = None
     fund_bars: bool = False
 
+    @cached_property
+    def base_venue(self):
+        return resolve_venue(self.requested, *self.claims, aliases=self.aliases)
+
     def venue(self, *additional: VenueClaim):
+        if not additional:
+            return self.base_venue
         return resolve_venue(self.requested, *self.claims, *additional, aliases=self.aliases)
 
     def with_event_claims(self, *rows):
@@ -42,7 +49,15 @@ class PinnedListing:
             return {}, False
 
         def checked(block, inherited):
-            claims = (*inherited, *row_claims(self.ticker, block))
+            observed = row_claims(self.ticker, block)
+            # Most dated items inherit their parent's listing without any claims of their own.
+            has_evidence = any(
+                claim.source not in {"identity", "symbol"}
+                or claim.value != self.ticker
+                or claim.listing != self.ticker
+                for claim in observed
+            )
+            claims = (*inherited, *observed) if has_evidence else inherited
             if self.venue(*claims).conflict:
                 return {}, True
             result = block

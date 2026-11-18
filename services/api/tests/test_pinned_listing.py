@@ -538,3 +538,75 @@ def test_nested_items_keep_only_the_pinned_listing(bound):
     )
     assert any(e["kind"] == "earnings" and e["date"] == MONDAY for e in history["data"]["items"])
     assert {e["reference"] for e in all_events(moments(app, manifest, ticker))} == {"right"}
+
+
+def test_raw_market_quote_and_assistant_lens_cannot_bypass_a_pinned_conflict(bound):
+    from services.api.tests.test_assistant_tools import _call
+
+    app, initial, _ = bound
+    ticker = "SYN.L"
+    publish(
+        app,
+        {
+            tools.TECHNICAL: {"rows": [base_row(app, initial, ticker, exchange="LSE")]},
+            tools.MARKET: {
+                "technical": {
+                    "rows": [
+                        {
+                            "ticker": ticker,
+                            "price": 123,
+                            "provider_venue": {"symbol": "OTHER.L", "exchangeName": "LSE"},
+                        }
+                    ]
+                }
+            },
+        },
+    )
+    client = TestClient(app)
+    assert client.get(f"/v1/research/{ticker}/prices").status_code == 404
+    lens = client.get(f"/v1/research/{ticker}/lens/technical").json()
+    assert lens["market"] is None and lens["context"]["quote"]["price"] is None
+    assert lens["technical"] is None and lens["nextEarningsDate"] is None
+    deps = app.state.assistant.deps_for_run(None, None)
+    result = _call(
+        deps, tools.read_research_lens, tools.ResearchArgs(ticker=ticker, lens="technical")
+    )
+    assert result["status"] == "unavailable"
+
+
+def test_qualified_lookup_requires_evidence_for_a_bare_price_row(bound, monkeypatch):
+    app, initial, _ = bound
+    block_live(app, monkeypatch)
+    row = base_row(app, initial, "SYN")
+    publish(app, {tools.TECHNICAL: {"rows": [row]}})
+    client = TestClient(app)
+    assert client.get("/v1/research/SYN.L/prices").status_code == 404
+    publish(app, {tools.TECHNICAL: {"rows": [{**row, "exchange": "LSE"}]}})
+    assert client.get("/v1/research/SYN.L/prices").status_code == 200
+
+
+def test_overview_and_historical_score_respect_the_observed_listing(bound):
+    app, initial, _ = bound
+    ticker = "SYN.L"
+    manifest = publish(
+        app,
+        {
+            tools.TECHNICAL: {"rows": [base_row(app, initial, ticker, exchange="LSE")]},
+            tools.FUNDAMENTALS: {
+                "rows": [{"ticker": ticker, "metrics": {"fullExchangeName": "LSE"}}]
+            },
+            tools.EARNINGS: {
+                "rows": [
+                    {"ticker": ticker, "mic": "XNYS", "calendar": {"Earnings Date": ["2027-02-01"]}}
+                ]
+            },
+        },
+    )
+    overview = app.state.research.overview(manifest)
+    assert all(
+        "earningsCalendar" not in row for row in overview.fundamentals if row["ticker"] == ticker
+    )
+    manifest = publish(
+        app, {tools.TECHNICAL: {"rows": [base_row(app, initial, ticker, exchange="NYQ")]}}
+    )
+    assert all(point.run_id != manifest.run_id for point in app.state.research.timeline(ticker))

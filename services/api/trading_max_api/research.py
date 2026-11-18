@@ -512,7 +512,8 @@ def _enrich_fundamentals(
     fundamentals: list[JsonObject],
     earnings_raw: JsonObject,
     technical_raw: JsonObject,
-    analyst_raw: JsonObject | None = None,
+    analyst_raw: JsonObject | None,
+    pin_listing: Callable[[str], PinnedListing],
 ) -> list[JsonObject]:
     earnings_rows = [dict(row) for row in earnings_raw.get("rows", []) if isinstance(row, dict)]
     technical_rows = project_technical_rows(technical_raw)
@@ -520,13 +521,17 @@ def _enrich_fundamentals(
     enriched: list[JsonObject] = []
     for row in fundamentals:
         ticker = str(row.get("ticker") or "")
+        pinned = pin_listing(ticker)
+        if pinned.ticker != ticker or pinned.venue().conflict:
+            continue
         item = dict(row)
         calendar = _normalized_earnings_calendar(
-            _find(earnings_rows, ticker), _exchange_today(row.get("metrics"))
+            pinned.event_row(exact_row(earnings_rows, ticker))[0],
+            _exchange_today(row.get("metrics")),
         )
         if calendar is not None:
             item["earningsCalendar"] = calendar
-        technical = _find(technical_rows, ticker)
+        technical = exact_row(technical_rows, ticker)
         if technical is not None:
             item["seasonality"] = list(technical.get("seasonality") or [])
             item["seasonalityCoverage"] = dict(technical.get("seasonalityCoverage") or {})
@@ -535,7 +540,7 @@ def _enrich_fundamentals(
             # Reported-versus-estimate history lives in the analyst artifact; the
             # earnings calendar only carries the upcoming event, which left the
             # fundamentals earnings card with a date and nothing else.
-        analyst_row = _find(analyst_rows, ticker)
+        analyst_row = pinned.event_row(exact_row(analyst_rows, ticker))[0]
         if analyst_row is not None:
             analyst = analyst_row.get("analyst")
             if isinstance(analyst, dict):
@@ -591,6 +596,10 @@ class ResearchLedger:
         if latest is None:
             return []
         keys = (
+            FUND_PRICE_DIRECTORY_KEY,
+            FUND_PRICES_KEY,
+            SECURITY_MASTER_KEY,
+            "research/fundamentals.json",
             "research/daily_market.json",
             "research/market_snapshot.json",
             "research/technical.json",
@@ -1234,6 +1243,7 @@ class ResearchLedger:
                 *row_claims(listing.ticker, {"mic": listing.mic}),
                 watchlist_claim(listing.ticker, listing.exchange),
                 *exchanges.get(listing.ticker, ()),
+                aliases=(listing.ticker,),
             ).conflict
         ]
         return matches[0] if len(matches) == 1 else None
@@ -2022,9 +2032,8 @@ class ResearchLedger:
         *,
         limit: int = 30,
     ) -> list[ResearchTimelinePoint]:
-        latest = self.store.latest_manifest()
-        listing = self.held_fund(ticker, latest) if latest else None
-        ticker = listing.ticker if listing else self._route_ticker(ticker)
+        exchanges = self.watchlist.listing_exchanges()
+        requested = ticker.upper()
         points: list[ResearchTimelinePoint] = []
         seen: set[tuple[str | None, ...]] = set()
         for manifest in self._history_manifests():
@@ -2037,16 +2046,20 @@ class ResearchLedger:
                     "research/options.json",
                     "research/valuation.json",
                     "research/earnings.json",
-                    *((FUND_PRICE_DIRECTORY_KEY,) if listing else ()),
+                    FUND_PRICE_DIRECTORY_KEY,
+                    FUND_PRICES_KEY,
+                    SECURITY_MASTER_KEY,
+                    "research/fundamentals.json",
                 )
             )
-            if artifact_hashes in seen:
+            pinned = self.pin_listing(requested, manifest, exchanges=exchanges)
+            ticker, listing = pinned.ticker, pinned.held
+            if pinned.venue().conflict:
                 continue
-            seen.add(artifact_hashes)
-            # The timeline only renders technical, valuation and options
-            # points. Building a full ticker snapshot here would also read
-            # fundamentals, earnings, broker and look-through artifacts for
-            # every historical run, which dominated the research page latency.
+            signature = (*artifact_hashes, ticker, listing.key if listing else None)
+            if signature in seen:
+                continue
+            seen.add(signature)
             if listing:
                 market = None
                 technical = (
@@ -2055,15 +2068,15 @@ class ResearchLedger:
                     else None
                 )
             else:
-                market = _find(self._market_rows(manifest), ticker)
-                technical = _find(
+                market = exact_row(self._market_rows(manifest), ticker)
+                technical = exact_row(
                     self._cached_rows(manifest, "research/technical.json", project_technical_rows),
                     ticker,
                 )
             valuation = (
                 None
                 if listing
-                else _find(
+                else exact_row(
                     self._cached_rows(manifest, "research/valuation.json", valuation_rows),
                     ticker,
                 )
@@ -2071,7 +2084,7 @@ class ResearchLedger:
             options = (
                 None
                 if listing
-                else _find(
+                else exact_row(
                     self._cached_rows(
                         manifest,
                         "research/options.json",
@@ -2413,6 +2426,9 @@ class ResearchLedger:
             self._read_optional(manifest, "research/earnings.json"),
             self._read_optional(manifest, "research/technical.json"),
             self._read_optional(manifest, "research/analyst.json"),
+            partial(
+                self.pin_listing, manifest=manifest, exchanges=self.watchlist.listing_exchanges()
+            ),
         )
         requested_ticker = self._route_ticker(ticker) if ticker else None
         selected_ticker = (
@@ -2455,6 +2471,15 @@ class ResearchLedger:
         fund_price = self._fund_price(manifest, route, listing, with_points=True)
         source = fund_price or (None if listing or reference else technical)
         published = str((source or {}).get("ticker") or route).upper()
+        aliases = {route} if route != requested else set()
+        if published != route and _canonical_ticker(published) == _canonical_ticker(route):
+            # The historic BASE / BASE.L spelling is safe only with independent
+            # London evidence on the observed row or its own watchlist entry.
+            evidence = resolve_venue(
+                published, *exchanges.get(published, ()), *row_claims(published, source)
+            )
+            if evidence.venues == {"XLON"}:
+                aliases.add(published)
         claims = []
         for symbol in dict.fromkeys((requested, route, published)):
             claims.extend(exchanges.get(symbol, ()))
@@ -2491,7 +2516,7 @@ class ResearchLedger:
             route,
             published,
             tuple(claims),
-            (route,) if route != requested else (),
+            tuple(sorted(aliases)),
             listing,
             source,
             bool(fund_price),

@@ -140,3 +140,15 @@ def test_provider_symbol_owns_its_exchange_claims(label, observed):
         claims = row_claims(label, row)
         assert any(c.value == "LSE" and c.listing == observed for c in claims)
         assert resolve_venue(label, *claims).conflict
+
+
+def test_joining_two_complete_observations_requires_an_authorised_symbol():
+    from trading_max.research.venues import row_claims
+
+    own = row_claims("SYN.L", {"exchange": "LSE"})
+    other = row_claims("OTHER.L", {"provider_venue": {"symbol": "OTHER.L", "exchangeName": "LSE"}})
+    legacy = row_claims("SYN", {"symbol": "SYN", "exchange": "LSE"})
+    for claims in (own + other, other + own):
+        assert resolve_venue("SYN.L", *claims).conflict
+    assert resolve_venue("SYN.L", *legacy).conflict
+    assert resolve_venue("SYN.L", *legacy, aliases=("SYN",)).venues == {"XLON"}
