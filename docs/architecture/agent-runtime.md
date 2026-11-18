@@ -96,7 +96,7 @@ return up to 20 rows per call.
 | `holding-fx` | `holding_fx_split` | Invest and Stocks ISA position and account amounts in GBP. The 1D and 5D readings use the Holdings contribution windows. Open-position FX matches the holdings table and drawer. |
 | `dated-exposure` | `dated_exposure` | Combined broker country, sector, GICS sub-industry or top-40 company exposure on or before the requested date. The response gives the actual observation date and earliest retained date. |
 | `decision-timing` | `decision_timing_and_habits` | Rule-based buy and sell counts, scored effects, and hindsight timing for each published decision. Habits use the selected horizon for the whole group and open at 20 sessions. A focused account, ticker, decision date and side opens to date if its 20-session window is incomplete. |
-| `key-moments` | `price_key_moments` | At most three unusual days with reported earnings, a rating action, a filing or an in-scope trade in the visible range. Events identify records for inspection. They do not establish causation. |
+| `key-moments` | `price_key_moments` | At most three unusual days with reported earnings, a rating action, a filing, a dividend, a dated headline or an in-scope trade in the visible range. Headlines are leads with a checkable article reference. |
 
 The FX split uses the shares held at both ends of each measured segment. The
 local price effect converts the change in the native quote at the closing GBP
@@ -134,7 +134,8 @@ account through the decision date. A missing purchase basis withholds the sizing
 the timing comparison. Unobserved decisions contribute to the count of
 decisions and stay outside the scored denominator.
 
-Key moments use daily bars and the previous visible close. Volume z-scores
+Key moments measure each visible day from the previous observed daily close,
+including a close before the selected range. Volume z-scores
 compare with the preceding 20 published sessions using population standard
 deviation. A missing or constant reference window has no volume score.
 Absolute moves and absolute volume z-scores rank separately across all
@@ -142,7 +143,12 @@ visible days. Among dates with evidence, the better rank wins, with the
 earlier date breaking a tie. The chart and reading resolve the same requested
 listing, including exchange-qualified watchlist aliases. A run captures its
 aliases at the start and reads prices and events from its pinned snapshot.
-Events must match the listing on the published bar row. The chart resolves each
+Events must match the listing on the published bar row. Timed headlines use the
+first session whose regular close is at or after publication, including early
+closes and holidays. A missing exchange calendar withholds the timed headline.
+Date-only headlines and dividend dates keep the date supplied by their source.
+News carries the role `lead` and retains `publication_date` when the session
+date differs from the publisher's date. The chart resolves each
 broker fill by its recorded instrument code. A bare CSV ticker or an older
 marker requires one matching listing across the pinned research, broker
 positions and venue-qualified fills. Trades resolved to the same listing and

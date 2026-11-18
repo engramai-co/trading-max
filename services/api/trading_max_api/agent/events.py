@@ -102,11 +102,54 @@ def _indexed(payload):
     return {str(r.get("ticker", "")).upper(): r for r in _rows((payload or {}).get("rows"))}
 
 
-def _public(ticker, data, upcoming):
+def _security_entry(ticker, kind, title, zh, raw, **kw):
     url = "https://finance.yahoo.com/quote/" + quote(ticker, safe="") + "/"
+    return _entry(kind, title, zh, raw, ticker=ticker, url=kw.pop("url", url), **kw)
 
+
+def listed_dividends(ticker, cal, metrics, evidence):
+    for key, metric, kind, en, zh in [
+        ("Ex-Dividend Date", "exDividendDate", "ex_dividend", "Ex-dividend date", "除息日"),
+        ("Dividend Date", "dividendDate", "dividend_pay", "Dividend payment date", "派息日"),
+    ]:
+        stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
+        if stamp:
+            yield _security_entry(ticker, kind, en, zh, stamp[:10])
+    for r in _rows(evidence.get("dividends")):
+        yield _security_entry(
+            ticker,
+            "dividend",
+            "Dividend",
+            "股息",
+            r.get("date"),
+            amount=_number(r.get("amount")),
+            currency=r.get("currency"),
+            unit="per_share",
+            basis=r.get("basis"),
+        )
+
+
+def listed_headlines(ticker, rows):
+    for row in rows:
+        url_value = web_url(row.get("url"))
+        if not url_value or not (row.get("publisher") or row.get("source")):
+            continue
+        yield _security_entry(
+            ticker,
+            "news",
+            row.get("title"),
+            row.get("title") or "",
+            row.get("instant") or row.get("publishedAt") or row.get("date"),
+            url=url_value,
+            publisher=row.get("publisher") or row.get("source"),
+            provider_id=row.get("id") if row.get("id") != url_value else None,
+            role="lead",
+        )
+
+
+def _public(ticker, data, upcoming):
     def add(kind, title, zh, raw, **kw):
-        return _entry(kind, title, zh, raw, ticker=ticker, url=kw.pop("url", url), **kw)
+        return _security_entry(ticker, kind, title, zh, raw, **kw)
 
     analyst = data[ANALYST].get(ticker, {}).get("analyst", {})
     recorded = set()
@@ -149,13 +192,8 @@ def _public(ticker, data, upcoming):
             status="provider-estimate",
         )
     metrics = data[FUNDAMENTALS].get(ticker, {}).get("metrics", {})
-    for key, metric, kind, en, zh in [
-        ("Ex-Dividend Date", "exDividendDate", "ex_dividend", "Ex-dividend date", "除息日"),
-        ("Dividend Date", "dividendDate", "dividend_pay", "Dividend payment date", "派息日"),
-    ]:
-        stamp = _stamp(cal.get(key)) or _stamp(metrics.get(metric))
-        if stamp:
-            yield add(kind, en, zh, stamp[:10])
+    evidence = data.get(FINANCIALS, {}).get(ticker, {}).get("financials", {}).get("evidence", {})
+    yield from listed_dividends(ticker, cal, metrics, {} if upcoming else evidence)
     if upcoming:
         return
     for r in _rows(analyst.get("upgradesDowngrades")):
@@ -178,7 +216,6 @@ def _public(ticker, data, upcoming):
             from_grade=r.get("FromGrade") or r.get("fromGrade"),
             to_grade=r.get("ToGrade") or r.get("toGrade"),
         )
-    evidence = data[FINANCIALS].get(ticker, {}).get("financials", {}).get("evidence", {})
     for r in _rows(evidence.get("filings")):
         yield add(
             "filing",
@@ -190,31 +227,7 @@ def _public(ticker, data, upcoming):
             form=r.get("form"),
             reference=r.get("accession") or r.get("id"),
         )
-    for r in _rows(evidence.get("dividends")):
-        yield add(
-            "dividend",
-            "Dividend",
-            "股息",
-            r.get("date"),
-            amount=_number(r.get("amount")),
-            currency=r.get("currency"),
-            unit="per_share",
-            basis=r.get("basis"),
-        )
-    for row in _headline_rows(data, ticker):
-        url_value = web_url(row.get("url"))
-        if not url_value or not (row.get("publisher") or row.get("source")):
-            continue
-        yield add(
-            "news",
-            row.get("title"),
-            row.get("title") or "",
-            row.get("instant") or row.get("publishedAt") or row.get("date"),
-            url=url_value,
-            publisher=row.get("publisher") or row.get("source"),
-            provider_id=row.get("id") if row.get("id") != url_value else None,
-            role="lead",
-        )
+    yield from listed_headlines(ticker, _headline_rows(data, ticker))
 
 
 def _headline_rows(data, ticker):
@@ -223,19 +236,18 @@ def _headline_rows(data, ticker):
     return chain(headlines, _rows(evidence.get("news")))
 
 
-def _article_references(data):
+def _article_references(raw_rows):
     """Give each article one reference across all scopes in this publication."""
     by_url = {}
     aliases = defaultdict(set)
-    for ticker in data[NEWS_KEY].keys() | data[FINANCIALS].keys():
-        for row in _headline_rows(data, ticker):
-            url, article_id = row.get("url"), row.get("id")
-            if not url or not article_id or article_id == url:
-                continue
-            other = by_url.setdefault(url, article_id)
-            if article_id != other:
-                aliases[article_id].add(other)
-                aliases[other].add(article_id)
+    for row in raw_rows:
+        url, article_id = row.get("url"), row.get("id")
+        if not url or not article_id or article_id == url:
+            continue
+        other = by_url.setdefault(url, article_id)
+        if article_id != other:
+            aliases[article_id].add(other)
+            aliases[other].add(article_id)
 
     # One canonical URL may appear under several IDs, each with its own syndicated links.
     canonical = {}
@@ -251,6 +263,22 @@ def _article_references(data):
                 pending.extend(aliases[item] - group)
         canonical.update(dict.fromkeys(group, min(group)))
     return {url: canonical.get(article_id, article_id) for url, article_id in by_url.items()}
+
+
+def headline_stories(articles, raw_rows):
+    references = _article_references(raw_rows) if articles else {}
+    headlines = {}
+    for row in articles:
+        identity = references.get(row["source_url"], row["source_url"])
+        story = headlines.get(identity)
+        if story is None:
+            story = headlines[identity] = {**row, "reference": identity, "tickers": []}
+        elif row["instant"] and not story["instant"]:
+            # The published instant determines which local day contains this article.
+            story.update(row)
+        if row["ticker"] not in story["tickers"]:
+            story["tickers"].append(row["ticker"])
+    return list(headlines.values())
 
 
 def _market_days(names, start, end, issues):
@@ -546,19 +574,12 @@ def event_data(deps, args, *, upcoming):
     # A single syndicated article can appear in several held security feeds.
     # Retain those associations while citing the article once.
     articles = [row for row in entries if row and row["kind"] == "news"]
-    references = _article_references(data) if articles else {}
-    headlines = {}
-    for row in articles:
-        identity = references.get(row["source_url"], row["source_url"])
-        story = headlines.get(identity)
-        if story is None:
-            story = headlines[identity] = {**row, "reference": identity, "tickers": []}
-        elif row["instant"] and not story["instant"]:
-            # The published instant determines which local day contains this article.
-            story.update(row)
-        if row["ticker"] not in story["tickers"]:
-            story["tickers"].append(row["ticker"])
-    entries = [r for r in entries if r and r["kind"] != "news"] + list(headlines.values())
+    raw_headlines = chain.from_iterable(
+        _headline_rows(data, ticker)
+        for ticker in sorted(data[NEWS_KEY].keys() | data.get(FINANCIALS, {}).keys())
+    )
+    headlines = headline_stories(articles, raw_headlines)
+    entries = [r for r in entries if r and r["kind"] != "news"] + headlines
     rows = {}
     for row in entries:
         local = (

@@ -519,21 +519,20 @@ def research_prices(
         or (listing is not None and listing.mic in {"ARCX", "XNAS", "XNYS", "US"})
     )
     security_prices = app_service(request, "security_prices")
+
+    def live_window(series: ResearchPriceSeries) -> ResearchPriceSeries:
+        series.points = series.points[-limit:]
+        series.coverage_start = series.points[0].date if series.points else None
+        series.coverage_end = series.points[-1].date if series.points else None
+        markers, _ = research.trade_markers(manifest, series.ticker, series.currency)
+        visible_dates = {point.date[:10] for point in series.points}
+        series.trade_markers = [marker for marker in markers if marker.date in visible_dates]
+        return price_window(series, window)
+
     if market_etf:
         result = security_prices.alpaca_etf(symbol, interval)
         if result is not None:
-            result.points = result.points[-limit:]
-            result.coverage_start = result.points[0].date if result.points else None
-            result.coverage_end = result.points[-1].date if result.points else None
-            try:
-                daily = research.price_series(ticker, manifest, limit=2_000)
-                visible_dates = {point.date[:10] for point in result.points}
-                result.trade_markers = [
-                    marker for marker in daily.trade_markers if marker.date[:10] in visible_dates
-                ]
-            except FileNotFoundError:
-                pass
-            return price_window(result, window)
+            return live_window(result)
     if reference is not None:
         # Prefer the listing's published technical history when it was researched
         # directly. Otherwise use the shared close-only chart and budget.
@@ -559,10 +558,7 @@ def research_prices(
                 if interval != "1d"
                 else None
             )
-            public.points = public.points[-limit:]
-            public.coverage_start = public.points[0].date if public.points else None
-            public.coverage_end = public.points[-1].date if public.points else None
-            return price_window(public, window)
+            return live_window(public)
         except Exception:
             LOGGER.debug("Public OHLC history unavailable; trying daily closes")
         try:
@@ -588,42 +584,28 @@ def research_prices(
         ]
         if not points:
             raise HTTPException(status_code=404, detail="security-price-history-unavailable")
-        return price_window(
+        return live_window(
             ResearchPriceSeries(
                 ticker=reference.ticker,
                 currency="USD",
                 as_of=points[-1].date,
                 requested_interval=interval,
                 available_sessions=len(points),
-                points=points[-limit:],
+                points=points,
                 timezone=series.timezone,
                 exchange_calendar=calendar_name(reference.exchange),
                 adjustment="provider-close",
-                coverage_start=points[-limit].date if len(points) >= limit else points[0].date,
-                coverage_end=points[-1].date,
                 fetched_at=series.fetched_at.isoformat() if series.fetched_at else None,
                 coverage_reason="requested-interval-unavailable-daily-history-retained"
                 if interval != "1d"
                 else None,
             ),
-            window,
         )
     fallback_reason = None
     if interval != "1d":
         try:
             result = security_prices.get(ticker, interval, market_etf=market_etf)
-            result.points = result.points[-limit:]
-            result.coverage_start = result.points[0].date if result.points else None
-            result.coverage_end = result.points[-1].date if result.points else None
-            try:
-                daily = research.price_series(ticker, manifest, limit=2_000)
-                visible_dates = {p.date[:10] for p in result.points}
-                result.trade_markers = [
-                    m for m in daily.trade_markers if m.date[:10] in visible_dates
-                ]
-            except FileNotFoundError:
-                pass
-            return price_window(result, window)
+            return live_window(result)
         except Exception:
             fallback_reason = "requested-interval-unavailable-daily-history-retained"
     try:
@@ -640,10 +622,7 @@ def research_prices(
             )
             result.requested_interval = interval
             result.coverage_reason = fallback_reason
-            result.points = result.points[-limit:]
-            result.coverage_start = result.points[0].date if result.points else None
-            result.coverage_end = result.points[-1].date if result.points else None
-            return price_window(result, window)
+            return live_window(result)
         except Exception:
             raise HTTPException(
                 status_code=404, detail="security-price-history-unavailable"
