@@ -44,3 +44,15 @@ describe("research follow-up citations", () => {
     for (const term of ["2026-02-03","2026-03-31","每股收益","$1.25/股"]) expect(estimate.text).toContain(term);
   });
 });
+
+it("labels the sector index and uses only the matched window in both comparison fields", () => {
+  const reply = message("research_position","/data/benchmarks/0/benchmark");
+  const part = reply.parts[0];
+  if (part.type !== "dynamic-tool" || part.state !== "output-available") throw new Error("missing fixture");
+  const comparison = {symbol:"^106802-USD-STRD",name:"MSCI World Financials",benchmark_basis:"price-index",
+    start:"2025-11-01",end:"2026-01-30",sessions:63,asset:.12,benchmark:.04};
+  part.output = {...results.research_position,data:{...results.research_position.data,benchmarks:[comparison]}};
+  const [line] = verifiedLines(reply);
+  for (const term of ["MSCI World Financials","Index level change","2025-11-01 – 2026-01-30","+4.00%"]) expect(line.text).toContain(term);
+  expect(line.text).not.toContain("2026-02-03");
+});

@@ -695,3 +695,37 @@ def test_reopened_research_citation_rechecks_retention_and_event_identity(tmp_pa
     root = factory.store.immutable_snapshots.snapshots_root
     Path(root / deps.snapshot_id).rename(tmp_path / "expired")
     assert client.get(path, params=params).status_code == 404
+
+
+def test_generic_event_citation_reopens_the_same_page_and_time_zone(tmp_path):
+    from fastapi import FastAPI
+
+    from services.api.trading_max_api.agent.events import EventArgs, event_data
+    from services.api.trading_max_api.routes.research import router
+
+    publish, _, factory, _, _ = setup(tmp_path)
+    deps = factory.for_run("research", "America/New_York")
+    args = EventArgs(ticker="TEST", scope="isa", start=DATES[0], end=DATES[-1], limit=20)
+    result = event_data(deps, args, upcoming=False)
+    event = next(row for row in result["data"]["items"] if row["kind"] == "earnings")
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = factory.store
+    app.state.assistant = SimpleNamespace(deps_for_run=factory.for_run)
+    client = TestClient(app)
+    params = {
+        **args.model_dump(exclude={"ticker"}),
+        "tool": "news_and_events",
+        "timezone": "America/New_York",
+        "snapshotId": deps.snapshot_id,
+        "evidenceId": result["evidence_id"],
+        "eventId": event["evidence_id"],
+        "eventTicker": "TEST",
+    }
+    publish(eps=9)
+    path = "/v1/research/TEST/citation"
+    reopened = client.get(path, params=params)
+    assert reopened.status_code == 200
+    assert event in reopened.json()["output"]["data"]["items"]
+    assert client.get(path, params={**params, "timezone": "Europe/London"}).status_code == 404
+    assert client.get(path, params={**params, "eventId": "ev_unknown"}).status_code == 404

@@ -114,7 +114,7 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     if (!match) return null;
     const row = objects(data.benchmarks)[Number(match[1])], value = row?.[match[2]];
     if (!row || !str(row.symbol) || !Number.isSafeInteger(row.sessions) || !finite(value)) return null;
-    const subject = match[2] === "asset" ? ticker : str(row.symbol);
+    const subject = match[2] === "asset" ? ticker : str(row.name) || str(row.symbol);
     if (!isoDay(row.start) || !isoDay(row.end)) return null;
     const basis = match[2] === "benchmark" && row.benchmark_basis === "price-index" ? "index-level" : "split-and-dividend-adjusted";
     return figure([str(row.start) + " – " + str(row.end), basisName(basis,locale), subject + " · " + str(data.currency) + " · " + number(row.sessions, 0) +
