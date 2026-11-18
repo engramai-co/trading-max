@@ -516,7 +516,7 @@ test("withdrawal in Settings closes another window's saved History", async ({pag
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
 });
 
-for (const outcome of ["draft", "history button", "reopened draft", "withdrawn"] as const) {
+for (const outcome of ["draft", "history button", "reopened draft", "changed settings", "withdrawn"] as const) {
   test("stale consent revalidation keeps panel focus: " + outcome, async ({page}, info) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
@@ -544,6 +544,8 @@ for (const outcome of ["draft", "history button", "reopened draft", "withdrawn"]
     });
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
     if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
+    else if (outcome === "changed settings") await page.evaluate(() => window.dispatchEvent(
+      new StorageEvent("storage",{key:"trading_max-assistant-settings-revision",newValue:"2"})));
     else if (outcome === "withdrawn") await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
     else await page.evaluate(() => window.dispatchEvent(new Event("focus")));
     try {

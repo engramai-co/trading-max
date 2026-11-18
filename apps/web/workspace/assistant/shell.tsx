@@ -50,7 +50,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen }: { page:
   if (!visited && !open) return null;
   return <FocusTrap innerRef={panel} active={Boolean(open && overlay && !searchOpen)}><div id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
-    {ready && visited && <div className="mx-assistant-thread" hidden={pending}
+    {(ready || pending) && visited && <div className="mx-assistant-thread" hidden={pending || !ready}
       onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, search, scopeLabel }} /></div>}
     {(!ready || pending) && <>
       <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button ref={gateClose} onClick={close}

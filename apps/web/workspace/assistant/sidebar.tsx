@@ -50,7 +50,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
 }) {
   const t = useCopy();
   const { timeZone, locale } = useLocale();
-  const { open, close, pageCard, handoff } = useAssistant();
+  const { open, ready, close, pageCard, handoff } = useAssistant();
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
   const input = useRef<HTMLTextAreaElement>(null);
@@ -76,6 +76,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
   });
   const busy = status === "submitted" || status === "streaming";
   useEffect(() => () => { void stop(); }, [stop]);
+  useEffect(() => { if (!ready) void stop(); }, [ready, stop]);
   useEffect(() => {
     if (open && !history) {
       const target = wasHistory.current ? historyButton.current : input.current;
@@ -101,7 +102,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
   };
   function send(value: string) {
     const text = value.trim();
-    if (!text || busy) return;
+    if (!text || busy || !ready) return;
     clearError();
     const origin = card.origin ?? {page, search, snapshotId:card.reading?.snapshotId ?? undefined};
     const turn = card.role ? {...chatContext(origin.page, origin.search, timeZone), role:card.role, object:card.context ?? {}, snapshotId:origin.snapshotId} : context;
@@ -147,7 +148,8 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
   useEffect(() => { backButton.current?.focus(); }, []);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
-  const conversations = useQuery({ queryKey: ["assistant-conversations"], queryFn: ({ signal }) => api<{ id: string; title: string | null }[]>("/assistant/conversations", { signal }), retry: false });
+  const { ready } = useAssistant();
+  const conversations = useQuery({ enabled: ready, queryKey: ["assistant-conversations"], queryFn: ({ signal }) => api<{ id: string; title: string | null }[]>("/assistant/conversations", { signal }), retry: false });
   async function act(id: string, erase: boolean) {
     setBusy(true); setError(false);
     try {

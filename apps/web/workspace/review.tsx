@@ -131,7 +131,7 @@ export function ReviewWorkspace() {
     [data, shown],
   );
   const rows = useMemo(() => ledgerRows.filter(row => !row.unpriced), [ledgerRows]);
-  const {ready, pending: readinessPending} = useAssistant();
+  const {ready, consented, pending: readinessPending} = useAssistant();
   const reference = parseDecisionParam(params.get("decision"));
   const ordinal = params.get("reviewOrdinal");
   // A cited decision can disambiguate two listings with the same ticker on one day.
@@ -244,7 +244,7 @@ export function ReviewWorkspace() {
                           });
                         }} />
                     </Suspense>
-                  ) : data.reviewHabitsConsented ? <HabitsSpace unavailable={!readinessPending} /> : null}
+                  ) : readinessPending ? ((data.reviewHabitsConsented || consented) && <HabitsSpace />) : consented ? <HabitsSpace unavailable /> : null}
                   {habit === "untraded_fall" ? <FallTimeline moves={falls} horizon={horizon} action={filterChip}/> : <DecisionTimelinePanel
                     action={filterChip}
                     rows={filtered}

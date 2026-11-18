@@ -1345,3 +1345,61 @@ test("a pinned habit and horizon remain readable with MaxAI off", async ({page},
     await page.screenshot({animations:"disabled",path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-pinned-review-off.png")});
   }
 });
+
+test("a consent change hides cached Review before the other tab's profile resolves", async ({page,context,isMobile}, info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (isMobile) await page.setViewportSize({width:390,height:844});
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await serve(page, () => ({benchmark:0.03,events:true,habitsConsented:true}));
+  let changed = false, enabled = true;
+  let resolveProfile!: () => void, resolveStatus!: () => void;
+  const profileWait = new Promise<void>(r => { resolveProfile = r; });
+  const statusWait = new Promise<void>(r => { resolveStatus = r; });
+  const requests: string[] = [];
+  page.on("request", request => {
+    const path = new URL(request.url()).pathname;
+    if (changed && path.includes("/api/backend/assistant/")) requests.push(path);
+  });
+  await page.route("**/api/backend/profile", async route => {
+    if (changed) await profileWait;
+    await route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}});
+  });
+  await page.route("**/api/backend/assistant/status", async route => {
+    if (changed) await statusWait;
+    await route.fulfill({json:{ready:enabled, code:enabled ? null : "assistant_disabled"}});
+  });
+  await page.route("**/api/backend/assistant/roles/habits/reading", route => route.fulfill({
+    contentType:"application/x-ndjson",body:JSON.stringify({type:"result",reading:{role:"habits",asOf,lines:[
+      {section:"basket_buy",en:"Two recorded basket buys.",zh:"同日买入",evidence:{source:"review",tool:"review_patterns",evidenceId:"ev_habit",arguments:{habit:"basket_buy"}}},
+    ]}})+"\n",
+  }));
+  await page.goto("/review?account=A");
+  await expect(page.locator(".mx-digest")).toContainText("Two recorded basket buys.");
+  const rank = panel(page,"Helped most");
+  await expect(rank.getByRole("button",{name:/SYNB/})).toBeVisible();
+  const other = await context.newPage();
+  await other.goto("/favicon.ico");
+  const fetching = page.waitForRequest(r => new URL(r.url()).pathname === "/api/backend/profile");
+  changed = true;
+  await other.evaluate(() => localStorage.setItem("trading_max-assistant-settings-revision","withdrew"));
+  await fetching;
+  try {
+    await expect(page.locator(".mx-digest")).toHaveCount(0, {timeout:1500});
+    await expect(rank.getByRole("button",{name:/SYNB/})).toHaveCount(0);
+    await expect(rank.getByRole("link").first()).toBeVisible();
+    expect(requests).toEqual([]);
+    await page.locator("[data-assistant-trigger]").click();
+    await expect(page.locator("#mx-assistant-panel")).toContainText("Checking connection");
+    expect(requests).toEqual([]);
+    enabled = false;
+    resolveProfile();
+    await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".mx-review-habits-space,.mx-digest")).toHaveCount(0);
+    expect(requests).toEqual([]);
+    if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-en-withdrawn-review.png")});
+  } finally {
+    resolveProfile(); resolveStatus();
+    await other.close();
+  }
+});

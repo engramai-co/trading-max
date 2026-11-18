@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { profileFreshFor, useWorkspaceProfile, workspaceProfileKey } from "../profile";
 import { api } from "../data";
 import { assistantSettingsChange, assistantSettingsKey, assistantStatusKey } from "../assistant-settings";
@@ -17,7 +17,7 @@ export type RoleCard = {
 const statusFreshFor = 30_000;
 type Handoff = { card: RoleCard; draft: string; sequence: number };
 type AssistantState = {
-  open: boolean; ready: boolean; pending: boolean; code: string | null; toggle: () => void; close: () => void;
+  open: boolean; ready: boolean; pending: boolean; consented: boolean; code: string | null; toggle: () => void; close: () => void;
   pageCard: RoleCard | null; setPageCard: (card: RoleCard | null) => void;
   continueInSidebar: (card: RoleCard, draft?: string) => void; handoff: Handoff | null;
 };
@@ -46,28 +46,53 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const settings = useQuery<AssistantSettings>({
     queryKey: assistantSettingsKey, queryFn: ({ signal }) => api("/settings/assistant", { signal }), enabled: false,
   });
-  const optedIn = profile.data?.assistantEnabled ??
-    (settings.data && settings.data.enabled && settings.data.acceptedConsentRevision === settings.data.consentRevision);
-  // Earlier servers only expose readiness via status. Resolve it on explicit open.
-  const checkStatus = optedIn === true || (optedIn === undefined && open && !profile.isPending);
-  const status = useQuery({ queryKey: [...assistantStatusKey, settings.data?.revision ?? null],
+  const nextRevision = useRef(0);
+  const [externalRevision, setExternalRevision] = useState(0);
+  const [confirmedRevision, setConfirmedRevision] = useState(0);
+  const waitingForConsent = confirmedRevision !== externalRevision;
+  const legacyConsent = settings.data && settings.data.enabled && settings.data.acceptedConsentRevision === settings.data.consentRevision;
+  const optedIn = profile.data?.assistantEnabled ?? (externalRevision === 0 ? legacyConsent : undefined);
+  // Older servers expose readiness via status on an explicit open. A cross-window
+  // settings change always requires fresh, positive consent from the profile.
+  const checkStatus = !waitingForConsent && (optedIn === true ||
+    (externalRevision === 0 && optedIn === undefined && open && !profile.isPending));
+  const status = useQuery({ queryKey: [...assistantStatusKey, settings.data?.revision ?? null, externalRevision],
     queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]), priority: "low" }),
     enabled: checkStatus, staleTime: statusFreshFor, retry: false, networkMode: "always",
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
-  const revalidate = useCallback((changed = false) => {
+  const refetchProfile = profile.refetch;
+  const confirmConsent = useCallback(async () => {
+    const revision = ++nextRevision.current;
+    setExternalRevision(revision);
+    await Promise.all([
+      client.cancelQueries({queryKey:assistantStatusKey}),
+      client.cancelQueries({queryKey:["assistant-conversations"]}),
+      client.cancelQueries({queryKey:["assistant-reading"]}),
+      client.cancelQueries({queryKey:workspaceProfileKey, exact:true}),
+    ]);
+    if (revision !== nextRevision.current) return;
+    const fresh = await refetchProfile();
+    if (revision !== nextRevision.current || !fresh.isSuccess) return;
+    setConfirmedRevision(revision);
+    void client.invalidateQueries({queryKey:assistantSettingsKey, exact:true});
+  }, [client, refetchProfile]);
+  const revalidate = useCallback(() => {
+    if (waitingForConsent) {
+      if (!profile.isFetching) void confirmConsent();
+      return;
+    }
     const now = Date.now();
-    if (changed || now - profile.dataUpdatedAt >= profileFreshFor) {
+    if (now - profile.dataUpdatedAt >= profileFreshFor) {
       void client.invalidateQueries({queryKey:workspaceProfileKey, exact:true});
     }
-    if (changed || (checkStatus && now - status.dataUpdatedAt >= statusFreshFor)) {
-      void client.invalidateQueries({queryKey:assistantStatusKey}, {cancelRefetch:changed});
+    if (checkStatus && now - status.dataUpdatedAt >= statusFreshFor) {
+      void client.invalidateQueries({queryKey:assistantStatusKey}, {cancelRefetch:false});
     }
-    if (changed) void client.invalidateQueries({queryKey:assistantSettingsKey, exact:true});
-  }, [client, profile.dataUpdatedAt, checkStatus, status.dataUpdatedAt]);
+  }, [client, profile.dataUpdatedAt, profile.isFetching, checkStatus, status.dataUpdatedAt, waitingForConsent, confirmConsent]);
   useEffect(() => {
     const visible = () => { if (document.visibilityState === "visible") revalidate(); };
-    const changed = (event: StorageEvent) => { if (event.key === assistantSettingsChange) revalidate(true); };
+    const changed = (event: StorageEvent) => { if (event.key === assistantSettingsChange) void confirmConsent(); };
     window.addEventListener("storage", changed);
     window.addEventListener("focus", visible);
     document.addEventListener("visibilitychange", visible);
@@ -76,7 +101,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       window.removeEventListener("focus", visible);
       document.removeEventListener("visibilitychange", visible);
     };
-  }, [revalidate]);
+  }, [revalidate, confirmConsent]);
   const close = useCallback(() => {
     setOpen(false);
     requestAnimationFrame(() => document.querySelector<HTMLElement>("[data-assistant-trigger]")?.focus({ preventScroll: true }));
@@ -100,7 +125,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, pending: profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, consented: !waitingForConsent && optedIn === true && status.data?.code !== "assistant_disabled", pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }
