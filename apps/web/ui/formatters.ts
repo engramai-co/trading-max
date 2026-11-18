@@ -149,6 +149,27 @@ export function formatExchangeTime(
   return withDay ? day + (locale === "zh" ? " " : ", ") + place : place;
 }
 
+/**
+ * A scheduled event's time on the reader's clock, without a zone name (the
+ * zone is the reader's own setting): "21:30" on the event's listed day, or
+ * "11月19日 01:00" / "19 Nov, 01:00" when that clock has already turned to
+ * another day.
+ */
+export function formatEventTime(
+  value: string | number | Date,
+  eventDay: string | null | undefined,
+  locale: Locale,
+  timeZone: string,
+  now: Date | number = Date.now(),
+) {
+  const zone = isValidTimeZone(timeZone) ? timeZone : DEFAULT_DISPLAY_TIME_ZONE;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.valueOf())) return "—";
+  const { year, month, day } = zonedDateParts(date, zone);
+  const local = [year, month, day].map((part, i) => String(part).padStart(i ? 2 : 4, "0")).join("-");
+  return formatReadingTime(date, locale, zone, local === eventDay?.slice(0, 10) ? "clock" : "intraday", now);
+}
+
 /** Formats a start–end calendar span such as "8月3日 – 10月30日" or "2025年8月29日 – 2026年11月1日". */
 export function formatDateSpan(
   start: string | null | undefined,

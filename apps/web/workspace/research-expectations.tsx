@@ -15,7 +15,7 @@ import { inRange } from "@/lib/portfolio/nav";
 import { numeric } from "@/lib/numeric";
 import { Help, Panel, Tag, useCopy } from "./foundation";
 import { quoteAmount, quoteUnit, quoteValue } from "./financial-values";
-import { basisPrice, lensFallback, type ResearchPrice } from "./research-price-basis";
+import { basisPrice, lensFallback, sessionsMissed, type ResearchPrice } from "./research-price-basis";
 
 function ConsensusGauge({
   score,
@@ -147,6 +147,9 @@ export function AnalystExpectations({
       })
     : [];
   const priceDate = points.at(-1)?.date.slice(0, 10);
+  // A history one session behind the current price is ordinary; more is late.
+  const historyLate = Boolean(priceDate && spotDay && priceDate < spotDay && observed.asOf
+    && sessionsMissed(quote, priceDate, observed.asOf) > 1);
   const closeDays = points.map((point) => point.date.slice(0, 10));
   // The price axis names months on their first trading day; the first label and each January carry the year.
   const monthLabel = (day: string, index: number) => index === 0
@@ -528,8 +531,8 @@ export function AnalystExpectations({
             </p>
           )}
           {priceDate && spotDay && priceDate !== spotDay && (
-            <p className="mx-target-availability">
-              {t("历史价格截至 ", "Price history through ") + priceDate}
+            <p className="mx-target-availability" data-tone={historyLate ? undefined : "muted"}>
+              {t("历史价格截至 ", "Price history through ") + formatCalendarDate(priceDate, locale)}
             </p>
           )}
         </section>
