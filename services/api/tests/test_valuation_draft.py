@@ -12,12 +12,15 @@ from pydantic_ai.messages import ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.models.test import TestModel as OfflineModel
 
+from services.api.tests.test_assistant_settings import _enable, _register
 from services.api.tests.test_valuation_evidence import LONDON, MATURE, _publish
 from services.api.trading_max_api.agent.service import BoundModel
 from services.api.trading_max_api.artifacts import ArtifactStore
+from services.api.trading_max_api.models import AssistantPreferencesUpdate
 from services.api.trading_max_api.research import ResearchLedger
 from services.api.trading_max_api.research_journal import ResearchJournalStore
 from services.api.trading_max_api.routes import research, valuation_draft
+from services.api.trading_max_api.settings import SettingsRepository
 from services.api.trading_max_api.valuation_assumptions import ValuationAssumptionsStore
 from services.api.trading_max_api.valuation_drafts import DraftResult, ValuationDraftStore
 from services.api.trading_max_api.watchlist import WatchlistStore
@@ -417,15 +420,21 @@ def test_only_deferred_evaluated_candidates_can_leave_the_run(desk, monkeypatch)
 
 
 @pytest.mark.parametrize("revoke", [True, False])
-def test_revocation_or_disconnect_cancels_pending_provider_and_releases_workspace(desk, revoke):
-    from pydantic_ai import CancellationToken
+def test_revocation_or_disconnect_cancels_pending_provider_and_releases_workspace(
+    desk, revoke, tmp_path
+):
 
     client, state, _, _ = desk
     _, body = inputs(client)
 
+    preferences = SettingsRepository(tmp_path / "consent")
+    _register(preferences, "ollama", "local-model", key=False)
+    _enable(preferences, "ollama/local-model")
+    state.settings_repository = preferences
+
     async def exercise():
         started, cancelled = asyncio.Event(), asyncio.Event()
-        token = CancellationToken()
+        _, _, token = preferences.assistant_connection_snapshot()
 
         async def block(messages, info):
             started.set()
@@ -449,7 +458,9 @@ def test_revocation_or_disconnect_cancels_pending_provider_and_releases_workspac
         assert '"preparing"' in await anext(response.body_iterator)
         await asyncio.wait_for(started.wait(), 3)
         if revoke:
-            token.cancel()
+            preferences.save_assistant_preferences(
+                AssistantPreferencesUpdate(enabled=False, accepted_consent_revision=None)
+            )
             async with asyncio.timeout(3):
                 events = [json.loads(event) async for event in response.body_iterator]
             assert events[-1]["code"] == "valuation-draft-settings-changed"
@@ -458,7 +469,10 @@ def test_revocation_or_disconnect_cancels_pending_provider_and_releases_workspac
         assert cancelled.is_set()
         assert not state.valuation_drafts.running.locked()
 
-    asyncio.run(exercise())
+    try:
+        asyncio.run(exercise())
+    finally:
+        preferences.close()
     assert not state.valuation_drafts.root.exists()
 
 
