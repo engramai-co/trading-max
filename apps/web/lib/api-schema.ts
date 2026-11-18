@@ -6402,12 +6402,14 @@ export interface components {
         ReadingEvent: {
             /** Code */
             code?: string | null;
+            /** Lines */
+            lines?: components["schemas"]["ReadingLine"][] | null;
             reading?: components["schemas"]["RoleReading"] | null;
             /**
              * Type
              * @enum {string}
              */
-            type: "reading" | "result" | "error" | "empty";
+            type: "reading" | "lines" | "result" | "error" | "empty";
         };
         /** ReadingEvidence */
         ReadingEvidence: {

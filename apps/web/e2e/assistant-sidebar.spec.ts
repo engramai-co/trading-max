@@ -81,6 +81,7 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
     await page.goto("/");
     const digest = page.locator(".mx-digest");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
+    await expect(digest.locator(".mx-digest-summary")).toContainText("£18.40");
     await digest.locator("[aria-expanded]").click();
     await expect(digest.locator(".mx-reading-line")).toHaveCount(4);
     const shots = process.env.ASSISTANT_SCREENSHOTS;

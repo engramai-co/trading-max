@@ -93,7 +93,9 @@ files. The architecture check enforces the manifest, at most 900 lines per file,
 one declaration per line and 160 characters per line, so diffs stay precise for
 people and agents. Theme, snapshot-boundary, API-lens and ECharts-lifecycle
 checks remain in place. The shared chart lifecycle and data/locale services are
-infrastructure, independent of the removed presentation layer.
+infrastructure, independent of the removed presentation layer. The optional assistant loads its reading and
+sidebar stylesheet with its first visible surface. Only the top-bar entry
+styles belong to the global cascade.
 
 ## Compatibility, privacy and rollback
 

@@ -6,7 +6,7 @@ import type { Reading } from "./evidence";
 import { useAssistant } from "./context";
 
 export type ReadingRequest = { role: string; context: Record<string, unknown>; snapshotId?: string; cachedOnly?: boolean; latest?: boolean };
-export async function fetchReading(request: ReadingRequest, signal: AbortSignal, onReading?: () => void): Promise<Reading | null> {
+export async function fetchReading(request: ReadingRequest, signal: AbortSignal, onReading?: () => void, onLines?: (lines: Reading["lines"]) => void): Promise<Reading | null> {
   const { role, ...body } = request;
   const response = await fetch("/api/backend/assistant/roles/" + encodeURIComponent(role) + "/reading", {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal, cache: "no-store",
@@ -27,6 +27,7 @@ export async function fetchReading(request: ReadingRequest, signal: AbortSignal,
         if (event.type === "empty") return null;
         if (event.type === "error") throw new Error(event.code ?? "assistant_unavailable");
         if (event.type === "reading") onReading?.();
+        if (event.type === "lines" && event.lines) onLines?.(event.lines);
         end = buffer.indexOf("\n");
       }
     }

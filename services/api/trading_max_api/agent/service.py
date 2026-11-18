@@ -336,9 +336,13 @@ class AssistantService:
 
     async def delete(self, conversation_id: str) -> None:
         _check_conversation_id(conversation_id)
-        if await self.store.read_record(conversation_id) is None:
-            raise HTTPException(status_code=404, detail={"code": "conversation_not_found"})
-        await self.store.delete(conversation_id, scope=CONVERSATION_SCOPE)
+        self.claim(conversation_id)
+        try:
+            if await self.store.read_record(conversation_id) is None:
+                raise HTTPException(status_code=404, detail={"code": "conversation_not_found"})
+            await self.store.delete(conversation_id, scope=CONVERSATION_SCOPE)
+        finally:
+            self.release(conversation_id)
 
 
 __all__ = ["AssistantService", "AssistantUnavailable", "BoundModel", "ChatContext", "DepsForRun"]

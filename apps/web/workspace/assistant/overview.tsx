@@ -6,15 +6,11 @@ import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
 import { usePerformanceBenchmark } from "./benchmark";
 import { DigestRow, EvidenceLink, FollowUps } from "./cards";
-import { useAssistant, usePageRole, type RoleCard } from "./context";
+import { usePageRole, type RoleCard } from "./context";
 import { fetchReading, useRoleReading } from "./reading";
 
 const sections = {market: ["市场", "Market"], portfolio: ["你的组合", "Your portfolio"], events: ["事件", "Events"], next: ["接下来", "Coming up"]} as const;
 export function OverviewBrief({ snapshot }: { snapshot: string }) {
-  const { ready } = useAssistant();
-  return ready ? <Brief snapshot={snapshot} /> : null;
-}
-function Brief({ snapshot }: { snapshot: string }) {
   const [role, setRole] = useState<"daily" | "weekly">("daily");
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -43,9 +39,11 @@ function Brief({ snapshot }: { snapshot: string }) {
       t("哪些持仓影响最大？", "Which holdings had the largest impact?"), t("下一份持仓财报是什么？", "Which holding reports next?")],
   }), [role, title, t, benchmark, reading]);
   usePageRole(card);
+  const portfolio = reading?.lines.find(line => line.section === "portfolio");
   return <DigestRow storageKey="overview" header={<div className="mx-brief-period" role="group" aria-label={t("简报周期", "Brief period")}>
     {(["daily", "weekly"] as const).map(v => <button key={v} aria-pressed={role === v} onClick={() => { if (role !== v) { generate.reset(); setRole(v); } }}>
       {v === "daily" ? t("日报", "Daily") : t("周报", "Weekly")}</button>)}</div>}
+    summary={portfolio && t(portfolio.zh, portfolio.en)}
     headline={<span>{asOf ? (t("截至 ", "As of ") + asOf) : card.object}</span>}>
     {reading ? <><div className="mx-digest-grid">
       {Object.entries(sections).map(([section, label]) => <div key={section}><h4>{t(label[0], label[1])}</h4>

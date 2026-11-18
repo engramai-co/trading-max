@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic_ai import CancellationToken
 from pydantic_ai.models.test import TestModel
 from trading_max.infrastructure import SqliteDatabase
 
@@ -57,7 +58,8 @@ def test_role_endpoint_pins_versions_links_and_refuses_scope_expansion(tmp_path)
 
     assert events({"cachedOnly": True}) == [{"type": "empty"}]
     first = events({"snapshotId": deps.snapshot_id})
-    assert [event["type"] for event in first] == ["reading", "result"]
+    assert first[0]["type"] == "reading" and first[-1]["type"] == "result"
+    assert any(event["type"] == "lines" and event["lines"] for event in first)
     result = first[-1]["reading"]
     assert result["version"] == deps.snapshot_id
     assert result["lines"][0]["section"] == "market"
@@ -137,6 +139,16 @@ def test_role_errors_and_cancellation_leave_no_cached_partial(tmp_path):
             e async for e in service.events(role, OverviewContext(), replace(deps, manifest=None))
         ]
         assert unavailable[-1].type == "empty"
+        token = CancellationToken()
+        token.cancel()
+
+        async def revoked():
+            return BoundModel(TestModel(custom_output_args={"indices": [1, 0, 2, 3]}), {}, token)
+
+        service.assistant.bind_model = revoked
+        expired = [e async for e in service.events(role, OverviewContext(), deps)]
+        assert expired[-1].type == "error"
+        assert not any(e.type in {"lines", "result"} for e in expired)
         assert not service.cached(role, OverviewContext(), deps.snapshot_id)
 
     asyncio.run(scenario())

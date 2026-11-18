@@ -44,7 +44,8 @@ import {
 } from "./foundation";
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
-import { OverviewBrief } from "./assistant/overview";
+import dynamic from "next/dynamic";
+import { useAssistant } from "./assistant/context";
 import { Narrative } from "./narrative";
 import { HistoryCoverage, HistoryHelp, PeriodSpan, periodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, driverOpenings } from "./day-drivers";
@@ -62,6 +63,8 @@ import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
 import { DashboardRanges, InlineRetry, WaitingAsOf, rangeName } from "./dashboard-controls";
 
+const OverviewBrief = dynamic(() => import("./assistant/overview").then(module => module.OverviewBrief));
+
 export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
   return (
@@ -72,6 +75,7 @@ export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?:
 }
 function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
+  const { ready: assistantReady } = useAssistant();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
   const { now } = useCurrentDay();
@@ -247,7 +251,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
           runId={data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
           brokerAsOf={data?.brokerAsOf} account={requestedScope} />}
-      {!initialWaiting && data && <><Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" /><OverviewBrief snapshot={data.runId} /></>}
+      {!initialWaiting && data && <><Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />{assistantReady && <OverviewBrief snapshot={data.runId} />}</>}
     </div></ReadingBoundary.Provider>
   );
 }

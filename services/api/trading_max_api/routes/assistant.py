@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import aclosing
 from dataclasses import replace
 from datetime import datetime
 from typing import Annotated, Any
@@ -142,9 +143,10 @@ async def role_reading(request: Request, role_id: str, body: ReadingRequest) -> 
             raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
 
     async def stream():
-        async for event in service.events(
-            role, context, deps, cached_only=body.cached_only, latest=body.latest
-        ):
-            yield event.encode()
+        async with aclosing(
+            service.events(role, context, deps, cached_only=body.cached_only, latest=body.latest)
+        ) as events:
+            async for event in events:
+                yield event.encode()
 
     return ReadingStream(stream(), headers={"Cache-Control": "private, no-store"})

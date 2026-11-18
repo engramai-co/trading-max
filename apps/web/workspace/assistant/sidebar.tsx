@@ -25,10 +25,12 @@ const transport = new DefaultChatTransport({
   }),
 });
 function ChatAnswer({ message }: { message: UIMessage }) {
+  const t = useCopy();
   const refs = messageEvidence(message);
   const text = message.parts.filter(p => p.type === "text").map(p => p.text).join("");
   return text.split(/\n+/).filter(Boolean).map((line, i) => <p className="mx-reading-line" key={i}>
-    {line.split(/(\[ev_[a-zA-Z0-9_-]+\])/).map((part, j) => {
+    {line.split(/(\[(?:ev_[a-zA-Z0-9_-]+|inference)\])/).map((part, j) => {
+      if (part === "[inference]") return <span key={j} className="mx-reading-source">{t("推断", "Inference")}</span>;
       if (!part.startsWith("[ev_")) return part;
       const evidence = refs.get(part.slice(1, -1));
       return evidence ? <EvidenceLink key={j} evidence={evidence} /> : null;
