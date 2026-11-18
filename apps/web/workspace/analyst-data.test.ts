@@ -3,12 +3,23 @@ import {
   normalizeRatingRow,
   ratingSummary,
   recommendationChange,
+  revisionAxis,
   targetSnapshot,
   targetSplitScale,
   targetUnitScale,
 } from "./analyst-data";
 
 describe("analyst evidence", () => {
+  it("keeps a small estimate revision small on the revisions axis", () => {
+    // A 0.4% revision between 2.904 and 2.916 fills under a tenth of an axis from 2.85 to 3.00.
+    expect(revisionAxis([2.904, 2.911, 2.906, 2.911, 2.915])).toEqual({ min: 2.85, max: 3, interval: 0.05 });
+    // Unchanged estimates still get at least 4% of the estimate; a large revision widens the axis.
+    const flat = revisionAxis([2.5, null, 2.5])!;
+    expect(flat.max - flat.min).toBeGreaterThanOrEqual(0.1 - 1e-9);
+    expect(revisionAxis([2, 2.6])).toEqual({ min: 1.8, max: 2.8, interval: 0.2 });
+    expect(revisionAxis([-0.3, -0.28])).toEqual({ min: -0.31, max: -0.27, interval: 0.01 });
+    expect(revisionAxis([null, undefined])).toBeNull();
+  });
   it("maps Yahoo sell and strongSell into the five rating bands exactly once", () => {
     const row = { period: "0m", strongBuy: 1, buy: 2, hold: 3, sell: 4, strongSell: 5 };
     const normalized = normalizeRatingRow(row);

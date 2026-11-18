@@ -699,20 +699,39 @@ export function Segments<T extends string>({
     </div>
   );
 }
+/** The id of the tab that shows a value in a panel shared by its tablist. */
+export function tabId(panel: string, value: string) {
+  return panel + "-tab-" + value;
+}
+
 export function Tabs<T extends string>({
   value,
   onChange,
   options,
   label,
+  activation = "automatic",
+  panel,
 }: {
   value: T;
   onChange: (value: T) => void;
   /** `short` is the phone label, so a long tab row fits without scrolling. */
   options: Array<{ value: T; label: string; short?: string; ref?: RefObject<HTMLButtonElement | null> }>;
   label: string;
+  /**
+   * "manual" lets the arrow keys, Home and End move focus only, and Enter or Space choose the tab:
+   * for tabs whose panels load data or add a history entry, so passing over a tab does neither.
+   */
+  activation?: "automatic" | "manual";
+  /** The id of the one panel the tabs share. Each tab then controls it, and the panel names its tab with tabId. */
+  panel?: string;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const labelsKey = options.map((option) => option.label).join("\u0000");
+  // In manual mode the one tab stop follows focus, so Tab and Shift+Tab leave the list from the tab
+  // the arrows reached; once focus has left, the stop returns to the selected tab for re-entry.
+  const [focused, setFocused] = useState<T | null>(null);
+  const manual = activation === "manual";
+  const stop = manual && focused != null && options.some((option) => option.value === focused) ? focused : value;
   useSelectionIndicator(listRef, '[aria-selected="true"]', value + labelsKey);
   useEffect(() => {
     const list = listRef.current;
@@ -750,16 +769,21 @@ export function Tabs<T extends string>({
     };
   }, [value, labelsKey]);
   return (
-    <div ref={listRef} className="mx-tabs" role="tablist" aria-label={label}>
+    <div ref={listRef} className="mx-tabs" role="tablist" aria-label={label} onBlur={manual ? (event) => {
+      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(null);
+    } : undefined}>
       {options.map((option, index) => (
         <button
           type="button"
           role="tab"
           key={option.value}
           ref={option.ref}
+          id={panel ? tabId(panel, option.value) : undefined}
+          aria-controls={panel}
           aria-label={option.short ? option.label : undefined}
           aria-selected={value === option.value}
-          tabIndex={value === option.value ? 0 : -1}
+          tabIndex={stop === option.value ? 0 : -1}
+          onFocus={manual ? () => setFocused(option.value) : undefined}
           onClick={() => onChange(option.value)}
           onKeyDown={(event) => {
             const offset =
@@ -776,7 +800,7 @@ export function Tabs<T extends string>({
                   : (index + offset + options.length) % options.length;
             if (offset || event.key === "Home" || event.key === "End") {
               event.preventDefault();
-              onChange(options[next].value);
+              if (activation === "automatic") onChange(options[next].value);
               (
                 event.currentTarget.parentElement?.children[
                   next
