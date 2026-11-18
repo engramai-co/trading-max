@@ -81,7 +81,7 @@ function Positions() {
   const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const search = params.get("q") ?? "";
   const requestedSort = holdingSort(params.get("positionSort"));
-  const [selected, setSelected] = useState<{ holding: Holding; runId?: string; accountAsOf?: string | null; scope: string } | null>(null);
+  const [selected, setSelected] = useState<{ holding: Holding; runId?: string; positionAsOf?: string | null; scope: string } | null>(null);
   const positionData = query.data;
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
@@ -109,19 +109,19 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
-  const accountStamp = (holding: Holding) => positionData?.positionAsOf && (holding.account === "A" || holding.account === "B")
+  const positionStamp = (holding: Holding) => positionData?.positionAsOf && (holding.account === "A" || holding.account === "B")
     ? positionData.positionAsOf[holding.account]
     : positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf;
   const snapshotBasis = (holding: Holding) => {
-    const at = accountStamp(holding);
+    const at = positionStamp(holding);
     return <small className="mx-holding-quote-basis">{t("券商快照", "Broker snapshot")} · {at
       ? <time dateTime={at}>{formatDateTime(at, locale, timeZone, now)}</time>
       : t("时间未提供", "time unavailable")}</small>;
   };
   function selectHolding(holding: Holding) {
     // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.
-    const accountAsOf = accountStamp(holding);
-    setSelected({ holding, accountAsOf, runId: positionData?.runId, scope: account });
+    const positionAsOf = positionStamp(holding);
+    setSelected({ holding, positionAsOf, runId: positionData?.runId, scope: account });
   }
   // Totals come from the broker's account summaries, matching Overview; positions are the fallback.
   const summary = account === "all" ? null : query.data?.accounts?.find((item) => item.code === account);
@@ -512,7 +512,7 @@ function Positions() {
           <HoldingDetail
             holding={selected.holding}
             account={accountName(profile, selected.holding.account)}
-            accountAsOf={selected.accountAsOf}
+            positionAsOf={selected.positionAsOf}
             runId={selected.runId}
             today={today}
             now={now}

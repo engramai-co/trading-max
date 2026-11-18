@@ -39,6 +39,23 @@ async function syntheticHoldings(page: Page) {
   });
 }
 
+test("retained position prices and balances show their own observation times", async ({page,isMobile}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local fixture.");
+  await syntheticHoldings(page);
+  const positionAt = day+"T15:00:00Z";
+  await page.route("**/dashboard/lens/holdings-positions?**", route => route.fulfill({json: {
+    ...lens, positionAsOf:{A:positionAt},
+  }}));
+  await page.goto("/holdings?account=A&snapshotId="+lens.runId+"&evidence=list_holdings");
+  const position = isMobile ? page.getByRole("button",{name:/SYNUS.*休市/})
+    : page.getByRole("row").filter({hasText:"SYNUS"});
+  await expect(position.locator(".mx-holding-quote-basis time")).toHaveAttribute("datetime",positionAt);
+  await expect(page.locator(".mx-holdings-summary .mx-freshness")).toContainText("17:30");
+  if (isMobile) await position.tap();
+  else await position.getByRole("button",{name:/查看持仓 SYNUS/}).click();
+  await expect(page.getByRole("dialog").locator('time[datetime="'+positionAt+'"]').first()).toBeVisible();
+});
+
 test("a closed listing replaces the day figure on each position surface", async ({ page }, info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
   const phone = info.project.name === "mobile";
