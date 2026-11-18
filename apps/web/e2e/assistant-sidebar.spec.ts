@@ -360,9 +360,9 @@ test("earnings citations reopen the exact retained row and disclose expiry", asy
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   let expired = false;
   await page.route("**/api/backend/publications/saved/events/upcoming?**", route => route.fulfill(expired
-    ? {status:404,json:{detail:"snapshot not found"}} : {json:{snapshot_id:"saved",data:{items:[
-      {kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture"},
-    ]}}}));
+    ? {status:404,json:{detail:"snapshot not found"}} : {json:{
+      kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture",
+    }}));
   await page.goto("/");
   await page.locator(".mx-digest [aria-expanded]").click();
   const link = page.locator(".mx-digest").getByRole("link",{name:"Financials",exact:true}).first();
