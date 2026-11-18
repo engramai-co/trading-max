@@ -123,7 +123,7 @@ it("keeps the selected research lens, object and evidence destination", () => {
   const evidence = { evidenceId: "ev_reading", source: "market" as const, tool: "price_key_moments",
     arguments: { ticker: "SYNT.L", date: "2026-02-03", lens: "technical" } };
   const link = new URL(evidenceHref(evidence)!, "https://example.invalid");
-  expect(Object.fromEntries(link.searchParams)).toMatchObject({ ticker: "SYNT.L", view: "technical", eventDate: "2026-02-03", interval: "1d" });
+  expect(Object.fromEntries(link.searchParams)).toMatchObject({ ticker: "SYNT.L", view: "technical", eventDate: "2026-02-03", interval: "1d", unavailable:"1" });
   expect(chatContext("research","type=index&index=sample&ticker=%5ETEST&view=price&scope=broker_total","Europe/London"))
     .toMatchObject({ page: "research", ticker: "^TEST", lens: "technical", scope: "broker_total" });
   const story = { ...evidence, tool: "research_headline", source: "publisher" as const, arguments: {ticker:"SYNT",url:"https://example.invalid/news"} };
@@ -184,4 +184,21 @@ it("projects timed releases into the reader's day and preserves date-only earnin
 
 it("keeps a historical benchmark with no publication ID from opening today's figures", () => {
   expect(evidenceHref({tool:"compare_benchmarks",source:"market",evidenceId:"ev_old",arguments:{scope:"isa",benchmark:"VOO"}})).toBeNull();
+});
+
+it("links an index observation to the retained chart, date and recorded event", () => {
+  const args = {ticker:"^SYNT",index_id:"example",published_series_id:"a".repeat(20),snapshotId:"older",start:"2026-01-01",
+    end:"2026-01-30",date:"2026-01-15",eventId:"report",lens:"technical"};
+  const link = new URL(evidenceHref({source:"market", evidenceId:"ev_test",tool:"price_key_moments",arguments:args})!, "http://localhost");
+  expect(Object.fromEntries(link.searchParams)).toMatchObject({snapshotId:"older",series:args.published_series_id,eventDate:args.date,eventId:"report",index:"example"});
+});
+
+it.each(["earnings","dividend","ex_dividend","dividend_pay","rating_change","macro"])("renders and cites the selected %s event", kind => {
+  const supply = {kind,title_en:"Published record",title_zh:"已发布记录",date:"2026-01-15",ticker:kind === "macro" ? null : "TEST",
+    source_url:"https://example.invalid/release",reference:"specific",evidence_id:"ev_row",publisher:"Source",status:"scheduled"};
+  const reply = fieldReply(kind === "macro" ? "upcoming_events" : "news_and_events",{snapshot_id:"older",data:{items:[supply]}},"/data/items/0/title_en");
+  const [line] = verifiedLines(reply);
+  expect(line?.text).toContain("Published record");
+  expect(line?.text).toContain("2026-01-15");
+  expect(line?.evidence?.arguments).toMatchObject({eventId:"ev_row",snapshotId:"older"});
 });

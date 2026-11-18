@@ -29,7 +29,7 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
 export function evidenceHref(ref: Evidence): string | null {
-  if (ref.tool === "upcoming_events") {
+  if (ref.tool === "upcoming_events" && !ref.arguments?.rowCitation) {
     const args = ref.arguments ?? {};
     if (ref.source === "calendar" && args.url) return safeUrl(args.url) ?? null;
     if (args.holdingTicker && (ref.source === "financials" || ref.source === "disclosure")) {
@@ -41,7 +41,7 @@ export function evidenceHref(ref: Evidence): string | null {
   }
   const entry = destinations[ref.tool];
   if (!entry) return null;
-  const [path] = entry;
+  const path = ref.arguments?.rowCitation ? "/research" : entry[0];
   const params = new URLSearchParams();
   const a = ref.arguments ?? {};
   if (path === "/analytics") {
@@ -69,7 +69,26 @@ export function evidenceHref(ref: Evidence): string | null {
   if (ref.tool === "lookthrough_exposure") params.set("view", "lookthrough");
   if (a.ticker && path === "/holdings") params.set("q", a.ticker);
   if (path === "/research") {
-    if (ref.tool === "research_headline" && a.url && safeUrl(a.url)) return safeUrl(a.url);
+    if (!a.snapshotId && ["research_headline","research_position","research_earnings","price_key_moments"].includes(ref.tool)) {
+      if (ref.tool === "research_headline" && a.url) {
+        const original = safeUrl(a.url);
+        if (original) return original;
+      }
+      params.set("unavailable","1");
+      params.set("evidenceId",ref.evidenceId);
+    }
+    if (a.snapshotId && ["price_key_moments","research_position","research_earnings","research_headline","news_and_events","upcoming_events"].includes(ref.tool)) {
+      params.set("snapshotId",a.snapshotId);
+      params.set("evidence",ref.tool);
+      params.set("evidenceId",ref.evidenceId);
+      if (a.published_series_id) params.set("series",a.published_series_id);
+      for (const key of ["date","start","end","eventId","event","field","timezone","eventTicker","limit","cursor","reference","observation","unselected"]) {
+        if (a[key]) params.set(key,a[key]);
+      }
+      if (a.date) params.set("eventDate",a.date);
+      if (ref.tool === "research_headline") params.set("field","/data/title");
+      if (a.ticker) params.set("ticker",a.ticker);
+    }
     if (a.index || a.index_id) {
       params.set("type","index"); params.set("index",a.index || a.index_id); params.set("view","price");
       if (a.indexRange) params.set("indexRange",a.indexRange);
@@ -121,6 +140,9 @@ export function completedEvidence(message: UIMessage) {
     if (!id || ambiguous.has(id)) continue;
     const raw = object(object(part.input).args ?? part.input);
     const args = evidenceArguments(raw, output);
+    if (tool === "upcoming_events" || tool === "news_and_events") {
+      for (const key of ["cursor","limit"]) if (typeof raw[key] === "number") args[key] = String(raw[key]);
+    }
     const ref: Evidence = { evidenceId: id, tool, arguments: args, source: tool === "read_research_lens" && lensWords[args.lens] || destinations[tool][1] };
     if (tool === "research_headline") {
       const story = object(output.data);
