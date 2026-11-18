@@ -631,6 +631,7 @@ test("a new publication preserves the selected phone reading until explicitly up
   await expect(sheet).toContainText("time-weighted");
   const updated = sheet.getByRole("button",{name:"Read updated records"});
   await expect(updated).toBeVisible();
+  await expect(page.locator(".mantine-Tooltip-tooltip:has(.mx-tooltip-keys)")).not.toBeVisible();
   if (process.env.TM_INSPECTION_SHOTS) await page.screenshot({path:join(process.env.TM_INSPECTION_SHOTS,"phone-reading-new-publication.png")});
   await updated.click();
   await expect.poll(()=>calls.at(-1)).toMatchObject({snapshotId:id,context});
