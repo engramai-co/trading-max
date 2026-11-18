@@ -583,6 +583,8 @@ def test_public_peer_lens_scores_bars_without_publishing_research(boundary_clien
     ]
     series = ResearchPriceSeries(
         ticker="QQQ",
+        published_bar_ticker="QQQ",
+        published_bar_exchange="NMS",
         as_of=points[-1]["date"],
         currency="USD",
         timezone="America/New_York",
@@ -596,6 +598,11 @@ def test_public_peer_lens_scores_bars_without_publishing_research(boundary_clien
     data = response.json()
     assert data["context"]["quote"]["price"] == points[-1]["close"]
     assert data["technicalSummary"]["score"] is not None
+    for symbol, exchange in [(None, None), ("QQQ", "LSE"), ("QQQ.L", "NMS")]:
+        series.published_bar_ticker, series.published_bar_exchange = symbol, exchange
+        refused = client.get("/v1/research/QQQ/lens/overview?detail=summary&preview=true").json()
+        assert refused["context"]["quote"]["price"] is None
+        assert refused["technicalSummary"] is None
     assert not client.get("/v1/watchlist").json()["items"]
     assert store.latest_manifest().run_id == immutable.manifest.run_id
 

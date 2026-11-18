@@ -890,6 +890,7 @@ def test_live_chart_prices_fills_in_its_returned_currency(
                 **daily,
                 "published_bar_ticker": symbol,
                 "published_bar_exchange": daily["exchangeCalendar"],
+                "source": "Alpaca (SIP)" if provider == "alpaca_etf" else "Yahoo Finance",
                 "currency": "USD",
                 "actualInterval": interval,
                 "tradeMarkers": [],

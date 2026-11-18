@@ -22,7 +22,8 @@ def test_research_quotes_name_the_listing_their_exchange_quotes():
     # A bare symbol is a US listing only when its exchange says so.
     assert quote_listing("IAG", None, None) is None
     assert quote_listing("IAG", "LSE", "Europe/London") is None
-    assert quote_listing("SHOP.TO", "Toronto", "America/Toronto") is None
+    assert quote_listing("SHOP.TO", "Toronto", "America/Toronto") == "XTSE:SHOP.TO"
+    assert quote_listing("SHOP.TO", "NYSE", "America/Toronto") is None
     assert quote_listing("SAP.DE", "XETRA", "Europe/Berlin") == "XETR:SAP.DE"
 
 

@@ -12,6 +12,7 @@ All notable public Trading Max releases are recorded here.
 - Holdings can show the currency effect on an Invest or Stocks ISA position when the broker supplies its native purchase cost and current valuation. Exposure history begins with the next dated look-through.
 
 ### Fixed
+- Research keeps unverified listing prices off the chart and shows the reason in place. A published earnings brief opens above Financials and Ratings, and keyboard follow-ups move focus to the composer.
 - Research charts and MaxAI key moments show a broker fill on its traded listing. Bare CSV tickers and older trades share one daily marker when the snapshot identifies one matching listing. Expanding a day shows archived quantities and order counts alongside itemised fills. Average execution prices use the displayed chart’s currency when the recorded rates support conversion.
 - A price chart stays unavailable when its listing, price provider or fundamentals disagree on the exchange. Distributions on the chart can qualify as key moments. Timed headlines follow the published closing auction for their listing. A headline published while the auction can still close at random is marked on that session.
 - Settings panels and the MaxAI consent dialog open with their text at full contrast.
