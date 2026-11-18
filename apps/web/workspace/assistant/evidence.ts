@@ -55,7 +55,8 @@ export function evidenceHref(ref: Evidence): string | null {
     if (a.scope === "invest" || a.scope === "isa") params.set("account", a.scope === "invest" ? "A" : "B");
     if (a.ticker && a.side && a.decision_date) params.set("decision",[a.decision_date,a.side,a.ticker].join("."));
     if (a.ordinal && /^\d+$/.test(a.ordinal)) params.set("reviewOrdinal",a.ordinal);
-    if (a.horizon === "20_sessions" || a.horizon === "to_date") params.set("reviewWindow",a.horizon);
+    const horizon = a.comparedHorizon || a.horizon;
+    if (horizon === "20_sessions" || horizon === "to_date") params.set("reviewWindow", horizon);
     const habit = a.habit || a.habitSection;
     if (habit) params.set("habit", habit);
   }

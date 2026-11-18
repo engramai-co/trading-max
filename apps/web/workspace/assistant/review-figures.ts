@@ -100,14 +100,15 @@ function decisionField(row: Json, field: string, hindsight: boolean, t: Copy): s
 }
 
 const habitPath =
-  /^\/data\/groups\/(before_earnings|basket_buy|untraded_fall)\/(count|evaluated|effect_gbp|mean_return)$/;
+  /^\/data\/(comparison\/)?groups\/(before_earnings|basket_buy|untraded_fall)\/(count|evaluated|effect_gbp|mean_return)$/;
 const decisionPath = /^\/data\/items\/(0|[1-9]\d{0,4})\/(hindsight\/)?([a-z_]+)$/;
 
 export function reviewFieldLocation(tool: string, output: Json, pointer: string): Record<string, string> | null {
   const data = object(output.data);
   if (tool === "review_patterns") {
-    const habit = habitPath.exec(pointer)?.[1];
-    return habit ? { scope: str(output.scope), horizon: str(data.horizon), habit, habitSection: habit } : null;
+    const match = habitPath.exec(pointer);
+    const habit = match?.[2];
+    return habit ? { scope: str(output.scope), horizon: str(data.horizon), habit, habitSection: habit, ...(match?.[1] ? {comparedHorizon: str(object(data.comparison).horizon)} : {}) } : null;
   }
   if (tool !== "decision_timing_and_habits") return null;
   const index = decisionPath.exec(pointer)?.[1];
@@ -134,8 +135,10 @@ export function renderReviewField(tool: string, output: Json, pointer: string, l
   let horizon = data.horizon;
   let terms: string[] | null = null;
   if (tool === "review_patterns" && habit) {
-    const [, key, field] = habit;
-    terms = habitField(key, field, object(object(data.groups)[key]), t);
+    const [, comparison, key, field] = habit;
+    const period = comparison ? object(data.comparison) : data;
+    horizon = period.horizon;
+    terms = habitField(key, field, object(object(period.groups)[key]), t);
   } else if (tool === "decision_timing_and_habits" && decision && Array.isArray(data.items)) {
     const [, index, hindsight, field] = decision;
     const row = object(data.items[Number(index)]);

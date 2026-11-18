@@ -448,3 +448,19 @@ def test_review_chat_applies_its_registered_tool_selection(tmp_path, role_id, su
     assert [r["bound_arguments"] for r in outputs] == (
         [] if substitute else [bindings.bound_evidence(tool)]
     )
+
+
+def test_habit_comparison_keeps_both_horizons_on_one_selection(tmp_path):
+    _, publish, _, _ = setup_review(tmp_path)
+    reader = role_registry()["habits"].reader(
+        publish(), HabitsContext(scope="invest", habit="basket_buy")
+    )
+    result = reader.read(review_patterns, {"compare_horizons": True})
+    primary, other = result["data"], result["data"]["comparison"]
+    assert set(primary["groups"]) == set(other["groups"]) == {"basket_buy"}
+    assert (primary["horizon"], primary["groups"]["basket_buy"]["effect_gbp"]) == (
+        "20_sessions",
+        18,
+    )
+    assert (other["horizon"], other["groups"]["basket_buy"]["effect_gbp"]) == ("to_date", 9)
+    assert result["bound_arguments"]["snapshotId"] == reader.deps.snapshot_id

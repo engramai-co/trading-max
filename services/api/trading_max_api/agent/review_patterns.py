@@ -18,17 +18,31 @@ class HabitArgs(Args):
     scope: Scope
     horizon: Horizon = "20_sessions"
     habit: Habit | None = None
+    compare_horizons: bool = False
 
 
 def review_patterns(ctx: Context, args: HabitArgs) -> dict:
     """Count verified pre-earnings purchases, untraded falls and same-day baskets.
     The untraded-fall effect is the signed net of hypothetical purchases at the mean purchase size through each day.
-    For sidebar figures use /data/groups/GROUP/count, evaluated, effect_gbp or mean_return.
+    Use compare_horizons=true to compare the two horizons for the same account and habit.
+    Cite /data/groups/GROUP/FIELD and /data/comparison/groups/GROUP/FIELD for the other horizon.
+    Supported fields are count, evaluated, effect_gbp and mean_return.
     """
     read = _Read(ctx.deps, "review_patterns", args, args.scope)
     scopes = sorted(read.account_codes(args.scope))
     accounts = _mapped((read.read(DECISIONS) or {}).get("accounts"))
     evidence = _mapped((read.read(EVIDENCE) or {}).get("accounts"))
+    result = _summarise(read, scopes, accounts, evidence, args)
+    if args.compare_horizons and result.get("data"):
+        other = "to_date" if args.horizon == "20_sessions" else "20_sessions"
+        comparison = _summarise(
+            read, scopes, accounts, evidence, args.model_copy(update={"horizon": other})
+        )
+        result["data"]["comparison"] = {"horizon": other, "groups": comparison["data"]["groups"]}
+    return result
+
+
+def _summarise(read, scopes, accounts, evidence, args):
     groups = {k: [] for k in ("before_earnings", "untraded_fall", "basket_buy")}
     revision = []
     as_of = {}

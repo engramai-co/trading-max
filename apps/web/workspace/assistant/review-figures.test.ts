@@ -94,3 +94,14 @@ describe("sidebar fields from the review tools", () => {
     expect(verifiedLines(reply("{{/data/groups/unknown/effect_gbp}}"))).toEqual([]);
   });
 });
+
+it("reopens the compared habit horizon from its published figure", () => {
+  const data = outputs.habits.data;
+  const [line] = verifiedLines({id:"compare",role:"assistant",parts:[
+    {type:"dynamic-tool",toolName:"review_patterns",toolCallId:"h",state:"output-available",input:{compare_horizons:true},
+      output:{...outputs.habits,data:{...data,comparison:{horizon:"20_sessions",groups:data.groups}}}},
+    {type:"text",text:"{{/data/comparison/groups/untraded_fall/effect_gbp}} [ev_habits]\n{{history}} [inference]"},
+  ]});
+  expect(line?.text).toMatch(/20 trading days/i);
+  expect(evidenceHref(line.evidence!)).toContain("reviewWindow=20_sessions");
+});
