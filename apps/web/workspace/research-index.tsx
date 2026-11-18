@@ -1,9 +1,9 @@
 "use client";
 
-import { ActionIcon, Button, Drawer, Menu, Select, Tooltip } from "@mantine/core";
-import { CaretDown, DotsThree, MagnifyingGlass, Trash } from "@phosphor-icons/react";
+import { ActionIcon, Button, Drawer, Menu, Select } from "@mantine/core";
+import { CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useState, type CSSProperties } from "react";
+import { useId, useState, type CSSProperties } from "react";
 import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -12,7 +12,7 @@ import { formatCalendarDate, formatCurrency, formatDateTime, formatDeltaPercent,
 import { api, readApi, safeUrl } from "./data";
 import { useDemonstration } from "./demonstration";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, useCopy } from "./foundation";
+import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, tabId, useCopy } from "./foundation";
 import Link from "./link";
 import {
   indexHref, researchIndexHref, useIndexCatalog,
@@ -46,6 +46,7 @@ export function IndexResearchWorkspace() {
   const { params, update } = useRouteState("push");
   const [finder, setFinder] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  const lensPanel = useId();
   const catalog = useIndexCatalog();
   const catalogue = catalog.data ?? [];
   const id = params.get("index") ?? "";
@@ -92,11 +93,6 @@ export function IndexResearchWorkspace() {
           aria-expanded={listOpen} onClick={() => setListOpen(true)}>
           {t("研究清单", "Research list")}
         </Button>}
-        <Tooltip label={t("搜索", "Search")}>
-          <ActionIcon variant="default" aria-label={t("搜索", "Search")} onClick={() => setFinder(true)}>
-            <MagnifyingGlass size={17} />
-          </ActionIcon>
-        </Tooltip>
         {index && <IndexListActions id={index.id} />}
       </>
     }>
@@ -131,9 +127,10 @@ export function IndexResearchWorkspace() {
               </div> : !overview.isPending || demonstration ? <span>{t("无报价", "No quote")}</span> : null}
             </section>
             <Tabs label={t("研究视角", "Research perspectives")} value={view}
+              activation="manual" panel={lensPanel}
               options={views.map((value) => ({ value, ...tabLabels[value] }))}
               onChange={(next) => update({ view: next === "overview" ? null : next })} />
-            <div className="mx-index-research-body">
+            <div className="mx-index-research-body" role="tabpanel" id={lensPanel} aria-labelledby={tabId(lensPanel, view)}>
               {view === "price" ? <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} demonstration={demonstration} />
                 : view === "overview" ? <>
                   <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} preview demonstration={demonstration} />

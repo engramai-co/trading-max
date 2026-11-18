@@ -4,7 +4,7 @@ import type { ResearchShell } from "../lib/types";
 
 const searchName = /^(搜索|Search)$/;
 async function openSearch(page: Page) {
-  // The research page has its own search; the workspace search lives in the top bar.
+  // The workspace search lives in the top bar, also on Research.
   await page.getByRole("banner").getByRole("button", { name: searchName }).click();
   const input = page.getByRole("combobox", { name: searchName });
   await expect(input).toBeFocused();
@@ -70,6 +70,38 @@ test.describe("workspace navigation refinements", () => {
     await expect(page.getByRole("option")).toContainText(/在持仓中搜索|Search holdings/);
     await input.fill("估值");
     await expect(page.getByRole("status").filter({ hasText: /加上代码|Add a ticker/ })).toBeVisible();
+  });
+
+  test("a security outside the research list opens the research finder, without another history entry on Research", async ({ page }) => {
+    const searches: string[] = [];
+    await page.route("**/api/backend/securities/search?**", (route) => {
+      searches.push(new URL(route.request().url()).searchParams.get("q") ?? "");
+      return route.fulfill({ json: { query: "Synthetic Example", source: "openfigi", results: [{
+        ticker: "SYNX", name: "Synthetic Example Holdings", exchange: "NasdaqGS", bloombergTicker: "SYNX US",
+        figi: "BBG000SYNX01", securityType: "Common Stock", alreadyWatched: false,
+      }] } });
+    });
+    await page.goto("/research?ticker=ARM");
+    // Research keeps one search: the workspace's.
+    await expect(page.getByRole("button", { name: searchName })).toHaveCount(1);
+    const entries = await page.evaluate(() => history.length);
+    const input = await openSearch(page);
+    await input.fill("Synthetic Example");
+    const find = page.getByRole("option", { name: /在全部证券中查找|Find in all securities/ });
+    await expect(find).toContainText("Synthetic Example");
+    await find.click();
+    const finder = page.getByRole("dialog");
+    await expect(finder.getByText("Synthetic Example Holdings")).toBeVisible();
+    expect(searches).toEqual(["Synthetic Example"]);
+    await expect(page).toHaveURL((url) => url.pathname === "/research" && url.search === "?ticker=ARM");
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    // A listed ticker and a lens query stay within the research list.
+    await page.keyboard.press("Escape");
+    const again = await openSearch(page);
+    await again.fill("ARM");
+    await expect(page.getByRole("option", { name: /在全部证券中查找|Find in all securities/ })).toHaveCount(0);
+    await again.fill("Synthetic 估值");
+    await expect(page.getByRole("option", { name: /在全部证券中查找|Find in all securities/ })).toHaveCount(0);
   });
 
   test("static deep links remain available when the directory fails", async ({ page }) => {

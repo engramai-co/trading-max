@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+### Changed
+- Research has one search: the magnifier at the top of every page. For a name outside the research list, Search offers **Find in all securities**, which opens the research finder.
+- Rating history shows one compact bar per month in the same neutral scale as the consensus gauge. Estimate revision charts span at least 4% of the estimate, so a small revision looks small.
+
+### Fixed
+- On Research, the arrow keys, Home and End move between views without opening them; Enter or Space opens the view in focus. Passing over a view no longer loads it or adds a history entry, and each view names the panel it shows.
+- Research writes each figure one way. Revenue estimates carry their currency instead of a separate currency label, beats and misses in tables are signed and coloured as in the chart readings, the 90-day estimate change is coloured, and percentiles read P0–P100. The P/E chart's labels use the standard font.
+
 ## [1.64.0] - 2026-11-18
 
 ### Changed

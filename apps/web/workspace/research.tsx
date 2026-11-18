@@ -25,7 +25,7 @@ import {
   MagnifyingGlass,
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
 import {
   Empty,
@@ -36,6 +36,7 @@ import {
   Pending,
   QueryError,
   Tabs,
+  tabId,
   useCopy,
 } from "./foundation";
 import {
@@ -120,6 +121,21 @@ function SecurityResearchWorkspace() {
   });
   const [finder, setFinder] = useState(false);
   const [finderQuery, setFinderQuery] = useState("");
+  // Search hands over a security that is not in the research list: the finder opens on it once.
+  const findQuery = params.get("find");
+  const [handedOver, setHandedOver] = useState<string | null>(null);
+  if (findQuery !== handedOver) {
+    setHandedOver(findQuery);
+    if (findQuery) {
+      setFinderQuery(findQuery);
+      setFinder(true);
+    }
+  }
+  const { update: replaceRoute } = useRouteState("replace");
+  useEffect(() => {
+    if (findQuery) replaceRoute({ find: null });
+  }, [findQuery, replaceRoute]);
+  const lensPanel = useId();
   const [universeOpen, setUniverseOpen] = useState(false);
   const [manage, setManage] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState(false);
@@ -409,15 +425,6 @@ function SecurityResearchWorkspace() {
               {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
             </>
           )}
-          <Tooltip label={t("搜索", "Search")}>
-            <ActionIcon
-              variant="default"
-              aria-label={t("搜索", "Search")}
-              onClick={() => setFinder(true)}
-            >
-              <MagnifyingGlass size={17} />
-            </ActionIcon>
-          </Tooltip>
           {selected && (
             <SecurityActions
               held={selected.held}
@@ -559,6 +566,8 @@ function SecurityResearchWorkspace() {
                 <Tabs
                   label={t("研究视角", "Research perspectives")}
                   value={tab === "financials" ? "fundamentals" : tab}
+                  activation="manual"
+                  panel={lensPanel}
                   onChange={(v) => update({
                     view: v === "overview" ? null : v,
                     fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null,
@@ -577,6 +586,8 @@ function SecurityResearchWorkspace() {
                       : shortTitles[value],
                   }))}
                 />
+                <div className="mx-research-lens" role="tabpanel" id={lensPanel}
+                  aria-labelledby={tabId(lensPanel, tab === "financials" ? "fundamentals" : tab)}>
                 {failure && shown && isReadTimeout(failure.error) && <Notice tone="warn">
                   {t("研究请求超时，仍显示上一次资料。", "Research request timed out. Showing the previous reading.")}
                 </Notice>}
@@ -708,6 +719,7 @@ function SecurityResearchWorkspace() {
                 )}
                 </div>
                 )}
+                </div>
               </>
             )}
           </div>
