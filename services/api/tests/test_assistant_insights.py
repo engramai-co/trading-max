@@ -20,6 +20,7 @@ from trading_max.analytics.key_moments import key_moments
 from trading_max.analytics.ledger import load_transactions, transaction_marker_rows
 from trading_max.portfolio_math import benchmark_comparison, in_range, period_return
 from trading_max.research.held_funds import FUND_PRICES_KEY
+from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
 from services.api.tests.assistant_fixture import DATES, publication
 from services.api.tests.test_assistant_tools import _call
@@ -321,7 +322,11 @@ def test_checkable_events_filter_mixed_trades_to_the_requested_account(bound, mo
                 }
             ),
         )
-        assert not issues
+        assert set(issues) == {
+            "security_calendar_unavailable",
+            "dividends_unavailable",
+            "security_news_unavailable",
+        }
         assert {(e["kind"], e["reference"]) for e in events} == {
             ("earnings", "e"),
             ("rating_change", "Agency"),
@@ -1163,6 +1168,176 @@ def test_key_moments_attach_events_only_to_their_published_listing(bound):
         ("filing", "US-filing"),
         ("own_trade", "B"),
     }
+
+
+def test_listing_news_and_dividends_only_reach_their_own_price_series(bound):
+    app, _ = distinct_listing_events(bound)
+    # Friday after the London close precedes both the US close and a weekend.
+    friday, monday, tuesday = DATES[-3:]
+    article = {
+        "id": "provider-story",
+        "title": "Synthetic company update",
+        "publisher": "Test wire",
+        "url": "https://example.test/story",
+        "date": friday,
+        "instant": friday + "T17:00:00Z",
+    }
+    store = app.state.store
+    data = {
+        NEWS_KEY: {"securities": {"SYN.L": {"items": [article]}}},
+        NEWS_STATUS_KEY: {"securities": {"SYN.L": {"as_of": tuesday, "error": "TimeoutError"}}},
+        tools.EARNINGS: {
+            "rows": [
+                {
+                    "ticker": "SYN.L",
+                    "calendar": {
+                        "Ex-Dividend Date": friday,
+                        "Dividend Date": tuesday,
+                    },
+                }
+            ]
+        },
+        tools.FINANCIALS: {
+            "rows": [
+                {
+                    "ticker": "SYN.L",
+                    "financials": {
+                        "evidence": {
+                            "dividends": [{"date": friday, "amount": 0.25, "currency": "GBP"}],
+                            "news": [
+                                {
+                                    "id": article["id"],
+                                    "source": article["publisher"],
+                                    "title": article["title"],
+                                    "url": article["url"],
+                                    "publishedAt": friday,
+                                }
+                            ],
+                        }
+                    },
+                }
+            ]
+        },
+    }
+    manifest = republish(
+        store, {k: store.immutable_artifacts.put_json(key=k, payload=v) for k, v in data.items()}
+    )
+    app.state.watchlist.add(
+        SecuritySearchResult(
+            ticker="SYN", name="US listing", exchange="NYSE", bloomberg_ticker="", figi=""
+        )
+    )
+    client = TestClient(app)
+
+    def reading(ticker):
+        response = client.get(
+            f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+            params={"ticker": ticker, "scope": "cfd", "start": DATES[0], "end": tuesday},
+        )
+        assert response.status_code == 200
+        return response.json()
+
+    london = reading("SYN.L")
+    dated = {item["date"]: item["events"] for item in london["data"]["items"]}
+    assert {e["kind"] for e in dated[friday]} == {"ex_dividend"}
+    assert dated[monday] == [
+        {
+            "kind": "news",
+            "role": "lead",
+            "reference": article["id"],
+            "date": monday,
+            "publication_date": friday,
+        }
+    ]
+    assert [e["kind"] for e in dated[tuesday]] == ["dividend_pay"]
+    assert "security_news_refresh_failed" in london["quality"]["issues"]
+    us = reading("SYN")
+    assert {e["kind"] for day in us["data"]["items"] for e in day["events"]}.isdisjoint(
+        {"news", "dividend", "ex_dividend", "dividend_pay"}
+    )
+    assert {
+        "security_news_unavailable",
+        "dividends_unavailable",
+        "security_calendar_unavailable",
+    } <= set(us["quality"]["issues"])
+
+
+def test_timed_news_requires_a_known_exchange_and_observes_early_closes(bound, monkeypatch):
+    _, _, deps = bound
+    ticker = "TEST"
+    date = "2026-11-27"  # New York closes at 13:00 local after Thanksgiving.
+    args = ins.MomentsArgs(scope="invest", ticker=ticker, start=date, end="2026-11-30")
+    read = tools._Read(deps, "price_key_moments", args, args.scope)
+    series = deps.price_series(ticker, deps.manifest)
+    news = {
+        "securities": {
+            ticker: {
+                "as_of": date,
+                "items": [
+                    {
+                        "id": stamp,
+                        "publisher": "Wire",
+                        "title": "Synthetic headline",
+                        "url": "https://example.test/" + stamp,
+                        "date": date,
+                        "instant": instant,
+                    }
+                    for stamp, instant in (
+                        ("early", date + "T17:00:00Z"),
+                        ("late", date + "T19:00:00Z"),
+                        ("date-only", None),
+                    )
+                ],
+            }
+        }
+    }
+    monkeypatch.setattr(tools._Read, "read", lambda self, key: news if key == NEWS_KEY else None)
+
+    def events(calendar):
+        result, _, issues = ins.dated_events(
+            read, args, set(), series.model_copy(update={"exchange_calendar": calendar})
+        )
+        return {e["reference"]: e["date"] for e in result}, issues
+
+    assert events("XNYS")[0] == {"early": date, "late": args.end, "date-only": date}
+    dates, issues = events(None)
+    assert dates == {"date-only": date}
+    assert "listing_calendar_unavailable" in issues
+
+
+def test_moment_news_references_fit_the_tool_limit_without_breaking_the_article_link(bound):
+    import json
+
+    app, _, _ = bound
+    articles = [
+        {
+            "id": f"{day}-{n}" + "报" * 2000,
+            "publisher": "Wire",
+            "title": "Synthetic news",
+            "url": f"https://example.test/{day}/{n}",
+            "date": day,
+        }
+        for day in DATES[-3:]
+        for n in range(6)
+    ]
+    store = app.state.store
+    news = {"securities": {"TEST": {"as_of": DATES[-1], "items": articles}}}
+    manifest = republish(
+        store, {NEWS_KEY: store.immutable_artifacts.put_json(key=NEWS_KEY, payload=news)}
+    )
+    response = TestClient(app).get(
+        f"/v1/snapshots/{manifest.run_id}/insights/key-moments",
+        params={"ticker": "TEST", "scope": "cfd", "start": DATES[0], "end": DATES[-1]},
+    )
+    data = response.json()
+    assert len(json.dumps(data).encode()) <= tools.MAX_RESULT_BYTES
+    assert data["status"] == "partial" and "result_byte_limit" in data["quality"]["issues"]
+    moments = data["data"]["items"]
+    assert len(moments) == 3 and all(m["events"] and m["event_count"] >= 6 for m in moments)
+    references = {article["id"] for article in articles}
+    assert all(
+        e["reference"] in references for m in moments for e in m["events"] if e["kind"] == "news"
+    )
 
 
 def test_key_moment_evidence_changes_with_resolved_series(bound):

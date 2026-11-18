@@ -2549,6 +2549,9 @@ class ResearchLedger:
         series = ResearchPriceSeries(
             unresolved_trade_accounts=unresolved,
             published_bar_ticker=bar_ticker,
+            exchange_calendar=listing_calendar(
+                bar_ticker, source.get("exchange"), source.get("timezone")
+            ),
             published_series_id=published_price_series_id(artifact.sha256, ticker)
             if artifact
             else None,
