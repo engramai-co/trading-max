@@ -656,6 +656,44 @@ def test_cited_earnings_row_survives_replacement_and_expires_after_retention(tmp
         assert get(client, original).status_code == 404
 
 
+def test_citation_reads_one_matching_published_holding_event(tmp_path, monkeypatch):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    store = ArtifactStore(tmp_path)
+    original = publish(store, earnings_dates=["2026-02-04"])
+    with TestClient(app) as client:
+        events_url = f"/v1/snapshots/{original.run_id}/events"
+        rows = client.get(
+            events_url + "/upcoming",
+            params={
+                "scope": "household",
+                "ticker": "WATCH",
+                "start": "2026-02-03",
+                "end": "2026-02-05",
+            },
+        ).json()["data"]["items"]
+        earned = next(row for row in rows if row["kind"] == "earnings")
+        query = {"ticker": "WATCH", "kind": "earnings", "event_id": earned["evidence_id"]}
+
+        def read(params):
+            return client.get(events_url + "/cited", params=params)
+
+        assert read(query).json() == earned
+        for invalid in (
+            {"scope": "household", "start": "2026-01-01", "end": "2026-12-31"},
+            {"ticker": "WATCH", "kind": "earnings"},
+            {**query, "scope": "household"},
+            {**query, "research_event_id": "different"},
+        ):
+            assert read(invalid).status_code == 422
+        for wrong in ({"ticker": "ALFA"}, {"kind": "ex_dividend"}, {"event_id": "ev_wrong"}):
+            assert read(query | wrong).status_code == 404
+        publish(store, earnings_dates=["2026-02-12"])
+        assert read(query).json() == earned
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert original.run_id in store.prune_snapshots(keep_recent=1)
+        assert read(query).status_code == 404
+
+
 def test_recorded_event_citation_matches_its_row_listing_and_retained_publication(
     tmp_path, monkeypatch
 ):
@@ -673,21 +711,20 @@ def test_recorded_event_citation_matches_its_row_listing_and_retained_publicatio
     newer = publish(writer, headline="Later publication")
     with TestClient(app) as client:
         for row in rows:
-            path = f"/v1/snapshots/{original.run_id}/events/recorded/{row['evidence_id']}"
-            response = client.get(path, params={"ticker": "ALFA"})
+            path = f"/v1/snapshots/{original.run_id}/events/cited"
+            query = {"ticker": "ALFA", "kind": row["kind"], "event_id": row["evidence_id"]}
+            response = client.get(path, params=query)
             assert response.status_code == 200
             assert response.json()["evidence_id"] == row["evidence_id"]
             if row["kind"] == "earnings":
                 assert response.json()["actual_eps"] == 1
                 assert response.json()["estimated_eps"] == 1.2
                 assert response.json()["currency"] == "USD"
-            assert client.get(path, params={"ticker": "OTHER"}).status_code == 404
+            assert client.get(path, params=query | {"ticker": "OTHER"}).status_code == 404
             assert (
-                client.get(
-                    path.replace(original.run_id, newer.run_id), params={"ticker": "ALFA"}
-                ).status_code
+                client.get(path.replace(original.run_id, newer.run_id), params=query).status_code
                 == 404
             )
         monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
         assert original.run_id in writer.prune_snapshots(keep_recent=1)
-        assert client.get(path, params={"ticker": "ALFA"}).status_code == 404
+        assert client.get(path, params=query).status_code == 404

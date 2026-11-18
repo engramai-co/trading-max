@@ -4946,6 +4946,286 @@
         "title": "CfdUnmatchedOrder",
         "type": "object"
       },
+      "CitedItem": {
+        "properties": {
+          "actual_eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Eps"
+          },
+          "credit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credit"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "date": {
+            "title": "Date",
+            "type": "string"
+          },
+          "end_date": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Date"
+          },
+          "estimated_eps": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estimated Eps"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "firm": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firm"
+          },
+          "fiscal_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fiscal Period"
+          },
+          "from_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From Grade"
+          },
+          "instant": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instant"
+          },
+          "kind": {
+            "enum": [
+              "earnings",
+              "ex_dividend",
+              "rating_change"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "licence_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Licence Url"
+          },
+          "local_date": {
+            "title": "Local Date",
+            "type": "string"
+          },
+          "local_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Time"
+          },
+          "market": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market"
+          },
+          "publisher": {
+            "title": "Publisher",
+            "type": "string"
+          },
+          "research_event_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Research Event Id"
+          },
+          "source_as_of": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source As Of"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "ticker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticker"
+          },
+          "time_source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Source Url"
+          },
+          "timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timezone"
+          },
+          "title_en": {
+            "title": "Title En",
+            "type": "string"
+          },
+          "title_zh": {
+            "title": "Title Zh",
+            "type": "string"
+          },
+          "to_grade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To Grade"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "kind",
+          "evidence_id",
+          "date",
+          "local_date",
+          "local_time",
+          "publisher",
+          "title_en",
+          "title_zh"
+        ],
+        "title": "CitedItem",
+        "type": "object"
+      },
       "ClosedTradeReview": {
         "properties": {
           "actualGbp": {
@@ -17359,146 +17639,6 @@
           "evidence_id"
         ],
         "title": "Reading[Union[DatedExposure, ExposureStart]]",
-        "type": "object"
-      },
-      "RecordedEvent": {
-        "properties": {
-          "actual_eps": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Actual Eps"
-          },
-          "currency": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Currency"
-          },
-          "date": {
-            "title": "Date",
-            "type": "string"
-          },
-          "estimated_eps": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Estimated Eps"
-          },
-          "evidence_id": {
-            "title": "Evidence Id",
-            "type": "string"
-          },
-          "firm": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Firm"
-          },
-          "from_grade": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "From Grade"
-          },
-          "instant": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Instant"
-          },
-          "kind": {
-            "enum": [
-              "earnings",
-              "rating_change"
-            ],
-            "title": "Kind",
-            "type": "string"
-          },
-          "publisher": {
-            "title": "Publisher",
-            "type": "string"
-          },
-          "snapshot_id": {
-            "title": "Snapshot Id",
-            "type": "string"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
-          },
-          "ticker": {
-            "title": "Ticker",
-            "type": "string"
-          },
-          "title_en": {
-            "title": "Title En",
-            "type": "string"
-          },
-          "title_zh": {
-            "title": "Title Zh",
-            "type": "string"
-          },
-          "to_grade": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "To Grade"
-          }
-        },
-        "required": [
-          "snapshot_id",
-          "evidence_id",
-          "ticker",
-          "kind",
-          "date",
-          "title_en",
-          "title_zh",
-          "publisher"
-        ],
-        "title": "RecordedEvent",
         "type": "object"
       },
       "RefreshAttention": {
@@ -31452,9 +31592,9 @@
         "summary": "Snapshot Artifact"
       }
     },
-    "/v1/snapshots/{run_id}/events/recorded/{record_id}": {
+    "/v1/snapshots/{run_id}/events/cited": {
       "get": {
-        "operationId": "recorded_v1_snapshots__run_id__events_recorded__record_id__get",
+        "operationId": "cited_event_v1_snapshots__run_id__events_cited_get",
         "parameters": [
           {
             "in": "path",
@@ -31467,23 +31607,59 @@
             }
           },
           {
-            "in": "path",
-            "name": "record_id",
+            "in": "query",
+            "name": "ticker",
             "required": true,
             "schema": {
-              "pattern": "^ev_[0-9a-f]{16}$",
-              "title": "Record Id",
+              "$ref": "#/components/schemas/Ticker"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "earnings",
+                "ex_dividend",
+                "rating_change"
+              ],
+              "title": "Kind",
               "type": "string"
             }
           },
           {
             "in": "query",
-            "name": "ticker",
-            "required": true,
+            "name": "event_id",
+            "required": false,
             "schema": {
-              "pattern": "^[A-Za-z0-9^=._-]{1,32}$",
-              "title": "Ticker",
-              "type": "string"
+              "anyOf": [
+                {
+                  "pattern": "^ev_[A-Za-z0-9_-]{1,96}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Event Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "research_event_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Research Event Id"
             }
           }
         ],
@@ -31492,7 +31668,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RecordedEvent"
+                  "$ref": "#/components/schemas/CitedItem"
                 }
               }
             },
@@ -31509,7 +31685,7 @@
             "description": "Validation Error"
           }
         },
-        "summary": "Recorded",
+        "summary": "Cited Event",
         "tags": [
           "events"
         ]

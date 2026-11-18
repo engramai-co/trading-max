@@ -397,6 +397,12 @@ holidays and early closes for identifiable listings. All-day dates stay on their
 publisher's calendar day. Timed rows include the source instant and local time.
 An earnings window retains both ends when the provider has not set a single day.
 
+A saved holdings citation reopens through `GET /v1/snapshots/{run_id}/events/cited`.
+It requires the ticker, kind (earnings or ex-dividend) and one published row
+identity. Pass `event_id` for a calendar row or `research_event_id` for an
+older analyst citation. The response is the matching event. An expired
+publication or missing row returns 404.
+
 Scheduled research records Yahoo-compatible headline metadata with the shared
 Yahoo request budget. The news and disclosure loaders verify the HTTP status and ticker-stream envelope before accepting an empty result. The rolling
 news history retains up to 500 headlines per listing for up to a year. Account

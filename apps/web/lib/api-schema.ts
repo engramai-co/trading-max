@@ -1459,15 +1459,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/snapshots/{run_id}/events/recorded/{record_id}": {
+    "/v1/snapshots/{run_id}/events/cited": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Recorded */
-        get: operations["recorded_v1_snapshots__run_id__events_recorded__record_id__get"];
+        /** Cited Event */
+        get: operations["cited_event_v1_snapshots__run_id__events_cited_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -3184,6 +3184,68 @@ export interface components {
             positionId?: string | null;
             /** Symbol */
             symbol?: string | null;
+        };
+        /** CitedItem */
+        CitedItem: {
+            /** Actual Eps */
+            actual_eps?: number | null;
+            /** Credit */
+            credit?: string | null;
+            /** Currency */
+            currency?: string | null;
+            /** Date */
+            date: string;
+            /** End Date */
+            end_date?: string | null;
+            /** Estimated Eps */
+            estimated_eps?: number | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Firm */
+            firm?: string | null;
+            /** Fiscal Period */
+            fiscal_period?: string | null;
+            /** From Grade */
+            from_grade?: string | null;
+            /** Instant */
+            instant?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earnings" | "ex_dividend" | "rating_change";
+            /** Licence Url */
+            licence_url?: string | null;
+            /** Local Date */
+            local_date: string;
+            /** Local Time */
+            local_time: string | null;
+            /** Market */
+            market?: string | null;
+            /** Publisher */
+            publisher: string;
+            /** Research Event Id */
+            research_event_id?: string | null;
+            /** Source As Of */
+            source_as_of?: string | null;
+            /** Source Url */
+            source_url?: string | null;
+            /** Status */
+            status?: string | null;
+            /** Ticker */
+            ticker?: string | null;
+            /** Time Source Url */
+            time_source_url?: string | null;
+            /** Timezone */
+            timezone?: string | null;
+            /** Title En */
+            title_en: string;
+            /** Title Zh */
+            title_zh: string;
+            /** To Grade */
+            to_grade?: string | null;
+            /** Unit */
+            unit?: string | null;
         };
         /** ClosedTradeReview */
         ClosedTradeReview: {
@@ -7004,44 +7066,6 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "partial" | "unavailable" | "not_applicable";
-        };
-        /** RecordedEvent */
-        RecordedEvent: {
-            /** Actual Eps */
-            actual_eps?: number | null;
-            /** Currency */
-            currency?: string | null;
-            /** Date */
-            date: string;
-            /** Estimated Eps */
-            estimated_eps?: number | null;
-            /** Evidence Id */
-            evidence_id: string;
-            /** Firm */
-            firm?: string | null;
-            /** From Grade */
-            from_grade?: string | null;
-            /** Instant */
-            instant?: string | null;
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "earnings" | "rating_change";
-            /** Publisher */
-            publisher: string;
-            /** Snapshot Id */
-            snapshot_id: string;
-            /** Status */
-            status?: string | null;
-            /** Ticker */
-            ticker: string;
-            /** Title En */
-            title_en: string;
-            /** Title Zh */
-            title_zh: string;
-            /** To Grade */
-            to_grade?: string | null;
         };
         /** RefreshAttention */
         RefreshAttention: {
@@ -13292,15 +13316,17 @@ export interface operations {
             };
         };
     };
-    recorded_v1_snapshots__run_id__events_recorded__record_id__get: {
+    cited_event_v1_snapshots__run_id__events_cited_get: {
         parameters: {
             query: {
-                ticker: string;
+                ticker: components["schemas"]["Ticker"];
+                kind: "earnings" | "ex_dividend" | "rating_change";
+                event_id?: string | null;
+                research_event_id?: string | null;
             };
             header?: never;
             path: {
                 run_id: string;
-                record_id: string;
             };
             cookie?: never;
         };
@@ -13312,7 +13338,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecordedEvent"];
+                    "application/json": components["schemas"]["CitedItem"];
                 };
             };
             /** @description Validation Error */

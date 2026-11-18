@@ -50,8 +50,8 @@ def calendar_window(deps: AssistantDeps) -> dict[str, str]:
 class OverviewRole(PageRole):
     @property
     def cache_id(self) -> str:
-        # Earlier overview readings contain only the holdings calendar.
-        return "calendar:" + super().cache_id
+        # Older editions can present a withdrawn event as upcoming.
+        return "calendar:status:" + super().cache_id
 
     def bind(self, deps: AssistantDeps, context: RoleContext) -> AssistantDeps:
         selected = super().bind(deps, context)
@@ -81,7 +81,7 @@ def overview_calendar(read: RoleTools) -> ReadingLine:
             day = row["local_date"]
             if kind in selected or kind not in {"macro", "earnings", "ex_dividend"}:
                 continue
-            if len(day) != 10 or row.get("status") in {"cancelled", "postponed"}:
+            if len(day) != 10 or row.get("status") in {"cancelled", "withdrawn", "postponed"}:
                 continue
             instant = row.get("instant")
             if instant and datetime.fromisoformat(instant) < read.deps.manifest.created_at:
@@ -102,8 +102,6 @@ def overview_calendar(read: RoleTools) -> ReadingLine:
                 zh, en = prefix + row["title_zh"], prefix + row["title_en"]
                 if row.get("credit"):
                     details["credit"] = row["credit"]
-                if row.get("status") == "provisional":
-                    zh, en = zh + "（暂定）", en + " (provisional)"
                 source = "calendar"
             else:
                 ticker = row["ticker"]
@@ -122,6 +120,8 @@ def overview_calendar(read: RoleTools) -> ReadingLine:
                 else:
                     details["event"] = "exDividend"
                     zh, en, source = f"{ticker} 除息", f"{ticker} ex-dividend", "disclosure"
+            if row.get("status") == "provisional":
+                zh, en = zh + "（暂定）", en + " (provisional)"
             selected[kind] = line(
                 "next",
                 f"{span} · {zh}",

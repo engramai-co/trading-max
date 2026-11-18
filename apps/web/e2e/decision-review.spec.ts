@@ -1246,12 +1246,14 @@ test("earnings and rating source words open their own research sections", async 
     }) + "\n"});
   });
   let expired = false;
-  await page.route("**/api/backend/publications/older-publication/events/recorded/**", r => {
+  await page.route("**/api/backend/publications/older-publication/events/upcoming?**", r => {
     const items = ["earnings","rating_change"].map((kind, i) => ({kind, ticker:"SYNT", date:"2026-08-28",
       local_date:"2026-08-28", snapshot_id:"older-publication", evidence_id:i ? "ev_0000000000000002" : "ev_0000000000000001", title_zh:i ? "评级变动" : "已公布",
       title_en:i ? "Rating change" : "Reported earnings", publisher:"Synthetic archive", firm:i ? "Synthetic Research" : undefined,
       to_grade:i ? "Hold" : undefined, actual_eps:i ? undefined : 1.75, currency:"USD"}));
-    const row = items.find(item => r.request().url().includes(item.evidence_id));
+    const query = new URL(r.request().url()).searchParams;
+    const row = items.find(item => item.evidence_id === query.get("eventId") &&
+      item.ticker === query.get("ticker") && item.kind === query.get("kind"));
     return r.fulfill({status: expired || !row ? 404 : 200,json: expired ? {} : row});
   });
   for (const [word, section, heading] of [["财报", "events", "财报事件"], ["分析师", "actions", "机构行动"]]) {
@@ -1276,7 +1278,9 @@ test("earnings and rating source words open their own research sections", async 
       await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-" + section + "-citation.png")});
     }
     expired = true;
+    const missing = page.waitForResponse(r => r.url().includes("/publications/older-publication/events/upcoming?") && r.status() === 404);
     await page.reload();
+    await missing;
     await expect(page.getByText("引用的数据版本或事件暂不可用", {exact:true})).toBeVisible();
     if (process.env.REVIEW_SCREENSHOTS && section === "events") await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-expired-review-event.png")});
     expired = false;
@@ -1336,5 +1340,8 @@ test("a pinned habit and horizon remain readable with MaxAI off", async ({page},
   await expect(page.locator(".mx-review-filter")).toContainText("同一天买入多只");
   await expect(page.getByRole("button",{name:"至今",exact:true})).toHaveAttribute("aria-pressed","true");
   await expect(panel(page,"帮你最多")).toContainText("£70");
-  if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-pinned-review-off.png")});
+  if (process.env.REVIEW_SCREENSHOTS) {
+    await panel(page,"帮你最多").scrollIntoViewIfNeeded();
+    await page.screenshot({animations:"disabled",path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-pinned-review-off.png")});
+  }
 });

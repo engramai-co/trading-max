@@ -360,9 +360,9 @@ test("earnings citations reopen the exact retained row and disclose expiry", asy
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   let expired = false;
   await page.route("**/api/backend/publications/saved/events/upcoming?**", route => route.fulfill(expired
-    ? {status:404,json:{detail:"snapshot not found"}} : {json:{snapshot_id:"saved",data:{items:[
-      {kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture"},
-    ]}}}));
+    ? {status:404,json:{detail:"snapshot not found"}} : {json:{
+      kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture",
+    }}));
   await page.goto("/");
   await page.locator(".mx-digest [aria-expanded]").click();
   const link = page.locator(".mx-digest").getByRole("link",{name:"Financials",exact:true}).first();
@@ -424,13 +424,14 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
     localStorage.setItem("trading_max-time-zone","Asia/Tokyo");
   });
   const eventRows = [
-    {kind:"macro",evidence_id:"ev_prices",title_en:"Consumer prices",date:"2026-02-03",instant:"2026-02-03T23:30:00Z",source_url:"https://example.org/calendar"},
+    {kind:"macro",evidence_id:"ev_prices",title_en:"Consumer prices",status:"cancelled",date:"2026-02-03",instant:"2026-02-03T23:30:00Z",source_url:"https://example.org/calendar"},
+    {kind:"macro",evidence_id:"ev_range",title_en:"GDP",status:"provisional",date:"2026-03",end_date:"2026-04",source_url:"https://example.org/gdp"},
     {kind:"earnings",ticker:"SYNT",evidence_id:"ev_report",research_event_id:"report-1",title_en:"Earnings",date:"2026-02-04"},
   ];
   const chunks = [{type:"start",messageId:"calendar"},{type:"start-step"},
     {type:"tool-input-available",toolCallId:"cal",toolName:"upcoming_events",input:{}},
     {type:"tool-output-available",toolCallId:"cal",output:{evidence_id:"ev_results",snapshot_id:"saved",status:"ok",data:{items:eventRows}}},
-    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:"{{/data/items/0/date}} [ev_results]\n{{/data/items/1/date}} [ev_results]"},
+    {type:"text-start",id:"t"},{type:"text-delta",id:"t",delta:"{{/data/items/0/date}} [ev_results]\n{{/data/items/1/date}} [ev_results]\n{{/data/items/2/date}} [ev_results]"},
     {type:"text-end",id:"t"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
   await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
     headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
@@ -452,8 +453,91 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
   await input.fill("Which release and earnings date are coming up?");
   await input.press("Enter");
   const reply = page.locator(".mx-turn-assistant");
-  await expect(reply).toContainText(/Consumer prices.*4 Feb 2026.*08:30/);
-  await expect(reply.getByRole("link",{name:"Calendar"})).toHaveAttribute("href","https://example.org/calendar");
+  await expect(reply).toContainText(/Consumer prices \(cancelled\).*4 Feb 2026.*08:30/);
+  await expect(reply).toContainText("GDP (provisional) · 2026-03 – 2026-04");
+  await expect(reply.getByRole("link",{name:"Calendar"}).first()).toHaveAttribute("href","https://example.org/calendar");
   await expect(reply.getByRole("link",{name:"Financials"})).toHaveAttribute("href",/snapshotId=saved.*calendarEventId=ev_report/);
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-calendar-followup.png")});
+});
+
+test("opening a stale session rechecks consent before exposing saved History", async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await fixtures(page);
+  let ready = true, checks = 0, historyReads = 0;
+  await page.route("**/api/backend/assistant/status", route => {
+    checks++;
+    return route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
+  });
+  await page.route("**/api/backend/assistant/conversations", route => {
+    historyReads++;
+    return route.fulfill({json:[]});
+  });
+  await page.goto("/");
+  await expect(page.locator(".mx-digest")).toBeVisible();
+  ready = false;
+  await page.clock.setFixedTime(new Date("2026-03-01T12:06:00Z"));
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant", {timeout:3000});
+  await expect(page.getByRole("button",{name:"Conversation history"})).toHaveCount(0);
+  await expect(page.locator(".mx-assistant-composer")).toHaveCount(0);
+  expect(checks).toBeGreaterThan(1);
+  expect(historyReads).toBe(0);
+});
+
+test("withdrawal in Settings closes another window's saved History", async ({page,context}, info) => {
+  await context.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await fixtures(page);
+  let enabled = true;
+  const settings = {enabled:true,revision:1,route:"openai/model-a",acceptedConsentRevision:2,consentRevision:2,acceptedDestination:"https://example.org/v1",
+    acceptedAt:"2026-01-01",backgroundBriefsEnabled:false,shareValuationAssumptions:false,providers:[],integrations:[]};
+  await page.route("**/api/backend/profile", route => route.fulfill({json:{accountLabels:{},assistantEnabled:enabled}}));
+  await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:enabled,code:enabled ? null : "assistant_disabled"}}));
+  await page.goto("/");
+  await expect(page.locator(".mx-digest")).toBeVisible();
+  await page.locator("[data-assistant-trigger]").click();
+  await page.getByRole("button",{name:"Conversation history"}).click();
+  await expect(page.getByText("No saved conversations yet.")).toBeVisible();
+  const other = await context.newPage();
+  await fixtures(other);
+  await other.route("**/api/backend/settings/assistant", route => {
+    if (route.request().method() === "PUT") {
+      enabled = false;
+      return route.fulfill({json:{...settings,enabled:false,revision:2,acceptedConsentRevision:null,acceptedAt:null}});
+    }
+    return route.fulfill({json:settings});
+  });
+  await other.goto("/settings?tab=assistant");
+  await other.getByRole("button",{name:"Withdraw consent"}).click();
+  await expect.poll(() => enabled).toBe(false);
+  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant",{timeout:3000});
+  await expect(page.getByText("No saved conversations yet.")).toHaveCount(0);
+  await page.bringToFront();
+  if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-withdrawn-consent.png")});
+});
+
+test("returning to the window checks stale readiness while preserving an authorised draft", async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.clock.setFixedTime(new Date("2026-03-01T12:00:00Z"));
+  await fixtures(page);
+  let ready = true, checks = 0;
+  await page.route("**/api/backend/assistant/status", route => {
+    checks++;
+    return route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  await input.fill("Keep this draft");
+  const baseline = checks;
+  await page.clock.setFixedTime(new Date("2026-03-01T12:01:00Z"));
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect.poll(() => checks).toBeGreaterThan(baseline);
+  await expect(input).toBeVisible();
+  await expect(input).toHaveValue("Keep this draft");
+  ready = false;
+  await page.clock.setFixedTime(new Date("2026-03-01T12:02:00Z"));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant");
+  await expect(input).toHaveCount(0);
 });
