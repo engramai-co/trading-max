@@ -79,10 +79,12 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await page.goto("/research?ticker=SYNT&view=technical");
     const track = page.locator(".mx-track-moment");
     await expect(track).toHaveCount(1);
+    await expect(track.locator("time")).toHaveAttribute("datetime", day);
+    await expect(track.locator(".mx-moment-number")).toHaveText("1");
     expect(reads).not.toContain("key-moment");
     const marker = page.locator(".mx-key-marker");
     if (isMobile) { await expect(marker).toBeHidden(); await track.click(); }
-    else { await expect(marker).toHaveCSS("width","18px"); await marker.focus(); await marker.press("Enter"); }
+    else { await expect(marker).toHaveText("1"); await expect(marker).toHaveCSS("width","18px"); await marker.focus(); await marker.press("Enter"); }
     const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
     await expect(card.locator(".mx-reading-line a")).toHaveCount(2);
     expect((await new AxeBuilder({page}).include(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading").analyze()).violations).toEqual([]);
@@ -108,12 +110,14 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     const digest=page.locator(".mx-earnings-brief");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
     expect(await digest.evaluate(el=>!!el.parentElement?.querySelector("#research-ratings") && el===el.parentElement.firstElementChild)).toBe(true);
+    await shot("earnings-collapsed");
     await digest.locator("[aria-expanded]").click();
     await expect(digest.locator(".mx-reading-line a")).toHaveCount(2);
     expect((await new AxeBuilder({page}).include(".mx-earnings-brief").analyze()).violations).toEqual([]);
     await shot("earnings");
     await page.goto("/research?ticker=SYNT&view=fundamentals");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","true");
+    expect(await digest.evaluate(el => el === el.parentElement?.firstElementChild)).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(isMobile?390:1440);
   });
 }
