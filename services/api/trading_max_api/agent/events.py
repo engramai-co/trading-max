@@ -370,23 +370,27 @@ def _trades(read, args, codes, issues, keys):
 
 def _macros(payload, start, end, issues):
     events = {}
+    revisions = {}
     for name, source in payload.get("sources", {}).items():
         if source.get("error"):
             issues.append(f"{name}_refresh_failed")
+        as_of = source.get("as_of")
+        stamp = _stamp(as_of)
+        observed = datetime.fromisoformat(stamp) if stamp else None
+        if observed is None or observed.tzinfo is None:
+            observed = datetime.min.replace(tzinfo=UTC)
         for row in _rows(source.get("events")):
             result = {
                 **row,
                 "kind": "macro",
                 "ticker": None,
                 "reference": row["id"],
-                "source_as_of": source.get("as_of"),
+                "source_as_of": as_of,
             }
-            # Cancelled entries on ONS's separate index override the upcoming listing.
-            old = events.get(row["id"])
-            if not old or (row["status"] == "cancelled", result["source_as_of"] or "") > (
-                old["status"] == "cancelled",
-                old["source_as_of"] or "",
-            ):
+            # When both indexes were read together, an explicit withdrawal wins.
+            revision = (observed, row["status"] == "cancelled")
+            if row["id"] not in revisions or revision > revisions[row["id"]]:
+                revisions[row["id"]] = revision
                 events[row["id"]] = result
     joint_days = {
         e["date"]

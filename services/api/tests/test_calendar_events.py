@@ -499,3 +499,30 @@ def test_fill_sharing_isin_with_a_different_listing_keeps_its_source_ticker(tmp_
         for r in account["data"]["items"]
         if r["kind"] == "own_trade"
     ) == [("ABC.L", True), ("ABCEU", False)]
+
+
+@pytest.mark.parametrize("order", ["active-first", "cancelled-first"])
+def test_macro_uses_last_success_before_cancellation_tiebreak(order):
+    row = {"id": "release", "publisher": "ONS", "title_en": "Retail", "date": "2026-11-25"}
+    active = {"as_of": "2026-11-18T12:00:00+00:00", "events": [{**row, "status": "provisional"}]}
+    cancelled = {
+        "as_of": "2026-11-18T12:30:00+01:00",
+        "checked_at": "2026-11-19T12:00:00Z",
+        "error": "Timeout",
+        "events": [{**row, "status": "cancelled"}],
+    }
+    sources = {"ons-upcoming": active, "ons-cancelled": cancelled}
+    if order == "cancelled-first":
+        sources = dict(reversed(sources.items()))
+
+    def status():
+        issues = []
+        (result,) = events._macros({"sources": sources}, row["date"], row["date"], issues)
+        assert issues == ["ons-cancelled_refresh_failed"]
+        return result["status"]
+
+    assert status() == "provisional"
+    cancelled["as_of"] = "2026-11-18T12:00:00Z"
+    assert status() == "cancelled"
+    cancelled["as_of"] = None
+    assert status() == "provisional"
