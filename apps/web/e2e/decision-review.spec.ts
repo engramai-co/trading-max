@@ -1227,8 +1227,8 @@ test("earnings and rating source words open their own research sections", async 
     if (url.pathname.endsWith("/lens/analyst")) {
       url.pathname = url.pathname.replace(/analyst$/, "overview");
       data = { ...Object(backendFixture(url)), view: "analyst", analyst: {
-        earningsEvents: [{ id: "synthetic-results", date: "2026-08-28", status: "reported",
-          instant: "2026-08-28T12:00:00Z", timezone: "Europe/London" }],
+        earningsEvents: [{ id: "synthetic-results", date: "2026-11-16", status: "reported",
+          instant: "2026-11-16T12:00:00Z", timezone: "Europe/London" }],
         upgradesDowngrades: [{ GradeDate: "2026-08-31", Firm: "Synthetic Research", FromGrade: "Buy", ToGrade: "Hold", Action: "down" }],
       } };
     }
@@ -1239,11 +1239,20 @@ test("earnings and rating source words open their own research sections", async 
       .map(([zh, source, section]) => ({ section: section || "headline", zh, en: zh,
         evidence: { tool: "decision_timing_and_habits", evidenceId: "ev_selected", source,
           publisher: source === "publisher" ? "Synthetic Wire" : undefined,
-          arguments: {scope:"invest", ticker:"SYNB", listing:"SYNT", lens:"analyst", analystView:section,
+          arguments: {scope:"invest", ticker:"SYNB", listing:"SYNT", lens:"analyst", analystView:section, snapshotId:"older-publication", date:"2026-08-28", calendarEventId:section === "events" ? "ev_0000000000000001" : "ev_0000000000000002",
             ...(source === "publisher" ? {url:"https://example.org/synthetic"} : {})} }}));
     return route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({
       type:"result",reading:{role:"decision",asOf,lines},
     }) + "\n"});
+  });
+  let expired = false;
+  await page.route("**/api/backend/publications/older-publication/events/recorded/**", r => {
+    const items = ["earnings","rating_change"].map((kind, i) => ({kind, ticker:"SYNT", date:"2026-08-28",
+      local_date:"2026-08-28", snapshot_id:"older-publication", evidence_id:i ? "ev_0000000000000002" : "ev_0000000000000001", title_zh:i ? "评级变动" : "已公布",
+      title_en:i ? "Rating change" : "Reported earnings", publisher:"Synthetic archive", firm:i ? "Synthetic Research" : undefined,
+      to_grade:i ? "Hold" : undefined, actual_eps:i ? undefined : 1.75, currency:"USD"}));
+    const row = items.find(item => r.request().url().includes(item.evidence_id));
+    return r.fulfill({status: expired || !row ? 404 : 200,json: expired ? {} : row});
   });
   for (const [word, section, heading] of [["财报", "events", "财报事件"], ["分析师", "actions", "机构行动"]]) {
     await page.goto("/review?account=A");
@@ -1251,20 +1260,31 @@ test("earnings and rating source words open their own research sections", async 
     await expect(page.getByRole("link", {name:"Synthetic Wire"})).toHaveAttribute("href", "https://example.org/synthetic");
     await page.getByRole("link", {name:word, exact:true}).click();
     await expect(page).toHaveURL(new RegExp("ticker=SYNT.*analystView=" + section + ".*#research-" + section));
+    await expect(page).toHaveURL(/snapshotId=older-publication/);
+    await expect(page).toHaveURL(/calendarEventId=ev_000000000000000/);
     const anchor = page.locator("#research-" + section);
     await expect(anchor).toHaveAttribute("data-assistant-evidence", "");
     await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeFocused();
     await expect(anchor.getByRole("heading", {name:heading, exact:true})).toBeInViewport({ratio:1});
     await expect(anchor).toContainText(section === "events" ? "已公布" : "Synthetic Research");
+    await expect(anchor).toContainText("2026-08-28");
+    if (section === "events") await expect(anchor).toContainText("1.75 USD");
+    await expect(anchor).not.toContainText("2026-11-16");
     expect(await page.evaluate(() => window.scrollX)).toBe(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(page.viewportSize()!.width);
     if (process.env.REVIEW_SCREENSHOTS) {
       await page.screenshot({path: join(process.env.REVIEW_SCREENSHOTS, info.project.name + "-zh-" + section + "-citation.png")});
     }
+    expired = true;
+    await page.reload();
+    await expect(page.getByText("引用的数据版本或事件暂不可用", {exact:true})).toBeVisible();
+    if (process.env.REVIEW_SCREENSHOTS && section === "events") await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-expired-review-event.png")});
+    expired = false;
   }
 });
 
 test("clearing a habit by keyboard focuses the restored timeline heading", async ({page}) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
   await serve(page, () => ({ benchmark:0.03, events:true, observations:true }));
   await page.route("**/api/backend/assistant/status", r => r.fulfill({json:{ready:true}}));
   await page.goto("/review?habit=untraded_fall");
@@ -1274,7 +1294,7 @@ test("clearing a habit by keyboard focuses the restored timeline heading", async
 
 for (const provider of ["ready", "unavailable"]) {
   test("expanded English habits keep the timeline fixed beside the sidebar when " + provider, async ({page,isMobile}, info) => {
-    test.skip(isMobile, "The sidebar shares space with the desktop review.");
+    test.skip(isMobile || !process.env.PLAYWRIGHT_BASE_URL, "The sidebar shares space with the desktop review.");
     await page.addInitScript(() => {
       localStorage.setItem("trading_max-locale","en");
       localStorage.setItem("tm-reading-review-habits","open");
@@ -1301,8 +1321,20 @@ for (const provider of ["ready", "unavailable"]) {
     resolveStatus(); await result;
     resolveBrief();
     if (provider === "ready") await expect(page.locator(".mx-habit-line")).toHaveCount(3);
-    else await expect(page.locator(".mx-digest")).toHaveCount(0);
+    else await expect(page.getByText("The model is unavailable.", {exact:false})).toBeVisible();
     expect(Math.abs(await heading.evaluate(node => node.getBoundingClientRect().top + scrollY) - y)).toBeLessThan(2);
     if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-en-habits-sidebar-"+provider+".png")});
   });
 }
+
+test("a pinned habit and horizon remain readable with MaxAI off", async ({page},info) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
+  if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
+  await serve(page, () => ({ benchmark:0.03, events:true, unpricedBasket:true }));
+  await page.route("**/api/backend/profile", r => r.fulfill({json:{accountLabels:{}, assistantEnabled:false}}));
+  await page.goto("/review?account=A&habit=basket_buy&reviewWindow=to_date&snapshotId=synthetic-decision-context");
+  await expect(page.locator(".mx-review-filter")).toContainText("同一天买入多只");
+  await expect(page.getByRole("button",{name:"至今",exact:true})).toHaveAttribute("aria-pressed","true");
+  await expect(panel(page,"帮你最多")).toContainText("£70");
+  if (process.env.REVIEW_SCREENSHOTS) await page.screenshot({path:join(process.env.REVIEW_SCREENSHOTS, info.project.name+"-zh-pinned-review-off.png")});
+});

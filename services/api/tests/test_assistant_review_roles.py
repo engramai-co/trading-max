@@ -157,6 +157,12 @@ def test_sidebar_fixture_matches_the_completed_review_tools(tmp_path):
             **expected[name]["bound_arguments"],
             "snapshotId": deps.snapshot_id,
         }
+        if name == "decision":
+            for i, event in enumerate(result["data"]["items"][0]["prior_events"]):
+                if event["kind"] != "news":
+                    assert event["record_id"].startswith("ev_")
+                    # Row IDs include this test run's immutable publication ID.
+                    event["record_id"] = f"ev_{i + 1:016x}"
         assert all(
             result[key] == expected[name][key] for key in ("status", "scope", "data", "quality")
         )
@@ -337,6 +343,8 @@ def test_earnings_and_ratings_each_cite_their_research_section(tmp_path):
     ):
         ref = by_section[kind].evidence
         assert ref.source == source and ref.arguments.get("analystView") == target
+        assert ref.arguments["calendarEventId"].startswith("ev_")
+
     assert by_section["headline"].evidence.source == "publisher"
 
 

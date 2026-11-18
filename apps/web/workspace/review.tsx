@@ -136,12 +136,12 @@ export function ReviewWorkspace() {
   const ordinal = params.get("reviewOrdinal");
   // A cited decision can disambiguate two listings with the same ticker on one day.
   const focus = shown === "all" || shown === "C" ? undefined : ordinal && /^\d{1,4}$/.test(ordinal) && reference
-    ? ledgerRows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(ready ? ledgerRows : rows,reference);
+    ? ledgerRows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(ready || snapshotId ? ledgerRows : rows,reference);
   const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
-  const requestedHorizon = ready ? params.get("reviewWindow") : null;
+  const requestedHorizon = ready || snapshotId ? params.get("reviewWindow") : null;
   const horizon = requestedHorizon === "to_date" ? "date" : requestedHorizon === "20_sessions" ? "horizon" : localHorizon;
   const rawHabit = params.get("habit");
-  const habit = ready && shown === scope && isHabit(rawHabit) ? rawHabit : null;
+  const habit = (ready || snapshotId) && shown === scope && isHabit(rawHabit) ? rawHabit : null;
   const habitRows = habit === "basket_buy" ? ledgerRows : rows;
   const filtered = useMemo(() => habitDecisions(habitRows,habit),[habitRows,habit]);
   const falls = useMemo(() => fallObservations(data?.reviewEvidence,shown === "all" ? ["A","B"] : shown === "C" ? [] : [shown]),[data,shown]);

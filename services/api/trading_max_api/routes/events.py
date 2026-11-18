@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import ModelRetry
 
-from ..agent.events import EventArgs, event_data
+from ..agent.events import EventArgs, event_data, retained_decision_event
+from ..agent.tools import Ticker
 
 router = APIRouter(prefix="/v1/snapshots/{run_id}/events", tags=["events"])
 
@@ -85,13 +86,50 @@ def upcoming(
         zone = ZoneInfo(query.timezone)
     except (ValueError, ZoneInfoNotFoundError):
         raise HTTPException(422, "Unknown display timezone") from None
-    deps = request.app.state.assistant.deps_for_run(None, zone.key)
+    deps = _publication(request, run_id, zone.key)
+    args = EventArgs.model_validate(query.model_dump(exclude={"timezone"}))
+    try:
+        return event_data(deps, args, upcoming=True)
+    except ModelRetry as exc:
+        raise HTTPException(422, str(exc)) from None
+
+
+def _publication(request, run_id, timezone):
+    deps = request.app.state.assistant.deps_for_run(None, timezone)
     try:
         manifest = request.app.state.store.load_manifest(run_id, require_retained=True)
     except FileNotFoundError:
         raise HTTPException(404, "Snapshot not found") from None
-    args = EventArgs.model_validate(query.model_dump(exclude={"timezone"}))
-    try:
-        return event_data(replace(deps, manifest=manifest), args, upcoming=True)
-    except ModelRetry as exc:
-        raise HTTPException(422, str(exc)) from None
+    return replace(deps, manifest=manifest)
+
+
+class RecordedEvent(BaseModel):
+    snapshot_id: str
+    evidence_id: str
+    ticker: str
+    kind: Literal["earnings", "rating_change"]
+    date: str
+    instant: str | None = None
+    title_en: str
+    title_zh: str
+    publisher: str
+    firm: str | None = None
+    estimated_eps: float | None = None
+    actual_eps: float | None = None
+    currency: str | None = None
+    from_grade: str | None = None
+    to_grade: str | None = None
+    status: str | None = None
+
+
+@router.get("/recorded/{record_id}", response_model=RecordedEvent)
+def recorded(
+    request: Request,
+    run_id: Annotated[str, Path(pattern=r"^[A-Za-z0-9_-]{1,100}$")],
+    record_id: Annotated[str, Path(pattern=r"^ev_[0-9a-f]{16}$")],
+    ticker: Ticker,
+):
+    row = retained_decision_event(_publication(request, run_id, "UTC"), ticker, record_id)
+    if row is None:
+        raise HTTPException(404, "Recorded event unavailable")
+    return row

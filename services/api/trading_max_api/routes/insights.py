@@ -118,6 +118,7 @@ class Timing(BaseModel):
 
 
 class PriorDecisionEvent(BaseModel):
+    record_id: str | None = None
     kind: Literal["earnings", "rating_change", "news"]
     local_date: str
     title_en: str

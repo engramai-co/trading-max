@@ -424,7 +424,7 @@ def dashboard_lens(
             or detail != "summary"
             or scope not in {None, "invest", "isa", "total"}
         ):
-            raise HTTPException(422, "Retained dashboard lenses support only the Returns summary")
+            raise HTTPException(422, "Unsupported retained dashboard selection")
         manifest = _dashboard_manifest(request, run_id)
         selected = scope or "total"
         return request.app.state.retained_returns.get_or_compute(

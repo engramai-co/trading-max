@@ -1459,6 +1459,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/snapshots/{run_id}/events/recorded/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recorded */
+        get: operations["recorded_v1_snapshots__run_id__events_recorded__record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/snapshots/{run_id}/events/upcoming": {
         parameters: {
             query?: never;
@@ -6722,6 +6739,8 @@ export interface components {
             local_date: string;
             /** Publisher */
             publisher: string;
+            /** Record Id */
+            record_id?: string | null;
             /** Source Url */
             source_url?: string | null;
             /** Title En */
@@ -6985,6 +7004,44 @@ export interface components {
              * @enum {string}
              */
             status: "ok" | "partial" | "unavailable" | "not_applicable";
+        };
+        /** RecordedEvent */
+        RecordedEvent: {
+            /** Actual Eps */
+            actual_eps?: number | null;
+            /** Currency */
+            currency?: string | null;
+            /** Date */
+            date: string;
+            /** Estimated Eps */
+            estimated_eps?: number | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Firm */
+            firm?: string | null;
+            /** From Grade */
+            from_grade?: string | null;
+            /** Instant */
+            instant?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "earnings" | "rating_change";
+            /** Publisher */
+            publisher: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Status */
+            status?: string | null;
+            /** Ticker */
+            ticker: string;
+            /** Title En */
+            title_en: string;
+            /** Title Zh */
+            title_zh: string;
+            /** To Grade */
+            to_grade?: string | null;
         };
         /** RefreshAttention */
         RefreshAttention: {
@@ -13222,6 +13279,40 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recorded_v1_snapshots__run_id__events_recorded__record_id__get: {
+        parameters: {
+            query: {
+                ticker: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordedEvent"];
                 };
             };
             /** @description Validation Error */

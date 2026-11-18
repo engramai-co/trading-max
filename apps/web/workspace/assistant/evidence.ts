@@ -101,6 +101,9 @@ export function evidenceHref(ref: Evidence): string | null {
   const section = a.analystView === "ratings" ? "actions" : a.analystView;
   if (eventSource && a.lens === "analyst" && ["actions", "events"].includes(section)) {
     params.set("analystView", section);
+    if (a.snapshotId) params.set("snapshotId", a.snapshotId);
+    if (a.calendarEventId) params.set("calendarEventId", a.calendarEventId);
+    if (a.date) params.set("date", a.date);
     params.set("evidence",ref.tool);
     return path + "?" + params + "#research-" + section;
   }

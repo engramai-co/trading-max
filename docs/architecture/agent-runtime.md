@@ -338,19 +338,24 @@ to the original snapshot. The decision tool returns only that row and its verifi
 pre-trade events. Review and Returns citations use the dashboard lens’s
 optional `run_id` to reopen the original publication. This preserves the
 selected listing even when a newer snapshot reuses its ticker. A habit
-follow-up binds the account, horizon and selected habit. Earnings citations
-open Earnings events on the resolved listing. Rating changes open Institutional
-actions, including its record of the firm’s upgrade or downgrade. Dated news
-links to its publisher. The review lens carries the saved consent state to reserve the habits row before the live credential check
-finishes. The timeline and journal render as soon as their snapshot arrives.
+follow-up binds the account, horizon and selected habit. The optional
+`compare_horizons` argument returns the other horizon from the same records.
+Saved Review links keep their horizon and habit when the assistant is off.
+Earnings and rating citations use the retained event reader to open the exact
+record on the resolved listing. An expired publication or missing record is
+shown as unavailable. Dated news links to its publisher. The saved consent
+state reserves room for the habits brief through the live readiness check. The timeline and journal render as soon as their snapshot arrives.
 Earlier results, rating changes and headlines use the earliest broker fill in
 the decision.
 An exact publication instant must precede that fill in UTC. For an unzoned
 archive date, even its latest possible publication must precede the fill.
 Older records with date-only fills use the start of the UTC business day.
+Headlines dated on the recorded trade day are always excluded.
 The pre-trade close uses a provider observation and a verified GBP conversion. The matched S&P 500 return is
-in GBP. The hindsight comparison uses the best feasible close in the same
-window and the account’s mean purchase size for the security through that day.
+in GBP. The hindsight window requires observed GBP closes at its start and
+end. Only sessions with an observed quote and a finite, positive GBP conversion
+qualify for the best close. The comparison uses the account’s mean purchase
+size for the security through the trade day.
 
 A completed review can pre-write a habits brief for each investment account and
 their combined scope. A new recorded decision, untraded fall or completed
@@ -361,7 +366,8 @@ its pinned records without another model call.
 - Pre-earnings buys fall in the seven calendar days before a recorded result.
   A same-day report is excluded because the sequence may be unknown.
 - Same-day basket buys cover purchases of multiple listings in the same account
-  on a trading day, including members without a verified closing price. Each
+  on a trading day, including members without a verified closing price or
+  sterling settlement amount. Each
   net buy is one decision. The filter shows the unmeasured members.
 - Untraded falls come from the review journal’s qualifying negative holding
   moves. A hypothetical purchase uses the average purchase order for that

@@ -62,7 +62,8 @@
               "title_zh": "业绩公布",
               "publisher": "Yahoo Finance",
               "source_url": "https://finance.yahoo.com/quote/TEST/",
-              "local_date": "2026-01-29"
+              "local_date": "2026-01-29",
+              "record_id": "ev_0000000000000001"
             },
             {
               "kind": "rating_change",
@@ -72,7 +73,8 @@
               "title_zh": "分析师评级变动",
               "publisher": "Yahoo Finance",
               "source_url": "https://finance.yahoo.com/quote/TEST/",
-              "local_date": "2026-01-30"
+              "local_date": "2026-01-30",
+              "record_id": "ev_0000000000000002"
             },
             {
               "kind": "news",

@@ -654,3 +654,40 @@ def test_cited_earnings_row_survives_replacement_and_expires_after_retention(tmp
         monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
         assert original.run_id in writer.prune_snapshots(keep_recent=1)
         assert get(client, original).status_code == 404
+
+
+def test_recorded_event_citation_matches_its_row_listing_and_retained_publication(
+    tmp_path, monkeypatch
+):
+    app = create_app(Settings(data_root=tmp_path), credential_store=InMemoryCredentialStore())
+    writer = ArtifactStore(tmp_path)
+    original = publish(writer)
+    deps = AssistantDepsFactory(writer).for_run()
+    record = events.event_data(
+        deps,
+        events.EventArgs(scope="invest", ticker="ALFA", start="2026-11-24", end="2026-11-26"),
+        upcoming=False,
+    )
+    rows = [r for r in record["data"]["items"] if r["kind"] in {"earnings", "rating_change"}]
+    assert {r["kind"] for r in rows} == {"earnings", "rating_change"}
+    newer = publish(writer, headline="Later publication")
+    with TestClient(app) as client:
+        for row in rows:
+            path = f"/v1/snapshots/{original.run_id}/events/recorded/{row['evidence_id']}"
+            response = client.get(path, params={"ticker": "ALFA"})
+            assert response.status_code == 200
+            assert response.json()["evidence_id"] == row["evidence_id"]
+            if row["kind"] == "earnings":
+                assert response.json()["actual_eps"] == 1
+                assert response.json()["estimated_eps"] == 1.2
+                assert response.json()["currency"] == "USD"
+            assert client.get(path, params={"ticker": "OTHER"}).status_code == 404
+            assert (
+                client.get(
+                    path.replace(original.run_id, newer.run_id), params={"ticker": "ALFA"}
+                ).status_code
+                == 404
+            )
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert original.run_id in writer.prune_snapshots(keep_recent=1)
+        assert client.get(path, params={"ticker": "ALFA"}).status_code == 404

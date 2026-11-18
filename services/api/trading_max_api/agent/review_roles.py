@@ -186,6 +186,7 @@ def prior_events(result, row):
                 **arguments,
                 analystView="events" if kind == "earnings" else "actions",
                 date=when,
+                calendarEventId=item["record_id"],
             )
         )
     if "news" in latest:

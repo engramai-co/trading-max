@@ -230,6 +230,38 @@ def _public(ticker, data, upcoming):
     yield from listed_headlines(ticker, _headline_rows(data, ticker))
 
 
+def _record_id(snapshot_id, row):
+    # The provider's navigation target and EPS coverage flag are not event identity.
+    identity = {k: v for k, v in row.items() if k not in {"research_event_id", "currency_missing"}}
+    return _short_id("ev_", [snapshot_id, identity])
+
+
+def retained_decision_event(deps, ticker, record_id):
+    # Both supported kinds come from the listing’s published analyst record.
+    try:
+        analyst = deps.store.read_json(deps.snapshot_id, ANALYST)
+    except FileNotFoundError:
+        return None
+    data = {
+        ANALYST: _indexed(analyst),
+        EARNINGS: {},
+        FUNDAMENTALS: {},
+        FINANCIALS: {},
+        NEWS_KEY: {},
+    }
+    for row in _public(ticker, data, upcoming=False):
+        if (
+            row
+            and (
+                row["kind"] == "rating_change"
+                or (row["kind"] == "earnings" and row.get("status") == "reported")
+            )
+            and _record_id(deps.snapshot_id, row) == record_id
+        ):
+            return {**row, "evidence_id": record_id, "snapshot_id": deps.snapshot_id}
+    return None
+
+
 def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill: str | None):
     """The latest verified item of each kind, from the selected listing and before its first fill."""
     trade_day = date.fromisoformat(day)
@@ -285,6 +317,8 @@ def prior_decision_events(read: _Read, listing: str | None, day: str, first_fill
                 )
                 if k in item
             }
+            if kind != "news":
+                fields["record_id"] = _record_id(read.deps.snapshot_id, item)
             latest[kind] = (stamp, {**fields, "local_date": local_date.isoformat()})
     return [item for _, item in latest.values()]
 
@@ -650,11 +684,11 @@ def event_data(deps, args, *, upcoming):
         first, last = window_bounds(day, row.get("end_date"))
         if args.start > last or first > args.end:
             continue
-        identity = ["news", row["reference"]] if row["kind"] == "news" else row
-        if "research_event_id" in row:
-            # A navigation target is not part of the published event identity.
-            identity = {key: value for key, value in row.items() if key != "research_event_id"}
-        evidence = _short_id("ev_", [deps.snapshot_id, identity])
+        evidence = (
+            _short_id("ev_", [deps.snapshot_id, ["news", row["reference"]]])
+            if row["kind"] == "news"
+            else _record_id(deps.snapshot_id, row)
+        )
         rows[evidence] = {
             **row,
             "evidence_id": evidence,
