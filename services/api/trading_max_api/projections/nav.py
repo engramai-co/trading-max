@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Literal
 
 from trading_max.portfolio_math import period_return
@@ -22,13 +23,14 @@ def nav_series(
     c_text: str | None = None,
     *,
     include_daily_returns: bool = False,
+    calendar_dates: Iterable[str] = (),
 ) -> list[JsonObject]:
     account_rows = {
         "invest": {row["Date"]: row for row in csv_rows(a_text)},
         "isa": {row["Date"]: row for row in csv_rows(b_text)},
     }
     cfd_rows = {str(row["Date"]): row for row in csv_rows(c_text or "") if row.get("Date")}
-    dates = sorted(set(account_rows["invest"]) | set(account_rows["isa"]) | set(cfd_rows))
+    dates = sorted(set(calendar_dates).union(account_rows["invest"], account_rows["isa"], cfd_rows))
     states: dict[str, JsonObject] = {
         account: {
             "started": False,

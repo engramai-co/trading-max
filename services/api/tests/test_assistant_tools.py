@@ -160,6 +160,70 @@ def test_isa_attribution_reads_its_own_ledger_from_a_retained_publication(public
     )
 
 
+def test_isa_money_citation_keeps_its_carried_opening_after_archiving(tmp_path):
+    from fastapi.testclient import TestClient
+
+    from services.api.trading_max_api.agent.attribution_role import (
+        AttributionContext,
+        selected_money,
+    )
+    from services.api.trading_max_api.app import create_app
+    from services.api.trading_max_api.config import Settings
+
+    store = ArtifactStore(tmp_path)
+    columns = "Date,SyntheticNAVGBP,ExternalFlowGBP,TWRWealth\n"
+    manifest = publish_fixture(
+        store,
+        with_cfd=False,
+        extra_files={
+            tools.HISTORY_KEYS[0]: columns + "2026-01-27,800,800,1\n2026-01-29,875,0,1.09\n",
+            tools.HISTORY_KEYS[1]: columns + "2026-01-28,100,100,1\n2026-01-30,125,10,1.15\n",
+        },
+        extra_artifacts={tools.HISTORY_KEYS[3]: {"points": []}},
+    )
+    deps = AssistantDepsFactory(store).for_run()
+    selection = {"runId": manifest.run_id, "scope": "isa", "range": "ALL"}
+    params = {"run_id": manifest.run_id, "scope": "isa", "range": "ALL"}
+    endpoint = "/v1/dashboard/history"
+    app = create_app(Settings(data_root=tmp_path, embedded_worker=False))
+    with TestClient(app) as client:
+        live = client.get(endpoint, params=params)
+        assert live.is_success and "X-History-Retained" not in live.headers
+        opening, closing = prepare_history(live.json(), selection)["history"]["points"][-2:]
+        assert (opening["date"], opening["isa"], opening["isaNetContributionsGbp"]) == (
+            "2026-01-29",
+            100,
+            100,
+        )
+        assert (closing["date"], closing["isa"], closing["isaNetContributionsGbp"]) == (
+            "2026-01-30",
+            125,
+            110,
+        )
+        citation = AttributionContext(
+            scope="isa",
+            view="money",
+            benchmark="VOO",
+            range="ALL",
+            start=opening["date"],
+            end=closing["date"],
+        )
+        live_reading = _call(deps, selected_money, citation)
+        store.immutable_snapshots.publish(
+            scope="all",
+            source="synthetic",
+            artifacts=store.immutable_snapshots.latest().manifest.artifacts,
+        )
+        archived = client.get(endpoint, params=params)
+        assert archived.is_success and archived.headers["X-History-Retained"] == "1"
+        exact = prepare_history(archived.json(), selection)["history"]["points"]
+        assert [row["date"] for row in exact] == ["2026-01-28", "2026-01-29", "2026-01-30"]
+        assert exact[-2:] == [opening, closing]
+        assert archived.json() == live.json()
+        assert live_reading["status"] == "ok" and live_reading["data"]["pnl"] == 15
+        assert _call(deps, selected_money, citation) == live_reading
+
+
 def test_scope_pin_and_broker_position_reconciliation(publication):
     store, manifest, deps = publication
     next_manifest = publish_fixture(store, invest_total=2000, with_cfd=False)

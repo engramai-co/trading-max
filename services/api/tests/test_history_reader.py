@@ -389,7 +389,7 @@ def test_retained_positions_match_live_worker_amounts(
         assert client.get(path, params={"run_id": run, "detail": "summary"}).status_code == 404
 
 
-def test_retained_history_indexes_only_the_selected_ledger(
+def test_retained_isa_history_survives_a_missing_invest_ledger(
     research_root, tmp_path, typed_fixture, monkeypatch
 ):
     store = ArtifactStore(tmp_path / "state")
@@ -422,11 +422,34 @@ def test_retained_history_indexes_only_the_selected_ledger(
         assert response.json()["nav"] and all(
             row.get("isa") is not None for row in response.json()["nav"]
         )
-        assert set(reads) == {"account/nav/daily_nav_b.csv"}
+        assert reads.count("account/nav/daily_nav_b.csv") == 1
         for scope in ("total", "household", "invest"):
             assert client.get(path, params={**params, "scope": scope}).status_code == 404
         assert client.get(path, params={**params, "scope": "isa"}).json() == response.json()
         assert client.get(path, params={"range": "ALL", "scope": "total"}).status_code == 200
+
+
+def test_scoped_cache_rebuilds_when_another_ledger_adds_a_date(tmp_path):
+    from services.api.tests.assistant_fixture import publication
+
+    store = ArtifactStore(tmp_path)
+    header = "Date,SyntheticNAVGBP,ExternalFlowGBP\n"
+    ledgers = {
+        "account/nav/daily_nav_a.csv": header + "2026-01-28,800,800\n",
+        "account/nav/daily_nav_b.csv": header + "2026-01-28,100,100\n",
+    }
+    earlier = publication(store, with_cfd=False, extra_files=ledgers)
+    # A CFD-only date changes the calendar without changing either broker ledger.
+    ledgers["account/nav/daily_nav_c.csv"] = "Date,RealisedCashEquityProxyGBP\n2026-01-29,5000\n"
+    later = publication(store, with_cfd=False, extra_files=ledgers)
+    publication(store)
+    reader = HistoryReader(store, retained=True)
+    original = reader.read(earlier, "ALL", "isa")
+    revised = reader.read(later, "ALL", "isa")
+    assert [(p.date, p.isa) for p in original.nav] == [("2026-01-28", 100)]
+    assert [(p.date, p.isa) for p in revised.nav] == [("2026-01-28", 100), ("2026-01-29", 100)]
+    assert original.data_revision != revised.data_revision
+    assert reader.read(earlier, "ALL", "isa") == original
 
 
 def test_retained_household_requires_its_published_cfd_ledger(tmp_path, monkeypatch):
@@ -434,7 +457,6 @@ def test_retained_household_requires_its_published_cfd_ledger(tmp_path, monkeypa
 
     store = ArtifactStore(tmp_path / "state")
     run = publication(store).run_id
-    publication(store)
     app = create_app(Settings(data_root=store.data_root, embedded_worker=False))
     original = app.state.store.read_text
 
@@ -446,8 +468,14 @@ def test_retained_household_requires_its_published_cfd_ledger(tmp_path, monkeypa
     monkeypatch.setattr(app.state.store, "read_text", missing_cfd)
     with TestClient(app) as client:
         path = "/v1/dashboard/history"
-        for scope, expected in [("total", 200), ("household", 404), ("cfd", 404)]:
-            assert client.get(path, params={"run_id": run, "scope": scope}).status_code == expected
+        for archived in (False, True):
+            if archived:
+                publication(store)
+            for scope, expected in [("total", 200), ("household", 404), ("cfd", 404)]:
+                response = client.get(path, params={"run_id": run, "scope": scope})
+                assert response.status_code == expected
+                if expected == 200:
+                    assert ("X-History-Retained" in response.headers) == archived
 
 
 def test_archived_money_revisions_do_not_evict_live_history(

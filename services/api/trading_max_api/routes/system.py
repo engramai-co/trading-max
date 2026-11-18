@@ -475,9 +475,8 @@ def dashboard_history(
     try:
         return app_service(request, reader).read(manifest, range, scope)
     except FileNotFoundError:
-        if retained:
-            raise HTTPException(404, "Cited account history unavailable") from None
-        raise
+        detail = "Cited account history unavailable" if retained else "Account history unavailable"
+        raise HTTPException(404, detail) from None
 
 
 @router.get(
