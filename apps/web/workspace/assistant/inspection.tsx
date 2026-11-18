@@ -242,7 +242,7 @@ export function Inspection({
   };
   const Container = anchored ? AnchoredReading : InlineReading;
   return (
-    <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef}>
+    <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef} closeOnCitation={role === "company-summary"}>
       {onUpdate && <button type="button" className="mx-text-link" onClick={onUpdate}>{t("解读最新记录","Read updated records")}</button>}
       {unavailable ? <p role="status">{t("引用的区间记录暂不可用","Cited interval unavailable")}</p> : !reading ? (
         <div className="mx-inspection-status" role="status">

@@ -11,7 +11,7 @@ import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
 import { evidenceHref, observationText, sourceLabel, type Evidence, type Reading } from "./evidence";
 
-/** A bottom sheet closes when one of its citations is followed, so the page can take focus. */
+/** A bottom sheet that opts in closes when one of its citations is followed, so the page can take focus. */
 const FollowCitation = createContext<(() => void) | null>(null);
 
 export function EvidenceLink({ evidence, onNavigate }: { evidence: Evidence; onNavigate?: ComponentProps<typeof Link>["onNavigate"] }) {
@@ -47,11 +47,15 @@ export function FollowUps({ card, onContinue }: { card: RoleCard; onContinue?: (
     <button disabled={card.pendingBinding} className="mx-reading-continue" onClick={() => handoff()}>{t("在右栏继续 →", "Continue in sidebar →")}</button>
   </div>;
 }
-type ReadingContainerProps = { card: RoleCard; children?: ReactNode; onClose?: () => void; focusClose?: boolean; returnFocusRef?: RefObject<HTMLElement | null> };
+type ReadingContainerProps = {
+  card: RoleCard; children?: ReactNode; onClose?: () => void; focusClose?: boolean; returnFocusRef?: RefObject<HTMLElement | null>;
+  /** On phones, close the sheet when a citation inside it is followed. */
+  closeOnCitation?: boolean;
+};
 function ReadingContent({ card, children }: ReadingContainerProps) {
   return <section className="mx-inline-reading"><CardTitle card={card} />{children ?? <ReadingLines card={card} />}<FollowUps card={card} /></section>;
 }
-function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef }: ReadingContainerProps & {onClose: () => void}) {
+function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef, closeOnCitation }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
   const { open } = useAssistant();
   const trigger = useRef(document.activeElement);
@@ -72,25 +76,26 @@ function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef }: R
   return <Drawer opened onClose={dismiss} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title + " · " + card.object}</span>}
     returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{ref:closeButton,"aria-label":t("关闭解读", "Close reading")}}
     classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>
-    <FollowCitation.Provider value={onClose}>
+    <FollowCitation.Provider value={closeOnCitation ? onClose : null}>
       {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
     </FollowCitation.Provider>
   </Drawer>;
 }
-export function InlineReading({ card, children, onClose, focusClose, returnFocusRef }: ReadingContainerProps) {
+export function InlineReading({ card, children, onClose, focusClose, returnFocusRef, closeOnCitation }: ReadingContainerProps) {
   const { ready } = useAssistant();
   const phone = useMediaQuery("(max-width: 767px)");
   if (!ready) return null;
-  return phone && onClose ? <ReadingSheet card={card} onClose={onClose} focusClose={focusClose} returnFocusRef={returnFocusRef}>{children}</ReadingSheet>
+  return phone && onClose
+    ? <ReadingSheet card={card} onClose={onClose} focusClose={focusClose} returnFocusRef={returnFocusRef} closeOnCitation={closeOnCitation}>{children}</ReadingSheet>
     : <ReadingContent card={card}>{children}</ReadingContent>;
 }
 /** Mount beside a selected point in its positioned inspection surface. */
-export function AnchoredReading({ card, onClose, children }: ReadingContainerProps & {onClose: () => void}) {
+export function AnchoredReading({ card, onClose, children, closeOnCitation }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
   const { ready } = useAssistant();
   const phone = useMediaQuery("(max-width: 767px)");
   if (!ready) return null;
-  if (phone) return <ReadingSheet card={card} onClose={onClose}>{children}</ReadingSheet>;
+  if (phone) return <ReadingSheet card={card} onClose={onClose} closeOnCitation={closeOnCitation}>{children}</ReadingSheet>;
   return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>
     <ReadingContent card={card}>{children}</ReadingContent></div>;
 }
