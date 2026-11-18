@@ -2,7 +2,7 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, ClockCounterClockwise, Plus, Square, Trash, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -44,6 +44,9 @@ function failureCode(message: string) {
     const code = JSON.parse(message).detail?.code;
     return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : "assistant_unavailable";
   } catch { return "assistant_unavailable"; }
+}
+function selectionKey(card: RoleCard | null) {
+  return hashKey([card?.role, card?.context, card?.origin, card?.reading?.snapshotId ?? card?.origin?.snapshotId]);
 }
 function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }: {
   page: string; search: string; scopeLabel: string; history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
@@ -100,8 +103,7 @@ function Thread({ page, search, scopeLabel, initial, history, onHistory, onNew }
     setContextCard(null);
     setSentScope(null);
   } else if (sentScope !== null && pageCard?.role === "key-moment" &&
-    (contextCard?.context?.date !== pageCard.context?.date ||
-      contextCard?.context?.published_series_id !== pageCard.context?.published_series_id)) {
+    selectionKey(contextCard) !== selectionKey(pageCard)) {
     setContextCard(pageCard);
   }
   const context = chatContext(page, search, timeZone);

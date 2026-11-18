@@ -1,4 +1,6 @@
 "use client";
+import { useMediaQuery } from "@mantine/hooks";
+import { markerHeadroom } from "./assistant/marker-layout";
 import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
@@ -185,6 +187,11 @@ export function PriceHistory({
   const moments = useKeyMoments(published ? {ticker: priceData!.ticker, published_series_id: seriesId} : null,
     slotDates[low]?.slice(0, 10), slotDates[high]?.slice(0, 10), priceData?.snapshotId ?? snapshotId);
   const showEvents = eventTrack ?? (full || markers.length > 0 || moments.items.length > 0);
+  const desktop = useMediaQuery("(min-width: 768px)");
+  const headroom = desktop && showEvents && moments.items.length ? markerHeadroom : 0;
+  const baseHeight = full ? Math.max(450, typeof window === "undefined" ? 650 : window.innerHeight - 280)
+    : (compactChart ? 260 : 410) + (rsi ? 125 : 0) + (macd ? 125 : 0);
+
   const momentPoints = moments.items.flatMap(m => {
     const index = slotDates.indexOf(m.date);
     const point = slots[index]?.bar;
@@ -478,16 +485,7 @@ export function PriceHistory({
               }
             }}
             label={`${ticker} · ${t("价格、成交量和技术指标", "Price, volume and indicators")}`}
-            height={
-              full
-                ? Math.max(
-                    450,
-                    typeof window === "undefined"
-                      ? 650
-                      : window.innerHeight - 280,
-                  )
-                : (compactChart ? 260 : 410) + (rsi ? 125 : 0) + (macd ? 125 : 0)
-            }
+            height={baseHeight + headroom}
             option={(c) => {
               const panes = [
                 "price",
@@ -653,8 +651,8 @@ export function PriceHistory({
                 grid: positions.map((p) => ({
                   left: 64,
                   right: 24,
-                  top: p.top + "%",
-                  height: p.height + "%",
+                  top: headroom ? headroom + baseHeight*p.top/100 : p.top + "%",
+                  height: headroom ? baseHeight*p.height/100 : p.height + "%",
                 })),
                 axisPointer: { link: [{ xAxisIndex: "all" }] },
                 xAxis: panes.map((_, i) => ({

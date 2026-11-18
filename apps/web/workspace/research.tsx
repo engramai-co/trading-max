@@ -218,8 +218,8 @@ function SecurityResearchWorkspace() {
     (prices.isPending && !prices.data) || runtime.status === "loading"
   );
   const technicalPrice = tab === "technical" && (isFund || params.get("technicalView") !== "seasonality");
-  const earnings = useEarningsBrief(ticker, lensName, lens.data?.runId, Boolean(selected && !isFund && (lensName === "analyst" || lensName === "fundamentals")));
-  const currentLens = !earnings.waiting && !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
+  const earnings = useEarningsBrief(ticker, lensName, lens.data?.runId ?? revision ?? undefined, Boolean(selected && !isFund && (lensName === "analyst" || lensName === "fundamentals")), lens.isPlaceholderData ? undefined : lens.data);
+  const currentLens = !overviewWaiting && !awaitingHeldFund && !lens.isPlaceholderData && lens.data ? {
     ticker, tab, data: lens.data, technicalPrice, updatedAt: lens.dataUpdatedAt,
   } : undefined;
   const lastLens = useRetainedResult(currentLens, (a, b) =>
@@ -233,7 +233,7 @@ function SecurityResearchWorkspace() {
   const failure = lens.isError ? lens : shell.isRefetchError ? shell : null;
   const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
   const waitingForResearch = !shown && !technicalPrice && !awaitingHeldFund && (
-    !lens.isError && (earnings.waiting || overviewWaiting || lens.isPending || fetching)
+    !lens.isError && (overviewWaiting || lens.isPending || fetching)
   );
   const exploreHolding = (symbol: string) => {
     const target = instruments.find((i) => i.ticker === symbol);
@@ -685,7 +685,7 @@ function SecurityResearchWorkspace() {
                       {displayTab === "valuation" && !isFund && (
                         <ValuationWorkbench key={displayData.ticker} data={displayData} revision={revision} price={price} />
                       )}
-                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && earnings.row}
+                      {!isFund && tab === displayTab && (displayTab === "fundamentals" || displayTab === "financials") && earnings.before}
                       {displayTab === "fundamentals" &&
                         (isFund ? (
                           <FundWorkbench
@@ -718,9 +718,10 @@ function SecurityResearchWorkspace() {
                         />
                       )}
                       {displayTab === "analyst" && !isFund && (
-                        <AnalystView earningsBrief={tab === "analyst" ? earnings.row : null} key={ticker} data={displayData} revision={revision} price={price} />
+                        <AnalystView earningsBrief={tab === "analyst" ? earnings.before : null} key={ticker} data={displayData} revision={revision} price={price} />
                       )}
                       {displayTab === "options" && <OptionsView key={displayData.ticker} data={displayData} />}
+                      {displayTab === tab && earnings.after}
                       {displayTab === "ledger" && (
                         <>
                           <ResearchNotebook key={ticker} data={displayData} fund={isFund} />

@@ -53,7 +53,7 @@ export function cachedEarnings(ticker: string, snapshotId: string, signal: Abort
   return fetchReading({role:"earnings-brief", context:{ticker}, snapshotId, cachedOnly:true, latest:true}, signal);
 }
 
-export function EarningsBrief({ ticker, lens, reading }: { ticker: string; lens: string; reading: Reading }) {
+export function EarningsBrief({ ticker, lens, reading, minHeight }: { ticker: string; lens: string; reading: Reading; minHeight?: number }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const origin = useResearchOrigin(ticker, lens, reading?.snapshotId ?? undefined);
@@ -68,7 +68,7 @@ export function EarningsBrief({ ticker, lens, reading }: { ticker: string; lens:
   const args = first.evidence.arguments;
   const observed = args?.observedAt || reading.asOf;
   const stamp = args?.reportDate || (/^\d{4}-\d{2}-\d{2}$/.test(observed) ? observed : new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(observed)));
-  return <div className="mx-earnings-brief"><DigestRow storageKey="research-earnings" header={null}
+  return <div className="mx-earnings-brief" style={{minHeight}}><DigestRow storageKey="research-earnings" header={null}
     headline={<>{card.title} · {ticker}{args?.fiscalPeriod && " · " + args.fiscalPeriod} <time dateTime={stamp}>{!args?.reportDate && t("观测于 ", "Observed ")}{formatCalendarDate(stamp, locale)}</time></>}
     summary={t(first.zh, first.en)} summarySource={<EvidenceLink evidence={first.evidence} />}>
     <ReadingLines card={card} /><FollowUps card={card} />

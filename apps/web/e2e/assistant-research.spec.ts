@@ -5,7 +5,7 @@ import { backendFixture } from "../tests/loading/fixtures";
 
 const snapshot = "synthetic-loading", series = "a".repeat(20), day = "2026-01-22";
 const base = "/api/backend/research/SYNT";
-const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>) => {
+const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>, selectedDate = day) => {
   const readings: string[] = [];
   await page.route("**/api/backend/**", async route => {
     const url = new URL(route.request().url()), path = url.pathname;
@@ -14,7 +14,7 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>) 
     if (path.includes("/assistant/key-moments/")) {
       expect(url.searchParams.get("published_series_id")).toBe(series);
       const start = url.searchParams.get("start")!, end = url.searchParams.get("end")!;
-      return route.fulfill({json:{data:{published_series_id:series, start, end, items: [day].filter(d => start <= d && d <= end).map(date => ({date}))}}});
+      return route.fulfill({json:{data:{published_series_id:series, start, end, items: [selectedDate].filter(d => start <= d && d <= end).map(date => ({date}))}}});
     }
     if (path.endsWith("/reading")) {
       const role = path.split("/").at(-2)!;
@@ -23,7 +23,7 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>) 
       if (role === "earnings-brief") await earningsGate;
       if (role === "earnings-brief") expect(body).toMatchObject({cachedOnly:true, latest:true});
       else expect(body).toMatchObject({snapshotId:snapshot, context:{ticker:"SYNT", published_series_id:series}});
-      if (role === "key-moment") expect(body.context.date).toBe(day);
+      if (role === "key-moment") expect(body.context.date).toBe(selectedDate);
       const labels = role === "earnings-brief" ? [
         ["每股收益为 USD 1.32，预期为 1.26。","EPS was USD 1.32 versus an estimate of 1.26.","financials","research_earnings"],
         ["下季度每股收益一致预期为 USD 1.44。","Consensus EPS for the next quarter was USD 1.44.","analysts","research_earnings"],
@@ -49,7 +49,7 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>) 
       const overview = backendFixture(new URL(base + "/lens/overview",url)) as Record<string,unknown>;
       return route.fulfill({json:{...overview,view:path.split("/").at(-1),analyst:{
         asOf:"2026-01-30",recommendations:[{period:"0m",strongBuy:1,buy:3,hold:2,sell:1,strongSell:0}],
-        priceTargets:{median:105,low:90,high:115},earningsEvents:[],
+        priceTargets:{median:105,low:90,high:115},earningsEstimate:[{period:"0q",endDate:"2026-03-31",avg:1.44,currency:"USD"}],earningsEvents:[],
       }}});
     }
     const json = backendFixture(url);
@@ -124,7 +124,8 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     const next = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
     await composer.press("Enter");
     expect((await next).postDataJSON().context).toEqual(handoff);
-    await page.goto("/research?ticker=SYNT&view=analyst");
+    await page.getByRole("button",{name:language === "zh" ? "关闭侧栏" : "Close sidebar"}).click();
+    await page.getByRole("tab",{name:language === "zh" ? /预期/ : /Estimates/}).click();
     const digest=page.locator(".mx-earnings-brief");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
     expect(await digest.evaluate(el=>!!el.parentElement?.querySelector("#research-ratings") && el===el.parentElement.firstElementChild)).toBe(true);
@@ -137,7 +138,7 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await shot("earnings");
     await page.goto("/research?ticker=SYNT&view=fundamentals");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","true");
-    expect(await digest.evaluate(el => el === el.parentElement?.firstElementChild)).toBe(true);
+    await expect(digest).toBeVisible();
     expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(isMobile?390:1440);
   });
 }
@@ -148,7 +149,7 @@ test("disabled research makes no assistant reading or candidate requests",async 
   });
   const reads=await fixtures(page,false);
   const candidates:string[]=[];
-  page.on("request",r=>{if(r.url().includes("/assistant/key-moments/")) candidates.push(r.url());});
+  page.on("request",r=>{if(r.url().includes("/assistant/")) candidates.push(r.url());});
   await page.goto("/research?ticker=SYNT&view=technical");
   await expect(page.locator(".mx-event-track button").filter({hasText:"B"})).toBeVisible();
   await expect(page.locator(".mx-track-moment")).toHaveCount(0);
@@ -180,16 +181,32 @@ test("a priced fund opens position and moment readings and omits company earning
   expect(reads).not.toContain("earnings-brief");
 });
 
-test("delayed earnings cache settles before the first ratings layout", async ({page}) => {
+test("ratings stay visible and stable while the earnings cache is pending", async ({page}) => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });
   const reads = await fixtures(page,true,gate);
   await page.goto("/research?ticker=SYNT&view=analyst");
   await expect.poll(() => reads.includes("earnings-brief")).toBe(true);
   const ratings = page.locator("#research-ratings");
-  try { await expect(ratings).toHaveCount(0, {timeout:500}); } finally { release(); }
+  await expect(ratings).toBeVisible({timeout:1500});
+  const before = await ratings.boundingBox();
+  release();
+  await expect(page.locator(".mx-earnings-brief")).toBeVisible();
+  expect((await ratings.boundingBox())?.y).toBe(before?.y);
+});
+
+test("a later earnings publication preserves the ratings position", async ({page}) => {
+  let empty = true;
+  await page.clock.install();
+  await fixtures(page);
+  await page.route("**/api/backend/assistant/roles/earnings-brief/reading", route =>
+    empty ? route.fulfill({contentType:"application/x-ndjson",body:'{"type":"empty"}\n'}) : route.fallback());
+  await page.goto("/research?ticker=SYNT&view=analyst");
+  const ratings = page.locator("#research-ratings");
   await expect(ratings).toBeVisible();
   const before = await ratings.boundingBox();
+  empty = false;
+  await page.clock.fastForward(31000);
   await expect(page.locator(".mx-earnings-brief")).toBeVisible();
   expect((await ratings.boundingBox())?.y).toBe(before?.y);
 });
@@ -219,6 +236,11 @@ test("each crowded daily marker is reachable at its candle", async ({page,isMobi
   }));
   expect(Math.max(...xy.map(p=>p[0]))-Math.min(...xy.map(p=>p[0]))).toBeLessThan(18);
   expect(Math.max(...xy.map(p=>p[1]))-Math.min(...xy.map(p=>p[1]))).toBeGreaterThanOrEqual(56);
+  const above = await page.locator(".mx-key-stem").evaluateAll(stems => stems.map(stem => {
+    const marker = stem.nextElementSibling!.getBoundingClientRect();
+    return marker.bottom < stem.getBoundingClientRect().bottom;
+  }));
+  expect(above).toEqual([true,true,true]);
   for (let i=0;i<3;i++) {
     await markers.nth(i).click({trial:true});
     await expect(markers.nth(i)).toHaveText(String(i+1));
@@ -287,4 +309,39 @@ test("unavailable listing prices disclose the listing and withhold its moment co
   await expect(page.getByText("Price history is unavailable for this listing.")).toBeVisible({timeout:4000});
   await expect(page.locator(".mx-track-moment, .mx-key-marker")).toHaveCount(0);
   expect(calls).toEqual([]);
+});
+
+
+test("reselecting a day after zoom keeps the new chart window in chat", async ({page,isMobile}) => {
+  const selected = "2025-12-18";
+  await fixtures(page,true,undefined,selected);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
+    headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+    body:'data: {"type":"start","messageId":"one"}\n\ndata: {"type":"finish","finishReason":"stop"}\n\ndata: [DONE]\n\n',
+  }));
+  await page.goto("/research?ticker=SYNT&view=technical");
+  const track = page.locator(".mx-track-moment");
+  const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
+  const composer = page.locator(".mx-assistant-composer textarea");
+  async function submit() {
+    const next = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.fill("Read this selection"); await composer.press("Enter");
+    return (await next).postDataJSON().context.object;
+  }
+  await track.click();
+  await card.locator(".mx-reading-actions button").first().click();
+  const first = await submit();
+  await page.getByRole("button",{name:"Close sidebar"}).click();
+  if (await card.isVisible()) await card.getByRole("button").first().click();
+  const newWindow = page.waitForRequest(r => r.url().includes("/assistant/key-moments/"));
+  await page.getByRole("button",{name:"Zoom in"}).click();
+  const query = new URL((await newWindow).url()).searchParams;
+  await track.click();
+  await expect(card.locator(".mx-reading-line")).toHaveCount(2);
+  if (isMobile) await card.getByRole("button").first().click();
+  await page.locator("[data-assistant-trigger]").click();
+  const second = await submit();
+  expect(second).toMatchObject({date:selected,start:query.get("start"),end:query.get("end")});
+  expect(second.start).not.toBe(first.start);
 });

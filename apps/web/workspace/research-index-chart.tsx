@@ -6,6 +6,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { LineSeriesOption } from "echarts";
 import type { ECharts } from "echarts";
+import { markerHeadroom } from "./assistant/marker-layout";
 import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { PositionReading } from "./assistant/research-entry";
 import { useRouteState } from "./route-state";
@@ -220,7 +221,7 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
               && <small className="mx-index-research-caveat">{t("部分对比没有相同频率的历史。", "Some comparisons lack history at the same interval.")}</small>}
             {comparisons.length > 0 && !comparing &&
               <small className="mx-index-research-caveat">{t("对比序列没有足够的共同日期。", "The comparison series have too few shared dates.")}</small>}
-            <Plot controller={chart} overlay={moments.items.length > 0 && <MomentOverlay chart={chart} moments={moments} points={momentPoints} name={labels[0]} />} height={phone ? 235 : preview ? 276 : 330} label={label}
+            <Plot controller={chart} overlay={moments.items.length > 0 && <MomentOverlay chart={chart} moments={moments} points={momentPoints} name={labels[0]} />} height={phone ? 235 : (preview ? 276 : 330) + (moments.items.length ? markerHeadroom : 0)} label={label}
               readout={readout}
               option={(colours) => {
                 const inks = [colours.brand, colours.text, colours.axis];
@@ -231,7 +232,7 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
                 }));
                 return {
                   animation: false,
-                  grid: { left: 64, right: 15, top: comparing ? 40 : 17, bottom: 30 },
+                  grid: { left: 64, right: 15, top: (comparing ? 40 : 17) + (!phone && moments.items.length ? markerHeadroom : 0), bottom: 30 },
                   legend: comparing ? { top: 2, left: "center", show: true, data: labels,
                     textStyle: { color: colours.text } } : undefined,
                   xAxis: { type: "category", data: dates, boundaryGap: false,
