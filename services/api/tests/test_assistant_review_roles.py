@@ -348,6 +348,37 @@ def test_earnings_and_ratings_each_cite_their_research_section(tmp_path):
     assert by_section["headline"].evidence.source == "publisher"
 
 
+def test_legacy_decision_withholds_unverified_prior_close_and_hindsight(tmp_path):
+    _, publish, row, _ = setup_review(tmp_path)
+    deps = publish()
+    legacy = {**row, "prior_close_date": "2026-02-02", "prior_close_gbp": 102}
+    artifact = {
+        "accounts": {
+            "A": {
+                "status": "available",
+                "calculation_version": "decisions-v6",
+                "as_of": "2026-03-06",
+                "decisions": [legacy],
+            }
+        }
+    }
+    ref = deps.store.immutable_artifacts.put_json(key=tools.DECISIONS, payload=artifact).ref
+    deps = replace(deps, manifest=republish(deps.store, {tools.DECISIONS: ref}))
+    selection = DecisionContext(
+        scope="invest",
+        page_scope="invest",
+        ticker="TEST",
+        side="buy",
+        decision_date=row["date"],
+        horizon="20_sessions",
+    )
+    reader = role_registry()["decision"].reader(deps, selection)
+    (selected,) = reader.read(decision_timing_and_habits, {})["data"]["items"]
+    assert selected["prior_close_date"] is None and selected["prior_close_gbp"] is None
+    assert selected["hindsight"] is None
+    assert selected["settled_per_share_gbp"] == 40
+
+
 def test_decision_and_habit_followups_can_only_read_the_selected_object(tmp_path):
     _, publish, row, _ = setup_review(tmp_path)
     deps = publish()

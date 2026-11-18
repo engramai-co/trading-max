@@ -405,9 +405,10 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
             )
             suffix = "horizon" if horizon == "20_sessions" else "to_date"
             effect = _number(row.get(f"effect_{suffix}_gbp")) if usable else None
+            observed_prices = account.get("calculation_version") == CALCULATION_VERSION
             timing = (
                 _mapped(row.get(f"hindsight_{suffix}"))
-                if effect is not None and account.get("calculation_version") == CALCULATION_VERSION
+                if effect is not None and observed_prices
                 else {}
             )
             rows.append(
@@ -422,8 +423,12 @@ def review_data(deps: AssistantDeps, args: ReviewArgs) -> Json:
                             "listing": _text(row.get("listing"), 32),
                             "name": _text(row.get("name"), 160),
                             "first_fill_at": _iso(row.get("first_fill_at")),
-                            "prior_close_date": _iso(row.get("prior_close_date")),
-                            "prior_close_gbp": _number(row.get("prior_close_gbp")),
+                            "prior_close_date": _iso(row.get("prior_close_date"))
+                            if observed_prices
+                            else None,
+                            "prior_close_gbp": _number(row.get("prior_close_gbp"))
+                            if observed_prices
+                            else None,
                             "settled_per_share_gbp": _number(row.get("settled_per_share_gbp")),
                             "security_return": _number(row.get(f"return_{suffix}"))
                             if usable
