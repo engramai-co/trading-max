@@ -1092,8 +1092,29 @@ test.describe("frozen draft review", () => {
 
   test("proposal rows keep the grid stable and name the staged chart series", async ({page}) => {
     const {editor, entry} = await reviewDraft(page);
+    await page.emulateMedia({reducedMotion:"reduce"});
+    let release!: () => void;
+    const delivery = new Promise<void>(resolve => { release=resolve; });
+    await page.route("**/SYNT/valuation-draft", async route => {
+      await delivery;
+      await route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify(draftResponse)+"\n"});
+    });
     const width = (await editor.boundingBox())!.width;
     await entry.click();
+    const top = () => page.locator("#research-sensitivity").evaluate(el => el.getBoundingClientRect().top + scrollY);
+    await expect(editor.getByRole("status")).toContainText("Reading valuation basis");
+    await page.evaluate(() => document.fonts.ready.then(() => {}));
+    const pending = await top();
+    release();
+    await expect(editor.getByRole("status")).toContainText("proposed");
+    expect(Math.abs(await top() - pending)).toBeLessThanOrEqual(1);
+    if (page.viewportSize()!.width >= 1200) {
+      const results = (await page.locator("#valuation-results").boundingBox())!;
+      const review = (await editor.boundingBox())!;
+      expect(results.x + results.width).toBeLessThanOrEqual(review.x);
+      expect(Math.abs(results.y - review.y)).toBeLessThanOrEqual(1);
+    }
+
     await editor.getByRole("button",{name:"Accept Revenue growth · years 1–5",exact:true}).click();
     await expect(page.locator(".mx-draft-reading")).toContainText("195.00");
     expect((await editor.boundingBox())!.width).toBe(width);

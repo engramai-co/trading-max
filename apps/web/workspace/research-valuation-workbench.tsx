@@ -222,7 +222,7 @@ export function ValuationWorkbench({
         disclosure={<FilingMultiples data={data} price={price} mode="pe" />} />
     </div>
     <div id="research-scenario" className={editor ? "mx-model-workbench" : undefined}
-      aria-busy={switching || currentReading?.busy} data-switching={switching || undefined}>
+      data-draft-enabled={enabled || undefined} aria-busy={switching || currentReading?.busy} data-switching={switching || undefined}>
       {editor && <div className="mx-model-output" ref={setOutput} inert={switching} />}
       <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
         id="valuation-assumptions" className="mx-model-inputs" help={methodology}
@@ -762,6 +762,7 @@ function ModelEditor({
           )}
           <div
             className="mx-assumption-picker"
+            data-reviewing={Boolean(drafting.phase || draft) || undefined}
             role="group"
             aria-label={t("选择要调整的假设", "Choose an assumption to adjust")}
           >

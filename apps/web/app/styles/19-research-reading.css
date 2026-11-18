@@ -142,6 +142,32 @@
 .mx-reading-sections .mx-model-reference-grid {
   grid-template-columns: minmax(0, 1fr);
 }
+@container research-reading (min-width: 921px) {
+  .mx-reading-sections > .mx-model-workbench[data-draft-enabled] {
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    align-items: start;
+  }
+  .mx-model-workbench[data-draft-enabled] .mx-model-output {
+    grid-column: 1;
+  }
+  .mx-model-workbench[data-draft-enabled] .mx-model-reference-grid {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.mx-assumption-picker[data-reviewing] {
+  block-size: 26rem;
+  overflow-y: auto;
+  align-content: start;
+  scrollbar-gutter: stable;
+}
+.mx-model-workbench:has(.mx-assumption-picker[data-reviewing]) .mx-scenario-cards button {
+  grid-template-rows: auto auto auto minmax(3em, auto);
+  align-content: start;
+}
+.mx-draft-status:empty {
+  margin: 0;
+}
 @container research-reading (max-width: 920px) {
   .mx-reading-layout {
     grid-template-columns: minmax(0, 1fr);
