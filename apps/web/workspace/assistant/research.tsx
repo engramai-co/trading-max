@@ -8,7 +8,7 @@ import { useCopy } from "../foundation";
 import { useRouteState } from "../route-state";
 import { DigestRow, EvidenceLink, FollowUps, ReadingLines } from "./cards";
 import { useAssistant, usePageRole } from "./context";
-import type { Reading } from "./evidence";
+import { readerText, type Reading } from "./evidence";
 import { fetchReading, useRoleReading } from "./reading";
 
 export type PriceObject = { ticker: string; published_series_id: string; index_id?: string };
@@ -70,7 +70,7 @@ export function EarningsBrief({ ticker, lens, reading, minHeight }: { ticker: st
   const stamp = args?.reportDate || (/^\d{4}-\d{2}-\d{2}$/.test(observed) ? observed : new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(observed)));
   return <div className="mx-earnings-brief" style={{minHeight}}><DigestRow storageKey="research-earnings" header={null}
     headline={<>{card.title} · {ticker}{args?.fiscalPeriod && " · " + args.fiscalPeriod} <time dateTime={stamp}>{!args?.reportDate && t("观测于 ", "Observed ")}{formatCalendarDate(stamp, locale)}</time></>}
-    summary={t(first.zh, first.en)} summarySource={<EvidenceLink evidence={first.evidence} />}>
+    summary={readerText(first, locale, timeZone)} summarySource={<EvidenceLink evidence={first.evidence} />}>
     <ReadingLines card={card} /><FollowUps card={card} />
   </DigestRow></div>;
 }

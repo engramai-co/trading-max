@@ -97,6 +97,10 @@
 .mx-overview-sector[data-tight] {
   padding-inline: 3px;
 }
+/* A block too small for any label keeps its laid-out size: padding would widen it past the map's edge. */
+.mx-overview-sector:empty {
+  padding: 0;
+}
 /* A wide, short block keeps its name and move on one line. */
 .mx-overview-sector[data-inline] {
   flex-direction: row;

@@ -367,7 +367,7 @@ export function PerformanceContent({
           value={requestedScope}
           onChange={(v) => update({ scope: v === "total" ? null : v })}
           data={scopeOptions}
-          w={200}
+          w={locale === "zh" ? 200 : 212}
         />
       </div>
       {invalidScope ? (

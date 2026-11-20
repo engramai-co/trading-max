@@ -462,6 +462,7 @@
 .mx-tech-main {
   min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr); /* Not the canvas's last width: the MaxAI sidebar narrows the page. */
   gap: 20px;
 }
 .mx-tech-preview-grid {

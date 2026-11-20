@@ -6,6 +6,7 @@ import { join } from "node:path";
 import type { DashboardLens } from "../lib/types";
 import { backendFixture } from "../tests/loading/fixtures";
 import { ASSISTANT_NAME } from "../workspace/assistant-settings";
+import { formatCalendarDate } from "../ui/formatters";
 
 function line(section: string, source: string, tool: string, zh: string, en: string) {
   return {section, zh, en, evidence: { source, tool, arguments: {range:"1W", ticker:"SYNT"}, evidenceId:"ev_example" }};
@@ -86,7 +87,7 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   const liveReply = page.locator("#mx-assistant-panel [aria-live=polite]");
   await expect(liveReply).toHaveCount(1);
   await expect(liveReply).toContainText("本期净盈亏 £21.50");
-  await expect(liveReply).toContainText("2026-11-12 – 2026-11-13");
+  await expect(liveReply).toContainText(formatCalendarDate("2026-11-12", "zh") + " – " + formatCalendarDate("2026-11-13", "zh"));
   const moneyLink = page.locator(".mx-turn-assistant").getByRole("link", {name:"账户"});
   await expect(moneyLink).toHaveAttribute("href", "/analytics?view=money&range=1D&moneyFrom=2026-11-12&moneyTo=2026-11-13&snapshotId=synthetic&evidence=period_performance");
   await expect(liveReply).toContainText("覆盖不完整");
@@ -129,7 +130,8 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
     await expect(comingUp).toContainText(language === "zh" ? /2026年2月4日.*08:30/ : /4 Feb 2026.*08:30/);
     await expect(comingUp.getByRole("link")).toHaveText(language === "zh" ? ["日历", "财报", "披露"] : ["Calendar", "Financials", "Disclosure"]);
     await expect(comingUp.getByRole("link").first()).toHaveAttribute("href","https://example.org/calendar");
-    await expect(comingUp).toContainText("2026-02-04 – 2026-02-06");
+    const locale = language === "zh" ? "zh" : "en";
+    await expect(comingUp).toContainText(formatCalendarDate("2026-02-04", locale) + " – " + formatCalendarDate("2026-02-06", locale));
     const shots = process.env.ASSISTANT_SCREENSHOTS;
     await digest.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
     if (shots) await page.screenshot({path:join(shots, info.project.name+"-"+language+"-"+theme+"-brief.png")});
@@ -551,7 +553,7 @@ test("opening a stale session rechecks consent before exposing saved History", a
   ready = false;
   await page.clock.setFixedTime(new Date("2026-03-01T12:06:00Z"));
   await page.locator("[data-assistant-trigger]").click();
-  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant", {timeout:3000});
+  await expect(page.locator("#mx-assistant-panel")).toContainText("Enable MaxAI", {timeout:3000});
   await expect(page.getByRole("button",{name:"Conversation history"})).toHaveCount(0);
   await expect(page.locator(".mx-assistant-composer")).toHaveCount(0);
   expect(checks).toBeGreaterThan(1);
@@ -1005,7 +1007,7 @@ test("mixed historical event replies retain their published dates and citations"
       const row = items.find(item => item.kind === kind)!;
       const line = reply.locator(".mx-reading-line").nth(i);
       await expect(line).toContainText(row.title_en);
-      await expect(line).toContainText(row.date);
+      await expect(line).toContainText(formatCalendarDate(row.date, "en"));
       const link = line.getByRole("link");
       if (kind === "news" || kind === "filing" || kind === "rating_change") {
         await expect(link).toHaveAttribute("href", row.source_url!);
@@ -1183,7 +1185,7 @@ for (const [zone, localDay] of [
     await draft.fill("When was the original synthetic purchase?");
     await draft.press("Enter");
     const reply = page.locator(".mx-turn-assistant");
-    await expect(reply).toContainText(localDay);
+    await expect(reply).toContainText(formatCalendarDate(localDay, "en"));
     await reply.getByRole("link", {name:"Broker"}).first().click();
     const decision = page.locator(".mx-decision-focus");
     await expect(decision).toContainText("£125");

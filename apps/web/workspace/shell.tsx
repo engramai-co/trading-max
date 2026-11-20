@@ -72,6 +72,8 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const t = useCopy();
   const assistant = useAssistant();
   const assistantOverlay = useMediaQuery("(max-width: 1199px)") && assistant.open;
+  // Search names each page as the visible navigation does: the dock's short names wherever the dock shows.
+  const dock = useMediaQuery("(max-width: 767px), (max-width: 959px) and (max-height: 500px) and (pointer: coarse)");
   const actualPathname = usePathname();
   const [routeSearch, setRouteSearch] = useState("");
   const params = new URLSearchParams(routeSearch);
@@ -234,7 +236,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     listed: listedIndices.has(index.id),
   }));
   const match = query.trim().toLowerCase();
-  const pages = navigation.map((item) => ({ href: item.href, label: item.label, aliases: pageAliases[item.href] }));
+  const pages = navigation.map((item) => ({ href: item.href, label: dock ? item.mobileLabel : item.label, aliases: pageAliases[item.href] }));
   const profileId = profile.data?.profileId ?? null;
   const visit = recentVisit(pathname, new URLSearchParams(routeSearch), pages, locale, indexName);
   const visitHref = visit?.href;

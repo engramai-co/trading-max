@@ -75,6 +75,7 @@ export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?:
 }
 function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { ready: assistantReady } = useAssistant();
   const { data: profile } = useWorkspaceProfile();
   const { params, update } = useRouteState();
@@ -166,7 +167,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           <div className="mx-summary-top">
             <Select
               aria-label={t("组合账户", "Portfolio account")}
-              w={186}
+              w={locale === "zh" ? 186 : 212}
               data={[
                 {
                   value: "total",

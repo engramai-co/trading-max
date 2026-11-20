@@ -221,7 +221,11 @@ function Exposure({
   const [choice, setChoice] = useState<{category: string; name:string; entityId?:string; group?: AllocationSlice["group"]} | null>(() => {
     const category=params?.get("category");
     const group=params?.get("group");
-    return category && dimensionsByKey[linkedDimension] ? {category,name:linkedCompany?.name ?? category,entityId:params?.get("entityId") ?? undefined,...(group==="tail" || group==="unresolved" ? {group} : {})} : null;
+    if (!category || !dimensionsByKey[linkedDimension]) return null;
+    // A cited category arrives as its source name; the card titles it as the page lists it.
+    const name = linkedCompany?.name ?? (linkedDimension === "country" ? countryName(category, locale)
+      : linkedDimension === "company" ? category : industryName(category, locale));
+    return {category,name,entityId:params?.get("entityId") ?? undefined,...(group==="tail" || group==="unresolved" ? {group} : {})};
   });
   const [view, setView] = useState<
     "companies" | "countries" | "sectors" | "gics" | "sources"

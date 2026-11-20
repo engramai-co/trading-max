@@ -158,7 +158,8 @@ test.describe("workspace navigation refinements", () => {
     await page.reload();
     input = await openSearch(page);
     await expect(input).toHaveValue("");
-    await expect(page.getByRole("option").filter({ hasText: /组合总览|Overview/ })).toHaveCount(1);
+    // Phones name the page as the dock does.
+    await expect(page.getByRole("option").filter({ hasText: /总览|Overview|Home/ })).toHaveCount(1);
     expect(await page.evaluate(() => Object.keys(localStorage).some((key) => /recent|navigation-history/.test(key)))).toBe(false);
   });
 
