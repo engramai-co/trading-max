@@ -73,6 +73,7 @@ import { useRetainedResult } from "./retained-result";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
 import { useAssistant } from "./assistant/context";
+import { ASSISTANT_NAME } from "./assistant-settings";
 import { fallObservations, habitDecisions, habitLabels, isHabit, toolHorizon, type Habit } from "./review-patterns";
 const ReviewHabits = lazy(async () => ({ default: (await import("./assistant/review")).ReviewHabits }));
 const DecisionReading = dynamic(() => import("./assistant/review").then(module => module.DecisionReading));
@@ -88,7 +89,7 @@ function HabitsSpace({ unavailable = false }: { unavailable?: boolean }) {
   });
   return <div className="mx-review-habits-space" data-expanded={expanded || undefined} aria-hidden={!unavailable || undefined}>
     <strong>{t("习惯", "Habits")}</strong>
-    <p>{t("模型暂不可用。", "The model is unavailable.")} <Link href="/settings?tab=assistant" prefetch={false} tabIndex={unavailable ? undefined : -1}>{t("助手设置", "Assistant settings")}</Link></p>
+    <p>{t("模型暂不可用。", "The model is unavailable.")} <Link href="/settings?tab=assistant" prefetch={false} tabIndex={unavailable ? undefined : -1}>{t("{name} 设置", "{name} settings").replace("{name}", ASSISTANT_NAME)}</Link></p>
   </div>;
 }
 

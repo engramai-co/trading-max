@@ -4,6 +4,8 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useMediaQuery } from "@mantine/hooks";
 import { CaretRight } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocale } from "@/components/locale-provider";
+import { formatCalendarDate } from "@/ui/formatters";
 import { accountName, useWorkspaceProfile } from "../profile";
 import { useCopy } from "../foundation";
 import { decisionHref, type ReviewScope, type ScopedDecision } from "../review-board";
@@ -12,7 +14,7 @@ import type { Horizon } from "../review-decisions";
 import { decisionContext, isHabit, toolHorizon, toolScope, type Habit } from "../review-patterns";
 import { DigestRow, EvidenceLink, FollowUps, InlineReading, ReadingLines } from "./cards";
 import { type RoleCard, usePageRole } from "./context";
-import type { Reading } from "./evidence";
+import { readerText, type Reading } from "./evidence";
 import { fetchReading, useRoleReading, type ReadingRequest } from "./reading";
 
 type Common = { scope: Exclude<ReviewScope, "C">; snapshot: string; horizon: Horizon; habit: Habit | null };
@@ -121,6 +123,7 @@ export function ReviewHabits({
   onSelect,
 }: Common & { active: boolean; onSelect: (habit: Habit | null, options: { focusFilter: boolean; citation?: boolean }) => void }) {
   const t = useCopy();
+  const { locale, timeZone } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   const phone = useMediaQuery("(max-width: 767px)", false, { getInitialValueInEffect: false });
   const [sheet, setSheet] = useState(() => {
@@ -195,7 +198,7 @@ export function ReviewHabits({
                 if (phone && !next) opener.current?.focus();
               }}
             >
-              {t(line.zh, line.en)}
+              {readerText(line, locale, timeZone)}
               <CaretRight aria-hidden="true" size={14} />
             </button>
             <EvidenceLink evidence={line.evidence} onNavigate={phone ? event => {
@@ -222,7 +225,7 @@ export function ReviewHabits({
           <span aria-hidden="true">✦</span>
           <span className="mx-phone-habits-label">
             <span><strong>{card.title}</strong> · {card.object}</span>
-            <span className="mx-digest-summary">{reading?.lines[0] && t(reading.lines[0].zh, reading.lines[0].en)}</span>
+            <span className="mx-digest-summary">{reading?.lines[0] && readerText(reading.lines[0], locale, timeZone)}</span>
           </span>
           <CaretRight aria-hidden="true" size={14} />
         </button>
@@ -244,7 +247,7 @@ export function ReviewHabits({
       storageKey="review-habits"
       header={<strong>{card.title}</strong>}
       headline={card.object}
-      summary={reading?.lines[0] && t(reading.lines[0].zh, reading.lines[0].en)}
+      summary={reading?.lines[0] && readerText(reading.lines[0], locale, timeZone)}
     >
       {rows}
       {reading && <FollowUps card={card} />}
@@ -261,6 +264,7 @@ export function DecisionReading({
   onClose,
 }: Common & { row: ScopedDecision; onClose: () => void }) {
   const t = useCopy();
+  const { locale, timeZone } = useLocale();
   const context = useMemo(
     () => decisionContext(row, scope, horizon, habit),
     [row, scope, horizon, habit],
@@ -271,7 +275,7 @@ export function DecisionReading({
     () => ({
       role: "decision",
       title: t("复盘", "Review"),
-      object: row.ticker + " · " + row.date,
+      object: row.ticker + " · " + formatCalendarDate(row.date, locale),
       context,
       reading: run.reading,
       origin: {
@@ -291,7 +295,7 @@ export function DecisionReading({
         t("和事后最佳时点差多少？", "What was the hindsight timing gap?"),
       ],
     }),
-    [t, row.ticker, row.date, row.account, row.side, context, run.reading, habit, snapshot],
+    [t, locale, row.ticker, row.date, row.account, row.side, context, run.reading, habit, snapshot],
   );
   usePageRole(card);
   return (
@@ -302,7 +306,7 @@ export function DecisionReading({
         <>
           {run.lines.map((line) => (
             <p key={line.section} className="mx-reading-line">
-              {t(line.zh, line.en)} <EvidenceLink evidence={line.evidence} />
+              {readerText(line, locale, timeZone)} <EvidenceLink evidence={line.evidence} />
             </p>
           ))}
           <ReadingStatus run={run} />

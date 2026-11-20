@@ -14,7 +14,7 @@ import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
 import { focusAssistantControl } from "./focus";
 import { verifiedLines } from "./chat-reply";
-import { chatContext, displayTurns, sourceLabel } from "./evidence";
+import { chatContext, displayTurns, readableDates, sourceLabel } from "./evidence";
 
 // getRandomValues is available on loopback and existing HTTP workspaces.
 function makeConversationId() {
@@ -35,7 +35,7 @@ function ChatAnswer({ message, pending }: { message: UIMessage; pending: boolean
   if (pending) return null;
   const lines = verifiedLines(message, locale, timeZone);
   if (!lines.length) return <p className="mx-assistant-note">{unverifiedNotice(t)}</p>;
-  return lines.map((line, i) => <p className="mx-reading-line" key={i}>{line.text}{" "}
+  return lines.map((line, i) => <p className="mx-reading-line" key={i}>{readableDates(line.text, locale, timeZone)}{" "}
     {line.evidence ? <EvidenceLink evidence={line.evidence}/> : <span className="mx-reading-source">{sourceLabel(null, t)}</span>}
   </p>);
 }
@@ -75,7 +75,7 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
       if (!isAbort && !isError && !isDisconnect && reply?.role === "assistant") {
         const lines = verifiedLines(reply, locale, timeZone);
         setAnnouncement(lines.length
-          ? lines.map(line => line.text + " " + sourceLabel(line.evidence, t)).join(" ")
+          ? lines.map(line => readableDates(line.text, locale, timeZone) + " " + sourceLabel(line.evidence, t)).join(" ")
           : unverifiedNotice(t));
       }
     },

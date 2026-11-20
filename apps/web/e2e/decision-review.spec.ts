@@ -1502,7 +1502,7 @@ test("a consent change hides cached Review before the other tab's profile resolv
     expect(requests).toEqual([]);
     enabled = false;
     resolveProfile();
-    await expect(page.locator("#mx-assistant-panel")).toContainText("Enable the assistant");
+    await expect(page.locator("#mx-assistant-panel")).toContainText("Enable MaxAI");
     await page.keyboard.press("Escape");
     await expect(page.locator(".mx-review-habits-space,.mx-digest")).toHaveCount(0);
     expect(requests).toEqual([]);
@@ -1513,7 +1513,7 @@ test("a consent change hides cached Review before the other tab's profile resolv
   }
 });
 
-test("collapsed unavailable Habits keeps its footprint and opens Assistant settings", async ({page,isMobile}, info) => {
+test("collapsed unavailable Habits keeps its footprint and opens MaxAI settings", async ({page,isMobile}, info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
   if (isMobile) await page.setViewportSize({width:390,height:844});
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
@@ -1530,7 +1530,7 @@ test("collapsed unavailable Habits keeps its footprint and opens Assistant setti
   const y = () => timeline.evaluate(el => el.getBoundingClientRect().top + scrollY);
   const before = await y();
   release();
-  const settings = page.getByRole("link",{name:"Assistant settings"});
+  const settings = page.getByRole("link",{name:"MaxAI settings"});
   await expect(settings).toBeVisible();
   expect.soft(Math.abs(await y() - before)).toBeLessThan(1);
   await expect(settings).toHaveAttribute("href","/settings?tab=assistant");

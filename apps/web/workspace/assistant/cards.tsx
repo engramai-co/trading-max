@@ -9,7 +9,7 @@ import { useLocale } from "@/components/locale-provider";
 import { useCopy } from "../foundation";
 import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
-import { evidenceHref, observationText, sourceLabel, type Evidence, type Reading } from "./evidence";
+import { evidenceHref, readerText, sourceLabel, type Evidence, type Reading } from "./evidence";
 
 /** A bottom sheet that opts in closes when one of its citations is followed, so the page can take focus. */
 const FollowCitation = createContext<(() => void) | null>(null);
@@ -27,7 +27,7 @@ export function EvidenceLink({ evidence, onNavigate }: { evidence: Evidence; onN
 export function ObservationLine({line}: {line: Reading["lines"][number]}) {
   const {locale, timeZone} = useLocale();
   return <p className="mx-reading-line">{[line, ...(line.related ?? [])].map((item, i) =>
-    <span key={i} className="mx-reading-observation">{observationText(item, locale, timeZone)} <EvidenceLink evidence={item.evidence} /></span>
+    <span key={i} className="mx-reading-observation">{readerText(item, locale, timeZone)} <EvidenceLink evidence={item.evidence} /></span>
   )}</p>;
 }
 export function ReadingLines({card, lines = card.reading?.lines}: {card: RoleCard; lines?: Reading["lines"]}) {

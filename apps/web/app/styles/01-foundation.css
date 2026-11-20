@@ -34,6 +34,10 @@
   /* The holdings donut's shared segment for everything outside its coloured holdings. */
   --mx-rest: #d9dee5;
   --mx-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Mantine sets its colours on the scheme attribute; the same selector, loaded after Mantine, hands them ours.
+   On a bare :root the bridge lost to Mantine's grey dimmed text (3.3:1 on white). */
+:root[data-mantine-color-scheme] {
   --mantine-color-body: var(--mx-surface);
   --mantine-color-text: var(--mx-ink);
   --mantine-color-dimmed: var(--mx-muted);

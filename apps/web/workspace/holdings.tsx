@@ -165,7 +165,7 @@ function Positions() {
             <div className="mx-toolbar">
               <Select
                 aria-label={t("选择账户", "Choose account")}
-                w={190}
+                w={locale === "zh" ? 190 : 212}
                 value={account}
                 onChange={(v) => {
                   setLimit(20);

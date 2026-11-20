@@ -23,6 +23,8 @@
 .mx-holding-quote-basis {
   display: block;
   color: var(--mx-muted);
+  /* Matches its row: the browser's smaller <small> fell to 10px in the phone footer. */
+  font-size: inherit;
   font-variant-numeric: tabular-nums;
 }
 

@@ -382,5 +382,5 @@
   min-width: 0;
 }
 .mx-inspection-anchor .mx-inline-reading {
-  box-shadow: var(--mx-popover-shadow);
+  box-shadow: var(--mx-overlay-elevation);
 }

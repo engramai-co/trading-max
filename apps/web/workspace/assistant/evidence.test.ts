@@ -5,8 +5,23 @@ import earlyClose from "../../tests/fixtures/market-early-close.json";
 import historicalEvents from "../../tests/fixtures/historical-events.json";
 import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
-import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText, sourceLabel } from "./evidence";
+import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText, readableDates, sourceLabel } from "./evidence";
 import type { UIMessage } from "ai";
+
+describe("dates in readings and replies", () => {
+  const now = Date.UTC(2026, 10, 20, 12);
+  it("writes ISO days and instants as the workspace dates them", () => {
+    expect(readableDates("2026-11-18，板块涨跌 +1.20%。", "zh", "Europe/London", now)).toBe("11月18日，板块涨跌 +1.20%。");
+    expect(readableDates("2026-08-12 – 2026-11-10, return +4.0%", "en", "Europe/London", now)).toBe("12 Aug – 10 Nov, return +4.0%");
+    expect(readableDates("Weight as of 2025-12-31.", "en", "Europe/London", now)).toBe("Weight as of 31 Dec 2025.");
+    expect(readableDates("Published 2026-11-18T23:55:00Z", "en", "Asia/Tokyo", now)).toBe("Published 19 Nov 08:55");
+  });
+  it("leaves identifiers and other digit runs alone", () => {
+    for (const text of ["price_bar:SYNT:2026-11-05-close", "ref 12026-11-05", "2026-11-05:open"]) {
+      expect(readableDates(text, "en", "Europe/London", now)).toBe(text);
+    }
+  });
+});
 
 describe("assistant evidence routing", () => {
   it("routes the tool call's actual scope and ticker", () => {

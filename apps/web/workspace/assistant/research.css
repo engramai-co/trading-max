@@ -21,7 +21,10 @@
   border-radius: 50%;
   background: var(--mx-surface);
   color: var(--mx-brand);
-  font: 600 12px/1 var(--font-sans, sans-serif);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
 }
 .mx-key-stem {

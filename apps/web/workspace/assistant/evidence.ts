@@ -1,6 +1,7 @@
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import type { components } from "@/lib/api-schema";
-import { formatDateTimeInTimeZone } from "@/ui/formatters";
+import type { Locale } from "@/components/locale-provider";
+import { formatCalendarDate, formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
 import type { UIMessage } from "ai";
 import { object, safeUrl, str, type Json } from "../data";
 
@@ -274,4 +275,18 @@ export function observationText(line: components["schemas"]["LinkedObservation"]
   const instant = new Date(args.instant);
   if (!Number.isFinite(instant.valueOf())) return text;
   return formatDateTimeInTimeZone(instant, locale, timeZone) + text.slice(day.length);
+}
+/** An observation as the reader sees it, with every remaining ISO day or instant in the workspace's date style. */
+export function readerText(line: components["schemas"]["LinkedObservation"], locale: Locale, timeZone: string) {
+  return readableDates(observationText(line, locale, timeZone), locale, timeZone);
+}
+
+const ISO_INSTANT = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})/g;
+// No lookbehind: the App's WebView on macOS 13.0 predates it.
+const ISO_DAY = /(^|[^\d-])(\d{4}-\d{2}-\d{2})(?![\d:T-])/g;
+/** Readings and replies name days and instants as ISO text; the reader sees them as the workspace writes dates. */
+export function readableDates(text: string, locale: Locale, timeZone: string, now: Date | number = Date.now()) {
+  return text
+    .replace(ISO_INSTANT, (instant) => formatDateTime(instant, locale, timeZone, now))
+    .replace(ISO_DAY, (_, before: string, day: string) => before + formatCalendarDate(day, locale, now));
 }

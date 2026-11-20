@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.2] - 2026-11-20
+
+### Fixed
+- On Research, Price & technicals, opening the MaxAI sidebar narrows the price chart, its chart-type switch and Full chart with the page; they no longer slide under the technical score and the sidebar.
+- MaxAI readings and replies write dates as the rest of the workspace does (18 Nov, 11月18日) instead of ISO dates, and so does a review decision's title. A look-through reading opened from a citation names its sector or country in the interface language.
+- The Review settings link and the message asking you to enable MaxAI call it MaxAI instead of the assistant.
+- Muted text and Mantine controls take the workspace colours in both appearances. Muted text in light mode rises from 3.3:1 to 6.3:1 contrast.
+- On phones, search names pages as the bottom bar does, such as 总览, 持仓 and 复盘.
+- The account selector on Overview, Holdings and Performance shows All investment accounts in full in English.
+- A holding's broker snapshot time on phones is 12px instead of 10px.
+- The smallest market on the Overview world map stays inside the map, and the reading opened from Why on Data status has its overlay shadow in light mode.
+
 ## [1.67.1] - 2026-11-18
 
 ### Added
