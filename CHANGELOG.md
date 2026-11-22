@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.3] - 2026-11-22
+
+### Fixed
+- Adding Trading Max to a phone home screen shows the Trading Max icon. iOS gets a 180 px touch icon (it ignores SVG icons) and the home-screen title Trading Max; the web app manifest adds 192 px, 512 px and maskable PNG icons for Android and desktop installs.
+
 ## [1.67.2] - 2026-11-20
 
 ### Fixed
