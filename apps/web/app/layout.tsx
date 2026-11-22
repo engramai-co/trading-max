@@ -19,6 +19,17 @@ export const metadata: Metadata = {
     template: "%s · Trading Max",
   },
   description: "Portfolio analytics and investment research.",
+  // iOS ignores SVG touch icons and reads the home-screen title from this metadata. Declaring icons here
+  // replaces the file-based app/icon.svg link, so the browser icon is listed explicitly too.
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml", sizes: "any" }],
+    apple: [{ url: "/brand/trading-max-apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+  appleWebApp: {
+    capable: true,
+    title: "Trading Max",
+    statusBarStyle: "default",
+  },
 };
 
 export const viewport: Viewport = {

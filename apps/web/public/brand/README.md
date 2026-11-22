@@ -16,6 +16,12 @@ files are the source assets for product surfaces:
 - `trading-max-lockup.svg` — horizontal lockup for light backgrounds;
 - `trading-max-lockup-dark.svg` — horizontal lockup for dark backgrounds;
 - `trading-max-app-icon.svg` — white app-icon tile for desktop and touch icons;
+- `trading-max-apple-touch-icon.png` — 180 px full-bleed tile for the iOS home
+  screen (iOS rounds the corners and does not read SVG touch icons);
+- `trading-max-icon-192.png` and `trading-max-icon-512.png` — rounded tiles
+  for the web app manifest;
+- `trading-max-icon-maskable-512.png` — full-bleed manifest icon whose mark
+  stays inside the maskable safe zone;
 - `trading-max-social.svg` — 1200 × 630 social preview;
 - `trading-max-engram-lockup.svg` — optional `an Engram project` endorsement.
 
