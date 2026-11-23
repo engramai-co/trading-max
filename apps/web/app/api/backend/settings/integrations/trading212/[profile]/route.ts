@@ -1,4 +1,4 @@
-import { proxyJsonRequest, proxyToBackend } from "@/lib/backend-proxy";
+import { proxyDeleteRequest, proxyJsonRequest } from "@/lib/backend-proxy";
 
 async function path(context: { params: Promise<{ profile: string }> }) {
   const { profile } = await context.params;
@@ -9,6 +9,6 @@ export async function PUT(request: Request, context: { params: Promise<{ profile
   return proxyJsonRequest(await path(context), request, "PUT");
 }
 
-export async function DELETE(_request: Request, context: { params: Promise<{ profile: string }> }) {
-  return proxyToBackend(await path(context), { method: "DELETE" });
+export async function DELETE(request: Request, context: { params: Promise<{ profile: string }> }) {
+  return proxyDeleteRequest(await path(context), request);
 }

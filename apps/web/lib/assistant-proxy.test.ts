@@ -10,8 +10,8 @@ import { ASSISTANT_MAX_REQUEST_BYTES, proxyAssistantChat } from "./assistant-pro
 
 afterEach(() => backendFetch.mockReset());
 
-function chat(body: string, query = "") {
-  return new Request(`http://localhost/api/backend/assistant/chat${query}`, { method: "POST", body });
+function chat(body: string, query = "", headers: HeadersInit = { "Content-Type": "application/json" }) {
+  return new Request(`http://localhost/api/backend/assistant/chat${query}`, { method: "POST", headers, body });
 }
 
 describe("assistant chat proxy", () => {
@@ -49,5 +49,41 @@ describe("assistant chat proxy", () => {
     const response = await proxyAssistantChat(chat('{"id":"c1"}'));
     expect(response.status).toBe(403);
     expect(await response.json()).toEqual({ detail: { code: "assistant_disabled" } });
+  });
+
+  it("rejects cross-site and non-JSON stream writes before reading or contacting the backend", async () => {
+    const crossSite = await proxyAssistantChat(chat('{"id":"c1"}', "", {
+      "Content-Type": "application/json",
+      "Sec-Fetch-Site": "cross-site",
+      Origin: "https://evil.test",
+    }));
+    expect(crossSite.status).toBe(403);
+    expect(crossSite.headers.get("content-encoding")).toBeNull();
+
+    const wrongOrigin = await proxyAssistantChat(chat('{"id":"c1"}', "", {
+      "Content-Type": "application/json",
+      Origin: "https://evil.test",
+    }));
+    expect(wrongOrigin.status).toBe(403);
+
+    const nonJson = await proxyAssistantChat(chat('{"id":"c1"}', "", {
+      "Content-Type": "text/plain",
+      "Sec-Fetch-Site": "same-origin",
+    }));
+    expect(nonJson.status).toBe(415);
+    expect(nonJson.headers.get("content-encoding")).toBeNull();
+    expect(backendFetch).not.toHaveBeenCalled();
+  });
+
+  it("accepts same-origin forwarded stream writes", async () => {
+    backendFetch.mockResolvedValue(new Response("", { headers: { "Content-Type": "text/event-stream" } }));
+    const response = await proxyAssistantChat(chat('{"id":"c1"}', "", {
+      "Content-Type": "application/json; charset=utf-8",
+      Origin: "https://workspace.example.net",
+      "X-Forwarded-Host": "workspace.example.net",
+      "X-Forwarded-Proto": "https",
+    }));
+    expect(response.status).toBe(200);
+    expect(backendFetch).toHaveBeenCalledOnce();
   });
 });

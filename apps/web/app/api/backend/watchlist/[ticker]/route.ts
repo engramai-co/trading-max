@@ -1,4 +1,4 @@
-import { proxyToBackend } from "@/lib/backend-proxy";
+import { JSON_MEDIA_TYPES, proxyToBackend, validateWriteRequest } from "@/lib/backend-proxy";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +8,8 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ ticker: string }> },
 ) {
+  const rejected = validateWriteRequest(request, { allowedMediaTypes: JSON_MEDIA_TYPES });
+  if (rejected) return rejected;
   const { ticker } = await context.params;
   const payload: unknown = await request.json().catch(() => null);
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {

@@ -1,7 +1,12 @@
 import "server-only";
 
 import { backendFetch, backendUrl } from "@/lib/backend";
-import { backendUnavailable, PRIVATE_JSON_HEADERS } from "@/lib/backend-proxy";
+import {
+  backendUnavailable,
+  JSON_MEDIA_TYPES,
+  PRIVATE_JSON_HEADERS,
+  validateWriteRequest,
+} from "@/lib/backend-proxy";
 
 export const ASSISTANT_MAX_REQUEST_BYTES = 1_000_000;
 const FORWARDED_QUERY = ["page", "tz", "format"] as const;
@@ -50,6 +55,8 @@ export async function proxyAssistantChat(request: Request, path = "/v1/assistant
 }
 
 export async function proxyAssistantStream(request: Request, path: string, accept: string): Promise<Response> {
+  const rejected = validateWriteRequest(request, { allowedMediaTypes: JSON_MEDIA_TYPES });
+  if (rejected) return rejected;
   if (!backendUrl()) return backendUnavailable();
   const body = await boundedBody(request, ASSISTANT_MAX_REQUEST_BYTES);
   if (body === null) {
