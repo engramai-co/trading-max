@@ -103,7 +103,15 @@ refresh to extend existing cash-flow coverage without refetching market history.
 This check runs on each live collection, using reconciled position detail and
 each account's own observation time. Publish the extended evidence with the live
 snapshot so the value curve, contribution line and P&L advance together.
-Changed ledger sources or account balances require reconciliation again. The
+Changed ledger sources or account balances require reconciliation again, with
+one exception for deposits and withdrawals. The live collection also reads the
+broker's newest cash-history page, after the value and kept apart from the
+ledger. When quantities equal the last reconciled state and that page reaches
+the ledger, unledgered movements up to the observation qualify only if all are
+whole-penny GBP deposits, withdrawals or transfers summing exactly to the change
+in cash; they then join the evidence at their broker timestamps. Interest, fees,
+currency conversions, trades or any other difference wait for reconciliation,
+which the cash change still triggers and which replaces the live evidence. The
 source digest and account-state digest travel with each immutable evidence
 artifact. Legacy value-only histories remain readable, without fabricated cash
 flows or certification.

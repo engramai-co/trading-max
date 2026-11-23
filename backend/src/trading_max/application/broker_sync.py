@@ -8,6 +8,7 @@ stdout.
 
 from __future__ import annotations
 
+import logging
 import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -34,6 +35,8 @@ from trading_max.ingestion.brokers.trading212 import (
     utc_iso,
     validate_broker_snapshot,
 )
+
+LOGGER = logging.getLogger(__name__)
 
 
 class BrokerSyncRequest(DomainModel):
@@ -393,7 +396,38 @@ class Trading212BrokerSync:
                 if not allow_unreconciled_positions:
                     validate_broker_snapshot(snapshot)
             store.write_snapshot(raw_snapshot)
+            self._record_live_cash_transactions(client, store, profile)
         return raw_snapshot
+
+    @staticmethod
+    def _record_live_cash_transactions(client, store, profile: str) -> None:
+        """Keep the newest unledgered cash movements beside the live value.
+
+        Best effort: one page, read after the value so any movement already in
+        its cash is present. Without a ledger boundary a single page cannot
+        prove it is complete, so nothing is kept and the deposit waits for the
+        normal ledger reconciliation.
+        """
+
+        reader = getattr(client, "recent_cash_transactions", None)
+        writer = getattr(store, "write_live_cash_transactions", None)
+        clear = getattr(store, "clear_live_cash_transactions", None)
+        if not callable(reader) or not callable(writer) or not callable(clear):
+            return
+        try:
+            known = frozenset(
+                str(item.get("reference") or "")
+                for item in store.read_cash_transactions()
+                if item.get("reference")
+            )
+            if not known:
+                clear()
+                return
+            items, complete = reader(stop_references=known)
+            writer(fetched_at=datetime.now(UTC), items=items, complete=complete)
+        except Exception as exc:  # optional evidence must never cost the live value
+            LOGGER.warning("%s: live cash movements unavailable: %s", profile, exc)
+            clear()
 
 
 __all__ = ["BrokerSyncRequest", "BrokerSyncResult", "Trading212BrokerSync"]

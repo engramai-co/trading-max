@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.4] - 2026-11-23
+
+### Fixed
+- A deposit or withdrawal no longer leaves Overview and Performance at 出入金待核对 until the next full broker reconciliation, which took six minutes or more after the ten-minute value noticed it. When holdings are unchanged and new deposits, withdrawals or transfers in Trading 212's cash history explain the whole change in cash to the penny, the next ten-minute value records them at once. Interest, fees, currency conversions, trades and any other difference still wait for the full reconciliation, which follows and replaces the live record.
+
 ## [1.67.3] - 2026-11-22
 
 ### Fixed

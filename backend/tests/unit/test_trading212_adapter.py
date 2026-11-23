@@ -1041,6 +1041,41 @@ def test_managed_store_restricts_manifest_to_data_root(tmp_path: Path) -> None:
         )
 
 
+def test_recent_cash_transactions_read_one_page_and_report_completeness() -> None:
+    requests: list[str] = []
+    pages = [
+        {
+            "items": [
+                {"reference": "new", "type": "DEPOSIT", "amount": 50, "currency": "GBP"},
+                {"reference": "known", "type": "DEPOSIT", "amount": 100, "currency": "GBP"},
+            ],
+            "nextPagePath": "limit=50&cursor=older",
+        },
+        {
+            "items": [{"reference": "new", "type": "DEPOSIT", "amount": 50, "currency": "GBP"}],
+            "nextPagePath": "limit=50&cursor=older",
+        },
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(str(request.url))
+        return httpx.Response(200, json=pages[len(requests) - 1])
+
+    http_client = httpx.Client(transport=httpx.MockTransport(handler))
+    client = FakeClock().client(http_client)
+
+    items, complete = client.recent_cash_transactions(stop_references=frozenset({"known"}))
+    assert [item["reference"] for item in items] == ["new"]
+    assert complete is True
+    items, complete = client.recent_cash_transactions(stop_references=frozenset({"known"}))
+    assert [item["reference"] for item in items] == ["new"]
+    assert complete is False
+    assert len(requests) == 2
+    assert all("cursor" not in url for url in requests)
+
+    http_client.close()
+
+
 def test_managed_store_deduplicates_cash_transactions(tmp_path: Path) -> None:
     store = ManagedAccountStore("invest", data_root=tmp_path)
     store.write_cash_transactions(
@@ -1301,6 +1336,67 @@ def test_broker_snapshot_only_remains_strict_by_default(tmp_path: Path) -> None:
         service.snapshot_only("invest")
 
     assert not list((tmp_path / "invest" / "snapshots").glob("snapshot_*.json"))
+
+
+class _LiveCashClient(_FakeClient):
+    def __init__(self, payload, *, items=None, complete=True, error=None) -> None:
+        super().__init__(payload)
+        self.items = items or []
+        self.complete = complete
+        self.error = error
+        self.stop_references: list[frozenset[str]] = []
+
+    def recent_cash_transactions(self, *, stop_references: frozenset[str]):
+        self.stop_references.append(stop_references)
+        if self.error is not None:
+            raise self.error
+        return self.items, self.complete
+
+
+def _live_cash_service(tmp_path: Path, client: _FakeClient) -> Trading212BrokerSync:
+    return Trading212BrokerSync(
+        credentials_factory=lambda _: _credentials(),
+        client_factory=lambda _credentials, _environment: client,
+        store_factory=lambda profile: ManagedAccountStore(profile, data_root=tmp_path),
+    )
+
+
+def test_broker_snapshot_only_keeps_the_newest_unledgered_cash_movements(tmp_path: Path) -> None:
+    store = ManagedAccountStore("invest", data_root=tmp_path)
+    store.write_cash_transactions([{"reference": "ledgered", "dateTime": "2026-08-01T10:00:00Z"}])
+    deposit = {"reference": "new", "type": "DEPOSIT", "amount": 50, "currency": "GBP"}
+    fake = _LiveCashClient(_snapshot_payload(), items=[deposit])
+
+    _live_cash_service(tmp_path, fake).snapshot_only("invest")
+
+    assert fake.stop_references == [frozenset({"ledgered"})]
+    assert fake.requested_export is False
+    sidecar = json.loads(store.live_cash_transactions_path.read_text(encoding="utf-8"))
+    assert sidecar["complete"] is True
+    assert sidecar["items"] == [deposit]
+    assert sidecar["fetched_at"].endswith("Z")
+    # The ledger itself is untouched: only official syncs extend it.
+    assert [item["reference"] for item in store.read_cash_transactions()] == ["ledgered"]
+
+
+@pytest.mark.parametrize("ledgered", [False, True])
+def test_broker_snapshot_only_keeps_no_live_movements_without_a_ledger_or_on_failure(
+    tmp_path: Path, ledgered: bool
+) -> None:
+    store = ManagedAccountStore("invest", data_root=tmp_path)
+    if ledgered:
+        store.write_cash_transactions([{"reference": "ledgered"}])
+    store.write_live_cash_transactions(
+        fetched_at=datetime(2026, 8, 1, tzinfo=UTC), items=[], complete=True
+    )
+    fake = _LiveCashClient(_snapshot_payload(), error=Trading212Error("synthetic outage"))
+
+    payload = _live_cash_service(tmp_path, fake).snapshot_only("invest")
+
+    assert "account_summary" in payload
+    assert list((tmp_path / "invest" / "snapshots").glob("snapshot_*.json"))
+    assert not store.live_cash_transactions_path.exists()
+    assert len(fake.stop_references) == (1 if ledgered else 0)
 
 
 def test_broker_sync_strict_mode_does_not_register_mismatch(
