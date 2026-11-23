@@ -1,7 +1,38 @@
+import type { Scope } from "@/lib/portfolio/nav";
 import type { DashboardLens, Holding } from "@/lib/types";
 import type { AttentionFact, HoldingSignal } from "./attention";
 import { findETF, type Copy, type ETFReading } from "./etf-data";
 import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, holdingValuation, isFundHolding } from "./holding-groups";
+
+export type OverviewHoldingsState = "pending" | "error" | "empty" | "ready";
+
+/** Filter holdings for the selected scope only when a dashboard snapshot has loaded. */
+export function overviewScopedHoldings(
+  data: Pick<DashboardLens, "holdings"> | undefined,
+  scope: Scope,
+): Holding[] | undefined {
+  if (!data) return undefined;
+  return (data.holdings ?? []).filter(
+    (h) => scope === "total" || h.account === (scope === "invest" ? "A" : "B"),
+  );
+}
+
+/** Distinguish waiting, failed reads without a snapshot, fulfilled zero holdings, and populated holdings. */
+export function overviewHoldingsState({
+  waiting = false,
+  hasData,
+  isError,
+  count,
+}: {
+  waiting?: boolean;
+  hasData: boolean;
+  isError: boolean;
+  count: number;
+}): OverviewHoldingsState {
+  if (waiting) return "pending";
+  if (!hasData) return isError ? "error" : "pending";
+  return count === 0 ? "empty" : "ready";
+}
 
 /**
  * Holdings with a colour and a donut segment of their own: the largest eight, then any flagged holding beyond

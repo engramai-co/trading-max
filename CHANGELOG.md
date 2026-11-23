@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.9] - 2026-11-23
+
+### Fixed
+- Review never shows another account's figures under the selected account. While a newly selected account loads, the page waits for it instead of keeping the previous account's numbers.
+- A decision on Review keeps the comparison window it was opened with. Links from the recent record and the rankings, timeline picks, Back, reload, new tabs and letting the decision go all keep the same window, so an amount no longer flips between its 20-session and to-date figures.
+- Overview shows a read failure with Retry instead of "no holdings yet" when the dashboard cannot be read, keeps a timeout's status, and hides the data time it does not know. A transient failure in an enrolled desktop workspace no longer reopens first-time setup. With one account selected, the daily brief says that it covers all investment accounts.
+- The holdings preview takes its price and time from the row it opens from, so the same fund held in Invest and Stocks ISA, or read from an earlier publication, shows its own quote. Look-through names its all-accounts scope, and returning to direct holdings restores the selected account.
+- The desktop App shows the demo data label under its native title bar.
+
 ## [1.67.8] - 2026-11-23
 
 ### Security

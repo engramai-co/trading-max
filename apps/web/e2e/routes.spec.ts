@@ -110,9 +110,29 @@ test.describe("portfolio workspace", () => {
     const retry = assets.getByRole("button", { name: /重试|Retry/ });
     await expect(assets.getByRole("combobox")).toBeVisible();
     await expect(retry).toBeVisible();
+    await expect(assets.locator(".mx-freshness")).toHaveCount(0);
+    await expect(page.locator(".mx-overview-holdings")).not.toContainText(/还没有持仓|No holdings yet/);
     await page.unroute("**/api/backend/dashboard/lens/overview?**");
     await retry.click();
     await expect(retry).toHaveCount(0);
+    await expect(assets.locator(".mx-freshness")).toBeVisible();
+  });
+
+  test("timed-out overview reads show timeout guidance without Freshness or empty holdings", async ({ page }) => {
+    await page.route("**/api/backend/dashboard/lens/overview?**", (route) =>
+      route.fulfill({ status: 504, json: { detail: "Portfolio backend timed out" } }),
+    );
+    await page.goto("/");
+    const assets = page.getByRole("region", { name: /账户价值|Account value/ });
+    const holdings = page.locator(".mx-overview-holdings");
+    await expect(assets.getByRole("button", { name: /重试|Retry/ })).toBeVisible();
+    await expect(assets.locator(".mx-freshness")).toHaveCount(0);
+    await expect(holdings.getByRole("heading", { name: /数据请求超时|Data request timed out/ })).toBeVisible();
+    await expect(holdings).not.toContainText(/还没有持仓|No holdings yet/);
+    await page.unroute("**/api/backend/dashboard/lens/overview?**");
+    await holdings.getByRole("button", { name: /重新加载|Try again/ }).click();
+    await expect(assets.getByRole("button", { name: /重试|Retry/ })).toHaveCount(0);
+    await expect(assets.locator(".mx-freshness")).toBeVisible();
   });
 
   test("data status retries in place after an error", async ({ page }) => {

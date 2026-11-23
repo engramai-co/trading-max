@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 import type { components } from "../lib/api-schema";
 import { backendFixture } from "../tests/loading/fixtures";
 
@@ -334,12 +334,110 @@ test.describe("a link to one decision", () => {
   test("the review's recent record links each decision to itself", async ({ page }) => {
     await page.goto("/review");
     const recent = page.locator(".mx-review-journal").getByRole("link", { name: "卖出 SYND.AS" });
-    await expect(recent).toHaveAttribute("href", sale);
+    await expect(recent).toHaveAttribute("href", sale + "&reviewWindow=to_date");
     // A T day says what its excess did, as on the account's review.
     await expect(page.locator(".mx-review-journal").getByRole("link", { name: /SYNG/ })).toHaveText("日内往返后净买入 SYNG");
     await recent.click();
-    await expect(page).toHaveURL((url) => url.pathname + url.search === sale);
+    await expect(page).toHaveURL((url) => url.pathname + url.search === sale + "&reviewWindow=to_date");
     await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Delta/ })).toBeFocused();
+  });
+
+  test("opening a settled trade from the recent record keeps its to-date amount on reload and Back", async ({ page }) => {
+    await page.goto("/review?account=A");
+    const horizon = page.getByRole("group", { name: "对照时点" });
+    await expect(horizon.getByRole("button", { name: "20 个交易日后" })).toHaveAttribute("aria-pressed", "true");
+    const row = entry(page, "2026-09-02");
+    await expect(row.locator(".mx-journal-figure")).toContainText("+£70");
+    const link = row.getByRole("link", { name: "买入 SYNB" });
+    await expect(link).toHaveAttribute("href", "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=to_date");
+    await link.click();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=to_date");
+    const focus = page.locator(".mx-decision-focus");
+    await expect(focus.locator(".mx-row-value")).toContainText("+£70");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£60");
+    await expect(horizon.getByRole("button", { name: "至今" })).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await expect(focus.locator(".mx-row-value")).toContainText("+£70");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£60");
+    await expect(horizon.getByRole("button", { name: "至今" })).toHaveAttribute("aria-pressed", "true");
+    await page.goBack();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A");
+    await expect(focus).toHaveCount(0);
+    await expect(row.locator(".mx-journal-figure")).toContainText("+£70");
+  });
+
+  test("ranked links and timeline picks keep each visit's comparison window across Back", async ({ page }) => {
+    await page.goto("/review?account=A");
+    const horizon = page.getByRole("group", { name: "对照时点" });
+    const pressed = (name: string) => expect(horizon.getByRole("button", { name })).toHaveAttribute("aria-pressed", "true");
+    const focus = page.locator(".mx-decision-focus");
+    const ranked = () => panel(page, "帮你最多").locator("a.mx-review-line").filter({ hasText: "SYNB" });
+
+    // Ranked link: 20 sessions -> clear -> To date -> Back twice restores 20 sessions.
+    await pressed("20 个交易日后");
+    await expect(ranked()).toContainText("+£60");
+    await expect(ranked()).toHaveAttribute("href", "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=20_sessions");
+    await ranked().click();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=20_sessions");
+    await expect(focus.locator(".mx-row-value")).toContainText("+£60");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£70");
+    await pressed("20 个交易日后");
+
+    await page.getByRole("button", { name: "取消选中这笔决定" }).click();
+    await expect(focus).toHaveCount(0);
+    await horizon.getByRole("button", { name: "至今" }).click();
+    await expect(ranked()).toContainText("+£70");
+    await expect(ranked()).toHaveAttribute("href", "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=to_date");
+    await ranked().click();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=to_date");
+    await expect(focus.locator(".mx-row-value")).toContainText("+£70");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£60");
+    await pressed("至今");
+
+    await page.goBack();
+    await expect(focus).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=20_sessions");
+    await expect(focus.locator(".mx-row-value")).toContainText("+£60");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£70");
+    await pressed("20 个交易日后");
+
+    // Timeline pick: 20 sessions -> clear -> To date -> Back twice restores 20 sessions.
+    await page.goto("/review?account=A");
+    const timeline = page.locator(".mx-decision-review");
+    const chart = timeline.getByRole("group", { name: "买卖决定的时间线" });
+    const spoken = timeline.locator("[aria-live]:not([role])");
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    await chart.press("Home");
+    await chart.press("ArrowRight");
+    await expect(spoken).toContainText("SYNB 买入 £800");
+    await expect(spoken).toContainText("+£60");
+    await chart.press("Enter");
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=20_sessions");
+    await expect(focus.locator(".mx-row-value")).toContainText("+£60");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£70");
+    await pressed("20 个交易日后");
+
+    await page.getByRole("button", { name: "取消选中这笔决定" }).click();
+    await expect(focus).toHaveCount(0);
+    await horizon.getByRole("button", { name: "至今" }).click();
+    await chart.press("Home");
+    await chart.press("ArrowRight");
+    await expect(spoken).toContainText("SYNB 买入 £800");
+    await expect(spoken).toContainText("+£70");
+    await chart.press("Enter");
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=to_date");
+    await expect(focus.locator(".mx-row-value")).toContainText("+£70");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£60");
+    await pressed("至今");
+
+    await page.goBack();
+    await expect(focus).toHaveCount(0);
+    await page.goBack();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=20_sessions");
+    await expect(focus.locator(".mx-row-value")).toContainText("+£60");
+    await expect(focus.locator(".mx-row-value")).not.toContainText("+£70");
+    await pressed("20 个交易日后");
   });
 
   test("opens on its decision, focused and in view, to date while its window is young", async ({ page }) => {
@@ -517,6 +615,60 @@ test.describe("a link to one decision", () => {
     await page.goForward();
     await expect(page.locator(".mx-decision-focus")).toHaveCount(0);
     await pressed("20 个交易日后");
+  });
+
+  test("deselecting a settled decision opened to date keeps the account review to date", async ({ page }) => {
+    await page.goto("/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=to_date");
+    const horizon = page.getByRole("group", { name: "对照时点" });
+    const focus = page.locator(".mx-decision-focus");
+    const ranked = panel(page, "帮你最多").locator("a.mx-review-line").filter({ hasText: "SYNB" });
+    await expect(focus.locator(".mx-row-value")).toContainText("+£70");
+    await expect(horizon.getByRole("button", { name: "至今" })).toHaveAttribute("aria-pressed", "true");
+    await expect(ranked).toContainText("+£70");
+
+    await page.getByRole("button", { name: "取消选中这笔决定" }).click();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A");
+    await expect(focus).toHaveCount(0);
+    await expect(horizon.getByRole("button", { name: "至今" })).toHaveAttribute("aria-pressed", "true");
+    await expect(ranked).toContainText("+£70");
+    await expect(ranked).not.toContainText("+£60");
+  });
+
+  test("consecutive deselections keep the window each decision showed", async ({ page }) => {
+    const horizon = page.getByRole("group", { name: "对照时点" });
+    const pressed = (name: string) => expect(horizon.getByRole("button", { name })).toHaveAttribute("aria-pressed", "true");
+    const focus = page.locator(".mx-decision-focus");
+    const ranked = panel(page, "帮你最多").locator("a.mx-review-line").filter({ hasText: "SYNB" });
+    await page.goto("/review?account=A&decision=2026-09-02.buy.SYNB&reviewWindow=20_sessions");
+    await pressed("20 个交易日后");
+    await page.getByRole("button", { name: "取消选中这笔决定" }).click();
+    await expect(focus).toHaveCount(0);
+    await pressed("20 个交易日后");
+    await expect(ranked).toContainText("+£60");
+    // The recent record opens the same trade to date; letting it go keeps the review to date.
+    await entry(page, "2026-09-02").getByRole("link", { name: "买入 SYNB" }).click();
+    await pressed("至今");
+    await page.getByRole("button", { name: "取消选中这笔决定" }).click();
+    await expect(focus).toHaveCount(0);
+    await pressed("至今");
+    await expect(ranked).toContainText("+£70");
+    await expect(ranked).not.toContainText("+£60");
+  });
+
+  test("changing a decision's window on an older link writes it to the address", async ({ page }) => {
+    const horizon = page.getByRole("group", { name: "对照时点" });
+    await page.goto(sale);
+    await expect(horizon.getByRole("button", { name: "至今" })).toHaveAttribute("aria-pressed", "true");
+    await horizon.getByRole("button", { name: "20 个交易日后" }).click();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === sale + "&reviewWindow=20_sessions");
+    await page.goBack();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === sale);
+    await expect(horizon.getByRole("button", { name: "至今" })).toHaveAttribute("aria-pressed", "true");
+    await page.goForward();
+    await expect(page).toHaveURL((url) => url.pathname + url.search === sale + "&reviewWindow=20_sessions");
+    await expect(horizon.getByRole("button", { name: "20 个交易日后" })).toHaveAttribute("aria-pressed", "true");
+    await page.reload();
+    await expect(horizon.getByRole("button", { name: "20 个交易日后" })).toHaveAttribute("aria-pressed", "true");
   });
 
   test("a refetch that completes a decision's window keeps the horizon it shows", async ({ page }) => {
@@ -713,9 +865,9 @@ test.describe("the review across accounts", () => {
     await expect(cost).toHaveCount(2);
     await expect(cost.nth(0)).toContainText("SYNA");
     await expect(cost.nth(1)).toContainText("SYNK");
-    await expect(helped.nth(0)).toHaveAttribute("href", "/review?account=B&decision=2026-09-03.buy.SYNI");
+    await expect(helped.nth(0)).toHaveAttribute("href", "/review?account=B&decision=2026-09-03.buy.SYNI&reviewWindow=20_sessions");
     await helped.nth(0).click();
-    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=B&decision=2026-09-03.buy.SYNI");
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=B&decision=2026-09-03.buy.SYNI&reviewWindow=20_sessions");
     await expect(page.getByRole("group", { name: "复盘范围" }).getByRole("button", { name: "Stocks ISA" })).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Iota/ })).toBeFocused();
     await expect(page.getByRole("group", { name: "对照时点" }).getByRole("button", { name: "20 个交易日后" })).toHaveAttribute("aria-pressed", "true");
@@ -734,7 +886,7 @@ test.describe("the review across accounts", () => {
     await chart.press("ArrowRight");
     await expect(spoken).toHaveText(/Stocks\sISA · SYNI 买入 £400/);
     await chart.press("Enter");
-    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=B&decision=2026-09-03.buy.SYNI");
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=B&decision=2026-09-03.buy.SYNI&reviewWindow=20_sessions");
     await expect(timeline.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Iota/ })).toBeFocused();
     // Within one account the readings leave the account out.
     await chart.press("Home");
@@ -749,7 +901,7 @@ test.describe("the review across accounts", () => {
     await chart.scrollIntoViewIfNeeded();
     const point = await pointOf(page, chart, ["2026-09-01", "2026-09-10", "2026-10-20"], /Stocks\sISA · SYNK 卖出 £250/);
     await page.mouse.click(point.x, point.y);
-    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=B&decision=2026-09-10.sell.SYNK");
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=B&decision=2026-09-10.sell.SYNK&reviewWindow=20_sessions");
     await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Kappa/ })).toBeFocused();
   });
 
@@ -770,9 +922,9 @@ test.describe("the review across accounts", () => {
     // At most four lines a side.
     await expect(panel(page, "帮你最多").locator("a.mx-review-line")).toHaveCount(4);
     const chip = chips.filter({ hasText: "SYNC3" });
-    await expect(chip).toHaveAttribute("href", "/review?account=A&decision=2026-09-02.buy.SYNC3");
+    await expect(chip).toHaveAttribute("href", "/review?account=A&decision=2026-09-02.buy.SYNC3&reviewWindow=to_date");
     await chip.click();
-    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNC3");
+    await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=A&decision=2026-09-02.buy.SYNC3&reviewWindow=to_date");
     await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic cluster 3/ })).toBeFocused();
   });
 
@@ -789,13 +941,146 @@ test.describe("the review across accounts", () => {
     const twins = day.getByRole("link", { name: /SYND\.AS/ });
     await expect(twins).toHaveCount(2);
     for (const [ordinal, twin] of (await twins.all()).entries()) {
-      await expect(twin).toHaveAttribute("href", "/review?account=A&decision=2026-10-14.sell.SYND.AS&reviewOrdinal=" + ordinal);
+      await expect(twin).toHaveAttribute("href", "/review?account=A&decision=2026-10-14.sell.SYND.AS&reviewOrdinal=" + ordinal + "&reviewWindow=to_date");
     }
     await twins.nth(1).click();
     const focus = page.locator(".mx-decision-focus").getByRole("link");
     await expect(focus).toContainText("£120");
     await expect(focus).toBeFocused();
     expect(warnings).toEqual([]);
+  });
+
+  test("switching accounts waits for the selected account and never displays another account's figures", async ({ page }) => {
+    let holdB = false;
+    let heldB = new Promise<void>(() => {});
+    let releaseB = () => {};
+    let routeB: Promise<unknown> = Promise.resolve();
+    let finishRouteB: (error?: unknown) => void = () => {};
+    const money: Record<string, object> = {
+      A: { ending_value_gbp: 2000, net_pnl_gbp: 250, max_pnl_drawdown_gbp: -100, net_external_flows_gbp: 1750 },
+      B: { ending_value_gbp: 3500, net_pnl_gbp: -120, max_pnl_drawdown_gbp: -200, net_external_flows_gbp: 3620 },
+    };
+    await page.route("**/api/backend/dashboard/lens/account-analysis*", async (route) => {
+      const account = new URL(route.request().url()).searchParams.get("account") ?? "A";
+      const held = account === "B" && holdB;
+      try {
+        if (held) await heldB;
+        await route.fulfill({
+          json: {
+            runId: "synthetic-decision-context",
+            brokerAsOf: asOf,
+            reviewAsOf: asOf,
+            totalValueGbp: account === "B" ? 3500 : 2000,
+            totalCashGbp: 100,
+            holdings: [],
+            nav: [],
+            accounts: [{ code: account, isInvestable: true, totalValueGbp: account === "B" ? 3500 : 2000 }],
+            selectedAccountReview: { moneyOutcome: money[account] ?? money.A },
+            selectedAccountDecisions: {
+              status: "available",
+              asOf,
+              horizonDays: 20,
+              observingCount: account === "B" ? 0 : 1,
+              decisions: account === "B" ? isa(context) : decisions(context),
+            },
+            risk: { A: { twr: 0.084 }, B: { twr: -0.012 } },
+          },
+        });
+        if (held) finishRouteB();
+      } catch (error) {
+        if (held) finishRouteB(error);
+        throw error;
+      }
+    });
+    const scope = page.getByRole("group", { name: "复盘范围" });
+    const lead = page.getByRole("region", { name: "复盘结论" });
+    const verdict = (label: string) => lead.locator(".mx-metric").filter({ hasText: label }).locator(".mx-number-value");
+    const delayB = () => {
+      holdB = true;
+      heldB = new Promise<void>((resolve) => { releaseB = resolve; });
+      routeB = new Promise<unknown>((resolve) => { finishRouteB = resolve; });
+    };
+    const releaseAndVerifyB = async () => {
+      holdB = false;
+      releaseB();
+      const routeError = await routeB;
+      if (routeError) throw routeError;
+    };
+    const settled = (request: Request) => new Promise<void>((resolve) => {
+      const done = (req: Request) => {
+        if (req !== request) return;
+        page.off("requestfinished", done);
+        page.off("requestfailed", done);
+        resolve();
+      };
+      page.on("requestfinished", done);
+      page.on("requestfailed", done);
+    });
+
+    try {
+      await page.goto("/review?account=A");
+      await expect(scope.getByRole("button", { name: "Invest" })).toHaveAttribute("aria-pressed", "true");
+      await expect(verdict("买入后")).toHaveText("赚 £60");
+      await expect(lead.locator(".mx-review-money")).toContainText("£2,000.00");
+      await expect(page.getByText("£3,500.00")).toHaveCount(0);
+
+      // A → B while B is delayed: Invest's figures leave and Stocks ISA shows its loading state.
+      delayB();
+      const requestedB = page.waitForRequest((req) =>
+        req.url().includes("/dashboard/lens/account-analysis") && new URL(req.url()).searchParams.get("account") === "B");
+      await scope.getByRole("button", { name: "Stocks ISA" }).click();
+      const settledB = settled(await requestedB);
+      await expect(scope.getByRole("button", { name: "Stocks ISA" })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("status", { name: /正在读取 Stocks\sISA 复盘…/ })).toBeVisible();
+      await expect(lead).toHaveCount(0);
+      await expect(page.getByText("£2,000.00")).toHaveCount(0);
+      await expect(page.getByText("赚 £60")).toHaveCount(0);
+
+      // B resolves with Stocks ISA's figures, then B → A restores Invest's figures.
+      await releaseAndVerifyB();
+      await settledB;
+      await expect(verdict("买入后")).toHaveText("赚 £90");
+      await expect(lead.locator(".mx-review-money")).toContainText("£3,500.00");
+      await expect(page.getByText("£2,000.00")).toHaveCount(0);
+      await expect(page.getByText("赚 £60")).toHaveCount(0);
+
+      await scope.getByRole("button", { name: "Invest" }).click();
+      await expect(scope.getByRole("button", { name: "Invest" })).toHaveAttribute("aria-pressed", "true");
+      await expect(verdict("买入后")).toHaveText("赚 £60");
+      await expect(lead.locator(".mx-review-money")).toContainText("£2,000.00");
+      await expect(page.getByText("£3,500.00")).toHaveCount(0);
+
+      // Fresh cache: A → B (delayed) → A mid-flight keeps Invest's figures even once the late B response resolves.
+      // The snapshot cache persists in localStorage, so clear it once before the next document loads.
+      await page.addInitScript((key) => {
+        if (sessionStorage.getItem("fresh-review-cache")) return;
+        localStorage.removeItem(key);
+        sessionStorage.setItem("fresh-review-cache", "1");
+      }, "trading_max-snapshot-cache");
+      await page.goto("/review?account=A");
+      await expect(verdict("买入后")).toHaveText("赚 £60");
+      await expect(lead.locator(".mx-review-money")).toContainText("£2,000.00");
+      delayB();
+      const requestedMidFlightB = page.waitForRequest((req) =>
+        req.url().includes("/dashboard/lens/account-analysis") && new URL(req.url()).searchParams.get("account") === "B");
+      await scope.getByRole("button", { name: "Stocks ISA" }).click();
+      const settledMidFlightB = settled(await requestedMidFlightB);
+      await expect(page.getByRole("status", { name: /正在读取 Stocks\sISA 复盘…/ })).toBeVisible();
+      await expect(lead).toHaveCount(0);
+
+      await scope.getByRole("button", { name: "Invest" }).click();
+      await expect(scope.getByRole("button", { name: "Invest" })).toHaveAttribute("aria-pressed", "true");
+      await expect(verdict("买入后")).toHaveText("赚 £60");
+      await expect(lead.locator(".mx-review-money")).toContainText("£2,000.00");
+      await releaseAndVerifyB();
+      await settledMidFlightB;
+      await expect(verdict("买入后")).toHaveText("赚 £60");
+      await expect(lead.locator(".mx-review-money")).toContainText("£2,000.00");
+      await expect(page.getByText("£3,500.00")).toHaveCount(0);
+    } finally {
+      holdB = false;
+      releaseB();
+    }
   });
 });
 

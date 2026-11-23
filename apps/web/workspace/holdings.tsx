@@ -40,6 +40,7 @@ import {
 } from "./foundation";
 import { Lookthrough } from "./look-through";
 import { HoldingDetail } from "./holding-detail";
+import { holdingPeekQuote, holdingPositionAsOf } from "./holding-detail-data";
 import { useRouteState } from "./route-state";
 import { SecurityPeek } from "./security-peek";
 import { accountName, useWorkspaceProfile } from "./profile";
@@ -110,9 +111,7 @@ function Positions() {
         .sort((a, b) => compareHoldings(a, b, sort, direction)),
     [scoped, search, sort, direction],
   );
-  const positionStamp = (holding: Holding) => positionData?.positionAsOf && (holding.account === "A" || holding.account === "B")
-    ? positionData.positionAsOf[holding.account]
-    : positionData?.accounts?.find(({ code }) => code === holding.account)?.asOf;
+  const positionStamp = (holding: Holding) => holdingPositionAsOf(holding, positionData);
   const snapshotBasis = (holding: Holding) => {
     const at = positionStamp(holding);
     return <small className="mx-holding-quote-basis">{t("券商快照", "Broker snapshot")} · {at
@@ -315,7 +314,13 @@ function Positions() {
                               onClick={() => selectHolding(h)}
                             >
                               <span className="sr-only">{t("查看持仓 ", "View holding ")}</span>
-                              <SecurityPeek ticker={h.ticker} range="1D" position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}>
+                              <SecurityPeek
+                                ticker={h.ticker}
+                                priceTicker={h.researchTicker ?? undefined}
+                                range="1D"
+                                position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}
+                                quote={holdingPeekQuote(h, positionData, accountName(profile, h.account), Boolean(cited))}
+                              >
                                 <Instrument ticker={h.ticker} name={h.name} isin={h.fundIsin} />
                               </SecurityPeek>
                             </button>

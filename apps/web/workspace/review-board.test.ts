@@ -4,7 +4,10 @@ import {
   allDecisions,
   combinedRoundTrips,
   decisionHref,
+  decisionSelectionParams,
   journalEntries,
+  parseReviewWindow,
+  reviewLoadingLabel,
   reviewScope,
   shareShifts,
   tradeEffect,
@@ -47,6 +50,53 @@ describe("the review's scope", () => {
   it("opens a decision in its account's scope", () => {
     expect(decisionHref("B", { date: "2026-11-03", side: "buy", ticker: "EURUSD=X" }))
       .toBe("/review?account=B&decision=2026-11-03.buy.EURUSD%3DX");
+  });
+
+  it("carries the selected horizon in decision links without requiring a snapshot binding", () => {
+    const buy = { date: "2025-11-05", side: "buy" as const, ticker: "AMD" };
+    expect(decisionHref("A", buy, { horizon: "date" }))
+      .toBe("/review?account=A&decision=2025-11-05.buy.AMD&reviewWindow=to_date");
+    expect(decisionHref("A", buy, { horizon: "horizon" }))
+      .toBe("/review?account=A&decision=2025-11-05.buy.AMD&reviewWindow=20_sessions");
+    expect(decisionHref("A", buy, { snapshot: "run-1", horizon: "horizon", habit: "before_earnings" }))
+      .toBe("/review?account=A&decision=2025-11-05.buy.AMD&snapshotId=run-1&reviewWindow=20_sessions&habit=before_earnings");
+  });
+
+  it("parses reviewWindow independently of assistant readiness and encodes picked horizons", () => {
+    expect(parseReviewWindow("to_date")).toBe("date");
+    expect(parseReviewWindow("20_sessions")).toBe("horizon");
+    expect(parseReviewWindow("other")).toBeNull();
+    expect(parseReviewWindow(null)).toBeNull();
+
+    const settled = decision("2025-11-05", "AMD", { horizonComplete: true });
+    const young = decision("2026-11-20", "AMD", { observedDays: 3, horizonComplete: false, effectHorizonGbp: null });
+
+    expect(decisionSelectionParams(scoped("A", { ...settled, reviewOrdinal: 1 }), "date")).toEqual({
+      account: "A",
+      decision: "2025-11-05.buy.AMD",
+      reviewOrdinal: "1",
+      reviewWindow: "to_date",
+    });
+    expect(decisionSelectionParams(scoped("B", settled), "horizon")).toEqual({
+      account: "B",
+      decision: "2025-11-05.buy.AMD",
+      reviewOrdinal: null,
+      reviewWindow: "20_sessions",
+    });
+    expect(decisionSelectionParams(scoped("A", young), "horizon")).toEqual({
+      account: "A",
+      decision: "2026-11-20.buy.AMD",
+      reviewOrdinal: null,
+      reviewWindow: "20_sessions",
+    });
+  });
+
+  it("names the requested account in pending review states", () => {
+    const en = (_zh: string, english: string) => english;
+    const zh = (chinese: string) => chinese;
+    expect(reviewLoadingLabel("all", "All", en)).toBe("Loading account reviews…");
+    expect(reviewLoadingLabel("B", "Stocks\u00a0ISA", en)).toBe("Loading Stocks\u00a0ISA review…");
+    expect(reviewLoadingLabel("A", "Invest", zh)).toBe("正在读取 Invest 复盘…");
   });
 
   it("plots both accounts' decisions by date and leaves out an account without a review", () => {

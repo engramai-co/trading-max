@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Holding } from "@/lib/types";
 import { allocationChartColours } from "@/ui/charts/palette";
 import { holdingSignals, SIGNAL_LIMIT } from "./attention";
-import { COLOURED_HOLDINGS, holdingsLedger, readingColumns } from "./overview-holdings-data";
+import { COLOURED_HOLDINGS, holdingsLedger, overviewHoldingsState, overviewScopedHoldings, readingColumns } from "./overview-holdings-data";
 
 const holding = (ticker: string, value: number, extra: Partial<Holding> = {}) =>
   ({ ticker, name: ticker + " Inc", account: "A", currentValueGbp: value, costGbp: value, pnlGbp: 0, pnlPct: 0, isFund: false, ...extra }) as Holding;
@@ -174,4 +174,30 @@ it("reads a London equity baseline by its research listing", () => {
     upside: 0.25, baselineId: "saved", href: "/research?ticker=SYN.L",
   });
   expect(holdingsLedger({ holdings: [london, holding("SYN", 60, { researchTicker:"SYN" })], valuations, signals: [] }).rows[0].upside).toBeNull();
+});
+
+describe("overview holdings availability state", () => {
+  it("keeps an absent snapshot distinct from fulfilled zero holdings", () => {
+    expect(overviewScopedHoldings(undefined, "total")).toBeUndefined();
+    expect(overviewScopedHoldings({}, "total")).toEqual([]);
+    expect(overviewScopedHoldings({ holdings: [] }, "isa")).toEqual([]);
+    const investOnly = holding("INV", 100, { account: "A" });
+    const isaOnly = holding("ISA", 200, { account: "B" });
+    expect(overviewScopedHoldings({ holdings: [investOnly, isaOnly] }, "total")).toEqual([investOnly, isaOnly]);
+    expect(overviewScopedHoldings({ holdings: [investOnly, isaOnly] }, "invest")).toEqual([investOnly]);
+    expect(overviewScopedHoldings({ holdings: [investOnly, isaOnly] }, "isa")).toEqual([isaOnly]);
+    expect(overviewScopedHoldings({ holdings: [investOnly] }, "isa")).toEqual([]);
+  });
+
+  it("never maps a failed dashboard read without cached data to the empty state", () => {
+    expect(overviewHoldingsState({ waiting: true, hasData: false, isError: false, count: 0 })).toBe("pending");
+    expect(overviewHoldingsState({ waiting: true, hasData: true, isError: false, count: 3 })).toBe("pending");
+    expect(overviewHoldingsState({ waiting: false, hasData: false, isError: true, count: 0 })).toBe("error");
+    expect(overviewHoldingsState({ waiting: false, hasData: false, isError: false, count: 0 })).toBe("pending");
+    expect(overviewHoldingsState({ waiting: false, hasData: true, isError: false, count: 0 })).toBe("empty");
+    expect(overviewHoldingsState({ waiting: false, hasData: true, isError: false, count: 2 })).toBe("ready");
+    // A refetch failure retains the prior snapshot instead of replacing it with an error or empty state.
+    expect(overviewHoldingsState({ waiting: false, hasData: true, isError: true, count: 2 })).toBe("ready");
+    expect(overviewHoldingsState({ waiting: false, hasData: true, isError: true, count: 0 })).toBe("empty");
+  });
 });

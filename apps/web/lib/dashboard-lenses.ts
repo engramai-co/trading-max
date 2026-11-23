@@ -9,8 +9,9 @@ import {
   dashboardLensSnapshotKey,
 } from "@/lib/dashboard-query";
 import type { AccountCode, DashboardLens, DashboardLensName } from "@/lib/types";
+import { ApiError } from "@/workspace/data";
 
-async function fetchDashboardLens(
+export async function fetchDashboardLens(
   view: DashboardLensName,
   account?: AccountCode,
   selection?: DashboardSelection,
@@ -26,7 +27,7 @@ async function fetchDashboardLens(
     cache: "no-store", signal,
   });
   if (!response.ok) {
-    throw new Error(`dashboard lens returned ${response.status}`);
+    throw new ApiError(`dashboard lens returned ${response.status}`, response.status);
   }
   const data = await response.json() as DashboardLens;
   if (runId && data.runId !== runId) throw new Error("Cited publication unavailable");

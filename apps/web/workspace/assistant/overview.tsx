@@ -3,15 +3,17 @@
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
+import type { Scope } from "@/lib/portfolio/nav";
 import { useCopy } from "../foundation";
 import { usePerformanceBenchmark } from "./benchmark";
 import { DigestRow, ObservationLine, FollowUps } from "./cards";
 import { usePageRole, type RoleCard } from "./context";
 import { readerText } from "./evidence";
+import { overviewBriefHeadline } from "./overview-brief";
 import { fetchReading, useRoleReading } from "./reading";
 
 const sections = {market: ["市场", "Market"], portfolio: ["你的组合", "Your portfolio"], events: ["事件", "Events"], next: ["接下来", "Coming up"]} as const;
-export function OverviewBrief({ snapshot }: { snapshot: string }) {
+export function OverviewBrief({ snapshot, scope = "total" }: { snapshot: string; scope?: Scope }) {
   const [role, setRole] = useState<"daily" | "weekly">("daily");
   const t = useCopy();
   const { locale, timeZone } = useLocale();
@@ -43,7 +45,7 @@ export function OverviewBrief({ snapshot }: { snapshot: string }) {
     {(["daily", "weekly"] as const).map(v => <button key={v} aria-pressed={role === v} onClick={() => { if (role !== v) { generate.reset(); setRole(v); } }}>
       {v === "daily" ? t("日报", "Daily") : t("周报", "Weekly")}</button>)}</div>}
     summary={portfolio && readerText(portfolio, locale, timeZone)}
-    headline={<span>{asOf ? (t("截至 ", "As of ") + asOf) : card.object}</span>}>
+    headline={<span>{overviewBriefHeadline({ scope, objectLabel: card.object, asOfLabel: asOf ? t("截至 ", "As of ") + asOf : null })}</span>}>
     {reading ? <><div className="mx-digest-grid">
       {Object.entries(sections).map(([section, label]) => <div key={section}><h4>{t(label[0], label[1])}</h4>
         {reading.lines.filter(line => line.section === section).map((line,i) => <ObservationLine key={i} line={line} />)}

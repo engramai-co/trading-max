@@ -408,7 +408,7 @@ function Exposure({
       <div className="mx-exposure-basis">
         <span title={top.map(({ name }) => name).join(" · ")}>{t("前三大公司", "Top three companies")} <strong>{percent(concentration)}</strong></span>
         <span>{t("未穿透与其他资产", "Unresolved & other assets")} <strong>{percent(unresolved)}</strong></span>
-        <span className="mx-exposure-denominator">{t("占已投资资产", "of invested assets")}</span>
+        <span className="mx-exposure-denominator">{t("占全部投资账户已投资资产", "of invested assets across all investment accounts")}</span>
         {classificationLow && (
           <Tag tone="warn">
             {t("GICS 分类覆盖 ", "GICS classified ")}
