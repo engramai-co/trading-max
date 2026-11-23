@@ -1,21 +1,37 @@
 "use client";
 
 import { Button, Checkbox, Group, Progress, Stack, Text } from "@mantine/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "./link";
 import { useState } from "react";
 import type { components } from "@/lib/api-schema";
+import { dashboardLensLatestKey } from "@/lib/dashboard-query";
 import type { DashboardLens } from "@/lib/types";
 import { api, currency, jsonRequest } from "./data";
 import { Notice, Panel, Pending, QueryError, useCopy } from "./foundation";
 
-type Workspace = components["schemas"]["LocalWorkspaceStatus"];
+export type LocalWorkspaceStatus = components["schemas"]["LocalWorkspaceStatus"];
+export const LOCAL_ONBOARDING_QUERY_KEY = ["local-onboarding"] as const;
+
+export function fetchLocalWorkspaceStatus(signal?: AbortSignal) {
+  return api<LocalWorkspaceStatus>("/local-workspace", { signal });
+}
+
+/** Record balance confirmation and reset only the live overview summary lens so historical snapshots stay cached. */
+export function applyLocalWorkspaceConfirmation(client: QueryClient, data: LocalWorkspaceStatus) {
+  client.setQueryData(LOCAL_ONBOARDING_QUERY_KEY, data);
+  return client.resetQueries({
+    queryKey: dashboardLensLatestKey("overview", undefined, { detail: "summary" }),
+    exact: true,
+  });
+}
 
 export function LocalOnboarding({ showAccountLink = false }: { showAccountLink?: boolean }) {
   const t = useCopy();
   const client = useQueryClient();
   const query = useQuery({
-    queryKey: ["local-onboarding"], queryFn: () => api<Workspace>("/local-workspace"),
+    queryKey: LOCAL_ONBOARDING_QUERY_KEY,
+    queryFn: ({ signal }) => fetchLocalWorkspaceStatus(signal),
     refetchInterval: 3000, retry: 1,
   });
   const start = useMutation({
@@ -23,8 +39,10 @@ export function LocalOnboarding({ showAccountLink = false }: { showAccountLink?:
     onSuccess: () => { void query.refetch(); },
   });
   const confirm = useMutation({
-    mutationFn: (runId: string) => api<Workspace>("/local-workspace/confirm", jsonRequest("POST", { runId })),
-    onSuccess: (data) => { client.setQueryData(["local-onboarding"], data); },
+    mutationFn: (runId: string) => api<LocalWorkspaceStatus>("/local-workspace/confirm", jsonRequest("POST", { runId })),
+    onSuccess: (data) => {
+      void applyLocalWorkspaceConfirmation(client, data);
+    },
   });
   if (query.isPending) return <Pending />;
   if (query.isError || !query.data) return <QueryError retry={query.refetch} />;

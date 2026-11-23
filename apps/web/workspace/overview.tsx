@@ -56,8 +56,13 @@ import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useCurrentDay } from "./current-day";
 import { DemoAsOf, useDemonstration } from "./demonstration";
-import { LocalOnboarding } from "./local-onboarding";
+import {
+  fetchLocalWorkspaceStatus,
+  LOCAL_ONBOARDING_QUERY_KEY,
+  LocalOnboarding,
+} from "./local-onboarding";
 import { OverviewHoldings } from "./overview-holdings";
+import { overviewScopedHoldings } from "./overview-holdings-data";
 import { OverviewSectors } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
@@ -114,10 +119,18 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const retained = useRetainedResult(complete, Object.is, (next, previous) =>
     !reading.active || next.selection.range !== previous.selection.range || next.selection.scope !== previous.selection.scope);
   const shown = retained?.selection.scope === requestedScope ? retained : undefined;
-  const initialWaiting = !shown && !query.isError && (
-    !incoming || history.isPending || runtime.status === "loading");
   const displayed = shown ?? candidate;
   const data = displayed?.lens;
+  const localOnboarding = useQuery({
+    queryKey: LOCAL_ONBOARDING_QUERY_KEY,
+    queryFn: ({ signal }) => fetchLocalWorkspaceStatus(signal),
+    enabled: localWorkspace && !data && query.isError,
+    retry: 1,
+  });
+  const checkingOnboarding = localWorkspace && !data && query.isError && localOnboarding.isPending;
+  const initialWaiting = !shown && (
+    checkingOnboarding || !query.isError && (!incoming || history.isPending || runtime.status === "loading"));
+  const initialError = !initialWaiting && !data && query.isError;
   const scope = displayed?.selection.scope ?? requestedScope;
   const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
   const summaryFailure = query.isRefetchError
@@ -129,10 +142,13 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const selected = accounts.find(
     (a) => a.code === (scope === "invest" ? "A" : scope === "isa" ? "B" : ""),
   );
-  const holdings = (data?.holdings ?? []).filter(
-    (h) => scope === "total" || h.account === (scope === "invest" ? "A" : "B"),
+  const holdings = useMemo(
+    () => overviewScopedHoldings(data, scope),
+    [data, scope],
   );
-  if (!data && query.isError && localWorkspace) return <LocalOnboarding showAccountLink />;
+  if (initialError && localWorkspace && localOnboarding.data && !localOnboarding.data.confirmed) {
+    return <LocalOnboarding showAccountLink />;
+  }
   if (data && !accounts.length && data.totalValueGbp == null)
     return (
       <Panel>
@@ -179,13 +195,16 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
               value={requestedScope}
               onChange={(v) => update({ scope: v === "total" ? null : v })}
             />
-            <span className="mx-freshness-group">
-              {initialWaiting ? <WaitingAsOf label={t("正在读取账户价值…", "Loading account value…")} />
-                : demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
-              {summaryFailure && <UpdateFailure {...summaryFailure} />}
-            </span>
+            {(!initialError || summaryFailure) && (
+              <span className="mx-freshness-group">
+                {initialWaiting ? <WaitingAsOf label={t("正在读取账户价值…", "Loading account value…")} />
+                  : initialError ? null
+                    : demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
+                {summaryFailure && <UpdateFailure {...summaryFailure} />}
+              </span>
+            )}
           </div>
-          {initialWaiting ? <Pending shape="summary" quiet /> : !data && query.isError ? (
+          {initialWaiting ? <Pending shape="summary" quiet /> : initialError ? (
             <div className="mx-overview-summary-failure">
               <InlineRetry label={t("账户价值暂不可用", "Account value unavailable")} retry={query.refetch} />
               <TextLink href="/health">{t("查看数据状态", "Data status")}</TextLink>
@@ -220,7 +239,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           <Attention items={attention} />
           </>}
         </section>
-        {!initialWaiting && scope !== "total" && !selected && (
+        {!initialWaiting && data && scope !== "total" && !selected && (
           <div className="mx-overview-notice">
             <Notice>
               {t(
@@ -236,8 +255,8 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           range={range}
           selection={displayed?.selection ?? selection}
           data={displayed?.history}
-          failed={history.isError || !data && query.isError}
-          retry={!data && query.isError ? query.refetch : history.refetch}
+          failed={history.isError || initialError}
+          retry={initialError ? query.refetch : history.refetch}
           failure={historyFailure}
           waiting={Boolean(shown && shown !== complete && !reading.active)}
           initialWaiting={initialWaiting}
@@ -251,8 +270,9 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
       {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
         : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
           runId={data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
-          brokerAsOf={data?.brokerAsOf} account={requestedScope} />}
-      {!initialWaiting && data && <><Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />{assistantReady && <OverviewBrief snapshot={data.runId} />}</>}
+          brokerAsOf={data?.brokerAsOf} account={requestedScope}
+          failed={initialError} error={query.error} retry={query.refetch} />}
+      {!initialWaiting && data && <><Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />{assistantReady && <OverviewBrief snapshot={data.runId} scope={scope} />}</>}
     </div></ReadingBoundary.Provider>
   );
 }

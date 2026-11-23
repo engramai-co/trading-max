@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUpRight, CaretDown } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
 import type { AccountCode, DashboardLens } from "@/lib/types";
@@ -40,15 +40,44 @@ export type DecisionAccount = "A" | "B";
 export type ReviewScope = "all" | AccountCode;
 export type ScopedDecision = TradeDecision & { account: DecisionAccount };
 
-type DecisionLinkContext = { snapshot: string; horizon: Horizon; habit: Habit | null };
+export type DecisionLinkContext = { snapshot?: string; horizon?: Horizon; habit?: Habit | null };
 
-export type DecisionExpansion = DecisionLinkContext & {
+export type DecisionExpansion = {
+  snapshot: string;
+  horizon: Horizon;
+  habit: Habit | null;
   selected: ScopedDecision | null;
   location: "extremes" | "recent" | null;
   reading: ReactNode;
   id: string;
   toggle: (row: ScopedDecision, location: "extremes" | "recent", trigger: HTMLElement) => void;
 };
+
+function isPlainClick(event: MouseEvent) {
+  return !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey && event.button === 0;
+}
+
+/** Pending label naming the requested account so a slow switch never reads as another scope. */
+export function reviewLoadingLabel(scope: ReviewScope, accountLabel: string, t: Copy) {
+  return scope === "all"
+    ? t("正在读取账户复盘…", "Loading account reviews…")
+    : t("正在读取 {account} 复盘…", "Loading {account} review…").replace("{account}", accountLabel);
+}
+
+/** Read the requested comparison window from the address, regardless of assistant readiness. */
+export function parseReviewWindow(value: string | null | undefined): Horizon | null {
+  return value === "to_date" ? "date" : value === "20_sessions" ? "horizon" : null;
+}
+
+/** Route parameters when picking a decision from the timeline at the current horizon. */
+export function decisionSelectionParams(row: ScopedDecision, horizon: Horizon) {
+  return {
+    account: row.account,
+    decision: decisionParam(row),
+    reviewOrdinal: row.reviewOrdinal != null ? String(row.reviewOrdinal) : null,
+    reviewWindow: toolHorizon(horizon),
+  };
+}
 
 /** More of a list, opened in place. */
 export function ReviewDisclosure({ label, children }: { label: string; children: ReactNode }) {
@@ -73,11 +102,9 @@ export function decisionHref(
 ) {
   const query = new URLSearchParams({ account, decision: decisionParam(row) });
   if (row.reviewOrdinal != null) query.set("reviewOrdinal", String(row.reviewOrdinal));
-  if (context) {
-    query.set("snapshotId", context.snapshot);
-    query.set("reviewWindow", toolHorizon(context.horizon));
-    if (context.habit) query.set("habit", context.habit);
-  }
+  if (context?.snapshot) query.set("snapshotId", context.snapshot);
+  if (context?.horizon) query.set("reviewWindow", toolHorizon(context.horizon));
+  if (context?.habit) query.set("habit", context.habit);
   if (row.unpriced) query.set("habit", "basket_buy");
   return "/review?" + query;
 }
@@ -291,7 +318,7 @@ export function ReviewAccounts({ accounts, horizon, onOpen }: {
               className="mx-review-accounts-row"
               href={"/review?account=" + code}
               onClick={(event) => {
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                if (!isPlainClick(event)) return;
                 event.preventDefault();
                 onOpen(code);
               }}
@@ -311,7 +338,19 @@ export function ReviewAccounts({ accounts, horizon, onOpen }: {
 }
 
 /** One decision in a short list: the security, what was done and when, and what it did since. */
-function DecisionLine({ row, horizon, account, href, expansion }: { row: ScopedDecision; horizon: Horizon; account?: string; href: string; expansion?: DecisionExpansion }) {
+function DecisionLine({
+  row,
+  horizon,
+  account,
+  href,
+  expansion,
+}: {
+  row: ScopedDecision;
+  horizon: Horizon;
+  account?: string;
+  href: string;
+  expansion?: DecisionExpansion;
+}) {
   const t = useCopy();
   const { locale } = useLocale();
   const effect = decisionEffect(row, horizon);
@@ -324,7 +363,14 @@ function DecisionLine({ row, horizon, account, href, expansion }: { row: ScopedD
         {change != null && <small>{t("之后 ", "then ") + percent(change, true, 1)}</small>}
       </span>
     </>;
-  if (!expansion) return <Link className="mx-row-link mx-review-line" href={href}>{contents}<ArrowUpRight size={15} aria-hidden="true" /></Link>;
+  if (!expansion) {
+    return (
+      <Link className="mx-row-link mx-review-line" href={href}>
+        {contents}
+        <ArrowUpRight size={15} aria-hidden="true" />
+      </Link>
+    );
+  }
   const open = expansion.location === "extremes" && expansion.selected === row;
   return <div className="mx-review-expandable" data-open={open || undefined}>
     <div className="mx-review-expand-head">
@@ -335,16 +381,28 @@ function DecisionLine({ row, horizon, account, href, expansion }: { row: ScopedD
 }
 
 /** The decisions that helped and cost the most at the review's horizon, buys and sells together. */
-export function DecisionExtremes({ rows, horizon, showAccount, expansion }: { rows: ScopedDecision[]; horizon: Horizon; showAccount: boolean; expansion?: DecisionExpansion }) {
+export function DecisionExtremes({
+  rows,
+  horizon,
+  showAccount,
+  expansion,
+}: {
+  rows: ScopedDecision[];
+  horizon: Horizon;
+  showAccount: boolean;
+  expansion?: DecisionExpansion;
+}) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
   const { helped, cost } = decisionExtremes(rows, horizon);
+  const linkContext: DecisionLinkContext = expansion ?? { horizon };
   // Keys never depend on a security's display name, so a name correction keeps the row and its focus.
   const list = (items: ScopedDecision[], empty: string) => {
     const keys = decisionKeys(items);
     return items.length ? items.map((row, index) => (
       <DecisionLine key={keys[index]} row={row} horizon={horizon} expansion={expansion}
-        account={showAccount ? accountName(profile, row.account) : undefined} href={decisionHref(row.account, row, expansion)} />
+        account={showAccount ? accountName(profile, row.account) : undefined}
+        href={decisionHref(row.account, row, linkContext)} />
     )) : <p className="mx-review-empty">{empty}</p>;
   };
   return (
@@ -358,7 +416,15 @@ export function DecisionExtremes({ rows, horizon, showAccount, expansion }: { ro
 const VISIBLE_ENTRIES = 6;
 const MORE_ENTRIES = 40;
 
-function JournalItem({ entry, showAccount, expansion }: { entry: JournalEntry; showAccount: boolean; expansion?: DecisionExpansion }) {
+function JournalItem({
+  entry,
+  showAccount,
+  expansion,
+}: {
+  entry: JournalEntry;
+  showAccount: boolean;
+  expansion?: DecisionExpansion;
+}) {
   const t = useCopy();
   const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
@@ -382,7 +448,9 @@ function JournalItem({ entry, showAccount, expansion }: { entry: JournalEntry; s
         ? (locale === "zh" ? `调仓 ${entry.rows.length} 笔` : `Rebalanced ${entry.rows.length}`)
         : (entry.rows[0].side === "buy" ? t("买入", "Bought") : t("卖出", "Sold")) + (locale === "zh" ? ` ${entry.rows.length} 笔` : ` ${entry.rows.length}`);
     function tradeTrigger(row: ScopedDecision, content: ReactNode, className?: string) {
-      if (!expansion) return <Link className={className} href={decisionHref(row.account,row)}>{content}</Link>;
+      if (!expansion) {
+        return <Link className={className} href={decisionHref(row.account, row, { horizon: "date" })}>{content}</Link>;
+      }
       const open = expansion.selected === row && expansion.location === "recent";
       return <button type="button" className={className} aria-expanded={open} aria-controls={open ? expansion.id : undefined}
         onClick={event => expansion.toggle(row,"recent",event.currentTarget)}>{content} <CaretDown size={12} aria-hidden="true"/></button>;

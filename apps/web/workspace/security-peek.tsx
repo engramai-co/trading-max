@@ -3,21 +3,22 @@
 import { Popover } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { useLocale } from "@/components/locale-provider";
-import { useDashboardLens } from "@/lib/dashboard-lenses";
+import { useLocale, type Locale } from "@/components/locale-provider";
 import { inRange } from "@/lib/portfolio/nav";
 import type { ResearchPriceSeries } from "@/lib/types";
-import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
+import { formatCalendarDate, formatDateTime, formatExchangeTime } from "@/ui/formatters";
 import { useFinePointer } from "@/ui/pointer";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { quoteValue } from "./financial-values";
 import { Facts, useCopy, useEscapeLayer } from "./foundation";
+import type { HoldingPeekQuote } from "./holding-detail-data";
 import { researchPriceQuery } from "./research-queries";
 import { Sparkline } from "./sparks";
 
 export type PeekPosition = { valueGbp?: number | null; weightPct?: number | null; label?: string };
+export type PeekQuote = HoldingPeekQuote;
 type PeekSession = { label: string; share: number | null; closed?: boolean; price: number | null; currency: string; asOf?: string | null };
 /** The price path a card previews: the latest trading session, or three months of closes. */
 export type PeekRange = "1D" | "3M";
@@ -37,17 +38,88 @@ export const PEEK_CLOSE_DELAY = 100;
  */
 export function latestSession(points: Bar[]) {
   const bars = points.filter(hasClose);
-  const day = bars.at(-1)?.date.slice(0, 10) ?? null;
-  if (!day) return { day, closes: [] as number[], change: null, bars: 0 };
+  const lastBar = bars.at(-1);
+  const day = lastBar?.date.slice(0, 10) ?? null;
+  if (!day) return { day, lastDate: null as string | null, closes: [] as number[], change: null, bars: 0 };
   const session = bars.filter((bar) => bar.date.slice(0, 10) === day).map((bar) => bar.close);
   const reference = bars.filter((bar) => bar.date.slice(0, 10) < day).at(-1)?.close ?? null;
   const last = session.at(-1);
   return {
     day,
+    lastDate: lastBar?.date ?? null,
     closes: reference != null ? [reference, ...session] : session,
     change: reference && last != null ? last / reference - 1 : null,
     /** Bars inside the session; a daily fallback has one, which draws no path. */
     bars: session.length,
+  };
+}
+
+/**
+ * Attributes broker snapshot quotes separately from intraday market paths, and provides market-reading
+ * timestamps when a preview opens from aggregated exposure rather than a single broker position.
+ */
+export function dayPeekBasis({
+  quote,
+  marketDay,
+  marketBars,
+  lastDate,
+  actualInterval,
+  timezone,
+  locale,
+  timeZone,
+  now,
+}: {
+  quote?: PeekQuote;
+  marketDay: string | null;
+  marketBars: number;
+  lastDate: string | null;
+  actualInterval?: string | null;
+  timezone?: string | null;
+  locale: Locale;
+  timeZone: string;
+  now: number;
+}) {
+  if (quote) {
+    const asOfText = quote.asOf
+      ? formatDateTime(quote.asOf, locale, timeZone, now)
+      : (locale === "zh" ? "时间未提供" : "Time unavailable");
+    const marketPathDate = marketBars > 1 && marketDay ? formatCalendarDate(marketDay, locale, now) : null;
+    const mismatch = Boolean(
+      marketPathDate && marketDay && (quote.cited || (quote.moveDay && marketDay !== quote.moveDay.slice(0, 10))),
+    );
+    const stamped = quote.asOf ? " " + asOfText : "";
+    const note = mismatch && marketPathDate
+      ? (quote.cited
+          ? (locale === "zh"
+              ? `已引用券商快照${stamped}；走势为最新行情 ${marketPathDate}`
+              : `Cited broker snapshot${stamped}; the path is latest market data from ${marketPathDate}`)
+          : (locale === "zh"
+              ? `券商快照${stamped}；走势为行情 ${marketPathDate}`
+              : `Broker snapshot${stamped}; the path is market data from ${marketPathDate}`))
+      : null;
+    return {
+      mode: "broker" as const,
+      asOfText,
+      brokerLabel: quote.cited ? (locale === "zh" ? "引用快照" : "Cited snapshot") : (locale === "zh" ? "券商快照" : "Broker snapshot"),
+      marketPathLabel: marketPathDate ? (locale === "zh" ? "行情走势" : "Market path") : null,
+      marketPathDate,
+      note,
+    };
+  }
+  const isDaily = actualInterval === "1d";
+  const marketQuoteLabel = isDaily
+    ? (locale === "zh" ? "行情收盘" : "Market close")
+    : (locale === "zh" ? "行情报价" : "Market quote");
+  const marketQuoteTime = !lastDate
+    ? (locale === "zh" ? "时间未提供" : "Time unavailable")
+    : isDaily || lastDate.length === 10
+      ? formatCalendarDate(lastDate, locale, now)
+      : formatExchangeTime(lastDate, timezone, locale, true, now);
+  return {
+    mode: "market" as const,
+    marketQuoteLabel,
+    marketQuoteTime,
+    note: null,
   };
 }
 
@@ -57,24 +129,28 @@ export function latestSession(points: Bar[]) {
  */
 export function SecurityPeek({
   ticker,
+  priceTicker,
   position,
   session,
+  quote,
   range = "3M",
   children,
 }: {
   ticker?: string | null;
+  priceTicker?: string | null;
   position?: PeekPosition;
   session?: PeekSession;
+  quote?: PeekQuote;
   range?: PeekRange;
   children: ReactNode;
 }) {
   const pointer = useFinePointer();
   if (!pointer || !ticker || ticker === "—") return <>{children}</>;
-  return <Peek ticker={ticker} position={position} session={session} range={range}>{children}</Peek>;
+  return <Peek ticker={ticker} priceTicker={priceTicker} position={position} session={session} quote={quote} range={range}>{children}</Peek>;
 }
 
-function Peek({ ticker, position, session, range, children }: {
-  ticker: string; position?: PeekPosition; session?: PeekSession; range: PeekRange; children: ReactNode;
+function Peek({ ticker, priceTicker, position, session, quote, range, children }: {
+  ticker: string; priceTicker?: string | null; position?: PeekPosition; session?: PeekSession; quote?: PeekQuote; range: PeekRange; children: ReactNode;
 }) {
   const [opened, setOpened] = useState(false);
   const target = useRef<HTMLDivElement>(null);
@@ -127,7 +203,7 @@ function Peek({ ticker, position, session, range, children }: {
       <Popover.Dropdown className="mx-peek" onClick={(event) => event.stopPropagation()}
         onPointerEnter={cancel} onPointerLeave={() => schedule(false)}>
         {session ? <SessionPeek ticker={ticker} position={position} session={session} /> :
-          range === "1D" ? <DayPeek ticker={ticker} position={position} /> : <PeekBody ticker={ticker} position={position} />}
+          range === "1D" ? <DayPeek ticker={ticker} priceTicker={priceTicker} position={position} quote={quote} /> : <PeekBody ticker={ticker} position={position} />}
       </Popover.Dropdown>
     </Popover>
   );
@@ -167,58 +243,59 @@ function SessionPeek({ ticker, session, position }: { ticker: string; session: P
   );
 }
 
-/** The broker's own price and move for a directly held security: the same figures as the holdings rows. */
-function useHeldQuote(ticker: string) {
-  const lens = useDashboardLens("holdings-positions");
-  const held = lens.data?.holdings?.find((holding) => holding.ticker === ticker || holding.researchTicker === ticker);
-  if (!held) return null;
-  return {
-    price: held.currentPrice,
-    currency: held.priceCurrency,
-    move: held.dayChangePct ?? null,
-    moveDay: held.dayChangeClosedOn ?? held.dayChangeDate ?? null,
-    closed: Boolean(held.dayChangeClosedOn),
-    asOf: lens.data?.accounts?.find((account) => account.code === held.account)?.asOf ?? null,
-  };
-}
-
 /**
  * The latest session's path from fifteen-minute bars. The last 160 bars span several sessions, so they carry the
  * close before it; without intraday prices the endpoint answers with daily closes, and only the move shows.
  */
-function DayPeek({ ticker, position }: { ticker: string; position?: PeekPosition }) {
+function DayPeek({ ticker, priceTicker, position, quote }: { ticker: string; priceTicker?: string | null; position?: PeekPosition; quote?: PeekQuote }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const { today, now } = useCurrentDay();
-  const held = useHeldQuote(ticker);
+  const symbol = priceTicker || ticker;
   const query = useQuery({
-    queryKey: ["workspace-prices", ticker, "15m", "peek"],
+    queryKey: ["workspace-prices", symbol, "15m", "peek"],
     queryFn: ({ signal }) => api<ResearchPriceSeries>(
-      `/research/${encodeURIComponent(ticker)}/prices?limit=160&interval=15m`, { signal }),
+      `/research/${encodeURIComponent(symbol)}/prices?limit=160&interval=15m`, { signal }),
     staleTime: 300_000,
     retry: 1,
   });
-  const { day, closes, change, bars } = latestSession(query.data?.points ?? []);
+  const { day, lastDate, closes, change, bars } = latestSession(query.data?.points ?? []);
   const last = closes.at(-1);
-  // A held security shows the broker's price and move, as its row does; the path is the market's session.
-  const moveDay = held ? held.moveDay : day;
-  const move = held ? held.move : change;
+  // A held row carries its own account's broker price and move; aggregated exposure reads the market series.
+  const moveDay = quote ? quote.moveDay : day;
+  const move = quote ? quote.move : change;
   const label = !moveDay || moveDay.slice(0, 10) === today ? t("今日", "Today") : formatCalendarDate(moveDay.slice(0, 10), locale, now);
-  const price = held ? quoteValue(held.price, held.currency) : last != null ? quoteValue(last, query.data?.currency) : query.isPending ? "" : "—";
-  const note = held && day && held.moveDay && day !== held.moveDay.slice(0, 10)
-    ? t("券商快照", "Broker snapshot") + (held.asOf ? " " + formatDateTime(held.asOf, locale, timeZone, now) : "")
-      + t("；走势为行情 ", "; the path is market data from ") + formatCalendarDate(day, locale, now)
-    : null;
+  const price = quote ? quoteValue(quote.price, quote.currency) : last != null ? quoteValue(last, query.data?.currency) : query.isPending ? "" : "—";
+  const basis = dayPeekBasis({
+    quote,
+    marketDay: day,
+    marketBars: bars,
+    lastDate,
+    actualInterval: query.data?.actualInterval,
+    timezone: query.data?.timezone,
+    locale,
+    timeZone,
+    now,
+  });
   return (
     <>
-      <PeekHead ticker={ticker} price={price} note={note} />
+      <PeekHead ticker={ticker} price={price} note={basis.note} />
       {/* The path takes the tone of the move shown beside it, so the two never disagree in colour. */}
       {query.isPending ? <div className="mx-peek-skeleton" /> : bars > 1 && <Sparkline values={closes} className={"mx-" + tone(move)} />}
       <Facts
         rows={[
-          ...(held?.closed ? [[label, <ClosedMarket key="closed" />] as [string, ReactNode]]
+          ...(quote?.closed ? [[label, <ClosedMarket key="closed" />] as [string, ReactNode]]
             : move != null ? [[label, <span key="change" className={"mx-" + tone(move)}>{percent(move, true, 2)}</span>] as [string, ReactNode]] : []),
           ...positionFact(position, t("持仓", "Holding")),
+          ...(basis.mode === "broker" && quote ? [
+            [t("账户", "Account"), quote.account] as [string, ReactNode],
+            [basis.brokerLabel, quote.asOf ? <time key="broker-time" dateTime={quote.asOf}>{basis.asOfText}</time> : basis.asOfText] as [string, ReactNode],
+            ...(basis.marketPathLabel && basis.marketPathDate && day
+              ? [[basis.marketPathLabel, <time key="market-day" dateTime={day}>{basis.marketPathDate}</time>] as [string, ReactNode]]
+              : []),
+          ] : !query.isPending && last != null ? [
+            [basis.marketQuoteLabel, lastDate ? <time key="market-time" dateTime={lastDate}>{basis.marketQuoteTime}</time> : basis.marketQuoteTime] as [string, ReactNode],
+          ] : []),
         ]}
       />
     </>

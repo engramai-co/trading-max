@@ -16,9 +16,6 @@
     column-gap: 9px;
     row-gap: 3px;
   }
-  .mx-exposure-denominator {
-    white-space: nowrap;
-  }
 }
 .mx-holding-quote-basis {
   display: block;

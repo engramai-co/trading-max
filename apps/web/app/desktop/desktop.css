@@ -243,13 +243,18 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-content main {
 }
 
 /* Native chrome reserves the first 28px for dragging. */
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar:has(.mx-assistant-trigger) {
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar:has(.mx-assistant-trigger, .mx-tag) {
   height: 66px;
   padding-top: 28px;
 }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mantine-Group-root:has(.mx-assistant-trigger) {
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mantine-Group-root:has(.mx-assistant-trigger, .mx-tag) {
   display: flex;
 }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar .mantine-Group-root > :not(.mx-assistant-trigger) {
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar .mantine-Group-root > :not(.mx-assistant-trigger, .mx-tag) {
   display: none;
+}
+@media (min-width: 1200px) {
+  html[data-desktop-chrome="overlay"] .mx-desktop-app:has(.mx-topbar .mx-assistant-trigger, .mx-topbar .mx-tag) .mx-assistant-panel {
+    top: 66px;
+  }
 }

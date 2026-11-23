@@ -135,6 +135,33 @@ test.describe("desktop surfaces", () => {
   });
 });
 
+test("desktop surfaces keeps the demo tag visible below the overlay drag strip", async ({ page }) => {
+  const demo = process.env.DESKTOP_DEMO_QA_URL;
+  test.skip(!demo?.startsWith("http://127.0.0.1:"), "Set DESKTOP_DEMO_QA_URL to a local server started with TRADING_MAX_ENV=desktop-preview.");
+  await page.addInitScript(() => {
+    const mark = () => {
+      const root = document.documentElement;
+      if (root) root.dataset.desktopChrome = "overlay";
+      return Boolean(root);
+    };
+    if (!mark()) {
+      new MutationObserver((_, observer) => {
+        if (mark()) observer.disconnect();
+      }).observe(document, { childList: true });
+    }
+  });
+  for (const width of [900, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto(new URL("/desktop", demo).href);
+    await expect(page.locator(".mx-desktop-app")).toBeVisible();
+    const tag = page.locator(".mx-topbar .mx-tag", { hasText: /^(演示数据|Demo data)$/ });
+    await expect(tag).toBeVisible();
+    const box = await tag.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.y).toBeGreaterThanOrEqual(28);
+  }
+});
+
 test.describe("unchanged browser presentation", () => {
   test.skip(!process.env.DESKTOP_BASELINE_URL || !process.env.PLAYWRIGHT_BASE_URL, "Supply the previous release and candidate synthetic web servers.");
   for (const path of ["/", "/holdings", "/analytics", "/research", "/review", "/settings", "/health"]) {

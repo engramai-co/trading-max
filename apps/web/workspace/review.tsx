@@ -47,7 +47,6 @@ import {
   HorizonSwitch,
   type HorizonChoices,
   RoundTrips,
-  decisionParam,
   linkedDecision,
   parseDecisionParam,
   sameDecision,
@@ -66,9 +65,13 @@ import {
   ScopeSwitch,
   allDecisions,
   combinedRoundTrips,
+  decisionSelectionParams,
+  parseReviewWindow,
+  reviewLoadingLabel,
   reviewScope,
   scopedDecisions,
 } from "./review-board";
+import { previousForIdentity } from "./loading-state";
 import { useRetainedResult } from "./retained-result";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
@@ -125,8 +128,9 @@ export function ReviewWorkspace() {
     () => query.data && { scope, data: query.data, updatedAt: query.dataUpdatedAt },
     [scope, query.data, query.dataUpdatedAt],
   );
-  // Another scope keeps showing the last one until its own review arrives.
-  const live = useRetainedResult(pinned ? undefined : current);
+  const retained = useRetainedResult(pinned ? undefined : current);
+  // Keep a same-scope review across refetches, but never show another account's figures under a new label.
+  const live = previousForIdentity(retained, retained?.scope, scope);
   // Recheck retention before revealing even a previously cached citation.
   const confirmed = !query.isFetching && !query.isError && current?.data.runId === snapshotId;
   const result = pinned ? (confirmed ? current : undefined) : live;
@@ -148,8 +152,8 @@ export function ReviewWorkspace() {
     ? ledgerRows.filter(row => sameDecision(row,reference))[Number(ordinal)] : linkedDecision(ready || snapshotId ? ledgerRows : rows,reference);
   const missingDecision = pinned && (!canRead || (decisionParamValue !== null && !!result && !focus));
   const { horizon: localHorizon, choose, release } = useDecisionHorizon(shown === "all" ? undefined : shown, focus, horizons, setHorizons);
-  const requestedHorizon = ready || snapshotId ? params.get("reviewWindow") : null;
-  const horizon = requestedHorizon === "to_date" ? "date" : requestedHorizon === "20_sessions" ? "horizon" : localHorizon;
+  const requestedHorizon = parseReviewWindow(params.get("reviewWindow"));
+  const horizon = requestedHorizon ?? localHorizon;
   const rawHabit = params.get("habit");
   const habit = (ready || snapshotId) && shown === scope && isHabit(rawHabit) ? rawHabit : null;
   const habitRows = habit === "basket_buy" ? ledgerRows : rows;
@@ -159,11 +163,12 @@ export function ReviewWorkspace() {
   const selected = ready && selection && filtered.includes(selection.row) && shown === scope ? selection : null;
   const closeReading = () => {setSelection(null); selected?.trigger.focus({preventScroll:true});};
   const readingId = useId();
+  const readingHorizon = selected?.location === "recent" ? "date" : horizon;
   const expansion: DecisionExpansion | undefined = ready && shown !== "C" && data ? {
     snapshot: data.runId, horizon, habit, selected:selected?.row ?? null,location:selected?.location ?? null,id:readingId,
     toggle:(row,location,trigger) => setSelection(selected?.row === row && selected.location === location ? null : {row,location,trigger}),
-    reading:selected && <div id={readingId}><DecisionReading key={readingId + selected.location + horizonScope(selected.row.account, selected.row) + horizon + data.runId}
-      snapshot={data.runId} scope={shown} row={selected.row} horizon={horizon} habit={habit} onClose={closeReading}/></div>,
+    reading:selected && <div id={readingId}><DecisionReading key={readingId + selected.location + horizonScope(selected.row.account, selected.row) + readingHorizon + data.runId}
+      snapshot={data.runId} scope={shown} row={selected.row} horizon={readingHorizon} habit={habit} onClose={closeReading}/></div>,
   } : undefined;
   const filterButton = useRef<HTMLButtonElement>(null);
   const focusFilter = useRef<Habit | null>(null);
@@ -192,6 +197,7 @@ export function ReviewWorkspace() {
       focusAfterClear.current = false;
     }
   }, [unfilteredTimelineVisible]);
+  const scopeLabel = accountName(profile, scope);
   const days = reviews.find((review) => review?.horizonDays)?.horizonDays ?? 20;
   const asOf = !data ? undefined : shown === "all"
     ? data.reviewAsOf ?? data.brokerAsOf
@@ -203,20 +209,40 @@ export function ReviewWorkspace() {
       nav={<ScopeSwitch value={scope} onChange={(value) => update({ account: value === "all" ? null : value, decision: null, reviewOrdinal: null, snapshotId: null, habit:null, reviewWindow:null })} />}
       actions={
         <span className="mx-freshness-group">
-          {available && <HorizonSwitch horizon={horizon} days={days} onChange={value => {choose(value); if (requestedHorizon) update({reviewWindow:null});}} />}
-          <Freshness date={asOf} />
+          {available && (
+            <HorizonSwitch
+              horizon={horizon}
+              days={days}
+              onChange={(value) => {
+                if (value === horizon) return;
+                // A decision's window lives in its address, so a reload, a shared link and Back show the
+                // same figures; its kept horizon stays for the entry that has none.
+                if (focus) {
+                  update({ reviewWindow: toolHorizon(value) });
+                  return;
+                }
+                choose(value);
+                if (requestedHorizon) update({ reviewWindow: toolHorizon(value) });
+              }}
+            />
+          )}
+          {result && <Freshness date={asOf} />}
           {failure && <UpdateFailure {...failure} />}
         </span>
       }
     >
       {missingDecision ? (
         <Empty title={t("引用的交易决定暂不可用", "Cited decision unavailable")} />
-      ) : !result && (query.isPending || (pinned && query.isFetching)) ? (
-        <Pending shape="review" label={t("正在读取账户复盘…", "Loading account reviews…")} />
+      ) : !result && (query.isPending || query.isFetching) ? (
+        <Pending key={scope} shape="review" label={reviewLoadingLabel(scope, scopeLabel, t)} />
       ) : !result || !data ? (
-        pinned ? <Empty title={t("引用的数据版本暂不可用", "Cited publication unavailable")} /> : <QueryError retry={query.refetch} />
+        pinned ? (
+          <Empty title={t("引用的数据版本暂不可用", "Cited publication unavailable")} />
+        ) : (
+          <QueryError error={query.error} retry={query.refetch} />
+        )
       ) : (
-        <div className="mx-data-body mx-review-body" aria-busy={result.scope !== scope || undefined}>
+        <div className="mx-data-body mx-review-body">
           {shown === "C" ? (
             <AccountAnalysis key="C" data={data} code="C" />
           ) : (
@@ -229,7 +255,7 @@ export function ReviewWorkspace() {
                 {shown === "all" ? (
                   <ReviewAccounts
                     horizon={horizon}
-                    onOpen={(code) => update({ account: code, decision: null, reviewOrdinal: null, snapshotId: null })}
+                    onOpen={(code) => update({ account: code, decision: null, reviewOrdinal: null, snapshotId: null, reviewWindow: null })}
                     accounts={(["A", "B"] as const).map((code) => ({
                       code,
                       rows: rows.filter((row) => row.account === code),
@@ -266,14 +292,21 @@ export function ReviewWorkspace() {
                     horizon={horizon}
                     focus={focus && ((!habit && focus.unpriced) || filtered.includes(focus as ScopedDecision)) ? focus : undefined}
                     onClear={() => {
-                      release();
-                      update({ decision: null, reviewOrdinal: null, snapshotId: null });
+                      release(horizon);
+                      update({ decision: null, reviewOrdinal: null, snapshotId: null, reviewWindow: null });
                     }}
-                    onPick={(row) => update({ account: (row as ScopedDecision).account, decision: decisionParam(row), reviewOrdinal:row.reviewOrdinal != null ? String(row.reviewOrdinal) : null })}
+                    onPick={(row) => update(decisionSelectionParams(row as ScopedDecision, horizon))}
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}
                     unpriced={[...new Set(reviews.flatMap((review) => review?.coverage?.unpricedTickers ?? []))]}
                   />}
-                  {habit !== "untraded_fall" && <DecisionExtremes expansion={expansion} rows={filtered} horizon={horizon} showAccount={shown === "all"} />}
+                  {habit !== "untraded_fall" && (
+                    <DecisionExtremes
+                      expansion={expansion}
+                      rows={filtered}
+                      horizon={horizon}
+                      showAccount={shown === "all"}
+                    />
+                  )}
                 </>
               ) : (
                 <Panel>

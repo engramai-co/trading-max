@@ -10,11 +10,11 @@ import { currency, percent, tone } from "@/workspace/data";
 import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./attention";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
-import { Empty, Instrument, Panel, Tag, TextLink, useCopy } from "./foundation";
+import { Empty, Instrument, Panel, Pending, QueryError, Tag, TextLink, useCopy } from "./foundation";
 import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy, type EvidenceTime } from "./etf-data";
 import { useEvidenceTime } from "./etf-reading";
 import Link from "./link";
-import { holdingsLedger, readingColumns, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
+import { holdingsLedger, overviewHoldingsState, readingColumns, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
 import { SecurityPeek } from "./security-peek";
 
 /**
@@ -111,13 +111,16 @@ function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
   };
 }
 
-export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account }: {
-  holdings: Holding[];
+export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, failed = false, error, retry }: {
+  holdings?: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
   runId?: string;
   brokerAsOf?: string | null;
   account: string;
+  failed?: boolean;
+  error?: unknown;
+  retry?: () => unknown;
 }) {
   const t = useCopy();
   const when = useEvidenceTime();
@@ -126,12 +129,18 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   const palette = useAllocationChartColours();
   const ledgerId = useId();
   const [focus, setFocus] = useState<Focus | null>(null);
-  const portfolio = useQuery({ ...etfPortfolioQuery(runId ?? "", account), enabled: Boolean(runId && holdings.some((row) => row.isFund)) });
+  const items = useMemo(() => holdings ?? [], [holdings]);
+  const portfolio = useQuery({ ...etfPortfolioQuery(runId ?? "", account), enabled: Boolean(runId && items.some((row) => row.isFund)) });
   const etfs = runId && portfolio.data?.runId === runId ? portfolio.data?.funds : undefined;
   const ledger = useMemo(
-    () => holdingsLedger({ holdings, technical, valuations, etfs, signals: holdingSignals({ holdings, technical, valuations, etfs }) }),
-    [holdings, technical, valuations, etfs],
+    () => holdingsLedger({ holdings: items, technical, valuations, etfs, signals: holdingSignals({ holdings: items, technical, valuations, etfs }) }),
+    [items, technical, valuations, etfs],
   );
+  const state = overviewHoldingsState({
+    hasData: holdings !== undefined,
+    isError: failed,
+    count: ledger.count,
+  });
   const dayLabel = (date: string | null) => (!date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now));
   const weightLabel = t("占比", "Weight");
   const day = dayLabel(ledger.columnDay);
@@ -164,7 +173,11 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
         : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. Amber also marks a fresh, comparable 1-year fund tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp. An amber tracking figure indicates stale data or unverified dates.`}
       action={<TextLink href="/holdings?view=lookthrough">{t("穿透", "Look-through")}</TextLink>}
     >
-      {ledger.count === 0 ? (
+      {state === "pending" ? (
+        <Pending shape="holdings" quiet />
+      ) : state === "error" ? (
+        <QueryError error={error} retry={retry ?? (() => {})} />
+      ) : state === "empty" ? (
         <Empty title={t("还没有持仓", "No holdings yet")} />
       ) : (
         <div className="mx-ledger">

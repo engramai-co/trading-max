@@ -759,7 +759,7 @@ export function BestCloses({ rows }: { rows: ClosedTrade[] }) {
 /**
  * The horizon a review reads at, kept per account and decision so it outlives the panels that show
  * it. A decision keeps the horizon it opened on until the reader chooses another; letting go of a
- * decision leaves the review beneath on that horizon unless it has a choice of its own.
+ * decision leaves the review beneath on the horizon that decision showed, so the figures stay put.
  */
 export function useDecisionHorizon(
   account: AccountCode | undefined,
@@ -784,7 +784,7 @@ export function useDecisionHorizon(
   return {
     horizon,
     choose: (value: Horizon) => onHorizons((current) => ({ ...current, [scope]: value })),
-    release: () => onHorizons((current) => (current[ordinary] ? current : { ...current, [ordinary]: horizon })),
+    release: (value: Horizon) => onHorizons((current) => (current[ordinary] === value ? current : { ...current, [ordinary]: value })),
   };
 }
 
