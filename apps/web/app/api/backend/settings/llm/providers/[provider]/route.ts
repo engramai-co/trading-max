@@ -1,4 +1,4 @@
-import { proxyJsonRequest, proxyToBackend } from "@/lib/backend-proxy";
+import { proxyDeleteRequest, proxyJsonRequest } from "@/lib/backend-proxy";
 
 export async function PUT(
   request: Request,
@@ -13,14 +13,12 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ provider: string }> },
 ) {
   const { provider } = await context.params;
-  return proxyToBackend(
+  return proxyDeleteRequest(
     `/v1/settings/llm/providers/${encodeURIComponent(provider)}`,
-    {
-      method: "DELETE",
-    },
+    request,
   );
 }

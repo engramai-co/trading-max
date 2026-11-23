@@ -1,14 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("server-only", () => ({}));
 const proxy = vi.hoisted(() => vi.fn());
-vi.mock("@/lib/backend-proxy", () => ({ proxyToBackend: proxy }));
+vi.mock("@/lib/backend-proxy", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/backend-proxy")>(),
+  proxyToBackend: proxy,
+}));
 
 import { POST } from "@/app/api/backend/watchlist/[ticker]/route";
 
 const context = { params: Promise.resolve({ ticker: "BRK.B" }) };
-const request = (body: string) => new Request("http://localhost/api/backend/watchlist/BRK.B", {
-  method: "POST", headers: { "Content-Type": "application/json" }, body,
-});
+const request = (body: string, headers: HeadersInit = { "Content-Type": "application/json" }) =>
+  new Request("http://localhost/api/backend/watchlist/BRK.B", { method: "POST", headers, body });
 
 describe("watchlist action proxy", () => {
   beforeEach(() => {
@@ -37,4 +40,16 @@ describe("watchlist action proxy", () => {
       expect(response.status).toBe(400);
       expect(proxy).not.toHaveBeenCalled();
     });
+
+  it("rejects cross-site and non-JSON watchlist writes before reading or forwarding", async () => {
+    const crossSite = await POST(request("{}", {
+      "Content-Type": "application/json",
+      "Sec-Fetch-Site": "cross-site",
+    }), context);
+    expect(crossSite.status).toBe(403);
+
+    const nonJson = await POST(request("{}", { "Content-Type": "text/plain" }), context);
+    expect(nonJson.status).toBe(415);
+    expect(proxy).not.toHaveBeenCalled();
+  });
 });

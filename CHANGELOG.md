@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.8] - 2026-11-23
+
+### Security
+- The web proxy refuses writes that a browser marks as coming from another site, before it attaches its own authorization. A site visited while connected to the tailnet can no longer change settings, conversations or imports through the owner's browser. Writes must also declare the expected content type.
+- Company logos are served only as checked raster images. The proxy asks the logo provider for PNG, follows only known redirect hosts, limits the size, verifies the image bytes, and falls back to the ticker monogram otherwise.
+- Every page and API response carries a Content Security Policy, frame protection, a referrer policy and nosniff.
+
 ## [1.67.7] - 2026-11-23
 
 ### Fixed
