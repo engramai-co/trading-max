@@ -89,6 +89,14 @@ def _money(account: Mapping[str, Any], key: str) -> float:
     return value
 
 
+class AnchorTimingError(ValueError):
+    """The account snapshots cannot form the newest anchor of the series.
+
+    Either they are more than one collection interval apart, or they are older
+    than the latest retained broker bucket.
+    """
+
+
 def append_intraday_anchor(
     previous: Mapping[str, Any] | IntradayAnchorSeries | None,
     accounts: Mapping[str, Mapping[str, Any]],
@@ -133,7 +141,9 @@ def append_intraday_anchor(
     )
     times = [stamp for stamp in (invest_fetched, isa_fetched) if stamp is not None]
     if (max(times) - min(times)).total_seconds() > interval_seconds:
-        raise ValueError("account snapshots exceed one collection interval of timestamp skew")
+        raise AnchorTimingError(
+            "account snapshots exceed one collection interval of timestamp skew"
+        )
     observed_at = max(times)
     current = IntradayAnchor(
         observed_at=observed_at,
@@ -171,7 +181,7 @@ def append_intraday_anchor(
         (point.bucket_at for point in prior.points if point.source == "broker"), default=None
     )
     if latest_bucket is not None and current.bucket_at < latest_bucket:
-        raise ValueError("intraday anchor is older than the latest retained bucket")
+        raise AnchorTimingError("intraday anchor is older than the latest retained bucket")
 
     return merge_valuation_history(
         prior,

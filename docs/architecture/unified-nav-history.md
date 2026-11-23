@@ -14,6 +14,13 @@ collection bucket; the modeled comparison value is retained for reconciliation.
 Neither a missing quote nor a broker/model difference is classified as a return.
 The existing daily CSV contract remains available to performance consumers.
 
+A broker observation needs both account snapshots within one collection
+interval and no older than the latest retained broker bucket. A full refresh
+syncs the accounts one after another, so slow history exports can break either
+condition. It then publishes its reconciled accounts without adding a value
+point, which the ten-minute collection supplies, and records the reason; live
+collection still rejects such snapshots.
+
 The money projection retains persisted reconstructions both before collection
 begins and during later collection outages. Broker observations take precedence
 at the same instant. Source labels and paired model comparisons remain intact;

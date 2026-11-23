@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.5] - 2026-11-23
+
+### Fixed
+- A full account refresh no longer fails after waiting for slow Trading 212 history exports. It syncs one account after the other, so a long export could leave the two account snapshots more than ten minutes apart, or behind the live values collected meanwhile; the refresh then discarded everything and deposits, withdrawals and trades stayed 出入金待核对 until a later attempt. The refresh now publishes its reconciled accounts without adding that one value point, which the ten-minute collection supplies, and records why. Live collection still rejects such snapshots.
+
 ## [1.67.4] - 2026-11-23
 
 ### Fixed
