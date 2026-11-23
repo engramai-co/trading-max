@@ -242,7 +242,7 @@ $("edit-remote").addEventListener("click", remoteForm);
 $("create-workspace").addEventListener("click", () => showView("create"));
 $("open-workspace").addEventListener("click", () => showView("open"));
 $("back").addEventListener("click", () => showView("welcome"));
-document.addEventListener("keydown", (event) => { if (event.key === "Escape" && view !== "welcome" && !busy) showView("welcome"); });
+document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229 && view !== "welcome" && !busy) showView("welcome"); });
 $("test").addEventListener("click", () => action(async () => {
   if (!$("form").reportValidity()) return;
   const tested = profile();

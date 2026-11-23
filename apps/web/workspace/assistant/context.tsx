@@ -4,9 +4,11 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { profileFreshFor, useWorkspaceProfile, workspaceProfileKey, workspaceProfileQuery } from "../profile";
 import { api } from "../data";
+import { withTimeoutSignal } from "../abort";
 import { assistantSettingsChange, assistantSettingsKey, assistantStatusKey } from "../assistant-settings";
 import type { AssistantSettings } from "@/lib/types";
 import { desktopPage } from "../desktop-routing";
+import { isImeComposing } from "../shortcut-platform";
 import type { Reading } from "./evidence";
 
 export type RoleCard = {
@@ -62,7 +64,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const checkStatus = !waitingForConsent && (optedIn === true ||
     (externalRevision === 0 && optedIn === undefined && open && !profile.isPending));
   const status = useQuery({ queryKey: [...assistantStatusKey, settings.data?.revision ?? null, externalRevision],
-    queryFn: ({ signal }) => api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]), priority: "low" }),
+    queryFn: ({ signal }) => withTimeoutSignal(signal, 4000, (combined) =>
+      api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: combined, priority: "low" })),
     enabled: checkStatus, staleTime: statusFreshFor, retry: false, networkMode: "always",
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
@@ -115,7 +118,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const toggle = useCallback(() => { if (open) close(); else { revalidate(); setOpen(true); } }, [open, close, revalidate]);
   useEffect(() => {
     const keys = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
+      if (!isImeComposing(event) && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
         event.preventDefault();
         if (!event.repeat) toggle();
       }

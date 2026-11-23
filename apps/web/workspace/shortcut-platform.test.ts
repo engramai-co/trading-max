@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { altDigitModifier } from "./shortcut-platform";
+import { altDigitModifier, isImeComposing } from "./shortcut-platform";
 
 const agents = {
   macSafari: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
@@ -26,5 +26,21 @@ describe("Alt and Option digit shortcuts", () => {
     for (const agent of [agents.linuxFirefox, agents.ubuntuFirefox, agents.linuxChrome, agents.chromeOS, agents.android, agents.freeBSD, ""]) {
       expect(altDigitModifier(agent)).toBeNull();
     }
+  });
+});
+
+describe("IME composition guard", () => {
+  it("treats keyCode 229 with isComposing false as composing for React and native events", () => {
+    expect(isImeComposing({ isComposing: false, keyCode: 229 })).toBe(true);
+    expect(isImeComposing({ nativeEvent: { isComposing: false, keyCode: 229 } })).toBe(true);
+    expect(isImeComposing({ isComposing: true, keyCode: 13 })).toBe(true);
+    expect(isImeComposing({ nativeEvent: { isComposing: true, keyCode: 13 } })).toBe(true);
+  });
+
+  it("allows deliberate Enter and Escape events after composition ends", () => {
+    expect(isImeComposing({ isComposing: false, keyCode: 13 })).toBe(false);
+    expect(isImeComposing({ nativeEvent: { isComposing: false, keyCode: 13 } })).toBe(false);
+    expect(isImeComposing({ isComposing: false, keyCode: 27 })).toBe(false);
+    expect(isImeComposing({ nativeEvent: { isComposing: false, keyCode: 27 } })).toBe(false);
   });
 });

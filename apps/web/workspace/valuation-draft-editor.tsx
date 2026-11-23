@@ -7,6 +7,7 @@ import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { metricNames } from "./research-facts";
 import { jsonRequest, number } from "./data";
+import { withTimeoutSignal } from "./abort";
 import { useCopy } from "./foundation";
 import type { Preview, ScenarioInput } from "./research-facts";
 import { draftBlockMessage, inputKey, type Decision, type DraftEvent, type DraftState, type Proposal } from "./valuation-draft";
@@ -57,13 +58,15 @@ export function DraftController({initial, requestedFamily, horizon, inputs, lock
     setCancelledAt(undefined);
     setRun({ key: runKey, phase: "preparing" });
     try {
-      const response = await fetch(`/api/backend/research/${encodeURIComponent(initial.basis.ticker)}/valuation-draft`, {
-        ...jsonRequest("POST", { previewId: initial.id, horizon, requestedFamily, scenarios: inputs, lockedInputs: locked }),
-        signal: AbortSignal.any([request.signal, AbortSignal.timeout(90_000)]),
-      });
-      const result = await readDraft(response, phase => {
-        if (!request.signal.aborted) setRun(current =>
-          current?.key === runKey && current.phase === phase ? current : { key: runKey, phase });
+      const result = await withTimeoutSignal(request.signal, 90_000, async (signal) => {
+        const response = await fetch(`/api/backend/research/${encodeURIComponent(initial.basis.ticker)}/valuation-draft`, {
+          ...jsonRequest("POST", { previewId: initial.id, horizon, requestedFamily, scenarios: inputs, lockedInputs: locked }),
+          signal,
+        });
+        return readDraft(response, phase => {
+          if (!request.signal.aborted) setRun(current =>
+            current?.key === runKey && current.phase === phase ? current : { key: runKey, phase });
+        });
       });
       if (request.signal.aborted) return;
       if (result.family !== initial.basis.family || result.familySelection !== (requestedFamily ? "override" : initial.familySelection ?? "automatic"))

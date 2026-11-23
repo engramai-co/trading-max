@@ -21,3 +21,26 @@ const unchanging = () => () => {};
 export function useAltDigitModifier() {
   return useSyncExternalStore(unchanging, () => altDigitModifier(navigator.userAgent), () => null);
 }
+
+type KeyboardCompositionEvent = {
+  isComposing?: boolean;
+  keyCode?: number;
+  nativeEvent?: {
+    isComposing?: boolean;
+    keyCode?: number;
+  };
+};
+
+/**
+ * Safari and WKWebView can fire the keydown that confirms an IME candidate after
+ * compositionend with isComposing=false and keyCode=229.
+ */
+export function isImeComposing(event: KeyboardCompositionEvent): boolean {
+  const native = event.nativeEvent;
+  return Boolean(
+    native?.isComposing ||
+    event.isComposing ||
+    native?.keyCode === 229 ||
+    event.keyCode === 229,
+  );
+}

@@ -5,6 +5,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as Rea
 import { X } from "@phosphor-icons/react";
 import Link from "../link";
 import { useCopy } from "../foundation";
+import { isImeComposing } from "../shortcut-platform";
 import { errorLabel } from "./status-label";
 import { ASSISTANT_NAME } from "../assistant-settings";
 import { useAssistant } from "./context";
@@ -40,7 +41,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
   const showThread = thread === "visible";
   useEffect(() => {
     if (!open || searchOpen) return;
-    function escape(e: KeyboardEvent) { if (e.key === "Escape" && !e.defaultPrevented && !e.isComposing) { e.preventDefault(); close(); } }
+    function escape(e: KeyboardEvent) { if (e.key === "Escape" && !e.defaultPrevented && !isImeComposing(e)) { e.preventDefault(); close(); } }
     window.addEventListener("keydown", escape);
     const previous = document.body.style.overflow;
     if (overlay) document.body.style.overflow = "hidden";

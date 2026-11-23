@@ -10,6 +10,7 @@ import { useECharts } from "@/ui/charts/use-echarts";
 import type { ECharts, EChartsOption, XAXisComponentOption, YAXisComponentOption } from "echarts";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Pending, useCopy } from "./foundation";
+import { isImeComposing } from "./shortcut-platform";
 import { closestChartPosition, readingText, type ChartReadout, type Reading } from "./chart-readout";
 import { ReadingCard } from "./reading-card";
 import { chartNumber } from "./research-chart-format";
@@ -360,7 +361,7 @@ export function Plot({
   useEffect(() => {
     if (!open) return;
     const key = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event)) return;
       event.preventDefault();
       if (!pinned) suppressed.current = true;
       dismissRef.current();
@@ -497,7 +498,7 @@ export function Plot({
     <div ref={host} className={hasTools ? "mx-chart-host" : undefined} data-expanded={expanded || undefined}
       role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label={expanded ? label : undefined}
       onKeyDown={(event) => {
-        if (expanded && event.key === "Escape" && !event.defaultPrevented) {
+        if (expanded && event.key === "Escape" && !event.defaultPrevented && !isImeComposing(event)) {
           event.preventDefault();
           closeFullscreen();
         }
@@ -668,6 +669,7 @@ export function Plot({
             !(next && event.currentTarget.closest(".mx-chart-host")?.contains(next))) dismiss();
         }}
         onKeyDown={(event) => {
+          if (isImeComposing(event)) return;
           if (event.key === "Escape") {
             brush.current = null; keyboardAnchor.current=null; setBrushPixels(null);
             if (pinned || reading || active != null || gap != null) {

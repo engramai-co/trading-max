@@ -43,6 +43,7 @@ import { AssistantEntry, AssistantPanel } from "./assistant/shell";
 import { useAssistant } from "./assistant/context";
 import { useWorkspaceProfile } from "./profile";
 import { Tag, useCopy } from "./foundation";
+import { isImeComposing } from "./shortcut-platform";
 
 import { researchShellKey } from "@/lib/dashboard-query";
 import { useBuildNavigation } from "@/ui/publication-provider";
@@ -162,7 +163,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   );
   useEffect(() => {
     function handle(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (!isImeComposing(event) && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         if (!event.repeat) {
           if (!searchOpen) searchOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -539,7 +540,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         // before Escape reaches them; this dialog alone handles its close.
         onFocusCapture={(event) => event.target.setAttribute("data-mantine-stop-propagation", "true")}
         onKeyDown={(event) => {
-          if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+          if (event.key === "Escape" && !isImeComposing(event)) {
             event.preventDefault();
             event.stopPropagation();
             closeSearch();
@@ -572,7 +573,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               setIndex(0);
             }}
             onKeyDown={(event) => {
-              if (event.nativeEvent.isComposing) return;
+              if (isImeComposing(event)) return;
               if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
                 setIndex((i) =>

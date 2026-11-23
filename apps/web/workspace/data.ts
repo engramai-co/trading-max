@@ -1,5 +1,6 @@
 import type { Locale } from "@/components/locale-provider";
 import { numeric } from "@/lib/numeric";
+import { withTimeoutSignal } from "./abort";
 export type Json = Record<string, unknown>;
 export const object = (value: unknown): Json =>
   value && typeof value === "object" && !Array.isArray(value)
@@ -121,7 +122,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 }
 /** Bound slow research reads without turning navigation cancellation into a timeout. */
 export function readApi<T>(path: string, signal: AbortSignal) {
-  return api<T>(path, { signal: AbortSignal.any([signal, AbortSignal.timeout(20_000)]) });
+  return withTimeoutSignal(signal, 20_000, (combined) => api<T>(path, { signal: combined }));
 }
 export const jsonRequest = (method: string, body: unknown): RequestInit => ({
   method,

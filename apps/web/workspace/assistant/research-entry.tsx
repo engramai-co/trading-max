@@ -6,6 +6,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { useWorkspaceProfile } from "../profile";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useAssistant } from "./context";
+import { withTimeoutSignal } from "../abort";
 import type { PositionReading as Position } from "./research";
 
 const LazyPosition = lazy(() => import("./research").then(module => ({default: module.PositionReading})));
@@ -27,7 +28,8 @@ export function useEarningsBrief(ticker: string, lens: string, snapshotId: strin
     refetchInterval: enabled ? 30_000 : false, refetchIntervalInBackground: false,
     queryFn: async ({signal}) => {
       const { cachedEarnings, EarningsBrief } = await import("./research");
-      const reading = await cachedEarnings(ticker, snapshotId!, AbortSignal.any([signal, AbortSignal.timeout(5000)]));
+      const reading = await withTimeoutSignal(signal, 5000, (combined) =>
+        cachedEarnings(ticker, snapshotId!, combined));
       return {reading, EarningsBrief};
     },
   });
