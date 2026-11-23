@@ -9,6 +9,7 @@ from trading_max.infrastructure import ContentAddressedArtifactStore, SnapshotSt
 from trading_max.ingestion.brokers.trading212 import (
     latest_cash_transactions_path,
     latest_export_path,
+    latest_live_cash_transactions,
 )
 
 
@@ -42,22 +43,37 @@ def live_cash_flow_refs(
             history = AccountCashFlowHistory.model_validate(
                 artifacts.get_json(ref.artifact_id).payload
             )
-            export = latest_export_path(profile, data_root=state_root / "trading212")
+            broker_root = state_root / "trading212"
+            export = latest_export_path(profile, data_root=broker_root)
             if export is None:
                 continue
             digest = ledger_digest(
                 (
                     export,
-                    latest_cash_transactions_path(profile, data_root=state_root / "trading212"),
+                    latest_cash_transactions_path(profile, data_root=broker_root),
                 )
             )
-            extended = extend_live_cash_flows(history, accounts[code], digest)
+            # The last reconciled state is the previous live value or, after a
+            # full refresh, the canonical account; the digest picks the match.
+            baselines = [
+                artifacts.get_json(existing[baseline].artifact_id).payload
+                for baseline in (f"account/intraday/{profile}.json", f"account/{profile}.json")
+                if baseline in existing
+            ]
+            extended = extend_live_cash_flows(
+                history,
+                accounts[code],
+                digest,
+                baselines=baselines,
+                live_cash=latest_live_cash_transactions(profile, data_root=broker_root),
+            )
         except (OSError, KeyError, TypeError, ValueError):
             # Preserve last verified evidence; a live mark must not certify an
             # unreadable ledger or interrupt broker-value collection.
             continue
         if extended is None:
             continue
+        movements = len(extended.events) - len(history.events)
         stored = artifacts.put_json(
             key=key,
             payload=extended.model_dump(mode="json", by_alias=False),
@@ -67,7 +83,12 @@ def live_cash_flow_refs(
             dependency_artifact_ids=[ref.artifact_id, account_artifact_ids[index]],
             quality=ArtifactQuality(
                 status="verified",
-                coverage="reconciled cash flows; unchanged live cash and position quantities",
+                coverage=(
+                    f"reconciled cash flows; {movements} live broker deposit or withdrawal "
+                    "movements explain the whole cash change, quantities unchanged"
+                    if movements
+                    else "reconciled cash flows; unchanged live cash and position quantities"
+                ),
             ),
         )
         result.append(stored.ref)

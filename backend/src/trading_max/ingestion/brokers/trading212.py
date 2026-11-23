@@ -779,6 +779,29 @@ class Trading212Client:
             )
         raise Trading212Error("cash transaction pagination exceeded 500 pages")
 
+    def recent_cash_transactions(
+        self,
+        *,
+        stop_references: frozenset[str],
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Read only the newest page of cash movements for a live observation.
+
+        Unlike :meth:`cash_transactions`, this never walks older pages. The
+        flag is true only when the page reaches a reference already in the
+        ledger or the end of the history, so every movement unknown to the
+        ledger is present in the returned items.
+        """
+
+        payload = self._request_json("GET", "/equity/history/transactions?limit=50")
+        if not isinstance(payload, dict) or not isinstance(payload.get("items"), list):
+            raise Trading212Error("cash transactions response was not a paginated object")
+        page_items = [item for item in payload["items"] if isinstance(item, dict)]
+        overlap = any(str(item.get("reference") or "") in stop_references for item in page_items)
+        items = [
+            item for item in page_items if str(item.get("reference") or "") not in stop_references
+        ]
+        return items, overlap or not payload.get("nextPagePath")
+
     def request_export(self, time_from: datetime, time_to: datetime) -> int:
         payload = self._request_json(
             "POST",
@@ -972,6 +995,7 @@ class ManagedAccountStore:
         self.manifest_path = self.root / "latest_export.json"
         self.pending_path = self.root / "pending_export.json"
         self.cash_transactions_path = self.root / "cash_transactions.json"
+        self.live_cash_transactions_path = self.root / "live_cash_transactions.json"
         for path in (self.root, self.exports_dir, self.snapshots_dir):
             path.mkdir(parents=True, exist_ok=True)
             with suppress(OSError):
@@ -1084,6 +1108,35 @@ class ManagedAccountStore:
         )
         return self.cash_transactions_path
 
+    def write_live_cash_transactions(
+        self,
+        *,
+        fetched_at: datetime,
+        items: list[dict[str, Any]],
+        complete: bool,
+    ) -> Path:
+        """Keep the newest unledgered cash movements beside the live value.
+
+        This sidecar is never part of the ledger: the official feed above and
+        the CSV export remain the only reconciliation sources.
+        """
+
+        _write_private_json(
+            self.live_cash_transactions_path,
+            {
+                "schema_version": 1,
+                "profile": self.profile,
+                "fetched_at": utc_iso(fetched_at),
+                "complete": complete,
+                "items": items,
+            },
+        )
+        return self.live_cash_transactions_path
+
+    def clear_live_cash_transactions(self) -> None:
+        with suppress(OSError):
+            self.live_cash_transactions_path.unlink(missing_ok=True)
+
     def register_export(
         self,
         *,
@@ -1177,6 +1230,28 @@ def latest_cash_transactions_path(
     except ValueError as exc:
         raise Trading212ExportError("cash transaction path escapes T212_DATA_DIR") from exc
     return path if path.is_file() else None
+
+
+def latest_live_cash_transactions(
+    profile: str,
+    *,
+    data_root: Path | None = None,
+) -> dict[str, Any] | None:
+    """Return the live cash-movement sidecar written beside the latest value."""
+
+    root = (data_root or default_data_root()).expanduser().resolve()
+    path = (root / _profile_token(profile) / "live_cash_transactions.json").resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise Trading212ExportError("live cash transaction path escapes T212_DATA_DIR") from exc
+    if not path.is_file():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _required_broker_number(payload: object, field: str, *, context: str) -> Decimal:
@@ -1609,6 +1684,7 @@ __all__ = [
     "latest_cash_transactions_path",
     "latest_export_metadata",
     "latest_export_path",
+    "latest_live_cash_transactions",
     "merge_export_csv_files",
     "reconcile_csv_files",
     "reconcile_positions",

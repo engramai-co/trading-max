@@ -153,3 +153,201 @@ def test_intraday_publication_advances_each_account_independently_without_market
     assert refreshed["account/nav/market_data.json"].payload["baseline"] == "yahoo"
     ledger.write_text("changed synthetic ledger")
     assert len(collect(30)) == 1
+
+
+def movement(amount="50.00", at="2026-09-17T09:05:00Z", kind="DEPOSIT", **updates):
+    return {
+        "reference": f"synthetic-{kind.lower()}-{at}",
+        "type": kind,
+        "amount": amount,
+        "currency": "GBP",
+        "dateTime": at,
+        **updates,
+    }
+
+
+def live(*items, fetched_at="2026-09-17T09:10:05Z", complete=True):
+    return {"fetched_at": fetched_at, "complete": complete, "items": list(items)}
+
+
+def test_live_deposit_that_explains_the_whole_cash_change_is_reconciled_at_once():
+    original = history()
+    current = account("2026-09-17T09:10:00Z", cash_gbp="60.00", total_value_gbp="160.00")
+
+    extended = extend_live_cash_flows(
+        original, current, "fixture", baselines=[account()], live_cash=live(movement())
+    )
+
+    assert extended is not None
+    assert extended.covered_until == datetime(2026, 9, 17, 9, 10, tzinfo=UTC)
+    assert extended.events[:-1] == original.events
+    assert extended.events[-1].occurred_at == datetime(2026, 9, 17, 9, 5, tzinfo=UTC)
+    assert extended.events[-1].amount_gbp == 50
+    assert extended.account_state_digest == account_state_digest(current)
+    assert original.account_state_digest == account_state_digest(account())
+    assert len(original.events) == 1
+
+
+def test_live_withdrawal_and_transfer_are_signed_like_the_ledger():
+    current = account("2026-09-17T09:10:00Z", cash_gbp="1.50")
+    extended = extend_live_cash_flows(
+        history(),
+        current,
+        "fixture",
+        baselines=[account()],
+        live_cash=live(
+            movement("-6.00", kind="WITHDRAW"),
+            movement("-2.50", at="2026-09-17T09:06:00Z", kind="TRANSFER"),
+        ),
+    )
+    assert extended is not None
+    assert [event.amount_gbp for event in extended.events[1:]] == [-6, -2.5]
+
+
+@pytest.mark.parametrize(
+    ("updates", "baselines", "cash"),
+    [
+        ({"live_cash": live(movement("40.00"))}, None, "60.00"),
+        (
+            {"live_cash": live(movement(), movement("0.12", kind="INTEREST_ON_FREE_CASH"))},
+            None,
+            "60.12",
+        ),
+        ({"live_cash": live(movement(), movement("-1.00", kind="FEE"))}, None, "59.00"),
+        ({"live_cash": live(movement(currency="USD"))}, None, "60.00"),
+        ({"live_cash": live(movement(), complete=False)}, None, "60.00"),
+        ({"live_cash": live(movement(), fetched_at="2026-09-17T09:09:59Z")}, None, "60.00"),
+        ({"live_cash": live(movement(at="2026-08-31T23:59:59Z"))}, None, "60.00"),
+        ({"live_cash": live(movement("50.005"))}, None, "60.005"),
+        ({"live_cash": live("not a movement")}, None, "60.00"),
+        ({"live_cash": live(movement(dateTime="2026-09-17T09:05:00"))}, None, "60.00"),
+        ({"live_cash": live()}, None, "60.00"),
+        ({"live_cash": None}, None, "60.00"),
+        ({"live_cash": live(movement())}, [], "60.00"),
+        ({"live_cash": live(movement())}, [account(cash_gbp="11.00")], "60.00"),
+    ],
+)
+def test_live_cash_changes_without_an_exact_deposit_explanation_wait_for_the_ledger(
+    updates, baselines, cash
+):
+    current = account("2026-09-17T09:10:00Z", cash_gbp=cash)
+    assert (
+        extend_live_cash_flows(
+            history(),
+            current,
+            "fixture",
+            baselines=[account()] if baselines is None else baselines,
+            **updates,
+        )
+        is None
+    )
+
+
+def test_a_trade_with_a_deposit_waits_for_the_ledger():
+    current = account(
+        "2026-09-17T09:10:00Z",
+        cash_gbp="60.00",
+        positions=[{"isin": "SYNTHETIC", "quantity": "3"}],
+    )
+    assert (
+        extend_live_cash_flows(
+            history(), current, "fixture", baselines=[account()], live_cash=live(movement())
+        )
+        is None
+    )
+
+
+def test_a_changed_ledger_blocks_live_deposit_reconciliation():
+    current = account("2026-09-17T09:10:00Z", cash_gbp="60.00")
+    assert (
+        extend_live_cash_flows(
+            history(), current, "new-ledger", baselines=[account()], live_cash=live(movement())
+        )
+        is None
+    )
+
+
+def test_movements_after_the_value_wait_and_earlier_live_deposits_are_not_counted_twice():
+    later = movement("20.00", at="2026-09-17T09:12:00Z")
+    first_value = account("2026-09-17T09:10:00Z", cash_gbp="60.00")
+    first = extend_live_cash_flows(
+        history(), first_value, "fixture", baselines=[account()], live_cash=live(later, movement())
+    )
+    assert first is not None
+    assert [event.amount_gbp for event in first.events[1:]] == [50]
+
+    second_value = account("2026-09-17T09:20:00Z", cash_gbp="80.00")
+    second = extend_live_cash_flows(
+        first,
+        second_value,
+        "fixture",
+        baselines=[first_value],
+        live_cash=live(later, movement(), fetched_at="2026-09-17T09:20:04Z"),
+    )
+    assert second is not None
+    assert [event.amount_gbp for event in second.events[1:]] == [50, 20]
+    assert second.covered_until == datetime(2026, 9, 17, 9, 20, tzinfo=UTC)
+
+
+def test_intraday_publication_reconciles_a_live_deposit_for_that_account_only(
+    tmp_path, monkeypatch
+):
+    import trading_max.application.live_cash_flows as flows
+    from trading_max.ingestion.brokers.trading212 import ManagedAccountStore
+
+    ledger = tmp_path / "ledger.csv"
+    ledger.write_text("synthetic ledger")
+    monkeypatch.setattr(flows, "latest_export_path", lambda *_args, **_kwargs: ledger)
+    monkeypatch.setattr(flows, "latest_cash_transactions_path", lambda *_args, **_kwargs: None)
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    snapshots = SnapshotStore(tmp_path)
+    digest = ledger_digest((ledger, None))
+    seeds = [
+        artifacts.put_json(
+            key=f"account/nav/cash_flows_{code}.json",
+            payload=history(digest).model_dump(mode="json"),
+            kind="account_cash_flows",
+            producer_version="fixture",
+        )
+        for code in ("a", "b")
+    ]
+    seeds += [
+        artifacts.put_json(
+            key=f"account/intraday/{profile}.json",
+            payload=account(),
+            kind="account_intraday_value",
+            producer_version="fixture",
+        )
+        for profile in ("invest", "isa")
+    ]
+    snapshots.publish(scope="intraday", source="fixture", artifacts=seeds)
+    ManagedAccountStore("invest", data_root=tmp_path / "trading212").write_live_cash_transactions(
+        fetched_at=datetime(2026, 9, 17, 9, 10, 5, tzinfo=UTC),
+        items=[movement()],
+        complete=True,
+    )
+    values = [
+        artifacts.put_json(
+            key=f"account/intraday/{profile}.json",
+            payload=account(f"2026-09-17T09:10:0{index}Z", cash_gbp=cash),
+            kind="account_intraday_value",
+            producer_version="fixture",
+        )
+        for index, (profile, cash) in enumerate((("invest", "60.00"), ("isa", "11.00")))
+    ]
+
+    result = AccountIntradayNavStage(artifacts, snapshots, state_root=tmp_path).run(
+        StageContext(
+            job_id="live-deposit",
+            scope="intraday",
+            upstream_artifact_ids=tuple(value.ref.artifact_id for value in values),
+        )
+    )
+
+    published = {ref.key: artifacts.get_json(ref.artifact_id) for ref in result.artifacts}
+    invest = published["account/nav/cash_flows_a.json"]
+    assert invest.payload["covered_until"] == "2026-09-17T09:10:00Z"
+    assert [event["amount_gbp"] for event in invest.payload["events"]] == [100, 50]
+    assert "1 live broker deposit or withdrawal" in invest.ref.quality.coverage
+    # The ISA cash changed without a matching movement: it waits for the ledger.
+    assert "account/nav/cash_flows_b.json" not in published
