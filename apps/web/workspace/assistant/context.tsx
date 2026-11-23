@@ -23,6 +23,9 @@ type AssistantState = {
   continueInSidebar: (card: RoleCard, draft?: string) => void; handoff: Handoff | null;
 };
 const Context = createContext<AssistantState | null>(null);
+export function useOptionalAssistant() {
+  return useContext(Context);
+}
 export function useAssistant() {
   const value = useContext(Context);
   if (!value) throw new Error("Missing assistant workspace");

@@ -96,6 +96,9 @@ test.describe("desktop surfaces", () => {
     if (data.refresh) { data.refresh.latestFullJob = failed; data.refresh.latestJob = data.jobs[0]; }
     await page.route("**/api/backend/health/details", (route) => route.fulfill({ json: data }));
     await page.goto("/desktop/activity");
+    await expect(page.getByRole("button", { name: /查看原因|View issue/ })).toBeVisible();
+    // The auxiliary window has no MaxAI workspace, so it offers no diagnosis entry.
+    await expect(page.getByRole("button", { name: /✦\s*(为什么|Why)/ })).toHaveCount(0);
     await page.getByRole("button", { name: /查看原因|View issue/ }).click();
     await expect(page.getByRole("dialog")).toContainText("Synthetic history conflict");
     await expect(page.getByRole("dialog")).toContainText(/没有留下阶段记录|No stage details were recorded/);
