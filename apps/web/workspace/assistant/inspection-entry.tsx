@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useAssistant } from "./context";
+import { useOptionalAssistant } from "./context";
 import type { InspectionProps } from "./inspection";
 
 const Reading = dynamic(() =>
@@ -9,6 +9,6 @@ const Reading = dynamic(() =>
 );
 
 export function PageInspection(props: InspectionProps) {
-  const { ready } = useAssistant();
+  const ready = useOptionalAssistant()?.ready ?? false;
   return ready ? <Reading {...props} /> : null;
 }

@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.6] - 2026-11-23
+
+### Fixed
+- The desktop App's Data status window opens again. It returned a server error since MaxAI joined the page, because the App's management windows have no MaxAI workspace. The window now opens normally there without MaxAI's diagnosis entries, and the handoff to it after a CFD import works again.
+
 ## [1.67.5] - 2026-11-23
 
 ### Fixed

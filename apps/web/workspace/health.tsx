@@ -39,7 +39,7 @@ import {
   useCopy,
 } from "./foundation";
 
-import { useAssistant } from "./assistant/context";
+import { useOptionalAssistant } from "./assistant/context";
 import { PageInspection } from "./assistant/inspection-entry";
 import { useSearchParams } from "next/navigation";
 import { DemoAsOf } from "./demonstration";
@@ -58,7 +58,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   });
   const demoSnapshot = useDashboardLens("overview", undefined, readOnly, { detail: "summary" });
   const [scope, setScope] = useState<RefreshJob["scope"]>(initialScope);
-  const {ready: assistantReady} = useAssistant();
+  const assistantReady = useOptionalAssistant()?.ready ?? false;
   const params=useSearchParams();
   const [selected, setSelected] = useState<string | null>(()=>params?.get("job") ?? null);
   const [diagnosis, setDiagnosis] = useState<string | null>(null);
