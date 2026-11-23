@@ -33,6 +33,7 @@ import { filingLabel, ratingLabel } from "./market-terms";
 import { READING_TOOLTIP } from "./reading-tooltip";
 import { minus } from "./reading-figures";
 import { readingTone } from "./reading-format";
+import { isImeComposing } from "./shortcut-platform";
 import { SecurityPeek } from "./security-peek";
 
 export type AccountDecisions = NonNullable<DashboardLens["selectedAccountDecisions"]>;
@@ -622,7 +623,7 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
   return (
     <div onPointerEnter={bind} onKeyDownCapture={(event) => {
       // The chart's own keys step through its first series only; these reach every decision.
-      if (!["ArrowLeft", "ArrowRight", "Home", "End", "Enter"].includes(event.key) || !marks.length) return;
+      if (isImeComposing(event) || !["ArrowLeft", "ArrowRight", "Home", "End", "Enter"].includes(event.key) || !marks.length) return;
       if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "group") return;
       event.preventDefault();
       event.stopPropagation();

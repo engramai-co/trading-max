@@ -9,6 +9,7 @@ import { useLocale } from "@/components/locale-provider";
 import { ASSISTANT_NAME, conversationsErasedEvent } from "../assistant-settings";
 import { api } from "../data";
 import { useCopy } from "../foundation";
+import { isImeComposing } from "../shortcut-platform";
 import { errorLabel } from "./status-label";
 import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
@@ -148,7 +149,7 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
       <span className="mx-assistant-scope">{checking ? t("正在检查连接…", "Checking connection…") : contextCard?.object || [context.ticker, scopeLabel].filter(Boolean).join(" · ")}</span>
       <div><textarea ref={history ? null : composerRef} rows={2} value={draft} onChange={e => setDraft(e.target.value)} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
-        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(draft); } }} />
+        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
         {busy ? <button type="button" onClick={event => { event.preventDefault(); void stop(); setDraft(submitted.current.text); setContextCard(submitted.current.card); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
           : <button type="submit" disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp weight="bold" /></button>}
       </div>

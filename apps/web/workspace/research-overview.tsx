@@ -15,6 +15,17 @@ import Link from "./link";
 import { factIndex, metricNames } from "./research-facts";
 import { filingTitle } from "./research-filings";
 import { useRouteState } from "./route-state";
+import { isImeComposing } from "./shortcut-platform";
+
+/** First two period-delimited sentences of a business description for the collapsed overview card. */
+export function businessExcerpt(summary: string): string {
+  const breakAt = /\.\s+(?=[A-Z])/g;
+  const first = breakAt.exec(summary);
+  if (!first) return summary;
+  const second = breakAt.exec(summary);
+  const secondEnd = second ? second.index + 1 : summary.length;
+  return `${summary.slice(0, first.index + 1)} ${summary.slice(first.index + first[0].length, secondEnd)}`;
+}
 
 /** A panel title that opens the lens holding its detail. */
 function LensTitle({ label, onOpen }: { label: string; onOpen: () => void }) {
@@ -87,7 +98,7 @@ export function CompanyOverview({
     .filter(Boolean)
     .map((name) => industryName(name, locale));
   const summary = str(info.longBusinessSummary);
-  const excerpt = summary.split(/(?<=\.)\s+(?=[A-Z])/).slice(0, 2).join(" ");
+  const excerpt = businessExcerpt(summary);
   const expandable = excerpt.length < summary.length;
   // With MaxAI on, the provider's English description can be restated in Chinese.
   const offerSummary = ready && locale === "zh" && Boolean(summary) && Boolean(data.runId);
@@ -211,7 +222,7 @@ export function CompanyOverview({
                 data-expandable=""
                 onClick={() => setExpanded(!expanded)}
                 onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
+                  if (!isImeComposing(event) && (event.key === "Enter" || event.key === " ")) {
                     event.preventDefault();
                     setExpanded(!expanded);
                   }

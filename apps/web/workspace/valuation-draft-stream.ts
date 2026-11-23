@@ -7,7 +7,10 @@ export function newReview(result: DraftResult): DraftReview {
 }
 
 export async function readDraft(response: Response, update: (phase: DraftEvent["phase"]) => void) {
-  if (!response.ok || !response.body) throw new Error("assistant_failed");
+  if (!response.ok || !response.body) {
+    await response.body?.cancel().catch(() => undefined);
+    throw new Error("assistant_failed");
+  }
   const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
   let buffer = "";
   try {
@@ -26,6 +29,7 @@ export async function readDraft(response: Response, update: (phase: DraftEvent["
       }
     }
   } finally {
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }

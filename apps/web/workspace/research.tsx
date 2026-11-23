@@ -28,6 +28,7 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
+import { isImeComposing } from "./shortcut-platform";
 import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
 import {
   Empty,
@@ -310,7 +311,7 @@ function SecurityResearchWorkspace() {
         event.altKey ||
         event.shiftKey ||
         event.repeat ||
-        event.isComposing ||
+        isImeComposing(event) ||
         event.defaultPrevented
       )
         return;

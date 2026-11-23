@@ -4,6 +4,13 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.67.7] - 2026-11-23
+
+### Fixed
+- Research data, index search in ⌘K and MaxAI work again in the macOS App on systems whose WebKit predates Safari 17.4. Requests now combine their cancellation and timeout without `AbortSignal.any`, and a valuation draft stream is cancelled once it ends.
+- Research pages load in the App on WebKit older than Safari 16.4. Two sentence-splitting expressions no longer use regex lookbehind, which those versions cannot parse.
+- Pressing Enter to confirm a Chinese input candidate no longer sends an unfinished MaxAI message or opens a ⌘K result in Safari and the App. Escape and keyboard shortcuts ignore that keystroke too.
+
 ## [1.67.6] - 2026-11-23
 
 ### Fixed

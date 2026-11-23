@@ -8,6 +8,7 @@ import type { MomentWindow, Moments, NumberedMoment } from "./moment-controls";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 import { useCopy } from "../foundation";
+import { isImeComposing } from "../shortcut-platform";
 import { AnchoredReading, ReadingLines } from "./cards";
 import { usePageRole } from "./context";
 import { useRoleReading } from "./reading";
@@ -88,7 +89,7 @@ function MomentReading({ window, date, snapshotId, name, close }: {
       t("之后的价格如何变化？", "What did the price do afterwards?")],
   }), [context, date, locale, name, origin, result.data, t, window.ticker]);
   usePageRole(card);
-  return <div ref={wrapper} onKeyDown={e => { if (e.key === "Escape") { e.stopPropagation(); close(); } }}>
+  return <div ref={wrapper} onKeyDown={e => { if (e.key === "Escape" && !isImeComposing(e)) { e.stopPropagation(); close(); } }}>
     <AnchoredReading card={card} onClose={close}>{result.data ? <ReadingLines card={card} /> :
       <div className="mx-brief-empty" role="status">{result.isFetching ? <>
         {t("正在读取当日行情与事件…", "Reading the day’s price and events…")}

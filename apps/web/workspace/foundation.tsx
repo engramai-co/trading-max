@@ -25,7 +25,7 @@ import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 import { isReadTimeout, type ChangeTone } from "./data";
 import { indicatorStart } from "./selection-indicator";
-import { useAltDigitModifier } from "./shortcut-platform";
+import { isImeComposing, useAltDigitModifier } from "./shortcut-platform";
 import { LocalWorkspaceContext } from "./loading-context";
 import { scheduleLoadingStatus, updateFailureLabel } from "./loading-state";
 import { DataBasis } from "./reading-card";
@@ -137,7 +137,7 @@ function useChangeCount(value: string | null) {
 const escapeLayers: Array<() => void> = [];
 let escapeListening = false;
 function closeTopLayer(event: KeyboardEvent) {
-  if (event.key !== "Escape" || event.isComposing || !escapeLayers.length) return;
+  if (event.key !== "Escape" || isImeComposing(event) || !escapeLayers.length) return;
   // One press closes one layer; a dialog or chart behind it stays open.
   event.stopPropagation();
   escapeLayers.at(-1)!();
@@ -213,7 +213,7 @@ export function Help({
       aria-expanded={opened}
       onClick={() => setOpened((value) => !value)}
       onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
+        if (!isImeComposing(event) && (event.key === "Enter" || event.key === " ")) {
           event.preventDefault();
           if (!event.repeat) setOpened((value) => !value);
         }
@@ -640,7 +640,7 @@ export function Segments<T extends string>({
   // A modifier keeps typing, speech input and screen-reader keys from switching
   // the view by accident (WCAG 2.1.4), and leaves fields and dialogs alone.
   const pick = useEffectEvent((event: KeyboardEvent) => {
-    if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.repeat || event.isComposing || event.defaultPrevented) return;
+    if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.repeat || isImeComposing(event) || event.defaultPrevented) return;
     const digit = /^(?:Digit|Numpad)([1-9])$/.exec(event.code)?.[1];
     const option = digit ? options[Number(digit) - 1] : undefined;
     if (!option) return;

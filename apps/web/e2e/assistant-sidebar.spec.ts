@@ -77,6 +77,13 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   const input = page.locator(".mx-assistant-composer textarea");
   await expect(input).toHaveValue(wording);
   await expect(input).toBeFocused();
+  const sends: string[] = [];
+  page.on("request", r => {
+    if (new URL(r.url()).pathname.endsWith("/assistant/chat")) sends.push(r.url());
+  });
+  await input.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: false, keyCode: 229 });
+  await expect(input).toHaveValue(wording);
+  expect(sends).toEqual([]);
   const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
   await input.press("Enter");
   const request = await sent;
@@ -84,6 +91,7 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   expect(body.context).toMatchObject({page:"overview",role:"daily",scope:"broker_total"});
   expect(body.messages).toHaveLength(1);
   await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
+  expect(sends).toHaveLength(1);
   const liveReply = page.locator("#mx-assistant-panel [aria-live=polite]");
   await expect(liveReply).toHaveCount(1);
   await expect(liveReply).toContainText("本期净盈亏 £21.50");

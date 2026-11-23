@@ -63,6 +63,8 @@ test.describe("workspace navigation refinements", () => {
     await input.fill("BE DCF");
     await expect(page.getByRole("option").first()).toContainText("BE");
     await input.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: true });
+    await input.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: false, keyCode: 229 });
+    await input.dispatchEvent("keydown", { key: "Escape", code: "Escape", isComposing: false, keyCode: 229 });
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page).toHaveURL(/\/$/);
     await input.fill("UNKNOWN technical");
