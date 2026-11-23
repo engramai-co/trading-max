@@ -31,7 +31,9 @@ from trading_max.analytics.historical_nav import (
 )
 from trading_max.analytics.intraday import (
     DEFAULT_INTRADAY_RETENTION_DAYS,
+    AnchorTimingError,
     IntradayAnchor,
+    IntradayAnchorSeries,
     append_intraday_anchor,
     floor_bucket,
     merge_valuation_history,
@@ -471,6 +473,7 @@ class AccountIntradayNavStage:
         )
         if previous is not None:
             dependencies.append(previous.ref.artifact_id)
+        skipped_anchor: str | None = None
         try:
             series = append_intraday_anchor(
                 previous.payload if previous is not None else None,
@@ -480,6 +483,16 @@ class AccountIntradayNavStage:
                 interval_seconds=self.interval_seconds,
                 retention_days=self.retention_days,
             )
+        except AnchorTimingError as exc:
+            # A full refresh syncs one account after another; slow broker
+            # exports can leave its snapshots too far apart, or behind the
+            # live points collected meanwhile. Live collection keeps adding
+            # value points, so publish the reconciled accounts without one
+            # instead of discarding the whole refresh.
+            if context.scope == "intraday" or previous is None:
+                raise StageExecutionError("account.intraday_nav_invalid", str(exc)) from exc
+            series = IntradayAnchorSeries.model_validate(previous.payload)
+            skipped_anchor = f"refresh snapshots add no value point: {exc}"
         except (TypeError, ValueError) as exc:
             raise StageExecutionError(
                 "account.intraday_nav_invalid",
@@ -491,6 +504,8 @@ class AccountIntradayNavStage:
             "intraday value changes must not be labelled TWR"
         )
         warnings = [warning]
+        if skipped_anchor is not None:
+            warnings.append(skipped_anchor)
         market_data = {}
         if context.scope != "intraday" and self.state_root is not None:
             loader = self.history_loader or (

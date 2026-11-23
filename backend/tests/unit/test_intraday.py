@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from trading_max.analytics.intraday import (
+    AnchorTimingError,
     IntradayAnchor,
     append_intraday_anchor,
     floor_bucket,
@@ -111,6 +112,12 @@ def test_out_of_order_anchor_is_rejected() -> None:
             _accounts("2026-08-08T20:00:00Z"),
             source_artifact_ids=[],
         )
+    with pytest.raises(AnchorTimingError, match="older"):
+        append_intraday_anchor(
+            series.model_dump(mode="json", by_alias=False),
+            _accounts("2026-08-08T20:00:00Z"),
+            source_artifact_ids=[],
+        )
 
 
 def test_collector_rejects_non_finite_values_and_misaligned_accounts() -> None:
@@ -121,7 +128,7 @@ def test_collector_rejects_non_finite_values_and_misaligned_accounts() -> None:
             )
     accounts = _accounts("2026-09-04T12:00Z")
     accounts["B"]["fetched_at"] = "2026-09-04T12:11Z"
-    with pytest.raises(ValueError, match="timestamp skew"):
+    with pytest.raises(AnchorTimingError, match="timestamp skew"):
         append_intraday_anchor(None, accounts, source_artifact_ids=[])
 
 

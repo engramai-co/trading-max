@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from trading_max.application.errors import StageExecutionError
 from trading_max.application.nav_stages import AccountIntradayNavStage, AccountNavStage
 from trading_max.application.stages import StageContext
 from trading_max.infrastructure import (
@@ -292,3 +294,75 @@ def test_three_intraday_publications_keep_history_and_previous_artifacts(
     )
     anchor = artifacts.get_json(anchor_ref.artifact_id).payload
     assert len(anchor["points"]) == 3
+
+
+def _publish_values(artifacts, snapshots, key_pattern, times):
+    refs = []
+    for (profile, value), stamp in zip((("invest", 110), ("isa", 210)), times, strict=True):
+        refs.append(
+            artifacts.put_json(
+                key=key_pattern.format(profile=profile),
+                payload={"fetched_at": stamp, "total_value_gbp": value, "cash_gbp": 12},
+                kind="account",
+                producer_version="fixture",
+            ).ref
+        )
+    return refs
+
+
+@pytest.mark.parametrize(
+    "times",
+    [
+        # Snapshots synced one after another, far apart after slow exports.
+        ("2026-08-02T20:00:01Z", "2026-08-02T20:16:01Z"),
+        # Snapshots older than the live points collected during the refresh.
+        ("2026-08-02T19:40:01Z", "2026-08-02T19:40:05Z"),
+    ],
+)
+def test_full_refresh_with_ill_timed_snapshots_keeps_history_without_a_point(
+    tmp_path: Path, times: tuple[str, str]
+) -> None:
+    artifacts = ContentAddressedArtifactStore(tmp_path / "artifacts")
+    snapshots = SnapshotStore(tmp_path)
+    stage = AccountIntradayNavStage(artifacts, snapshots)
+    live = _publish_values(
+        artifacts, snapshots, "account/intraday/{profile}.json", ("2026-08-02T20:00:01Z",) * 2
+    )
+    first = stage.run(
+        StageContext(
+            job_id="live",
+            scope="intraday",
+            trigger="intraday",
+            upstream_artifact_ids=tuple(ref.artifact_id for ref in live),
+        )
+    )
+    snapshots.publish(scope="intraday", source="fixture", artifacts=[*live, *first.artifacts])
+    history = artifacts.get_json(first.artifacts[0].artifact_id).payload
+    refreshed = _publish_values(artifacts, snapshots, "account/{profile}.json", times)
+
+    result = stage.run(
+        StageContext(
+            job_id="refresh",
+            scope="accounts",
+            trigger="performance",
+            upstream_artifact_ids=tuple(ref.artifact_id for ref in refreshed),
+        )
+    )
+
+    published = artifacts.get_json(result.artifacts[0].artifact_id).payload
+    assert published["points"] == history["points"]
+    assert any("add no value point" in warning for warning in result.warnings)
+    with pytest.raises(StageExecutionError, match=r"timestamp skew|older"):
+        stage.run(
+            StageContext(
+                job_id="late-live",
+                scope="intraday",
+                trigger="intraday",
+                upstream_artifact_ids=tuple(
+                    ref.artifact_id
+                    for ref in _publish_values(
+                        artifacts, snapshots, "account/intraday/{profile}.json", times
+                    )
+                ),
+            )
+        )
