@@ -67,7 +67,7 @@
 
 1. Download the DMG from the [latest release](https://github.com/engramai-co/trading-max/releases/latest).
    It runs on Apple Silicon and is Developer ID signed and Apple-notarized.
-   Version 1.52.0 requires macOS 13.0 or later, and releases after 1.67 require macOS 13.3 or later.
+   It requires macOS 13.3 or later.
 2. Open it and drag **Trading Max** to Applications.
 3. Start a local workspace, connect to your own Trading Max service over HTTPS,
    or open the demo with synthetic data.

@@ -1,30 +1,42 @@
 # Desktop installation, updates and recovery
 
-Trading Max 1.52.0 provides an Apple Silicon macOS App as a Developer ID
-signed and Apple-notarized DMG. Version 1.52.0 requires macOS 13.0 or later, and
-releases after 1.67 require macOS 13.3 or later. Get the package and verification
-manifest from the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.52.0).
+Trading Max 1.68.0 provides an Apple Silicon macOS App as a Developer ID
+signed and Apple-notarized DMG. It requires macOS 13.3 or later. Get the package
+and verification manifest from the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.68.0).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
-## Verified scope for 1.52.0
+## Verified scope for 1.68.0
 
 The signed App and final DMG passed Apple notarization, stapling, signature and
 Gatekeeper checks.
 
-Native acceptance on Apple Silicon macOS 26.7.2 used synthetic data and a private
+Native acceptance on Apple Silicon macOS 26.7.3 used synthetic data and a private
 older-version fixture built from the 1.31.0 source with its updater unchanged,
 installed as Trading Max Preview.app.
+That updater accepts a release manifest only when its `minimum_macos` reads
+13.0. It recognised 1.68.0, whose manifest keeps that field and records the
+13.3 floor in `minimum_system_version`.
 Invalid signed feeds, modified archives, interrupted downloads and cancellation
 left the installed application and its running services unchanged. The updater
-downloaded the exact final 1.52.0 DMG and reached **Ready to Install**;
+downloaded the exact final 1.68.0 DMG and reached **Ready to Install**;
 **Install and Relaunch** stopped the previous App and its runtime, and the
 updated App reopened on the isolated demo with its overview loaded. The saved
-connection and disabled auto-open preference were unchanged. All 27,398
+connection and disabled auto-open preference were unchanged. All 27,653
 installed file contents, modes and symlinks matched the accepted package;
 signature, staple and Gatekeeper checks passed again. Quitting the updated App
 with Cmd-Q stopped its owned services. After a relaunch, the workspaces window
 opened in Simplified Chinese and listed the saved connection.
+
+After publication, anonymous downloads of the DMG, manifest and appcast matched
+the accepted local bytes. An installed 1.52.0 App discovered and downloaded the
+public 1.68.0 update through App Settings, reached **Ready to Install** and
+installed it through **Install and Relaunch**. Its connection preferences were
+unchanged, signature and Gatekeeper checks passed, and it reconnected to its
+saved HTTPS service.
+
+Version 1.68.0 requires macOS 13.3 or later and brings the workspace's changes
+since 1.52.0 to the App; the [changelog](../../CHANGELOG.md) lists them.
 
 Version 1.52.0 names the App **Trading Max**, and the DMG contains
 Trading Max.app. An installed App that updates itself keeps its file name: the
@@ -35,14 +47,6 @@ Trading Max Preview.app to Trading Max.app in Finder. Data, saved connections,
 Keychain items and later updates are unaffected. The acceptance covered this
 in-place update and the new message a stopped service leaves, **The local
 service stopped**.
-
-After publication, anonymous downloads of the DMG, manifest and appcast matched
-the accepted local bytes. An installed 1.51.0 App discovered and downloaded the
-public 1.52.0 update through App Settings, reached **Ready to Install** and
-installed it through **Install and Relaunch**. Its connection preferences were
-unchanged, the installed bundle matched the accepted package exactly, and it
-reconnected to its saved HTTPS service. Renamed to Trading Max.app, it opened
-and reconnected again.
 
 Version 1.52.0 renames the App and changes nothing else in the workspace.
 Version 1.51.0 brings the workspace's changes since 1.49.1 to the App. Every
