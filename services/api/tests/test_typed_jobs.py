@@ -205,18 +205,12 @@ def test_typed_manager_runs_accounts_without_legacy_pipeline(
     manager = TypedJobManager(
         store,
         WatchlistStore(tmp_path),
-        embedded_worker=True,
-        worker_poll_seconds=0.01,
         broker_profiles_loader=lambda: profiles,
     )
+    worker = manager._build_worker(worker_id="fixture", lease_seconds=60)
     try:
         queued = manager.submit("accounts", skip_sync=True)
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            current = manager.get(queued.job_id)
-            if current.status.value in {"succeeded", "failed", "interrupted"}:
-                break
-            time.sleep(0.01)
+        assert worker.run_once()
         completed = manager.get(queued.job_id)
         assert completed.status.value == "succeeded"
         assert completed.snapshot_run_id
@@ -270,6 +264,7 @@ def test_typed_manager_runs_accounts_without_legacy_pipeline(
                 point = response.json()["nav"][-1]
                 assert (point.get(profile) is None) == (profile not in profiles)
     finally:
+        worker.close()
         manager.close()
 
 
@@ -705,23 +700,17 @@ def test_typed_research_job_runs_all_research_artifacts_with_injected_providers(
         store,
         watchlist_store,
         valuation_assumptions=assumptions_store,
-        embedded_worker=True,
-        worker_poll_seconds=0.01,
         market_service=market_service,
         research_service=research_service,
     )
+    worker = manager._build_worker(worker_id="fixture", lease_seconds=60)
     try:
         queued = manager.submit(
             "research",
             skip_sync=True,
             tickers=["BE", "TSM"],
         )
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            current = manager.get(queued.job_id)
-            if current.status.value in {"succeeded", "failed", "interrupted"}:
-                break
-            time.sleep(0.01)
+        assert worker.run_once()
         completed = manager.get(queued.job_id)
         assert completed.status.value == "succeeded"
         latest = store.latest_manifest()
@@ -740,16 +729,12 @@ def test_typed_research_job_runs_all_research_artifacts_with_injected_providers(
             "research/valuation_assumptions.json",
             "research/earnings.json",
         } <= {artifact.key for artifact in latest.artifacts}
-        deadline = time.monotonic() + 3
-        while time.monotonic() < deadline:
-            be_status = next(
-                item.status for item in watchlist_store.load().items if item.ticker == "BE"
-            )
-            if be_status == "ready":
-                break
-            time.sleep(0.01)
+        be_status = next(
+            item.status for item in watchlist_store.load().items if item.ticker == "BE"
+        )
         assert be_status == "ready"
     finally:
+        worker.close()
         manager.close()
 
 
@@ -782,33 +767,22 @@ def test_full_refresh_reconciles_bootstrapped_watchlist_status(
     manager = TypedJobManager(
         store,
         watchlist_store,
-        embedded_worker=True,
-        worker_poll_seconds=0.01,
         market_service=market_service,
         research_service=research_service,
     )
+    worker = manager._build_worker(worker_id="fixture", lease_seconds=60)
     try:
         queued = manager.submit("all", skip_sync=True)
         assert queued.tickers == ["BE"]
 
-        deadline = time.monotonic() + 5
-        while time.monotonic() < deadline:
-            current = manager.get(queued.job_id)
-            if current.status.value in {"succeeded", "failed", "interrupted"}:
-                break
-            time.sleep(0.01)
-
+        assert worker.run_once()
         completed = manager.get(queued.job_id)
         assert completed.status.value == "succeeded"
-        reconcile_deadline = time.monotonic() + 3
-        while time.monotonic() < reconcile_deadline:
-            item = next(item for item in watchlist_store.items() if item.ticker == "BE")
-            if item.status == "ready":
-                break
-            time.sleep(0.01)
+        item = next(item for item in watchlist_store.items() if item.ticker == "BE")
         assert item.status == "ready"
         assert item.last_run_id == completed.snapshot_run_id
     finally:
+        worker.close()
         manager.close()
 
 

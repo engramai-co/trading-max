@@ -6,10 +6,16 @@ from threading import Thread
 
 import pytest
 from trading_max.application import StageRegistry, StageResult
-from trading_max.domain import ArtifactRef, StageStatus
+from trading_max.domain import ArtifactRef, JobStatus, StageStatus
 from trading_max.infrastructure import SqliteDatabase, SqliteJobQueue
 from trading_max.infrastructure.job_queue import QueueConflict
-from trading_max.worker import DurableWorker, StageExecutionError
+from trading_max.worker import (
+    ANALYSIS_LANE_TRIGGERS,
+    LIVE_LANE_TRIGGERS,
+    MAIN_LANE_TRIGGERS,
+    DurableWorker,
+    StageExecutionError,
+)
 
 MIGRATIONS = Path(__file__).resolve().parents[2] / "migrations"
 
@@ -170,35 +176,46 @@ def test_abandoned_cancelled_job_is_finalized_after_lease_expiry(
 def test_workers_can_claim_disjoint_trigger_lanes(tmp_path: Path) -> None:
     queue = make_queue(tmp_path)
     queue.enqueue("research", trigger="system", job_id="analysis-job")
-    queue.enqueue("intraday", trigger="intraday", job_id="interactive-job")
+    queue.enqueue("all", trigger="reconciliation", job_id="main-job")
+    queue.enqueue("live", trigger="live", job_id="live-job")
 
-    refresh = queue.claim(
-        "refresh-worker",
-        allowed_triggers=("on_demand", "nightly", "intraday"),
+    main = queue.claim(
+        "main-worker",
+        allowed_triggers=MAIN_LANE_TRIGGERS,
+    )
+    live = queue.claim(
+        "main-worker-live",
+        allowed_triggers=LIVE_LANE_TRIGGERS,
     )
     analysis = queue.claim(
-        "analysis-worker",
-        allowed_triggers=("system",),
+        "main-worker-analysis",
+        allowed_triggers=ANALYSIS_LANE_TRIGGERS,
     )
 
-    assert refresh is not None
-    assert refresh.record.job_id == "interactive-job"
+    assert main is not None
+    assert main.record.job_id == "main-job"
+    assert live is not None
+    assert live.record.job_id == "live-job"
     assert analysis is not None
     assert analysis.record.job_id == "analysis-job"
+    assert queue.claim("main-worker", allowed_triggers=MAIN_LANE_TRIGGERS) is None
+    assert queue.claim("main-worker-live", allowed_triggers=LIVE_LANE_TRIGGERS) is None
+    assert queue.claim("main-worker-analysis", allowed_triggers=ANALYSIS_LANE_TRIGGERS) is None
 
 
 def test_worker_trigger_lane_does_not_claim_other_work(tmp_path: Path) -> None:
     queue = make_queue(tmp_path)
     queue.enqueue("research", trigger="system", stages=[("demo", "1")])
+    queue.enqueue("live", trigger="live", stages=[("demo", "1")])
     worker = DurableWorker(
         queue,
         StageRegistry([_Stage()]),
-        worker_id="refresh-only",
-        allowed_triggers=("on_demand", "nightly", "intraday"),
+        worker_id="main-only",
+        allowed_triggers=MAIN_LANE_TRIGGERS,
     )
 
     assert worker.run_once() is False
-    assert queue.list()[0].status == "queued"
+    assert all(job.status == "queued" for job in queue.list())
     worker.close()
 
 
@@ -206,6 +223,8 @@ def test_worker_health_prefers_the_interactive_lane(tmp_path: Path) -> None:
     queue = make_queue(tmp_path)
     queue.register_worker("worker-main", worker_version="test")
     queue.heartbeat_worker("worker-main", status="idle")
+    queue.register_worker("worker-main-live", worker_version="test")
+    queue.heartbeat_worker("worker-main-live", status="running", current_job_id="live-tick")
     queue.register_worker("worker-main-analysis", worker_version="test")
     queue.heartbeat_worker("worker-main-analysis", status="running", current_job_id="slow")
 
@@ -483,3 +502,320 @@ def test_intraday_migration_preserves_existing_queue_rows(tmp_path: Path) -> Non
     )
     assert intraday.scope == "intraday"
     database.close()
+
+
+def test_verified_account_checks_survive_restart_until_covered(tmp_path: Path, monkeypatch) -> None:
+    from trading_max.infrastructure import job_queue
+
+    now = datetime(2026, 11, 23, 15, 0, tzinfo=UTC)
+    monkeypatch.setattr(job_queue, "_now", lambda: now)
+    queue = make_queue(tmp_path)
+    running = queue.enqueue("accounts", trigger="reconciliation")
+    queue.claim("main-lane", lease_seconds=3600)
+
+    now += timedelta(minutes=10)
+    invest = job_queue.AccountEvidence(now, "verified-invest")
+    live = queue.enqueue("live", trigger="live")
+    queue.claim("live-lane", allowed_triggers=LIVE_LANE_TRIGGERS)
+    queue.complete(
+        live.job_id, "live-lane", snapshot_run_id="synthetic-live", account_evidence={"A": invest}
+    )
+    now += timedelta(minutes=10)
+    isa = job_queue.AccountEvidence(now, "verified-isa")
+    summary = queue.enqueue("live", trigger="live")
+    queue.claim("live-lane", allowed_triggers=LIVE_LANE_TRIGGERS)
+    queue.complete(
+        summary.job_id,
+        "live-lane",
+        snapshot_run_id="synthetic-summary",
+        account_evidence={"B": isa},
+    )
+    queue.database.close()
+
+    queue = make_queue(tmp_path)
+    checks = {"A": invest, "B": isa}
+    assert queue.pending_account_checks() == checks
+    with pytest.raises(QueueConflict, match="account check is no longer ready"):
+        queue.enqueue("accounts", trigger="performance", account_checks=checks)
+    assert queue.pending_account_checks() == checks
+
+    # An earlier reconciliation cannot clear evidence that appeared during its export wait.
+    queue.complete(
+        running.job_id,
+        "main-lane",
+        snapshot_run_id="synthetic-reconciliation",
+        account_evidence={"A": invest, "B": isa},
+    )
+    assert queue.pending_account_checks() == checks
+    now += timedelta(seconds=1)
+    follow_up = queue.enqueue("accounts", trigger="performance", account_checks=checks)
+    assert queue.pending_account_checks() == {}
+    assert follow_up.status == JobStatus.QUEUED
+    with queue.database.read() as connection:
+        assert connection.execute("SELECT count(*) FROM pending_account_check").fetchone()[0] == 2
+
+    queue.claim("main-lane")
+    queue.complete(
+        follow_up.job_id,
+        "main-lane",
+        snapshot_run_id="synthetic-follow-up",
+        account_evidence={"A": invest, "B": isa},
+    )
+    with queue.database.read() as connection:
+        assert connection.execute("SELECT count(*) FROM pending_account_check").fetchone()[0] == 0
+    queue.database.close()
+
+
+@pytest.mark.parametrize("busy_attempts", [1, 4])
+def test_published_job_retries_completion_without_republishing(
+    tmp_path: Path, monkeypatch, busy_attempts: int
+) -> None:
+    import sqlite3
+    from contextlib import contextmanager
+
+    from trading_max.infrastructure import SnapshotStore, job_queue
+
+    now = datetime(2026, 11, 23, 15, 0, tzinfo=UTC)
+    monkeypatch.setattr(job_queue, "_now", lambda: now)
+    snapshots = SnapshotStore(tmp_path)
+    artifact = snapshots.artifacts.put_json(key="fixture.json", payload={"verified": True}).ref
+    evidence = {"A": job_queue.AccountEvidence(now, artifact.artifact_id)}
+    publications = []
+    completion_attempts = []
+
+    class Publish:
+        name = "snapshot.publish"
+        version = "v1"
+        dependencies = ()
+        required_for = frozenset({"intraday"})
+
+        def run(self, context):
+            stored = snapshots.publish(
+                scope=context.scope, source=context.job_id, artifacts=(artifact,)
+            )
+            run_id = stored.manifest.run_id
+            publications.append(run_id)
+            return StageResult(artifacts=(artifact,), metadata={"snapshot_run_id": run_id})
+
+    queue = make_queue(tmp_path)
+    job = queue.enqueue("live", trigger="live", stages=[("snapshot.publish", "v1")])
+    real_transaction = queue.database.transaction
+
+    @contextmanager
+    def contend_before_completion_commit(*, immediate=False):
+        with real_transaction(immediate=immediate) as connection:
+            yield connection
+            row = connection.execute(
+                "SELECT status, snapshot_run_id FROM jobs WHERE job_id = ?", (job.job_id,)
+            ).fetchone()
+            if row["status"] == "succeeded" and len(completion_attempts) < busy_attempts:
+                completion_attempts.append(row["snapshot_run_id"])
+                assert snapshots.latest().manifest.run_id == row["snapshot_run_id"]
+                # Contention rolls back both the success transition and this evidence write.
+                assert (
+                    connection.execute(
+                        "SELECT artifact_id FROM pending_account_check WHERE account_code = 'A'"
+                    ).fetchone()[0]
+                    == artifact.artifact_id
+                )
+                raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(queue.database, "transaction", contend_before_completion_commit)
+    registry = StageRegistry([Publish()])
+    worker = DurableWorker(queue, registry, worker_id="first", account_evidence=lambda *_: evidence)
+    if busy_attempts == 4:
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            worker.run_once()
+        assert queue.get(job.job_id).status == JobStatus.RUNNING
+        assert queue.get(job.job_id).snapshot_run_id == publications[0]
+        assert queue.pending_account_checks() == {}
+        assert queue.cancel(job.job_id).cancel_requested
+        now += timedelta(minutes=6)
+        worker = DurableWorker(
+            queue, registry, worker_id="second", account_evidence=lambda *_: evidence
+        )
+    assert worker.run_once()
+    finished = queue.get(job.job_id)
+    assert finished.status == JobStatus.SUCCEEDED
+    assert publications == [finished.snapshot_run_id]
+    assert completion_attempts == [finished.snapshot_run_id] * busy_attempts
+    assert queue.pending_account_checks() == evidence
+
+
+@pytest.mark.parametrize("cancelled", [False, True])
+@pytest.mark.parametrize("recovery", ["intent", "missing_current", "missing", "pruned"])
+def test_worker_recovers_visible_intent_after_acknowledgement_is_lost(
+    tmp_path: Path, monkeypatch, cancelled: bool, recovery: str
+) -> None:
+    import sqlite3
+
+    from trading_max.application.research_stages import TypedPublishSnapshotStage
+    from trading_max.infrastructure import SnapshotStore, job_queue
+
+    now = datetime(2026, 11, 23, 15, 0, tzinfo=UTC)
+    monkeypatch.setattr(job_queue, "_now", lambda: now)
+    store = SnapshotStore(tmp_path)
+    old = store.artifacts.put_json(key="fixture.json", payload={"value": 1})
+    new = store.artifacts.put_json(key="fixture.json", payload={"value": 2})
+    queue = make_queue(tmp_path)
+    job = queue.enqueue(
+        "live",
+        trigger="live",
+        stages=[("fixture.collect", "v1"), ("snapshot.publish", "snapshot-v2")],
+    )
+    real_set_stage = queue.set_stage
+
+    class Collect:
+        name = "fixture.collect"
+        version = "v1"
+        dependencies = ()
+        required_for = frozenset({"intraday"})
+
+        def run(self, _context):
+            return StageResult(artifacts=(old.ref,))
+
+    registry = StageRegistry([Collect(), TypedPublishSnapshotStage(store.artifacts, store)])
+    expected = {"A": job_queue.AccountEvidence(now, old.ref.artifact_id)}
+
+    def account_evidence(_record, artifact_ids):
+        assert artifact_ids == (old.ref.artifact_id,)
+        return expected
+
+    def miss_acknowledgement(job_id, worker_id, name, status, **kwargs):
+        if name == "snapshot.publish" and status == StageStatus.SUCCEEDED:
+            visible = store.latest().manifest.run_id
+            assert queue.get(job_id).snapshot_run_id == visible
+            if cancelled:
+                queue.cancel(job_id)
+            raise sqlite3.OperationalError("database is locked")
+        real_set_stage(job_id, worker_id, name, status, **kwargs)
+
+    monkeypatch.setattr(queue, "set_stage", miss_acknowledgement)
+    worker = DurableWorker(queue, registry, worker_id="first", account_evidence=account_evidence)
+    with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+        worker.run_once()
+    published = store.latest().manifest.run_id
+    assert queue.get(job.job_id).stages[-1].status == StageStatus.RUNNING
+    assert queue.pending_account_checks() == {}
+    if recovery != "intent":
+        # Model the previous WAL durability gap independently of the fsynced pointer.
+        with queue.database.transaction(immediate=True) as connection:
+            connection.execute(
+                "UPDATE jobs SET snapshot_run_id = NULL WHERE job_id = ?", (job.job_id,)
+            )
+    queue.database.close()
+
+    current = store.latest()
+    if recovery != "missing_current":
+        # A newer publication replaces the same artifact key before the lease is reclaimed.
+        current = SnapshotStore(tmp_path).publish(
+            scope="accounts", source="intervening", artifacts=[new]
+        )
+    if recovery == "pruned":
+        from services.api.trading_max_api.artifacts import ArtifactStore
+
+        assert ArtifactStore(tmp_path).prune_snapshots(keep_recent=1, keep_monthly=0) == [published]
+        assert not store.was_published(published)
+    now += timedelta(minutes=6)
+    queue = make_queue(tmp_path)
+    replacement = DurableWorker(
+        queue, registry, worker_id="replacement", account_evidence=account_evidence
+    )
+    assert replacement.run_once()
+    finished = queue.get(job.job_id)
+    assert not finished.cancel_requested
+    assert store.latest().manifest == current.manifest
+    if recovery == "pruned":
+        # Even with no surviving proof, a stale job cannot overwrite the successor.
+        assert finished.status == (JobStatus.INTERRUPTED if cancelled else JobStatus.FAILED)
+        if not cancelled:
+            assert finished.error_code == "snapshot.superseded"
+        assert finished.snapshot_run_id is None
+        assert queue.pending_account_checks() == {}
+        assert len(store.list()) == 1
+    else:
+        assert finished.status == JobStatus.SUCCEEDED
+        assert finished.snapshot_run_id == published
+        assert finished.stages[-1].status == StageStatus.SUCCEEDED
+        assert queue.pending_account_checks() == expected
+        assert len(store.list()) == (1 if recovery == "missing_current" else 2)
+
+
+@pytest.mark.parametrize("visible", [False, True])
+def test_snapshot_swap_decides_whether_cancellation_is_honored(
+    tmp_path: Path, monkeypatch, visible: bool
+) -> None:
+    import sqlite3
+
+    from trading_max.application.research_stages import TypedPublishSnapshotStage
+    from trading_max.infrastructure import SnapshotStore, job_queue, snapshots
+
+    now = datetime(2026, 11, 23, 15, 0, tzinfo=UTC)
+    monkeypatch.setattr(job_queue, "_now", lambda: now)
+    store = SnapshotStore(tmp_path)
+    artifact = store.artifacts.put_json(key="fixture.json", payload={"verified": True})
+    queue = make_queue(tmp_path)
+    job = queue.enqueue(
+        "live",
+        trigger="live",
+        stages=[("fixture.collect", "v1"), ("snapshot.publish", "snapshot-v2")],
+    )
+    evidence = {"A": job_queue.AccountEvidence(now, artifact.ref.artifact_id)}
+    sql_trace: list[str] = []
+    queue.database.connection.set_trace_callback(sql_trace.append)
+
+    class Collect:
+        name = "fixture.collect"
+        version = "v1"
+        dependencies = ()
+        required_for = frozenset({"intraday"})
+
+        def run(self, _context):
+            return StageResult(artifacts=(artifact.ref,))
+
+    registry = StageRegistry([Collect(), TypedPublishSnapshotStage(store.artifacts, store)])
+    real_write = snapshots._atomic_write
+
+    def cancel_at_swap(path, content):
+        if path != store.latest_path:
+            real_write(path, content)
+            return
+        run_id = queue.get(job.job_id).snapshot_run_id
+        assert run_id is not None
+        full = sql_trace.index("PRAGMA synchronous=FULL")
+        committed = sql_trace.index("COMMIT", full)
+        assert any(
+            "UPDATE jobs SET snapshot_run_id" in statement
+            for statement in sql_trace[full:committed]
+        )
+        assert sql_trace[committed + 1] == "PRAGMA synchronous=1"
+        if visible:
+            real_write(path, content)
+        assert queue.cancel(job.job_id).cancel_requested
+        if not visible:
+            raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(snapshots, "_atomic_write", cancel_at_swap)
+    worker = DurableWorker(queue, registry, worker_id="first", account_evidence=lambda *_: evidence)
+    if visible:
+        assert worker.run_once()
+        finished = queue.get(job.job_id)
+        assert finished.status == JobStatus.SUCCEEDED
+        assert finished.snapshot_run_id == store.latest().manifest.run_id
+        assert queue.pending_account_checks() == evidence
+    else:
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            worker.run_once()
+        assert store.latest() is None
+        assert store.list() == []
+        assert not (store.snapshots_root / queue.get(job.job_id).snapshot_run_id).exists()
+        now += timedelta(minutes=6)
+        replacement = DurableWorker(
+            queue, registry, worker_id="replacement", account_evidence=lambda *_: evidence
+        )
+        assert replacement.run_once()
+        finished = queue.get(job.job_id)
+        assert finished.status == JobStatus.INTERRUPTED
+        assert finished.snapshot_run_id is None
+        assert queue.pending_account_checks() == {}
+    assert not finished.cancel_requested

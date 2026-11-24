@@ -4,6 +4,14 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.68.3] - 2026-11-24
+
+### Fixed
+- The ten-minute valuation collection keeps running while a full reconciliation waits for Trading 212 history exports. Live and intraday collection now run on their own worker lane, which shares the Trading 212 rate limit with the other lanes, so a 40-minute export no longer leaves gaps in the day's valuation points. Reconciliation results and live points published meanwhile are both kept.
+- A trade that live collection sees while a reconciliation is already running gets its own follow-up reconciliation, which survives restarts and is retried after a failure.
+- Publication is recoverable: a worker that stops between publishing a snapshot and recording it finishes the same run on restart instead of publishing older data again, and a late cancellation no longer discards a published run.
+- The desktop App's local workspace uses the same lanes and still stops within its quit deadline.
+
 ## [1.68.2] - 2026-11-24
 
 ### Changed

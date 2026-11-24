@@ -207,3 +207,36 @@ def test_preview_resume_invalidates_old_outputs_and_dependants(tmp_path, monkeyp
         assert called == ["source", "dependent"]
         assert {ref.key for ref in published} == {*required, "dependent.json"}
         assert all(ref.producer_version != "source-v1" for ref in published)
+
+
+def test_preview_workers_execute_live_jobs_on_the_live_lane(tmp_path, monkeypatch):
+    import threading
+    import time
+
+    from services.api.trading_max_api.artifacts import ArtifactStore
+    from services.api.trading_max_api.typed_jobs import TypedJobManager
+    from services.api.trading_max_api.watchlist import WatchlistStore
+    from tools.serve_broker_preview import BrokerPreviewStage, start_preview_workers
+
+    lane = []
+
+    def refresh(state):
+        assert state == tmp_path
+        lane.append(threading.current_thread().name)
+        return {}
+
+    monkeypatch.setattr("tools.serve_broker_preview.refresh_broker_inputs", refresh)
+    jobs = TypedJobManager(ArtifactStore(tmp_path), WatchlistStore(tmp_path))
+    try:
+        start_preview_workers(jobs, tmp_path, poll_seconds=0.05)
+        job = jobs.queue.enqueue(
+            "live", trigger="live", stages=[("broker.sync", BrokerPreviewStage.version)]
+        )
+        deadline = time.monotonic() + 5
+        while jobs.get(job.job_id).status in {"queued", "running"} and time.monotonic() < deadline:
+            time.sleep(0.01)
+        finished = jobs.get(job.job_id)
+        assert finished.status == "succeeded", finished.error
+        assert lane == ["broker-preview-worker-live"]
+    finally:
+        assert jobs.close()

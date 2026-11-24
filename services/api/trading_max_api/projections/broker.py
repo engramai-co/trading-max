@@ -8,7 +8,7 @@ from math import isfinite
 from .values import JsonObject, nullable_number
 
 
-def _observed_at(account: JsonObject) -> datetime | None:
+def broker_observed_at(account: JsonObject) -> datetime | None:
     raw = account.get("fetched_at") or account.get("fetched_at_utc")
     if not raw:
         return None
@@ -84,8 +84,8 @@ def overlay_live_broker_snapshot(
         raw_live = live_accounts.get(code)
         if not isinstance(raw_canonical, dict) or not isinstance(raw_live, dict):
             continue
-        canonical_time = _observed_at(raw_canonical)
-        live_time = _observed_at(raw_live)
+        canonical_time = broker_observed_at(raw_canonical)
+        live_time = broker_observed_at(raw_live)
         if live_time is None or (canonical_time is not None and live_time < canonical_time):
             continue
 

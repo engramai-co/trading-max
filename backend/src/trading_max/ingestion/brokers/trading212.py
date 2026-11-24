@@ -15,6 +15,7 @@ import os
 import random
 import re
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
@@ -492,10 +493,12 @@ class Trading212RateLimiter:
             if limit and period is not None:
                 self._stricter_interval[endpoint] = period / limit
                 self._next_request[endpoint] = max(
-                    self._next_request[endpoint], sent_at + self.interval(endpoint)
+                    self._next_request.get(endpoint, 0.0), sent_at + self.interval(endpoint)
                 )
             if reset_delay is not None and headers.get("x-ratelimit-remaining") == "0":
-                self._next_request[endpoint] = max(self._next_request[endpoint], now + reset_delay)
+                self._next_request[endpoint] = max(
+                    self._next_request.get(endpoint, 0.0), now + reset_delay
+                )
             if cooldown is not None:
                 # Treat a broker 429 as account-wide for the cooldown: a fresh
                 # sync must not replay its earlier endpoints during that window.
@@ -973,14 +976,17 @@ def inspect_export_csv(path: Path) -> dict[str, Any]:
 
 def _write_private_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_suffix(path.suffix + ".tmp")
-    temporary.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n",
-        encoding="utf-8",
-    )
-    with suppress(OSError):
-        temporary.chmod(0o600)
-    temporary.replace(path)
+    content = json.dumps(payload, ensure_ascii=False, indent=2, default=str) + "\n"
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
+    temporary = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(content)
+        with suppress(OSError):
+            temporary.chmod(0o600)
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 class ManagedAccountStore:
@@ -1020,11 +1026,14 @@ class ManagedAccountStore:
             f"{self.profile}_{report_id}_consolidated.csv"
         )
 
-    def write_snapshot(self, payload: Mapping[str, Any]) -> Path:
+    def write_snapshot(self, payload: Mapping[str, Any], *, intraday: bool = False) -> Path:
         timestamp = str(payload.get("fetched_at_utc", "")).replace(":", "").replace("-", "")
         if not timestamp:
             timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-        path = self.snapshots_dir / f"snapshot_{timestamp}.json"
+        # Keep both observations when reconciliation and live collection fetch
+        # within the same second. The live filename sorts last on a tie.
+        suffix = "_live" if intraday else ""
+        path = self.snapshots_dir / f"snapshot_{timestamp}{suffix}.json"
         _write_private_json(path, payload)
         return path
 

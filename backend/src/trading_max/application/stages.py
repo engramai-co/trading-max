@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
@@ -25,6 +25,8 @@ class StageContext:
     inputs: Mapping[str, ArtifactRef] = field(default_factory=dict)
     upstream_artifact_ids: tuple[str, ...] = ()
     configuration: Mapping[str, str] = field(default_factory=dict)
+    prepare_publication: Callable[[str], None] | None = None
+    recovering_publication: bool = False
 
 
 @dataclass(frozen=True, slots=True)

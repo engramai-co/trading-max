@@ -7,6 +7,16 @@ from collections.abc import Callable
 from contextlib import suppress
 from datetime import UTC, datetime
 
+from trading_max.analytics.cash_flow_history import AccountCashFlowHistory
+from trading_max.analytics.day_attribution import (
+    DayAttribution,
+    DayBaseline,
+    WindowAttribution,
+    WindowBaselines,
+    update_day_attribution,
+    update_window_attribution,
+    window_days,
+)
 from trading_max.analytics.etf_journal import (
     ETF_BENCHMARKS_KEY,
     ETF_JOURNAL_KEY,
@@ -15,7 +25,8 @@ from trading_max.analytics.etf_journal import (
 )
 from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFPortfolio
 from trading_max.analytics.exposure_history import record_exposure
-from trading_max.domain import ArtifactQuality
+from trading_max.analytics.intraday import IntradayAnchorSeries, merge_valuation_history
+from trading_max.domain import ArtifactQuality, ArtifactRef
 from trading_max.infrastructure import (
     ContentAddressedArtifactStore,
     SnapshotStore,
@@ -58,7 +69,17 @@ from trading_max.research.market import (
     TechnicalResearchBatch,
 )
 
+from .account_selection import ACCOUNT_PROFILES
+from .broker_stages import broker_snapshot_key
 from .errors import StageExecutionError
+from .nav_stages import (
+    DAY_ATTRIBUTION_KEY,
+    DAY_BASELINE_KEY,
+    VALUATION_HISTORY_KEY,
+    WINDOW_ATTRIBUTION_KEY,
+    WINDOW_BASELINES_KEY,
+    load_share_movements,
+)
 from .stages import StageContext, StageResult
 
 LOGGER = logging.getLogger(__name__)
@@ -1037,6 +1058,45 @@ class EarningsArtifactStage:
         )
 
 
+CASH_FLOW_KEYS = frozenset({"account/nav/cash_flows_a.json", "account/nav/cash_flows_b.json"})
+
+
+def _merge_day_baseline(previous: DayBaseline, incoming: DayBaseline) -> DayBaseline:
+    if incoming.day < previous.day:
+        return previous
+    if incoming.day > previous.day:
+        return incoming
+    accounts = dict(previous.accounts)
+    for code, opening in incoming.accounts.items():
+        existing = accounts.get(code)
+        if existing is None or opening.captured_at < existing.captured_at:
+            accounts[code] = opening
+    return DayBaseline(day=incoming.day, accounts=accounts)
+
+
+def _merge_window_baselines(
+    previous: WindowBaselines, incoming: WindowBaselines
+) -> WindowBaselines:
+    prev_max = max((item.day for item in previous.days), default=None)
+    inc_max = max((item.day for item in incoming.days), default=None)
+    if prev_max is not None and (inc_max is None or inc_max < prev_max):
+        return previous
+    if inc_max is None or prev_max is None:
+        return incoming
+    prev_by_day = {item.day: item for item in previous.days}
+    inc_by_day = {item.day: item for item in incoming.days}
+    days: list[DayBaseline] = []
+    for day in window_days(inc_max):
+        prev_day, inc_day = prev_by_day.get(day), inc_by_day.get(day)
+        if prev_day is not None and inc_day is not None:
+            days.append(_merge_day_baseline(prev_day, inc_day))
+        elif prev_day is not None:
+            days.append(prev_day)
+        elif inc_day is not None:
+            days.append(inc_day)
+    return WindowBaselines(days=days)
+
+
 class TypedPublishSnapshotStage:
     """Publish the exact artifact IDs produced by preceding typed stages."""
 
@@ -1057,6 +1117,12 @@ class TypedPublishSnapshotStage:
         self.snapshots = snapshots
         self.on_snapshot_published = on_snapshot_published
         self.estimate_history = estimate_history
+
+    def publication_visible(self, run_id: str) -> bool:
+        return self.snapshots.was_published(run_id)
+
+    def find_publication(self, job_id: str, trigger: str) -> str | None:
+        return self.snapshots.find_publication(f"{trigger}:{job_id}")
 
     def _merge_partial_research(
         self,
@@ -1141,124 +1207,459 @@ class TypedPublishSnapshotStage:
             )
         return merged_refs
 
+    def _merge_valuation_history_ref(
+        self, previous_ref: ArtifactRef, ref: ArtifactRef, *, is_live: bool
+    ) -> ArtifactRef:
+        if previous_ref.artifact_id == ref.artifact_id or (
+            previous_ref.artifact_id in ref.dependency_artifact_ids
+        ):
+            return ref
+        try:
+            prev_series = IntradayAnchorSeries.model_validate(
+                self.artifacts.get_json(previous_ref.artifact_id).payload
+            )
+            inc_series = IntradayAnchorSeries.model_validate(
+                self.artifacts.get_json(ref.artifact_id).payload
+            )
+        except (FileNotFoundError, KeyError, TypeError, ValueError):
+            return ref
+        if prev_series.interval_seconds != inc_series.interval_seconds:
+            return ref
+        merged_generated_at = max(
+            prev_series.generated_at,
+            inc_series.generated_at,
+            max(
+                (point.observed_at for point in prev_series.points),
+                default=prev_series.generated_at,
+            ),
+            max(
+                (point.observed_at for point in inc_series.points), default=inc_series.generated_at
+            ),
+        )
+        retention_days = max(prev_series.retention_days, inc_series.retention_days)
+        if is_live:
+            broker_points = [point for point in inc_series.points if point.source == "broker"]
+            merged = merge_valuation_history(
+                prev_series,
+                broker_points,
+                generated_at=merged_generated_at,
+                interval_seconds=inc_series.interval_seconds,
+                retention_days=retention_days,
+                replace_reconstructed=False,
+            )
+        else:
+            broker_points = [point for point in prev_series.points if point.source == "broker"]
+            merged = merge_valuation_history(
+                inc_series,
+                broker_points,
+                generated_at=merged_generated_at,
+                interval_seconds=inc_series.interval_seconds,
+                retention_days=retention_days,
+                replace_reconstructed=False,
+            )
+        if merged == inc_series:
+            return ref
+        if merged == prev_series:
+            return previous_ref
+        return self.artifacts.put_json(
+            key=ref.key,
+            payload=merged.model_dump(mode="json", by_alias=False),
+            kind=ref.kind,
+            as_of=(merged.points[-1].observed_at.isoformat() if merged.points else ref.as_of),
+            producer_version=ref.producer_version,
+            dependency_artifact_ids=list(
+                dict.fromkeys([*ref.dependency_artifact_ids, previous_ref.artifact_id])
+            ),
+            quality=ref.quality,
+        ).ref
+
+    def _reconcile_cash_flows_ref(
+        self, previous_ref: ArtifactRef, ref: ArtifactRef, *, is_live: bool
+    ) -> ArtifactRef:
+        if previous_ref.artifact_id == ref.artifact_id:
+            return ref
+        try:
+            prev_flows = AccountCashFlowHistory.model_validate(
+                self.artifacts.get_json(previous_ref.artifact_id).payload
+            )
+            inc_flows = AccountCashFlowHistory.model_validate(
+                self.artifacts.get_json(ref.artifact_id).payload
+            )
+        except (FileNotFoundError, KeyError, TypeError, ValueError):
+            return ref
+        same_evidence = (
+            prev_flows.verified
+            and inc_flows.verified
+            and prev_flows.source_digest == inc_flows.source_digest
+            and prev_flows.account_state_digest == inc_flows.account_state_digest
+            and prev_flows.events == inc_flows.events
+        )
+        if is_live:
+            extends_current = previous_ref.artifact_id in ref.dependency_artifact_ids
+            if (
+                extends_current or same_evidence
+            ) and inc_flows.covered_until > prev_flows.covered_until:
+                return ref
+            return previous_ref
+        if same_evidence and prev_flows.covered_until > inc_flows.covered_until:
+            return previous_ref
+        return ref
+
+    def _attribution_observation(
+        self, ref: ArtifactRef, profile: str, as_of: datetime | None = None
+    ) -> tuple[str, dict] | None:
+        """Find the normalized observation behind a selected attribution row."""
+        account_keys = {f"account/{profile}.json", f"account/intraday/{profile}.json"}
+        pending = list(ref.dependency_artifact_ids)
+        seen: set[str] = set()
+        while pending:
+            artifact_id = pending.pop()
+            if artifact_id in seen:
+                continue
+            seen.add(artifact_id)
+            try:
+                dependency = self.artifacts.get_ref(artifact_id)
+                if dependency.key == ref.key:
+                    # Older merged artifacts link to the previous attribution ref.
+                    pending.extend(dependency.dependency_artifact_ids)
+                elif dependency.key in account_keys:
+                    payload = self.artifacts.get_json(artifact_id).payload
+                    observed_at = datetime.fromisoformat(payload["fetched_at"])
+                    if as_of is None or observed_at == as_of:
+                        return artifact_id, payload
+            except (FileNotFoundError, KeyError, TypeError, ValueError):
+                continue
+        return None
+
+    def _reconcile_attribution(
+        self,
+        previous: dict[str, ArtifactRef],
+        incoming: dict[str, ArtifactRef],
+        *,
+        baseline_key: str,
+        attribution_key: str,
+    ) -> dict[str, ArtifactRef]:
+        prev_baseline_ref = previous.get(baseline_key)
+        baseline_ref = incoming.get(baseline_key)
+        prev_ref = previous.get(attribution_key)
+        ref = incoming.get(attribution_key)
+        if any(item is None for item in (prev_baseline_ref, baseline_ref, prev_ref, ref)):
+            return {}
+        is_window = baseline_key == WINDOW_BASELINES_KEY
+        baseline_cls = WindowBaselines if is_window else DayBaseline
+        model_cls = WindowAttribution if is_window else DayAttribution
+        try:
+            old_base = baseline_cls.model_validate(
+                self.artifacts.get_json(prev_baseline_ref.artifact_id).payload
+            )
+            new_base = baseline_cls.model_validate(
+                self.artifacts.get_json(baseline_ref.artifact_id).payload
+            )
+            old_attr = model_cls.model_validate(
+                self.artifacts.get_json(prev_ref.artifact_id).payload
+            )
+            new_attr = model_cls.model_validate(self.artifacts.get_json(ref.artifact_id).payload)
+        except (FileNotFoundError, KeyError, TypeError, ValueError):
+            return {}
+        if new_attr.day < old_attr.day:
+            return {baseline_key: prev_baseline_ref, attribution_key: prev_ref}
+        baseline = (
+            _merge_window_baselines(old_base, new_base)
+            if is_window
+            else _merge_day_baseline(old_base, new_base)
+        )
+        merged_base_ref = baseline_ref
+        if baseline != new_base:
+            merged_base_ref = (
+                prev_baseline_ref
+                if baseline == old_base
+                else self._store_attribution(
+                    baseline_ref, baseline, [prev_baseline_ref.artifact_id]
+                )
+            )
+
+        def openings(model: DayBaseline | WindowBaselines, code: str) -> list:
+            days = model.days if isinstance(model, WindowBaselines) else [model]
+            return [entry.accounts[code] for entry in days if code in entry.accounts]
+
+        accounts = {}
+        dependencies = [merged_base_ref.artifact_id]
+        for code, profile in ACCOUNT_PROFILES:
+            row = new_attr.accounts.get(code)
+            old_row = old_attr.accounts.get(code) if old_attr.day == new_attr.day else None
+            incoming_time = row.as_of if row is not None else None
+            if row is None and old_row is not None:
+                unverified = self._attribution_observation(ref, profile)
+                if unverified is not None:
+                    incoming_time = datetime.fromisoformat(unverified[1]["fetched_at"])
+            use_previous = (
+                old_row is not None
+                and incoming_time is not None
+                and (
+                    old_row.as_of > incoming_time
+                    or (row is None and old_row.as_of == incoming_time)
+                )
+            )
+            selected_row = old_row if use_previous else row
+            if selected_row is None:
+                continue
+            selected_base = old_base if use_previous else new_base
+            selected_ref = prev_ref if use_previous else ref
+            observation = self._attribution_observation(selected_ref, profile, selected_row.as_of)
+            if observation is not None:
+                dependencies.append(observation[0])
+            if openings(selected_base, code) == openings(baseline, code):
+                accounts[code] = selected_row
+            elif observation is not None:
+                # The winning mark was calculated from another opening. Reuse
+                # the regular attribution pipeline with the winning evidence.
+                share_movements, _ = load_share_movements(self.snapshots.root, {code: profile})
+                if is_window:
+                    today = next(
+                        (entry for entry in baseline.days if entry.day == new_attr.day), None
+                    )
+                    if today is None:
+                        continue
+                    _, recalculated = update_window_attribution(
+                        baseline.model_dump(mode="json"),
+                        today,
+                        {code: observation[1]},
+                        share_movements=share_movements,
+                    )
+                else:
+                    _, recalculated = update_day_attribution(
+                        baseline.model_dump(mode="json"),
+                        {code: observation[1]},
+                        share_movements=share_movements,
+                    )
+                if code in recalculated.accounts:
+                    accounts[code] = recalculated.accounts[code]
+
+        merged = new_attr.model_copy(update={"accounts": accounts})
+        if merged == new_attr and merged_base_ref == baseline_ref:
+            result = ref
+        elif merged == old_attr and merged_base_ref == prev_baseline_ref:
+            result = prev_ref
+        else:
+            result = self._store_attribution(
+                ref,
+                merged,
+                [prev_ref.artifact_id, ref.artifact_id, *dependencies],
+                keep_dependencies=False,
+            )
+        return {baseline_key: merged_base_ref, attribution_key: result}
+
+    def _store_attribution(
+        self, ref: ArtifactRef, payload, dependencies: list[str], *, keep_dependencies: bool = True
+    ) -> ArtifactRef:
+        return self.artifacts.put_json(
+            key=ref.key,
+            payload=payload.model_dump(mode="json", by_alias=False),
+            kind=ref.kind,
+            as_of=ref.as_of,
+            producer_version=ref.producer_version,
+            dependency_artifact_ids=list(
+                dict.fromkeys(
+                    [
+                        *(ref.dependency_artifact_ids if keep_dependencies else ()),
+                        *dependencies,
+                    ]
+                )
+            ),
+            quality=ref.quality,
+        ).ref
+
+    def _reconcile_concurrent_account_artifacts(
+        self,
+        new_refs: list[ArtifactRef],
+        *,
+        previous: StoredSnapshot | None,
+        context: StageContext,
+    ) -> list[ArtifactRef]:
+        """Apply concurrent main/live conflict rules under ``publication_lock``."""
+
+        if previous is None:
+            return new_refs
+        is_live = context.scope in {"intraday", "live"} or context.trigger in {"intraday", "live"}
+        previous_by_key = {ref.key: ref for ref in previous.manifest.artifacts}
+        incoming_by_key = {ref.key: ref for ref in new_refs}
+        attribution = {}
+        for baseline_key, attribution_key in (
+            (DAY_BASELINE_KEY, DAY_ATTRIBUTION_KEY),
+            (WINDOW_BASELINES_KEY, WINDOW_ATTRIBUTION_KEY),
+        ):
+            attribution.update(
+                self._reconcile_attribution(
+                    previous_by_key,
+                    incoming_by_key,
+                    baseline_key=baseline_key,
+                    attribution_key=attribution_key,
+                )
+            )
+        reconciled = []
+        legacy_raw_keys = {
+            broker_snapshot_key(profile, intraday=False) for profile in ("invest", "isa")
+        }
+        for ref in new_refs:
+            previous_ref = previous_by_key.get(ref.key)
+            if previous_ref is None:
+                reconciled.append(ref)
+            elif is_live and ref.key in legacy_raw_keys:
+                # A resumed live job may carry the old shared raw key.
+                reconciled.append(previous_ref)
+            elif ref.key == VALUATION_HISTORY_KEY:
+                reconciled.append(
+                    self._merge_valuation_history_ref(previous_ref, ref, is_live=is_live)
+                )
+            elif ref.key in CASH_FLOW_KEYS:
+                reconciled.append(
+                    self._reconcile_cash_flows_ref(previous_ref, ref, is_live=is_live)
+                )
+            elif ref.key in attribution:
+                reconciled.append(attribution[ref.key])
+            else:
+                reconciled.append(ref)
+        return reconciled
+
     def run(self, context: StageContext) -> StageResult:
         if not context.upstream_artifact_ids:
             raise StageExecutionError(
                 "snapshot.empty",
                 "cannot publish a snapshot without upstream artifacts",
             )
-        new_refs = [
+        upstream_refs = [
             self.artifacts.get_ref(artifact_id) for artifact_id in context.upstream_artifact_ids
         ]
-        refs_by_key = {}
-        previous = self.snapshots.latest()
-        if previous is not None:
-            refs_by_key.update({ref.key: ref for ref in previous.manifest.artifacts})
-        new_refs = self._merge_partial_research(
-            new_refs,
-            previous=previous,
-            context=context,
-        )
-        current_etf = next((ref for ref in new_refs if ref.key == ETF_SUMMARY_KEY), None)
-        if current_etf:
-            old_summary = refs_by_key.get(ETF_SUMMARY_KEY)
-            old_journal = refs_by_key.get(ETF_JOURNAL_KEY)
-            journal = (
-                self.artifacts.get_json(old_journal.artifact_id).payload if old_journal else {}
-            )
-            old = (
-                ETFPortfolio.model_validate(
-                    self.artifacts.get_json(old_summary.artifact_id).payload
-                )
-                if old_summary
-                else ETFPortfolio()
-            )
-            current = ETFPortfolio.model_validate(
-                self.artifacts.get_json(current_etf.artifact_id).payload
-            )
-            benchmark_ref = refs_by_key.get(ETF_BENCHMARKS_KEY)
-            previous_benchmarks = (
-                self.artifacts.get_json(benchmark_ref.artifact_id).payload if benchmark_ref else {}
-            )
-            benchmarks = {
-                key: BenchmarkObservation.model_validate(row)
-                for key, row in previous_benchmarks.items()
-            }
-            updated = update_etf_journal(
-                journal, old, current, current_etf.generated_at.isoformat(), benchmarks=benchmarks
-            )
-            benchmark_payload = {
-                key: row.model_dump(mode="json") for key, row in benchmarks.items()
-            }
-            if benchmark_payload != previous_benchmarks:
-                refs_by_key[ETF_BENCHMARKS_KEY] = self.artifacts.put_json(
-                    key=ETF_BENCHMARKS_KEY,
-                    kind="etf-benchmark-observations",
-                    payload=benchmark_payload,
-                    producer_version="etf-benchmark-observations-v1",
-                    dependency_artifact_ids=[current_etf.artifact_id],
-                ).ref
-            if updated != journal:
-                refs_by_key[ETF_JOURNAL_KEY] = self.artifacts.put_json(
-                    key=ETF_JOURNAL_KEY,
-                    kind="etf-journal",
-                    payload=updated,
-                    producer_version="etf-journal-v2",
-                    dependency_artifact_ids=[current_etf.artifact_id],
-                ).ref
-            # ETF evidence is a complete set for the current account selection.
-            refs_by_key = {
-                key: ref
-                for key, ref in refs_by_key.items()
-                if not key.startswith(("account/etfs/", "account/etf_holdings/"))
-            }
-        refs_by_key.update({ref.key: ref for ref in new_refs})
-        exposure = next(
-            (ref for ref in new_refs if ref.key == "account/lookthrough_metrics.json"), None
-        )
-        if exposure:
-            record_exposure(self.artifacts, refs_by_key, exposure)
         estimate_batches = {}
-        estimate_keys = (
-            ESTIMATE_KEYS.intersection(ref.key for ref in new_refs)
-            if self.estimate_history is not None and context.trigger in SCHEDULED_RESEARCH_TRIGGERS
-            else frozenset()
-        )
-        if context.scope in {"all", "research"}:
-            coverage: dict[str, dict] = {}
-            for key, ref in refs_by_key.items():
-                if key not in MERGEABLE_RESEARCH_KEYS or key in {
-                    "research/market_snapshot.json",
-                    FUND_PRICES_KEY,
-                    FUND_PRICE_DIRECTORY_KEY,
-                }:
-                    continue
-                raw = self.artifacts.get_json(ref.artifact_id).payload
-                if key in estimate_keys:
-                    estimate_batches[key] = raw
-                name = key.removeprefix("research/").removesuffix(".json")
-                for ticker, clock in row_clocks(
-                    raw, generated_at=ref.generated_at.isoformat()
-                ).items():
-                    coverage.setdefault(ticker, {})[name] = clock
-            capability_ref = self.artifacts.put_json(
-                key="research/coverage.json",
-                payload={
-                    "rows": [
-                        {"ticker": ticker, "datasets": datasets}
-                        for ticker, datasets in coverage.items()
-                    ]
-                },
-                kind="research-coverage",
-                producer_version="research-coverage-v1",
-            ).ref
-            refs_by_key[capability_ref.key] = capability_ref
-        refs = list(refs_by_key.values())
-        published = self.snapshots.publish(
-            scope=context.scope,
-            source=f"{context.trigger}:{context.job_id}",
-            artifacts=refs,
-        )
+        with self.snapshots.publication_lock():
+            refs_by_key = {}
+            previous = self.snapshots.latest()
+            if previous is not None:
+                if context.recovering_publication and previous.manifest.created_at > max(
+                    ref.generated_at for ref in upstream_refs
+                ):
+                    raise StageExecutionError(
+                        "snapshot.superseded",
+                        "a newer snapshot was published after the recovered job's inputs",
+                    )
+                refs_by_key.update({ref.key: ref for ref in previous.manifest.artifacts})
+            new_refs = self._merge_partial_research(
+                upstream_refs,
+                previous=previous,
+                context=context,
+            )
+            new_refs = self._reconcile_concurrent_account_artifacts(
+                new_refs,
+                previous=previous,
+                context=context,
+            )
+            current_etf = next((ref for ref in new_refs if ref.key == ETF_SUMMARY_KEY), None)
+            if current_etf:
+                old_summary = refs_by_key.get(ETF_SUMMARY_KEY)
+                old_journal = refs_by_key.get(ETF_JOURNAL_KEY)
+                journal = (
+                    self.artifacts.get_json(old_journal.artifact_id).payload if old_journal else {}
+                )
+                old = (
+                    ETFPortfolio.model_validate(
+                        self.artifacts.get_json(old_summary.artifact_id).payload
+                    )
+                    if old_summary
+                    else ETFPortfolio()
+                )
+                current = ETFPortfolio.model_validate(
+                    self.artifacts.get_json(current_etf.artifact_id).payload
+                )
+                benchmark_ref = refs_by_key.get(ETF_BENCHMARKS_KEY)
+                previous_benchmarks = (
+                    self.artifacts.get_json(benchmark_ref.artifact_id).payload
+                    if benchmark_ref
+                    else {}
+                )
+                benchmarks = {
+                    key: BenchmarkObservation.model_validate(row)
+                    for key, row in previous_benchmarks.items()
+                }
+                updated = update_etf_journal(
+                    journal,
+                    old,
+                    current,
+                    current_etf.generated_at.isoformat(),
+                    benchmarks=benchmarks,
+                )
+                benchmark_payload = {
+                    key: row.model_dump(mode="json") for key, row in benchmarks.items()
+                }
+                if benchmark_payload != previous_benchmarks:
+                    refs_by_key[ETF_BENCHMARKS_KEY] = self.artifacts.put_json(
+                        key=ETF_BENCHMARKS_KEY,
+                        kind="etf-benchmark-observations",
+                        payload=benchmark_payload,
+                        producer_version="etf-benchmark-observations-v1",
+                        dependency_artifact_ids=[current_etf.artifact_id],
+                    ).ref
+                if updated != journal:
+                    refs_by_key[ETF_JOURNAL_KEY] = self.artifacts.put_json(
+                        key=ETF_JOURNAL_KEY,
+                        kind="etf-journal",
+                        payload=updated,
+                        producer_version="etf-journal-v2",
+                        dependency_artifact_ids=[current_etf.artifact_id],
+                    ).ref
+                # ETF evidence is a complete set for the current account selection.
+                refs_by_key = {
+                    key: ref
+                    for key, ref in refs_by_key.items()
+                    if not key.startswith(("account/etfs/", "account/etf_holdings/"))
+                }
+            refs_by_key.update({ref.key: ref for ref in new_refs})
+            exposure = next(
+                (ref for ref in new_refs if ref.key == "account/lookthrough_metrics.json"), None
+            )
+            if exposure:
+                record_exposure(self.artifacts, refs_by_key, exposure)
+            estimate_keys = (
+                ESTIMATE_KEYS.intersection(ref.key for ref in new_refs)
+                if self.estimate_history is not None
+                and context.trigger in SCHEDULED_RESEARCH_TRIGGERS
+                else frozenset()
+            )
+            if context.scope in {"all", "research"}:
+                coverage: dict[str, dict] = {}
+                for key, ref in refs_by_key.items():
+                    if key not in MERGEABLE_RESEARCH_KEYS or key in {
+                        "research/market_snapshot.json",
+                        FUND_PRICES_KEY,
+                        FUND_PRICE_DIRECTORY_KEY,
+                    }:
+                        continue
+                    raw = self.artifacts.get_json(ref.artifact_id).payload
+                    if key in estimate_keys:
+                        estimate_batches[key] = raw
+                    name = key.removeprefix("research/").removesuffix(".json")
+                    for ticker, clock in row_clocks(
+                        raw, generated_at=ref.generated_at.isoformat()
+                    ).items():
+                        coverage.setdefault(ticker, {})[name] = clock
+                capability_ref = self.artifacts.put_json(
+                    key="research/coverage.json",
+                    payload={
+                        "rows": [
+                            {"ticker": ticker, "datasets": datasets}
+                            for ticker, datasets in coverage.items()
+                        ]
+                    },
+                    kind="research-coverage",
+                    producer_version="research-coverage-v1",
+                ).ref
+                refs_by_key[capability_ref.key] = capability_ref
+            refs = list(refs_by_key.values())
+            published = self.snapshots.publish(
+                scope=context.scope,
+                source=f"{context.trigger}:{context.job_id}",
+                artifacts=refs,
+                prepare=context.prepare_publication,
+            )
         if self.estimate_history is not None and estimate_batches.keys() == ESTIMATE_KEYS:
             observed_at = published.manifest.created_at
             try:
@@ -1276,7 +1677,7 @@ class TypedPublishSnapshotStage:
             except Exception:
                 # The archive is additive; preserve the complete research publication.
                 LOGGER.exception("estimate history append failed")
-        if self.on_snapshot_published is not None and context.trigger != "intraday":
+        if self.on_snapshot_published is not None and context.trigger not in {"intraday", "live"}:
             # Synthesis is additive. A provider or queue outage must not
             # invalidate an otherwise complete portfolio snapshot.
             with suppress(Exception):

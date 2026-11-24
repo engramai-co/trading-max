@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from threading import Event
 
 from trading_max.application.broker_sync import (
     BrokerSyncRequest,
@@ -20,8 +21,13 @@ from trading_max.ingestion.brokers.trading212 import (
 )
 
 from .account_selection import SELECTION_KEY
-from .errors import StageExecutionError
+from .errors import StageExecutionError, WorkerShutdown
 from .stages import StageContext, StageResult
+
+
+def broker_snapshot_key(profile: str, *, intraday: bool) -> str:
+    prefix = "raw/trading212/live" if intraday else "raw/trading212"
+    return f"{prefix}/{profile}.json"
 
 
 class BrokerSyncStage:
@@ -40,6 +46,7 @@ class BrokerSyncStage:
         sync: Trading212BrokerSync | None = None,
         profiles: tuple[str, ...] = ("invest", "isa"),
         profiles_loader=None,
+        stop_event: Event | None = None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
         self.artifacts = artifacts
@@ -47,6 +54,7 @@ class BrokerSyncStage:
         self.profiles_loader = profiles_loader
         self.sync = sync or Trading212BrokerSync(
             store_factory=lambda profile: self._store(profile),
+            stop_event=stop_event,
         )
 
     def _store(self, profile: str):
@@ -103,6 +111,8 @@ class BrokerSyncStage:
             )
             try:
                 result = self.sync.sync(request)
+            except WorkerShutdown:
+                raise
             except Exception as exc:
                 retryable = (
                     exc.retryable
@@ -118,7 +128,7 @@ class BrokerSyncStage:
                 ) from exc
             payload = result.snapshot.model_dump(mode="json", by_alias=False)
             artifact = self.artifacts.put_json(
-                key=f"raw/trading212/{profile}.json",
+                key=broker_snapshot_key(profile, intraday=False),
                 payload=payload,
                 kind="broker_snapshot",
                 as_of=result.snapshot.fetched_at.date().isoformat(),
@@ -171,6 +181,8 @@ class BrokerSyncStage:
                     raw_snapshot,
                     require_positions_match=False,
                 )
+            except WorkerShutdown:
+                raise
             except Exception as exc:
                 retryable = (
                     exc.retryable
@@ -197,7 +209,7 @@ class BrokerSyncStage:
                 warnings.append(warning)
                 profile_warnings.append(warning)
             artifact = self.artifacts.put_json(
-                key=f"raw/trading212/{profile}.json",
+                key=broker_snapshot_key(profile, intraday=True),
                 payload=raw_snapshot,
                 kind="broker_snapshot",
                 as_of=snapshot.fetched_at.date().isoformat(),
