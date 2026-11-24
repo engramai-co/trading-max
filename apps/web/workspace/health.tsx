@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Drawer, Group, Select, Stack } from "@mantine/core";
+import { Button, Drawer, Group, Loader, Select, Stack } from "@mantine/core";
 import {
   ArrowClockwise,
   ArrowRight,
@@ -11,20 +11,20 @@ import {
 } from "@phosphor-icons/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "./link";
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import {
-  deriveHealthTone,
-  snapshotLifecycle,
+  deriveHealthDecision,
   durationBetween,
-  formatAge,
   flowVerificationText,
+  formatAge,
   shortRunId,
+  type HealthLocale,
 } from "@/lib/health";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { HealthDetails, RefreshJob } from "@/lib/types";
 import { formatDateTime } from "@/ui/formatters";
-import { api, ApiError, jsonRequest, number } from "@/workspace/data";
+import { api, ApiError, isReadTimeout, jsonRequest, number } from "@/workspace/data";
 import {
   Empty,
   Facts,
@@ -43,7 +43,6 @@ import { useOptionalAssistant } from "./assistant/context";
 import { PageInspection } from "./assistant/inspection-entry";
 import { useSearchParams } from "next/navigation";
 import { DemoAsOf } from "./demonstration";
-import { activityState } from "./desktop-status";
 import { collapseRoutineRuns } from "./job-history";
 import { JobOutcomeSummary } from "./job-outcomes";
 
@@ -79,34 +78,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const Controls = desktop ? "details" : Fragment;
   const Actions = desktop ? Group : Fragment;
   const controlsProps = desktop ? { className: "mx-activity-controls", open: controlsOpen, onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => setControlsOpen(event.currentTarget.open) } : {};
-  const data = query.data;
-  const latestRunId = data?.health?.latestRunId ?? data?.readiness?.latestRunId;
-  const activity = activityState(data ?? null, localWorkspace);
-  const tone = desktop ? activity.tone : deriveHealthTone(data ?? null, localWorkspace);
-  const snapshot = snapshotLifecycle(data, tone);
-  // A reachable service is not fresh data: snapshots publish several times a
-  // day, so a day without one means updates stopped.
-  const snapshotAge = data?.health?.artifactAgeSeconds;
-  const staleHours = !readOnly && tone === "ready" && snapshot === "published" && snapshotAge != null && snapshotAge > 86_400
-    ? Math.floor(snapshotAge / 3600) : null;
-  const staleAge = staleHours == null ? "" : formatAge(snapshotAge, locale);
-  const job =
-    data?.jobs.find((j) => j.jobId === selected) ?? activity.failures.find((j) => j.jobId === selected) ??
-    (start.data?.jobId === selected ? start.data : null);
-  const queued = data?.health?.queue.queued ?? 0;
-  const running = data?.health?.queue.running ?? 0;
-  const worker = data?.health?.worker ?? data?.readiness?.worker;
-  // The heading already says a healthy service is running; only a problem gets a row.
-  const apiReachable = data?.health?.status === "ok" || tone === "setup";
-  const bootstrapIssue = Boolean(
-    tone !== "setup" && data?.health?.bootstrapError &&
-      !(localWorkspace && !latestRunId && data.health.bootstrapError === "FileNotFoundError: no typed snapshot has been published"),
-  );
-  // Service details earn a panel only when something is wrong; otherwise the schedule takes their place.
-  const serviceIssue = Boolean(data) && (!apiReachable || !worker?.healthy || bootstrapIssue || Boolean(data?.errors.length));
-  const lastSuccess = data?.health?.queue.last_success_at;
-  const snapshotTime = data && snapshot === "published" && snapshotAge != null && Number.isFinite(Date.parse(data.checkedAt))
-    ? new Date(Date.parse(data.checkedAt) - snapshotAge * 1000).toISOString() : null;
+  const [manualChecking, setManualChecking] = useState(false);
+  const manualCheckingRef = useRef(false);
+  const [announcement, setAnnouncement] = useState("");
+  const lastSemanticKeyRef = useRef<string | null>(null);
   const scopes = [
     { value: "all", label: t("账户、流水与研究", "Accounts, history & research") },
     { value: "accounts", label: t("账户与流水", "Accounts & history") },
@@ -116,41 +91,46 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     { value: "performance", label: t("收益与风险", "Performance") },
     { value: "cfd", label: t("CFD 复盘", "CFD review") },
   ];
-  const title =
-    readOnly && tone === "ready"
-      ? t("演示快照", "Demo snapshot")
-      : staleHours != null
-      ? locale === "zh" ? `服务在线，但已 ${staleAge}没有完成更新` : `Service online · no completed update for ${staleAge}`
-      : snapshot === "setup"
-      ? t("等待首次同步", "Awaiting first sync")
-      : tone === "ready"
-      ? t("数据服务运行正常", "Your data service is ready")
-      : tone === "running"
-        ? t("正在更新你的数据", "Your data is updating")
-        : tone === "unavailable"
-          ? t("需要启动本地服务", "Start your local service")
-          : t("数据服务需要检查", "The data service needs attention");
-  const subtitle =
-    staleHours != null
-      ? t("各页面显示的是上一次成功更新的数据。开始更新，或检查自动更新是否已关闭。", "Pages show the last successful update. Start an update, or check whether scheduled updates are off.")
-      : snapshot === "setup"
-      ? t("本地服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。", "Local services are running. Connect your account and complete the first sync to see records and update status here.")
-      : tone === "ready"
-      ? null
-      : tone === "running"
-        ? snapshot === "published" ? t(
-            "更新完成前，仍可查看上一次成功发布的快照。",
-            "Your last successfully published snapshot stays available while the update runs.",
-          ) : t(
-            "正在准备首次账户数据。完成后即可查看资产与收益；请保持 App 打开和网络连接。",
-            "Preparing your first account data. Investments and returns will appear when it finishes; keep the App open and connected.",
-          )
-        : t(
-            "查看下面的服务状态和任务详情，定位未完成的步骤。",
-            "Check the service status and task details below to find the unfinished step.",
-          );
-  const lastFailed = activity.failures[0];
-  const heroIssue = staleHours != null ? "stale" : tone === "degraded" ? lastFailed?.jobId : null;
+  const scopeLabel = (value: string) => scopes.find((item) => item.value === value)?.label ?? value;
+  const data = query.data;
+  const viewOptions = { localWorkspace, readOnly, locale, t, scopeLabel };
+  const statusView = summarizeHealthView(data, query.error, viewOptions);
+  const { semanticKey, liveMessage } = statusView;
+  useEffect(() => {
+    if (!semanticKey || manualCheckingRef.current) return;
+    const previous = lastSemanticKeyRef.current;
+    lastSemanticKeyRef.current = semanticKey;
+    if (previous && previous !== semanticKey) setAnnouncement(liveMessage);
+  }, [semanticKey, liveMessage]);
+
+  async function runManualCheck() {
+    if (manualCheckingRef.current) return;
+    manualCheckingRef.current = true;
+    setManualChecking(true);
+    setAnnouncement(t("正在检查数据状态…", "Checking data status…"));
+    try {
+      const result = await query.refetch();
+      const next = summarizeHealthView(result.data, result.error, viewOptions);
+      lastSemanticKeyRef.current = next.semanticKey ?? null;
+      const prefix = result.isError
+        ? t("检查未完成：", "Check failed: ")
+        : t("检查完成：", "Check complete: ");
+      setAnnouncement(prefix + next.liveMessage);
+    } finally {
+      manualCheckingRef.current = false;
+      setManualChecking(false);
+    }
+  }
+  const {
+    latestRunId, failures, tone, snapshot, stale, queued, running, worker, apiReachable,
+    bootstrapIssue, readinessIssue, serviceIssue, serviceErrors, scheduleUnavailable, showStaleHeadline,
+    jobsUnavailable, lastSuccess, snapshotTime, title, subtitle,
+  } = statusView;
+  const job =
+    data?.jobs.find((j) => j.jobId === selected) ?? failures.find((j) => j.jobId === selected) ??
+    (start.data?.jobId === selected ? start.data : null);
+  const lastFailed = failures[0];
+  const heroIssue = tone === "degraded" && lastFailed ? lastFailed.jobId : stale ? "stale" : null;
   function why(issue: string, label: string, location: string) {
     if (!assistantReady || readOnly) return null;
     const key = location + issue;
@@ -162,39 +142,41 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const schedule = data && (
     <Panel title={t("下一次自动更新", "Next scheduled updates")}
       description={t("运行服务的设备需要保持开机，且任务服务正在运行。", "Scheduled updates run while the host device and its worker are running.")}>
-      <Facts
-        rows={(
-          [
-            [t("账户、流水与研究", "Accounts, history & research"), data.refresh?.nightly],
-            [t("日内采样", "Intraday sampling"), data.refresh?.intraday],
-            [t("账户状态", "Account state"), data.refresh?.live],
-            [t("收益与风险", "Performance"), data.refresh?.performance],
-            [t("研究", "Research"), data.refresh?.research],
-            [t("板块行情", "Sector quotes"), data.refresh?.sectors],
-          ] as const
-        ).map(([label, schedule]) => [
-          label,
-          !schedule ? (
-            "—"
-          ) : !schedule.enabled ? (
-            <span key={label} className="mx-muted">{t("未启用", "Disabled")}</span>
-          ) : schedule.nextRunAt ? (
-            formatDateTime(schedule.nextRunAt, locale, timeZone)
-          ) : (
-            "—"
-          ),
-        ])}
-      />
+      {scheduleUnavailable ? (
+        <Notice tone="warn">{t("暂时无法读取更新计划。", "Scheduled updates are temporarily unavailable.")}</Notice>
+      ) : (
+        <Facts
+          rows={(
+            [
+              [t("账户、流水与研究", "Accounts, history & research"), data.refresh?.nightly],
+              [t("日内采样", "Intraday sampling"), data.refresh?.intraday],
+              [t("账户状态", "Account state"), data.refresh?.live],
+              [t("收益与风险", "Performance"), data.refresh?.performance],
+              [t("研究", "Research"), data.refresh?.research],
+              [t("板块行情", "Sector quotes"), data.refresh?.sectors],
+            ] as const
+          ).map(([label, schedule]) => [
+            label,
+            !schedule ? (
+              "—"
+            ) : !schedule.enabled ? (
+              <span key={label} className="mx-muted">{t("未启用", "Disabled")}</span>
+            ) : schedule.nextRunAt ? (
+              formatDateTime(schedule.nextRunAt, locale, timeZone)
+            ) : (
+              "—"
+            ),
+          ])}
+        />
+      )}
       {Boolean(data.health?.eventRefreshes?.length) && (
-        <details className="mx-chart-data" open={data.health?.eventRefreshes?.some((source) => source.failedSources > 0)}>
+        <details className="mx-chart-data" open={statusView.eventFailures.length > 0}>
           <summary>{t("新闻与日历数据时间", "News and calendar freshness")}</summary>
           <Facts rows={(data.health?.eventRefreshes ?? []).map((source) => [
-            source.kind === "news" ? t("证券新闻", "Security news") : t("宏观日历", "Macro calendar"),
+            eventSourceLabel(source.kind, t),
             <Group key={source.kind} gap="xs">
               {source.asOf ? formatDateTime(source.asOf, locale, timeZone) : t("暂无数据", "No observations")}
-              {source.failedSources > 0 && <Tag tone="warn">{source.failedSources === 1
-                ? t("1 个来源更新失败", "1 source refresh failed")
-                : t("{count} 个来源更新失败", "{count} source refreshes failed").replace("{count}", String(source.failedSources))}</Tag>}
+              {source.failedSources > 0 && <Tag tone="warn">{sourceFailureLabel(source.failedSources, t)}</Tag>}
             </Group>,
           ])} />
           {(data.health?.eventRefreshes ?? []).flatMap((source) => (source.failures ?? []).map((failure) => (
@@ -266,34 +248,38 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       actions={
         <Actions {...(desktop ? { gap: "sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
           variant="default"
-          leftSection={<ArrowClockwise size={16} />}
-          loading={query.isFetching}
-          onClick={() => void query.refetch()}
+          leftSection={manualChecking ? <Loader size={14} color="currentColor" aria-hidden="true" /> : <ArrowClockwise size={16} aria-hidden="true" />}
+          aria-disabled={manualChecking || undefined}
+          aria-busy={manualChecking || undefined}
+          onClick={() => void runManualCheck()}
         >
           {t("重新检查", "Check now")}
         </Button></Actions>
       }
     >
+      <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </div>
       {query.isPending ? (
         <Pending />
       ) : query.isError || !data ? (
-        <QueryError retry={query.refetch} showDataStatusLink={false} />
+        <QueryError error={query.error} showDataStatusLink={false} />
       ) : (
         <>
           <section
             className={
-              "mx-health-hero" + (tone === "ready" && staleHours == null ? " mx-health-ready" : "")
+              "mx-health-hero" + (tone === "ready" && !stale ? " mx-health-ready" : "")
             }
           >
             <div className="mx-health-symbol">
-              {staleHours != null ? (
+              {tone === "running" ? (
+                <Pulse size={35} />
+              ) : showStaleHeadline ? (
                 <Clock size={35} />
               ) : tone === "ready" ? (
                 <CheckCircle size={35} />
               ) : tone === "setup" ? (
                 <Clock size={35} />
-              ) : tone === "running" ? (
-                <Pulse size={35} />
               ) : (
                 <WarningCircle size={35} />
               )}
@@ -314,22 +300,40 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             {heroIssue && why(heroIssue,heroIssue==="stale" ? t("快照未更新","Stale snapshot") : scopes.find(item=>item.value===lastFailed.scope)?.label ?? t("更新失败","Update failure"),"hero:")}
             {!diagnosis && <PageInspection role="diagnosis" object={t("数据状态","Data status")} />}
             {/* Ready and fresh is the normal state: the heading says it, no tag repeats it. */}
-            {!(tone === "ready" && staleHours == null) && (
-              <Tag tone={tone === "setup" ? "neutral" : tone === "ready" && staleHours == null ? "good" : "warn"}>
-                {staleHours != null
+            {!(tone === "ready" && !stale) && (
+              <Tag tone={tone === "setup" ? "neutral" : "warn"}>
+                {stale && tone === "running"
+                  ? t("更新中 · 数据未更新", "Updating · stale")
+                  : stale
                   ? t("数据未更新", "Not updated")
                   : tone === "setup"
                   ? t("待设置", "Setup needed")
-                  : tone === "ready"
-                  ? t("就绪", "Ready")
                   : tone === "running"
                     ? t("更新中", "Updating")
                     : t("需要关注", "Needs attention")}
               </Tag>
             )}
           </section>
-          {desktop && !readOnly && activity.failures.length > 0 && <Notice tone="warn">
-            <div className="mx-toolbar"><span>{t("服务在线不代表所有更新都已完成。以下范围最近一次更新需要检查：", "An online service does not mean every update succeeded. Check the latest update for: ")}{activity.failures.map((job) => scopes.find((item) => item.value === job.scope)?.label ?? job.scope).join(" · ")}</span><Button size="compact-sm" variant="subtle" onClick={() => setSelected(activity.failures[0].jobId)}>{t("查看原因", "View issue")}</Button></div>
+          {!readOnly && failures.length > 0 && <Notice tone="warn">
+            <div className="mx-toolbar">
+              <span>
+                {t("需要检查的范围：", "Scopes needing attention: ")}
+                {failures.map((job) => scopeLabel(job.scope)).join(" · ")}
+              </span>
+              {failures.length === 1 ? (
+                <Button size="compact-sm" variant="subtle" onClick={() => setSelected(failures[0].jobId)}>
+                  {t("查看原因", "View issue")}
+                </Button>
+              ) : (
+                <Group gap="xs">
+                  {failures.map((item) => (
+                    <Button key={item.jobId} size="compact-sm" variant="subtle" onClick={() => setSelected(item.jobId)}>
+                      {t("查看", "View ")}{scopeLabel(item.scope)}
+                    </Button>
+                  ))}
+                </Group>
+              )}
+            </div>
           </Notice>}
           <Controls {...controlsProps}>
           {desktop && <summary>{t("更新范围、服务与计划", "Update scope, service & schedule")}</summary>}
@@ -399,6 +403,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     ...(apiReachable
                       ? []
                       : [[t("账户数据服务", "Account data service"), <Tag key="api" tone="warn">{t("无法访问", "Unreachable")}</Tag>] as [string, React.ReactNode]]),
+                    ...(readinessIssue && worker?.healthy
+                      ? [[t("数据就绪状态", "Data readiness"), <Tag key="readiness" tone="warn">{t("未就绪", "Not ready")}</Tag>] as [string, React.ReactNode]]
+                      : []),
                     ...(worker?.healthy
                       ? []
                       : [[t("任务执行服务", "Task worker"), <Tag key="worker" tone="warn">{t("未就绪", "Not ready")}</Tag>] as [string, React.ReactNode]]),
@@ -406,24 +413,19 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                       t("最近成功更新", "Last successful update"),
                       <Freshness
                         key="last"
-                        date={data.health?.queue.last_success_at}
+                        date={lastSuccess}
                         label=""
                       />,
                     ],
                   ]}
                 />
                 {bootstrapIssue && (
-                  <Notice tone="bad"><details><summary>{t("资料加载需要检查；查看诊断详情", "Data loading needs attention; view diagnostics")}</summary>{data.health?.bootstrapError}</details></Notice>
+                  <Notice tone="bad"><code className="mx-diagnostic-code">{bootstrapIssue}</code></Notice>
                 )}
-                {data.errors.length > 0 && (
+                {serviceErrors.length > 0 && (
                   <Notice tone="warn">
-                    {t("部分状态未能读取：", "Some status checks failed: ")}
-                    {data.errors
-                      .map(
-                        (e) =>
-                          e.scope + (e.status ? " (HTTP " + e.status + ")" : ""),
-                      )
-                      .join(" · ")}
+                    {t("暂时无法读取服务状态。", "Service status is temporarily unavailable.")}
+                    <code className="mx-diagnostic-code">{serviceErrors.map((error) => error.detail).join("\n")}</code>
                   </Notice>
                 )}
               </Panel>
@@ -436,21 +438,23 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           <Panel
             title={t("更新记录", "Update history")}
             action={
-              <Select
-                aria-label={t("筛选任务状态", "Filter task status")}
-                value={filter}
-                onChange={(v) => setFilter(v ?? "all")}
-                data={[
-                  { value: "all", label: t("全部状态", "All statuses") },
-                  ...[
-                    "queued",
-                    "running",
-                    "succeeded",
-                    "failed",
-                    "interrupted",
-                  ].map((value) => ({ value, label: statusText(value, t) })),
-                ]}
-              />
+              jobsUnavailable ? undefined : (
+                <Select
+                  aria-label={t("筛选任务状态", "Filter task status")}
+                  value={filter}
+                  onChange={(v) => setFilter(v ?? "all")}
+                  data={[
+                    { value: "all", label: t("全部状态", "All statuses") },
+                    ...[
+                      "queued",
+                      "running",
+                      "succeeded",
+                      "failed",
+                      "interrupted",
+                    ].map((value) => ({ value, label: statusText(value, t) })),
+                  ]}
+                />
+              )
             }
           >
             {!desktop && (queued > 0 || running > 0) && <div className="mx-metric-grid mx-metric-grid-three">
@@ -463,12 +467,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 value={number(running, 0)}
               />
             </div>}
-            <JobOutcomeSummary
-              outcomes={data.outcomes}
-              scopeLabel={(value) => scopes.find((s) => s.value === value)?.label ?? value}
-            />
-            {data.jobs.filter((j) => filter === "all" || j.status === filter)
-              .length ? (<>
+            <JobOutcomeSummary outcomes={data.outcomes} scopeLabel={scopeLabel} />
+            {jobsUnavailable ? (
+              <Notice tone="warn">{t("暂时无法读取更新记录。", "Update history is temporarily unavailable.")}</Notice>
+            ) : data.jobs.filter((j) => filter === "all" || j.status === filter).length ? (<>
               <div className="mx-job-list">
                 {(filter === "all" && !everyRun
                   ? collapseRoutineRuns(data.jobs)
@@ -557,6 +559,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         title={t("更新任务详情", "Update task details")}
         position="right"
         size={520}
+        classNames={{ content: "mx-health-drawer" }}
+        attributes={{ header: { role: "presentation" } }}
       >
         {job && (
           <Stack gap="lg">
@@ -582,7 +586,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 ],
               ]}
             />
-            {job.error && <Notice tone="bad">{job.error}</Notice>}
+            {job.error && <Notice tone="bad"><code className="mx-diagnostic-code">{job.error}</code></Notice>}
             {job.status === "queued" && !worker?.healthy && (
               <Notice tone="warn">
                 {t(
@@ -622,7 +626,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                         )}
                       </p>
                     )}
-                    {stage.error && <Notice tone="bad">{stage.error}</Notice>}
+                    {stage.error && <Notice tone="bad"><code className="mx-diagnostic-code">{stage.error}</code></Notice>}
                   </div>
                 </li>
               ))}
@@ -734,4 +738,77 @@ function statusText(value: string, t: (zh: string, en: string) => string) {
       skipped: t("已跳过", "Skipped"),
     }[value] ?? value
   );
+}
+
+function eventSourceLabel(kind: "news" | "macro", t: (zh: string, en: string) => string) {
+  return kind === "news" ? t("证券新闻", "Security news") : t("宏观日历", "Macro calendar");
+}
+
+function sourceFailureLabel(count: number, t: (zh: string, en: string) => string) {
+  return count === 1 ? t("1 个来源更新失败", "1 source refresh failed")
+    : t("{count} 个来源更新失败", "{count} source refreshes failed").replace("{count}", String(count));
+}
+
+function summarizeHealthView(
+  data: HealthDetails | undefined,
+  error: unknown,
+  options: {
+    localWorkspace: boolean;
+    readOnly: boolean;
+    locale: HealthLocale;
+    t: (zh: string, en: string) => string;
+    scopeLabel: (scope: string) => string;
+  },
+) {
+  const { readOnly, locale, t, scopeLabel } = options;
+  const decision = deriveHealthDecision(data, options);
+  if (error) {
+    const timeout = isReadTimeout(error);
+    return {
+      ...decision,
+      title: "",
+      subtitle: null,
+      semanticKey: timeout ? "error:timeout" : "error:unavailable",
+      showStaleHeadline: false,
+      liveMessage: timeout
+        ? t("数据请求超时", "Data request timed out")
+        : t("暂时无法读取数据", "Data is temporarily unavailable"),
+    };
+  }
+  const { tone, snapshot, stale, serviceHealthy, failures, eventFailures, scheduleUnavailable, jobsUnavailable, serviceErrors } = decision;
+  const staleAge = formatAge(data?.health?.artifactAgeSeconds, locale);
+  const showStaleHeadline = stale && serviceHealthy && !failures.length && !eventFailures.length && tone !== "running";
+  const title = readOnly && tone === "ready" ? t("演示快照", "Demo snapshot")
+    : tone === "setup" ? t("等待首次同步", "Awaiting first sync")
+    : tone === "running" ? t("正在更新你的数据", "Your data is updating")
+    : tone === "unavailable" ? t("需要启动本地服务", "Start your local service")
+    : showStaleHeadline ? locale === "zh"
+      ? `服务在线，但已 ${staleAge}没有完成更新`
+      : `Service online · no completed update for ${staleAge}`
+    : tone === "ready" ? t("数据服务运行正常", "Your data service is ready")
+    : t("数据服务需要检查", "The data service needs attention");
+  const subtitle = tone === "setup" ? t(
+    "本地服务已经启动。连接账户并完成首次同步后，这里会显示记录和更新状态。",
+    "Local services are running. Connect your account and complete the first sync to see records and update status here.",
+  ) : stale && !showStaleHeadline ? locale === "zh"
+    ? `最近一次已发布快照停留在 ${staleAge}前。`
+    : `The last published snapshot is ${staleAge} old.` : tone === "running" ? snapshot === "published" ? t(
+    "更新完成前，仍可查看上一次成功发布的快照。",
+    "Your last successfully published snapshot stays available while the update runs.",
+  ) : t(
+    "正在准备首次账户数据。完成后即可查看资产与收益；请保持 App 打开和网络连接。",
+    "Preparing your first account data. Investments and returns will appear when it finishes; keep the App open and connected.",
+  ) : null;
+  const liveParts = [title];
+  if (!readOnly && failures.length > 0) {
+    liveParts.push(t("需要检查的范围：", "Scopes needing attention: ") + failures.map((job) => scopeLabel(job.scope)).join(" · "));
+  }
+  for (const event of eventFailures) {
+    const sources = event.failures?.map((failure) => failure.source).sort().join(", ");
+    liveParts.push([eventSourceLabel(event.kind, t), sourceFailureLabel(event.failedSources, t), sources].filter(Boolean).join(" · "));
+  }
+  if (scheduleUnavailable) liveParts.push(t("暂时无法读取更新计划。", "Scheduled updates are temporarily unavailable."));
+  if (jobsUnavailable) liveParts.push(t("暂时无法读取更新记录。", "Update history is temporarily unavailable."));
+  if (serviceErrors.length > 0) liveParts.push(t("暂时无法读取服务状态。", "Service status is temporarily unavailable."));
+  return { ...decision, title, subtitle, showStaleHeadline, liveMessage: liveParts.join(locale === "zh" ? " " : ". ") };
 }

@@ -10,9 +10,19 @@ import {
   TextInput,
 } from "@mantine/core";
 import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
-import { useMediaQuery } from "@mantine/hooks";
 import Link from "./link";
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { flushSync } from "react-dom";
 import { useLocale } from "@/components/locale-provider";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -37,7 +47,18 @@ import {
   Tag,
   useCopy,
 } from "./foundation";
-import { countryCode, countryName, industryName } from "./exposure-names";
+import { countryName, industryName } from "./exposure-names";
+import {
+  filterPreparedPositions,
+  LOOKTHROUGH_BATCH_SIZE,
+  lookthroughCountryKey,
+  prepareLookthroughPositions,
+  sortPreparedPositions,
+  yieldToMain,
+  type LookthroughOwnership,
+  type LookthroughSort,
+  type PreparedLookthroughRow,
+} from "./look-through-data";
 import { SecurityPeek } from "./security-peek";
 import { PageInspection } from "./assistant/inspection-entry";
 import { useAssistant } from "./assistant/context";
@@ -46,6 +67,217 @@ import { Narrative } from "./narrative";
 
 /** Coverage below this is named; above it the page stays quiet. */
 const COVERAGE_FLOOR = 0.98;
+const PHONE_PAGE_SIZE = 25;
+const DESKTOP_PAGE_SIZE = 100;
+
+// The print sheet can cross the breakpoint. Keep the screen's mounted list for print.
+function usePhoneLayout() {
+  const [phone, setPhone] = useState(false);
+  useEffect(() => {
+    const narrow = window.matchMedia("(max-width: 767px)");
+    const print = window.matchMedia("print");
+    const sync = () => {
+      if (!print.matches) setPhone(narrow.matches);
+    };
+    sync();
+    narrow.addEventListener("change", sync);
+    print.addEventListener("change", sync);
+    return () => {
+      narrow.removeEventListener("change", sync);
+      print.removeEventListener("change", sync);
+    };
+  }, []);
+  return phone;
+}
+
+const DesktopHoldingRow = memo(function DesktopHoldingRow({
+  item,
+  exposureLabel,
+  onSelect,
+}: {
+  item: PreparedLookthroughRow;
+  exposureLabel: string;
+  onSelect: (position: LookthroughPosition) => void;
+}) {
+  const p = item.position;
+  const peekPosition = useMemo(
+    () => ({ valueGbp: p.valueGbp, weightPct: p.allocationPct, label: exposureLabel }),
+    [p.valueGbp, p.allocationPct, exposureLabel],
+  );
+  return (
+    <tr>
+      <td>
+        <button
+          className="mx-table-button"
+          onClick={() => onSelect(p)}
+        >
+          <SecurityPeek
+            ticker={p.ticker}
+            range="1D"
+            position={peekPosition}
+          >
+            <Instrument
+              ticker={p.ticker ?? "—"}
+              name={p.name}
+              small
+            />
+          </SecurityPeek>
+        </button>
+      </td>
+      <td>{item.countryLabel}</td>
+      <td className="mx-align-right">{currency(p.directValueGbp)}</td>
+      <td className="mx-align-right">{currency(p.indirectValueGbp)}</td>
+      <td className="mx-align-right">
+        <strong>{currency(p.valueGbp)}</strong>
+        <small>{percent(p.allocationPct)}</small>
+      </td>
+    </tr>
+  );
+});
+
+const MobileHoldingCard = memo(function MobileHoldingCard({
+  item,
+  directLabel,
+  fundsLabel,
+  onSelect,
+}: {
+  item: PreparedLookthroughRow;
+  directLabel: string;
+  fundsLabel: string;
+  onSelect: (position: LookthroughPosition) => void;
+}) {
+  const p = item.position;
+  return (
+    <button
+      className="mx-holding-mobile"
+      onClick={() => onSelect(p)}
+    >
+      <div>
+        <Instrument
+          ticker={p.ticker ?? "—"}
+          name={p.name}
+          small
+        />
+        <span className="mx-row-value">
+          {currency(p.valueGbp)}
+          <small>{percent(p.allocationPct)}</small>
+        </span>
+      </div>
+      <footer>
+        <span>{item.countryLabel}</span>
+        <span>
+          {directLabel} {currency(p.directValueGbp)} ·{" "}
+          {fundsLabel} {currency(p.indirectValueGbp)}
+        </span>
+      </footer>
+    </button>
+  );
+});
+
+function UnderlyingHoldings({
+  items,
+  expanded,
+  batchKey,
+  phone,
+  onSelect,
+}: {
+  items: PreparedLookthroughRow[];
+  expanded: boolean;
+  batchKey: string;
+  phone: boolean;
+  onSelect: (position: LookthroughPosition) => void;
+}) {
+  const t = useCopy();
+  const firstPageSize = phone ? PHONE_PAGE_SIZE : DESKTOP_PAGE_SIZE;
+  const [batch, setBatch] = useState({ key: batchKey, limit: firstPageSize });
+  // A filter, sort or toggle starts a new expansion. A snapshot keeps its mounted rows.
+  const limit = batch.key === batchKey ? batch.limit : firstPageSize;
+  if (batch.key !== batchKey) {
+    setBatch({ key: batchKey, limit: firstPageSize });
+  }
+  const itemCount = items.length;
+  const count = expanded ? Math.min(itemCount, limit) : itemCount;
+
+  useEffect(() => {
+    if (count === itemCount) return;
+    let cancelled = false;
+    void yieldToMain().then(() => {
+      if (!cancelled) {
+        const nextLimit = Math.min(count + LOOKTHROUGH_BATCH_SIZE, itemCount);
+        setBatch((current) =>
+          current.key === batchKey && current.limit < nextLimit
+            ? { key: batchKey, limit: nextLimit }
+            : current,
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [batchKey, count, itemCount]);
+
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    const completeForPrint = () => flushSync(() => setBatch((current) =>
+      current.limit < itemCount ? { key: batchKey, limit: itemCount } : current,
+    ));
+    window.addEventListener("beforeprint", completeForPrint);
+    return () => window.removeEventListener("beforeprint", completeForPrint);
+  }, [expanded, batchKey, itemCount]);
+
+  const directLabel = t("直接", "Direct");
+  const fundsLabel = t("基金", "Funds");
+  const exposureLabel = t("敞口", "Exposure");
+  // Reuse row elements across batches, including the props for rows already mounted.
+  const rowElements = useMemo(
+    () => items.map((item) => phone ? (
+      <MobileHoldingCard
+        key={item.key}
+        item={item}
+        directLabel={directLabel}
+        fundsLabel={fundsLabel}
+        onSelect={onSelect}
+      />
+    ) : (
+      <DesktopHoldingRow
+        key={item.key}
+        item={item}
+        exposureLabel={exposureLabel}
+        onSelect={onSelect}
+      />
+    )),
+    [items, phone, directLabel, fundsLabel, exposureLabel, onSelect],
+  );
+
+  if (!items.length) {
+    return <Empty title={t("没有匹配的底层持仓", "No matching underlying holdings")} />;
+  }
+  const visibleRows = rowElements.slice(0, count);
+  if (phone) {
+    return <div className="mx-mobile-holdings mx-exposure-active">{visibleRows}</div>;
+  }
+  return (
+    <div
+      className="mx-table-wrap mx-desktop-holdings mx-exposure-active"
+      tabIndex={0}
+      role="region"
+      aria-label={t("底层持仓", "Underlying holdings")}
+    >
+      <table className="mx-table">
+        <thead>
+          <tr>
+            <th>{t("名称", "Name")}</th>
+            <th>{t("国家/地区", "Country")}</th>
+            <th className="mx-align-right">{t("直接持有", "Direct")}</th>
+            <th className="mx-align-right">{t("基金内持有", "Via funds")}</th>
+            <th className="mx-align-right">{t("合计敞口", "Total exposure")}</th>
+          </tr>
+        </thead>
+        <tbody>{visibleRows}</tbody>
+      </table>
+    </div>
+  );
+}
 
 /** Pages of underlying assets; a narrow row shows « ‹ 2 / 44 › » in place of page numbers. */
 function ExposurePager({
@@ -236,86 +468,54 @@ function Exposure({
   // The first row shown, so a page-size change keeps the same rows in view.
   const [start, setStart] = useState(0);
   const [showAll, setShowAll] = useState(false);
-  // Phones read cards (the same breakpoint swaps cards for the table in CSS).
-  const phone = useMediaQuery("(max-width: 767px)");
+  const phone = usePhoneLayout();
   const listTop = useRef<HTMLDivElement>(null);
   const [sector, setSector] = useState("all");
-  const [ownership, setOwnership] = useState("all");
-  const [sort, setSort] = useState("total");
+  const [ownership, setOwnership] = useState<LookthroughOwnership>("all");
+  const [sort, setSort] = useState<LookthroughSort>("total");
   const [chart, setChart] = useState(params?.get("group") ? "pie" : "rank");
   const companyComposition = useMemo(() => companyAllocation(data), [data]);
-  // "Taiwan" and "Taiwan Region" are one place; filters and totals use the country code.
-  const place = (name: string | null | undefined) => countryCode(name) ?? name ?? "";
-  const countryLabel = (name: string | null | undefined) => countryName(name, locale);
-  const className = (name: string | null | undefined) => industryName(name, locale);
-  const byLabel = (a: { label: string }, b: { label: string }) =>
-    a.label.localeCompare(b.label, locale === "zh" ? "zh-CN" : "en-GB");
-  const sectors = [
-    ...new Set(
-      data.positions
-        .map((p) => p.gics?.sectorName)
-        .filter((v): v is string => Boolean(v)),
-    ),
-  ]
-    .map((value) => ({ value, label: className(value) }))
-    .sort(byLabel);
-  const countries = [
-    ...new Map(
-      data.positions
-        .filter((p) => p.country)
-        .map((p) => [place(p.country), { value: place(p.country), label: countryLabel(p.country) }]),
-    ).values(),
-  ].sort(byLabel);
+  const prepared = useMemo(
+    () => prepareLookthroughPositions(data.positions, locale),
+    [data.positions, locale],
+  );
+  const sorted = useMemo(
+    () => sortPreparedPositions(prepared.items, sort),
+    [prepared.items, sort],
+  );
+  const rows = useMemo(
+    () => filterPreparedPositions(sorted, { search, country, sector, ownership }),
+    [sorted, search, country, sector, ownership],
+  );
+
   const filtered = Boolean(search.trim()) || country !== "all" || sector !== "all" || ownership !== "all";
   const activeFilters = [country, sector, ownership].filter((value) => value !== "all").length;
-  const rows = data.positions
-    .filter(
-      (p) =>
-        (country === "all" || place(p.country) === country) &&
-        (sector === "all" || p.gics?.sectorName === sector) &&
-        (ownership === "all" ||
-          (ownership === "direct" &&
-            p.directValueGbp > 0 &&
-            p.indirectValueGbp === 0) ||
-          (ownership === "indirect" &&
-            p.indirectValueGbp > 0 &&
-            p.directValueGbp === 0) ||
-          (ownership === "both" &&
-            p.directValueGbp > 0 &&
-            p.indirectValueGbp > 0)) &&
-        [
-          p.name,
-          p.ticker,
-          p.isin,
-          p.gics?.sectorName,
-          p.gics?.industryName,
-          p.gics?.subIndustryName,
-          className(p.gics?.sectorName),
-          className(p.gics?.subIndustryName),
-          countryLabel(p.country),
-        ]
-          .join(" ")
-          .toLowerCase()
-          .includes(search.trim().toLowerCase()),
-    )
-    .sort((a, b) =>
-      sort === "name"
-        ? a.name.localeCompare(b.name)
-        : sort === "direct"
-          ? b.directValueGbp - a.directValueGbp
-          : sort === "indirect"
-            ? b.indirectValueGbp - a.indirectValueGbp
-            : b.valueGbp - a.valueGbp,
-    );
   // Large pages keep the ranking scannable; "show all" lifts paging with the same filters.
   // Phones take 25 cards a page, with the page control above the list as well as below.
-  const pageSize = phone ? 25 : 100;
+  const pageSize = phone ? PHONE_PAGE_SIZE : DESKTOP_PAGE_SIZE;
   const pages = showAll ? 1 : Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(Math.floor(start / pageSize) + 1, pages);
   const setPage = (value: number) => setStart((value - 1) * pageSize);
-  const pageRows = showAll
-    ? rows
-    : rows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const batchKey = showAll
+    ? JSON.stringify([search.trim().toLowerCase(), country, sector, ownership, sort])
+    : "";
+  const displayedRows = useMemo(
+    () =>
+      showAll
+        ? rows
+        : rows.slice((currentPage - 1) * pageSize, currentPage * pageSize),
+    [showAll, rows, currentPage, pageSize],
+  );
+
+  const countryOptions = useMemo(
+    () => [{ value: "all", label: t("全部国家", "All countries") }, ...prepared.countries],
+    [prepared.countries, t],
+  );
+  const sectorOptions = useMemo(
+    () => [{ value: "all", label: t("全部板块", "All sectors") }, ...prepared.sectors],
+    [prepared.sectors, t],
+  );
+
   const clearFilters = () => {
     setSearch("");
     setCountry("all");
@@ -323,6 +523,63 @@ function Exposure({
     setOwnership("all");
     setPage(1);
   };
+  const countryAllocation = useMemo(
+    () =>
+      [
+        ...objects(data.countryAllocation)
+          .reduce((merged, row) => {
+            const key = lookthroughCountryKey(str(row.country));
+            const previous = merged.get(key);
+            merged.set(
+              key,
+              previous
+                ? {
+                    ...previous,
+                    valueGbp: (numeric(previous.valueGbp) ?? 0) + (numeric(row.valueGbp) ?? 0),
+                    allocationPct:
+                      (numeric(previous.allocationPct) ?? 0) + (numeric(row.allocationPct) ?? 0),
+                  }
+                : row,
+            );
+            return merged;
+          }, new Map<string, Record<string, unknown>>())
+          .values(),
+      ].sort((a, b) => (numeric(b.valueGbp) ?? 0) - (numeric(a.valueGbp) ?? 0)),
+    [data.countryAllocation],
+  );
+  const allocations = useMemo(
+    () =>
+      view === "countries"
+        ? countryAllocation
+        : objects(
+            view === "gics"
+              ? data.gicsSubIndustryAllocation
+              : data.industryAllocation,
+          ),
+    [view, countryAllocation, data.gicsSubIndustryAllocation, data.industryAllocation],
+  );
+  const inspect = useCallback(
+    (row: Pick<AllocationSlice, "name" | "category" | "group" | "entityId">) =>
+      setChoice(
+        row.category
+          ? { name: row.name, category: row.category, entityId: row.entityId, group: row.group }
+          : null,
+      ),
+    [],
+  );
+  const selectPosition = useCallback(
+    (p: LookthroughPosition) => {
+      setSelected(p);
+      if (ready) {
+        inspect({
+          name: p.name,
+          entityId: p.entityId || undefined,
+          category: p.isin || p.ticker || p.name,
+        });
+      }
+    },
+    [ready, inspect],
+  );
   if (!data.available)
     return (
       <Panel>
@@ -343,40 +600,15 @@ function Exposure({
         />
       </Panel>
     );
-  const countryAllocation = [
-    ...objects(data.countryAllocation)
-      .reduce((merged, row) => {
-        const key = place(str(row.country));
-        const previous = merged.get(key);
-        merged.set(
-          key,
-          previous
-            ? {
-                ...previous,
-                valueGbp: (numeric(previous.valueGbp) ?? 0) + (numeric(row.valueGbp) ?? 0),
-                allocationPct:
-                  (numeric(previous.allocationPct) ?? 0) + (numeric(row.allocationPct) ?? 0),
-              }
-            : row,
-        );
-        return merged;
-      }, new Map<string, Record<string, unknown>>())
-      .values(),
-  ].sort((a, b) => (numeric(b.valueGbp) ?? 0) - (numeric(a.valueGbp) ?? 0));
-  const allocations =
-    view === "countries"
-      ? countryAllocation
-      : objects(
-          view === "gics"
-            ? data.gicsSubIndustryAllocation
-            : data.industryAllocation,
-        );
+  // "Taiwan" and "Taiwan Region" are one place; filters and totals use the country code.
+  const place = lookthroughCountryKey;
+  const countryLabel = (name: string | null | undefined) => countryName(name, locale);
+  const className = (name: string | null | undefined) => industryName(name, locale);
   const allocationLabel = (r: Record<string, unknown>) =>
     r.country != null
       ? countryLabel(str(r.country))
       : className(str(r.subIndustry ?? r.name ?? r.industry ?? r.label)) || "—";
   const dimension = view === "companies" ? "company" : view === "sectors" ? "sector" : view === "countries" ? "country" : "gics";
-  const inspect = (row: Pick<AllocationSlice,"name"|"category"|"group"|"entityId">) => setChoice(row.category ? {name:row.name,category:row.category,entityId:row.entityId,group:row.group} : null);
   const categoryKey = (row: Record<string,unknown>) => str(row.country ?? row.subIndustry ?? row.industry ?? row.name);
   const citedWeight = params?.get("evidence") === "exposure_benchmark" && choice?.category === params.get("category") && dimension === linkedDimension;
   const source = params?.get("benchmarkSource"), asOf = params?.get("benchmarkAsOf"), observation = params?.get("benchmarkObservation");
@@ -456,10 +688,7 @@ function Exposure({
                       setCountry(v ?? "all");
                       setPage(1);
                     }}
-                    data={[
-                      { value: "all", label: t("全部国家", "All countries") },
-                      ...countries,
-                    ]}
+                    data={countryOptions}
                     searchable
                   />
                   <Select
@@ -469,17 +698,14 @@ function Exposure({
                       setSector(v ?? "all");
                       setPage(1);
                     }}
-                    data={[
-                      { value: "all", label: t("全部板块", "All sectors") },
-                      ...sectors,
-                    ]}
+                    data={sectorOptions}
                     searchable
                   />
                   <Select
                     aria-label={t("持有方式", "Ownership")}
                     value={ownership}
                     onChange={(v) => {
-                      setOwnership(v ?? "all");
+                      setOwnership((v as LookthroughOwnership | null) ?? "all");
                       setPage(1);
                     }}
                     data={[
@@ -502,7 +728,7 @@ function Exposure({
                   aria-label={t("敞口排序", "Sort exposure")}
                   value={sort}
                   onChange={(v) => {
-                    setSort(v ?? "total");
+                    setSort((v as LookthroughSort | null) ?? "total");
                     setPage(1);
                   }}
                   data={[
@@ -553,102 +779,14 @@ function Exposure({
                 />
               </div>
             )}
-            <div className="mx-mobile-holdings">
-              {pageRows.map((p, i) => (
-                <button
-                  key={p.entityId || i}
-                  className="mx-holding-mobile"
-                  onClick={() => {setSelected(p); if (ready) inspect({name:p.name,entityId:p.entityId || undefined,category:p.isin || p.ticker || p.name});}}
-                >
-                  <div>
-                    <Instrument
-                      ticker={p.ticker ?? "—"}
-                      name={p.name}
-                      small
-                    />
-                    <span className="mx-row-value">
-                      {currency(p.valueGbp)}
-                      <small>{percent(p.allocationPct)}</small>
-                    </span>
-                  </div>
-                  <footer>
-                    <span>{countryLabel(p.country)}</span>
-                    <span>
-                      {t("直接", "Direct")} {currency(p.directValueGbp)} ·{" "}
-                      {t("基金", "Funds")} {currency(p.indirectValueGbp)}
-                    </span>
-                  </footer>
-                </button>
-              ))}
-            </div>
-            {rows.length ? (
-              <div
-                className="mx-table-wrap mx-desktop-holdings"
-                tabIndex={0}
-                role="region"
-                aria-label={t("底层持仓", "Underlying holdings")}
-              >
-                <table className="mx-table">
-                  <thead>
-                    <tr>
-                      <th>{t("名称", "Name")}</th>
-                      <th>{t("国家/地区", "Country")}</th>
-                      <th className="mx-align-right">
-                        {t("直接持有", "Direct")}
-                      </th>
-                      <th className="mx-align-right">
-                        {t("基金内持有", "Via funds")}
-                      </th>
-                      <th className="mx-align-right">
-                        {t("合计敞口", "Total exposure")}
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageRows.map((p, i) => (
-                      <tr key={p.entityId || p.name + i}>
-                        <td>
-                          <button
-                            className="mx-table-button"
-                            onClick={() => {setSelected(p); if (ready) inspect({name:p.name,entityId:p.entityId || undefined,category:p.isin || p.ticker || p.name});}}
-                          >
-                            <SecurityPeek
-                              ticker={p.ticker}
-                              range="1D"
-                              position={{ valueGbp: p.valueGbp, weightPct: p.allocationPct, label: t("敞口", "Exposure") }}
-                            >
-                              <Instrument
-                                ticker={p.ticker ?? "—"}
-                                name={p.name}
-                                small
-                              />
-                            </SecurityPeek>
-                          </button>
-                        </td>
-                        <td>{countryLabel(p.country)}</td>
-                        <td className="mx-align-right">
-                          {currency(p.directValueGbp)}
-                        </td>
-                        <td className="mx-align-right">
-                          {currency(p.indirectValueGbp)}
-                        </td>
-                        <td className="mx-align-right">
-                          <strong>{currency(p.valueGbp)}</strong>
-                          <small>{percent(p.allocationPct)}</small>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <Empty
-                title={t(
-                  "没有匹配的底层持仓",
-                  "No matching underlying holdings",
-                )}
-              />
-            )}
+            <UnderlyingHoldings
+              key={phone ? "cards" : "table"}
+              items={displayedRows}
+              expanded={showAll}
+              batchKey={batchKey}
+              phone={phone}
+              onSelect={selectPosition}
+            />
             {(pages > 1 || showAll) && (
               <div className="mx-exposure-paging">
                 {pages > 1 && (
@@ -670,7 +808,7 @@ function Exposure({
                 <Button
                   variant="subtle"
                   onClick={() => {
-                    setShowAll(!showAll);
+                    setShowAll((expanded) => !expanded);
                     setStart(0);
                   }}
                 >

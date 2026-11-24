@@ -88,6 +88,23 @@ describe("reading card", () => {
     expect(html).toContain('<i class="mx-reading-key" data-dotted="" style="--key:#17191c" aria-hidden="true"></i>SMA200');
   });
 
+  it("shares the benchmark SVG strokes between the reading card and the ECharts tooltip", () => {
+    const benchmarks: Reading = {
+      time: "26 Oct",
+      primary: { label: "Portfolio TWR", value: "+5.00%", key: { colour: "#1768e5" } },
+      groups: [[
+        { label: "VOO", value: "+3.00%", key: { colour: "#536176", dash: "long" } },
+        { label: "QQQ", value: "+4.00%", key: { colour: "#17191c", dash: "dash-dot" } },
+        { label: "VT", value: "+2.50%", key: { colour: "#347985", dash: "short" } },
+      ]],
+    };
+    const rendered = card(benchmarks);
+    expect(readingHtml(benchmarks, "en")).toBe(rendered);
+    expect(rendered).toContain('<svg class="mx-reading-key" style="--key:#536176" aria-hidden="true" width="18" height="4"><path d="M0 2h18" stroke-dasharray="7 4"></path></svg>VOO');
+    expect(rendered).toContain('<svg class="mx-reading-key" style="--key:#17191c" aria-hidden="true" width="18" height="4"><path d="M0 2h18" stroke-dasharray="6 2 2 2"></path></svg>QQQ');
+    expect(rendered).toContain('<svg class="mx-reading-key" style="--key:#347985" aria-hidden="true" width="18" height="4"><path d="M0 2h18" stroke-dasharray="3 2"></path></svg>VT');
+  });
+
   it("escapes provider text and drops anything but a colour from the key", () => {
     const html = readingHtml({
       time: "<img src=x onerror=alert(1)>",

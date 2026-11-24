@@ -18,11 +18,20 @@ import { isValidTimeZone, useLocale } from "@/components/locale-provider";
 import type {
   AutomationSettings,
   CfdImportStatus,
+  IntegrationOverview,
   UserProfile,
 } from "@/lib/types";
-import { api, jsonRequest, number } from "@/workspace/data";
+import { api, ApiError, jsonRequest, number } from "@/workspace/data";
 import { evidenceNoticesQuery } from "./evidence-notices";
-import { accountName } from "./profile";
+import { accountName, workspaceProfileKey } from "./profile";
+import {
+  isAcceptedPreferencesSave,
+  reconcilePreferencesDraft,
+  sameStringRecord,
+  type PreferencesDraft,
+  type PreferencesSubmission,
+} from "./settings-drafts";
+import { settingsKey } from "./settings-query";
 import {
   Empty,
   Facts,
@@ -412,35 +421,72 @@ export function PersonalPreferences({
     setTimeZonePreference,
     browserTimeZone,
   } = useLocale();
-  const [name, setName] = useState(profile.displayName);
-  const [zone, setZone] = useState(timeZonePreference);
-  const [labels, setLabels] = useState(profile.accountLabels);
-  const draft = {
-    displayName: name.trim(),
-    accountLabels: { ...labels },
-    locale,
-    timezone: zone === "browser" ? browserTimeZone : zone,
-  };
+  const [draft, setDraft] = useState<PreferencesDraft>();
+  const [accepted, setAccepted] = useState<UserProfile>();
+  const committed = accepted && accepted.revision > profile.revision ? accepted : profile;
+  const committedZone = timeZonePreference === "browser" && committed.timezone === browserTimeZone
+    ? "browser"
+    : committed.timezone ?? timeZonePreference;
   const mutation = useMutation({
-    mutationFn: (submitted: { values: typeof draft; timeZonePreference: string }) =>
-      api("/profile", jsonRequest("PATCH", submitted.values)),
-    onSuccess: (_result, submitted) => {
-      setTimeZonePreference(submitted.timeZonePreference);
-      void client.invalidateQueries({ queryKey: ["workspace-profile"] });
+    mutationFn: async (submitted: PreferencesSubmission) => {
+      const updated = await api<UserProfile>("/profile", jsonRequest("PATCH", submitted.values));
+      if (!isAcceptedPreferencesSave(updated, submitted)) {
+        throw new ApiError("Unexpected profile revision or values", 409);
+      }
+      return updated;
+    },
+    onSuccess: (nextProfile, submitted) => {
+      setAccepted(nextProfile);
+      if (submitted.timeZonePreference !== undefined) {
+        setTimeZonePreference(submitted.timeZonePreference);
+      }
+      setDraft((current) => current && reconcilePreferencesDraft(current, submitted, nextProfile));
+      client.setQueryData<IntegrationOverview>(settingsKey, (overview) =>
+        overview && overview.profile.revision <= nextProfile.revision
+          ? { ...overview, profile: nextProfile }
+          : overview,
+      );
+      void client.invalidateQueries({ queryKey: workspaceProfileKey });
       refresh();
     },
   });
-  const saved = mutation.isSuccess &&
-    mutation.variables.timeZonePreference === zone &&
-    JSON.stringify(mutation.variables.values) === JSON.stringify(draft);
-  useBuildNavigationGuard(!saved && (name !== profile.displayName || zone !== timeZonePreference ||
-    locale !== profile.locale || JSON.stringify(labels) !== JSON.stringify(profile.accountLabels)));
+  const conflict = mutation.error instanceof ApiError && mutation.error.status === 409;
+  // Keep a rejected submission visible until reload, even if a refetch shows a newer revision.
+  const attempted = (mutation.isPending || conflict) &&
+    draft?.baseRevision === mutation.variables?.values.expectedRevision;
+  const activeDraft = draft?.baseRevision === committed.revision || attempted ? draft : undefined;
+  const name = activeDraft?.name ?? committed.displayName ?? "";
+  const zone = activeDraft?.zone ?? committedZone;
+  const labels = { ...committed.accountLabels, ...activeDraft?.labels };
+  const nameDirty = name !== (committed.displayName ?? "");
+  const zoneDirty = zone !== committedZone;
+  const languageDirty = locale !== committed.locale;
+  const labelsDirty = !sameStringRecord(labels, committed.accountLabels ?? {});
+  const dirty = nameDirty || zoneDirty || languageDirty || labelsDirty;
+  useBuildNavigationGuard(dirty);
+  const savedRevision = mutation.isSuccess && mutation.data.revision === committed.revision;
+  const saved = savedRevision && !dirty;
+
+  function updateDraft(change: Partial<Omit<PreferencesDraft, "baseRevision">>) {
+    setDraft({ ...activeDraft, ...change, baseRevision: activeDraft?.baseRevision ?? committed.revision });
+  }
   return (
     <Panel title={t("个人偏好", "Preferences")}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!mutation.isPending) mutation.mutate({ values: draft, timeZonePreference: zone });
+          if (mutation.isPending || conflict) return;
+          const values: PreferencesSubmission["values"] = {
+            expectedRevision: activeDraft?.baseRevision ?? committed.revision,
+          };
+          if (nameDirty) values.displayName = name.trim();
+          if (labelsDirty) values.accountLabels = labels;
+          if (languageDirty) values.locale = locale;
+          if (zoneDirty) values.timezone = zone === "browser" ? browserTimeZone : zone;
+          mutation.mutate({
+            values,
+            timeZonePreference: zoneDirty ? zone : undefined,
+          });
         }}
       >
         <Stack gap="lg">
@@ -450,15 +496,13 @@ export function PersonalPreferences({
               value={name}
               maxLength={80}
               required
-              onChange={(e) => {
-                setName(e.currentTarget.value);
-              }}
+              onChange={(e) => updateDraft({ name: e.currentTarget.value })}
             />
             <Select
               label={t("界面语言", "Interface language")}
               value={locale}
               onChange={(v) => {
-                setLocale(v === "en" ? "en" : "zh");
+                if (v === "en" || v === "zh") setLocale(v);
               }}
               data={[
                 { value: "zh", label: t("简体中文", "Chinese (Simplified)") },
@@ -468,9 +512,7 @@ export function PersonalPreferences({
             <Select
               label={t("时间显示", "Display timezone")}
               value={zone}
-              onChange={(v) => {
-                setZone(v ?? "Europe/London");
-              }}
+              onChange={(v) => updateDraft({ zone: v ?? "Europe/London" })}
               searchable
               data={Array.from(
                 new Set([
@@ -479,7 +521,8 @@ export function PersonalPreferences({
                   "Asia/Shanghai",
                   "America/New_York",
                   "UTC",
-                  timeZonePreference,
+                  committedZone,
+                  zone,
                 ]),
               ).map((value) => ({
                 value,
@@ -493,7 +536,7 @@ export function PersonalPreferences({
             />
             <TextInput
               label={t("组合记账货币", "Portfolio reporting currency")}
-              value={profile.baseCurrency}
+              value={committed.baseCurrency}
               readOnly
               description={t(
                 "由账户快照决定",
@@ -514,13 +557,9 @@ export function PersonalPreferences({
                   maxLength={60}
                   value={labels[account.code] ?? ""}
                   placeholder={account.label}
-                  onChange={(e) => {
-                    const value = e.currentTarget.value;
-                    setLabels((current) => ({
-                      ...current,
-                      [account.code]: value,
-                    }));
-                  }}
+                  onChange={(e) => updateDraft({
+                    labels: { ...activeDraft?.labels, [account.code]: e.currentTarget.value },
+                  })}
                 />
               ))}
             </div>
@@ -532,7 +571,10 @@ export function PersonalPreferences({
           )}
           {mutation.isError && (
             <Notice tone="bad">
-              {t(
+              {conflict ? t(
+                "设置已在其他窗口更新。重新加载后再保存。",
+                "Settings changed in another window. Reload before saving.",
+              ) : t(
                 "未能保存偏好，请重试。",
                 "Could not save preferences. Please retry.",
               )}
@@ -542,14 +584,14 @@ export function PersonalPreferences({
             <Button
               type="submit"
               disabled={
-                !name.trim() || (zone !== "browser" && !isValidTimeZone(zone))
+                conflict || !name.trim() || (zone !== "browser" && !isValidTimeZone(zone))
               }
               loading={mutation.isPending}
               leftSection={<CheckCircle size={16} />}
             >
               {t("保存偏好", "Save preferences")}
             </Button>
-            {mutation.isSuccess && !saved && (
+            {savedRevision && dirty && (
               <span role="status">{t("还有未保存的修改", "You have unsaved changes")}</span>
             )}
           </Group>

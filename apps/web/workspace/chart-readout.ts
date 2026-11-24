@@ -1,8 +1,20 @@
 import type { ChartRecord } from "./chart-export";
 
 export type ReadingTone = "up" | "down";
+export type LineDash = "long" | "short" | "dash-dot";
+export const LINE_DASH_PATTERNS: Record<LineDash, { chart: number[]; swatch: string }> = {
+  long: { chart: [8, 4], swatch: "7 4" },
+  short: { chart: [3, 3], swatch: "3 2" },
+  "dash-dot": { chart: [8, 3, 2, 3], swatch: "6 2 2 2" },
+};
 /** The series' own stroke, so a row matches its line without the legend. */
-export type ReadingKey = { colour: string; dashed?: boolean; dotted?: boolean; kind?: "line" | "bar" | "area" };
+export type ReadingKey = {
+  colour: string;
+  dashed?: boolean;
+  dotted?: boolean;
+  dash?: LineDash;
+  kind?: "line" | "bar" | "area";
+};
 export type ReadingItem = {
   label: string;
   value: string;
@@ -67,7 +79,7 @@ function documentLocale(): ReadingLocale {
 
 /** One element of the reading card. The React card and the HTML string are both built from it. */
 export type ReadingNode = {
-  tag: "div" | "span" | "dl" | "dt" | "dd" | "i";
+  tag: "div" | "span" | "dl" | "dt" | "dd" | "i" | "svg" | "path";
   /** Attributes in render order; "style" carries one custom property. */
   attrs: Array<[name: string, value: string]>;
   children: Array<ReadingNode | string>;
@@ -82,12 +94,17 @@ const COLOUR = /^(#[0-9a-f]{3,8}|(rgb|hsl)a?\([\d\s.,%/]+\)|var\(--[\w-]+\))$/i;
 function key(swatch: ReadingKey | undefined) {
   if (!swatch) return undefined;
   const attrs: ReadingNode["attrs"] = [["class", "mx-reading-key"]];
-  if (swatch.dashed) attrs.push(["data-dashed", ""]);
-  if (swatch.dotted) attrs.push(["data-dotted", ""]);
-  if (swatch.kind && swatch.kind !== "line") attrs.push(["data-kind", swatch.kind]);
+  if (!swatch.dash) {
+    if (swatch.dashed) attrs.push(["data-dashed", ""]);
+    if (swatch.dotted) attrs.push(["data-dotted", ""]);
+    if (swatch.kind && swatch.kind !== "line") attrs.push(["data-kind", swatch.kind]);
+  }
   if (COLOUR.test(swatch.colour.trim())) attrs.push(["style", "--key:" + swatch.colour.trim()]);
   attrs.push(["aria-hidden", "true"]);
-  return node("i", attrs);
+  return swatch.dash
+    ? node("svg", [...attrs, ["width", "18"], ["height", "4"]],
+      node("path", [["d", "M0 2h18"], ["stroke-dasharray", LINE_DASH_PATTERNS[swatch.dash].swatch]]))
+    : node("i", attrs);
 }
 
 function tone(value: ReadingTone | undefined): ReadingNode["attrs"] {

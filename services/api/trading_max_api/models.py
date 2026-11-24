@@ -238,6 +238,7 @@ class ReadinessResponse(ApiModel):
 
 class JobList(ApiModel):
     jobs: list[JobRecord] = Field(default_factory=list)
+    latest_terminal_jobs: list[JobRecord] = Field(default_factory=list)
 
 
 class RefreshFailure(ApiModel):
@@ -635,6 +636,11 @@ class UserProfilePatch(ApiModel):
     base_currency: str | None = Field(default=None, min_length=3, max_length=3)
     timezone: str | None = Field(default=None, min_length=1, max_length=80)
     account_labels: dict[str, str] | None = None
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
+class ProfileRevisionConflictResponse(ApiModel):
+    detail: dict[str, str]
 
 
 class AutomationSettings(ApiModel):

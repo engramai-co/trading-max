@@ -11,12 +11,23 @@ import {
   Textarea,
   TextInput,
 } from "@mantine/core";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { skipToken, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { quoteUnit, quoteValue } from "./financial-values";
+import { isImeComposing } from "./shortcut-platform";
+import {
+  clearNoteDraft,
+  emptyNoteDraft,
+  isNoteDraftDirty,
+  noteBaselineDraft,
+  openNoteDraft,
+  saveNoteDraft,
+  toNoteInput,
+  type NoteDraft,
+} from "./research-note-draft";
 import { useLocale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
-import { api, compact, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
+import { ApiError, api, compact, jsonRequest, number, percent, safeUrl } from "@/workspace/data";
 import { ValuationFloorNote } from "./valuation-floor-note";
 import { EvidenceTable } from "./evidence-table";
 import {
@@ -35,15 +46,13 @@ import Link from "./link";
 type Journal = components["schemas"]["ResearchJournal"];
 type Note = components["schemas"]["ResearchNote"];
 type NoteInput = components["schemas"]["ResearchNoteInput"];
-const blank: NoteInput = {
-  title: "",
-  archived: false,
-  thesis: "",
-  invalidation: "",
-  evidenceUrls: [],
-  reviewDate: null,
-  modelId: null,
-};
+type NoteEditor = { note?: Note; draft: NoteDraft };
+type NoteError = "conflict" | "resolution" | "save";
+type NoteErrors = ReadonlyMap<string | undefined, NoteError>;
+type NoteChange =
+  | { action: "save" | "archive"; id?: string; content: NoteInput }
+  | { action: "keep"; id: string; content: NoteInput }
+  | { action: "load"; id: string };
 
 export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSnapshot; fund?: boolean }) {
   const t = useCopy();
@@ -52,38 +61,152 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
   const { params, update } = useRouteState("push");
   const section = fund ? "notes" : params.get("notebook") ?? "notes";
   const [archived, setArchived] = useState(false);
-  const [editing, setEditing] = useState<Note | "new" | null>(null);
-  useBuildNavigationGuard(Boolean(editing));
-  const [input, setInput] = useState<NoteInput>(blank);
-  const [urls, setUrls] = useState("");
+  const [editor, setEditor] = useState<NoteEditor | null>(null);
+  useBuildNavigationGuard(Boolean(editor));
+  const editorRef = useRef<NoteEditor | null>(null);
+  const newNoteButton = useRef<HTMLButtonElement>(null);
+  const returnFocusTo = useRef<HTMLElement | null>(null);
   const [history, setHistory] = useState<Note | null>(null);
+  const draft = editor?.draft ?? emptyNoteDraft();
+  const dirty = Boolean(editor) && isNoteDraftDirty(draft, noteBaselineDraft(editor?.note));
+  const showEditor = (next: NoteEditor | null) => {
+    editorRef.current = next;
+    setEditor(next);
+  };
+  const journalKey = ["research-journal", data.ticker];
+  const journalPath = `/research/${encodeURIComponent(data.ticker)}/journal`;
+  const mutationKey = ["research-note-change", data.ticker];
+  const errorKey = ["research-note-errors", data.ticker];
+  const { data: errors } = useQuery<NoteErrors>({ queryKey: errorKey, queryFn: skipToken, gcTime: Infinity });
+  const editorError = editor && errors?.get(editor.note?.id);
+  const createError = errors?.get(undefined);
+  const conflict = editorError === "conflict" || editorError === "resolution";
+  const noteErrorText = (error: NoteError) => {
+    if (error === "conflict") return t("笔记已有更新。", "This note has changed.");
+    if (error === "resolution") return t("无法处理冲突，请重试。", "Could not resolve the conflict. Try again.");
+    return t("无法保存笔记。", "Could not save the note.");
+  };
+  const setNoteError = (id: string | undefined, error?: NoteError) => {
+    client.setQueryData<NoteErrors>(errorKey, (previous) => {
+      if (!error && !previous?.has(id)) return previous;
+      const next = new Map(previous);
+      if (error) next.set(id, error);
+      else next.delete(id);
+      return next;
+    });
+  };
   const query = useQuery({
-    queryKey: ["research-journal", data.ticker],
-    queryFn: ({ signal }) =>
-      api<Journal>(`/research/${encodeURIComponent(data.ticker)}/journal`, { signal }),
+    queryKey: journalKey,
+    queryFn: ({ signal }) => api<Journal>(journalPath, { signal }),
     enabled: section === "notes" || section === "models",
     staleTime: 60_000,
   });
   const save = useMutation({
-    mutationFn: ({ content, id }: { content: NoteInput; id?: string }) =>
-      api<Journal>(
-        `/research/${encodeURIComponent(data.ticker)}/journal${id ? "/" + id : ""}`,
+    mutationKey,
+    mutationFn: async (change: NoteChange) => {
+      const { action, id } = change;
+      let content = "content" in change ? change.content : undefined;
+      if (action === "load" || action === "keep") {
+        const journal = await api<Journal>(journalPath);
+        const note = journal.notes?.find((item) => item.id === id);
+        const latest = note?.revisions.at(-1);
+        if (!note || !latest) throw new Error("Research note is unavailable");
+        if (action === "load") return note;
+        content = { ...change.content, archived: latest.content.archived, expectedRevision: latest.revision };
+      }
+      await api<Journal>(
+        id ? `${journalPath}/${encodeURIComponent(id)}` : journalPath,
         jsonRequest(id ? "PUT" : "POST", content),
-      ),
-    onSuccess: (journal) => {
-      client.setQueryData(["research-journal", data.ticker], journal);
-      setEditing(null);
+      );
+    },
+    onSuccess: async (_note, { id, action }) => {
+      if (action !== "archive") {
+        clearNoteDraft(data.ticker, id);
+        setNoteError(id);
+      }
+      // Refetch after each write so overlapping saves of different notes cannot
+      // replace the journal with an older response.
+      await client.invalidateQueries({ queryKey: journalKey });
+    },
+    onError: (error, { id, action }) => {
+      if (action === "archive") return;
+      const conflict = error instanceof ApiError &&
+        error.status === 409 && error.message === "research-note-revision-conflict";
+      setNoteError(id, conflict ? "conflict" : action === "save" ? "save" : "resolution");
     },
   });
-  const edit = (note?: Note) => {
-    const latest = note?.revisions.at(-1);
-    setInput(
-      latest ? { ...latest.content, expectedRevision: latest.revision } : blank,
-    );
-    setUrls((latest?.content.evidenceUrls ?? []).join("\n"));
-    save.reset();
-    setEditing(note ?? "new");
+  const pending = useMutationState({
+    filters: { mutationKey, status: "pending" },
+    select: ({ state }) => state.variables as NoteChange,
+  });
+  const editingAction = editor && pending.find(({ id }) => id === editor.note?.id)?.action;
+  const readOnly = Boolean(editingAction);
+  const noteBusy = (id?: string) => client.isMutating({
+    mutationKey,
+    predicate: ({ state }) => (state.variables as NoteChange).id === id,
+  }) > 0;
+  const changeNote = (change: NoteChange) => {
+    if (!noteBusy(change.id)) save.mutate(change);
   };
+  const applyEditorResult = useEffectEvent((change: NoteChange, note?: Note) => {
+    const current = editorRef.current;
+    if (!current || current.note?.id !== change.id || change.action === "archive") return;
+    showEditor(note ? { note, draft: noteBaselineDraft(note) } : null);
+  });
+  useEffect(() => client.getMutationCache().subscribe((event) => {
+    if (event.type !== "updated" || event.action.type !== "success") return;
+    const key = event.mutation.options.mutationKey;
+    if (key?.[0] !== "research-note-change" || key[1] !== data.ticker) return;
+    const change = event.mutation.state.variables as NoteChange;
+    applyEditorResult(change, event.action.data as Note | undefined);
+  }), [client, data.ticker]);
+  const edit = (note?: Note, trigger?: HTMLElement | null) => {
+    const draft = openNoteDraft(data.ticker, note);
+    returnFocusTo.current =
+      trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    showEditor({ note, draft });
+  };
+  const updateDraft = (patch: Partial<NoteDraft>) => {
+    const current = editorRef.current;
+    if (!current || noteBusy(current.note?.id)) return;
+    const id = current.note?.id;
+    const draft = { ...current.draft, ...patch };
+    saveNoteDraft(data.ticker, id, draft, noteBaselineDraft(current.note));
+    showEditor({ ...current, draft });
+  };
+  const dismissEditor = () => showEditor(null);
+  const discardEditor = () => {
+    const current = editorRef.current;
+    if (!current || noteBusy(current.note?.id)) return;
+    clearNoteDraft(data.ticker, current.note?.id);
+    setNoteError(current.note?.id);
+    showEditor(null);
+  };
+  const resolveConflict = (action: "load" | "keep") => {
+    const current = editorRef.current;
+    if (!current?.note) return;
+    const id = current.note.id;
+    changeNote(action === "load"
+      ? { action, id }
+      : { action, id, content: toNoteInput(current.draft, current.note) });
+  };
+  const onEscapeDismiss = useEffectEvent(dismissEditor);
+  const opened = Boolean(editor);
+  useEffect(() => {
+    if (!opened) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event)) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest("[data-mantine-stop-propagation='true']")) return;
+      const dialog = target?.closest('[role="dialog"]');
+      if (dialog && !dialog.closest("[data-note-editor='true']")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      onEscapeDismiss();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [opened]);
   const notes = (query.data?.notes ?? [])
     .filter((n) => Boolean(n.revisions.at(-1)?.content.archived) === archived)
     .slice()
@@ -127,7 +250,9 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                   ? t("返回笔记", "Active notes")
                   : t("已归档", "Archived")}
               </Button>
-              <Button onClick={() => edit()}>{t("写笔记", "New note")}</Button>
+              <Button ref={newNoteButton} onClick={(e) => edit(undefined, e.currentTarget)}>
+                {t("写笔记", "New note")}
+              </Button>
             </Group>
           </div>
           {notes.length > 0 && (
@@ -135,6 +260,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
               {notes.map((note) => {
                 const revision = note.revisions.at(-1)!;
                 const content = revision.content;
+                const noteError = !editor && errors?.get(note.id);
                 return (
                   <article key={note.id}>
                     <div className="mx-note-heading">
@@ -188,7 +314,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                       <Button
                         size="compact-sm"
                         variant="subtle"
-                        onClick={() => edit(note)}
+                        onClick={(e) => edit(note, e.currentTarget)}
                       >
                         {t("编辑", "Edit")}
                       </Button>
@@ -202,9 +328,10 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                       <Button
                         size="compact-sm"
                         variant="subtle"
-                        disabled={save.isPending}
+                        disabled={pending.some(({ id }) => id === note.id)}
                         onClick={() =>
-                          save.mutate({
+                          changeNote({
+                            action: "archive",
                             id: note.id,
                             content: {
                               ...content,
@@ -217,14 +344,15 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                         {archived ? t("恢复", "Restore") : t("归档", "Archive")}
                       </Button>
                     </Group>
+                    {noteError && <p role="alert">{noteErrorText(noteError)}</p>}
                   </article>
                 );
               })}
             </div>
           )}
-          {save.isError && !editing && (
+          {!editor && (createError || (save.isError && save.variables?.action === "archive")) && (
             <p role="alert">
-              {t(
+              {createError ? noteErrorText(createError) : t(
                 "保存失败，请刷新后重试。",
                 "Save failed. Refresh and try again.",
               )}
@@ -235,74 +363,75 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
       <Drawer
         position="right"
         size="lg"
-        opened={Boolean(editing)}
-        onClose={() => setEditing(null)}
+        opened={opened}
+        onClose={dismissEditor}
+        closeOnEscape={false}
+        returnFocus={false}
+        onExitTransitionEnd={() => {
+          const active = document.activeElement;
+          if (!active || active === document.body || active.closest("[data-note-editor='true']")) {
+            const target = returnFocusTo.current?.isConnected ? returnFocusTo.current : newNoteButton.current;
+            target?.focus({ preventScroll: true });
+          }
+        }}
+        data-note-editor="true"
         title={
-          editing === "new"
-            ? t("新笔记", "New note")
-            : t("编辑笔记", "Edit note")
+          editor?.note
+            ? t("编辑笔记", "Edit note")
+            : t("新笔记", "New note")
         }
       >
         <form
           className="mx-note-form"
           onSubmit={(e) => {
             e.preventDefault();
+            const current = editorRef.current;
+            if (!current || conflict) return;
             const reviewDate = new FormData(e.currentTarget).get("reviewDate");
-            save.mutate({
-              id: editing && editing !== "new" ? editing.id : undefined,
-              content: {
-                ...input,
-                reviewDate:
-                  typeof reviewDate === "string" && reviewDate
-                    ? reviewDate
-                    : null,
-                title: input.title.trim(),
-                evidenceUrls: urls
-                  .split(/\n/)
-                  .map((v) => v.trim())
-                  .filter(Boolean),
-              },
+            changeNote({
+              action: "save",
+              id: current.note?.id,
+              content: toNoteInput(current.draft, current.note, reviewDate),
             });
           }}
         >
           <TextInput
             label={t("标题", "Title")}
             required
+            readOnly={readOnly}
             maxLength={200}
-            value={input.title}
-            onChange={(e) =>
-              setInput({ ...input, title: e.currentTarget.value })
-            }
+            value={draft.title}
+            onChange={(e) => updateDraft({ title: e.currentTarget.value })}
           />
           <Textarea
             label={t("投资判断与依据", "Thesis & evidence")}
             minRows={7}
             autosize
+            readOnly={readOnly}
             maxRows={18}
-            value={input.thesis ?? ""}
-            onChange={(e) =>
-              setInput({ ...input, thesis: e.currentTarget.value })
-            }
+            value={draft.thesis}
+            onChange={(e) => updateDraft({ thesis: e.currentTarget.value })}
           />
           <Textarea
             label={t("什么会改变这个判断", "What would change this thesis")}
             minRows={3}
             autosize
-            value={input.invalidation ?? ""}
-            onChange={(e) =>
-              setInput({ ...input, invalidation: e.currentTarget.value })
-            }
+            readOnly={readOnly}
+            value={draft.invalidation}
+            onChange={(e) => updateDraft({ invalidation: e.currentTarget.value })}
           />
           <Textarea
             label={t("证据链接 · 每行一个", "Evidence links · one per line")}
-            value={urls}
-            onChange={(e) => setUrls(e.currentTarget.value)}
+            readOnly={readOnly}
+            value={draft.urls}
+            onChange={(e) => updateDraft({ urls: e.currentTarget.value })}
           />
           <Select
             clearable
+            readOnly={readOnly}
             label={t("关联模型版本", "Related model version")}
-            value={input.modelId ?? null}
-            onChange={(v) => setInput({ ...input, modelId: v })}
+            value={draft.modelId}
+            onChange={(v) => updateDraft({ modelId: v })}
             data={(query.data?.models ?? []).map((m) => ({
               value: m.id,
               label: `${m.savedAt.slice(0, 16).replace("T", " ")} · ${m.preview.horizon}Y · ${quoteValue(m.preview.scenarios.base.value, m.preview.basis.currency)}`,
@@ -311,27 +440,55 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
           <TextInput
             type="date"
             name="reviewDate"
+            readOnly={readOnly}
             label={t("复核日期", "Review date")}
-            value={input.reviewDate ?? ""}
+            value={draft.reviewDate ?? ""}
             onChange={(e) =>
-              setInput({ ...input, reviewDate: e.currentTarget.value || null })
+              updateDraft({ reviewDate: e.currentTarget.value || null })
             }
           />
-          {save.isError && (
-            <p role="alert">
-              {t(
-                "保存失败。请检查链接是否完整；若笔记已在其他窗口修改，关闭后刷新再编辑。",
-                "Could not save. Check evidence URLs; if another window edited the note, close and reload before editing.",
-              )}
-            </p>
+          {editorError && <p role="alert">{noteErrorText(editorError)}</p>}
+          {conflict && (
+            <Group gap="xs">
+              <Button
+                type="button"
+                variant="default"
+                loading={editingAction === "load"}
+                disabled={readOnly}
+                onClick={() => resolveConflict("load")}
+              >
+                {t("载入最新版本", "Load latest")}
+              </Button>
+              <Button
+                type="button"
+                loading={editingAction === "keep"}
+                disabled={readOnly || !draft.title.trim()}
+                onClick={() => resolveConflict("keep")}
+              >
+                {t("用我的内容覆盖", "Keep my version")}
+              </Button>
+            </Group>
           )}
-          <Button
-            type="submit"
-            loading={save.isPending}
-            disabled={!input.title.trim()}
-          >
-            {t("保存笔记", "Save note")}
-          </Button>
+          <Group gap="xs">
+            <Button
+              type="submit"
+              flex={1}
+              loading={editingAction === "save"}
+              disabled={readOnly || conflict || !draft.title.trim()}
+            >
+              {t("保存笔记", "Save note")}
+            </Button>
+            {dirty && (
+              <Button
+                type="button"
+                variant="default"
+                disabled={readOnly}
+                onClick={discardEditor}
+              >
+                {t("放弃草稿", "Discard draft")}
+              </Button>
+            )}
+          </Group>
         </form>
       </Drawer>
       <Drawer

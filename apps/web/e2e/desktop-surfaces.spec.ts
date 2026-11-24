@@ -93,6 +93,7 @@ test.describe("desktop surfaces", () => {
     const data = await (await request.get("/api/backend/health/details")).json() as HealthDetails;
     const failed: RefreshJob = { jobId: "synthetic-failed-history", scope: "accounts", status: "failed", trigger: "nightly", createdAt: "2026-09-28T10:00:00Z", startedAt: "2026-09-28T10:00:00Z", finishedAt: "2026-09-28T10:01:00Z", scheduledFor: null, snapshotRunId: null, returnCode: 1, error: "Synthetic history conflict", skipSync: false, tickers: [], stages: [] };
     data.jobs = [{ ...failed, jobId: "synthetic-live-success", scope: "live", status: "succeeded", error: null, createdAt: "2026-09-29T10:00:00Z" }];
+    data.latestTerminalJobs = [failed, ...data.jobs];
     if (data.refresh) { data.refresh.latestFullJob = failed; data.refresh.latestJob = data.jobs[0]; }
     await page.route("**/api/backend/health/details", (route) => route.fulfill({ json: data }));
     await page.goto("/desktop/activity");

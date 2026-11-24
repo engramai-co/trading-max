@@ -165,7 +165,7 @@ export function TimelineChart({
         })}
       overlay={moneyLayout && <>
         <div className="mx-money-timeline-heading" style={{ top: moneyLayout.valueHeading }}>
-          <Legend items={layers[1].lines.map((line, index) => ({ label: line.name, dashed: line.dashed, colour: timelineLineColour(colours, 1, index, line) }))} />
+          <Legend items={layers[1].lines.map((line, index) => ({ label: line.name, dashed: line.dashed, dash: line.dash, colour: timelineLineColour(colours, 1, index, line) }))} />
         </div>
         <div className="mx-money-timeline-heading" style={{ top: moneyLayout.drawdownHeading }}>{drawdownHeading}</div>
       </>}

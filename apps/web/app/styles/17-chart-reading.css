@@ -483,6 +483,8 @@
 }
 .mx-reading-key {
   flex: none;
+}
+i.mx-reading-key {
   width: 12px;
   height: 0;
   border-top: 2px solid var(--key);
@@ -495,6 +497,15 @@
 }
 .mx-reading-key[data-dotted] {
   border-top-style: dotted;
+}
+svg.mx-reading-key > path {
+  stroke: var(--key, currentColor);
+  stroke-width: 2;
+}
+@media (forced-colors: active) {
+  svg.mx-reading-key > path {
+    stroke: CanvasText;
+  }
 }
 .mx-reading-key[data-kind="bar"] {
   width: 8px;

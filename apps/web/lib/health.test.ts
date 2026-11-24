@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { activityState } from "@/workspace/desktop-status";
 
 import {
-  deriveHealthTone,
+  deriveHealthDecision,
   durationBetween,
   formatDuration,
   formatInterval,
@@ -149,6 +149,9 @@ function details(overrides: Partial<HealthDetails> = {}): HealthDetails {
 }
 
 describe("health status model", () => {
+  const tone = (data: HealthDetails, localWorkspace = false) =>
+    deriveHealthDecision(data, { localWorkspace }).tone;
+
   function emptyLocal() {
     const emptyQueue = { ...queue, queued: 0, running: 0, succeeded: 0, failed: 0, interrupted: 0, last_success_at: null };
     const emptyError = "FileNotFoundError: no typed snapshot has been published";
@@ -160,10 +163,10 @@ describe("health status model", () => {
   }
 
   it("treats a new local workspace as setup without declaring data ready", () => {
-    expect(deriveHealthTone(emptyLocal(), true)).toBe("setup");
+    expect(tone(emptyLocal(), true)).toBe("setup");
     expect(activityState(emptyLocal(), true).tone).toBe("setup");
     expect(activityState(emptyLocal()).tone).toBe("degraded");
-    expect(deriveHealthTone(emptyLocal())).toBe("degraded");
+    expect(tone(emptyLocal())).toBe("degraded");
   });
 
   it("never hides a failed worker, prior data loss, or a real bootstrap error behind setup", () => {
@@ -173,18 +176,18 @@ describe("health status model", () => {
       { bootstrapError: "IntegrityError: damaged snapshot" },
       { queue: { ...empty.health!.queue, succeeded: 1 } },
       { queue: { ...empty.health!.queue, interrupted: 1 } },
-    ]) expect(deriveHealthTone({ ...empty, health: { ...empty.health!, ...change } }, true)).toBe("degraded");
-    expect(deriveHealthTone({ ...empty, errors: [{ scope: "jobs", status: 503, detail: "unavailable" }] }, true)).toBe("degraded");
+    ]) expect(tone({ ...empty, health: { ...empty.health!, ...change } }, true)).toBe("degraded");
+    expect(tone({ ...empty, errors: [{ scope: "jobs", status: 503, detail: "unavailable" }] }, true)).toBe("degraded");
   });
 
   it("reports a healthy backend as ready", () => {
-    expect(deriveHealthTone(details())).toBe("ready");
+    expect(tone(details())).toBe("ready");
   });
 
   it("reports an active full account job as running", () => {
     const active = job({ jobId: "job-active", status: "running", finishedAt: null });
     expect(
-      deriveHealthTone(
+      tone(
         details({
           health: { ...details().health!, activeJobId: "job-active" },
           refresh: refresh({
@@ -198,10 +201,52 @@ describe("health status model", () => {
     ).toBe("running");
   });
 
-  it("degrades on an account failure but ignores research-only failures", () => {
+  it("keeps a normal first sync running while giving confirmed failures precedence", () => {
+    const empty = emptyLocal();
+    const active = job({ status: "running", finishedAt: null });
+    const firstSync = {
+      ...empty,
+      health: { ...empty.health!, activeJobId: active.jobId, queue: { ...empty.health!.queue, running: 1 } },
+      jobs: [active],
+    };
+    expect(tone(firstSync, true)).toBe("running");
+    expect(deriveHealthDecision({
+      ...firstSync, readiness: { ...firstSync.readiness!, bootstrapError: "Damaged snapshot" },
+    }, { localWorkspace: true })).toMatchObject({ tone: "degraded", bootstrapIssue: "Damaged snapshot" });
+
+    const published = details({
+      health: { ...details().health!, activeJobId: active.jobId, queue: { ...queue, queued: 1 } },
+      jobs: [active],
+    });
+    expect(tone(published)).toBe("running");
+    for (const change of [
+      { readiness: { ...published.readiness!, status: "degraded" as const } },
+      { health: { ...published.health!, bootstrapError: "Damaged snapshot" } },
+      { errors: [{ scope: "jobs" as const, status: 503, detail: "unavailable" }] },
+    ]) expect(tone({ ...published, ...change })).toBe("degraded");
+  });
+
+  it("announces event source failures, changes and recovery while ignoring check timestamps", () => {
+    const base = details();
+    const source = { kind: "news" as const, checkedAt: null, asOf: null, failedSources: 1 };
+    const withFailure = details({ health: { ...base.health!, eventRefreshes: [
+      { ...source, failures: [{ source: "Fixture news" }] },
+    ] } });
+    const failed = deriveHealthDecision(withFailure);
+    expect(failed.tone).toBe("degraded");
+    expect(deriveHealthDecision({ ...withFailure, checkedAt: "2026-08-11T09:00:00Z" }).semanticKey).toBe(failed.semanticKey);
+    expect(deriveHealthDecision(details({
+      health: { ...base.health!, eventRefreshes: [
+        { ...source, failures: [{ source: "Another fixture" }] },
+      ] },
+    })).semanticKey).not.toBe(failed.semanticKey);
+    expect(deriveHealthDecision(base).semanticKey).not.toBe(failed.semanticKey);
+  });
+
+  it("degrades on account and research failures", () => {
     const failedAccount = job({ status: "failed", error: "failed" });
     expect(
-      deriveHealthTone(
+      tone(
         details({
           refresh: refresh({ latestJob: failedAccount, latestFullJob: failedAccount }),
           jobs: [failedAccount],
@@ -215,12 +260,12 @@ describe("health status model", () => {
       status: "failed",
       error: "research failed",
     });
-    expect(deriveHealthTone(details({ jobs: [researchFailure] }))).toBe("ready");
+    expect(tone(details({ jobs: [researchFailure] }))).toBe("degraded");
   });
 
   it("preserves a degraded signal for partial probe failure", () => {
     expect(
-      deriveHealthTone(
+      tone(
         details({
           errors: [{ scope: "jobs", status: 503, detail: "jobs probe unavailable" }],
         }),
@@ -230,7 +275,7 @@ describe("health status model", () => {
 
   it("distinguishes an entirely unavailable backend", () => {
     expect(
-      deriveHealthTone({
+      tone({
         checkedAt: "2026-08-11T08:00:05.000Z",
         health: null,
         readiness: null,
@@ -305,5 +350,174 @@ describe("current snapshot flow coverage", () => {
       .toBe("No retained valuations");
     expect(flowVerificationText({ ...schedule, flowUnverifiedCount: 26 }))
       .toBe("Verification unavailable");
+  });
+});
+
+describe("scope failures, probe availability, and stale snapshot independence", () => {
+  it("keeps a later-finishing failure visible when older services return overlapping jobs", () => {
+    const slowFailure = job({
+      jobId: "slow-failure",
+      scope: "cfd",
+      status: "failed",
+      createdAt: "2026-11-01T00:00:00+00:00",
+      startedAt: null,
+      finishedAt: "2026-11-03T00:00:00+00:00",
+    });
+    const quickSuccess = job({
+      jobId: "quick-success",
+      scope: "cfd",
+      status: "succeeded",
+      createdAt: "2026-11-02T00:00:00+00:00",
+      startedAt: null,
+      finishedAt: "2026-11-02T00:00:00+00:00",
+    });
+    const olderService = details({ jobs: [quickSuccess, slowFailure] });
+
+    expect(deriveHealthDecision(olderService)).toMatchObject({ tone: "degraded", failures: [slowFailure] });
+    expect(activityState(olderService)).toMatchObject({ tone: "degraded", failures: [slowFailure] });
+  });
+
+  it("uses start time, creation time and job ID to resolve legacy terminal outcomes", () => {
+    const failure = job({
+      jobId: "z-failure",
+      status: "interrupted",
+      finishedAt: null,
+      startedAt: "2026-08-11T07:58:30.000001Z",
+    });
+    const success = job({ jobId: "a-success" });
+    const failuresFor = (jobs: RefreshJob[]) => deriveHealthDecision(details({ refresh: null, jobs })).failures;
+
+    expect(failuresFor([success, failure])).toEqual([failure]);
+    const sameOutcomeTime = { ...success, finishedAt: failure.startedAt };
+    expect(failuresFor([sameOutcomeTime, failure])).toEqual([failure]);
+    expect(failuresFor([{ ...sameOutcomeTime, createdAt: "2026-08-11T07:58:01Z" }, failure])).toEqual([]);
+  });
+
+  it("tracks unresolved failures per scope across recent successes and clears on scope recovery", () => {
+    const perfFailed = job({
+      jobId: "perf-failed",
+      scope: "performance",
+      trigger: "performance",
+      status: "failed",
+      createdAt: "2026-08-11T07:50:00Z",
+      error: "Performance build failed",
+    });
+    const liveSucceeded = job({
+      jobId: "live-ok",
+      scope: "live",
+      trigger: "live",
+      status: "succeeded",
+      createdAt: "2026-08-11T07:55:00.500Z",
+    });
+    const perfSucceeded = job({
+      jobId: "perf-ok",
+      scope: "performance",
+      trigger: "performance",
+      status: "succeeded",
+      createdAt: "2026-08-11T08:00:00.000Z",
+    });
+    const degraded = details({
+      refresh: refresh({
+        latestJob: liveSucceeded,
+        performance: { ...refresh().intraday, lastJob: perfFailed },
+      }),
+      jobs: [liveSucceeded],
+    });
+    const decision = deriveHealthDecision(degraded);
+    expect(decision.failures.map((item) => item.jobId)).toEqual(["perf-failed"]);
+    expect(decision.tone).toBe("degraded");
+    expect(decision.serviceHealthy).toBe(true);
+    expect(decision.serviceIssue).toBe(false);
+    expect(decision.snapshotTime).toBe("2026-08-11T08:00:00.000Z");
+
+    for (const status of ["queued", "running"] as const) {
+      const retry = { ...perfSucceeded, jobId: "perf-retry", status };
+      const retrying = deriveHealthDecision({
+        ...degraded,
+        health: { ...degraded.health!, queue: { ...queue, [status]: 1 } },
+        refresh: refresh({ latestJob: retry }),
+        jobs: [retry, liveSucceeded, perfFailed],
+      });
+      expect(retrying.failures.map((item) => item.jobId)).toEqual(["perf-failed"]);
+      expect(retrying.tone).toBe("degraded");
+      expect(retrying[status]).toBe(1);
+    }
+
+    const recovered = details({
+      refresh: refresh({
+        latestJob: perfSucceeded,
+        performance: { ...refresh().intraday, lastJob: perfSucceeded },
+      }),
+      jobs: [perfSucceeded, liveSucceeded, perfFailed],
+    });
+    const cleared = deriveHealthDecision(recovered);
+    expect(cleared.failures).toEqual([]);
+    expect(cleared.tone).toBe("ready");
+  });
+
+  it("keeps snapshot stale age independent of health tone and missing probes", () => {
+    const agedHealth = { ...details().health!, artifactAgeSeconds: 432_000 };
+    const partialProbeFailure = details({
+      health: agedHealth,
+      refresh: null,
+      jobs: [],
+      errors: [
+        { scope: "refresh", status: 503, detail: "refresh probe returned HTTP 503" },
+        { scope: "jobs", status: 503, detail: "jobs probe returned HTTP 503" },
+      ],
+    });
+    const decision = deriveHealthDecision(partialProbeFailure);
+    expect(decision.tone).toBe("degraded");
+    expect(decision.stale).toBe(true);
+    expect(decision.serviceHealthy).toBe(true);
+    expect(decision.scheduleUnavailable).toBe(true);
+    expect(decision.jobsUnavailable).toBe(true);
+    expect(deriveHealthDecision(partialProbeFailure, { readOnly: true }).stale).toBe(false);
+  });
+
+  it("keeps an unhealthy worker's queue visible without declaring the update in progress", () => {
+    const active = job({ status: "queued", finishedAt: null });
+    const stalled = details({
+      health: { ...details().health!, queue: { ...queue, queued: 1 }, worker: { ...worker, healthy: false } },
+      refresh: refresh({ activeJobId: active.jobId, latestFullJob: active }),
+      jobs: [active],
+    });
+    const state = deriveHealthDecision(stalled);
+    expect(state.queued).toBe(1);
+    expect(state.tone).toBe("degraded");
+    expect(activityState(stalled).tone).toBe("degraded");
+
+    const healthy = { ...stalled, health: { ...stalled.health!, worker } };
+    expect(deriveHealthDecision(healthy).tone).toBe("running");
+  });
+
+  it("deduplicates repeated poll ticks while changing semantic key on material transitions", () => {
+    const base = details();
+    const poll1 = deriveHealthDecision(base);
+    const poll2 = deriveHealthDecision({
+      ...base,
+      checkedAt: "2026-08-11T08:00:10.000Z",
+      health: {
+        ...base.health!,
+        artifactAgeSeconds: 10,
+        worker: { ...worker, age_seconds: 7, last_seen_at: "2026-08-11T08:00:07.000Z" },
+      },
+    });
+    expect(poll1.semanticKey).toBe(poll2.semanticKey);
+
+    const failed = deriveHealthDecision(
+      details({
+        jobs: [job({ jobId: "perf-1", scope: "performance", status: "failed", error: "boom" })],
+      }),
+    );
+    expect(failed.semanticKey).not.toBe(poll1.semanticKey);
+
+    const stale = deriveHealthDecision(
+      details({ health: { ...base.health!, artifactAgeSeconds: 90_000 } }),
+    );
+    expect(stale.semanticKey).not.toBe(poll1.semanticKey);
+    expect(deriveHealthDecision(
+      details({ health: { ...base.health!, artifactAgeSeconds: 172_800 } }),
+    ).semanticKey).toBe(stale.semanticKey);
   });
 });

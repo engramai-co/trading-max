@@ -533,7 +533,7 @@ export function QueryError({
   error,
 }: {
   error?: unknown;
-  retry: () => unknown;
+  retry?: () => unknown;
   showDataStatusLink?: boolean;
   title?: string;
 }) {
@@ -545,21 +545,23 @@ export function QueryError({
         title={title ?? (isReadTimeout(error)
           ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable"))}
         description={detail}
-        action={
+        action={(retry || showDataStatusLink) && (
           <Group>
-            <Button
-              leftSection={<ArrowClockwise size={16} />}
-              onClick={() => void retry()}
-            >
-              {t("重新加载", "Try again")}
-            </Button>
+            {retry && (
+              <Button
+                leftSection={<ArrowClockwise size={16} />}
+                onClick={() => void retry()}
+              >
+                {t("重新加载", "Try again")}
+              </Button>
+            )}
             {showDataStatusLink && (
               <Button component={Link} href="/health" variant="default">
                 {t("查看数据状态", "Data status")}
               </Button>
             )}
           </Group>
-        }
+        )}
       />
     </Panel>
   );

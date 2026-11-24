@@ -833,3 +833,12 @@ details.mx-review-disclosure > summary {
   gap: 4px 8px;
   font-variant-numeric: tabular-nums;
 }
+@media print {
+  .mx-exposure-active.mx-desktop-holdings {
+    display: block;
+  }
+  .mx-exposure-active.mx-mobile-holdings {
+    display: flex;
+    flex-direction: column;
+  }
+}

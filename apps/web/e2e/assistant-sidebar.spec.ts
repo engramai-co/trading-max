@@ -216,6 +216,7 @@ test("weekly follow-ups retain the reading context after navigation and stop", a
     await page.locator("a[href='/holdings']:visible").first().click();
     await page.locator("[data-assistant-trigger]").click();
   }
+  await expect(page).toHaveURL(/\/holdings$/);
   let release: () => void = () => {};
   const held = new Promise<void>(resolve => {release = resolve;});
   await page.route("**/api/backend/assistant/chat*", async route => {await held; await route.abort().catch(() => {});});
@@ -226,8 +227,66 @@ test("weekly follow-ups retain the reading context after navigation and stop", a
       expect((await sent).postDataJSON().context).toMatchObject({role:"weekly",page:"overview",scope:"broker_total",range:"1W",snapshotId:"synthetic",object:{benchmark:"VOO"}});
       await page.getByRole("button",{name:"停止", exact:true}).click();
       await expect(input).toHaveValue(draft);
+      await expect(page.getByRole("button",{name:"发送", exact:true})).toBeEnabled();
     }
   } finally {release();}
+});
+
+test("stopping a second weekly turn after navigating keeps the reading context for retry", async ({page}, info) => {
+  await fixtures(page);
+  let finishNavigation: () => void = () => {};
+  if (info.project.name === "desktop") {
+    // Keep navigation pending when Stop restores the draft.
+    const navigation = new Promise<void>(resolve => {finishNavigation = resolve;});
+    await page.route(url => url.pathname === "/holdings", async route => {
+      await navigation;
+      await route.continue().catch(() => {});
+    });
+  }
+  await page.goto("/?scope=invest&range=3M");
+  const digest = page.locator(".mx-digest");
+  await digest.getByRole("button", {name:"周报", exact:true}).click();
+  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-reading-actions button").first().click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  const weeklyContext = {role:"weekly", page:"overview", scope:"broker_total", range:"1W", snapshotId:"synthetic", object:{benchmark:"VOO"}};
+  const firstSent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await input.press("Enter");
+  expect((await firstSent).postDataJSON().context).toMatchObject(weeklyContext);
+  await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
+  await expect(page.getByRole("button", {name:"发送", exact:true})).toBeDisabled();
+
+  let release: () => void = () => {};
+  const held = new Promise<void>(resolve => {release = resolve;});
+  await page.route("**/api/backend/assistant/chat*", async route => {await held; await route.abort().catch(() => {});});
+  try {
+    const followUp = "Which holding moved most that week?";
+    await input.fill(followUp);
+    const secondSent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await input.press("Enter");
+    expect((await secondSent).postDataJSON().context).toMatchObject(weeklyContext);
+    if (info.project.name === "desktop") {
+      await page.locator(".mx-sidebar a[href='/holdings']").click();
+      await expect(page).toHaveURL(/\/\?scope=invest&range=3M$/);
+    } else {
+      await page.locator("#mx-assistant-panel").getByRole("button", {name:"关闭侧栏"}).click();
+      await page.locator("a[href='/holdings']:visible").first().click();
+      await expect(page).toHaveURL(/\/holdings$/);
+      await page.locator("[data-assistant-trigger]").click();
+    }
+    await page.getByRole("button", {name:"停止", exact:true}).click();
+    finishNavigation();
+    await expect(page).toHaveURL(/\/holdings$/);
+    await expect(input).toHaveValue(followUp);
+    await expect(page.getByRole("button", {name:"发送", exact:true})).toBeEnabled();
+    await expect(page.locator(".mx-assistant-scope")).toContainText("全部投资账户");
+    const retried = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await input.press("Enter");
+    expect((await retried).postDataJSON().context).toMatchObject(weeklyContext);
+  } finally {
+    finishNavigation();
+    release();
+  }
 });
 test("an open Overview discovers a scheduled reading without starting a model run", async ({page}) => {
   await page.clock.install();

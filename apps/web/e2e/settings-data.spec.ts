@@ -35,7 +35,7 @@ function overview(integrations: IntegrationSummary[]): IntegrationOverview {
 }
 
 /** Opens Settings with every backend request answered here; writes other than the ones a test routes fail it. */
-async function open(page: Page, settings: () => IntegrationOverview) {
+async function open(page: Page, settings: () => IntegrationOverview, publishedBuild?: string) {
   const unexpected: string[] = [];
   await page.route("**/*", (route) => {
     if (route.request().method() === "GET") return route.fallback();
@@ -50,11 +50,15 @@ async function open(page: Page, settings: () => IntegrationOverview) {
       return route.abort();
     }
     if (path.endsWith("/settings/integrations")) return route.fulfill({ json: settings() });
+    if (path.endsWith("/health") && publishedBuild) return route.fulfill({
+      headers: { "x-trading-max-web-build": publishedBuild },
+      json: { service: "trading_max-api", status: "ok", latestRunId: null },
+    });
     if (path.endsWith("/imports/trading212/cfd")) return route.fulfill({ json: {
       parserVersion: "synthetic", accountStatus: "active", importedFiles: 0, uniqueEvents: 0, duplicateEvents: 0,
       totalRawRows: 0, isStale: false, warnings: [], files: [], coverageStartDate: null, coverageEndDate: null,
     } });
-    return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {} } : {} });
+    return route.fulfill({ json: path.endsWith("/profile") ? settings().profile : {} });
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
@@ -529,4 +533,281 @@ test("an EODHD key is tested and saved with index history off by default", async
   expect(requests).toEqual(["test", "save", "enable"]);
   expect(unexpected).toEqual([]);
   expect(await cacheText(page)).not.toContain("synthetic-secret");
+});
+
+async function expectDraftNavigation(page: Page, isMobile: boolean) {
+  await page.evaluate(() => { document.body.dataset.settingsDocument = "yes"; });
+  const navigation = isMobile ? /^(Quick navigation|快捷导航)$/ : /^(Primary navigation|主导航)$/;
+  await page.getByRole("navigation", { name: navigation })
+    .getByRole("link", { name: /^(Holdings|持仓|持仓与穿透)$/ }).click();
+  await expect(page).toHaveURL(/\/holdings$/);
+  await expect(page.locator("body")).toHaveAttribute("data-settings-document", "yes");
+}
+
+test("Preferences can save the language selected from the shell", async ({ page, isMobile }) => {
+  const server = overview([]);
+  const { unexpected } = await open(page, () => server);
+  await page.route("**/api/backend/profile", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const submitted = route.request().postDataJSON();
+    expect(submitted).toEqual({ locale: "zh", expectedRevision: 1 });
+    server.profile = { ...server.profile, locale: "zh", revision: 2 };
+    return route.fulfill({ json: server.profile });
+  });
+
+  if (isMobile) {
+    await page.getByRole("button", { name: "More", exact: true }).click();
+    await page.getByRole("menuitem", { name: "切换到中文", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "切换到中文", exact: true }).click();
+  }
+  await page.getByRole("tab", { name: "个人偏好", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveValue("简体中文");
+  await page.getByRole("button", { name: "保存偏好", exact: true }).click();
+  await expect(page.getByText("个人偏好已保存。", { exact: true })).toBeVisible();
+  expect(unexpected).toEqual([]);
+});
+
+test("Preferences follows a shell language change after editing its language selector", async ({ page, isMobile }) => {
+  const server = overview([]);
+  const { unexpected } = await open(page, () => server);
+  await page.route("**/api/backend/profile", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    expect(route.request().postDataJSON()).toEqual({ displayName: "Updated name", expectedRevision: 1 });
+    server.profile = { ...server.profile, displayName: "Updated name", revision: 2 };
+    return route.fulfill({ json: server.profile });
+  });
+
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+  const language = page.getByRole("combobox", { name: /^(Interface language|界面语言)$/ });
+  await language.click();
+  await page.getByRole("option", { name: "Chinese (Simplified)" }).click();
+  await expect(language).toHaveValue("简体中文");
+
+  if (isMobile) {
+    await page.getByRole("button", { name: "更多", exact: true }).click();
+    await page.getByRole("menuitem", { name: "Switch to English", exact: true }).click();
+  } else {
+    await page.getByRole("button", { name: "Switch to English", exact: true }).click();
+  }
+  await expect(language).toHaveValue("English");
+  await page.getByRole("textbox", { name: "Display name" }).fill("Updated name");
+  await page.getByRole("button", { name: "Save preferences", exact: true }).click();
+  await expect(page.getByText("Preferences saved.", { exact: true })).toBeVisible();
+  expect(unexpected).toEqual([]);
+});
+
+test("a preference draft survives tabs and a language change during save still guards navigation", async ({ page, isMobile }) => {
+  const server = overview([]);
+  const save = gate();
+  const publication = page.waitForResponse((response) => response.url().endsWith("/api/backend/health"));
+  const { unexpected } = await open(page, () => server, "synthetic-new-build");
+  await publication;
+  await page.route("**/api/backend/profile", async (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const submitted = route.request().postDataJSON();
+    expect(submitted).toEqual({ displayName: "Draft name", expectedRevision: 1 });
+    await save.opened;
+    server.profile = { ...server.profile, ...submitted, revision: 2 };
+    return route.fulfill({ json: server.profile });
+  });
+
+  const preferences = page.getByRole("tab", { name: /^(Preferences|个人偏好)$/ });
+  const accounts = page.getByRole("tab", { name: /^(Accounts & data|账户与数据)$/ });
+  await preferences.click();
+  const name = page.getByRole("textbox", { name: /^(Display name|显示名称)$/ });
+  await name.fill("Draft name");
+  await accounts.click();
+  await expect(name).toBeHidden();
+  await preferences.click();
+  await expect(name).toHaveValue("Draft name");
+
+  const saving = page.waitForRequest((request) =>
+    request.method() === "PATCH" && request.url().endsWith("/api/backend/profile"));
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await saving;
+  try {
+    await page.getByRole("combobox", { name: "Interface language" }).click();
+    await page.getByRole("option", { name: "Chinese (Simplified)" }).click();
+    await accounts.click();
+  } finally {
+    save.release();
+  }
+  await preferences.click();
+  await expect(page.getByText("还有未保存的修改")).toBeVisible();
+  await expect(name).toHaveValue("Draft name");
+  await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveValue("简体中文");
+  await accounts.click();
+  await expectDraftNavigation(page, isMobile);
+  expect(unexpected).toEqual([]);
+});
+
+test("editing a previously saved name after another profile revision is unsaved", async ({ page, isMobile }) => {
+  const server = overview([]);
+  const publication = page.waitForResponse((response) => response.url().endsWith("/api/backend/health"));
+  const { unexpected } = await open(page, () => server, "synthetic-new-build");
+  await publication;
+  let failReload = true;
+  await page.route("**/api/backend/settings/integrations", (route) => failReload
+    ? route.fulfill({ status: 503, json: {} })
+    : route.fallback());
+  await page.route("**/api/backend/profile", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    server.profile = { ...server.profile, ...route.request().postDataJSON(), revision: 2 };
+    return route.fulfill({ json: server.profile });
+  });
+  const preferences = page.getByRole("tab", { name: "Preferences", exact: true });
+  await preferences.click();
+  const name = page.getByRole("textbox", { name: "Display name" });
+  await name.fill("Saved name");
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  const saved = page.getByText("Preferences saved.", { exact: true });
+  await expect(saved).toBeVisible();
+  const retry = page.getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeVisible();
+  server.profile = { ...server.profile, displayName: "Another writer", revision: 3 };
+  failReload = false;
+  await retry.click();
+  await expect(name).toHaveValue("Another writer");
+  await name.fill("Saved name");
+  await expect(saved).toBeHidden();
+  await page.getByRole("tab", { name: "Accounts & data" }).click();
+  await expectDraftNavigation(page, isMobile);
+  expect(unexpected).toEqual([]);
+});
+
+async function refetchProfileFromPreferences(page: Page) {
+  await page.route("**/api/backend/settings/assistant", (route) => route.fulfill({ status: 503 }));
+  await page.clock.setFixedTime(Date.now() + 31_000);
+  const assistant = page.getByRole("tab", { name: "MaxAI" });
+  await assistant.click();
+  await expect(assistant).toHaveAttribute("aria-selected", "true");
+  const reloaded = page.waitForResponse((response) => response.url().endsWith("/api/backend/settings/integrations"));
+  await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+  await reloaded;
+}
+
+test("a profile reload supersedes a dirty draft without resubmitting untouched preferences", async ({ page }) => {
+  const server = overview([]);
+  const { unexpected } = await open(page, () => server);
+  const preferences = page.getByRole("tab", { name: "Preferences", exact: true });
+  await preferences.click();
+  const name = page.getByRole("textbox", { name: "Display name" });
+  await name.fill("Obsolete name");
+
+  server.profile = { ...server.profile, revision: 2, displayName: "Another writer", timezone: "UTC" };
+  await refetchProfileFromPreferences(page);
+  await expect(name).toHaveValue("Another writer");
+  await expect(page.getByRole("combobox", { name: "Display timezone" })).toHaveValue("UTC");
+
+  await page.route("**/api/backend/profile", (route) => {
+    if (route.request().method() !== "PATCH") return route.fallback();
+    const submitted = route.request().postDataJSON();
+    expect(submitted).toEqual({ displayName: "Fresh name", expectedRevision: 2 });
+    server.profile = { ...server.profile, displayName: submitted.displayName, revision: 3 };
+    return route.fulfill({ json: server.profile });
+  });
+  await name.fill("Fresh name");
+  await page.getByRole("button", { name: "Save preferences" }).click();
+  await expect(page.getByText("Preferences saved.", { exact: true })).toBeVisible();
+  expect(unexpected).toEqual([]);
+});
+
+for (const status of [409, 200]) {
+  test(`a preferences save retains its draft on ${status === 409 ? "conflict" : "an unrelated response revision"}`, async ({ page }) => {
+    const server = overview([]);
+    const { unexpected } = await open(page, () => server);
+    await page.route("**/api/backend/profile", (route) => {
+      if (route.request().method() !== "PATCH") return route.fallback();
+      const submitted = route.request().postDataJSON();
+      expect(submitted).toEqual({ displayName: "Draft name", expectedRevision: 1 });
+      server.profile = { ...server.profile, displayName: "Another writer", revision: 3 };
+      return route.fulfill({
+        status,
+        json: status === 409
+          ? { detail: { code: "profile_revision_conflict" } }
+          : { ...server.profile, displayName: submitted.displayName },
+      });
+    });
+
+    const preferences = page.getByRole("tab", { name: "Preferences", exact: true });
+    await preferences.click();
+    const name = page.getByRole("textbox", { name: "Display name" });
+    const save = page.getByRole("button", { name: "Save preferences" });
+    await name.fill("Draft name");
+    await save.click();
+    const conflict = page.getByText("Settings changed in another window. Reload before saving.", { exact: true });
+    await expect(conflict).toBeVisible();
+    await expect(save).toBeDisabled();
+
+    await refetchProfileFromPreferences(page);
+    await expect(name).toHaveValue("Draft name");
+    await expect(conflict).toBeVisible();
+    await expect(page.getByText("Preferences saved.", { exact: true })).toBeHidden();
+    expect(unexpected).toEqual([]);
+  });
+}
+
+test("a routing draft survives tabs and a later revision supersedes the old save", async ({ page, isMobile }) => {
+  const server = overview([{ ...alpaca(true), provider: "openai", model: "gpt-5" }]);
+  server.llmProviders = [{
+    provider: "openai", label: "OpenAI", adapter: "openai", baseUrl: "https://example.invalid",
+    models: ["gpt-5", "gpt-5-mini", "gpt-5-nano"], defaultModel: "gpt-5", authMethod: "api_key",
+  }];
+  const initial = { defaultRoute: "openai/gpt-5", overrides: {}, revision: 1, updatedAt: server.profile.updatedAt };
+  server.llmRoutePolicy = initial;
+  const save = gate();
+  const reload = gate();
+  const publication = page.waitForResponse((response) => response.url().endsWith("/api/backend/health"));
+  const { unexpected } = await open(page, () => server, "synthetic-new-build");
+  await publication;
+  await page.route("**/api/backend/settings/llm/routes", async (route) => {
+    expect(route.request().method()).toBe("PUT");
+    expect(route.request().postDataJSON()).toEqual({
+      defaultRoute: "openai/gpt-5-mini", overrides: {}, expectedRevision: 1,
+    });
+    await save.opened;
+    server.llmRoutePolicy = { ...initial, defaultRoute: "openai/gpt-5-nano", revision: 3 };
+    return route.fulfill({ json: { ...initial, defaultRoute: "openai/gpt-5-mini", revision: 2 } });
+  });
+  await page.route("**/api/backend/settings/integrations", async (route) => {
+    await reload.opened;
+    return route.fallback();
+  });
+
+  const models = page.getByRole("tab", { name: "Model connections" });
+  const preferences = page.getByRole("tab", { name: "Preferences", exact: true });
+  await models.click();
+  const defaultModel = page.getByRole("combobox", { name: "Default model", exact: true });
+  async function selectModel(model: string) {
+    await defaultModel.click();
+    await page.getByRole("option", { name: `OpenAI · ${model}`, exact: true }).click();
+  }
+  await selectModel("gpt-5-mini");
+  await preferences.click();
+  await expect(defaultModel).toBeHidden();
+  await models.click();
+  await expect(defaultModel).toHaveValue("OpenAI · gpt-5-mini");
+
+  const saving = page.waitForRequest((request) =>
+    request.method() === "PUT" && request.url().endsWith("/api/backend/settings/llm/routes"));
+  await page.getByRole("button", { name: "Save model assignments" }).click();
+  await saving;
+  try {
+    await selectModel("gpt-5");
+  } finally {
+    save.release();
+  }
+  try {
+    await expect(page.getByText("You have unsaved changes", { exact: true })).toBeVisible();
+    await expect(defaultModel).toHaveValue("OpenAI · gpt-5");
+  } finally {
+    reload.release();
+  }
+  await expect(defaultModel).toHaveValue("OpenAI · gpt-5-nano");
+  await selectModel("gpt-5-mini");
+  await expect(page.getByText("Model assignments saved.", { exact: true })).toBeHidden();
+  await preferences.click();
+  await expectDraftNavigation(page, isMobile);
+  expect(unexpected).toEqual([]);
 });

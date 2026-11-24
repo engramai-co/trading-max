@@ -86,7 +86,11 @@ export function timelineReadout({
   const positions = [...rows.keys()];
   const key = (layer: number, line = 0): ReadingKey => {
     const item = layers[layer]?.lines[line];
-    return { colour: timelineLineColour(colours, layer, line, item ?? {}), ...(item?.dashed ? { dashed: true } : {}) };
+    return {
+      colour: timelineLineColour(colours, layer, line, item ?? {}),
+      ...(item?.dashed ? { dashed: true } : {}),
+      ...(item?.dash ? { dash: item.dash } : {}),
+    };
   };
   const figures = reading ?? defaultTimelineFigures(layers);
   const read = (position: number, grid?: number): Reading | null => {

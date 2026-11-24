@@ -30,7 +30,7 @@ export function AssistantEntry() {
     <span aria-hidden="true">✦</span> {ASSISTANT_NAME} <kbd>⌘J</kbd>
   </button>;
 }
-export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }: { overlay: boolean; page: string; search: string; scopeLabel: string; searchOpen: boolean }) {
+export function AssistantPanel({ page, scopeLabel, searchOpen, overlay }: { overlay: boolean; page: string; scopeLabel: string; searchOpen: boolean }) {
   const { open, close, ready, pending, suspended, code, handoff } = useAssistant();
   const t = useCopy();
   // A new opening requires confirmation. An already visible thread can keep its
@@ -80,7 +80,7 @@ export function AssistantPanel({ page, search, scopeLabel, searchOpen, overlay }
     onKeyDown={overlay && !searchOpen ? cyclePanelTab : undefined}
     role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
     {(ready || pending || suspended) && thread !== "unvisited" && <div className="mx-assistant-thread" hidden={!showThread}
-      onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, search, scopeLabel }} checking={showThread && pending} composerRef={setComposer} /></div>}
+      onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, scopeLabel }} checking={showThread && pending} composerRef={setComposer} /></div>}
     {!showThread && <>
       <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button data-assistant-dismiss onClick={close}
         onKeyDown={event => { if (pending && event.key === "Tab") event.preventDefault(); }}

@@ -70,6 +70,7 @@ from ..models import (
     LLMRoutePolicyUpdate,
     OAuthLoginRequest,
     OAuthLoginStatus,
+    ProfileRevisionConflictResponse,
     Trading212IntegrationCandidate,
     Trading212IntegrationRequest,
     UserProfile,
@@ -79,6 +80,7 @@ from ..provider_runtime import (
     ProviderRuntimeError,
     resolve_assistant_connection,
 )
+from ..settings import ProfileRevisionConflict
 from ..valuation_assumptions import (
     ValuationAssumptionsHistoryEntry,
     ValuationAssumptionsState,
@@ -416,6 +418,9 @@ def get_profile(request: Request) -> UserProfile:
     "/v1/profile",
     response_model=UserProfile,
     dependencies=[Depends(require_write_auth)],
+    responses={
+        409: {"model": ProfileRevisionConflictResponse, "description": "Profile revision conflict"}
+    },
 )
 def update_profile(
     request_body: UserProfilePatch,
@@ -425,6 +430,11 @@ def update_profile(
         return app_service(request, "settings_repository").update_profile(
             request_body,
         )
+    except ProfileRevisionConflict as exc:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "profile_revision_conflict", "message": str(exc)},
+        ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

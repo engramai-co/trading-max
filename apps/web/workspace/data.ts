@@ -9,22 +9,41 @@ export const object = (value: unknown): Json =>
 export const objects = (value: unknown): Json[] =>
   Array.isArray(value) ? value.map(object) : [];
 export const str = (value: unknown) => (typeof value === "string" ? value : "");
-export const number = (value: unknown, digits = 2) =>
-  numeric(value)?.toLocaleString("en-GB", { maximumFractionDigits: digits }) ??
-  "—";
+const numberFormats = new Map<number, Intl.NumberFormat>();
+const currencyFormats = new Map<string, Intl.NumberFormat>();
+
+export const number = (value: unknown, digits = 2) => {
+  const n = numeric(value);
+  if (n == null) return "—";
+  let format = numberFormats.get(digits);
+  if (!format) {
+    format = new Intl.NumberFormat("en-GB", { maximumFractionDigits: digits });
+    if (numberFormats.size >= 32) numberFormats.clear();
+    numberFormats.set(digits, format);
+  }
+  return format.format(n);
+};
 export const currency = (value: unknown, code = "GBP", digits = 0) => {
   const n = numeric(value);
   if (n == null) return "—";
-  try {
-    return new Intl.NumberFormat("en-GB", {
-      style: "currency",
-      currency: code,
-      maximumFractionDigits: digits,
-      minimumFractionDigits: digits,
-    }).format(Math.abs(n) < 0.5 * 10 ** -digits ? 0 : n);
-  } catch {
-    return number(n, digits) + " " + code;
+  const rounded = Math.abs(n) < 0.5 * 10 ** -digits ? 0 : n;
+  const key = `${code}\u0000${digits}`;
+  let format = currencyFormats.get(key);
+  if (!format) {
+    try {
+      format = new Intl.NumberFormat("en-GB", {
+        style: "currency",
+        currency: code,
+        maximumFractionDigits: digits,
+        minimumFractionDigits: digits,
+      });
+      if (currencyFormats.size >= 64) currencyFormats.clear();
+      currencyFormats.set(key, format);
+    } catch {
+      return number(n, digits) + " " + code;
+    }
   }
+  return format.format(rounded);
 };
 export const percent = (value: unknown, signed = false, digits = 1) => {
   const n = numeric(value);
