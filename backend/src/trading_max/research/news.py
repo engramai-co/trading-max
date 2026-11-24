@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urlsplit
 
 import yfinance as yf
+from yfinance.exceptions import YFRateLimitError
 
 from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
 
@@ -29,31 +30,84 @@ def web_url(value):
         return None
 
 
-def verified_news(proxy):
-    """Use yfinance's authenticated transport and inspect the original response.
+# Yahoo Finance's quote-page GraphQL feed. Request only the fields used by headline().
+_NEWS_QUERY = """
+query TickerNews($list: LightyearListInput!, $rank: MLRecsInput!, $context: ClientContext!) {
+  financeTickerList(list_input: $list, cc: $context) {
+    mlRecsStream(mlRecsInput: $rank, first: 20) {
+      edges { node { asset {
+        __typename
+        ... on Story { id: uuid title contentAttributes { ...HeadlineMetadata } }
+        ... on Video { id: uuid title contentAttributes { ...HeadlineMetadata } }
+        ... on Outlink { id: uuid title: headline pubDate: displayTime link: url
+                         provider { displayName } }
+      } } }
+    }
+  }
+}
+fragment HeadlineMetadata on ContentAttributes {
+  pubDate: publishTime link: canonicalUrl clickthroughUrl(cc: $context) provider { displayName }
+}
+"""
 
-    The pinned get_news() turns invalid JSON and missing streams into an empty
-    list. Only an explicit successful ticker stream verifies zero articles.
-    """
-    response = proxy._data.post(
-        "https://finance.yahoo.com/xhr/ncp?queryRef=latestNews&serviceKey=ncp_fin",
-        body={"serviceConfig": {"snippetCount": 20, "s": [proxy.ticker]}},
+
+def verified_news(proxy):
+    """Only an explicit successful ticker stream verifies zero articles."""
+    symbol = proxy.ticker
+    region, lang = ("GB", "en-GB") if symbol.endswith(".L") else ("US", "en-US")
+    variables = {
+        "list": {
+            "slug": f"list=finance-{region}-{lang}-ticker-news",
+            "queryVariables": {"tickerSymbol": [symbol]},
+            "getFullList": True,
+        },
+        "rank": {
+            "instance": "FINANCE",
+            "count": 20,
+            "rankInput": {
+                "financeQuoteNewsV2": {
+                    "tickerSymbol": [symbol],
+                    "halfLifeHours": 24,
+                    "boostDurationHours": 16,
+                    "recencyWeight": 1,
+                    "aboutnessWeight": 0,
+                }
+            },
+        },
+        "context": {"device": "desktop", "site": "finance", "lang": lang, "region": region},
+    }
+    response = proxy.session.post(
+        "https://nexus-finance-prod.media.yahoo.com/",
+        json={"operationName": "TickerNews", "query": _NEWS_QUERY, "variables": variables},
+        headers={"x-yahoo-cg-client-name": "finance"},
+        timeout=30,
     )
+    if response.status_code == 429:
+        raise YFRateLimitError()
     response.raise_for_status()
     payload = response.json()
     if payload.get("errors") or payload.get("error"):
         raise ValueError("Yahoo news error")
-    feed = payload["data"]["tickerStream"]
-    rows = feed["stream"]
-    if (
-        feed.get("error")
-        or not isinstance(rows, list)
-        or not all(isinstance(r, dict) for r in rows)
-    ):
+    edges = payload["data"]["financeTickerList"]["mlRecsStream"]["edges"]
+    if not isinstance(edges, list):
         raise ValueError("invalid Yahoo ticker stream")
-    articles = [r for r in rows if not r.get("ad")]
-    if articles and not any(headline(r) for r in articles):
-        raise ValueError("unrecognised news records")
+    articles = []
+    for edge in edges:
+        asset = edge["node"]["asset"]
+        kind = asset["__typename"]
+        if kind not in {"Outlink", "Story", "Video"}:
+            raise ValueError("unrecognised news records")
+        metadata = asset if kind == "Outlink" else asset["contentAttributes"]
+        row = {
+            "id": asset["id"],
+            "title": asset["title"],
+            "pubDate": metadata["pubDate"],
+            "link": web_url(metadata.get("link")) or metadata.get("clickthroughUrl"),
+            "provider": metadata["provider"],
+        }
+        if not headline(row):
+            raise ValueError("unrecognised news records")
+        articles.append(row)
     return articles
 
 

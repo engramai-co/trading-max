@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.69.1] - 2026-11-24
+
+### Fixed
+- Security news updates again. Yahoo retired the headline endpoint Trading Max used on 23 November, so every news refresh failed and Data status reported the news sources as failed. News now comes from Yahoo's current ticker feed, London listings from its UK feed. A rate-limit response pauses all Yahoo requests for the shared cooldown, and a missing or malformed feed still counts as a failure rather than as no news.
+
 ## [1.69.0] - 2026-11-24
 
 ### Added
