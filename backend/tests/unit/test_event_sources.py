@@ -354,7 +354,20 @@ def test_estat_retains_period_and_stage_in_both_languages(key):
 
 @pytest.mark.parametrize(
     ("code", "body"),
-    [(503, "<html>Unavailable</html>"), (200, "{}"), (200, '{"data":{"tickerStream":{}}}')],
+    [
+        (404, "<html>Not found</html>"),
+        (200, "<html>Unavailable</html>"),
+        (200, "{}"),
+        (200, '{"data":{"financeTickerList":{"mlRecsStream":{}}}}'),
+        (
+            200,
+            '{"errors":[{"message":"partial"}],"data":{"financeTickerList":{"mlRecsStream":{"edges":[]}}}}',
+        ),
+        (
+            200,
+            '{"data":{"financeTickerList":{"mlRecsStream":{"edges":[{"node":{"asset":{"__typename":"AssetError"}}}]}}}}',
+        ),
+    ],
 )
 def test_yahoo_invalid_response_survives_disclosure_reuse_and_health(
     tmp_path, monkeypatch, code, body
@@ -373,9 +386,11 @@ def test_yahoo_invalid_response_survives_disclosure_reuse_and_health(
     from services.api.trading_max_api.credentials import InMemoryCredentialStore
 
     response = httpx.Response(
-        code, content=body, request=httpx.Request("POST", "https://finance.yahoo.com/xhr/ncp")
+        code,
+        content=body,
+        request=httpx.Request("POST", "https://nexus-finance-prod.media.yahoo.com/"),
     )
-    proxy = SimpleNamespace(ticker="FIX.L", _data=SimpleNamespace(post=lambda *a, **kw: response))
+    proxy = SimpleNamespace(ticker="FIX.L", session=SimpleNamespace(post=lambda *a, **kw: response))
     monkeypatch.setattr(news.yf, "Ticker", lambda _: proxy)
     evidence = disclosures.ResearchEvidenceProvider(tmp_path / "disclosures")("FIX.L", {})
     assert evidence["status"]["news"]["state"] == "missing"
@@ -504,14 +519,16 @@ def test_verified_empty_stream_and_unverified_legacy_disclosure_cache(monkeypatc
 
     calls = []
 
-    def post(url, body):
-        calls.append((url, body))
+    def post(url, *, json, headers, timeout):
+        calls.append(json["variables"])
         return httpx.Response(
-            200, json={"data": {"tickerStream": {"stream": []}}}, request=httpx.Request("POST", url)
+            200,
+            json={"data": {"financeTickerList": {"mlRecsStream": {"edges": []}}}},
+            request=httpx.Request("POST", url),
         )
 
     monkeypatch.setattr(
-        news.yf, "Ticker", lambda t: SimpleNamespace(ticker=t, _data=SimpleNamespace(post=post))
+        news.yf, "Ticker", lambda t: SimpleNamespace(ticker=t, session=SimpleNamespace(post=post))
     )
     cache = {"asOf": NOW.isoformat(), "news": [], "status": {}}
     result = news.refresh_news(
@@ -521,4 +538,72 @@ def test_verified_empty_stream_and_unverified_legacy_disclosure_cache(monkeypatc
         result["securities"]["TEST"]["as_of"] == NOW.isoformat()
         and not result["securities"]["TEST"]["error"]
     )
-    assert len(calls) == 1 and calls[0][1]["serviceConfig"]["s"] == ["TEST"]
+    (variables,) = calls
+    assert variables["list"]["queryVariables"]["tickerSymbol"] == ["TEST"]
+    assert variables["rank"]["rankInput"]["financeQuoteNewsV2"]["tickerSymbol"] == ["TEST"]
+    assert variables["context"]["region"] == "US"
+
+
+@pytest.mark.parametrize("kind", ["Story", "Video", "Outlink"])
+def test_yahoo_news_quote_assets(kind):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    import httpx
+    from trading_max.research.news import headline, verified_news
+
+    metadata = {
+        "pubDate": NOW.isoformat(),
+        "provider": {"displayName": "Example Press"},
+        "link": "https://example.org/story",
+    }
+    asset = {"__typename": kind, "id": "fixture", "title": "Synthetic story"}
+    if kind == "Outlink":
+        asset.update(metadata)
+    else:
+        asset["contentAttributes"] = {**metadata, "link": None, "clickthroughUrl": metadata["link"]}
+    edges = [{"node": {"asset": asset}}]
+    payload = {"data": {"financeTickerList": {"mlRecsStream": {"edges": edges}}}}
+    request = httpx.Request("POST", "https://nexus-finance-prod.media.yahoo.com/")
+    session = Mock()
+    session.post.return_value = httpx.Response(200, json=payload, request=request)
+    proxy = SimpleNamespace(ticker="FIX.L", session=session)
+    (row,) = verified_news(proxy)
+    assert headline(row) == {
+        "id": "fixture",
+        "title": "Synthetic story",
+        "date": NOW.date().isoformat(),
+        "instant": NOW.isoformat(),
+        "url": metadata["link"],
+        "publisher": "Example Press",
+    }
+    variables = session.post.call_args.kwargs["json"]["variables"]
+    assert variables["context"]["region"] == "GB"
+    assert variables["list"]["slug"] == "list=finance-GB-en-GB-ticker-news"
+    edges.append({"node": {"asset": {**asset, "title": ""}}})
+    session.post.return_value = httpx.Response(200, json=payload, request=request)
+    with pytest.raises(ValueError, match="unrecognised"):
+        verified_news(proxy)
+
+
+def test_yahoo_news_rate_limit_pauses_requests_for_later_symbols(monkeypatch):
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    import httpx
+    from trading_max.infrastructure.shared_market_prices import SharedMarketPrices
+    from trading_max.research import news
+
+    session = Mock()
+    session.post.return_value = httpx.Response(
+        429, request=httpx.Request("POST", "https://nexus-finance-prod.media.yahoo.com/")
+    )
+    monkeypatch.setattr(news.yf, "Ticker", lambda t: SimpleNamespace(ticker=t, session=session))
+    budget = SharedMarketPrices()
+    result = news.refresh_news({}, ["FIRST", "SECOND"], NOW, budget)["securities"]
+
+    session.post.assert_called_once()
+    variables = session.post.call_args.kwargs["json"]["variables"]
+    assert variables["list"]["queryVariables"]["tickerSymbol"] == ["FIRST"]
+    assert budget.rate_limited
+    assert result["FIRST"]["error"] == result["SECOND"]["error"] == "SparkRateLimited"
