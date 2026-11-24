@@ -8,6 +8,7 @@ from pathlib import Path
 
 from trading_max.analytics.accounts import (
     AccountSnapshotMetrics,
+    account_snapshot_metrics,
     intraday_account_value,
     metrics_from_snapshot_file,
 )
@@ -19,9 +20,10 @@ from trading_max.analytics.ledger import (
 )
 from trading_max.domain import ArtifactQuality
 from trading_max.infrastructure import ContentAddressedArtifactStore
-from trading_max.ingestion.brokers.trading212 import latest_export_path
+from trading_max.ingestion.brokers.trading212 import BrokerSnapshot, latest_export_path
 
 from .account_selection import SELECTION_KEY, accounts_for_profiles, selected_accounts
+from .broker_stages import broker_snapshot_key
 from .errors import StageExecutionError
 from .stages import StageContext, StageResult
 
@@ -80,6 +82,47 @@ class AccountSnapshotStage:
     def _latest_snapshot(self, profile: str) -> Path:
         return self._snapshots(profile)[-1]
 
+    def _upstream_broker_snapshot(
+        self, context: StageContext, profile: str, *, intraday: bool
+    ) -> tuple[str, dict] | None:
+        """Read the exact broker snapshot emitted by ``broker.sync`` in this job."""
+        # The legacy key is needed for live jobs resuming a completed sync
+        # stage from before the two lanes had separate raw artifact keys.
+        keys = {broker_snapshot_key(profile, intraday=False)}
+        if intraday:
+            keys.add(broker_snapshot_key(profile, intraday=True))
+        for artifact_id in context.upstream_artifact_ids:
+            try:
+                ref = self.artifacts.get_ref(artifact_id)
+            except FileNotFoundError:
+                continue
+            if ref.key in keys:
+                return artifact_id, self.artifacts.get_json(artifact_id).payload
+        return None
+
+    def _metrics_from_upstream(
+        self,
+        profile: str,
+        artifact_id: str,
+        payload: dict,
+        *,
+        require_positions_match: bool,
+    ) -> AccountSnapshotMetrics:
+        source = f"artifact:{artifact_id}"
+        if "account_summary" in payload:
+            return account_snapshot_metrics(
+                profile,
+                payload,
+                source=source,
+                require_positions_match=require_positions_match,
+            )
+        return account_snapshot_metrics(
+            profile,
+            BrokerSnapshot.model_validate(payload),
+            source=source,
+            require_positions_match=require_positions_match,
+        )
+
     def _recent_reconciled(
         self, profile: str, newest: Path
     ) -> tuple[AccountSnapshotMetrics, str] | None:
@@ -135,28 +178,44 @@ class AccountSnapshotStage:
                     ).ref
                 )
         for account_code, profile in selection:
-            path = self._latest_snapshot(profile)
-            try:
-                metrics = metrics_from_snapshot_file(
-                    profile,
-                    path,
-                    require_positions_match=not intraday,
-                )
-            except Exception as exc:
-                # Only jobs that reuse the live snapshot may fall back. A full
-                # refresh has just synced and must reconcile its own snapshot.
-                fallback = (
-                    self._recent_reconciled(profile, path)
-                    if not intraday and context.skip_sync
-                    else None
-                )
-                if fallback is None:
+            upstream = self._upstream_broker_snapshot(context, profile, intraday=intraday)
+            if upstream is not None:
+                artifact_id, raw_payload = upstream
+                try:
+                    metrics = self._metrics_from_upstream(
+                        profile,
+                        artifact_id,
+                        raw_payload,
+                        require_positions_match=not intraday,
+                    )
+                except Exception as exc:
                     raise StageExecutionError(
                         "account.snapshot_invalid",
                         f"{profile}: {exc}",
                     ) from exc
-                metrics, fallback_warning = fallback
-                fallback_notes.append(fallback_warning)
+            else:
+                path = self._latest_snapshot(profile)
+                try:
+                    metrics = metrics_from_snapshot_file(
+                        profile,
+                        path,
+                        require_positions_match=not intraday,
+                    )
+                except Exception as exc:
+                    # Only jobs that reuse the live snapshot may fall back. A full
+                    # refresh has just synced and must reconcile its own snapshot.
+                    fallback = (
+                        self._recent_reconciled(profile, path)
+                        if not intraday and context.skip_sync
+                        else None
+                    )
+                    if fallback is None:
+                        raise StageExecutionError(
+                            "account.snapshot_invalid",
+                            f"{profile}: {exc}",
+                        ) from exc
+                    metrics, fallback_warning = fallback
+                    fallback_notes.append(fallback_warning)
             account_warnings: list[str] = []
             if intraday:
                 observation = intraday_account_value(metrics)
@@ -196,6 +255,7 @@ class AccountSnapshotStage:
                 kind=kind,
                 as_of=metrics.fetched_at.date().isoformat(),
                 producer_version=self.version,
+                dependency_artifact_ids=[upstream[0]] if upstream is not None else [],
                 quality=ArtifactQuality(
                     status="warning" if account_warnings else "verified",
                     coverage=coverage,

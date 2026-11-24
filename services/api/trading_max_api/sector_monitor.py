@@ -1068,11 +1068,11 @@ class SectorMonitor:
         )
         self._thread.start()
 
-    def close(self) -> None:
+    def close(self, *, timeout: float = 5) -> None:
         self._stop.set()
         self._wake.set()
         if self._thread is not None:
-            self._thread.join(timeout=5)
+            self._thread.join(timeout=timeout)
 
 
 __all__ = [

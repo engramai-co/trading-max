@@ -497,7 +497,8 @@ def api(args) -> int:
             app,
             host="127.0.0.1",
             port=int(os.environ["TRADING_MAX_API_PORT"]),
-            timeout_graceful_shutdown=2,
+            # Leave 2.5 seconds for the embedded services within the supervisor's grace period.
+            timeout_graceful_shutdown=0.25,
             access_log=False,
         )
     )

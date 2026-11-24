@@ -413,6 +413,9 @@ class AccountNavStage:
         return StageResult(artifacts=tuple(refs), warnings=tuple(warnings))
 
 
+VALUATION_HISTORY_KEY = "account/nav/valuation_history.json"
+
+
 class AccountIntradayNavStage:
     """Publish one valuation history for both broker collection and backfilling."""
 
@@ -465,7 +468,7 @@ class AccountIntradayNavStage:
         previous = _previous_json(
             self.artifacts,
             self.snapshots,
-            "account/nav/valuation_history.json",
+            VALUATION_HISTORY_KEY,
         ) or _previous_json(
             self.artifacts,
             self.snapshots,
@@ -576,7 +579,7 @@ class AccountIntradayNavStage:
                         "no overlapping intraday market coverage; broker observations retained"
                     )
         stored = self.artifacts.put_json(
-            key="account/nav/valuation_history.json",
+            key=VALUATION_HISTORY_KEY,
             payload=series.model_dump(mode="json", by_alias=False),
             kind="intraday_nav",
             as_of=(series.points[-1].observed_at.isoformat() if series.points else None),
@@ -670,6 +673,25 @@ def broker_share_movements(path: Path, modified_ns: int, size: int) -> ShareMove
     }
 
 
+def load_share_movements(
+    state_root: Path | None, profiles: dict[str, str]
+) -> tuple[dict[str, ShareMovements], list[str]]:
+    movements = {}
+    warnings = []
+    if state_root is not None:
+        for code, profile in profiles.items():
+            try:
+                path = latest_export_path(profile, data_root=state_root / "trading212")
+                if path:
+                    stat = path.stat()
+                    movements[code] = broker_share_movements(path, stat.st_mtime_ns, stat.st_size)
+            except (OSError, ValueError, Trading212ExportError):
+                warnings.append(
+                    f"{code}: trade and split export unavailable; using broker position basis"
+                )
+    return movements, warnings
+
+
 class AccountDayAttributionStage:
     """Attribute each position's change over the trading day and the 5D window."""
 
@@ -710,7 +732,7 @@ class AccountDayAttributionStage:
             for prefix in prefixes:
                 for path in folder.glob(prefix + "*.json"):
                     try:
-                        # Names carry the UTC fetch time: snapshot_YYYYMMDDTHHMMSSZ.json
+                        # Both lane filenames start with the UTC fetch time.
                         moment = datetime.strptime(path.name[9:24] + "+0000", "%Y%m%dT%H%M%S%z")
                     except ValueError:
                         continue
@@ -752,21 +774,7 @@ class AccountDayAttributionStage:
             return StageResult()
         previous = _previous_json(self.artifacts, self.snapshots, DAY_BASELINE_KEY)
         previous_window = _previous_json(self.artifacts, self.snapshots, WINDOW_BASELINES_KEY)
-        share_movements = {}
-        movement_warnings = []
-        if self.state_root is not None:
-            for code, profile in profiles.items():
-                try:
-                    path = latest_export_path(profile, data_root=self.state_root / "trading212")
-                    if path:
-                        stat = path.stat()
-                        share_movements[code] = broker_share_movements(
-                            path, stat.st_mtime_ns, stat.st_size
-                        )
-                except (OSError, ValueError, Trading212ExportError):
-                    movement_warnings.append(
-                        f"{code}: trade and split export unavailable; using broker position basis"
-                    )
+        share_movements, movement_warnings = load_share_movements(self.state_root, profiles)
         try:
             baseline, attribution = update_day_attribution(
                 previous.payload if previous is not None else None,

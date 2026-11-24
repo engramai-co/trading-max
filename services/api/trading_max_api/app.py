@@ -576,16 +576,25 @@ def create_app(
                 await brief_task
         logger.info("service stopping")
         dashboard_prewarm_stop.set()
-        scheduler.close()
-        intraday_scheduler.close()
-        performance_scheduler.close()
-        alert_monitor.close()
-        sector_monitor.close()
-        jobs.close()
-        analysis.close()
+        worker_deadline = jobs.request_stop()
+        for service in (
+            scheduler,
+            intraday_scheduler,
+            performance_scheduler,
+            alert_monitor,
+            sector_monitor,
+        ):
+            if settings.embedded_worker:
+                service.close(timeout=max(0.0, worker_deadline - time.monotonic()))
+            else:
+                service.close()
+        workers_stopped = jobs.close(deadline=worker_deadline)
+        if workers_stopped:
+            analysis.close()
         oauth_login.close()
         assistant_database.close()
-        preferences.close()
+        if workers_stopped:
+            preferences.close()
 
     app = FastAPI(
         title="Trading Max Portfolio API",

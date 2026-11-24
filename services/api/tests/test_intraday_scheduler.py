@@ -190,23 +190,34 @@ def test_busy_scheduler_retries_current_slot_without_replaying_old_slots(tmp_pat
         now=lambda: now,
     )
     try:
-        full = manager.submit("accounts", skip_sync=True)
+        active_live = manager.submit(
+            "live",
+            skip_sync=False,
+            trigger="live",
+            scheduled_for=datetime(2026, 9, 16, 19, 20, tzinfo=UTC),
+        )
         assert scheduler._tick() == 30
         assert scheduler.status().next_run_at == now + timedelta(seconds=30)
-        manager.cancel(full.job_id)
+        manager.cancel(active_live.job_id)
         now += timedelta(seconds=30)
         scheduler._tick()
-        first = next(job for job in manager.list(100) if job.trigger == "live")
+        first = next(
+            job
+            for job in manager.list(100)
+            if job.trigger == "live" and job.job_id != active_live.job_id
+        )
         assert first.scheduled_for == datetime(2026, 9, 16, 19, 30, tzinfo=UTC)
-        manager.cancel(first.job_id)
 
-        full = manager.submit("accounts", skip_sync=True)
         now = datetime(2026, 9, 16, 19, 40, tzinfo=UTC)
         assert scheduler._tick() == 30
-        manager.cancel(full.job_id)
+        manager.cancel(first.job_id)
         now = datetime(2026, 9, 16, 19, 51, tzinfo=UTC)
         scheduler._tick()
-        slots = {job.scheduled_for for job in manager.list(100) if job.trigger == "live"}
+        slots = {
+            job.scheduled_for
+            for job in manager.list(100)
+            if job.trigger == "live" and job.job_id != active_live.job_id
+        }
         assert slots == {
             datetime(2026, 9, 16, 19, 30, tzinfo=UTC),
             datetime(2026, 9, 16, 19, 50, tzinfo=UTC),
@@ -216,12 +227,13 @@ def test_busy_scheduler_retries_current_slot_without_replaying_old_slots(tmp_pat
         manager.close()
 
 
-def test_full_refresh_blocks_intraday_and_queue_claim_prioritizes_full(
+def test_full_refresh_does_not_block_intraday_lane_and_unrestricted_claim_prioritizes_full(
     tmp_path: Path,
 ) -> None:
     manager = _manager(tmp_path)
     try:
-        full = manager.submit("research", skip_sync=True, tickers=["BE"])
+        reconciliation = manager.submit("accounts", skip_sync=False, trigger="reconciliation")
+        slot = datetime(2026, 8, 7, 14, 20, tzinfo=UTC)
         scheduler = IntradayScheduler(
             manager,
             enabled=True,
@@ -230,15 +242,20 @@ def test_full_refresh_blocks_intraday_and_queue_claim_prioritizes_full(
             window_start="06:00",
             window_end="23:00",
             weekdays=(1, 2, 3, 4, 5),
-            now=lambda: datetime(2026, 8, 7, 14, 20, tzinfo=UTC),
+            scope="live",
+            trigger="live",
+            now=lambda: slot,
         )
         scheduler._tick()
-        assert not [job for job in manager.list(100) if job.trigger == "intraday"]
+        live_jobs = [job for job in manager.list(100) if job.trigger == "live"]
+        assert len(live_jobs) == 1
+        assert live_jobs[0].scheduled_for == slot
         scheduler.close()
-        manager.cancel(full.job_id)
+        manager.cancel(live_jobs[0].job_id)
+        manager.cancel(reconciliation.job_id)
 
         intraday = manager.submit("intraday", skip_sync=False)
-        # A full job admitted after an intraday job must still be claimed first.
+        # An unrestricted worker still claims a full job ahead of an intraday job.
         later_full = manager.submit("accounts", skip_sync=True)
         assert later_full.trigger == "on_demand"
         worker_id = "priority-test-worker"
@@ -276,3 +293,222 @@ def test_schedule_status_observes_terminal_transition_of_same_job(tmp_path):
     finally:
         scheduler.close()
         manager.close()
+
+
+def test_worker_main_runs_live_lane_in_parallel_with_main_lane_and_shares_registry(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import threading
+
+    from trading_max.application import StageRegistry, StageResult
+    from trading_max.domain import JobStatus as DomainJobStatus
+
+    from services.api.trading_max_api import worker_main
+    from services.api.trading_max_api.config import Settings
+
+    main_entered = threading.Event()
+    release_main = threading.Event()
+    live_done = threading.Event()
+    coordinator_errors: list[Exception] = []
+    stop_callback: list = []
+    stage_instances: list[object] = []
+
+    class _BlockingMainStage:
+        name = "synthetic.main"
+        version = "v1"
+        required_for = frozenset({"accounts"})
+        dependencies: tuple[str, ...] = ()
+
+        def run(self, _context):
+            main_entered.set()
+            assert release_main.wait(timeout=5)
+            return StageResult()
+
+    class _FastLiveStage:
+        name = "synthetic.live"
+        version = "v1"
+        required_for = frozenset({"intraday"})
+        dependencies: tuple[str, ...] = ()
+
+        def run(self, _context):
+            stage_instances.append(self)
+            return StageResult()
+
+    fake_registry = StageRegistry([_BlockingMainStage(), _FastLiveStage()])
+
+    class _FakeRuntime:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def registry(self) -> StageRegistry:
+            return fake_registry
+
+    monkeypatch.setenv("TRADING_MAX_WORKER_ID", "worker-lane-test")
+    monkeypatch.setattr("trading_max.application.TypedWorkerRuntime", _FakeRuntime)
+    monkeypatch.setattr(
+        worker_main.signal,
+        "signal",
+        lambda _sig, handler: stop_callback.append(handler),
+    )
+
+    manager = _manager(tmp_path)
+    try:
+        main_job = manager.queue.enqueue(
+            "accounts",
+            trigger="reconciliation",
+            skip_sync=False,
+            stages=[("synthetic.main", "v1")],
+        )
+        live_job = manager.queue.enqueue(
+            "live",
+            trigger="live",
+            skip_sync=False,
+            stages=[("synthetic.live", "v1")],
+        )
+
+        def coordinate() -> None:
+            try:
+                assert main_entered.wait(timeout=5)
+                # Live must publish while the reconciliation is still blocked.
+                deadline = datetime.now(UTC) + timedelta(seconds=5)
+                while datetime.now(UTC) < deadline:
+                    if manager.queue.get(live_job.job_id).status == DomainJobStatus.SUCCEEDED:
+                        live_done.set()
+                        break
+                    live_done.wait(0.02)
+                assert live_done.is_set()
+                assert manager.queue.get(main_job.job_id).status == DomainJobStatus.RUNNING
+                assert manager.queue.worker_health()["worker_id"] == "worker-lane-test"
+                assert len(manager.queue.active_records()) == 1
+                release_main.set()
+                while datetime.now(UTC) < deadline:
+                    if manager.queue.get(main_job.job_id).status == DomainJobStatus.SUCCEEDED:
+                        break
+                    threading.Event().wait(0.02)
+            except Exception as exc:
+                coordinator_errors.append(exc)
+            finally:
+                release_main.set()
+                stop_callback[0](None, None)
+
+        coordinator = threading.Thread(target=coordinate, daemon=True)
+        coordinator.start()
+        worker_main._run_typed_worker(
+            Settings(
+                data_root=tmp_path,
+                worker_poll_seconds=0.05,
+                llm_analysis_enabled=False,
+                llm_provider="fake",
+            )
+        )
+        coordinator.join(timeout=5)
+        assert not coordinator.is_alive()
+        assert not coordinator_errors
+        assert live_done.is_set()
+        assert manager.queue.get(main_job.job_id).status == DomainJobStatus.SUCCEEDED
+        assert manager.queue.get(live_job.job_id).status == DomainJobStatus.SUCCEEDED
+        assert len(stage_instances) == 1
+    finally:
+        manager.close()
+
+
+def test_embedded_shutdown_interrupts_export_and_live_waits(tmp_path, monkeypatch) -> None:
+    import threading
+    import time
+
+    from trading_max.application import StageRegistry
+    from trading_max.application.broker_stages import BrokerSyncStage
+    from trading_max.application.broker_sync import Trading212BrokerSync
+    from trading_max.ingestion.brokers.trading212 import (
+        ManagedAccountStore,
+        Trading212Client,
+        Trading212Credentials,
+    )
+
+    from services.api.trading_max_api import typed_jobs
+
+    export_waiting = threading.Event()
+    live_waiting = threading.Event()
+    store = ArtifactStore(tmp_path)
+    broker_root = tmp_path / "trading212"
+
+    class WaitingBroker(Trading212Client):
+        def snapshot(self, *, include_pending_orders=False):
+            if threading.current_thread().name.endswith("-live"):
+                live_waiting.set()
+                self._sleep(65)
+                raise AssertionError("live wait did not stop")
+            return {
+                "fetched_at_utc": "2026-11-23T15:00:00Z",
+                "account_summary": {
+                    "currency": "GBP",
+                    "totalValue": "0",
+                    "cash": {"availableToTrade": "0", "reservedForOrders": "0", "inPies": "0"},
+                    "investments": {
+                        "currentValue": "0",
+                        "totalCost": "0",
+                        "realizedProfitLoss": "0",
+                        "unrealizedProfitLoss": "0",
+                    },
+                },
+                "positions": [],
+            }
+
+        def cash_transactions(self, **_kwargs):
+            return []
+
+        def request_export(self, _start, _end):
+            return 17
+
+        def list_exports(self):
+            export_waiting.set()
+            return [{"reportId": 17, "status": "Processing"}]
+
+    class SyntheticRuntime:
+        def __init__(self, _root, *, stop_event, **_kwargs):
+            self.sync = Trading212BrokerSync(
+                credentials_factory=lambda profile: Trading212Credentials(
+                    profile=profile, api_key="synthetic-key", api_secret="synthetic-secret"
+                ),
+                store_factory=lambda profile: ManagedAccountStore(profile, data_root=broker_root),
+                stop_event=stop_event,
+            )
+
+        def registry(self):
+            return StageRegistry(
+                [
+                    BrokerSyncStage(
+                        tmp_path, store.immutable_artifacts, sync=self.sync, profiles=("invest",)
+                    )
+                ]
+            )
+
+    monkeypatch.setattr("trading_max.application.TypedWorkerRuntime", SyntheticRuntime)
+    monkeypatch.setattr("trading_max.application.broker_sync.Trading212Client", WaitingBroker)
+    monkeypatch.setattr(
+        typed_jobs, "stage_plan", lambda *_args, **_kwargs: [("broker.sync", "Sync")]
+    )
+
+    manager = TypedJobManager(
+        store, WatchlistStore(tmp_path), embedded_worker=True, worker_poll_seconds=0.05
+    )
+    inspector = _manager(tmp_path)
+    try:
+        main = manager.submit("accounts", trigger="reconciliation", skip_sync=False)
+        live = manager.submit("live", skip_sync=False)
+        assert export_waiting.wait(timeout=5), inspector.get(main.job_id).error
+        assert live_waiting.wait(timeout=5)
+        assert inspector.get(main.job_id).status == "running"
+        assert inspector.get(live.job_id).status == "running"
+
+        started = time.monotonic()
+        assert manager.close()
+        assert time.monotonic() - started < 2.5
+        for job_id in (main.job_id, live.job_id):
+            result = inspector.get(job_id)
+            assert result.status == "queued"
+            assert result.stages[0].status == "queued"
+        assert (broker_root / "invest" / "pending_export.json").is_file()
+    finally:
+        manager.close()
+        inspector.close()

@@ -236,3 +236,18 @@ def test_intraday_snapshot_does_not_invoke_synthesis_callback(tmp_path: Path) ->
         )
     )
     assert callbacks == []
+
+
+def test_abandoned_manifest_is_hidden_from_snapshot_history(tmp_path: Path) -> None:
+    store = SnapshotStore(tmp_path)
+    artifact = store.artifacts.put_json(key="fixture.json", payload={"ok": True})
+    previous = store.publish(scope="accounts", source="previous", artifacts=[artifact])
+    pointer = store.latest_path.read_bytes()
+    abandoned = store.publish(scope="intraday", source="abandoned", artifacts=[artifact])
+    # Simulate a host stopping after the manifest write and before the pointer swap.
+    abandoned.path.with_name(".pending-publication").touch()
+    store.latest_path.write_bytes(pointer)
+
+    assert [snapshot.manifest.run_id for snapshot in store.list()] == [previous.manifest.run_id]
+    with pytest.raises(FileNotFoundError):
+        store.load(abandoned.manifest.run_id)

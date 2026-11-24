@@ -2,7 +2,7 @@
 
 This module is deliberately independent of the historical subprocess bridge.
 The API only admits jobs into SQLite; the same stage registry is used by the
-dedicated worker and by the explicitly opt-in embedded worker used in tests.
+dedicated worker and by the opt-in embedded worker used by local workspaces.
 """
 
 from __future__ import annotations
@@ -10,9 +10,11 @@ from __future__ import annotations
 import logging
 import secrets
 import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -24,11 +26,14 @@ from trading_max.analytics import (
 from trading_max.analytics.etf_projection import ETF_SUMMARY_KEY, ETFPortfolio
 from trading_max.analytics.intraday import DEFAULT_INTRADAY_RETENTION_DAYS
 from trading_max.analytics.lookthrough import LookthroughService
+from trading_max.application.account_selection import ACCOUNT_PROFILES
+from trading_max.application.broker_stages import broker_snapshot_key
 from trading_max.application.stages import StageRegistry
 from trading_max.application.taxonomy_stages import RawTaxonomyCatalogProvider
 from trading_max.domain import JobRecord as DomainJobRecord
 from trading_max.domain import JobStatus as DomainJobStatus
-from trading_max.infrastructure import SqliteDatabase, SqliteJobQueue, StoredSnapshot
+from trading_max.infrastructure import ClaimedJob, SqliteDatabase, SqliteJobQueue, StoredSnapshot
+from trading_max.infrastructure.job_queue import AccountEvidence, QueueConflict
 from trading_max.reference import (
     CatalogSecurityMaster,
     SecurityDescriptor,
@@ -45,7 +50,12 @@ from trading_max.research.held_funds import (
 )
 from trading_max.research.listing import LONDON, broker_listing
 from trading_max.research.market import MarketResearchService
-from trading_max.worker import DurableWorker
+from trading_max.worker import (
+    ANALYSIS_LANE_TRIGGERS,
+    LIVE_LANE_TRIGGERS,
+    MAIN_LANE_TRIGGERS,
+    DurableWorker,
+)
 
 from .artifacts import ArtifactStore
 from .job_errors import JobConflict
@@ -60,7 +70,7 @@ from .models import (
     RefreshFailure,
     SecuritySearchResult,
 )
-from .projections.broker import overlay_live_broker_snapshot
+from .projections.broker import broker_observed_at, overlay_live_broker_snapshot
 from .watchlist import TICKER_PATTERN, WatchlistStore, magnificent_seven_securities
 
 LOGGER = logging.getLogger(__name__)
@@ -107,14 +117,20 @@ def _structural_projection(payload: dict[str, Any]) -> dict[str, Any] | None:
     return projection
 
 
-def performance_refresh_needed(store: ArtifactStore) -> bool:
+def performance_refresh_needed(
+    store: ArtifactStore, *, verified_accounts: dict[str, dict] | None = None
+) -> bool:
     """Compare live and canonical accounts using only structural fields."""
 
     manifest = store.latest_manifest()
     if manifest is None:
         return False
     try:
-        live = store.read_json(manifest.run_id, "account/intraday/broker_values.json")
+        live = (
+            store.read_json(manifest.run_id, "account/intraday/broker_values.json")
+            if verified_accounts is None
+            else {"accounts": verified_accounts}
+        )
         canonical = store.read_json(manifest.run_id, "account/broker_snapshot_metrics.json")
     except (FileNotFoundError, TypeError, ValueError):
         return False
@@ -122,15 +138,31 @@ def performance_refresh_needed(store: ArtifactStore) -> bool:
     canonical_projection = _structural_projection(canonical)
     if live_projection is None or canonical_projection is None:
         return False
-    if live_projection != canonical_projection:
+    if verified_accounts is None and live_projection.keys() != canonical_projection.keys():
         return True
+    freshest = {}
+    for code, account in live["accounts"].items():
+        reference = canonical["accounts"].get(code)
+        live_at = broker_observed_at(account)
+        canonical_at = broker_observed_at(reference) if reference is not None else None
+        if (
+            verified_accounts is None
+            and live_at is not None
+            and canonical_at is not None
+            and live_at < canonical_at
+        ):
+            freshest[code] = reference
+            continue
+        if live_projection[code] != canonical_projection.get(code):
+            return True
+        freshest[code] = account
     # Research can refresh the canonical account summary without reconciling
     # its ledger. Keep a changed account pending against the last verified
     # cash-flow state even after those two summaries have become identical.
     from trading_max.analytics.cash_flow_history import account_state_digest
 
     for code in ("A", "B"):
-        account = live["accounts"].get(code)
+        account = freshest.get(code)
         if account is None:
             continue
         try:
@@ -352,6 +384,67 @@ def reconcile_watchlist_after_job(
         watchlist.reconcile(manifest, store, record.tickers)
 
 
+def _verified_account_evidence(
+    store: ArtifactStore, job: DomainJobRecord, artifact_ids: tuple[str, ...]
+) -> dict[str, AccountEvidence]:
+    live = job.trigger in LIVE_LANE_TRIGGERS
+    if not live and (job.scope not in {"all", "accounts"} or job.skip_sync):
+        return {}
+    artifacts = store.immutable_artifacts
+    by_key = {ref.key: ref for ref in map(artifacts.get_ref, artifact_ids)}
+    evidence = {}
+    if live:
+        ref = by_key.get("account/intraday/broker_values.json")
+        if ref is None:
+            return {}
+        accounts = artifacts.get_json(ref.artifact_id).payload["accounts"]
+        for code, account in accounts.items():
+            if account.get("positions_status") == "verified" and isinstance(
+                account.get("positions"), list
+            ):
+                observed_at = broker_observed_at(account)
+                if observed_at is not None:
+                    evidence[code] = AccountEvidence(observed_at, ref.artifact_id)
+    else:
+        for code, profile in ACCOUNT_PROFILES:
+            ref = by_key.get(broker_snapshot_key(profile, intraday=False))
+            if ref is not None and ref.quality.status == "verified":
+                observed_at = broker_observed_at(artifacts.get_json(ref.artifact_id).payload)
+                if observed_at is not None:
+                    evidence[code] = AccountEvidence(observed_at, ref.artifact_id)
+    return evidence
+
+
+def process_account_check(
+    queue: SqliteJobQueue, registry: StageRegistry, store: ArtifactStore
+) -> None:
+    """Recheck verified observations after any active reconciliation finishes."""
+    checks = queue.pending_account_checks()
+    if not checks or any(
+        record.scope in {"all", "accounts"} and not record.skip_sync
+        for record in queue.active_records()
+    ):
+        return
+    changed = {}
+    for code, evidence in checks.items():
+        data = store.immutable_artifacts.get_json(evidence.artifact_id).payload
+        if performance_refresh_needed(store, verified_accounts={code: data["accounts"][code]}):
+            changed[code] = evidence
+    if not changed:
+        return
+    try:
+        queue.enqueue(
+            "accounts",
+            trigger="performance",
+            skip_sync=False,
+            stages=stage_specs(registry, "accounts", skip_sync=False, trigger="performance"),
+            account_checks=changed,
+        )
+    except QueueConflict:
+        # A newer verified result or a user-queued reconciliation won this race.
+        return
+
+
 class TypedJobManager:
     """SQLite admission/status API for the production typed worker."""
 
@@ -386,6 +479,7 @@ class TypedJobManager:
         )
         self.queue = SqliteJobQueue(self.database)
         self.estimate_history = EstimateHistory(self.database)
+        self._stop = threading.Event()
         extras = (analysis_stage,) if analysis_stage is not None else ()
         self.runtime = TypedWorkerRuntime(
             store.data_root,
@@ -399,6 +493,7 @@ class TypedJobManager:
             valuation_assumptions=valuation_assumptions,
             intraday_history_loader_factory=intraday_history_loader_factory,
             broker_profiles_loader=broker_profiles_loader,
+            stop_event=self._stop,
             on_snapshot_published=on_snapshot_published,
             extra_stages=extras,
             estimate_history=self.estimate_history,
@@ -406,21 +501,50 @@ class TypedJobManager:
         # Queue admission and execution share this exact registry. Stage
         # versions therefore have one process-local source of truth.
         self.registry = self.runtime.registry()
-        self.worker_poll_seconds = worker_poll_seconds
-        self._stop = threading.Event()
-        self._worker_thread: threading.Thread | None = None
-        self._worker: DurableWorker | None = None
+        self._worker_lanes: list[tuple[threading.Thread, SqliteDatabase]] = []
+        self._has_analysis_lane = analysis_stage is not None
         if embedded_worker:
-            self._worker = self._build_worker(
+            self.start_worker_lanes(
                 worker_id="embedded-api-worker",
                 lease_seconds=worker_lease_seconds,
+                poll_seconds=worker_poll_seconds,
             )
-            self._worker_thread = threading.Thread(
-                target=self._run_embedded_worker,
-                name="trading_max-embedded-worker",
+
+    def start_worker_lanes(
+        self, *, worker_id: str | None, lease_seconds: int, poll_seconds: float
+    ) -> threading.Thread:
+        """Start the same trigger-isolated worker lanes for desktop and dedicated use."""
+        lanes = [("", MAIN_LANE_TRIGGERS), ("-live", LIVE_LANE_TRIGGERS)]
+        if self._has_analysis_lane:
+            lanes.append(("-analysis", ANALYSIS_LANE_TRIGGERS))
+        for suffix, triggers in lanes:
+            database = SqliteDatabase(
+                self.database.path, migrations_dir=self.database.migrations_dir
+            )
+            queue = SqliteJobQueue(database)
+            worker = self._build_worker(
+                worker_id=f"{worker_id}{suffix}" if suffix else worker_id,
+                lease_seconds=lease_seconds,
+                queue=queue,
+                allowed_triggers=triggers,
+            )
+            if not suffix:
+                worker_id = worker.worker_id
+            thread = threading.Thread(
+                target=worker.run_loop,
+                args=(self._stop, poll_seconds),
+                kwargs={
+                    "before_poll": partial(process_account_check, queue, self.registry, self.store)
+                }
+                if not suffix
+                else {},
+                name=worker.worker_id,
                 daemon=True,
             )
-            self._worker_thread.start()
+            self._worker_lanes.append((thread, database))
+        for thread, _ in self._worker_lanes:
+            thread.start()
+        return self._worker_lanes[0][0]
 
     def _stage_specs(
         self,
@@ -436,8 +560,17 @@ class TypedJobManager:
             trigger=trigger,
         )
 
-    def _build_worker(self, *, worker_id: str, lease_seconds: int) -> DurableWorker:
-        def finished(status: DomainJobStatus, claimed) -> None:
+    def _build_worker(
+        self,
+        *,
+        worker_id: str | None,
+        lease_seconds: int,
+        queue: SqliteJobQueue | None = None,
+        allowed_triggers: tuple[str, ...] | None = None,
+    ) -> DurableWorker:
+        queue = queue if queue is not None else self.queue
+
+        def finished(status: DomainJobStatus, claimed: ClaimedJob) -> None:
             if status not in {
                 DomainJobStatus.SUCCEEDED,
                 DomainJobStatus.FAILED,
@@ -446,69 +579,35 @@ class TypedJobManager:
                 return
             try:
                 reconcile_watchlist_after_job(
-                    status,
-                    claimed.record,
-                    store=self.store,
-                    watchlist=self.watchlist,
+                    status, claimed.record, store=self.store, watchlist=self.watchlist
                 )
             except Exception:
                 LOGGER.exception("failed to reconcile watchlist research status")
-            if (
-                status == DomainJobStatus.SUCCEEDED
-                and claimed.record.trigger in {"intraday", "live"}
-                and self.performance_refresh_needed()
-            ):
-                already_pending = any(
-                    record.scope == "accounts"
-                    and record.trigger == "performance"
-                    and not record.skip_sync
-                    and record.status in {DomainJobStatus.QUEUED, DomainJobStatus.RUNNING}
-                    for record in self.queue.active_records()
-                )
-                if not already_pending:
-                    job_id = secrets.token_hex(16)
-                    self.queue.enqueue(
-                        "accounts",
-                        skip_sync=False,
-                        trigger="performance",
-                        stages=self._stage_specs(
-                            "accounts",
-                            skip_sync=False,
-                            trigger="performance",
-                        ),
-                        log_path=str(self.store.logs_root / "jobs" / f"{job_id}.log"),
-                        job_id=job_id,
-                    )
-            follow_up = self.queue.consume_follow_up(claimed.record.job_id)
-            if follow_up is not None and status == DomainJobStatus.SUCCEEDED:
+            if status != DomainJobStatus.SUCCEEDED:
+                return
+            follow_up = queue.consume_follow_up(claimed.record.job_id)
+            if follow_up is not None:
                 try:
-                    self.submit(
+                    queue.enqueue(
                         "research",
+                        trigger="on_demand",
                         skip_sync=True,
                         tickers=follow_up,
-                        trigger="on_demand",
+                        stages=self._stage_specs("research", skip_sync=True),
                     )
-                except JobConflict:
-                    LOGGER.warning("coalesced research follow-up was not admitted")
+                except Exception:
+                    LOGGER.exception("failed to enqueue coalesced research follow-up")
 
         return DurableWorker(
-            self.queue,
+            queue,
             self.registry,
             worker_id=worker_id,
             lease_seconds=lease_seconds,
             on_job_finished=finished,
+            stop_event=self._stop,
+            allowed_triggers=allowed_triggers,
+            account_evidence=partial(_verified_account_evidence, self.store),
         )
-
-    def _run_embedded_worker(self) -> None:
-        if self._worker is None:
-            raise RuntimeError("embedded worker is not configured")
-        while not self._stop.is_set():
-            try:
-                did_work = self._worker.run_once()
-            except Exception:
-                LOGGER.exception("embedded typed worker iteration failed")
-                did_work = False
-            self._stop.wait(0.05 if did_work else self.worker_poll_seconds)
 
     @property
     def active_job_id(self) -> str | None:
@@ -734,16 +833,6 @@ class TypedJobManager:
             None,
         )
         if scope in {"intraday", "live"}:
-            blocking_full = next(
-                (
-                    record
-                    for record in active_records
-                    if record.trigger in {"on_demand", "nightly", "reconciliation"}
-                ),
-                None,
-            )
-            if blocking_full is not None:
-                raise JobConflict(f"full refresh {blocking_full.job_id} has priority over intraday")
             if active_intraday is not None:
                 raise JobConflict(f"intraday refresh {active_intraday.job_id} is already active")
             trigger = "live" if scope == "live" else "intraday"
@@ -873,13 +962,23 @@ class TypedJobManager:
                 handle.seek(-max_bytes, 2)
             return handle.read().decode("utf-8", errors="replace")
 
-    def close(self) -> None:
+    def request_stop(self) -> float:
         self._stop.set()
-        if self._worker_thread is not None:
-            self._worker_thread.join(timeout=5)
-        if self._worker is not None:
-            self._worker.close()
-        self.database.close()
+        return time.monotonic() + 2.5
+
+    def close(self, *, deadline: float | None = None) -> bool:
+        if deadline is None:
+            deadline = self.request_stop()
+        for thread, database in self._worker_lanes:
+            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+            if thread.is_alive():
+                LOGGER.warning("worker lane is still finishing", extra={"lane": thread.name})
+            else:
+                database.close()
+        stopped = not any(thread.is_alive() for thread, _ in self._worker_lanes)
+        if stopped:
+            self.database.close()
+        return stopped
 
 
 __all__ = [

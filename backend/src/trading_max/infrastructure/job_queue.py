@@ -6,7 +6,7 @@ import json
 import os
 import secrets
 import socket
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal, get_args
@@ -20,6 +20,14 @@ from trading_max.domain.contracts import (
 )
 
 from .sqlite import SqliteDatabase
+
+LIVE_LANE_WORKER_VERSION = "durable-worker-lanes-v1"
+
+
+@dataclass(frozen=True, slots=True)
+class AccountEvidence:
+    observed_at: datetime
+    artifact_id: str
 
 
 class QueueConflict(RuntimeError):
@@ -105,6 +113,7 @@ class SqliteJobQueue:
         scheduled_for: datetime | None = None,
         log_path: str | None = None,
         job_id: str | None = None,
+        account_checks: Mapping[str, AccountEvidence] | None = None,
     ) -> JobRecord:
         created = _now()
         record = JobRecord(
@@ -126,6 +135,29 @@ class SqliteJobQueue:
             ],
         )
         with self.database.transaction(immediate=True) as connection:
+            if account_checks:
+                active = connection.execute(
+                    "SELECT 1 FROM jobs WHERE scope IN ('all', 'accounts') AND skip_sync = 0 "
+                    "AND status IN ('queued', 'running') LIMIT 1"
+                ).fetchone()
+                if active:
+                    raise QueueConflict("account check is no longer ready")
+                for code, evidence in account_checks.items():
+                    result = connection.execute(
+                        "UPDATE pending_account_check SET request_job_id = ?, "
+                        "request_attempts = request_attempts + 1, retry_after = NULL "
+                        "WHERE account_code = ? AND observed_at = ? AND artifact_id = ? "
+                        "AND (request_job_id IS NULL OR retry_after <= ?)",
+                        (
+                            record.job_id,
+                            code,
+                            _iso(evidence.observed_at),
+                            evidence.artifact_id,
+                            _iso(created),
+                        ),
+                    )
+                    if not result.rowcount:
+                        raise QueueConflict("account check is no longer ready")
             try:
                 connection.execute(
                     "INSERT INTO jobs(job_id, scope, trigger, skip_sync, tickers_json, "
@@ -488,31 +520,49 @@ class SqliteJobQueue:
         with self.database.read() as connection:
             row = connection.execute(
                 "SELECT * FROM worker_heartbeats "
-                "ORDER BY CASE WHEN worker_id LIKE '%-analysis' THEN 1 ELSE 0 END, "
+                "ORDER BY CASE WHEN worker_id LIKE '%-analysis' OR worker_id LIKE '%-live' "
+                "THEN 1 ELSE 0 END, "
                 "last_seen_at DESC LIMIT 1"
             ).fetchone()
-        if row is None:
-            return None
-        last_seen = _parse(row["last_seen_at"])
-        age_seconds = (
-            max(0.0, (_now() - last_seen).total_seconds()) if last_seen is not None else None
-        )
-        return {
+            if row is None:
+                return None
+            live = None
+            if row["worker_version"] == LIVE_LANE_WORKER_VERSION:
+                live = connection.execute(
+                    "SELECT status, last_seen_at FROM worker_heartbeats "
+                    "WHERE worker_id = ? AND pid = ? AND host = ?",
+                    (f"{row['worker_id']}-live", row["pid"], row["host"]),
+                ).fetchone()
+
+        now = _now()
+
+        def age(heartbeat: Any) -> float | None:
+            last_seen = _parse(heartbeat["last_seen_at"])
+            return max(0.0, (now - last_seen).total_seconds()) if last_seen is not None else None
+
+        def healthy(heartbeat: Any) -> bool:
+            if heartbeat is None or heartbeat["status"] not in {"starting", "idle", "running"}:
+                return False
+            seconds = age(heartbeat)
+            return seconds is not None and seconds <= max_age_seconds
+
+        result = {
             "worker_id": row["worker_id"],
             "status": row["status"],
             "started_at": _parse(row["started_at"]),
-            "last_seen_at": last_seen,
+            "last_seen_at": _parse(row["last_seen_at"]),
             "current_job_id": row["current_job_id"],
             "worker_version": row["worker_version"],
             "pid": row["pid"],
             "host": row["host"],
-            "age_seconds": age_seconds,
-            "healthy": (
-                row["status"] in {"starting", "idle", "running"}
-                and age_seconds is not None
-                and age_seconds <= max_age_seconds
-            ),
+            "age_seconds": age(row),
+            "healthy": healthy(row),
         }
+        if row["worker_version"] == LIVE_LANE_WORKER_VERSION:
+            result["live_status"] = live["status"] if live is not None else "missing"
+            result["live_healthy"] = healthy(live)
+            result["healthy"] = result["healthy"] and result["live_healthy"]
+        return result
 
     def cancel(self, job_id: str, *, reason: str = "cancelled by operator") -> JobRecord:
         """Cancel a queued job or request cancellation at the next stage boundary."""
@@ -520,11 +570,11 @@ class SqliteJobQueue:
         now = _iso(_now())
         with self.database.transaction(immediate=True) as connection:
             row = connection.execute(
-                "SELECT status FROM jobs WHERE job_id = ?", (job_id,)
+                "SELECT status, snapshot_run_id FROM jobs WHERE job_id = ?", (job_id,)
             ).fetchone()
             if row is None:
                 raise KeyError(f"job not found: {job_id}")
-            if row["status"] == JobStatus.QUEUED:
+            if row["status"] == JobStatus.QUEUED and row["snapshot_run_id"] is None:
                 connection.execute(
                     "UPDATE jobs SET status = ?, finished_at = ?, "
                     "error_code = ?, error_message = ?, cancel_requested = 0 "
@@ -537,7 +587,7 @@ class SqliteJobQueue:
                         job_id,
                     ),
                 )
-            elif row["status"] == JobStatus.RUNNING:
+            elif row["status"] in {JobStatus.QUEUED, JobStatus.RUNNING}:
                 connection.execute(
                     "UPDATE jobs SET cancel_requested = 1, error_code = ?, "
                     "error_message = ? WHERE job_id = ?",
@@ -606,6 +656,21 @@ class SqliteJobQueue:
                 ),
             )
 
+    def pending_account_checks(self) -> dict[str, AccountEvidence]:
+        """Read verified observations eligible to request reconciliation now."""
+        with self.database.read() as connection:
+            rows = connection.execute(
+                "SELECT account_code, observed_at, artifact_id FROM pending_account_check "
+                "WHERE request_job_id IS NULL OR retry_after <= ?",
+                (_iso(_now()),),
+            ).fetchall()
+            return {
+                row["account_code"]: AccountEvidence(
+                    datetime.fromisoformat(row["observed_at"]), row["artifact_id"]
+                )
+                for row in rows
+            }
+
     def consume_follow_up(self, job_id: str) -> list[str] | None:
         """Atomically consume a coalesced follow-up request after completion."""
 
@@ -666,13 +731,14 @@ class SqliteJobQueue:
             ),
         )
         with self.database.transaction(immediate=True) as connection:
-            # A cancelled job cannot be reclaimed for execution. If its owner
-            # stopped before the next stage boundary, finalize it once the
-            # lease expires so it cannot block admission forever. The same
-            # write transaction protects a still-renewed lease from cleanup.
+            # Finalize abandoned cancellations unless the job has a
+            # publication to check. A new claimant resolves those against
+            # the snapshot store before honoring cancellation.
             abandoned = connection.execute(
                 "SELECT job_id, error_message FROM jobs WHERE status = 'running' "
-                "AND cancel_requested = 1 AND lease_expires_at < ?",
+                "AND cancel_requested = 1 AND snapshot_run_id IS NULL AND lease_expires_at < ? "
+                "AND NOT EXISTS (SELECT 1 FROM job_stages WHERE job_id = jobs.job_id "
+                "AND name = 'snapshot.publish' AND status IN ('running', 'succeeded'))",
                 (_iso(now),),
             ).fetchall()
             for cancelled in abandoned:
@@ -701,7 +767,9 @@ class SqliteJobQueue:
             row = connection.execute(
                 "SELECT * FROM jobs WHERE (status = 'queued' OR "
                 "(status = 'running' AND lease_expires_at < ?)) "
-                "AND cancel_requested = 0 "
+                "AND (cancel_requested = 0 OR snapshot_run_id IS NOT NULL OR EXISTS ("
+                "SELECT 1 FROM job_stages WHERE job_id = jobs.job_id "
+                "AND name = 'snapshot.publish' AND status IN ('running', 'succeeded'))) "
                 "AND (? = 0 "
                 "OR (trigger = 'on_demand' AND ? = 1) "
                 "OR (trigger = 'nightly' AND ? = 1) "
@@ -757,12 +825,48 @@ class SqliteJobQueue:
             if result.rowcount != 1:
                 raise QueueConflict(f"worker does not own running job: {job_id}")
 
-    def complete(self, job_id: str, worker_id: str, *, snapshot_run_id: str) -> JobRecord:
+    def release(self, job_id: str, worker_id: str) -> None:
+        """Release a job on graceful shutdown, keeping completed stages for resume."""
+        with self.database.transaction(immediate=True) as connection:
+            self._assert_owner(connection, job_id, worker_id)
+            released = connection.execute(
+                "UPDATE jobs SET status = 'queued', lease_expires_at = NULL, worker_id = NULL "
+                "WHERE job_id = ? AND cancel_requested = 0",
+                (job_id,),
+            ).rowcount
+            if released:
+                connection.execute(
+                    "UPDATE job_stages SET status = 'queued' "
+                    "WHERE job_id = ? AND status = 'running'",
+                    (job_id,),
+                )
+        if not released:
+            self.cancel_running(job_id, worker_id)
+
+    def prepare_publication(self, job_id: str, worker_id: str, run_id: str) -> bool:
+        """Record the intended run before the publisher can replace latest.json."""
+        with self.database.durable_write() as connection:
+            self._assert_owner(connection, job_id, worker_id, lease_at=_now())
+            result = connection.execute(
+                "UPDATE jobs SET snapshot_run_id = ? WHERE job_id = ? AND cancel_requested = 0",
+                (run_id, job_id),
+            )
+            return bool(result.rowcount)
+
+    def complete(
+        self,
+        job_id: str,
+        worker_id: str,
+        *,
+        snapshot_run_id: str,
+        account_evidence: Mapping[str, AccountEvidence] | None = None,
+    ) -> JobRecord:
         return self._finish(
             job_id,
             worker_id,
             status=JobStatus.SUCCEEDED,
             snapshot_run_id=snapshot_run_id,
+            account_evidence=account_evidence,
         )
 
     def fail(
@@ -816,6 +920,7 @@ class SqliteJobQueue:
         return_code: int | None = None,
         artifact_ids: list[str] | None = None,
         idempotency_key: str | None = None,
+        snapshot_run_id: str | None = None,
     ) -> None:
         now = _iso(_now())
         with self.database.transaction(immediate=True) as connection:
@@ -846,6 +951,12 @@ class SqliteJobQueue:
                         job_id,
                         stage_name,
                     ),
+                )
+
+            if snapshot_run_id is not None:
+                connection.execute(
+                    "UPDATE jobs SET snapshot_run_id = ? WHERE job_id = ?",
+                    (snapshot_run_id, job_id),
                 )
 
     def cached_stage_artifacts(
@@ -896,32 +1007,81 @@ class SqliteJobQueue:
             )
 
     def _finish(self, job_id: str, worker_id: str, **values: Any) -> JobRecord:
-        now = _iso(_now())
         status = values["status"]
         with self.database.transaction(immediate=True) as connection:
-            self._assert_owner(connection, job_id, worker_id)
+            now = _now()
+            self._assert_owner(
+                connection,
+                job_id,
+                worker_id,
+                lease_at=now if status == JobStatus.SUCCEEDED else None,
+            )
             connection.execute(
                 "UPDATE jobs SET status = ?, finished_at = ?, lease_expires_at = NULL, "
                 "worker_id = NULL, snapshot_run_id = ?, error_code = ?, error_message = ?, "
                 "cancel_requested = 0 WHERE job_id = ?",
                 (
                     status,
-                    now,
+                    _iso(now),
                     values.get("snapshot_run_id"),
                     values.get("error_code"),
                     values.get("error_message"),
                     job_id,
                 ),
             )
+            if evidence := values.get("account_evidence"):
+                job = connection.execute(
+                    "SELECT trigger, scope, skip_sync, started_at FROM jobs WHERE job_id = ?",
+                    (job_id,),
+                ).fetchone()
+                if job["trigger"] in {"live", "intraday"}:
+                    connection.executemany(
+                        "INSERT INTO pending_account_check(account_code, observed_at, artifact_id) "
+                        "VALUES (?, ?, ?) ON CONFLICT(account_code) DO UPDATE SET "
+                        "observed_at = excluded.observed_at, artifact_id = excluded.artifact_id, "
+                        "request_job_id = NULL, request_attempts = 0, retry_after = NULL "
+                        "WHERE excluded.observed_at > pending_account_check.observed_at "
+                        "OR (excluded.observed_at = pending_account_check.observed_at "
+                        "AND excluded.artifact_id != pending_account_check.artifact_id)",
+                        [
+                            (code, _iso(item.observed_at), item.artifact_id)
+                            for code, item in evidence.items()
+                        ],
+                    )
+                elif job["scope"] in {"all", "accounts"} and not job["skip_sync"]:
+                    connection.executemany(
+                        "DELETE FROM pending_account_check WHERE account_code = ? "
+                        "AND observed_at < ? AND observed_at <= ?",
+                        [
+                            (code, job["started_at"], _iso(item.observed_at))
+                            for code, item in evidence.items()
+                        ],
+                    )
+            if status == JobStatus.FAILED:
+                requests = connection.execute(
+                    "SELECT account_code, request_attempts FROM pending_account_check "
+                    "WHERE request_job_id = ?",
+                    (job_id,),
+                ).fetchall()
+                for request in requests:
+                    delay = min(900, 30 * 2 ** min(request["request_attempts"] - 1, 5))
+                    connection.execute(
+                        "UPDATE pending_account_check SET retry_after = ? WHERE account_code = ?",
+                        (_iso(now + timedelta(seconds=delay)), request["account_code"]),
+                    )
         return self.get(job_id)
 
     @staticmethod
-    def _assert_owner(connection: Any, job_id: str, worker_id: str) -> None:
+    def _assert_owner(
+        connection: Any, job_id: str, worker_id: str, *, lease_at: datetime | None = None
+    ) -> None:
         row = connection.execute(
-            "SELECT status, worker_id FROM jobs WHERE job_id = ?", (job_id,)
+            "SELECT status, worker_id, lease_expires_at FROM jobs WHERE job_id = ?", (job_id,)
         ).fetchone()
         if row is None or row["status"] != JobStatus.RUNNING or row["worker_id"] != worker_id:
             raise QueueConflict(f"worker does not own running job: {job_id}")
+        if lease_at is not None and row["lease_expires_at"] < _iso(lease_at):
+            raise QueueConflict(f"worker lease expired for job: {job_id}")
 
     def _record(self, row: Any, connection: Any) -> JobRecord:
         stages = connection.execute(

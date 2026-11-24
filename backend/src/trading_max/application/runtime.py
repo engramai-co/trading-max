@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable
 from pathlib import Path
+from threading import Event
 
 from trading_max.analytics.intraday import DEFAULT_INTRADAY_RETENTION_DAYS
 from trading_max.analytics.lookthrough import LookthroughService
@@ -25,6 +26,7 @@ from .account_stages import (
     AccountSnapshotStage,
 )
 from .broker_stages import BrokerSyncStage
+from .broker_sync import Trading212BrokerSync
 from .cfd_stages import CfdAccountStage
 from .decision_stages import AccountDecisionStage
 from .etf_depth_stage import ETFDepthStage
@@ -69,6 +71,8 @@ class TypedWorkerRuntime:
         extra_stages: Iterable[object] = (),
         intraday_history_loader_factory=None,
         broker_profiles_loader=None,
+        broker_sync: Trading212BrokerSync | None = None,
+        stop_event: Event | None = None,
         estimate_history: EstimateHistory | None = None,
     ) -> None:
         self.state_root = state_root.expanduser().resolve()
@@ -90,6 +94,8 @@ class TypedWorkerRuntime:
         self.intraday_retention_days = intraday_retention_days
         self.intraday_history_loader_factory = intraday_history_loader_factory
         self.broker_profiles_loader = broker_profiles_loader
+        self.broker_sync = broker_sync
+        self.stop_event = stop_event
         self.extra_stages = tuple(extra_stages)
         self.estimate_history = estimate_history
         self.artifacts = ContentAddressedArtifactStore(self.state_root / "artifacts")
@@ -99,7 +105,11 @@ class TypedWorkerRuntime:
         return StageRegistry(
             [
                 BrokerSyncStage(
-                    self.state_root, self.artifacts, profiles_loader=self.broker_profiles_loader
+                    self.state_root,
+                    self.artifacts,
+                    sync=self.broker_sync,
+                    stop_event=self.stop_event,
+                    profiles_loader=self.broker_profiles_loader,
                 ),
                 AccountSnapshotStage(
                     self.state_root, self.artifacts, profiles_loader=self.broker_profiles_loader

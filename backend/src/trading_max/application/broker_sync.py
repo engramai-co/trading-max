@@ -9,6 +9,7 @@ stdout.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections.abc import Callable
 from datetime import UTC, date, datetime, timedelta
@@ -35,6 +36,8 @@ from trading_max.ingestion.brokers.trading212 import (
     utc_iso,
     validate_broker_snapshot,
 )
+
+from .errors import WorkerShutdown
 
 LOGGER = logging.getLogger(__name__)
 
@@ -101,21 +104,38 @@ class Trading212BrokerSync:
         client_factory: Callable[[Trading212Credentials, str], _Client] | None = None,
         store_factory: Callable[[str], ManagedAccountStore] = ManagedAccountStore,
         sleep: Callable[[float], None] = time.sleep,
+        stop_event: threading.Event | None = None,
     ) -> None:
         self.credentials_factory = credentials_factory
         self.client_factory = client_factory or self._new_client
         self.store_factory = store_factory
         self.sleep = sleep
+        self.stop_event = stop_event
+        self._rate_limits_lock = threading.Lock()
         self._rate_limits: dict[tuple[str, str], Trading212RateLimiter] = {}
+
+    def rate_limiter(self, profile: str, environment: str = "live") -> Trading212RateLimiter:
+        """Return the shared in-process rate limiter for one broker account."""
+        key = (environment, profile)
+        with self._rate_limits_lock:
+            limiter = self._rate_limits.get(key)
+            if limiter is None:
+                limiter = Trading212RateLimiter()
+                self._rate_limits[key] = limiter
+            return limiter
+
+    def _wait(self, seconds: float) -> None:
+        if self.stop_event is None:
+            self.sleep(seconds)
+        elif self.stop_event.wait(seconds):
+            raise WorkerShutdown("worker stopped during Trading 212 wait")
 
     def _new_client(self, credentials: Trading212Credentials, environment: str) -> Trading212Client:
         # Each job opens a new HTTP client; retain broker cooldowns and pacing
-        # across manual retries and scheduled syncs in the same worker.
-        limiter = self._rate_limits.setdefault(
-            (environment, credentials.profile), Trading212RateLimiter()
-        )
+        # across concurrent worker lanes, manual retries and scheduled syncs.
+        limiter = self.rate_limiter(credentials.profile, environment)
         return Trading212Client(
-            credentials, environment=environment, sleep=self.sleep, rate_limiter=limiter
+            credentials, environment=environment, sleep=self._wait, rate_limiter=limiter
         )
 
     @staticmethod
@@ -391,11 +411,11 @@ class Trading212BrokerSync:
                 if reconciliation.positions_match_investments:
                     break
                 if attempt + 1 < reconciliation_attempts:
-                    self.sleep(reconciliation_retry_seconds)
+                    self._wait(reconciliation_retry_seconds)
                     continue
                 if not allow_unreconciled_positions:
                     validate_broker_snapshot(snapshot)
-            store.write_snapshot(raw_snapshot)
+            store.write_snapshot(raw_snapshot, intraday=True)
             self._record_live_cash_transactions(client, store, profile)
         return raw_snapshot
 
@@ -425,6 +445,8 @@ class Trading212BrokerSync:
                 return
             items, complete = reader(stop_references=known)
             writer(fetched_at=datetime.now(UTC), items=items, complete=complete)
+        except WorkerShutdown:
+            raise
         except Exception as exc:  # optional evidence must never cost the live value
             LOGGER.warning("%s: live cash movements unavailable: %s", profile, exc)
             clear()

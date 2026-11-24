@@ -12,13 +12,16 @@ import json
 import math
 import os
 import sys
-import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "backend" / "src")]
+
+if TYPE_CHECKING:
+    from services.api.trading_max_api.typed_jobs import TypedJobManager
 
 
 def live_quote(symbol: str) -> dict:
@@ -117,6 +120,20 @@ class BrokerPreviewStage:
         return StageResult(metadata=refresh_broker_inputs(self.state))
 
 
+def start_preview_workers(jobs: TypedJobManager, state: Path, *, poll_seconds: float) -> None:
+    from trading_max.application.stages import StageRegistry
+
+    jobs.registry = StageRegistry(
+        [
+            BrokerPreviewStage(state) if name == "broker.sync" else jobs.registry.get(name)
+            for name in jobs.registry.names()
+        ]
+    )
+    jobs.start_worker_lanes(
+        worker_id="broker-preview-worker", lease_seconds=90, poll_seconds=poll_seconds
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-root", type=Path, required=True)
@@ -129,34 +146,22 @@ def main() -> None:
     os.environ["TRADING_MAX_DATA_ROOT"] = str(state)
     os.environ["TRADING_MAX_LOG_DIR"] = str(state / "logs")
     import uvicorn
-    from trading_max.application.stages import StageRegistry
 
     from services.api.trading_max_api.app import create_app
     from services.api.trading_max_api.config import Settings
     from services.api.trading_max_api.credentials import InMemoryCredentialStore
 
-    app = create_app(
-        Settings(
-            data_root=state,
-            api_port=args.port,
-            embedded_worker=False,
-            llm_provider="deepseek",
-            allowed_origins=(f"http://127.0.0.1:{args.web_port}",),
-            # Like a running service: sector boards follow the research schedule.
-            sector_monitor_enabled=True,
-        ),
-        credential_store=InMemoryCredentialStore(),
+    settings = Settings(
+        data_root=state,
+        api_port=args.port,
+        embedded_worker=False,
+        llm_provider="deepseek",
+        allowed_origins=(f"http://127.0.0.1:{args.web_port}",),
+        # Like a running service: sector boards follow the research schedule.
+        sector_monitor_enabled=True,
     )
-    jobs = app.state.jobs
-    jobs.registry = StageRegistry(
-        [
-            BrokerPreviewStage(state) if name == "broker.sync" else jobs.registry.get(name)
-            for name in jobs.registry.names()
-        ]
-    )
-    jobs._worker = jobs._build_worker(worker_id="broker-preview-worker", lease_seconds=90)
-    jobs._worker_thread = threading.Thread(target=jobs._run_embedded_worker, daemon=True)
-    jobs._worker_thread.start()
+    app = create_app(settings, credential_store=InMemoryCredentialStore())
+    start_preview_workers(app.state.jobs, state, poll_seconds=settings.worker_poll_seconds)
     uvicorn.run(app, host="127.0.0.1", port=args.port)
 
 

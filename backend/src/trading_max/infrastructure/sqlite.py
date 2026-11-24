@@ -54,11 +54,22 @@ class SqliteDatabase:
             self.connection.execute("BEGIN IMMEDIATE" if immediate else "BEGIN")
             try:
                 yield self.connection
+                self.connection.commit()
             except Exception:
                 self.connection.rollback()
                 raise
-            else:
-                self.connection.commit()
+
+    @contextmanager
+    def durable_write(self) -> Iterator[sqlite3.Connection]:
+        """Sync the WAL at commit before a caller can publish external state."""
+        with self._lock:
+            previous = int(self.connection.execute("PRAGMA synchronous").fetchone()[0])
+            self.connection.execute("PRAGMA synchronous=FULL")
+            try:
+                with self.transaction(immediate=True) as connection:
+                    yield connection
+            finally:
+                self.connection.execute(f"PRAGMA synchronous={previous}")
 
     @contextmanager
     def read(self) -> Iterator[sqlite3.Connection]:

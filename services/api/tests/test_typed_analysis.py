@@ -330,3 +330,72 @@ def test_decision_review_context_keeps_the_listed_decisions_and_summaries() -> N
     # A sale's positive effect is a fall it avoided; the model must be told so.
     assert "a sale whose security then fell" in compact["effectSign"]
     assert _compact_decision_review({"status": "unavailable"}) == {"status": "unavailable"}
+
+
+def test_embedded_shutdown_leaves_shared_connections_open_during_a_blocked_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+    import threading
+    import time
+    from contextlib import closing
+
+    from starlette.testclient import TestClient
+    from trading_max.application import StageResult
+
+    from services.api.trading_max_api.app import create_app
+    from services.api.trading_max_api.config import Settings
+    from services.api.trading_max_api.typed_analysis import TypedSynthesisStage
+
+    stage_entered = threading.Event()
+    start_write = threading.Event()
+    write_waiting = threading.Event()
+
+    def write_from_lane(stage, _context):
+        stage_entered.set()
+        assert start_write.wait(timeout=5)
+        with stage.manager.database.transaction(immediate=True):
+            pass
+        return StageResult()
+
+    monkeypatch.setattr(TypedSynthesisStage, "run", write_from_lane)
+    app = create_app(Settings(data_root=tmp_path, embedded_worker=True, worker_poll_seconds=0.05))
+    jobs = app.state.jobs
+    analysis = app.state.analysis
+    preferences = app.state.settings_repository
+    close_analysis, close_preferences = analysis.close, preferences.close
+
+    def shorten_shutdown_deadline() -> float:
+        request_stop()
+        return time.monotonic() + 0.1
+
+    def refuse_shared_close():
+        pytest.fail("API closed a shared dependency while the analysis lane was blocked")
+
+    request_stop = jobs.request_stop
+    monkeypatch.setattr(jobs, "request_stop", shorten_shutdown_deadline)
+    monkeypatch.setattr(analysis, "close", refuse_shared_close)
+    monkeypatch.setattr(preferences, "close", refuse_shared_close)
+    analysis.database.connection.set_trace_callback(
+        lambda statement: write_waiting.set() if statement == "BEGIN IMMEDIATE" else None
+    )
+
+    with closing(sqlite3.connect(tmp_path / "trading_max.db", isolation_level=None)) as blocker:
+        try:
+            with TestClient(app):
+                jobs.queue.enqueue(
+                    "research",
+                    trigger="system",
+                    stages=[(TypedSynthesisStage.name, TypedSynthesisStage.version)],
+                )
+                assert stage_entered.wait(timeout=5)
+                blocker.execute("BEGIN IMMEDIATE")
+                start_write.set()
+                assert write_waiting.wait(timeout=5)
+            assert blocker.in_transaction
+        finally:
+            start_write.set()
+            blocker.rollback()
+            assert jobs.close(deadline=time.monotonic() + 5)
+            close_analysis()
+            close_preferences()

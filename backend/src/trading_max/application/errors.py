@@ -20,4 +20,12 @@ class StageExecutionError(RuntimeError):
         super().__init__(message)
 
 
-__all__ = ["StageExecutionError"]
+class WorkerShutdown(RuntimeError):
+    """A worker was asked to stop before its current stage could complete."""
+
+
+class PublicationCancelled(RuntimeError):
+    """The operator cancelled a refresh before its publication was committed."""
+
+
+__all__ = ["PublicationCancelled", "StageExecutionError", "WorkerShutdown"]
