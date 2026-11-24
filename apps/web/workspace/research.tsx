@@ -14,13 +14,11 @@ import {
   ActionIcon,
   Button,
   Drawer,
-  Group,
   Modal,
   Select,
-  Stack,
   Tooltip,
 } from "@mantine/core";
-import { useLocalStorage, useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint, useLocalStorage } from "@/lib/hooks";
 import {
   CaretDown,
   CaretLeft,
@@ -121,7 +119,7 @@ export function ResearchWorkspace() {
 function SecurityResearchWorkspace() {
   const t = useCopy();
   const { params, update } = useRouteState("push");
-  const wide = useMediaQuery("(min-width: 1280px)");
+  const wide = useBreakpoint("wide");
   const [pinned, setPinned] = useLocalStorage({
     key: "mx-research-list-pinned",
     defaultValue: false,
@@ -477,7 +475,7 @@ function SecurityResearchWorkspace() {
           <div className="mx-research-content">
             {candidates.length ? (
               <Panel title={t("选择上市地", "Choose a listing")}>
-                <Stack>
+                <div className="flex flex-col gap-mx-md">
                   {candidates.map((item) => (
                     <Button
                       key={item.ticker}
@@ -492,7 +490,7 @@ function SecurityResearchWorkspace() {
                       {item.ticker} · {item.exchange} · {item.name}
                     </Button>
                   ))}
-                </Stack>
+                </div>
               </Panel>
             ) : !selected && security.isFetching ? (
               <Pending shape="research" quiet />
@@ -501,7 +499,7 @@ function SecurityResearchWorkspace() {
                 <Empty
                   title={t("暂时无法查找“", "Could not look up “") + ticker + "”"}
                   action={
-                    <Group justify="center">
+                    <div className="flex flex-wrap items-center justify-center gap-mx-md">
                       <Button onClick={() => void security.refetch()}>{t("重试", "Retry")}</Button>
                       <Button
                         variant="default"
@@ -513,7 +511,7 @@ function SecurityResearchWorkspace() {
                       >
                         {t("搜索", "Search")}
                       </Button>
-                    </Group>
+                    </div>
                   }
                 />
               </Panel>
@@ -788,7 +786,7 @@ function SecurityResearchWorkspace() {
         onClose={() => setRemoveConfirm(false)}
         title={t("从研究清单移除 ", "Remove ") + ticker + t("？", " from the research list?")}
       >
-        <Group justify="flex-end">
+        <div className="flex flex-wrap items-center justify-end gap-mx-md">
           <Button variant="default" onClick={() => setRemoveConfirm(false)}>
             {t("取消", "Cancel")}
           </Button>
@@ -799,7 +797,7 @@ function SecurityResearchWorkspace() {
           >
             {t("移除", "Remove")}
           </Button>
-        </Group>
+        </div>
       </Modal>
     </Page>
   );

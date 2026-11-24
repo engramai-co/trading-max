@@ -1,7 +1,7 @@
 "use client";
 
 import type { ResearchShell } from "@/lib/types";
-import { ActionIcon, Checkbox, Group, Select, TextInput } from "@mantine/core";
+import { ActionIcon, Checkbox, Select, TextInput } from "@mantine/core";
 import { MagnifyingGlass, PushPin } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -63,7 +63,7 @@ export function UniverseHeading({
   return (
     <span className="mx-universe-heading">
       <span>{t("研究清单", "Research list")}</span>
-      <Group component="span" gap={4}>
+      <span className="flex flex-wrap items-center gap-1">
         {wide && (
           <ActionIcon
             aria-label={
@@ -85,7 +85,7 @@ export function UniverseHeading({
         >
           <MagnifyingGlass size={17} />
         </ActionIcon>
-      </Group>
+      </span>
     </span>
   );
 }

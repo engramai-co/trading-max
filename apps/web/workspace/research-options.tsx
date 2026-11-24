@@ -7,14 +7,12 @@ import {
   Checkbox,
   Combobox,
   Drawer,
-  Group,
   MultiSelect,
   Pill,
   NumberInput,
   Select,
-  Stack,
 } from "@mantine/core";
-import { useLocalStorage } from "@mantine/hooks";
+import { useLocalStorage } from "@/lib/hooks";
 import type { BarSeriesOption, EChartsOption, LineSeriesOption } from "echarts";
 import { useState } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
@@ -383,14 +381,14 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
       <Panel
         title={title}
         action={
-          <Group gap="sm">
+          <div className="flex flex-wrap items-center gap-mx-sm">
             {(historical || !current.length) && (
               <Tag tone="warn">{options.capturedAt
                 ? <>{t("存档期权链", "Archived chain")} · <time dateTime={options.capturedAt}>{when(options.capturedAt)}</time></>
                 : t("存档期权链 · 日期未提供", "Archived chain · date unavailable")}</Tag>
             )}
             {!historical && current.length > 0 && <span className="mx-muted">{when(options.capturedAt)}</span>}
-          </Group>
+          </div>
         }
       >
         {relationship}
@@ -1091,8 +1089,8 @@ function Payoff({
     latest: atExpiry + " " + quoteValue(spot, currencyCode, { style: "figure" }) + " · " + payoffReading(atExpiry, spot, pnl(spot), currencyCode).primary!.value,
   } : undefined;
   return (
-    <Stack mt="lg">
-      <Group align="end">
+    <div className="mt-mx-lg flex flex-col gap-mx-md">
+      <div className="flex flex-wrap items-end gap-mx-md">
         <Select
           label={t("合约", "Contract")}
           searchable
@@ -1111,9 +1109,9 @@ function Payoff({
         >
           {t("加入试算", "Add to analysis")}
         </Button>
-      </Group>
+      </div>
       {legs.map((leg, i) => (
-        <Group key={i} align="end">
+        <div key={i} className="flex flex-wrap items-end gap-mx-md">
           <span>{leg.symbol}</span>
           <NumberInput
             label={t("数量（负数为卖出）", "Quantity (negative = short)")}
@@ -1146,7 +1144,7 @@ function Payoff({
           >
             {t("移除", "Remove")}
           </Button>
-        </Group>
+        </div>
       ))}
       {legs.length > 0 && !complete && (
         <Empty
@@ -1201,7 +1199,7 @@ function Payoff({
           )}
         </p>
       </details>
-    </Stack>
+    </div>
   );
 }
 

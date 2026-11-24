@@ -43,6 +43,12 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-topbar-more.mantine-ActionIcon-root {
   display: none;
 }
+.mx-topbar-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.25rem;
+}
 .mx-content main {
   max-width: 1800px;
   margin: auto;

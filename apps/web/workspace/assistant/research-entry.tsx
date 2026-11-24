@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { lazy, Suspense, type ComponentProps } from "react";
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { useWorkspaceProfile } from "../profile";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useAssistant } from "./context";
@@ -21,7 +21,7 @@ export function PositionReading(props: ComponentProps<typeof Position>) {
 export function useEarningsBrief(ticker: string, lens: string, snapshotId: string | undefined, eligible: boolean, initial?: ResearchLensSnapshot) {
   const assistant = useAssistant();
   const profile = useWorkspaceProfile();
-  const phone = useMediaQuery("(max-width: 767px)");
+  const phone = useBreakpoint("phone");
   const enabled = Boolean(eligible && assistant.ready && snapshotId);
   const query = useQuery({
     queryKey: ["assistant-reading", "research-cached-earnings", ticker, snapshotId], enabled, retry: false, staleTime: 60_000,

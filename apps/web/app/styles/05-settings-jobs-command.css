@@ -299,6 +299,10 @@ details[open]:not(.mx-job-row) > :not(summary) {
   background: var(--mx-surface);
   color: var(--mx-ink);
 }
+/* Modal and Drawer compose Mantine Paper; keep Paper's 1px border after dropping Paper from theme.ts. */
+:where(.mantine-Modal-content, .mantine-Drawer-content) {
+  border: calc(0.0625rem * var(--mantine-scale)) solid var(--paper-border-color);
+}
 .mantine-Modal-title,
 .mantine-Drawer-title {
   font-weight: 600;

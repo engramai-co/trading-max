@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Drawer, Group, Loader, Select, Stack } from "@mantine/core";
+import { Button, Drawer, Loader, Select } from "@mantine/core";
 import {
   ArrowClockwise,
   ArrowRight,
@@ -76,7 +76,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     },
   });
   const Controls = desktop ? "details" : Fragment;
-  const Actions = desktop ? Group : Fragment;
+  const Actions = desktop ? "div" : Fragment;
   const controlsProps = desktop ? { className: "mx-activity-controls", open: controlsOpen, onToggle: (event: React.SyntheticEvent<HTMLDetailsElement>) => setControlsOpen(event.currentTarget.open) } : {};
   const [manualChecking, setManualChecking] = useState(false);
   const manualCheckingRef = useRef(false);
@@ -174,10 +174,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           <summary>{t("新闻与日历数据时间", "News and calendar freshness")}</summary>
           <Facts rows={(data.health?.eventRefreshes ?? []).map((source) => [
             eventSourceLabel(source.kind, t),
-            <Group key={source.kind} gap="xs">
+            <div key={source.kind} className="flex flex-wrap items-center gap-mx-xs">
               {source.asOf ? formatDateTime(source.asOf, locale, timeZone) : t("暂无数据", "No observations")}
               {source.failedSources > 0 && <Tag tone="warn">{sourceFailureLabel(source.failedSources, t)}</Tag>}
-            </Group>,
+            </div>,
           ])} />
           {(data.health?.eventRefreshes ?? []).flatMap((source) => (source.failures ?? []).map((failure) => (
             <div key={source.kind + failure.source} className="mx-health-source-failure">
@@ -246,7 +246,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       description={readOnly ? t("这是只读演示，展示示例资料，不会执行账户更新。", "This read-only demo displays synthetic records and does not run account updates.") : undefined}
       className={desktop ? "mx-health-page mx-activity-page" : "mx-health-page"}
       actions={
-        <Actions {...(desktop ? { gap: "sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
+        <Actions {...(desktop ? { className: "flex flex-wrap items-center gap-mx-sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
           variant="default"
           leftSection={manualChecking ? <Loader size={14} color="currentColor" aria-hidden="true" /> : <ArrowClockwise size={16} aria-hidden="true" />}
           aria-disabled={manualChecking || undefined}
@@ -325,13 +325,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   {t("查看原因", "View issue")}
                 </Button>
               ) : (
-                <Group gap="xs">
+                <div className="flex flex-wrap items-center gap-mx-xs">
                   {failures.map((item) => (
                     <Button key={item.jobId} size="compact-sm" variant="subtle" onClick={() => setSelected(item.jobId)}>
                       {t("查看", "View ")}{scopeLabel(item.scope)}
                     </Button>
                   ))}
-                </Group>
+                </div>
               )}
             </div>
           </Notice>}
@@ -341,10 +341,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             <Panel
               title={t("更新数据", "Update data")}
             >
-              <Stack gap="md">
+              <div className="flex flex-col gap-mx-md">
                 {tone === "setup" ? <>
                   <Notice>{desktop && initialScope === "cfd" ? t("CSV 已保存。请先完成账户的首次同步，再更新 CFD 复盘，以便核对账户间的转账。", "Your CSV is saved. Complete the first account sync before updating CFD review so transfers between accounts can be reconciled.") : t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
-                  <Group><Button component={Link} href="/settings?tab=accounts&onboarding=1">{t("继续设置账户", "Continue account setup")}</Button></Group>
+                  <div className="flex flex-wrap items-center gap-mx-md"><Button component={Link} href="/settings?tab=accounts&onboarding=1">{t("继续设置账户", "Continue account setup")}</Button></div>
                 </> : <>
                 <Select
                   label={t("更新范围", "Update scope")}
@@ -375,7 +375,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     )}
                   </Notice>
                 )}
-                <Group>
+                <div className="flex flex-wrap items-center gap-mx-md">
                   <Button
                     leftSection={<ArrowClockwise size={16} />}
                     loading={start.isPending}
@@ -392,9 +392,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   >
                     {t("管理更新计划", "Manage schedule")}
                   </Button>
-                </Group>
+                </div>
                 </>}
-              </Stack>
+              </div>
             </Panel>
             {serviceIssue ? (
               <Panel title={t("服务与快照", "Service & snapshot")}>
@@ -563,13 +563,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         attributes={{ header: { role: "presentation" } }}
       >
         {job && (
-          <Stack gap="lg">
-            <Group justify="space-between">
+          <div className="mx-health-drawer-body flex flex-col gap-mx-lg">
+            <div className="flex flex-wrap items-center justify-between gap-mx-md">
               <h3>{scopes.find((s) => s.value === job.scope)?.label}</h3>
               <Tag tone={statusTone(job.status)}>
                 {statusText(job.status, t)}
               </Tag>
-            </Group>
+            </div>
             <Facts
               rows={[
                 [
@@ -658,7 +658,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 )}
               </Button>
             )}
-          </Stack>
+          </div>
         )}
       </Drawer>
     </Page>

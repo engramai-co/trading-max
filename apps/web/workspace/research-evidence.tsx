@@ -3,7 +3,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Group, MultiSelect, Select, TextInput } from "@mantine/core";
+import { MultiSelect, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
 import type { ChartReadout, ReadingItem } from "./chart-readout";
@@ -664,7 +664,7 @@ export function ResearchDocuments({
           : t("公司披露", "Company disclosures")
       }
       action={
-        <Group gap="xs">
+        <div className="flex flex-wrap items-center gap-mx-xs">
           <TextInput
             aria-label={t("查找研究材料", "Find research materials")}
             placeholder={t(
@@ -698,7 +698,7 @@ export function ResearchDocuments({
                 .map((f) => ({ value: f, label: f })),
             ]}
           />
-        </Group>
+        </div>
       }
     >
       {eventDate && (

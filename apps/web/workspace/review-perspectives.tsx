@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Group, Select, Stack } from "@mantine/core";
+import { Button, Select } from "@mantine/core";
 import { ArrowUpRight } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -181,7 +181,7 @@ export function TradeQuality({
       (trade) => (numeric(trade.netResultGbp) ?? 0) < 0,
     );
   return (
-    <Stack gap="lg">
+    <div className="flex flex-col gap-mx-lg">
       <Panel
         title={t("过程是否可持续", "Understand the trading process")}
         help={t(
@@ -423,7 +423,7 @@ export function TradeQuality({
           />
         </Panel>
       )}
-    </Stack>
+    </div>
   );
 }
 export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }) {
@@ -472,7 +472,7 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
               <time>
                 {formatDateSpan(str(row.startDate), str(row.endDate), locale)}
               </time>
-              <Group justify="space-between">
+              <div className="flex flex-wrap items-center justify-between gap-mx-md">
                 <h3>
                   {classifications[str(row.classification)] ??
                     t("阶段 ", "Phase ") + (index + 1)}
@@ -486,7 +486,7 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
                 >
                   {currency(row.netPnlGbp ?? row.realisedPnlGbp, "GBP", 2)}
                 </Tag>
-              </Group>
+              </div>
               <div className="mx-metric-grid" style={{ margin: "16px 0" }}>
                 <Metric
                   label={t("期初价值", "Opening value")}

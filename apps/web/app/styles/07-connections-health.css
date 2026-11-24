@@ -397,7 +397,7 @@
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }
-.mx-health-drawer .mantine-Stack-root {
+.mx-health-drawer .mx-health-drawer-body {
   min-inline-size: 0;
 }
 .mx-health-drawer h3 {

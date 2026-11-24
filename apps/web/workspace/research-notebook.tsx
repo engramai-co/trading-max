@@ -6,7 +6,6 @@ import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   Button,
   Drawer,
-  Group,
   Select,
   Textarea,
   TextInput,
@@ -244,7 +243,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                   : t("暂无笔记", "No notes yet")}
               </p>
             )}
-            <Group gap="xs">
+            <div className="flex flex-wrap items-center gap-mx-xs">
               <Button variant="subtle" onClick={() => setArchived((v) => !v)}>
                 {archived
                   ? t("返回笔记", "Active notes")
@@ -253,7 +252,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
               <Button ref={newNoteButton} onClick={(e) => edit(undefined, e.currentTarget)}>
                 {t("写笔记", "New note")}
               </Button>
-            </Group>
+            </div>
           </div>
           {notes.length > 0 && (
             <div className="mx-note-list">
@@ -310,7 +309,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                         ))}
                       </ul>
                     )}
-                    <Group gap="xs">
+                    <div className="flex flex-wrap items-center gap-mx-xs">
                       <Button
                         size="compact-sm"
                         variant="subtle"
@@ -343,7 +342,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                       >
                         {archived ? t("恢复", "Restore") : t("归档", "Archive")}
                       </Button>
-                    </Group>
+                    </div>
                     {noteError && <p role="alert">{noteErrorText(noteError)}</p>}
                   </article>
                 );
@@ -449,7 +448,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
           />
           {editorError && <p role="alert">{noteErrorText(editorError)}</p>}
           {conflict && (
-            <Group gap="xs">
+            <div className="flex flex-wrap items-center gap-mx-xs">
               <Button
                 type="button"
                 variant="default"
@@ -467,9 +466,9 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
               >
                 {t("用我的内容覆盖", "Keep my version")}
               </Button>
-            </Group>
+            </div>
           )}
-          <Group gap="xs">
+          <div className="flex flex-wrap items-center gap-mx-xs">
             <Button
               type="submit"
               flex={1}
@@ -488,7 +487,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                 {t("放弃草稿", "Discard draft")}
               </Button>
             )}
-          </Group>
+          </div>
         </form>
       </Drawer>
       <Drawer
@@ -563,7 +562,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
         title={t("已保存的模型", "Saved models")}
         action={
           models.length > 0 && (
-            <Group>
+            <div className="flex flex-wrap items-center gap-mx-md">
               <Select
                 aria-label={t("模型版本", "Model version")}
                 value={selected.id}
@@ -576,7 +575,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
                 data={options.filter((o) => o.value !== selected.id)}
                 onChange={setCompare}
               />
-            </Group>
+            </div>
           )
         }
       >

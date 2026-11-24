@@ -1,7 +1,7 @@
 "use client";
 
 import { FocusTrap } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { ArrowsOut, ArrowsIn, X } from "@phosphor-icons/react";
 import { usePathname } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
@@ -59,9 +59,6 @@ function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
   return Array.isArray(axes) ? axes.map(theme) : axes ? theme(axes) : undefined;
 }
 
-/** Phones, and coarse pointers without hover, read a chart through a strip above the plot. */
-const TOUCH_LAYOUT = "(max-width: 767px), (hover: none) and (pointer: coarse)";
-
 /** The first index whose position is at or after the target. */
 function after(positions: readonly number[], target: number) {
   let lo = 0, hi = positions.length;
@@ -113,7 +110,7 @@ export function Plot({
   const pathname = usePathname();
   // Callers build a new readout each render; the chart's options only depend on whether there is one.
   const hasReadout = Boolean(readout);
-  const touchLayout = useMediaQuery(TOUCH_LAYOUT) === true;
+  const touchLayout = useBreakpoint("touchLayout");
   const description = useId();
   const [reading, setReading] = useState<{index: number; text: string} | null>(null);
   const [pinned, setPinned] = useState(false);

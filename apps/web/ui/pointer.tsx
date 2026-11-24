@@ -1,6 +1,6 @@
 "use client";
 
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { createContext, useContext, type ReactNode } from "react";
 
 const FinePointer = createContext(false);
@@ -11,7 +11,7 @@ const FinePointer = createContext(false);
  * update rather than one per table row.
  */
 export function FinePointerProvider({ children }: { children: ReactNode }) {
-  const fine = useMediaQuery("(hover: hover) and (pointer: fine)");
+  const fine = useBreakpoint("finePointer");
   return <FinePointer.Provider value={fine}>{children}</FinePointer.Provider>;
 }
 

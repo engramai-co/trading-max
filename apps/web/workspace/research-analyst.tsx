@@ -4,7 +4,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatEventTime } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Group, Select, TextInput } from "@mantine/core";
+import { Button, Select, TextInput } from "@mantine/core";
 import { useState, type ReactNode } from "react";
 import {
   nextEarningsDate,
@@ -478,7 +478,7 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
       <Panel
         title={t("机构行动", "Institutional actions")}
         action={
-          <Group gap="xs">
+          <div className="flex flex-wrap items-center gap-mx-xs">
             <TextInput
               placeholder={t("筛选机构", "Filter firm")}
               aria-label={t("筛选机构", "Filter firm")}
@@ -507,7 +507,7 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
                   })),
               ]}
             />
-          </Group>
+          </div>
         }
       >
         <EvidenceTable

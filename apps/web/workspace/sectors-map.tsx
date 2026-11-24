@@ -1,6 +1,6 @@
 "use client";
 
-import { useComputedColorScheme } from "@mantine/core";
+import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import type { SectorGroup, SectorGroupingKind } from "@/lib/types";

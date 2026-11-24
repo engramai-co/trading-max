@@ -23,7 +23,7 @@
 
 import { useAssistantPageContext } from "./assistant/context";
 import { Button } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
@@ -52,7 +52,7 @@ export function SectorsWorkspace() {
   const { params, update: updateRoute } = useRouteState();
   const update = (values: Record<string,string|null>, state?: Record<string,unknown> | null) =>
     updateRoute({region:null,observed:null,snapshotId:null,evidence:null,...values},state);
-  const phone = useMediaQuery("(max-width: 767px)") ?? false;
+  const phone = useBreakpoint("phone");
   const now = useMinute();
   const openedIndex = demonstration ? null : params.get("index");
   const range = INDEX_RANGES.find((item) => item === params.get("range")) ?? "1Y";

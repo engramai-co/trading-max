@@ -1,7 +1,7 @@
 "use client";
 
 import { MultiSelect, Switch } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { LineSeriesOption } from "echarts";
@@ -96,7 +96,7 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const colours = useChartColours();
-  const phone = useMediaQuery("(max-width: 48em)");
+  const phone = useBreakpoint("researchIndexPhone");
   const { params } = useRouteState();
   const requestedRange = params.get("indexRange");
   const [range, setRange] = useState<IndexRange>(index.ranges.find(r => r === requestedRange) ?? (index.ranges.includes("1Y") ? "1Y" : index.ranges.at(-1) ?? "3M"));

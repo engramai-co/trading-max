@@ -5,6 +5,7 @@
 @import "tailwindcss/utilities.css" layer(utilities) source(none);
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "./shadcn-theme.css";
 
 @import "@mantine/core/styles.layer.css";
 @import "@mantine/notifications/styles.layer.css";

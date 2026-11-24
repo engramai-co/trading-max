@@ -5,12 +5,10 @@ import {
   Button,
   Checkbox,
   Drawer,
-  Group,
   Modal,
   PasswordInput,
   Select,
   SegmentedControl,
-  Stack,
 } from "@mantine/core";
 import {
   ArrowRight,
@@ -289,7 +287,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
         title={t("连接你的模型", "Connect your model")}
         centered
       >
-        <Stack gap="lg">
+        <div className="flex flex-col gap-mx-lg">
           <p>{t(
             "选择你想使用的提供商。OpenAI 支持 ChatGPT 登录或 API Key；你也可以稍后再设置。",
             "Choose a provider. OpenAI supports ChatGPT sign-in or an API key. You can also set this up later.",
@@ -303,7 +301,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
             })) ?? []}
             allowDeselect={false}
           />
-          <Group justify="flex-end">
+          <div className="flex flex-wrap items-center justify-end gap-mx-md">
             <Button variant="subtle" onClick={() => setOfferModelConnection(false)}>
               {t("稍后设置", "Set up later")}
             </Button>
@@ -315,8 +313,8 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
             }} rightSection={<ArrowRight size={16} />}>
               {t("继续连接", "Continue")}
             </Button>
-          </Group>
-        </Stack>
+          </div>
+        </div>
       </Modal>
       <Drawer
         opened={connection !== null}
@@ -325,7 +323,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
         position="right"
         size={480}
       >
-        {connection && <Stack gap="lg">
+        {connection && <div className="flex flex-col gap-mx-lg">
           {connection.kind === "model" && ["openai", "openai-codex"].includes(connection.provider.provider) &&
             <SegmentedControl fullWidth aria-label={t("OpenAI 连接方式", "OpenAI connection method")}
               value={connection.provider.provider}
@@ -346,7 +344,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                   setConnection(null); setSaved(result);
                   void client.invalidateQueries({ queryKey: settingsKey });
                 }} />}
-        </Stack>}
+        </div>}
       </Drawer>
     </Page>
   );
@@ -475,7 +473,7 @@ function ConnectionForm({
       ? secretKey.trim().length > 0
       : model.length > 0);
   return (
-    <Stack gap="lg">
+    <div className="flex flex-col gap-mx-lg">
       {(connection.kind === "model" || connection.existing?.configured) && (
         <Notice>
           {connection.kind === "broker"
@@ -493,7 +491,7 @@ function ConnectionForm({
           else if (ready) test.mutate();
         }}
       >
-        <Stack gap="md">
+        <div className="flex flex-col gap-mx-md">
           {connection.kind === "broker" && (
             <Select
               label={t("账户环境", "Account environment")}
@@ -613,8 +611,9 @@ function ConnectionForm({
               )}
             </Notice>
           )}
-          <Group grow>
+          <div className="flex flex-wrap items-center gap-mx-md">
             <Button
+              className="grow max-w-[calc(50%-8px)]"
               variant="default"
               onClick={() => {
                 setToken(null);
@@ -626,6 +625,7 @@ function ConnectionForm({
               {t("测试连接", "Test connection")}
             </Button>
             <Button
+              className="grow max-w-[calc(50%-8px)]"
               type="submit"
               disabled={!token || test.isPending}
               loading={save.isPending}
@@ -633,8 +633,8 @@ function ConnectionForm({
             >
               {t("保存连接", "Save connection")}
             </Button>
-          </Group>
-        </Stack>
+          </div>
+        </div>
       </form>
       {connection.existing?.configured && (
         <div className="mx-danger-zone">
@@ -660,7 +660,7 @@ function ConnectionForm({
         title={t("确认断开连接", "Confirm disconnection")}
         centered
       >
-        <Stack>
+        <div className="flex flex-col gap-mx-md">
           <p className="mx-body-copy">
             {t(
               "新的数据更新将不再使用此连接。之后可以重新输入凭据连接。",
@@ -675,7 +675,7 @@ function ConnectionForm({
               )}
             </Notice>
           )}
-          <Group justify="flex-end">
+          <div className="flex flex-wrap items-center justify-end gap-mx-md">
             <Button variant="default" onClick={() => setDisconnecting(false)}>
               {t("保留连接", "Keep connection")}
             </Button>
@@ -686,10 +686,10 @@ function ConnectionForm({
             >
               {t("确认断开", "Disconnect")}
             </Button>
-          </Group>
-        </Stack>
+          </div>
+        </div>
       </Modal>
-    </Stack>
+    </div>
   );
 }
 
@@ -752,7 +752,7 @@ function ModelRouting({
         "Models match company names, aliases or descriptions to tickers.",
       )}
     >
-      <Stack gap="lg">
+      <div className="flex flex-col gap-mx-lg">
         <Select
           label={t("默认模型", "Default model")}
           data={options}
@@ -807,7 +807,7 @@ function ModelRouting({
             {t("模型分配已保存。", "Model assignments saved.")}
           </Notice>
         )}
-        <Group>
+        <div className="flex flex-wrap items-center gap-mx-md">
           <Button
             loading={mutation.isPending}
             onClick={() => {
@@ -821,8 +821,8 @@ function ModelRouting({
           {savedRevision && dirty && (
             <span role="status">{t("还有未保存的修改", "You have unsaved changes")}</span>
           )}
-        </Group>
-      </Stack>
+        </div>
+      </div>
     </Panel>
   );
 }

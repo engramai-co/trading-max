@@ -4,12 +4,12 @@ import {
   Button,
   CloseButton,
   Drawer,
-  Group,
   Popover,
   Tooltip,
   type TooltipProps,
 } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { MEDIA_QUERIES } from "@/lib/breakpoints";
+import { useBreakpoint } from "@/lib/hooks";
 import {
   ArrowClockwise,
   ArrowRight,
@@ -79,7 +79,7 @@ function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector:
       if (segments) indicator.style.height = height + "px";
       const target = "translate(" + x + "px, " + y + "px)";
       indicator.style.transform = target;
-      if (!animate || !from.width || !height || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      if (!animate || !from.width || !height || window.matchMedia(MEDIA_QUERIES.reducedMotion).matches) return;
       const start = indicatorStart(from, indicator.getBoundingClientRect(), { x, y });
       if (!start) return;
       indicator.animate(
@@ -173,9 +173,6 @@ export function Tip({ children, describes = true, ...props }: Omit<TooltipProps,
   </Tooltip>;
 }
 
-/** Phones read help in a bottom sheet; wider windows in a popover beside the "?". */
-const HELP_SHEET = "(max-width: 767px)";
-
 export function Help({
   label,
   children,
@@ -192,7 +189,7 @@ export function Help({
 }) {
   const t = useCopy();
   const [opened, setOpened] = useState(false);
-  const sheet = useMediaQuery(HELP_SHEET) ?? false;
+  const sheet = useBreakpoint("phone");
   const trigger = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   useEscapeLayer(opened, () => {
@@ -546,7 +543,7 @@ export function QueryError({
           ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable"))}
         description={detail}
         action={(retry || showDataStatusLink) && (
-          <Group>
+          <div className="flex flex-wrap items-center gap-mx-md">
             {retry && (
               <Button
                 leftSection={<ArrowClockwise size={16} />}
@@ -560,7 +557,7 @@ export function QueryError({
                 {t("查看数据状态", "Data status")}
               </Button>
             )}
-          </Group>
+          </div>
         )}
       />
     </Panel>

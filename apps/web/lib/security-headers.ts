@@ -12,7 +12,7 @@ export function contentSecurityPolicy(development = false): string {
   const directives = [
     // Restrict unlisted fetch directives (manifest, media, workers) to same origin.
     "default-src 'self'",
-    // Next.js 16 App Router emits inline RSC bootstrap scripts and Mantine renders
+    // Next.js 16 App Router emits inline RSC bootstrap scripts and RootLayout renders
     // an inline ColorSchemeScript without nonces; eval is restricted to dev tooling.
     // The macOS desktop App injects its overlay marker via WKUserScript outside page CSP.
     development

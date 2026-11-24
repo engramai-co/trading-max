@@ -4,13 +4,12 @@ import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   Button,
-  Group,
   Modal,
   Select,
   NumberInput,
   Textarea,
 } from "@mantine/core";
-import { useDebouncedValue } from "@mantine/hooks";
+import { useDebouncedValue } from "@/lib/hooks";
 import { ArrowClockwise, LockSimple, LockSimpleOpen } from "@phosphor-icons/react";
 import {
   keepPreviousData,
@@ -280,7 +279,7 @@ export function ValuationWorkbench({
       {editor && <div className="mx-model-output" ref={setOutput} inert={switching} />}
       <Panel title={editor ? t("调整假设", "Adjust assumptions") : t("情景模型", "Scenario model")}
         id="valuation-assumptions" className="mx-model-inputs" help={methodology}
-        action={<Group gap="xs">
+        action={<div className="flex flex-wrap items-center gap-mx-xs">
           {source && <span className="mx-unit mx-assumption-source">{source}</span>}
           {editor && <span ref={setEvidenceAction} className="mx-slot" />}
           {enabled && <span ref={setDraftAction}>
@@ -288,7 +287,7 @@ export function ValuationWorkbench({
           </span>}
           {editor && <Button className="mx-model-jump" component="a" href="#valuation-results"
           variant="subtle" size="compact-xs">{t("查看结果", "View results")}</Button>}
-        </Group>}>
+        </div>}>
         {chooser}
         {editor ? <div className="mx-model-fields" inert={switching}>
           <ModelEditor key={reload + editorIdentity(editor)}
@@ -746,7 +745,7 @@ function ModelEditor({
             title={t("情景估值", "Scenario valuation")}
             id="valuation-results"
             action={
-              <Group gap="xs">
+              <div className="flex flex-wrap items-center gap-mx-xs">
                 <Button
                   className="mx-model-jump"
                   component="a"
@@ -768,7 +767,7 @@ function ModelEditor({
                 <span role="status" className="mx-preview-status">
                   {invalidInput ? t("请完成输入", "Complete the input") : busy ? t("计算中…", "Calculating…") : ""}
                 </span>
-              </Group>
+              </div>
             }
           >
             <ValuationScenarioComparison
@@ -1148,7 +1147,7 @@ function ModelEditor({
           minRows={3}
           maxLength={4000}
         />
-        <Group justify="flex-end" mt="md">
+        <div className="mt-mx-md flex flex-wrap items-center justify-end gap-mx-md">
           <Button variant="default" onClick={() => setSaveOpen(false)}>
             {t("取消", "Cancel")}
           </Button>
@@ -1160,7 +1159,7 @@ function ModelEditor({
           >
             {t("保存版本", "Save version")}
           </Button>
-        </Group>
+        </div>
         {reReview}
         {save.isError && !staleDraft && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
       </Modal>
