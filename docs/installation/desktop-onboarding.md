@@ -1,9 +1,9 @@
 # Desktop onboarding
 
-Status: **signed Apple Silicon desktop App**, bundled application **1.52.0**.
+Status: **signed Apple Silicon desktop App**, bundled application **1.68.0**.
 Obtain the DMG and matching manifest from the
-[official release](https://github.com/engramai-co/trading-max/releases/tag/v1.52.0).
-Version 1.52.0 requires macOS 13.0 or later, and releases after 1.67 require macOS 13.3 or later.
+[official release](https://github.com/engramai-co/trading-max/releases/tag/v1.68.0).
+It requires macOS 13.3 or later.
 The installer uses Developer ID signing and Apple notarization. See the
 [installation guide and acceptance scope](desktop-updates.md) before upgrading.
 
