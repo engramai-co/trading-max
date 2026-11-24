@@ -1,8 +1,9 @@
 # Desktop installation, updates and recovery
 
 Trading Max 1.52.0 provides an Apple Silicon macOS App as a Developer ID
-signed and Apple-notarized DMG. Get the package and verification manifest from
-the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.52.0).
+signed and Apple-notarized DMG. Version 1.52.0 requires macOS 13.0 or later, and
+releases after 1.67 require macOS 13.3 or later. Get the package and verification
+manifest from the [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.52.0).
 A GitHub source archive alone is not a desktop installer. The App's
 **Settings → About & updates** distinguishes the two.
 
@@ -179,6 +180,10 @@ readiness/worker status and the owner's balance confirmation.
 
 ## Obtain and install an update
 
+Apps on older Macs can still show update and download options. Sparkle declines
+installation if an update requires a newer macOS version, and the downloaded App
+will not open on an older system.
+
 1. Click **Check for updates** in App Settings. The explicit request goes only to the
    canonical `engramai-co/trading-max` GitHub release endpoints, without account,
    workspace, credential or saved-server information. There is no background poll.
@@ -186,7 +191,9 @@ readiness/worker status and the owner's balance confirmation.
    Apple Silicon DMG and matching verified distribution manifest. The App checks
    the manifest's digest, version, architecture, bundle ID, publisher, minimum
    macOS and agreement with GitHub's DMG size/digest. It rechecks the exact release
-   when Download is clicked. Source-only releases, incomplete uploads, mismatched
+   when Download is clicked. The manifest keeps `minimum_macos` at 13.0 so Apps
+   up to 1.67 can still validate it, and records the real floor in
+   `minimum_system_version`. Source-only releases, incomplete uploads, mismatched
    metadata and older-than-installed packages do not offer a download.
 3. On 1.12.0 or newer, **Update in the app** appears when the newer release also has
    a signed appcast. Sparkle shows the available update, verifies the download and
@@ -339,11 +346,11 @@ Runtime locally using an existing **Apple Development** identity, add
 DMG or a verified release manifest. Test the copied runtime using the packaged
 harness before moving to a real Developer ID candidate.
 
-The payload builder selects hash-verified macOS 13-compatible Python wheels,
+The payload builder selects hash-verified macOS 13.3-compatible Python wheels,
 with source builds disabled. Signing and final DMG verification also inspect
 every native component's arm64 deployment/load commands. A dependency requiring
 newer macOS, or loading an absolute library outside Apple's system directories,
-stops the release even when the outer App declares macOS 13. A successful launch
+stops the release even when the outer App declares macOS 13.3. A successful launch
 on a newer development Mac alone does not establish minimum-OS compatibility.
 
 Create a named `notarytool` profile in Keychain using its secure interactive

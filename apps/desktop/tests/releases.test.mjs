@@ -10,18 +10,18 @@ test("a newer source release is not presented as an installable app", () => {
 });
 test("desktop and repository versions stay distinct; reinstall is explicit and downgrade is absent", () => {
   for (const relation of ["newer","same","older"]) {
-    const view = releasePresentation({version:"1.12.0",desktop:{version:"1.11.0",relation,size:104857600,sha256:"a".repeat(64)}});
+    const view = releasePresentation({version:"1.12.0",desktop:{version:"1.11.0",relation,minimum_macos:"13.0",size:104857600,sha256:"a".repeat(64)}});
     assert.match(view.message,/桌面版 v1.11.0/);
     assert.match(view.message,/仓库稳定版为 v1.12.0/);
     assert.equal(view.download, relation !== "older");
     if (relation === "same") assert.match(view.label,/重新下载/);
-    assert.match(view.details,/100.0 MB/);
+    assert.match(view.details,/macOS 13\.0 或更新.*100\.0 MB/);
   }
 });
 test("in-app installation needs a newer signed-feed release; old DMGs remain manual", () => {
   for (const relation of ["newer", "same", "older"]) {
     for (const in_app of [true, false, undefined]) {
-      const view = releasePresentation({version:"1.12.0", desktop:{version:"1.12.0",relation,size:100,sha256:"a".repeat(64),in_app}});
+      const view = releasePresentation({version:"1.12.0", desktop:{version:"1.12.0",relation,minimum_macos:"13.3",size:100,sha256:"a".repeat(64),in_app}});
       assert.equal(view.inApp, relation === "newer" && in_app === true);
     }
   }
@@ -29,10 +29,21 @@ test("in-app installation needs a newer signed-feed release; old DMGs remain man
 
 test("the English release view preserves the distinction between desktop and repository versions", () => {
   const view = releasePresentation({
-    version: "1.12.0", desktop: { version: "1.11.0", relation: "same", size: 104857600, sha256: "a".repeat(64) },
+    version: "1.12.0", desktop: { version: "1.11.0", relation: "same", minimum_macos: "13.0", size: 104857600, sha256: "a".repeat(64) },
   }, "en");
   assert.match(view.message, /Desktop v1.11.0.*Repository release v1.12.0/);
   assert.match(view.label, /Download the installer again/);
-  assert.match(view.details, /macOS 13 or later.*100.0 MB/);
+  assert.match(view.details, /macOS 13\.0 or later.*100\.0 MB/);
   assert.equal(view.inApp, false);
+});
+
+test("the release details display the manifest's macOS requirement in both languages", () => {
+  for (const minimum_macos of ["13.0", "14.0"]) {
+    const result = {
+      version: "1.68.0",
+      desktop: { version: "1.68.0", relation: "newer", minimum_macos, size: 104857600, sha256: "a".repeat(64) },
+    };
+    assert.ok(releasePresentation(result, "zh").details.startsWith(`Apple Silicon · macOS ${minimum_macos} 或更新`));
+    assert.ok(releasePresentation(result, "en").details.startsWith(`Apple Silicon · macOS ${minimum_macos} or later`));
+  }
 });

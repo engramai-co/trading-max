@@ -3,6 +3,7 @@
 Status: **signed Apple Silicon desktop App**, bundled application **1.52.0**.
 Obtain the DMG and matching manifest from the
 [official release](https://github.com/engramai-co/trading-max/releases/tag/v1.52.0).
+Version 1.52.0 requires macOS 13.0 or later, and releases after 1.67 require macOS 13.3 or later.
 The installer uses Developer ID signing and Apple notarization. See the
 [installation guide and acceptance scope](desktop-updates.md) before upgrading.
 
@@ -113,10 +114,13 @@ Native Settings explains where collection runs and offers **Open data folder** f
 the selected local workspace. **About & updates** makes an explicit, read-only
 request to the canonical repository's releases endpoint, sending no account
 or workspace details. A repository version is not a signed desktop update. An
-official desktop DMG is offered only with matching verified release metadata;
+official desktop DMG is offered only with matching verified release metadata.
 Download rechecks it and opens the browser for manual installation. Since 1.12.0,
 a newer release with a signed appcast also offers a native in-app update.
-1.11.0 needs one manual DMG upgrade to gain that capability. App replacement
+Apps on older Macs can still show both options. Sparkle declines installation
+if an update requires a newer macOS version, and the downloaded App will not
+open on an older system.
+1.11.0 needs one manual DMG upgrade to gain in-app updates. App replacement
 does not change the workspace or update an existing HTTPS service. Offline Help
 & recovery covers installation, failed upgrades and data retention. See
 [desktop updates](desktop-updates.md). Signed installation and upgrade acceptance remain part of the public

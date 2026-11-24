@@ -131,6 +131,15 @@ break any existing feature.
   bytes and show a data error.
 - Run the checks documented in `CONTRIBUTING.md` before publishing changes.
 
+### Browser support
+
+Safari and iOS Safari 16.4 and later are supported (App minimum macOS 13.3).
+Chrome and Firefox support covers the current and previous major versions.
+New code may use Baseline widely available features that
+Safari 16.4 supports. Anything newer needs feature detection with a working
+fallback or a polyfill through one shared helper, with no new dependency for
+a single feature. Check emitted bundles against that floor.
+
 ## Web release pitfalls
 
 - CI does not run Playwright. Run the end-to-end suite before a release pull

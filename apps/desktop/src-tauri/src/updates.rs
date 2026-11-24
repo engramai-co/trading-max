@@ -39,6 +39,8 @@ struct Manifest {
     signing: String,
     notarized: bool,
     minimum_macos: String,
+    #[serde(default)]
+    minimum_system_version: Option<String>,
     asset: ManifestAsset,
 }
 #[derive(Deserialize)]
@@ -51,6 +53,7 @@ struct ManifestAsset {
 #[derive(Serialize)]
 pub struct DesktopRelease {
     pub version: String,
+    pub minimum_macos: String,
     pub relation: &'static str,
     pub size: u64,
     pub sha256: String,
@@ -97,6 +100,19 @@ fn version(value: &str) -> Result<[u32; 3], String> {
         })?;
     }
     Ok(result)
+}
+fn valid_macos_version(value: &str) -> bool {
+    let parts: Vec<_> = value.split('.').collect();
+    if !matches!(parts.len(), 2 | 3)
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || !part.bytes().all(|b| b.is_ascii_digit())
+                || (part.len() > 1 && part.starts_with('0'))
+        })
+    {
+        return false;
+    }
+    parts[0].parse::<u32>().is_ok_and(|major| major >= 13)
 }
 fn normalized(value: &str) -> Result<String, String> {
     let [a, b, c] = version(value)?;
@@ -197,6 +213,7 @@ fn validate_manifest(
             "Could not read the installer’s release notes.",
         )
     })?;
+    let minimum_macos = m.minimum_system_version.unwrap_or(m.minimum_macos);
     if m.schema != 1
         || m.version != value
         || m.target != TARGET
@@ -204,7 +221,7 @@ fn validate_manifest(
         || m.team_id != TEAM
         || m.signing != "Developer ID Application"
         || !m.notarized
-        || m.minimum_macos != "13.0"
+        || !valid_macos_version(&minimum_macos)
         || m.asset.name != dmg.name
         || m.asset.size != dmg.size
         || m.asset.sha256 != digest(dmg)?
@@ -213,6 +230,7 @@ fn validate_manifest(
     }
     Ok(DesktopRelease {
         version: value.into(),
+        minimum_macos,
         size: dmg.size,
         sha256: m.asset.sha256,
         in_app: false,
@@ -425,7 +443,7 @@ mod tests {
             state: "uploaded".into(),
             digest: Some(format!("sha256:{}", "a".repeat(64))),
         };
-        let bytes = serde_json::to_vec(&json!({"schema":1,"version":v,"target":TARGET,"bundle_id":BUNDLE,"team_id":TEAM,"signing":"Developer ID Application","notarized":true,"minimum_macos":"13.0","asset":{"name":dmg.name,"size":dmg.size,"sha256":"a".repeat(64)}})).unwrap();
+        let bytes = serde_json::to_vec(&json!({"schema":1,"version":v,"target":TARGET,"bundle_id":BUNDLE,"team_id":TEAM,"signing":"Developer ID Application","notarized":true,"minimum_macos":"13.0","minimum_system_version":"13.3","asset":{"name":dmg.name,"size":dmg.size,"sha256":"a".repeat(64)}})).unwrap();
         let metadata = Asset {
             name: asset_name(v, "json"),
             browser_download_url: asset_url(v, "json"),
@@ -488,10 +506,17 @@ mod tests {
         r.draft = true;
         assert!(package(&r).unwrap().is_none());
     }
+    fn manifest_for_value(m: &Asset, value: &serde_json::Value) -> (Vec<u8>, Asset) {
+        let changed = serde_json::to_vec(value).unwrap();
+        let mut updated = m.clone();
+        updated.size = changed.len() as u64;
+        updated.digest = Some(format!("sha256:{:x}", Sha256::digest(&changed)));
+        (changed, updated)
+    }
     #[test]
     fn rejects_corrupt_metadata_wrong_publisher_or_platform() {
         let (r, bytes) = fixture();
-        let (v, d, mut m) = package(&r).unwrap().unwrap();
+        let (v, d, m) = package(&r).unwrap().unwrap();
         assert!(validate_manifest(b"{}", &v, &d, &m, "1.10.0").is_err());
         for (key, bad) in [
             ("team_id", json!("OTHERTEAM1")),
@@ -499,14 +524,52 @@ mod tests {
             ("version", json!("1.10.0")),
             ("target", json!("macos-x64")),
             ("notarized", json!(false)),
-            ("minimum_macos", json!("14.0")),
+            ("minimum_system_version", json!("")),
+            ("minimum_system_version", json!("13")),
+            ("minimum_system_version", json!("13.x")),
+            ("minimum_system_version", json!("013.3")),
+            ("minimum_system_version", json!("12.6")),
+            ("minimum_system_version", json!("13.3.1.2")),
         ] {
             let mut value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
             value[key] = bad;
-            let changed = serde_json::to_vec(&value).unwrap();
-            m.size = changed.len() as u64;
-            m.digest = Some(format!("sha256:{:x}", Sha256::digest(&changed)));
-            assert!(validate_manifest(&changed, &v, &d, &m, "1.10.0").is_err());
+            let (changed, updated) = manifest_for_value(&m, &value);
+            assert!(validate_manifest(&changed, &v, &d, &updated, "1.10.0").is_err());
+        }
+        let mut legacy_bad: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        legacy_bad
+            .as_object_mut()
+            .unwrap()
+            .remove("minimum_system_version");
+        legacy_bad["minimum_macos"] = json!("12.6");
+        let (changed, updated) = manifest_for_value(&m, &legacy_bad);
+        assert!(validate_manifest(&changed, &v, &d, &updated, "1.10.0").is_err());
+    }
+    #[test]
+    fn serializes_the_resolved_minimum_macos_floor() {
+        let (r, bytes) = fixture();
+        let (v, d, m) = package(&r).unwrap().unwrap();
+        for (minimum_system_version, expected) in [
+            (None, "13.0"),
+            (Some("13.3"), "13.3"),
+            (Some("14.0"), "14.0"),
+            (Some("14.2.1"), "14.2.1"),
+        ] {
+            let mut manifest: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+            if let Some(floor) = minimum_system_version {
+                manifest["minimum_system_version"] = json!(floor);
+            } else {
+                manifest
+                    .as_object_mut()
+                    .unwrap()
+                    .remove("minimum_system_version");
+            }
+            let (changed, updated) = manifest_for_value(&m, &manifest);
+            let release = validate_manifest(&changed, &v, &d, &updated, "1.10.0").unwrap();
+            assert_eq!(
+                serde_json::to_value(&release).unwrap()["minimum_macos"],
+                expected
+            );
         }
     }
     #[test]

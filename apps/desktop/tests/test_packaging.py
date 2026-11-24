@@ -34,7 +34,7 @@ def fixture(root):
             {
                 "CFBundleIdentifier": packaging.BUNDLE,
                 "CFBundleShortVersionString": "1.11.0",
-                "LSMinimumSystemVersion": "13.0",
+                "LSMinimumSystemVersion": "13.3",
                 "CFBundleExecutable": "synthetic",
             }
         )
@@ -87,6 +87,12 @@ class PackagingTests(unittest.TestCase):
             app = fixture(root)
             with self.assertRaises(ValueError):
                 packaging.prepare(app, root / "out", IDENTITY, "1.12.0")
+            info_path = app / "Contents/Info.plist"
+            info = plistlib.loads(info_path.read_bytes())
+            info_path.write_bytes(plistlib.dumps({**info, "LSMinimumSystemVersion": "13.0"}))
+            with self.assertRaises(ValueError):
+                packaging.prepare(app, root / "out", IDENTITY, "1.11.0")
+            info_path.write_bytes(plistlib.dumps(info))
             (app / "outside").symlink_to(root)
             with self.assertRaises(ValueError):
                 packaging.prepare(app, root / "out", IDENTITY, "1.11.0")

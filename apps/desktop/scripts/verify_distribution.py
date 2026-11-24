@@ -19,7 +19,9 @@ from pathlib import Path
 
 TEAM = "H757XFW8A9"
 BUNDLE = "com.engram.trading-max.desktop-preview"
-MINIMUM_MACOS = "13.0"
+MINIMUM_MACOS = "13.3"
+# Apps up to 1.67 accept a manifest only when this field is exactly "13.0"; the real floor is minimum_system_version.
+LEGACY_MANIFEST_MINIMUM_MACOS = "13.0"
 ROOT = Path(__file__).resolve().parents[3]
 SEMVER = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)")
 MACHO_MAGIC = {
@@ -231,7 +233,8 @@ def verify(dmg: Path, version: str) -> dict:
         "team_id": TEAM,
         "signing": "Developer ID Application",
         "notarized": True,
-        "minimum_macos": MINIMUM_MACOS,
+        "minimum_macos": LEGACY_MANIFEST_MINIMUM_MACOS,
+        "minimum_system_version": MINIMUM_MACOS,
         "asset": {"name": name, "size": before.st_size, "sha256": sha256},
     }
 

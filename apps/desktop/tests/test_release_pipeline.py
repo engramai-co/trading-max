@@ -151,7 +151,8 @@ class FeedTests(unittest.TestCase):
                     "team_id": feed.TEAM,
                     "signing": "Developer ID Application",
                     "notarized": True,
-                    "minimum_macos": feed.MINIMUM_MACOS,
+                    "minimum_macos": feed.LEGACY_MANIFEST_MINIMUM_MACOS,
+                    "minimum_system_version": feed.MINIMUM_MACOS,
                     "asset": {
                         "name": dmg.name,
                         "size": dmg.stat().st_size,
@@ -169,6 +170,13 @@ class FeedTests(unittest.TestCase):
     def test_feed_resumption_verifies_archive_and_signed_feed(self):
         with tempfile.TemporaryDirectory() as temporary:
             dmg, manifest, appcast = self.fixture(Path(temporary))
+            manifest_data = json.loads(manifest.read_text())
+            self.assertEqual(manifest_data["minimum_macos"], "13.0")
+            self.assertEqual(manifest_data["minimum_system_version"], "13.3")
+            self.assertIn(
+                "<sparkle:minimumSystemVersion>13.3</sparkle:minimumSystemVersion>",
+                appcast.read_text(),
+            )
             with (
                 patch.object(feed, "signing_tools", return_value=(Path("signer"), "synthetic")),
                 patch.object(feed, "command") as command,
@@ -180,6 +188,17 @@ class FeedTests(unittest.TestCase):
     def test_changed_url_and_archive_are_rejected_before_signing(self):
         with tempfile.TemporaryDirectory() as temporary:
             dmg, manifest, appcast = self.fixture(Path(temporary))
+            manifest_data = json.loads(manifest.read_text())
+            without_floor = {
+                k: v for k, v in manifest_data.items() if k != "minimum_system_version"
+            }
+            for invalid in (
+                {**manifest_data, "minimum_system_version": "13.0"},
+                without_floor,
+                {**manifest_data, "minimum_macos": "13.3"},
+            ):
+                with self.assertRaises(ValueError):
+                    feed.validate_manifest(dmg, invalid, "1.12.0")
             appcast.write_text(appcast.read_text().replace(feed.ORIGIN, "https://other.invalid"))
             with patch.object(feed, "signing_tools") as signing, self.assertRaises(ValueError):
                 feed.verify_existing(dmg, manifest, appcast)

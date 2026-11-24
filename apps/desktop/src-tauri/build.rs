@@ -10,13 +10,13 @@ fn main() {
         cc::Build::new()
             .file("native/updater.m")
             .flag("-fobjc-arc")
-            .flag("-mmacosx-version-min=13.0")
+            .flag("-mmacosx-version-min=13.3")
             .flag(format!("-F{}", sdk.display()))
             .compile("trading_max_updater");
         cc::Build::new()
             .file("native/chrome.m")
             .flag("-fobjc-arc")
-            .flag("-mmacosx-version-min=13.0")
+            .flag("-mmacosx-version-min=13.3")
             .compile("trading_max_chrome");
         println!("cargo:rustc-link-lib=framework=Cocoa");
         println!("cargo:rustc-link-search=framework={}", sdk.display());

@@ -11,7 +11,13 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from prepare_sparkle import DESKTOP, LOCK, prepare, sha256
-from verify_distribution import BUNDLE, MINIMUM_MACOS, SEMVER, TEAM
+from verify_distribution import (
+    BUNDLE,
+    LEGACY_MANIFEST_MINIMUM_MACOS,
+    MINIMUM_MACOS,
+    SEMVER,
+    TEAM,
+)
 
 ORIGIN = "https://github.com/engramai-co/trading-max/releases/download"
 SPARKLE = "http://www.andymatuschak.org/xml-namespaces/sparkle"
@@ -38,7 +44,8 @@ def validate_manifest(dmg: Path, manifest: dict, version: str) -> None:
         or manifest.get("signing") != "Developer ID Application"
         or manifest.get("notarized") is not True
         or manifest.get("target") != "macos-arm64"
-        or manifest.get("minimum_macos") != MINIMUM_MACOS
+        or manifest.get("minimum_macos") != LEGACY_MANIFEST_MINIMUM_MACOS
+        or manifest.get("minimum_system_version") != MINIMUM_MACOS
         or manifest.get("asset")
         != {"name": expected, "size": dmg.stat().st_size, "sha256": sha256(dmg)}
     ):
