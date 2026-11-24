@@ -1,5 +1,6 @@
 "use client";
 
+import { useAssistantPageContext } from "./assistant/context";
 import {
   Button,
   Checkbox,
@@ -85,6 +86,14 @@ function Positions() {
   const requestedSort = holdingSort(params.get("positionSort"));
   const [selected, setSelected] = useState<{ holding: Holding; runId?: string; positionAsOf?: string | null; scope: string } | null>(null);
   const positionData = query.data;
+  const focusedHolding = selected?.scope === account ? selected : null;
+  const displayedAccount = focusedHolding?.holding.account ?? account;
+  useAssistantPageContext({
+    page: "holdings",
+    scope: displayedAccount === "A" ? "invest" : displayedAccount === "B" ? "isa" : "broker_total",
+    ticker: focusedHolding?.holding.ticker,
+    snapshotId: focusedHolding?.runId ?? positionData?.runId,
+  });
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
   const { today, now } = useCurrentDay();

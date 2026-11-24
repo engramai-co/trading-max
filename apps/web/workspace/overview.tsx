@@ -45,7 +45,7 @@ import {
 import { useRouteState } from "./route-state";
 import { accountName, useWorkspaceProfile } from "./profile";
 import dynamic from "next/dynamic";
-import { useAssistant } from "./assistant/context";
+import { useAssistant, useAssistantPageContext } from "./assistant/context";
 import { Narrative } from "./narrative";
 import { HistoryCoverage, HistoryHelp, PeriodSpan, periodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, driverOpenings } from "./day-drivers";
@@ -132,6 +132,12 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     checkingOnboarding || !query.isError && (!incoming || history.isPending || runtime.status === "loading"));
   const initialError = !initialWaiting && !data && query.isError;
   const scope = displayed?.selection.scope ?? requestedScope;
+  useAssistantPageContext({
+    page: "overview",
+    scope: scope === "total" ? "broker_total" : scope,
+    range: displayed?.selection.range ?? range,
+    snapshotId: displayed?.history?.runId ?? data?.runId,
+  });
   const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
   const summaryFailure = query.isRefetchError
     ? { updatedAt: shown?.updatedAt ?? query.dataUpdatedAt, retry: query.refetch }

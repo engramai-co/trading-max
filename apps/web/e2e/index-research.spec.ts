@@ -1,5 +1,6 @@
 import { expect, test, webkit, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
+import { formatCalendarDate } from "../ui/formatters";
 
 const index = {
   id: "synthetic-index", name: "Synthetic broad market", nameZh: "合成宽基指数", scope: "us",
@@ -145,11 +146,12 @@ test("a fund benchmark opens an index with private exposure, constituents and ch
   await exercise(page, baseURL!, info.project.name);
 });
 
-test("the index opening card and key moment keep the selected index series", async ({ page, baseURL, isMobile }) => {
+test("index reading questions keep the selected series and typed chat uses page context", async ({ page, baseURL, isMobile }) => {
   await indexFixture(page, baseURL!);
   await page.route("**/api/backend/profile",route => route.fulfill({json:{accountLabels:{},assistantEnabled:true}}));
   const date = points[10].at.slice(0, 10);
   const reads: string[] = [];
+  const readingContext = {index_id:index.id, ticker:index.symbol, published_series_id:publishedSeriesId};
   await page.route("**/api/backend/assistant/**", route => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/status")) return route.fulfill({ json: { ready: true } });
@@ -159,10 +161,11 @@ test("the index opening card and key moment keep the selected index series", asy
       expect(q.get("published_series_id")).toBe(publishedSeriesId);
       return route.fulfill({ json: { data: { published_series_id: publishedSeriesId, start:q.get("start"), end:q.get("end"), items:[{date}] } } });
     }
+    if (url.pathname.endsWith("/chat")) return route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}});
     if (!url.pathname.endsWith("/reading")) return route.fulfill({ json: {} });
     const role = url.pathname.split("/").at(-2)!;
     const body = route.request().postDataJSON();
-    expect(body).toMatchObject({ snapshotId:shell.status.runId, context: { index_id:index.id, ticker:index.symbol, published_series_id:publishedSeriesId } });
+    expect(body).toMatchObject({ snapshotId:shell.status.runId, context:readingContext });
     if (role === "key-moment") expect(body.context.date).toBe(date);
     reads.push(role);
     const evidence = {source:"market", tool:"research_position", evidenceId:"ev_index", arguments:{index:index.id}};
@@ -172,9 +175,25 @@ test("the index opening card and key moment keep the selected index series", asy
   });
   const path = "/research?type=index&index=" + index.id;
   await page.goto(path);
+  await expect(page.locator(".mx-index-research-chart-top")).toBeVisible();
   await page.locator("[data-assistant-trigger]").click();
-  await expect(page.locator(".mx-assistant-opening .mx-reading-line")).toHaveCount(2);
+  const opening = page.locator(".mx-assistant-opening");
+  await expect(opening.getByRole("heading")).toContainText(index.nameZh);
+  await expect(opening.locator(".mx-reading-line")).toHaveCount(2);
   expect(reads).toEqual(["your-position"]);
+  const ask = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await opening.locator(".mx-assistant-questions button").first().click();
+  expect((await ask).postDataJSON().context).toMatchObject({
+    page:"research", role:"your-position", ticker:index.symbol, indexId:index.id, lens:"overview",
+    scope:"broker_total", snapshotId:shell.status.runId, object:readingContext,
+  });
+  await expect(page.getByRole("button", {name:"重试", exact:true})).toBeVisible();
+  await expect(page.locator(".mx-assistant-scope")).toHaveText("研究");
+  const composer = page.getByRole("textbox", {name:"消息"});
+  await composer.fill("How has the market changed?");
+  const typed = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await typed).postDataJSON().context).toEqual({page:"research", timezone:expect.any(String)});
   await page.goto(path + "&view=price");
   const track = page.locator(".mx-track-moment");
   await expect(track.locator("time")).toHaveAttribute("datetime", date);
@@ -182,6 +201,11 @@ test("the index opening card and key moment keep the selected index series", asy
   await track.click();
   const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
   await expect(card.locator(".mx-reading-line")).toHaveCount(2);
+  if (isMobile) await page.keyboard.press("Control+j");
+  else await page.locator("[data-assistant-trigger]").click();
+  await expect(opening.getByRole("heading")).toContainText(index.nameZh + " · " + formatCalendarDate(date, "zh", new Date(stamp)));
+  await expect(opening.locator(".mx-reading-line")).toHaveText([/指数点位/, /同期变动/]);
+  await expect(opening.getByRole("button", {name:/当天有哪些已核实的事件/})).toBeEnabled();
   expect(reads).toEqual(["your-position", "key-moment"]);
   await expect(page.locator(".mx-earnings-brief")).toHaveCount(0);
 });

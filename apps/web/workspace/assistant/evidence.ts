@@ -4,6 +4,7 @@ import type { Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
 import type { UIMessage } from "ai";
 import { object, safeUrl, str, type Json } from "../data";
+import type { PageTurnContext, ResearchTurnContext } from "./context";
 
 export const sourceWords = {
   account: ["账户", "Account"], broker: ["券商", "Broker"], holdings: ["持仓", "Holdings"],
@@ -247,20 +248,29 @@ export function completedEvidence(message: UIMessage) {
 export function messageEvidence(message: UIMessage) {
   return new Map(Array.from(completedEvidence(message), ([id, result]) => [id, result.ref]));
 }
-export function chatContext(page: string, search: string, timezone: string) {
+export function chatContext(
+  page: string, search: string, timezone: string, selection?: PageTurnContext | null, research?: ResearchTurnContext,
+) {
+  const currentPage = ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page)
+    ? page : "overview";
+  const symbol = selection?.page === currentPage ? selection.ticker : research?.ticker;
+  const ticker = symbol && /^[a-z0-9^=._-]{1,32}$/i.test(symbol) ? symbol : undefined;
+  if (selection?.page === currentPage) {
+    return { ...selection, ticker, timezone };
+  }
+  // Only a reading's captured origin supplies URL fields. Ordinary chat uses
+  // the mounted page's selection, or just its identity while loading.
   const params = new URLSearchParams(search);
-  const account = params.get("account");
-  const scope = params.get("scope") || (account === "A" ? "invest" : account === "B" ? "isa" : account === "C" ? "cfd" : account);
-  const ticker = params.get("ticker");
-  const range = params.get("range") || (page === "research" ? params.get("priceRange") : null);
-  const lens = params.get("type") === "index" && params.get("view") === "price" ? "technical" : params.get("view");
+  const benchmark = params.get("benchmark");
+  const range = research?.range ?? params.get("range");
   return {
-    page: ["overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"].includes(page) ? page : "overview", timezone,
-    ...(["invest", "isa", "cfd", "household", "broker_total"].includes(scope ?? "") ? { scope } : ["overview","holdings","analytics","review"].includes(page) ? { scope: "broker_total" } : {}),
-    ...(page === "research" && ticker && /^[a-z0-9^=._-]{1,32}$/i.test(ticker) ? { ticker: ticker.toUpperCase() } : {}),
-    ...(page==="analytics" && ["VOO","QQQ","VT","ALL"].includes(params.get("benchmark") ?? "") ? {benchmark:params.get("benchmark")} : {}),
-    ...(range && ["1D","1W","1M","3M","6M","YTD","1Y","2Y","ALL"].includes(range) ? { range } : {}),
-    ...(page === "research" && lens && ["overview","fundamentals","technical","analyst","valuation","options","ledger"].includes(lens) ? { lens } : {}),
+    page: currentPage, timezone,
+    scope: params.get("scope") ?? (["overview", "holdings", "review"].includes(currentPage) && !research ? "broker_total" : undefined),
+    range: range ?? undefined,
+    benchmark: benchmark ?? undefined,
+    ticker,
+    lens: research?.lens,
+    indexId: research?.indexId,
   };
 }
 

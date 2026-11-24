@@ -21,6 +21,7 @@
  *   review, the verdict, DESIGN.md, and every shipping raster carrying its provenance.
  */
 
+import { useAssistantPageContext } from "./assistant/context";
 import { Button } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
 import { ArrowLeft } from "@phosphor-icons/react";
@@ -196,6 +197,7 @@ export function SectorsWorkspace() {
   const globalPhoneDetail = phone && !openedIndex && globalSector != null
     && world.data?.sectors.some(({ gics, weight }) => gics === globalSector && (weight ?? 0) > 0);
   const drilled = Boolean(phoneDetail || globalPhoneDetail);
+  useAssistantPageContext({ page: "sectors", market: openedIndex ? wanted : market });
   const openedKey = phoneDetail?.key ?? (globalPhoneDetail ? globalSector : null);
   // Whichever Back closes a sector (the page's or the browser's), focus returns to its row.
   const [shownKey, setShownKey] = useState<string | null>(null);

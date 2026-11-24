@@ -23,7 +23,7 @@ describe("assistant chat proxy", () => {
         for (const event of events) controller.enqueue(encoder.encode(event));
         controller.close();
       },
-    }), { headers: { "Content-Type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1", "Set-Cookie": "x=1" } }));
+    }), { headers: { "Content-Type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1", "x-assistant-snapshot-id": "synthetic", "Set-Cookie": "x=1" } }));
 
     const response = await proxyAssistantChat(chat('{"id":"c1"}', "?page=overview&tz=Europe%2FLondon&format=references&evil=1"));
     const [path, init] = backendFetch.mock.calls[0];
@@ -32,6 +32,7 @@ describe("assistant chat proxy", () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
     expect(response.headers.get("content-type")).toBe("text/event-stream");
     expect(response.headers.get("x-vercel-ai-ui-message-stream")).toBe("v1");
+    expect(response.headers.get("x-assistant-snapshot-id")).toBe("synthetic");
     expect(response.headers.get("content-encoding")).toBeNull();
     expect(response.headers.get("set-cookie")).toBeNull();
     expect(response.headers.get("cache-control")).toContain("no-store");

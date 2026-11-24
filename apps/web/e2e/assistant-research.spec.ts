@@ -5,10 +5,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { join } from "node:path";
 import { backendFixture } from "../tests/loading/fixtures";
 import { sentenceId } from "../workspace/company-profile";
+import type { ResearchLensSnapshot, ResearchShell } from "../lib/types";
 
 const snapshot = "synthetic-loading", series = "a".repeat(20), day = "2026-01-22";
 const base = "/api/backend/research/SYNT";
-const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>, selectedDate = day) => {
+const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>, selectedDates: string | string[] = day) => {
+  const momentDates = typeof selectedDates === "string" ? [selectedDates] : selectedDates;
   const readings: string[] = [];
   await page.route("**/api/backend/**", async route => {
     const url = new URL(route.request().url()), path = url.pathname;
@@ -17,7 +19,7 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>, 
     if (path.includes("/assistant/key-moments/")) {
       expect(url.searchParams.get("published_series_id")).toBe(series);
       const start = url.searchParams.get("start")!, end = url.searchParams.get("end")!;
-      return route.fulfill({json:{data:{published_series_id:series, start, end, items: [selectedDate].filter(d => start <= d && d <= end).map(date => ({date}))}}});
+      return route.fulfill({json:{data:{published_series_id:series, start, end, items: momentDates.filter(d => start <= d && d <= end).map(date => ({date}))}}});
     }
     if (path.endsWith("/reading")) {
       const role = path.split("/").at(-2)!;
@@ -26,7 +28,7 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>, 
       if (role === "earnings-brief") await earningsGate;
       if (role === "earnings-brief") expect(body).toMatchObject({cachedOnly:true, latest:true});
       else expect(body).toMatchObject({snapshotId:snapshot, context:{ticker:"SYNT", published_series_id:series}});
-      if (role === "key-moment") expect(body.context.date).toBe(selectedDate);
+      if (role === "key-moment") expect(momentDates).toContain(body.context.date);
       const labels = role === "earnings-brief" ? [
         ["每股收益为 USD 1.32，预期为 1.26。","EPS was USD 1.32 versus an estimate of 1.26.","financials","research_earnings"],
         ["下季度每股收益一致预期为 USD 1.44。","Consensus EPS for the next quarter was USD 1.44.","analysts","research_earnings"],
@@ -64,6 +66,243 @@ const fixtures = async (page: Page, ready = true, earningsGate?: Promise<void>, 
 test.skip(!process.env.PLAYWRIGHT_BASE_URL?.startsWith("http://127.0.0.1:"), "Requires a local web build.");
 test.beforeEach(async ({page,isMobile}) => {
   if (isMobile) await page.setViewportSize({width:390,height:844});
+});
+
+test("ordinary Research turns keep the default ticker and visible price window", async ({page}) => {
+  await fixtures(page);
+  const stored: unknown[] = [];
+  await page.route("**/api/backend/assistant/chat*", route => {
+    const { context, messages } = route.request().postDataJSON();
+    stored.push({ ...messages[0], metadata: { turnContext: { ...context, snapshotId: snapshot } } });
+    const chunks = [
+      { type: "start", messageId: "reply-" + stored.length },
+      { type: "text-start", id: "t" },
+      { type: "text-delta", id: "t", delta: "{{insufficient-evidence}} [inference]\n{{cash-flows}} [inference]" },
+      { type: "text-end", id: "t" },
+      { type: "finish", finishReason: "stop" },
+    ];
+    return route.fulfill({
+      headers: { "content-type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1", "x-assistant-snapshot-id": snapshot },
+      body: chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n",
+    });
+  });
+  await page.route("**/api/backend/assistant/conversations", route =>
+    route.fulfill({ json: [{ id: "research-context", title: "Price windows" }] }));
+  await page.route("**/api/backend/assistant/conversations/research-context", route =>
+    route.fulfill({ json: { messages: stored } }));
+
+  for (const range of ["3M", "5D"]) {
+    await page.goto("/research?view=technical" + (range === "5D" ? "&priceRange=5D" : ""));
+    await expect(page.locator(".mx-price-tools").getByText(range, { exact: true })).toBeVisible();
+    await page.locator("[data-assistant-trigger]").click();
+    const label = `SYNT · 价格 · ${range}`;
+    await expect(page.locator(".mx-assistant-scope")).toHaveText(label);
+    const message = page.locator(".mx-assistant-composer textarea");
+    await message.fill("What moved the price?");
+    const sent = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
+    await message.press("Enter");
+    expect((await sent).postDataJSON().context).toMatchObject({
+      page: "research", ticker: "SYNT", lens: "technical", range, snapshotId: snapshot,
+    });
+    await expect(page.locator(".mx-assistant-turn-context")).toHaveText(label);
+    await expect(page.locator(".mx-turn-assistant")).toHaveAttribute("data-turn-status", "completed");
+  }
+
+  await page.getByRole("button", { name: "历史对话" }).click();
+  await page.getByRole("button", { name: "Price windows", exact: true }).click();
+  await expect(page.locator(".mx-assistant-turn-context")).toHaveText(["SYNT · 价格 · 3M", "SYNT · 价格 · 5D"]);
+});
+
+test("Research Overview keeps the displayed chart publication during refresh", async ({page}) => {
+  await fixtures(page);
+  let refreshed = false;
+  let releasePrice: () => void = () => {};
+  const priceGate = new Promise<void>(resolve => { releasePrice = resolve; });
+  const runId = () => refreshed ? "new-research" : snapshot;
+  await page.route("**/api/backend/health", route =>
+    route.fulfill({json:{service:"trading_max-api", status:"ok", latestRunId:runId()}}));
+  await page.route("**/api/backend/research/shell", route => {
+    const shell = backendFixture(new URL(route.request().url())) as ResearchShell;
+    return route.fulfill({json:{...shell, status:{...shell.status, runId:runId()},
+      instruments:shell.instruments.map(item => ({...item, lastRunId:runId()}))}});
+  });
+  await page.route("**" + base + "/lens/overview?*", route => {
+    const lens = backendFixture(new URL(route.request().url())) as ResearchLensSnapshot;
+    return route.fulfill({json:{...lens, runId:runId(),
+      context:{...lens.context, quote:{...lens.context?.quote, price:refreshed ? 987.65 : 101}}}});
+  });
+  await page.route("**" + base + "/prices?*", async route => {
+    const id = runId();
+    if (refreshed) await priceGate;
+    const prices = backendFixture(new URL(route.request().url())) as object;
+    await route.fulfill({json:{...prices, snapshotId:id}});
+  });
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  await page.goto("/research");
+  const chart = page.locator(".mx-price-diagnosis-preview .mx-chart-footer");
+  await expect(chart).toBeVisible();
+  await page.locator("[data-assistant-trigger]").click();
+  const pill = page.locator(".mx-assistant-scope");
+  await expect(pill).toHaveText("SYNT · 概览 · 3M");
+
+  try {
+    refreshed = true;
+    await page.clock.setFixedTime(new Date(Date.now() + 60_000));
+    await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+    await expect(page.locator(".mx-security-price")).toContainText("987.65");
+    const composer = page.getByRole("textbox", {name:"消息"});
+    await composer.fill("What moved this chart?");
+    await expect(page.getByRole("button", {name:"发送", exact:true})).toBeEnabled();
+    const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    expect((await sent).postDataJSON().context).toMatchObject({
+      page:"research", ticker:"SYNT", lens:"overview", range:"3M", snapshotId:snapshot,
+    });
+  } finally {
+    releasePrice();
+  }
+});
+
+test("a month-only cited event keeps its display and uses Research page context for send and Retry", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/publications/saved/events/upcoming?*", route => route.fulfill({json:{
+    kind:"macro", evidence_id:"ev_delayed", ticker:null, date:"2026-12", local_date:"2026-12",
+    title_zh:"延期的官方发布", publisher:"ONS",
+  }}));
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  await page.goto("/research?ticker=MARKET&event=macro&eventId=ev_delayed&evidence=upcoming_events&snapshotId=saved");
+  await expect(page.locator("[data-reading-event]")).toContainText("2026-12");
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator(".mx-assistant-scope")).toHaveText("研究");
+  const composer = page.getByRole("textbox", {name:"消息"});
+  await composer.fill("Explain this release");
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await sent).postDataJSON().context).toEqual({page:"research", timezone:expect.any(String)});
+  const retry = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await page.getByRole("button", {name:"重试", exact:true}).click();
+  expect((await retry).postDataJSON().context).toEqual({page:"research", timezone:expect.any(String)});
+});
+
+test("a cited Research figure sends its retained publication and displayed observation", async ({page}) => {
+  await fixtures(page);
+  let expired = false;
+  await page.route("**/api/backend/research/SYNT/citation?*", route => route.fulfill(expired
+    ? {status:404, json:{detail:"cited-research-unavailable"}}
+    : {json:{output:{status:"ok", snapshot_id:"historical-result", evidence_id:"ev_report", data:{
+      ticker:"SYNT", report:{id:"report-2026", date:"2026-01-20", actual:1.32, currency:"USD"},
+    }}}}));
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  await page.goto("/research?ticker=SYNT&snapshotId=historical-result&evidence=research_earnings&evidenceId=ev_report&field=%2Fdata%2Freport%2Factual&date=2026-01-22");
+  await expect(page.locator("#main-content")).toContainText("1.32");
+  await page.locator("[data-assistant-trigger]").click();
+  const pill = page.locator(".mx-assistant-scope");
+  await expect(pill).toContainText("SYNT · 预期 · 财报");
+  await expect(pill).toContainText("1月20日");
+  const composer = page.getByRole("textbox", {name:"消息"});
+  await composer.fill("Explain this result");
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({
+    page:"research", ticker:"SYNT", lens:"analyst", snapshotId:"historical-result",
+    observation:{kind:"research_earnings", evidenceId:"ev_report", date:"2026-01-20", field:"/data/report/actual"},
+  });
+
+  expired = true;
+  await page.reload();
+  await expect(page.locator("#main-content")).toContainText("引用的研究记录已不可用。");
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(pill).toHaveText("研究");
+});
+
+test("cited calendar follow-ups use the rendered row and its output scope", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/research/OTHER/citation?*", route => route.fulfill({json:{output:{
+    status:"ok", snapshot_id:"retained-calendar", evidence_id:"ev_calendar", scope:"isa",
+    data:{items:[
+      {evidence_id:"ev_wrong", ticker:"OTHER", kind:"earnings", date:"2026-01-06", title_zh:"另一条事件"},
+      {evidence_id:"ev_selected", ticker:"SYNT", kind:"earnings", date:"2026-01-20", title_zh:"选中的财报"},
+    ]},
+  }}}));
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  await page.goto("/research?ticker=OTHER&snapshotId=retained-calendar&evidence=upcoming_events&evidenceId=ev_calendar&eventId=ev_selected&field=%2Fdata%2Fitems%2F0%2Fdate&scope=invest");
+  await expect(page.locator("#main-content")).toContainText("SYNT · 选中的财报 · 2026-01-20");
+  await page.locator("[data-assistant-trigger]").click();
+  const pill = page.locator(".mx-assistant-scope");
+  await expect(pill).toContainText("SYNT");
+  await expect(pill).toContainText("ISA");
+  const composer = page.getByRole("textbox", {name:"消息"});
+  await composer.fill("Explain this event");
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({
+    page:"research", ticker:"SYNT", scope:"isa", snapshotId:"retained-calendar",
+    observation:{kind:"upcoming_events", evidenceId:"ev_selected", date:"2026-01-20", field:"/data/items/1/date"},
+  });
+});
+
+test("Research index uses page context unless a key moment is handed off", async ({page,isMobile}) => {
+  const id = "marketvector-semiconductor-screened";
+  await fixtures(page);
+  const index = {id, name:"MarketVector Semiconductor Screened", nameZh:"MarketVector Semiconductor Screened",
+    scope:"global", kind:"index", currency:"USD", compiler:"MarketVector", compilerId:id,
+    basis:"price", aliases:[], symbol:null, ranges:["3M", "1Y"]};
+  await page.route("**/api/backend/indices/catalog", route => route.fulfill({json:[index]}));
+  await page.route("**/api/backend/indices/" + id + "/history?*", route => route.fulfill({json:{
+    index, currency:"USD", displayInterval:"1d", publishedSeriesId:series, gaps:[],
+    points:[{at:"2026-01-15T00:00:00Z", value:100}, {at:day + "T00:00:00Z", value:113},
+      {at:"2026-01-30T00:00:00Z", value:120}],
+  }}));
+  const position = {ticker:"INDEX", index_id:id, published_series_id:series};
+  const moment = {...position, start:"2026-01-15", end:"2026-01-30", date:day};
+  for (const [role, context] of [["your-position", position], ["key-moment", moment]] as const) {
+    await page.route("**/api/backend/assistant/roles/" + role + "/reading", route => {
+      expect(route.request().postDataJSON()).toMatchObject({snapshotId:snapshot, context});
+      return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result", reading:{
+        role, snapshotId:snapshot, version:snapshot, asOf:"2026-01-30T20:00:00Z",
+        lines:[{zh:"指数收盘上涨。", en:"The index rose at the close.",
+          evidence:{source:"market", tool:role === "key-moment" ? "price_key_moments" : "research_position",
+            evidenceId:"ev_index", arguments:{date:day}}}],
+      }}) + "\n"});
+    });
+  }
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  for (const view of ["overview", "price"]) {
+    await page.goto("/research?type=index&view=" + view + "&index=" + id);
+    await expect(page.locator(".mx-index-research-chart-top")).toContainText(/\+20(?:\.00)?%/);
+    const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
+    if (view === "price") {
+      await page.locator(".mx-track-moment").click();
+      await expect(card.locator(".mx-reading-line")).toContainText("指数收盘上涨。");
+      await page.keyboard.press("Control+j");
+    } else {
+      await page.locator("[data-assistant-trigger]").click();
+      await expect(page.locator(".mx-assistant-opening .mx-reading-line")).toContainText("指数收盘上涨。");
+    }
+    await expect(page.locator(".mx-assistant-scope")).toHaveText("研究");
+    const composer = page.getByRole("textbox", {name:"消息"});
+    await composer.fill("What changed in this index?");
+    const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    expect((await sent).postDataJSON().context).toEqual({page:"research", timezone:expect.any(String)});
+    if (view === "price") {
+      await expect(page.getByRole("button", {name:"重试", exact:true})).toBeVisible();
+      await page.keyboard.press("Control+j");
+      await card.locator(".mx-reading-actions button").first().click();
+      await expect(composer).not.toHaveValue("");
+      const handoff = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+      await composer.press("Enter");
+      expect((await handoff).postDataJSON().context).toMatchObject({
+        page:"research", role:"key-moment", scope:"broker_total", indexId:id, ticker:"INDEX", lens:"technical",
+        snapshotId:snapshot, object:moment,
+      });
+    }
+  }
 });
 
 for (const language of ["zh","en"]) for (const theme of ["light","dark"] as const) {
@@ -379,35 +618,44 @@ test("a listing refusal clears previously verified bars and moment controls", as
   expect(candidates).toEqual([]);
 });
 
-test("reselecting a day after zoom keeps the new chart window in chat", async ({page,isMobile}) => {
+test("chat follows a newly selected chart day and keeps the zoomed window", async ({page,isMobile}) => {
   const selected = "2025-12-18";
-  await fixtures(page,true,undefined,selected);
+  const otherDay = "2026-01-12";
+  await fixtures(page, true, undefined, isMobile ? selected : [selected, otherDay]);
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
-  await page.route("**/api/backend/assistant/chat*", route => route.fulfill({
-    headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
-    body:'data: {"type":"start","messageId":"one"}\n\ndata: {"type":"finish","finishReason":"stop"}\n\ndata: [DONE]\n\n',
-  }));
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
   await page.goto("/research?ticker=SYNT&view=technical");
-  const track = page.locator(".mx-track-moment");
+  const track = (date: string) => page.locator(".mx-track-moment").filter({has:page.locator(`time[datetime="${date}"]`)});
   const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
   const composer = page.locator(".mx-assistant-composer textarea");
   async function submit() {
+    await composer.fill("Read this selection");
+    await expect(page.getByRole("button", {name:"Send", exact:true})).toBeEnabled();
     const next = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
-    await composer.fill("Read this selection"); await composer.press("Enter");
+    await composer.press("Enter");
     return (await next).postDataJSON().context.object;
   }
-  await track.click();
+  await track(selected).click();
   await card.locator(".mx-reading-actions button").first().click();
   const first = await submit();
+  expect(first.date).toBe(selected);
+  if (!isMobile) {
+    await track(otherDay).click();
+    await expect(card.locator(".mx-reading-line")).toHaveCount(2);
+    await expect(composer).toBeVisible();
+    expect(await submit()).toMatchObject({date:otherDay, start:first.start, end:first.end});
+    await expect(page).toHaveURL(/\/research\?ticker=SYNT&view=technical$/);
+  }
   await page.getByRole("button",{name:"Close sidebar"}).click();
   if (await card.isVisible()) await card.getByRole("button").first().click();
   const newWindow = page.waitForRequest(r => r.url().includes("/assistant/key-moments/"));
   await page.getByRole("button",{name:"Zoom in"}).click();
   const query = new URL((await newWindow).url()).searchParams;
-  await track.click();
+  await track(selected).click();
   await expect(card.locator(".mx-reading-line")).toHaveCount(2);
-  if (isMobile) await card.getByRole("button").first().click();
-  await page.locator("[data-assistant-trigger]").click();
+  if (isMobile) await card.locator(".mx-reading-actions button").first().click();
+  else await page.locator("[data-assistant-trigger]").click();
   const second = await submit();
   expect(second).toMatchObject({date:selected,start:query.get("start"),end:query.get("end")});
   expect(second.start).not.toBe(first.start);
@@ -565,6 +813,37 @@ const profile = async (page: Page, ready = true) => {
   });
   return {reads, summaries};
 };
+
+test("company summary handoffs keep their context for typed follow-ups until dismissal", async ({page,isMobile}) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+  await profile(page);
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  await page.goto("/research?ticker=SYNT");
+  await page.getByRole("button", {name:"✦ 中文摘要"}).click();
+  const reading = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading");
+  await reading.getByRole("button", {name:"在右栏继续 →"}).click();
+
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  async function submit(text: string) {
+    await composer.fill(text);
+    const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    const {context} = (await sent).postDataJSON();
+    await expect(panel.locator(".mx-turn-assistant").last()).toHaveAttribute("data-turn-status", "rate_limited");
+    return context;
+  }
+
+  const first = await submit("What products does this company sell?");
+  expect(first).toMatchObject({page:"research", role:"company-summary", ticker:"SYNT", lens:"overview",
+    snapshotId:snapshot, object:{ticker:"SYNT"}});
+  expect(await submit("Where does the company operate?")).toEqual(first);
+
+  await panel.getByRole("button", {name:"关闭侧栏"}).click();
+  await page.locator("[data-assistant-trigger]").click();
+  expect(await submit("What is visible on this page?")).not.toMatchObject({role:"company-summary"});
+});
 
 for (const theme of ["light", "dark"] as const) {
   test(`a Chinese summary restates the company's English description, ${theme}`, async ({page, isMobile}, info) => {

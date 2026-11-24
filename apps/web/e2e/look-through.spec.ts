@@ -223,7 +223,10 @@ test.describe("look-through 5,100 companies", () => {
     const lastButton = isMobile
       ? rowLocator.last().filter({ hasText: "L5100" })
       : rowLocator.last().getByRole("button", { name: /L5100/ });
-    await lastButton.click();
+    await lastButton.scrollIntoViewIfNeeded();
+    await expect(lastButton).toBeInViewport();
+    if (isMobile) await lastButton.tap();
+    else await lastButton.click();
     const drawer = page.getByRole("dialog", { name: "Underlying exposure" });
     await expect(drawer).toContainText("Alpha Holding 5100");
     await page.keyboard.press("Escape");

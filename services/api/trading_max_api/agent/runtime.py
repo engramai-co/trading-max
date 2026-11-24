@@ -173,6 +173,12 @@ def run_context(
     ticker: str | None = None,
     lens: str | None = None,
     benchmark: str | None = None,
+    window: tuple[str, str] | None = None,
+    index_id: str | None = None,
+    market: str | None = None,
+    horizon: str | None = None,
+    habit: str | None = None,
+    observation: str | None = None,
 ) -> str:
     """Per-run context: the user's clock and what the page they are on shows.
 
@@ -185,10 +191,19 @@ def run_context(
         text
         for text in (
             f"the {scope} account scope" if scope else None,
-            f"the {period} range" if period else None,
+            f"the selected days {window[0]} to {window[1]}, inclusive"
+            if window
+            else f"the {period} range"
+            if period
+            else None,
+            f"the catalog index {index_id}" if index_id else None,
             f"security {ticker}" if ticker else None,
+            f"the {market} market" if market else None,
+            f"the {horizon} review horizon" if horizon else None,
+            f"the {habit} habit filter" if habit else None,
             f"its {lens} research view" if lens else None,
             f"the {benchmark} benchmark selection" if benchmark else None,
+            f"the selected published observation ({observation})" if observation else None,
         )
         if text
     ]
@@ -198,6 +213,14 @@ def run_context(
         lines.append(f"The user is looking at {where}{detail}.")
     if shown:
         lines.append("Use what the page shows when the question does not say otherwise.")
+    if window:
+        lines.append(
+            "Use the selected start and end dates in daily_returns for this window's returns."
+        )
+    if observation:
+        lines.append(
+            "For questions about this observation, use matching evidence from the pinned publication."
+        )
     return "\n".join(lines)
 
 

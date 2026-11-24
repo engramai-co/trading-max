@@ -75,7 +75,7 @@ import { previousForIdentity } from "./loading-state";
 import { useRetainedResult } from "./retained-result";
 import { Attribution, Coverage, EndingRisk, Phases, TradeQuality } from "./review-perspectives";
 
-import { useAssistant } from "./assistant/context";
+import { useAssistant, useAssistantPageContext } from "./assistant/context";
 import { ASSISTANT_NAME } from "./assistant-settings";
 import { fallObservations, habitDecisions, habitLabels, isHabit, toolHorizon, type Habit } from "./review-patterns";
 const ReviewHabits = lazy(async () => ({ default: (await import("./assistant/review")).ReviewHabits }));
@@ -186,6 +186,16 @@ export function ReviewWorkspace() {
     ? (["A", "B"] as const).map((code) => data?.decisionReviews?.[code])
     : shown === "C" ? [] : [data?.selectedAccountDecisions];
   const available = reviews.some((review) => review?.status === "available");
+  const visibleFocus = available && !missingDecision && habit !== "untraded_fall" && focus &&
+    ((!habit && focus.unpriced) || filtered.includes(focus as ScopedDecision)) ? focus : undefined;
+  const focusOrdinal = visibleFocus?.reviewOrdinal ?? 0;
+  const chatFocus = focusOrdinal < 2000 ? visibleFocus : undefined;
+  useAssistantPageContext({
+    page: "review", scope: shown === "A" ? "invest" : shown === "B" ? "isa" : shown === "C" ? "cfd" : "broker_total",
+    horizon: shown === "C" ? undefined : toolHorizon(horizon), habit: habit ?? undefined, snapshotId: data?.runId,
+    ticker: chatFocus?.ticker,
+    observation: chatFocus ? { kind: "decision", date: chatFocus.date, side: chatFocus.side, ordinal: focusOrdinal } : undefined,
+  });
   // A cold citation can lose its heading while the live dashboard is loading.
   const unfilteredTimelineVisible = available && !habit;
   useEffect(() => {
@@ -290,7 +300,7 @@ export function ReviewWorkspace() {
                     rows={filtered}
                     days={days}
                     horizon={horizon}
-                    focus={focus && ((!habit && focus.unpriced) || filtered.includes(focus as ScopedDecision)) ? focus : undefined}
+                    focus={visibleFocus}
                     onClear={() => {
                       release(horizon);
                       update({ decision: null, reviewOrdinal: null, snapshotId: null, reviewWindow: null });

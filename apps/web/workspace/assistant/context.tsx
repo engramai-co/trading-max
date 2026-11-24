@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { profileFreshFor, useWorkspaceProfile, workspaceProfileKey, workspaceProfileQuery } from "../profile";
 import { api } from "../data";
 import { withTimeoutSignal } from "../abort";
@@ -11,17 +11,53 @@ import { desktopPage } from "../desktop-routing";
 import { isImeComposing } from "../shortcut-platform";
 import type { Reading } from "./evidence";
 
+export type TurnObservation = {
+  kind: string;
+  evidenceId?: string;
+  key?: string;
+  field?: string;
+  date?: string;
+  end?: string;
+  instant?: string;
+  side?: "buy" | "sell";
+  ordinal?: number;
+};
+
+export type PageTurnContext = {
+  page: string;
+  scope?: string;
+  range?: string;
+  start?: string;
+  end?: string;
+  benchmark?: string;
+  ticker?: string;
+  lens?: string;
+  indexId?: string;
+  market?: string;
+  horizon?: string;
+  habit?: string;
+  snapshotId?: string;
+  observation?: TurnObservation;
+};
+export type ResearchTurnContext = Pick<PageTurnContext, "ticker" | "lens" | "range" | "indexId">;
+type ResearchChartLens = "overview" | "technical";
+type ResearchChartWindows = Partial<Record<ResearchChartLens, { identity: string; range: string; snapshotId?: string }>>;
+
 export type RoleCard = {
   role: string; title: string; object: string; questions: readonly string[]; reading?: Reading | null;
   status?: string; context?: Record<string, unknown>;
   pendingBinding?: boolean;
-  origin?: { page: string; search: string; snapshotId?: string };
+  origin?: { page: string; search: string; snapshotId?: string; research?: ResearchTurnContext };
 };
 const statusFreshFor = 30_000;
 type Handoff = { card: RoleCard; draft: string; sequence: number };
 type AssistantState = {
   open: boolean; ready: boolean; pending: boolean; suspended: boolean; consented: boolean; code: string | null; toggle: () => void; close: () => void;
   pageCard: RoleCard | null; setPageCard: (card: RoleCard | null) => void;
+  pageContext: PageTurnContext | null;
+  setPageContext: Dispatch<SetStateAction<PageTurnContext | null>>;
+  researchChartWindows: ResearchChartWindows;
+  setResearchChartWindows: Dispatch<SetStateAction<ResearchChartWindows>>;
   continueInSidebar: (card: RoleCard, draft?: string) => void; handoff: Handoff | null;
 };
 const Context = createContext<AssistantState | null>(null);
@@ -42,11 +78,43 @@ export function usePageRole(card: RoleCard | null, register = true) {
     return () => setPageCard(null);
   }, [setPageCard, card, register]);
 }
+/** Register the selection shown by the mounted page, including retained data. */
+export function useAssistantPageContext({
+  page, scope, range, start, end, benchmark, ticker, lens, indexId, market, horizon, habit, snapshotId,
+  observation,
+}: PageTurnContext, register = true) {
+  const { kind, evidenceId, key, field, date, end: observationEnd, instant, side, ordinal } = observation ?? {};
+  const setPageContext = useOptionalAssistant()?.setPageContext;
+  useEffect(() => {
+    if (!register || !setPageContext) return;
+    const selection = {
+      page, scope, range, start, end, benchmark, ticker, lens, indexId, market, horizon, habit, snapshotId,
+      observation: kind ? { kind, evidenceId, key, field, date, end: observationEnd, instant, side, ordinal } : undefined,
+    };
+    setPageContext(selection);
+    return () => setPageContext(current => current === selection ? null : current);
+  }, [setPageContext, register, page, scope, range, start, end, benchmark, ticker, lens, indexId, market,
+    horizon, habit, snapshotId, kind, evidenceId, key, field, date, observationEnd, instant, side, ordinal]);
+}
+
+export function useResearchChartWindow(identity: string, lens: ResearchChartLens, range: string, snapshotId?: string) {
+  const { setResearchChartWindows } = useAssistant();
+  useEffect(() => {
+    if (!identity || !range) return;
+    const window = { identity, range, snapshotId };
+    setResearchChartWindows(current => ({ ...current, [lens]: window }));
+    return () => setResearchChartWindows(current =>
+      current[lens] === window ? { ...current, [lens]: undefined } : current);
+  }, [setResearchChartWindows, identity, lens, range, snapshotId]);
+}
+
 export function AssistantProvider({ children }: { children: ReactNode }) {
   const [open, setOpen] = useState(false);
   const profile = useWorkspaceProfile();
   const client = useQueryClient();
   const [pageCard, setPageCard] = useState<RoleCard | null>(null);
+  const [pageContext, setPageContext] = useState<PageTurnContext | null>(null);
+  const [researchChartWindows, setResearchChartWindows] = useState<ResearchChartWindows>({});
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   // Settings writes through this shared query key. A new revision immediately
   // gates visible content and requests a fresh readiness check.
@@ -134,7 +202,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && !consentDenied, pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && !consentDenied, pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, pageContext, setPageContext, researchChartWindows, setResearchChartWindows, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }
