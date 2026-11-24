@@ -1,28 +1,47 @@
+/* Cascade layer order: Preflight stays off during migration; Mantine and authored surface styles share the mantine layer so their relative specificity is unchanged while Tailwind utilities win cleanly above them. */
+@layer theme, base, mantine, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@import "@mantine/core/styles.layer.css";
+@import "@mantine/notifications/styles.layer.css";
+
 /* Authored styles, in cascade order. Add rules to the file for their surface; keep this list ordered. */
-@import "./styles/01-foundation.css";
-@import "./styles/02-page.css";
-@import "./styles/03-components.css";
-@import "./styles/04-research-workbench.css";
-@import "./styles/05-settings-jobs-command.css";
-@import "./styles/06-responsive.css";
-@import "./styles/07-connections-health.css";
-@import "./styles/08-detail-review-exposure.css";
-@import "./styles/08a-status-readings.css";
-@import "./styles/08b-review-board.css";
-@import "./styles/09-research.css";
-@import "./styles/10-research-tasks.css";
-@import "./styles/10a-valuation-maintenance.css";
-@import "./styles/10b-evidence-notices.css";
-@import "./styles/11-touch-bento.css";
-@import "./styles/12-phone-rhythm.css";
-@import "./styles/13-sectors.css";
-@import "./styles/13a-market-indices.css";
-@import "./styles/13a1-global-markets.css";
-@import "./styles/13b-research-index.css";
-@import "./styles/14-overview.css";
-@import "./styles/15-loading.css";
-@import "./styles/16-performance.css";
-@import "./styles/17-chart-reading.css";
-@import "./styles/18-overlay.css";
-@import "./styles/19-assistant.css";
-@import "./styles/19-research-reading.css";
+@import "./styles/01-foundation.css" layer(mantine);
+@import "./styles/02-page.css" layer(mantine);
+@import "./styles/03-components.css" layer(mantine);
+@import "./styles/04-research-workbench.css" layer(mantine);
+@import "./styles/05-settings-jobs-command.css" layer(mantine);
+@import "./styles/06-responsive.css" layer(mantine);
+@import "./styles/07-connections-health.css" layer(mantine);
+@import "./styles/08-detail-review-exposure.css" layer(mantine);
+@import "./styles/08a-status-readings.css" layer(mantine);
+@import "./styles/08b-review-board.css" layer(mantine);
+@import "./styles/09-research.css" layer(mantine);
+@import "./styles/10-research-tasks.css" layer(mantine);
+@import "./styles/10a-valuation-maintenance.css" layer(mantine);
+@import "./styles/10b-evidence-notices.css" layer(mantine);
+@import "./styles/11-touch-bento.css" layer(mantine);
+@import "./styles/12-phone-rhythm.css" layer(mantine);
+@import "./styles/13-sectors.css" layer(mantine);
+@import "./styles/13a-market-indices.css" layer(mantine);
+@import "./styles/13a1-global-markets.css" layer(mantine);
+@import "./styles/13b-research-index.css" layer(mantine);
+@import "./styles/14-overview.css" layer(mantine);
+@import "./styles/15-loading.css" layer(mantine);
+@import "./styles/16-performance.css" layer(mantine);
+@import "./styles/17-chart-reading.css" layer(mantine);
+@import "./styles/18-overlay.css" layer(mantine);
+@import "./styles/19-assistant.css" layer(mantine);
+@import "./styles/19-research-reading.css" layer(mantine);
+
+/* Generate utilities from application code only. */
+@source "../{app,components,lib,ui,workspace}/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}";
+@source not "../**/*.{test,spec}.*";
+@source not "../**/{tests,__tests__,__mocks__}/**";
+
+/* Follow Mantine's single html color-scheme attribute for dark: utilities. */
+@custom-variant dark (&:where([data-mantine-color-scheme="dark"], [data-mantine-color-scheme="dark"] *));

@@ -1,3 +1,5 @@
+/* Share the global layer so deferred rules keep their original specificity. */
+@layer mantine {
 .mx-earnings-brief time {
   margin-inline-start: 8px;
   color: var(--mx-muted);
@@ -66,4 +68,5 @@
   .mx-key-marker, .mx-key-stem {
     display: none;
   }
+}
 }

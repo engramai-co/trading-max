@@ -1,6 +1,3 @@
-import "@mantine/core/styles.css";
-import "@mantine/notifications/styles.css";
-
 import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";

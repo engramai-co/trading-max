@@ -1,3 +1,5 @@
+/* Share the global layer so deferred rules keep their original specificity. */
+@layer mantine {
 /* Desktop presentation only. Financial views share the browser's icon rail. */
 .mx-sidebar-search.mantine-ActionIcon-root {
   display: none;
@@ -257,4 +259,5 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar .mantine-Group-ro
   html[data-desktop-chrome="overlay"] .mx-desktop-app:has(.mx-topbar .mx-assistant-trigger, .mx-topbar .mx-tag) .mx-assistant-panel {
     top: 66px;
   }
+}
 }
