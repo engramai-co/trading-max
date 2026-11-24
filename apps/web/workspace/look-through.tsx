@@ -3,13 +3,12 @@
 import {
   Button,
   Drawer,
-  Group,
   Pagination,
   Select,
-  Stack,
   TextInput,
 } from "@mantine/core";
 import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import Link from "./link";
 import {
   memo,
@@ -74,7 +73,7 @@ const DESKTOP_PAGE_SIZE = 100;
 function usePhoneLayout() {
   const [phone, setPhone] = useState(false);
   useEffect(() => {
-    const narrow = window.matchMedia("(max-width: 767px)");
+    const narrow = window.matchMedia(MEDIA_QUERIES.phone);
     const print = window.matchMedia("print");
     const sync = () => {
       if (!print.matches) setPhone(narrow.matches);
@@ -344,7 +343,7 @@ function CompanyToolbar({
   if (!phone)
     return (
       <div className="mx-toolbar" style={{ margin: "20px 0" }}>
-        <Group gap="sm" wrap="wrap" className="mx-exposure-filters">
+        <div className="mx-exposure-filters flex flex-wrap items-center gap-mx-sm">
           {search}
           {filters}
           {sort}
@@ -356,7 +355,7 @@ function CompanyToolbar({
               <span role="status">{count}</span>
             </>
           )}
-        </Group>
+        </div>
         {view}
       </div>
     );
@@ -828,7 +827,7 @@ function Exposure({
             )}
           </>
         ) : view === "sources" ? (
-          <Stack mt="lg" gap="lg">
+          <div className="mt-mx-lg flex flex-col gap-mx-lg">
             <Facts
               rows={[
                 [
@@ -902,10 +901,10 @@ function Exposure({
                 )}
               </div>
             ))}
-          </Stack>
+          </div>
         ) : (
           <div style={{ marginTop: 18 }}>
-            <Group justify="space-between" mb="md">
+            <div className="mb-mx-md flex flex-wrap items-center justify-between gap-mx-md">
               <Segments
                 label={t("配置图形", "Allocation chart")}
                 value={chart}
@@ -915,7 +914,7 @@ function Exposure({
                   { value: "pie", label: t("组成", "Composition"), short: t("组成", "Mix") },
                 ]}
               />
-            </Group>
+            </div>
             {chart === "pie" && <AllocationComposition
               initialGroup={choice?.group} onInspect={ready ? inspect : undefined} reading={role}
               key={ready ? view : `${view}-${snapshot}`}
@@ -955,7 +954,7 @@ function Exposure({
         title={t("穿透后的真实敞口", "Underlying exposure")}
       >
         {selection && selected && (
-          <Stack gap="lg">
+          <div className="flex flex-col gap-mx-lg">
             <Instrument ticker={selected.ticker ?? "—"} name={selected.name} />
             <Metric
               large
@@ -1018,7 +1017,7 @@ function Exposure({
                 {t("查看研究", "View research")}
               </Button>
             )}
-          </Stack>
+          </div>
         )}
       </Drawer>
     </>

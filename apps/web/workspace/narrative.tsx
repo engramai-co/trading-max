@@ -1,5 +1,5 @@
 "use client";
-import { Button, Group, Stack } from "@mantine/core";
+import { Button } from "@mantine/core";
 import { ArrowClockwise, Sparkle } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
@@ -67,10 +67,10 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
   return (
     <Panel
       title={
-        <Group gap={8}>
+        <div className="flex flex-wrap items-center gap-2">
           <Sparkle size={18} />
           {t("把数据串成观点", "Connect the evidence")}
-        </Group>
+        </div>
       }
       description={t(
         "AI 生成",
@@ -83,7 +83,7 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
       }
     >
       {opened && (
-        <Stack gap="md">
+        <div className="flex flex-col gap-mx-md">
           {query.isPending ? (
             <Pending compact />
           ) : query.data ? (
@@ -163,7 +163,7 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
               ? t("正在分析", "Analysing")
               : t("生成最新分析", "Generate analysis")}
           </Button>
-        </Stack>
+        </div>
       )}
     </Panel>
   );

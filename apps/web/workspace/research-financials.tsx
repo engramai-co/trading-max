@@ -3,7 +3,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Drawer, Group, Select } from "@mantine/core";
+import { Button, Drawer, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Legend, Plot } from "./charts";
@@ -215,7 +215,7 @@ export function FinancialWorkbench({
           <>
           {earningsBrief}
           <div className="mx-research-context-toolbar">
-          <Group gap="xs">
+          <div className="flex flex-wrap items-center gap-mx-xs">
             <Segments
               label={t("报告频率", "Reporting frequency")}
               value={frequency}
@@ -241,7 +241,7 @@ export function FinancialWorkbench({
               onChange={(v) => update({ period: v })}
               w={205}
             />
-          </Group>
+          </div>
           </div>
           </>
         }

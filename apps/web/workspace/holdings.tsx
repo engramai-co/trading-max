@@ -6,7 +6,6 @@ import {
   Checkbox,
   CloseButton,
   Drawer,
-  Group,
   Select,
   TextInput,
 } from "@mantine/core";
@@ -231,7 +230,7 @@ function Positions() {
                   )
                 }
               />
-              <Group gap="sm">
+              <div className="flex flex-wrap items-center gap-mx-sm">
                 <Checkbox
                   label={t("成本与汇率", "Cost & FX")}
                   checked={detailed}
@@ -260,7 +259,7 @@ function Positions() {
                   value={sort}
                   onChange={(v) => update({ positionSort: v, direction: v === "ticker" ? "asc" : "desc" })}
                 />
-              </Group>
+              </div>
             </div>
             {query.isPending ? (
               <Pending shape="holdings" label={t("正在读取持仓…", "Loading holdings…")} />
@@ -399,7 +398,7 @@ function Positions() {
                             </small>
                           </td>
                           <td className="mx-align-right">
-                            <Group gap="sm" justify="flex-end">
+                            <div className="flex flex-wrap items-center justify-end gap-mx-sm">
                               <div className="mx-mini-bar" aria-hidden="true">
                                 <i
                                   style={{
@@ -413,7 +412,7 @@ function Positions() {
                                 />
                               </div>
                               {percent(h.allocationPct)}
-                            </Group>
+                            </div>
                           </td>
                         </tr>
                       ))}

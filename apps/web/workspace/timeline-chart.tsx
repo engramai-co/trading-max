@@ -1,6 +1,6 @@
 "use client";
 
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import type { ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatReadingTime, type ReadingGranularity } from "@/ui/formatters";
@@ -63,8 +63,8 @@ export function TimelineChart({
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const colours = useChartColours();
-  const phone = useMediaQuery("(max-width: 767px)");
-  const narrow = useMediaQuery("(max-width: 375px)");
+  const phone = useBreakpoint("phone");
+  const narrow = useBreakpoint("narrow");
   const moneyLayout = drawdownHeading ? moneyTimelineLayout(!!phone, !!narrow) : undefined;
   const shortRange = range === "1D" || range === "1W";
   const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;

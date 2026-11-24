@@ -1,5 +1,5 @@
 "use client";
-import { Button, Group } from "@mantine/core";
+import { Button } from "@mantine/core";
 import Link from "next/link";
 import { Empty, Page, Panel, useCopy } from "@/workspace/foundation";
 export default function ErrorPage({
@@ -24,12 +24,12 @@ export default function ErrorPage({
             "Reload this page, or return to the overview to explore other data.",
           )}
           action={
-            <Group>
+            <div className="flex flex-wrap items-center gap-mx-md">
               <Button onClick={reset}>{t("重新加载", "Reload page")}</Button>
               <Button component={Link} href="/" variant="default">
                 {t("返回总览", "Back to overview")}
               </Button>
-            </Group>
+            </div>
           }
         />
       </Panel>

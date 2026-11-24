@@ -1,7 +1,8 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { MEDIA_QUERIES } from "@/lib/breakpoints";
+import { useBreakpoint } from "@/lib/hooks";
 import { deepestDrawdown } from "@/lib/portfolio/drawdown-episodes";
 import { ReturnGrid } from "./performance-return-grid";
 import { DrawdownReading, drawdownMarks } from "./drawdown-reading";
@@ -423,7 +424,7 @@ export function PerformanceContent({
                   ? <span className="mx-comparison-basis">{t("共同区间", "Shared dates")} <PeriodSpan points={points} /></span>
                   : <PeriodSpan points={runtime.status === "ready" ? points : []} reserve />}
                 <DashboardRanges value={requestedRange} onChange={(value) => {
-                  if (ready && window.matchMedia("(max-width: 767px)").matches) {
+                  if (ready && window.matchMedia(MEDIA_QUERIES.phone).matches) {
                     setSelectionRange(null); setPhoneRange([view,requestedScope,value].join("|"));
                   }
                   update({range:value,returnFrom:null,returnTo:null});
@@ -573,8 +574,8 @@ export function PerformanceContent({
 }
 function PerformancePending({ money }: { money: boolean }) {
   const t = useCopy();
-  const phone = useMediaQuery("(max-width: 767px)");
-  const narrow = useMediaQuery("(max-width: 375px)");
+  const phone = useBreakpoint("phone");
+  const narrow = useBreakpoint("narrow");
   const layout = money ? moneyTimelineLayout(!!phone, !!narrow) : {
     height: 550, grids: [{ top: 24, height: 225 }, { top: 277, height: 175 }],
   };

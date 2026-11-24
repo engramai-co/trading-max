@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.69.2] - 2026-11-24
+
+### Changed
+- The web interface now manages light, dark and system appearance itself rather than through Mantine, and its layout helpers, viewport breakpoints and browser hooks are project code defined in one place. Nothing changes on screen: 576 views across both languages, both themes, desktop, phone and the App window render identically, and your saved appearance carries over. With browser storage blocked, the first paint still follows the system's dark or light setting.
+
 ## [1.69.1] - 2026-11-24
 
 ### Fixed

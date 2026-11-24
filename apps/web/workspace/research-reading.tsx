@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocalStorage } from "@mantine/hooks";
+import { useLocalStorage } from "@/lib/hooks";
 import { PushPin } from "@phosphor-icons/react";
 import { useCallback, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useCopy } from "./foundation";

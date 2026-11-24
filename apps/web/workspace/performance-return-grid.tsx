@@ -1,10 +1,10 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
 import { CaretRight } from "@phosphor-icons/react";
 import { useMemo, useState, type CSSProperties } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { useBreakpoint } from "@/lib/hooks";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { Scope } from "@/lib/portfolio/nav";
 import { returnPeriods, type ReturnPeriod } from "@/lib/portfolio/return-periods";
@@ -23,7 +23,7 @@ export function ReturnGrid({ scope, onSelect, selected, runId }: {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<"month" | "quarter" | "year">("month");
   const [chosenYear, setYear] = useState<string>();
-  const phone = useMediaQuery("(max-width: 767px)");
+  const phone = useBreakpoint("phone");
   const selection = useMemo(() => ({ detail: "summary" as const, range: "ALL" as const, scope }), [scope]);
   const query = useDashboardLens("analytics", undefined, open, selection, runId);
   const periods = useMemo(() => returnPeriods(query.data?.nav ?? [], scope, query.data?.brokerAsOf ?? undefined),

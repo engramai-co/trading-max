@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Group, Modal, NativeSelect, Stack, Switch } from "@mantine/core";
+import { Button, Modal, NativeSelect, Switch } from "@mantine/core";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import type { AssistantSettings, AssistantUpdate, UserProfile } from "@/lib/types";
@@ -147,11 +147,11 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
         checked={settings[key]} disabled={busy || !currentDisclosure}
         onChange={(event) => update({ [key]: event.currentTarget.checked })} />
     </div>)}
-    <Group mt="md">
+    <div className="mt-mx-md flex flex-wrap items-center gap-mx-md">
       <Button variant="default" disabled={busy || settings.acceptedConsentRevision === null}
         onClick={() => update({ enabled: false, acceptedConsentRevision: null })}>{t("撤回同意", "Withdraw consent")}</Button>
       <Button variant="default" disabled={busy} onClick={() => { reset(); setDialog({ kind: "delete" }); }}>{t("删除对话", "Delete conversations")}</Button>
-    </Group>
+    </div>
     {!dialog && saveError}
     {erase.isSuccess && <Notice tone="good">{t("已删除此工作区中的对话。", "Conversations deleted from this workspace.")}</Notice>}
     <span role="status" className="sr-only">{save.isPending ? t("正在保存…", "Saving…") : save.isSuccess ? t("已保存", "Saved") : null}</span>
@@ -159,7 +159,7 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
       transitionProps={{ duration: 0 }} classNames={{ content: "mx-assistant-dialog" }} attributes={{ header: { role: "presentation" } }}
       closeButtonProps={{ "aria-label": t("关闭", "Close") }}
       title={dialog?.kind === "delete" ? t("删除所有对话？", "Delete all conversations?") : t("同意向模型分享数据", "Consent to share data")}>
-      {dialog?.kind === "consent" && <Stack>
+      {dialog?.kind === "consent" && <div className="flex flex-col gap-mx-md">
         <p className="mx-assistant-consent"><strong>{dialog.option.recipient} ({dialog.option.model}){dialog.option.local && <> · {dialog.option.destination}</>}</strong>{" "}{t(
           "将收到你的消息、当前对话和工具读取的数据，包括持仓和金额。",
           "will receive your question, this conversation and the data read by tools, including holdings and amounts.",
@@ -173,24 +173,24 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
           "When you draft or discuss a valuation, your saved assumptions, such as growth and discount rates, go to this provider by default. You can turn off assumption sharing and background writing separately.",
         )}</p>
         {saveError}
-        <Group justify="flex-end">
+        <div className="flex flex-wrap items-center justify-end gap-mx-md">
           <Button variant="default" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
           <Button disabled={busy || !currentDisclosure} loading={save.isPending} onClick={() => update({
             route: dialog.option.value, enabled: dialog.enable, expectedRevision: dialog.revision,
             acceptedConsentRevision: DISCLOSURE_REVISION, expectedConsentDestination: dialog.option.destination,
           })}>{dialog.enable ? t("同意并启用", "Agree and enable") : t("同意并保存", "Agree and save")}</Button>
-        </Group>
-      </Stack>}
-      {dialog?.kind === "delete" && <Stack>
+        </div>
+      </div>}
+      {dialog?.kind === "delete" && <div className="flex flex-col gap-mx-md">
         <p>{t("此工作区保存的所有对话和消息将永久删除。", "All conversations and messages saved in this workspace will be permanently deleted.")}</p>
         {erase.isError && <Notice tone="bad">{erase.error instanceof ApiError && erase.error.code === "assistant_busy"
           ? t("请在当前回复结束后重试。", "Wait for the current reply to finish, then try again.")
           : t("未能删除对话，请重试。", "Could not delete conversations. Try again.")}</Notice>}
-        <Group justify="flex-end">
+        <div className="flex flex-wrap items-center justify-end gap-mx-md">
           <Button variant="default" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
           <Button disabled={busy} loading={erase.isPending} onClick={() => { if (!inFlight()) erase.mutate(); }}>{t("删除所有对话", "Delete all conversations")}</Button>
-        </Group>
-      </Stack>}
+        </div>
+      </div>}
     </Modal>
   </Panel>;
 }

@@ -1,12 +1,12 @@
 "use client";
 import { useResearchChartWindow } from "./assistant/context";
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { markerHeadroom } from "./assistant/marker-layout";
 import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Checkbox, Group, Modal, Select } from "@mantine/core";
+import { Button, Checkbox, Modal, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
@@ -193,7 +193,7 @@ export function PriceHistory({
   const moments = useKeyMoments(published ? {ticker: priceData!.ticker, published_series_id: seriesId} : null,
     slotDates[low]?.slice(0, 10), slotDates[high]?.slice(0, 10), priceData?.snapshotId ?? snapshotId);
   const showEvents = eventTrack ?? (full || markers.length > 0 || moments.items.length > 0);
-  const desktop = useMediaQuery("(min-width: 768px)");
+  const desktop = useBreakpoint("desktop");
   const headroom = desktop && showEvents && moments.items.length ? markerHeadroom : 0;
   const baseHeight = full ? Math.max(450, typeof window === "undefined" ? 650 : window.innerHeight - 280)
     : (compactChart ? 260 : 410) + (rsi ? 125 : 0) + (macd ? 125 : 0);
@@ -328,17 +328,17 @@ export function PriceHistory({
         options={ranges.filter((v) => full || compactPriceRanges.includes(v) || v === range)
           .map((v) => ({ value: v, label: v === "ALL" ? t("全部", "All") : v }))}
       />
-      <Group gap="xs" className="mx-price-common">
+      <div className="mx-price-common flex flex-wrap items-center gap-mx-xs">
         <Segments label={t("价格样式", "Price style")} value={style} onChange={(v) => update({ priceStyle: v })}
           options={[{ value: "candles", label: t("K 线", "Candles") }, { value: "line", label: t("线", "Line") }]} />
         <Checkbox size="xs" label="SMA" checked={averages}
           onChange={(e) => update({ ma: e.currentTarget.checked ? "on" : null, highlightMa: null })} />
         <Checkbox size="xs" label={t("事件", "Events")} checked={showEvents}
           onChange={(e) => setEventTrack(e.currentTarget.checked)} />
-      </Group>
+      </div>
       {full && <details className="mx-price-advanced">
         <summary>{t("高级", "Advanced")}</summary>
-        <Group gap="sm">
+        <div className="flex flex-wrap items-center gap-mx-sm">
           <Select styles={fullSelectStyles} w={145} aria-label={t("行情粒度", "Bar interval")} value={interval}
             onChange={(v) => { update({ interval: v }); reset(); }}
             data={intervals.map((v, i) => ({
@@ -362,15 +362,15 @@ export function PriceHistory({
             ]} />
           {averages && <Checkbox.Group aria-label={t("均线周期", "Average periods")}
             value={averagePeriods} onChange={(v) => update({ maPeriods: v.join(","), highlightMa: null, ma: v.length ? "on" : null })}>
-            <Group gap="sm">
+            <div className="flex flex-wrap items-center gap-mx-sm">
               {["20", "50", "200"].map((v) => <Checkbox key={v} size="xs" value={v} label={`SMA ${v}`} />)}
-            </Group>
+            </div>
           </Checkbox.Group>}
           <Checkbox size="xs" label="RSI 14" checked={rsi} onChange={(e) => update({ rsi: e.currentTarget.checked ? "on" : null })} />
           <Checkbox size="xs" label="MACD 12/26/9" checked={macd} onChange={(e) => update({ macd: e.currentTarget.checked ? "on" : null })} />
           <Button component="a" href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
             target="_blank" rel="noreferrer" variant="subtle" size="compact-sm">TradingView ↗</Button>
-        </Group>
+        </div>
       </details>}
     </div>
   );
@@ -741,11 +741,11 @@ export function PriceHistory({
           )}
           {gapSeries.length > 0 && <Legend items={[{ label: t("缺失行情", "Missing price bars"), colour: "var(--mx-muted)", dotted: true }]} />}
           <div className="mx-chart-footer mx-price-footer">
-            <Group gap={4} aria-label={t("图表缩放", "Chart zoom")}>
+            <div className="flex flex-wrap items-center gap-1" aria-label={t("图表缩放", "Chart zoom")}>
               <Button variant="default" size="compact-sm" aria-label={t("放大", "Zoom in")} onClick={() => zoom(0.65)}>+</Button>
               <Button variant="default" size="compact-sm" aria-label={t("缩小", "Zoom out")} onClick={() => zoom(1.55)}>−</Button>
               <Button variant="subtle" size="compact-sm" onClick={reset}>{t("恢复范围", "Reset zoom")}</Button>
-            </Group>
+            </div>
             <span>
               {isIntraday
                 ? formatDate(points[0].date) + " → " + formatDate(points.at(-1)!.date)

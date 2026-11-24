@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Menu, useComputedColorScheme } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
+import { Button, Menu } from "@mantine/core";
 import { CaretDown } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
+import { useComputedColorScheme } from "@/components/color-scheme-provider";
+import { useBreakpoint } from "@/lib/hooks";
 import {
   useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode,
 } from "react";
@@ -352,7 +353,7 @@ type WorldKey = WorldMarket | "other";
 function GlobalPanel({ title, picker }: { title: string; picker: ReactNode }) {
   const t = useCopy();
   const fine = useFinePointer();
-  const phone = useMediaQuery("(max-width: 767px)") ?? false;
+  const phone = useBreakpoint("phone");
   const query = useGlobalContribution(true);
   const answer = query.data;
   const markets = (answer?.markets ?? []).filter((item) => item.market in WORLD);
@@ -595,7 +596,7 @@ function TipLines({ name, figures }: { name: string; figures: Array<string | nul
 function SectorBoard({ groups, market, label }: { groups: SectorGroup[]; market: SectorMarketCode; label: string }) {
   const t = useCopy();
   const fine = useFinePointer();
-  const phone = useMediaQuery("(max-width: 767px)") ?? false;
+  const phone = useBreakpoint("phone");
   return (
     <>
       {fine && !phone && <SectorMap groups={groups} market={market} label={label + t("地图", " map")} />}

@@ -3,7 +3,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Checkbox, Group, Select, TextInput } from "@mantine/core";
+import { Checkbox, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { compact, number, object, objects, percent, str, type Json } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -510,7 +510,7 @@ export function FinancialStatements({
           ]}
         />
       </div>
-      <Group mb="lg" justify="space-between">
+      <div className="mb-mx-lg flex flex-wrap items-center justify-between gap-mx-md">
         <Checkbox
           checked={growth}
           label={t("显示同比变化", "Show year-over-year change")}
@@ -527,7 +527,7 @@ export function FinancialStatements({
             ]}
           />
         )}
-      </Group>
+      </div>
       <div className="mx-toolbar mx-statement-filter">
         <TextInput
           aria-label={t("查找报表科目", "Find a statement line")}

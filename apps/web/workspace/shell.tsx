@@ -4,14 +4,13 @@ import {
   ActionIcon,
   Button,
   CloseButton,
-  Group,
   Menu,
   Modal,
   TextInput,
   Tooltip,
-  useMantineColorScheme,
 } from "@mantine/core";
-import { useMediaQuery, useOs } from "@mantine/hooks";
+import { useColorScheme } from "@/components/color-scheme-provider";
+import { useBreakpoint, useOs } from "@/lib/hooks";
 import {
   ArrowRight,
   ChartBar,
@@ -72,9 +71,9 @@ function SearchRouteObserver({ onChange }: { onChange: (search: string) => void 
 export function WorkspaceShell({ children, desktop = false, localWorkspace = false, demonstration = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean; demonstration?: boolean }) {
   const t = useCopy();
   const assistant = useAssistant();
-  const assistantOverlay = useMediaQuery("(max-width: 1199px)") && assistant.open;
+  const assistantOverlay = useBreakpoint("compactDesktop") && assistant.open;
   // Search names each page as the visible navigation does: the dock's short names wherever the dock shows.
-  const dock = useMediaQuery("(max-width: 767px), (max-width: 959px) and (max-height: 500px) and (pointer: coarse)");
+  const dock = useBreakpoint("phoneDock");
   const actualPathname = usePathname();
   const [routeSearch, setRouteSearch] = useState("");
   const params = new URLSearchParams(routeSearch);
@@ -84,7 +83,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const router = useRouter();
   const navigateBuild = useBuildNavigation();
   const { locale, setLocale } = useLocale();
-  const { colorScheme, setColorScheme } = useMantineColorScheme();
+  const { colorScheme, setColorScheme } = useColorScheme();
   const os = useOs();
   const appleKeyboard = os === "macos" || os === "ios";
   const [searchOpen, setSearchOpen] = useState(false);
@@ -488,7 +487,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             <span className="mx-breadcrumb-divider">/</span>
             <strong>{active?.label}</strong>
           </div>
-          <Group gap={4} wrap="nowrap">
+          <div className="mx-topbar-actions">
             {demonstration && <Tag>{t("演示数据", "Demo data")}</Tag>}
             <AssistantEntry />
             {searchTrigger("mx-topbar-search", "bottom-end")}
@@ -502,7 +501,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             </ActionIcon>}
             {!desktop && theme}
             {more}
-          </Group>
+          </div>
         </header>
         <main id="main-content" tabIndex={-1}>
           {children}

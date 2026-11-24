@@ -1,0 +1,24 @@
+/* Shared viewport breakpoints and Mantine pixel spacing scale. Mirrored by lib/breakpoints.ts and ui/theme.ts. */
+@theme {
+  --breakpoint-narrow: 375px;
+  --breakpoint-phone: 768px;
+  --breakpoint-tablet: 960px;
+  --breakpoint-wide-map: 1180px;
+  --breakpoint-desktop: 1200px;
+  --breakpoint-wide: 1280px;
+  --spacing-mx-xs: 6px;
+  --spacing-mx-sm: 10px;
+  --spacing-mx-md: 16px;
+  --spacing-mx-lg: 24px;
+  --spacing-mx-xl: 32px;
+}
+:root {
+  --mx-bp-narrow-max: 375px;
+  --mx-bp-phone-max: 767px;
+  --mx-bp-tablet-max: 959px;
+  --mx-bp-phone-landscape-max-height: 500px;
+  --mx-bp-wide-map-min: 1180px;
+  --mx-bp-desktop-max: 1199px;
+  --mx-bp-wide-min: 1280px;
+  --mx-bp-research-index-max: 48em;
+}

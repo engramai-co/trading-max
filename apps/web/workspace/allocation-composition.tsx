@@ -1,7 +1,7 @@
 "use client";
 
 import { VisuallyHidden } from "@mantine/core";
-import { useReducedMotion } from "@mantine/hooks";
+import { useReducedMotion } from "@/lib/hooks";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ECharts, EChartsOption } from "echarts";
 import { CenteredCopy } from "@/ui/centered-copy";

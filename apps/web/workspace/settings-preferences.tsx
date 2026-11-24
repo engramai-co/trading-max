@@ -4,9 +4,7 @@ import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
   Button,
   FileInput,
-  Group,
   Select,
-  Stack,
   Switch,
   TextInput,
 } from "@mantine/core";
@@ -242,7 +240,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
         <QueryError retry={query.refetch} />
       ) : (
         data && (
-          <Stack gap="lg">
+          <div className="flex flex-col gap-mx-lg">
             <div className="mx-toolbar">
               {data.isStale && !retired && <Tag tone="warn">{t("记录需要更新", "History needs updating")}</Tag>}
               <Select
@@ -326,7 +324,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
                     )}
               </Notice>
             )}
-            {desktop && imported && <Group><Button component={Link} href="/health?scope=cfd">{t("更新 CFD 复盘", "Update CFD review")}</Button><Button component={Link} href="/review?account=C" variant="subtle">{t("查看复盘", "View review")}</Button></Group>}
+            {desktop && imported && <div className="flex flex-wrap items-center gap-mx-md"><Button component={Link} href="/health?scope=cfd">{t("更新 CFD 复盘", "Update CFD review")}</Button><Button component={Link} href="/review?account=C" variant="subtle">{t("查看复盘", "View review")}</Button></div>}
             {preference.isError && (
               <Notice tone="bad">
                 {t(
@@ -390,7 +388,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
                 <Empty title={t("尚未导入任何文件", "No imports yet")} />
               )}
             </details>
-          </Stack>
+          </div>
         )
       )}
     </Panel>
@@ -489,7 +487,7 @@ export function PersonalPreferences({
           });
         }}
       >
-        <Stack gap="lg">
+        <div className="flex flex-col gap-mx-lg">
           <div className="mx-form-grid">
             <TextInput
               label={t("显示名称", "Display name")}
@@ -580,7 +578,7 @@ export function PersonalPreferences({
               )}
             </Notice>
           )}
-          <Group>
+          <div className="flex flex-wrap items-center gap-mx-md">
             <Button
               type="submit"
               disabled={
@@ -594,8 +592,8 @@ export function PersonalPreferences({
             {savedRevision && dirty && (
               <span role="status">{t("还有未保存的修改", "You have unsaved changes")}</span>
             )}
-          </Group>
-        </Stack>
+          </div>
+        </div>
       </form>
     </Panel>
   );

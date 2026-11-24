@@ -2,10 +2,11 @@
 
 import "./readings.css";
 import { Drawer } from "@mantine/core";
-import { useMediaQuery } from "@mantine/hooks";
 import { CaretDown, X } from "@phosphor-icons/react";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { MEDIA_QUERIES } from "@/lib/breakpoints";
+import { useBreakpoint } from "@/lib/hooks";
 import { useCopy } from "../foundation";
 import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
@@ -22,7 +23,7 @@ export function EvidenceLink({ evidence, onNavigate }: { evidence: Evidence; onN
   const href = evidenceHref(evidence);
   if (href && /^https?:/.test(href)) return <a className="mx-reading-source" href={href} title={evidence.arguments?.credit} rel="noreferrer" target="_blank">{word}</a>;
   return href ? <Link className="mx-reading-source" href={href} onNavigate={(event) => { onNavigate?.(event); leaveSheet?.(); }}
-    onClick={() => { if (open && window.matchMedia("(max-width: 1199px)").matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
+    onClick={() => { if (open && window.matchMedia(MEDIA_QUERIES.compactDesktop).matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
 export function ObservationLine({line}: {line: Reading["lines"][number]}) {
   const {locale, timeZone} = useLocale();
@@ -83,7 +84,7 @@ function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef, clo
 }
 export function InlineReading({ card, children, onClose, focusClose, returnFocusRef, closeOnCitation }: ReadingContainerProps) {
   const { ready } = useAssistant();
-  const phone = useMediaQuery("(max-width: 767px)");
+  const phone = useBreakpoint("phone");
   if (!ready) return null;
   return phone && onClose
     ? <ReadingSheet card={card} onClose={onClose} focusClose={focusClose} returnFocusRef={returnFocusRef} closeOnCitation={closeOnCitation}>{children}</ReadingSheet>
@@ -93,7 +94,7 @@ export function InlineReading({ card, children, onClose, focusClose, returnFocus
 export function AnchoredReading({ card, onClose, children, closeOnCitation }: ReadingContainerProps & {onClose: () => void}) {
   const t = useCopy();
   const { ready } = useAssistant();
-  const phone = useMediaQuery("(max-width: 767px)");
+  const phone = useBreakpoint("phone");
   if (!ready) return null;
   if (phone) return <ReadingSheet card={card} onClose={onClose} closeOnCitation={closeOnCitation}>{children}</ReadingSheet>;
   return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>

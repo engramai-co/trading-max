@@ -1,6 +1,7 @@
-import { ColorSchemeScript, mantineHtmlProps } from "@mantine/core";
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
+import { ColorSchemeScript } from "@/components/color-scheme-script";
+import { colorSchemeHtmlProps } from "@/lib/color-scheme";
 import { desktopSnapshotCache, snapshotCacheScope } from "@/lib/snapshot-cache-server";
 
 import { PresentationShell } from "@/workspace/presentation-shell";
@@ -50,7 +51,7 @@ export default async function RootLayout({
       lang="zh-CN"
       data-locale="zh"
       data-scroll-behavior="smooth"
-      {...mantineHtmlProps}
+      {...colorSchemeHtmlProps}
     >
       <head>
         <ColorSchemeScript defaultColorScheme="auto" />

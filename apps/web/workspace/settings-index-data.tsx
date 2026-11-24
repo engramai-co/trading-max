@@ -1,7 +1,7 @@
 "use client";
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { Button, Group, Modal, PasswordInput, Stack, Switch } from "@mantine/core";
+import { Button, Modal, PasswordInput, Switch } from "@mantine/core";
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { IntegrationSummary } from "@/lib/types";
 import { useState } from "react";
@@ -57,14 +57,14 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
         disabled={busy} checked={Boolean(integration?.enabled)}
         onChange={(event) => submit(event.currentTarget.checked ? "enable" : "disable")} />
         : <h3>{indexData.name}</h3>}
-      <Group gap="xs">
+      <div className="flex flex-wrap items-center gap-mx-xs">
         <Button variant="default" disabled={busy} onClick={() => open("keys")}>
           {configured ? t("更新密钥", "Update key") : t("连接 EODHD", "Connect EODHD")}
         </Button>
         {configured && <Button variant="subtle" color="red" disabled={busy} onClick={() => open("remove")}>
           {t("删除密钥", "Remove key")}
         </Button>}
-      </Group>
+      </div>
     </div>
     <details>
       <summary>{t("覆盖范围", "Coverage")}</summary>
@@ -78,24 +78,24 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
     <Modal opened={mode === "keys"} onClose={() => open(null)} closeOnClickOutside={!busy}
       closeOnEscape={!busy} title={t("连接 EODHD", "Connect EODHD")}>
       <form onSubmit={(event) => { event.preventDefault(); if (key.trim()) submit("save"); }}>
-        <Stack>
+        <div className="flex flex-col gap-mx-md">
           <PasswordInput label={t("API 密钥", "API key")} autoComplete="off"
             value={key} maxLength={200} onChange={(event) => setKey(event.currentTarget.value)}
             disabled={busy} required />
           {commit.isError && error}
           <Button type="submit" loading={busy} disabled={!key.trim()}>{t("测试并保存", "Test and save")}</Button>
-        </Stack>
+        </div>
       </form>
     </Modal>
     <Modal opened={mode === "remove"} onClose={() => open(null)} closeOnClickOutside={!busy}
       closeOnEscape={!busy} title={t("删除 EODHD 密钥", "Remove EODHD key")}>
-      <Stack>
+      <div className="flex flex-col gap-mx-md">
         {commit.isError && error}
-        <Group>
+        <div className="flex flex-wrap items-center gap-mx-md">
           <Button variant="default" disabled={busy} onClick={() => open(null)}>{t("取消", "Cancel")}</Button>
           <Button color="red" loading={busy} onClick={() => submit("remove")}>{t("删除密钥", "Remove key")}</Button>
-        </Group>
-      </Stack>
+        </div>
+      </div>
     </Modal>
   </Panel>;
 }

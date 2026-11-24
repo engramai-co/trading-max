@@ -68,9 +68,6 @@ export const tradingMaxTheme = createTheme({
     NumberInput: {
       defaultProps: { hideControls: true, size: "sm", radius: "sm" },
     },
-    Badge: {
-      defaultProps: { variant: "light", radius: "sm", tt: "none", fw: 500 },
-    },
     Modal: {
       defaultProps: {
         closeButtonProps: { "aria-label": "Close dialog" },
@@ -111,14 +108,6 @@ export const tradingMaxTheme = createTheme({
       },
       classNames: { tooltip: "mx-tooltip" },
     },
-    Table: {
-      defaultProps: {
-        verticalSpacing: "md",
-        horizontalSpacing: "md",
-        highlightOnHover: true,
-      },
-    },
-    Paper: { defaultProps: { radius: "lg", withBorder: true } },
   },
 });
 export const chartColours = {

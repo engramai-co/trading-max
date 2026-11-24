@@ -1,5 +1,5 @@
 "use client";
-import { useComputedColorScheme } from "@mantine/core";
+import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { chartColours } from "@/ui/theme";
 export { chartColours } from "@/ui/theme";
 export type ChartColours = { [Key in keyof typeof chartColours]: string };

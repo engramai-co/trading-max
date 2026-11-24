@@ -1,7 +1,7 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Group, MultiSelect, Pill, Select } from "@mantine/core";
+import { MultiSelect, Pill, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -233,7 +233,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
         }
       >
         {matrix.length > 0 && window === "custom" && (
-          <Group mb="md">
+          <div className="mb-mx-md flex flex-wrap items-center gap-mx-md">
             <Select
               w={140}
               label={t("起始年份", "From year")}
@@ -252,7 +252,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
                 )
                 .map(String)}
             />
-          </Group>
+          </div>
         )}
         <div className="mx-toolbar">
           <span className="mx-unit">
@@ -380,7 +380,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
             "Each year starts from the preceding year's last recorded close. Calendar dates align, including February 29. Lines stop at their last observation and never extend into the future.",
           )}
           action={
-            <Group gap="xs">
+            <div className="flex flex-wrap items-center gap-mx-xs">
               <MultiSelect
                 w={250}
                 maxValues={5}
@@ -412,7 +412,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
                   { value: "QQQ", label: "QQQ · ETF" },
                 ]}
               />
-            </Group>
+            </div>
           }
         >
           {benchmarkSymbol !== "none" &&

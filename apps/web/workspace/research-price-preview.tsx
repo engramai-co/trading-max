@@ -2,7 +2,7 @@
 
 import { useResearchChartWindow } from "./assistant/context";
 import Link from "./link";
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { useChartColours } from "@/ui/charts/palette";
@@ -26,7 +26,7 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
   const t = useCopy();
   const { locale } = useLocale();
   const colours = useChartColours();
-  const phone = useMediaQuery("(max-width: 767px)");
+  const phone = useBreakpoint("phone");
   const height = phone ? 235 : 280;
   const range = "3M";
   const points = inRange(query.data?.points ?? [], range).filter((p) => Number.isFinite(p.close));

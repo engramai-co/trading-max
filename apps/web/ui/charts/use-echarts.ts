@@ -1,7 +1,8 @@
 "use client";
 
-import { useComputedColorScheme } from "@mantine/core";
-import { useReducedMotion } from "@mantine/hooks";
+import { useComputedColorScheme } from "@/components/color-scheme-provider";
+import { MEDIA_QUERIES } from "@/lib/breakpoints";
+import { useReducedMotion } from "@/lib/hooks";
 import type { ECharts, EChartsOption, ECElementEvent } from "echarts";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { useReadingLock } from "@/ui/charts/reading";
@@ -148,7 +149,7 @@ export function useECharts(
       chart.on("click", (event: ECElementEvent) => callbacks.current.onClick?.(event));
       setController(controller, chart);
       const entry = latest.current;
-      const noMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const noMotion = window.matchMedia(MEDIA_QUERIES.reducedMotion).matches;
       chart.setOption(noMotion ? { ...entry, animation: false } : entry, { notMerge: true });
       lastApplied.current = latest.current;
       canvas.dataset.tmChartReady = "true";

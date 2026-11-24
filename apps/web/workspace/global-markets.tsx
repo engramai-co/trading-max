@@ -1,6 +1,6 @@
 "use client";
 
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -110,7 +110,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const region = cited ? params?.get("region") : null;
   const observed = cited ? params?.get("observed") : null;
   const citedId = cited ? params?.get("snapshotId") ?? undefined : undefined;
-  const wide = useMediaQuery("(min-width: 1180px)") ?? false;
+  const wide = useBreakpoint("wideMap");
   const [hovered, setHovered] = useState<Market | null>(null);
   const [focused, setFocused] = useState<Market | null>(null);
   const [inspection, setInspection] = useState<Inspection | null>(null);

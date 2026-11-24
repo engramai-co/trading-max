@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { useMediaQuery } from "@mantine/hooks";
+import { useBreakpoint } from "@/lib/hooks";
 import { CaretRight } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -125,7 +125,7 @@ export function ReviewHabits({
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const { data: profile } = useWorkspaceProfile();
-  const phone = useMediaQuery("(max-width: 767px)", false, { getInitialValueInEffect: false });
+  const phone = useBreakpoint("phone");
   const [sheet, setSheet] = useState(() => {
     try {
       return localStorage.getItem("tm-reading-review-habits-phone") === "open";

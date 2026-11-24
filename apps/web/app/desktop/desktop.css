@@ -30,7 +30,7 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar {
   border-bottom-color: transparent;
   transition: border-color 150ms var(--mx-ease);
 }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mantine-Group-root,
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mx-topbar-actions,
 html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar-workspace,
 html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-breadcrumb-divider {
   display: none;
@@ -249,10 +249,10 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar:has(.mx-assistant
   height: 66px;
   padding-top: 28px;
 }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mantine-Group-root:has(.mx-assistant-trigger, .mx-tag) {
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar > .mx-topbar-actions:has(.mx-assistant-trigger, .mx-tag) {
   display: flex;
 }
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar .mantine-Group-root > :not(.mx-assistant-trigger, .mx-tag) {
+html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar .mx-topbar-actions > :not(.mx-assistant-trigger, .mx-tag) {
   display: none;
 }
 @media (min-width: 1200px) {
