@@ -19,7 +19,7 @@ export function releasePresentation(result, language) {
     download: desktop.relation !== "older",
     inApp: desktop.relation === "newer" && desktop.in_app === true,
     label: desktop.relation === "same" ? t("重新下载安装包 ↗", "Download the installer again ↗") : downloadLabel,
-    details: t("Apple Silicon · macOS 13 或更新", "Apple Silicon · macOS 13 or later") +
+    details: t(`Apple Silicon · macOS ${desktop.minimum_macos} 或更新`, `Apple Silicon · macOS ${desktop.minimum_macos} or later`) +
       ` · ${(desktop.size / 1048576).toFixed(1)} MB\n` + t("SHA-256：", "SHA-256: ") + desktop.sha256,
   };
 }

@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.68.0] - 2026-11-24
+
+### Changed
+- The macOS App now needs macOS 13.3 or later, whose built-in WebKit matches Safari 16.4. The web interface targets Safari and iOS Safari 16.4 and later and the two latest versions of Chrome and Firefox. Earlier releases already relied on features that macOS 13.0–13.2 cannot run.
+- Installed Apps on every macOS version still find and verify this release. On macOS 13.0–13.2 the updater declines to install it, and those Macs keep their current version. The download panel shows the minimum macOS each release needs.
+
 ## [1.67.9] - 2026-11-23
 
 ### Fixed

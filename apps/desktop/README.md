@@ -1,6 +1,6 @@
 # Trading Max desktop App
 
-The Trading Max App for Apple Silicon Macs.
+The Trading Max App for Apple Silicon Macs (macOS 13.3 or later).
 It can connect to an existing Trading Max HTTPS service in a Tauri 2 / WKWebView
 window, or run the bundled web app and typed API with an explicitly selected
 local workspace. A separate synthetic demo remains available. Connecting to
@@ -146,7 +146,7 @@ Payloads and build output are ignored by Git. The bundle is written to
 `src-tauri/target/release/bundle/macos/Trading Max.app` under this directory.
 Record the runtime provenance and hashes with the final artifact; the package's
 `runtime/build-info.json` records the base application revision and Node checksum.
-Python dependencies use hash-verified wheels for Apple Silicon macOS 13.0,
+Python dependencies use hash-verified wheels for Apple Silicon macOS 13.3,
 regardless of the build Mac's OS. Source builds are disabled so they cannot
 silently introduce a newer deployment target. Before signing and again inside
 the final DMG, every native component is checked for arm64 code, a compatible

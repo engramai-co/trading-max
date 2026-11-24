@@ -60,7 +60,7 @@ class DistributionTests(unittest.TestCase):
             distribution.check_signature(Path("synthetic.app"), app=True)
 
     def test_dmg_contents_are_checked_and_detached_on_failure(self):
-        for fail in [None, "version", "runtime", "arch", "extra-app", "native-os"]:
+        for fail in [None, "version", "macos", "runtime", "arch", "extra-app", "native-os"]:
             with self.subTest(fail=fail), tempfile.TemporaryDirectory() as temporary:
                 dmg = Path(temporary) / "trading-max-v1.11.0-macos-arm64.dmg"
                 dmg.write_bytes(b"synthetic-dmg")
@@ -79,7 +79,7 @@ class DistributionTests(unittest.TestCase):
                                     "CFBundleShortVersionString": "1.10.0"
                                     if fail == "version"
                                     else "1.11.0",
-                                    "LSMinimumSystemVersion": "13.0",
+                                    "LSMinimumSystemVersion": "13.0" if fail == "macos" else "13.3",
                                     "CFBundleExecutable": "synthetic",
                                 }
                             )
@@ -110,6 +110,8 @@ class DistributionTests(unittest.TestCase):
                             distribution.verify(dmg, "1.11.0")
                     else:
                         result = distribution.verify(dmg, "1.11.0")
+                        self.assertEqual(result["minimum_macos"], "13.0")
+                        self.assertEqual(result["minimum_system_version"], "13.3")
                         self.assertEqual(result["asset"]["size"], len(b"synthetic-dmg"))
                         self.assertEqual(len(result["asset"]["sha256"]), 64)
                 self.assertTrue(any("detach" in args for args in commands))
