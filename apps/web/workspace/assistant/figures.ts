@@ -107,7 +107,7 @@ const historicalSources: Record<string, Evidence["source"]> = {
   news:"publisher", filing:"disclosure", rating_change:"analysts", own_trade:"broker",
 };
 
-export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
+export function resolveCalendarField(ref: Evidence, output: Json, pointer: string) {
   if (output.status !== "ok" && output.status !== "partial") return null;
   const savedRow = ref.arguments?.eventId;
   if (savedRow) {
@@ -116,7 +116,12 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
     pointer = pointer.replace(/^\/data\/items\/\d+\//, "/data/items/" + index + "/");
   }
   const field = resolveField(output, pointer);
-  if (!field || field.group !== "items") return null;
+  return field?.group === "items" ? { ...field, pointer } : null;
+}
+
+export function calendarObservation(ref: Evidence, output: Json, pointer: string, locale: Locale, timeZone: string) {
+  const field = resolveCalendarField(ref, output, pointer);
+  if (!field) return null;
   const row = field.parent;
   const kind = citedEventKind(str(row.kind));
   const accountOrMarket = ["own_trade","holiday","half_day"].includes(str(row.kind));
@@ -166,7 +171,7 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
   } else if (accountOrMarket && !(historical && row.kind === "own_trade" && ["buy","sell"].includes(str(row.side)))) {
     const data = object(output.data);
     source = row.kind === "own_trade" ? "broker" : "calendar";
-    Object.assign(args, ref.arguments, {rowCitation:"1",field:pointer,event:str(row.kind),eventId:str(row.evidence_id),
+    Object.assign(args, ref.arguments, {rowCitation:"1",field:field.pointer,event:str(row.kind),eventId:str(row.evidence_id),
       ticker:ticker || "MARKET",eventTicker:str(ref.arguments?.ticker),start:str(data.start),end:str(data.end),
       timezone:str(data.timezone) || timeZone, scope:str(output.scope)});
   } else if (historical) {

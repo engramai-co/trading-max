@@ -350,7 +350,10 @@ test("uncited or invented chat evidence stays out of the transcript and announce
   await page.locator("[data-assistant-trigger]").click();
   await page.locator(".mx-assistant-questions button").first().click();
   const notice = "This reply could not be verified.";
-  await expect(page.locator(".mx-turn-assistant")).toHaveText(notice);
+  const turn = page.locator(".mx-turn-assistant");
+  await expect(turn).toHaveAttribute("data-turn-status", "failed");
+  await expect(turn.getByText(notice, { exact: true })).toBeVisible();
+  await expect(turn.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
   await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText(notice);
   await expect(page.locator("#mx-assistant-panel")).not.toContainText("Invented fact");
 });
@@ -511,6 +514,16 @@ test("earnings citations reopen the exact retained row and disclose expiry", asy
   await link.click();
   const target = page.locator("[data-reading-event]");
   await expect(target).toContainText("2026-02-04 – 2026-02-06");
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator(".mx-assistant-scope")).toContainText("SYNT · Estimates · Earnings");
+  const composer = page.getByRole("textbox", {name:"Message"});
+  await composer.fill("How should I read this release?");
+  const submitted = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await submitted).postDataJSON().context).toMatchObject({
+    page:"research", ticker:"SYNT", lens:"analyst", snapshotId:"saved",
+    observation:{kind:"earnings", evidenceId:"ev_window", date:"2026-02-04", end:"2026-02-06"},
+  });
   const shots = process.env.ASSISTANT_SCREENSHOTS;
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-retained-earnings.png")});
   expired = true;
@@ -1214,6 +1227,17 @@ test("a Broker citation opens the retained decision and reports expiry", async (
   await expect(page).toHaveURL(url => url.pathname === "/review" && url.searchParams.get("snapshotId") === snapshot);
   await expect.poll(() => requests[0]).toBe(snapshot);
   await expect(page.locator(".mx-decision-focus")).toContainText("Original synthetic fill");
+  if (!await page.locator(".mx-assistant-scope").isVisible()) await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator(".mx-assistant-scope")).toContainText("Trade decision");
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  await draft.fill("Explain this trade");
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await draft.press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({
+    page:"review", scope:"invest", ticker:trade.ticker, snapshotId:snapshot,
+    observation:{kind:"decision", date:trade.date, side:trade.side, ordinal:0},
+  });
   for (const outcome of ["missing", "expired"] as const) {
     state = outcome;
     await page.reload();
@@ -1279,4 +1303,532 @@ test("first approval focuses the lazy composer after the opening consent check",
   await expect(draft).toBeFocused();
   await page.keyboard.type("First message");
   await expect(draft).toHaveValue("First message");
+});
+
+test("handoff scope pill and past user turns keep their resolved context", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({
+    json:[{id:"mixed", title:"Saved context check"}],
+  }));
+  await page.route("**/api/backend/assistant/conversations/mixed", route => route.fulfill({
+    json:{
+      id:"mixed",
+      messages:[
+        {id:"legacy-u", role:"user", parts:[{type:"text", text:"Older question without context"}]},
+        {id:"scoped-u", role:"user", metadata:{turnContext:{page:"analytics", scope:"isa", range:"3M", snapshotId:"synthetic"}},
+          parts:[{type:"text", text:"Scoped ISA question"}]},
+      ],
+    },
+  }));
+  await page.goto("/?scope=isa&range=1M");
+  const digest = page.locator(".mx-digest");
+  await expect(digest).toContainText("全部投资账户");
+  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-reading-actions button").first().click();
+
+  const scopePill = page.locator(".mx-assistant-scope");
+  await expect(scopePill).toHaveText("日报 · 全部投资账户 · 1D");
+  const input = page.locator(".mx-assistant-composer textarea");
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await input.press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({page:"overview", role:"daily", scope:"broker_total", range:"1D"});
+  await expect(page.locator(".mx-turn-user .mx-assistant-turn-context").first()).toHaveText("日报 · 全部投资账户 · 1D");
+
+  await page.goto("/analytics?scope=isa&range=3M");
+  await page.locator("[data-assistant-trigger]").click();
+  await expect(page.locator(".mx-assistant-scope")).toHaveText("收益与风险 · ISA · 3M");
+  await page.locator(".mx-assistant-composer textarea").fill("ISA 区间表现如何？");
+  await page.locator(".mx-assistant-composer textarea").press("Enter");
+  await expect(page.locator(".mx-turn-user .mx-assistant-turn-context").first()).toHaveText("收益与风险 · ISA · 3M");
+
+  await page.getByRole("button", {name:"历史对话"}).click();
+  await page.getByRole("button", {name:"Saved context check", exact:true}).click();
+  const turns = page.locator(".mx-turn-user");
+  await expect(turns).toHaveCount(2);
+  await expect(turns.nth(0)).toHaveText("Older question without context");
+  await expect(turns.nth(0).locator(".mx-assistant-turn-context")).toHaveCount(0);
+  await expect(turns.nth(1).locator(".mx-assistant-turn-context")).toHaveText("收益与风险 · ISA · 3M");
+});
+
+type HeldChatPage = typeof window & {
+  pushHeldChat: (chunks: unknown[], finish: boolean) => void;
+};
+
+async function holdNextChatStream(page: Page, snapshotId?: string) {
+  await page.addInitScript(snapshotId => {
+    const originalFetch = window.fetch.bind(window);
+    const encoder = new TextEncoder();
+    const pending: Uint8Array[] = [];
+    let intercepted = false;
+    let finished = false;
+    let controller: ReadableStreamDefaultController<Uint8Array> | undefined;
+    (window as HeldChatPage).pushHeldChat = (chunks, finish) => {
+      const data = chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("")
+        + (finish ? "data: [DONE]\n\n" : "");
+      finished = finish;
+      const bytes = encoder.encode(data);
+      if (!controller) {
+        pending.push(bytes);
+        return;
+      }
+      try {
+        controller.enqueue(bytes);
+        if (finish) controller.close();
+      } catch {
+        // The client can cancel while the mock's sender still has events.
+      }
+    };
+    window.fetch = (input, init) => {
+      const url = new URL(input instanceof Request ? input.url : String(input), location.href);
+      if (intercepted || !url.pathname.endsWith("/assistant/chat")) return originalFetch(input, init);
+      intercepted = true;
+      const stream = new ReadableStream<Uint8Array>({
+        start(sink) {
+          controller = sink;
+          pending.forEach(chunk => sink.enqueue(chunk));
+          if (finished) sink.close();
+        },
+      });
+      return Promise.resolve(new Response(stream, {
+        headers: { "content-type": "text/event-stream", "x-vercel-ai-ui-message-stream": "v1",
+          ...(snapshotId ? { "x-assistant-snapshot-id": snapshotId } : {}) },
+      }));
+    };
+  }, snapshotId);
+  return (chunks: unknown[], finish = false) => page.evaluate(
+    ({ chunks, finish }) => (window as HeldChatPage).pushHeldChat(chunks, finish), { chunks, finish },
+  );
+}
+
+test("Analytics sends the displayed range, custom dates and saved benchmark", async ({page}) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-performance-benchmark", "QQQ"));
+  await fixtures(page);
+  for (const custom of [false, true]) {
+    const dates = custom ? "&returnFrom=2026-01-06&returnTo=2026-01-20" : "";
+    await page.goto("/analytics?view=returns&scope=isa&range=1D" + dates);
+    await page.locator("[data-assistant-trigger]").click();
+    const pill = page.locator(".mx-assistant-scope");
+    await expect(pill).toContainText("ISA");
+    await expect(pill).toContainText("QQQ");
+    await expect(pill).not.toContainText("1D");
+    if (custom) {
+      await expect(pill).toContainText(formatCalendarDate("2026-01-06", "zh"));
+      await expect(pill).toContainText(formatCalendarDate("2026-01-20", "zh"));
+    } else {
+      await expect(pill).toContainText("3M");
+    }
+    const composer = page.getByRole("textbox", {name:"消息"});
+    await composer.fill("How did this period compare?");
+    const request = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    const body = (await request).postDataJSON();
+    expect(body.context).toMatchObject(custom
+      ? {page:"analytics", scope:"isa", range:"ALL", start:"2026-01-06", end:"2026-01-20", benchmark:"QQQ"}
+      : {page:"analytics", scope:"isa", range:"3M", benchmark:"QQQ"});
+    await expect(page.locator(".mx-assistant-turn-context")).toHaveText(await pill.innerText());
+  }
+});
+
+test("Holdings uses its displayed account and look-through stays combined", async ({page}) => {
+  await fixtures(page);
+  for (const lookThrough of [false, true]) {
+    await page.goto("/holdings?account=A&scope=isa&range=3M" + (lookThrough ? "&view=lookthrough" : ""));
+    await page.locator("[data-assistant-trigger]").click();
+    const pill = page.locator(".mx-assistant-scope");
+    await expect(pill).toHaveText("持仓与穿透 · " + (lookThrough ? "全部投资账户" : "投资账户"));
+  }
+});
+
+test("opening an ISA holding from all accounts sends that row's scope and ticker", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/dashboard/lens/holdings-positions*", route => {
+    const lens = backendFixture(new URL(route.request().url())) as DashboardLens;
+    const holding = lens.holdings?.[0];
+    return route.fulfill({json:{...lens, holdings:[
+      {...holding, account:"A", name:"Synthetic Invest position"},
+      {...holding, account:"B", name:"Synthetic ISA position"},
+    ]}});
+  });
+  await page.goto("/holdings");
+  await page.getByRole("button", {name:/Synthetic ISA position/}).click();
+  await expect(page.locator(".mx-position-drawer")).toBeVisible();
+  await page.keyboard.press("Control+j");
+  await expect(page.locator(".mx-assistant-scope")).toHaveText("持仓与穿透 · SYNT · ISA");
+  const composer = page.locator(".mx-assistant-composer textarea");
+  await composer.fill("What do I hold here?");
+  const submitted = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await submitted).postDataJSON().context).toMatchObject({
+    page:"holdings", ticker:"SYNT", scope:"isa", snapshotId:"synthetic-loading",
+  });
+  await page.keyboard.press("Control+j");
+  await page.getByRole("button", {name:"关闭持仓明细", exact:true}).click();
+  await page.keyboard.press("Control+j");
+  await expect(page.locator(".mx-assistant-scope")).toHaveText("持仓与穿透 · 全部投资账户");
+});
+
+test("Review binds the Habits card question and uses the focused trade for typed chat", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/assistant/chat*", route =>
+    route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}}));
+  await page.route("**/api/backend/dashboard/lens/account-analysis?**", route => {
+    const trade = {date:"2026-02-03", ticker:"SYNT", side:"buy", kind:"B", amountGbp:125, observedDays:2, events:[]};
+    return route.fulfill({json:{runId:"retained-review", accounts:[],holdings:[],nav:[],
+      selectedAccountDecisions:{status:"available", decisions:[
+        {...trade, name:"First synthetic listing"}, {...trade, name:"Second synthetic listing"},
+      ]}}});
+  });
+  await page.goto("/review?account=A&decision=2026-02-03.buy.SYNT&reviewOrdinal=1&snapshotId=retained-review");
+  await expect(page.locator(".mx-decision-focus")).toContainText("Second synthetic listing");
+  await page.locator("[data-assistant-trigger]").click();
+  const opening = page.locator(".mx-assistant-opening");
+  await expect(opening.getByRole("heading")).toContainText("习惯");
+  const suggested = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await opening.getByRole("button", {name:/这个习惯出现过多少次/}).click();
+  const {context} = (await suggested).postDataJSON();
+  expect(context).toMatchObject({page:"review", role:"habits", scope:"invest", snapshotId:"retained-review",
+    object:{scope:"invest"}});
+  expect(context).not.toHaveProperty("observation");
+  await expect(page.locator(".mx-turn-assistant")).toHaveAttribute("data-turn-status", "rate_limited");
+  const composer = page.getByRole("textbox", {name:"消息"});
+  await composer.fill("Why did this fill move?");
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({
+    page:"review", scope:"invest", ticker:"SYNT", snapshotId:"retained-review",
+    observation:{kind:"decision", date:"2026-02-03", side:"buy", ordinal:1},
+  });
+});
+
+test("look-through chat keeps the open drawer publication and follows later selections", async ({page, isMobile}) => {
+  test.skip(isMobile, "The phone opens the reading sheet instead of the persistent drawer.");
+  await fixtures(page);
+  let refreshed = false;
+  const publication = () => refreshed ? "fresh-exposure" : "retained-exposure";
+  await page.route("**/api/backend/health", route => route.fulfill({
+    json:{service:"trading_max-api", status:"ok", latestRunId:publication()},
+  }));
+  await page.route("**/api/backend/dashboard/lens/holdings-lookthrough*", route => {
+    const lens = backendFixture(new URL(route.request().url())) as DashboardLens;
+    const lookthrough = lens.lookthrough!;
+    return route.fulfill({json:{...lens, runId:publication(),
+      lookthrough:{...lookthrough, positions:[{...lookthrough.positions[0],
+        name: refreshed ? "Updated exposure" : "Original exposure",
+        valueGbp: refreshed ? 900 : 200,
+      }, {...lookthrough.positions[1], name:"Second exposure"}]},
+    }});
+  });
+  await page.goto("/holdings?view=lookthrough");
+  const composer = page.locator(".mx-assistant-composer textarea");
+  await page.keyboard.press("Control+j");
+  await expect(composer).toBeVisible();
+  await page.keyboard.press("Control+j");
+  await expect(composer).toBeHidden();
+  await page.locator(".mx-table-button", {hasText:"Original exposure"}).click();
+  await expect(page.getByRole("dialog")).toContainText("Original exposure");
+  refreshed = true;
+  await page.clock.setFixedTime(new Date(Date.now() + 60_000));
+  await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
+  await expect(page.locator(".mx-table-button", {hasText:"Updated exposure"})).toHaveCount(1);
+  await expect(page.getByRole("dialog")).toContainText("Original exposure");
+  await page.keyboard.press("Control+j");
+  await expect(page.locator(".mx-assistant-scope")).toContainText("敞口 · SYNT");
+  await composer.fill("What is this exposure?");
+  const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await sent).postDataJSON().context).toMatchObject({
+    page:"holdings", scope:"broker_total", role:"exposure", snapshotId:"retained-exposure",
+    object:{dimension:"company", category:"SYNT", entityId:"SYNT"},
+  });
+  await expect(page.locator(".mx-assistant-turn-context").first()).toContainText("敞口 · SYNT");
+  await page.getByRole("dialog").getByRole("button", {name:"Close panel"}).click();
+  const pill = page.locator(".mx-assistant-scope");
+  await expect(pill).toHaveText("持仓与穿透 · 全部投资账户");
+  await composer.fill("What is my total exposure?");
+  await expect(page.getByRole("button", {name:"发送", exact:true})).toBeEnabled();
+  const closed = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await closed).postDataJSON().context).toEqual({
+    page:"holdings", scope:"broker_total", snapshotId:"fresh-exposure", timezone:expect.any(String),
+  });
+
+  await page.locator(".mx-table-button", {hasText:"Second exposure"}).click();
+  await expect(page.getByRole("dialog")).toContainText("Second exposure");
+  await expect(pill).toContainText("敞口 · SYN1");
+  await composer.fill("What is the second exposure?");
+  await expect(page.getByRole("button", {name:"发送", exact:true})).toBeEnabled();
+  const next = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  expect((await next).postDataJSON().context).toMatchObject({
+    page:"holdings", scope:"broker_total", role:"exposure", snapshotId:"fresh-exposure",
+    object:{dimension:"company", category:"SYN1", entityId:"SYN1"},
+  });
+  await expect(page.locator(".mx-assistant-turn-context")).toHaveText([
+    "敞口 · SYNT · 全部投资账户", "持仓与穿透 · 全部投资账户", "敞口 · SYN1 · 全部投资账户",
+  ]);
+  await expect(page).toHaveURL(/\/holdings\?view=lookthrough$/);
+});
+
+test("Markets keeps market context for an open sector on fresh and stale boards", async ({page,isMobile}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/assistant/roles/market-sector/reading", route =>
+    route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result", reading:{
+      role:"market-sector", snapshotId:"synthetic-sector", version:"synthetic-sector", asOf:"2026-02-03T16:00:00Z",
+      lines:[line("market","market","market_sector","板块上涨 1.2%。","The sector rose 1.2%.")],
+    }}) + "\n"}));
+  let stale = false;
+  const sector = {move:0.012, contribution:0.004, ranks:[], intraday:[], groups:[], holdings:[]};
+  await page.route("**/api/backend/indices/global-sectors", route => route.fulfill({json:{
+    phase:"completed", referenceDate:"2026-02-03", asOf:"2026-02-03T16:00:00Z",
+    acwiMove:0.012, acwiLevel:1000, weightsAsOf:"2026-02-02", weightsStale:false, pricesStale:stale, rankSessions:[],
+    sectors:[{...sector, gics:"45", name:"Information Technology", weight:0.3, indexCode:100}],
+  }}));
+  for (const isStale of [false, true]) {
+    stale = isStale;
+    await page.goto("/sectors?market=global&view=sectors&sector=45");
+    await expect(page.locator(".mx-sector-detail")).toBeVisible();
+    if (isMobile && !isStale) await expect(page.locator(".mx-reading-sheet")).toBeVisible();
+    await page.keyboard.press("Control+j");
+    if (!isStale) await expect(page.locator(".mx-assistant-opening .mx-reading-line")).toContainText("板块上涨 1.2%。");
+    const composer = page.locator(".mx-assistant-composer textarea");
+    await composer.fill("How is this market doing?");
+    const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    expect((await sent).postDataJSON().context).toEqual({page:"sectors", market:"global", timezone:expect.any(String)});
+  }
+});
+
+test("Markets index charts send the same market context in local currency and GBP", async ({page}) => {
+  await fixtures(page);
+  const index = {id:"synthetic-index", name:"Synthetic Index", nameZh:"Synthetic Index", symbol:"^SYNT",
+    scope:"us", kind:"index", currency:"USD", ranges:["1Y"], aliases:[], basis:"price"};
+  await page.route("**/api/backend/indices/catalog", route => route.fulfill({json:[index]}));
+  await page.route("**/api/backend/indices/synthetic-index/history?*", route => {
+    const gbp = new URL(route.request().url()).searchParams.get("currency") === "GBP";
+    return route.fulfill({json:{index, range:"1Y", currency:gbp ? "GBP" : "USD", state:"available", gaps:[],
+      points:[{at:"2026-01-15T00:00:00Z", value:100}, {at:"2026-01-30T00:00:00Z", value:gbp ? 110 : 120}],
+    }});
+  });
+  for (const currency of ["local", "GBP"]) {
+    await page.goto("/sectors?market=us&index=synthetic-index&currency=" + currency);
+    await expect(page.locator(".mx-index-history").getByRole("heading")).toHaveText("Synthetic Index");
+    await expect(page.locator(".mx-index-history .mx-chart-readout-latest strong")).toHaveText(currency === "GBP" ? "110.00" : "120.00");
+    await page.locator("[data-assistant-trigger]").click();
+    const composer = page.locator(".mx-assistant-composer textarea");
+    await composer.fill("How is this index doing?");
+    const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
+    await composer.press("Enter");
+    expect((await sent).postDataJSON().context).toEqual({page:"sectors", market:"us", timezone:expect.any(String)});
+  }
+});
+
+test("current-data recovery keeps expired observations on the original turn", async ({page}) => {
+  await fixtures(page);
+  const push = await holdNextChatStream(page, "synthetic-pruned");
+  const retryIds: string[] = [];
+  await page.route("**/api/backend/assistant/chat*", route => {
+    const {context, messages} = route.request().postDataJSON();
+    retryIds.push(messages[0].id);
+    expect(context).toMatchObject({page:"analytics", scope:"isa", range:"3M"});
+    if (retryIds.length === 1) {
+      expect(context.snapshotId).toBe("synthetic-pruned");
+      return route.fulfill({status:404, json:{detail:{code:"assistant_snapshot_missing"}}});
+    }
+    if (retryIds.length === 2) {
+      expect(context).not.toHaveProperty("snapshotId");
+      return route.fulfill({
+        headers:{"content-type":"text/event-stream", "x-vercel-ai-ui-message-stream":"v1", "x-assistant-snapshot-id":"synthetic-current"},
+        body:'data: {"type":"error","errorText":"assistant_unavailable"}\n\n',
+      });
+    }
+    expect(context.snapshotId).toBe("synthetic-current");
+    return route.fallback();
+  });
+  await page.goto("/analytics?scope=isa&range=3M");
+  await page.locator("[data-assistant-trigger]").click();
+  const composer = page.getByRole("textbox", {name:"消息"});
+  await composer.fill("What was the P&L?");
+  await composer.press("Enter");
+  const stop = page.getByRole("button", {name:"停止", exact:true});
+  await expect(stop).toBeVisible();
+  await push([
+    {type:"start", messageId:"held"},
+    {type:"tool-input-available", toolCallId:"p", toolName:"period_performance", input:{}},
+    {type:"tool-output-available", toolCallId:"p", output:{evidence_id:"ev_old", status:"ok", scope:"isa",
+      data:{period_pnl_gbp:88.88, window_start:"2026-11-12", window_end:"2026-11-13"}}},
+    {type:"text-start", id:"t"},
+    {type:"text-delta", id:"t", delta:"{{/data/period_pnl_gbp}} [ev_old]"},
+    {type:"tool-input-available", toolCallId:"q", toolName:"portfolio_overview", input:{}},
+  ]);
+  await expect(page.locator(".mx-assistant-work")).toContainText("读取账户记录");
+  await stop.click();
+  const turns = page.locator(".mx-turn-assistant");
+  const turn = turns.first();
+  await turn.getByRole("button", {name:"重试", exact:true}).click();
+  await expect(turn).toHaveAttribute("data-turn-status", "failed");
+  await expect(turn.getByText("原始数据已不可用。", {exact:true})).toBeVisible();
+  await expect(turn).toContainText("£88.88");
+  await expect(turn.locator(".mx-assistant-turn-actions button")).toHaveCount(1);
+  await turn.getByRole("button", {name:"使用当前数据重新提问", exact:true}).click();
+  await expect(turns).toHaveCount(2);
+  const current = turns.nth(1);
+  await expect(current).toHaveAttribute("data-turn-status", "failed");
+  await expect(current).not.toContainText("£88.88");
+  await expect(turn).toContainText("£88.88");
+  await current.getByRole("button", {name:"重试", exact:true}).click();
+  await expect(current).toHaveAttribute("data-turn-status", "completed");
+  await expect(current).toContainText("£21.50");
+  expect(retryIds[0]).not.toBe(retryIds[1]);
+  expect(retryIds[1]).toBe(retryIds[2]);
+});
+
+test("stop keeps a typed draft, preserves verified content, ignores late events and supports Retry", async ({page}) => {
+  await fixtures(page);
+  const push = await holdNextChatStream(page, "synthetic-original");
+  let routeAttempt = 0;
+  const retryContexts: unknown[] = [];
+  await page.route("**/api/backend/assistant/chat*", route => {
+    routeAttempt++;
+    const body = route.request().postDataJSON();
+    retryContexts.push(body.context);
+    if (routeAttempt === 1) {
+      return route.fulfill({status:429, json:{detail:{code:"provider_rate_limited"}}});
+    }
+    if (routeAttempt === 2) {
+      const chunks = [
+        {type:"start", messageId:"one-line"}, {type:"start-step"},
+        {type:"tool-input-available", toolCallId:"p", toolName:"period_performance", input:{}},
+        {type:"tool-output-available", toolCallId:"p", output:{evidence_id:"ev_new", status:"ok", scope:"isa",
+          data:{period_pnl_gbp:99.99, window_start:"2026-11-12", window_end:"2026-11-13"}}},
+        {type:"text-start", id:"t"}, {type:"text-delta", id:"t", delta:"{{/data/period_pnl_gbp}} [ev_new]"},
+      ];
+      return route.fulfill({
+        headers:{"content-type":"text/event-stream", "x-vercel-ai-ui-message-stream":"v1"},
+        body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join(""),
+      });
+    }
+    return route.fallback();
+  });
+
+  await page.goto("/analytics?scope=isa&range=3M");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  await input.fill("查看 ISA 三个月净盈亏");
+  await input.press("Enter");
+  await expect(page.getByRole("button", {name:"停止", exact:true})).toBeVisible();
+
+  await push([
+    {type:"start", messageId:"held"},
+    {type:"start-step"},
+    {type:"tool-input-available", toolCallId:"p", toolName:"period_performance", input:{}},
+    {type:"tool-output-available", toolCallId:"p", output:{evidence_id:"ev_period", status:"ok", scope:"isa",
+      data:{period_pnl_gbp:21.5, window_start:"2026-11-12", window_end:"2026-11-13"}}},
+    {type:"text-start", id:"t1"},
+    {type:"text-delta", id:"t1", delta:"{{/data/period_pnl_gbp}} [ev_period]\n{{partial-token"},
+    {type:"tool-input-available", toolCallId:"o", toolName:"portfolio_overview", input:{}},
+  ]);
+
+  await expect(page.locator(".mx-assistant-work")).toContainText("核对区间收益");
+  await expect(page.locator(".mx-assistant-work")).toContainText("读取账户记录");
+  await expect(page.locator(".mx-turn-assistant .mx-reading-line")).toHaveCount(0);
+
+  await input.fill("下一条草稿不要被覆盖");
+  await page.getByRole("button", {name:"停止", exact:true}).click();
+
+  await push([
+    {type:"text-delta", id:"t1", delta:"\nLATE_STREAM_CHUNK"},
+    {type:"finish", finishReason:"stop"},
+  ], true);
+
+  await expect(input).toHaveValue("下一条草稿不要被覆盖");
+  const turn = page.locator(".mx-turn-assistant").first();
+  await expect(turn).toHaveAttribute("data-turn-status", "stopped");
+  await expect(turn).toContainText("已停止");
+  await expect(turn).toContainText("本期净盈亏 £21.50");
+  await expect(turn).not.toContainText("LATE_STREAM_CHUNK");
+  await expect(turn).not.toContainText("partial-token");
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("已停止生成。");
+
+  await turn.getByRole("button", {name:"重试", exact:true}).click();
+  await expect(turn).toHaveAttribute("data-turn-status", "rate_limited");
+  await expect(turn).toContainText("服务繁忙，稍后重试。");
+  await expect(turn).toContainText("本期净盈亏 £21.50");
+  await expect(input).toHaveValue("下一条草稿不要被覆盖");
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("服务繁忙，稍后重试。");
+
+  await turn.getByRole("button", {name:"重试", exact:true}).click();
+  await expect(turn).toHaveAttribute("data-turn-status", "disconnected");
+  await expect(turn).toContainText("本期净盈亏 £21.50");
+  await expect(turn).not.toContainText("£99.99");
+
+  await turn.getByRole("button", {name:"重试", exact:true}).click();
+  await expect(turn).toHaveAttribute("data-turn-status", "completed");
+  await expect(turn).toContainText("本期净盈亏 £21.50");
+  await expect(input).toHaveValue("下一条草稿不要被覆盖");
+  expect(retryContexts).toHaveLength(3);
+  for (const ctx of retryContexts) {
+    expect(ctx).toMatchObject({page:"analytics", scope:"isa", range:"3M", snapshotId:"synthetic-original"});
+  }
+});
+
+test("visible step labels stream live and collapse into the work disclosure", async ({page}) => {
+  await fixtures(page);
+  const push = await holdNextChatStream(page);
+
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const input = page.locator(".mx-assistant-composer textarea");
+  await input.fill("核对账户和区间收益");
+  await input.press("Enter");
+  await expect(page.getByRole("button", {name:"停止", exact:true})).toBeVisible();
+
+  await push([
+    {type:"start", messageId:"steps"},
+    {type:"start-step"},
+    {type:"tool-input-available", toolCallId:"s1", toolName:"portfolio_overview", input:{args:{scope:"broker_total"}}},
+  ]);
+
+  const liveWork = page.locator(".mx-assistant-work");
+  await expect(liveWork).toContainText("读取账户记录");
+  await expect(liveWork).toContainText("进行中");
+  await expect(page.locator("#mx-assistant-panel")).not.toContainText("portfolio_overview");
+
+  await push([
+    {type:"tool-output-available", toolCallId:"s1", output:{evidence_id:"ev_ov", status:"ok", data:{total_value_gbp:1200}}},
+    {type:"tool-input-available", toolCallId:"s2", toolName:"period_performance", input:{}},
+    {type:"tool-output-available", toolCallId:"s2", output:{evidence_id:"ev_pp", status:"ok",
+      data:{period_pnl_gbp:21.5, window_start:"2026-11-12", window_end:"2026-11-13"}}},
+    {type:"tool-input-available", toolCallId:"s3", toolName:"compare_benchmarks", input:{}},
+    {type:"tool-output-available", toolCallId:"s3", output:{evidence_id:"ev_bm", status:"unavailable"}},
+  ]);
+  await expect(liveWork.locator("[data-step-status=complete]")).toHaveCount(2);
+  await expect(liveWork.locator("[data-step-status=unavailable]")).toContainText("对比基准回报");
+  await expect(liveWork.locator("[data-step-status=unavailable]")).toContainText("暂不可用");
+
+  await push([
+    {type:"text-start", id:"t1"},
+    {type:"text-delta", id:"t1", delta:"{{/data/period_pnl_gbp}} [ev_pp]\n{{cash-flows}} [inference]"},
+    {type:"text-end", id:"t1"},
+    {type:"finish-step"},
+    {type:"finish", finishReason:"stop"},
+  ], true);
+
+  await expect(liveWork).toHaveCount(0);
+  const disclosure = page.locator(".mx-turn-assistant details.mx-assistant-steps");
+  await expect(disclosure).toBeVisible();
+  await expect(disclosure).not.toHaveAttribute("open", "");
+  await expect(disclosure.locator("summary")).toHaveText("工作过程");
+  await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
+
+  await disclosure.locator("summary").click();
+  await expect(disclosure).toHaveAttribute("open", "");
+  await expect(disclosure).toContainText("读取账户记录");
+  await expect(disclosure).toContainText("核对区间收益");
+  await expect(disclosure).toContainText("对比基准回报");
+  await expect(disclosure).toContainText("已完成");
+  await expect(disclosure).toContainText("暂不可用");
+  await expect(page.locator("#mx-assistant-panel")).not.toContainText("period_performance");
+  await expect(page.locator("#mx-assistant-panel")).not.toContainText("compare_benchmarks");
+  await expect(page.locator("#mx-assistant-panel")).not.toContainText("period_pnl_gbp");
+  expect((await new AxeBuilder({page}).include("#mx-assistant-panel").analyze()).violations).toEqual([]);
 });

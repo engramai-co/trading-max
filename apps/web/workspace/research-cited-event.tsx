@@ -10,6 +10,7 @@ import type { components } from "@/lib/api-schema";
 import { formatDateTimeInTimeZone } from "@/ui/formatters";
 import { readApi, safeUrl } from "./data";
 import { Empty, LoadingStatus, Page, Panel, useCopy } from "./foundation";
+import { useAssistantPageContext } from "./assistant/context";
 import { useRouteState } from "./route-state";
 
 type PublishedEvent = components["schemas"]["CitedHoldingEvent"];
@@ -48,6 +49,18 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
     },
   });
   const row = !result.isFetching && !result.isError && result.data;
+  const day = /^\d{4}-\d{2}-\d{2}$/;
+  const chatRow = row && day.test(row.date) && (!row.end_date || day.test(row.end_date)) ? row : null;
+  useAssistantPageContext({
+    page: "research",
+    ticker: chatRow?.ticker ?? undefined,
+    lens: chatRow && (chatRow.kind === "earnings" || chatRow.kind === "rating_change") ? "analyst" : undefined,
+    snapshotId: chatRow ? snapshot : undefined,
+    observation: chatRow ? {
+      kind: chatRow.kind, evidenceId: chatRow.evidence_id, date: chatRow.date,
+      end: chatRow.end_date ?? undefined, instant: chatRow.instant ?? undefined,
+    } : undefined,
+  });
   const details = row && kind === "dividend" ? [
     dividendAmount(row.amount, row.currency, row.unit, locale) ?? t("每股金额暂无数据","Amount per share unavailable"),
     dividendBasis(row.basis, locale),

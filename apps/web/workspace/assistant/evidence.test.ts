@@ -39,7 +39,7 @@ describe("assistant evidence routing", () => {
     expect(messageEvidence(turns[0]).has("ev_test")).toBe(true);
     expect(messageEvidence(turns[2]).size).toBe(0);
     expect(messageEvidence(message).get("ev_test")?.source).toBe("technical");
-    expect(chatContext("holdings","q=untrusted&account=A","Europe/London")).toEqual({page:"holdings",scope:"invest",timezone:"Europe/London"});
+    expect(chatContext("holdings", "", "Europe/London", { page: "holdings", scope: "invest" })).toEqual({page:"holdings",scope:"invest",timezone:"Europe/London"});
   });
 });
 
@@ -157,7 +157,7 @@ it("keeps the selected research lens, object and evidence destination", () => {
     arguments: { ticker: "SYNT.L", date: "2026-02-03", lens: "technical" } };
   const link = new URL(evidenceHref(evidence)!, "https://example.invalid");
   expect(Object.fromEntries(link.searchParams)).toMatchObject({ ticker: "SYNT.L", view: "technical", eventDate: "2026-02-03", interval: "1d", unavailable:"1" });
-  expect(chatContext("research","type=index&index=sample&ticker=%5ETEST&view=price&scope=broker_total","Europe/London"))
+  expect(chatContext("research", "scope=broker_total", "Europe/London", undefined, { ticker: "^TEST", lens: "technical" }))
     .toMatchObject({ page: "research", ticker: "^TEST", lens: "technical", scope: "broker_total" });
   const story = { ...evidence, tool: "research_headline", source: "publisher" as const, arguments: {ticker:"SYNT",url:"https://example.invalid/news"} };
   expect(evidenceHref(story)).toBe(story.arguments.url);

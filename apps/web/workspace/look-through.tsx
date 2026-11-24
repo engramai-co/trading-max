@@ -61,7 +61,7 @@ import {
 } from "./look-through-data";
 import { SecurityPeek } from "./security-peek";
 import { PageInspection } from "./assistant/inspection-entry";
-import { useAssistant } from "./assistant/context";
+import { useAssistant, useAssistantPageContext } from "./assistant/context";
 import { useSearchParams } from "next/navigation";
 import { Narrative } from "./narrative";
 
@@ -416,6 +416,7 @@ export function Lookthrough() {
   const cited = params?.get("evidence") && params.get("snapshotId") || undefined;
   const query = useDashboardLens("holdings-lookthrough", undefined, true, cited ? {detail:"summary"} : undefined, cited);
   const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
+  useAssistantPageContext({ page: "holdings", scope: "broker_total" }, !query.data?.lookthrough || Boolean(cited && query.isError));
   return query.isPending ? (
     <Pending shape="holdings" label={t("正在读取穿透持仓…", "Loading look-through holdings…")} />
   ) : cited && query.isError ? (
@@ -450,21 +451,26 @@ function Exposure({
     const matches = data.positions.filter(p => entity ? p.entityId === entity : (p.isin || p.ticker || p.name) === category);
     return matches.length === 1 ? matches[0] : null;
   }, [data.positions,linkedDimension,params]);
-  const [choice, setChoice] = useState<{category: string; name:string; entityId?:string; group?: AllocationSlice["group"]} | null>(() => {
+  const [choice, setChoice] = useState<{category: string; name:string; entityId?:string; group?: AllocationSlice["group"]; snapshotId?: string} | null>(() => {
     const category=params?.get("category");
     const group=params?.get("group");
     if (!category || !dimensionsByKey[linkedDimension]) return null;
     // A cited category arrives as its source name; the card titles it as the page lists it.
     const name = linkedCompany?.name ?? (linkedDimension === "country" ? countryName(category, locale)
       : linkedDimension === "company" ? category : industryName(category, locale));
-    return {category,name,entityId:params?.get("entityId") ?? undefined,...(group==="tail" || group==="unresolved" ? {group} : {})};
+    return {category,name,entityId:params?.get("entityId") ?? undefined, snapshotId: linkedCompany ? snapshot : undefined,
+      ...(group==="tail" || group==="unresolved" ? {group} : {})};
   });
   const [view, setView] = useState<
     "companies" | "countries" | "sectors" | "gics" | "sources"
   >(dimensionsByKey[linkedDimension] ?? "companies");
   const [search, setSearch] = useState("");
   const [country, setCountry] = useState("all");
-  const [selected, setSelected] = useState<LookthroughPosition | null>(linkedCompany);
+  const [selection, setSelection] = useState(() => linkedCompany ? { position: linkedCompany, snapshotId: snapshot } : null);
+  const selected = selection?.position;
+  useAssistantPageContext({
+    page: "holdings", scope: "broker_total", ticker: selected?.ticker ?? undefined, snapshotId: selection?.snapshotId ?? snapshot,
+  });
   // The first row shown, so a page-size change keeps the same rows in view.
   const [start, setStart] = useState(0);
   const [showAll, setShowAll] = useState(false);
@@ -559,26 +565,28 @@ function Exposure({
     [view, countryAllocation, data.gicsSubIndustryAllocation, data.industryAllocation],
   );
   const inspect = useCallback(
-    (row: Pick<AllocationSlice, "name" | "category" | "group" | "entityId">) =>
+    (row: Pick<AllocationSlice, "name" | "category" | "group" | "entityId">, snapshotId?: string) =>
       setChoice(
         row.category
-          ? { name: row.name, category: row.category, entityId: row.entityId, group: row.group }
+          ? { name: row.name, category: row.category, entityId: row.entityId, group: row.group, snapshotId }
           : null,
       ),
     [],
   );
+  const inspectPosition = useCallback(
+    (position: LookthroughPosition, snapshotId: string) => inspect({
+      name: position.name,
+      entityId: position.entityId || undefined,
+      category: position.isin || position.ticker || position.name,
+    }, snapshotId),
+    [inspect],
+  );
   const selectPosition = useCallback(
-    (p: LookthroughPosition) => {
-      setSelected(p);
-      if (ready) {
-        inspect({
-          name: p.name,
-          entityId: p.entityId || undefined,
-          category: p.isin || p.ticker || p.name,
-        });
-      }
+    (position: LookthroughPosition) => {
+      setSelection({ position, snapshotId: snapshot });
+      if (ready) inspectPosition(position, snapshot);
     },
-    [ready, inspect],
+    [ready, inspectPosition, snapshot],
   );
   if (!data.available)
     return (
@@ -616,7 +624,7 @@ function Exposure({
     return <Empty title={t("引用的基准权重记录暂不可用","Cited benchmark weight unavailable")} />;
   }
   const role = <PageInspection role="exposure" object={choice?.name ?? t("穿透配置","Look-through allocation")}
-    context={choice ? {dimension,category:choice.category,...(citedWeight && source && asOf && observation ? {citedBenchmark:source,citedBenchmarkAsOf:asOf,citedBenchmarkObservation:observation} : {}),...(choice.entityId ? {entityId:choice.entityId} : {}),...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={snapshot} onClose={() => setChoice(null)} />;
+    context={choice ? {dimension,category:choice.category,...(citedWeight && source && asOf && observation ? {citedBenchmark:source,citedBenchmarkAsOf:asOf,citedBenchmarkObservation:observation} : {}),...(choice.entityId ? {entityId:choice.entityId} : {}),...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={choice?.snapshotId ?? snapshot} onClose={() => setChoice(null)} />;
   if (params?.get("snapshotId") && choice && !choice.group) {
     const hasRecord = dimension === "company" ? !!linkedCompany || !params.get("category") || choice.category !== params.get("category")
       : allocations.some(row => dimension === "country" ? place(categoryKey(row)) === place(choice.category) : categoryKey(row) === choice.category);
@@ -942,11 +950,11 @@ function Exposure({
       <Narrative snapshot={snapshot} lens="hidden_exposure" page="holdings" />
       {view === "companies" && chart !== "pie" && (!selected || phone) && role}
       <Drawer
-        opened={selected !== null && !(phone && (sidebarOpen || (ready && choice)))}
-        onClose={() => {setSelected(null); setChoice(null);}}
+        opened={Boolean(selection) && !(phone && (sidebarOpen || (ready && choice)))}
+        onClose={() => {setSelection(null); setChoice(null);}}
         title={t("穿透后的真实敞口", "Underlying exposure")}
       >
-        {selected && (
+        {selection && selected && (
           <Stack gap="lg">
             <Instrument ticker={selected.ticker ?? "—"} name={selected.name} />
             <Metric
@@ -980,7 +988,7 @@ function Exposure({
             />
             {chart !== "pie" && (phone && ready ?
               <button type="button" data-autofocus className="mx-text-link"
-                onClick={() => inspect({name:selected.name,entityId:selected.entityId || undefined,category:selected.isin || selected.ticker || selected.name})}>
+                onClick={() => inspectPosition(selected, selection.snapshotId)}>
                 ✦ {t("敞口","Exposure")}
               </button> : role)}
             <Panel title={t("通过这些基金持有", "Held through these funds")}>

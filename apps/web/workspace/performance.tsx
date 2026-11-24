@@ -37,7 +37,7 @@ import {
   UpdateFailure,
   useCopy,
 } from "./foundation";
-import { useAssistant } from "./assistant/context";
+import { useAssistant, useAssistantPageContext } from "./assistant/context";
 import { PageInspection } from "./assistant/inspection-entry";
 import type { ReactNode } from "react";
 import { Narrative } from "./narrative";
@@ -144,6 +144,16 @@ export function PerformanceContent({
   const scope = shown?.scope ?? requestedScope;
   const actualRange = shown?.range ?? requestedRange;
   const historySelection = { runId: shown?.history?.runId ?? data?.runId ?? "", range: actualRange, scope };
+  const shownWindow = actualRange === "ALL" ? customRange : null;
+  useAssistantPageContext({
+    page: "analytics",
+    scope: scope === "total" ? "broker_total" : scope,
+    range: actualRange,
+    start: shownWindow?.start,
+    end: shownWindow?.end,
+    benchmark: view === "returns" ? benchmark : undefined,
+    snapshotId: historySelection.runId || undefined,
+  }, fixedScope === undefined);
   const daily = useMemo(() => (data?.nav ?? []).filter((p) => !p.intraday), [data?.nav]);
   const failure = usesAnalytics && summary.isError ? summary : view === "money" && historyQuery.isError ? historyQuery : null;
   const publicationFailure = usePublicationFailure(suppliedData ? 0 : shown?.updatedAt ?? 0);

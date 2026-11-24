@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.69.0] - 2026-11-24
+
+### Added
+- Each MaxAI question records what was on screen when it was asked: page, account, period, security and the selected row, decision, event or reading, together with the data publication it was read from. A compact label on the question shows it, and it is kept in the conversation history.
+- Tool steps appear while MaxAI works and fold into **Work steps** when the answer is ready.
+
+### Changed
+- Stopping an answer leaves it marked as stopped, keeps what you typed, and ignores anything that arrives afterwards. **Retry** asks again with the same context and the same data publication. When that publication is no longer kept, MaxAI says so and offers to ask again with current data as a new question.
+- Typed questions follow the current selection: a closed drawer or deselected row is no longer sent, and on Review a visible decision takes precedence over the opening card. After **Ask MaxAI** on a reading, follow-up questions on the same page keep that reading until you dismiss it, choose another, or leave the page. Ordinary questions on Markets and on index charts use the page itself.
+- A failed retry no longer erases the verified part of a stopped answer, and a reply that cannot be verified offers **Retry**. Error messages follow the service's error code.
+
 ## [1.68.3] - 2026-11-24
 
 ### Fixed

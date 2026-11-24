@@ -176,8 +176,9 @@ export function Inspection({
       page,
       search: search ?? new URLSearchParams(request.context).toString(),
       snapshotId: snapshotId ?? query.data?.snapshotId ?? undefined,
+      ...(role === "company-summary" ? { research: { ticker: request.context.ticker, lens: "overview" } } : {}),
     }),
-    [page, request, search, snapshotId, query.data?.snapshotId],
+    [page, request, role, search, snapshotId, query.data?.snapshotId],
   );
   const bound = !unavailable && !expired && Boolean(origin.snapshotId || (role === "diagnosis" && request.context.issue === "job" && reading));
   const card = useMemo<RoleCard>(

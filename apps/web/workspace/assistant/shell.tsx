@@ -15,7 +15,7 @@ const Sidebar = dynamic(() => import("./sidebar"), { ssr: false });
 
 function cyclePanelTab(event: ReactKeyboardEvent<HTMLDivElement>) {
   if (event.key !== "Tab" || event.defaultPrevented) return;
-  const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:enabled, textarea:enabled, [tabindex]"))
+  const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:enabled, summary, textarea:enabled, [tabindex]"))
     .filter(control => control.tabIndex >= 0 && canFocusAssistantControl(control));
   if (!controls.length) return;
   event.preventDefault();

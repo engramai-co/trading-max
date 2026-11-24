@@ -52,6 +52,7 @@ vi.mock("./profile", () => ({
   accountName: (_profile: unknown, code: string) => (code === "A" ? "Invest" : "ISA"),
 }));
 vi.mock("./assistant/context", () => ({
+  useAssistantPageContext: vi.fn(),
   useAssistant: () => ({ ready: false }),
 }));
 vi.mock("./current-day", () => ({

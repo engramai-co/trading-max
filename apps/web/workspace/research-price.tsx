@@ -1,4 +1,5 @@
 "use client";
+import { useResearchChartWindow } from "./assistant/context";
 import { useMediaQuery } from "@mantine/hooks";
 import { markerHeadroom } from "./assistant/marker-layout";
 import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
@@ -102,6 +103,7 @@ export function PriceHistory({
   const unit = priceData?.currency;
   const priceFigure = (value: unknown, digits = 2) => quoteValue(value, unit, { style: "figure", digits });
   const displayedRange = shown?.range ?? range;
+  useResearchChartWindow(ticker, "technical", displayedRange, priceData?.snapshotId ?? undefined);
   const displayedInterval = shown?.interval ?? interval;
   const updating = Boolean(shown && !current && !query.isError);
   const zoomKey = `tm-research-zoom:${ticker}:${displayedRange}:${displayedInterval}`;
@@ -468,7 +470,7 @@ export function PriceHistory({
               read: (index, context) => readPrice(index, context?.grid),
               marks: readMarks,
             }}
-            overlay={showEvents && moments.items.length > 0 && <MomentOverlay chart={chart} moments={moments} points={momentPoints} />}
+            overlay={showEvents && moments.items.length > 0 && <MomentOverlay chart={chart} moments={moments} points={momentPoints} range={displayedRange} />}
             controller={chart}
             onZoom={(instance) => {
               const current = (

@@ -1,6 +1,7 @@
 "use client";
 import dynamic from "next/dynamic";
 import { useEarningsBrief, PositionReading } from "./assistant/research-entry";
+import { useAssistantPageContext } from "./assistant/context";
 
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -238,6 +239,14 @@ function SecurityResearchWorkspace() {
 
   const shown = previousForIdentity(lastLens, lastLens?.ticker, ticker);
   const displayTab = shown?.tab ?? tab;
+  const assistantLens = tab === "technical" ? "technical"
+    : displayTab === "financials" ? "fundamentals" : displayTab;
+  useAssistantPageContext({
+    page: "research",
+    ticker: selected ? ticker : undefined,
+    lens: selected ? assistantLens : undefined,
+    snapshotId: tab === "technical" && displayTab !== "technical" ? undefined : shown?.data.runId,
+  });
   const displayData = shown?.data;
   const switching = Boolean(shown && (!currentLens || lens.isPlaceholderData) && !lens.isError);
   const failure = lens.isError ? lens : shell.isRefetchError ? shell : null;

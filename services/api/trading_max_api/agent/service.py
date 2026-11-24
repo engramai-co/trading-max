@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol
@@ -19,9 +19,10 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import anyio
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
-from pydantic_ai import Agent, CancellationToken
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
+from pydantic_ai import Agent, CancellationToken, DeferredToolResults
 from pydantic_ai.exceptions import RunCancelled, RunTimedOut
+from pydantic_ai.messages import ModelMessage, ModelRequest, UserPromptPart
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.ui.vercel_ai import VercelAIAdapter, VercelAIEventStream
@@ -29,8 +30,11 @@ from pydantic_ai.ui.vercel_ai.response_types import BaseChunk, ErrorChunk
 from pydantic_ai.usage import RunUsage
 from starlette.requests import Request
 from starlette.responses import Response, StreamingResponse
+from trading_max.infrastructure import SnapshotIntegrityError
+from trading_max.reference.indices import IndexScope
 
 from .deps import AccountScope
+from .insights import CalendarDay
 from .roles import PageRole, RoleContext
 from .runtime import SIDEBAR_FORMAT, USAGE_LIMITS, TurnLimits, error_code, run_context
 from .store import SqliteConversationStore
@@ -42,6 +46,8 @@ RUN_TIMEOUT_SECONDS = 300.0
 CONVERSATION_SCOPE = "workspace"
 CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 ChatFormat = Literal["prose", "references"]
+type ChartRange = Literal["5D", "3Y", "5Y", "MAX"]
+type ResearchWorkspaceLens = Literal["constituents", "tracking", "peers"]
 PageHint = Literal[
     "overview", "holdings", "analytics", "sectors", "research", "review", "health", "settings"
 ]
@@ -71,6 +77,53 @@ class DepsForRun(Protocol):
     def __call__(self, page_hint: str | None, timezone: str | None) -> Any: ...
 
 
+class ChatObservation(BaseModel):
+    """Identifiers and dates of the observation already visible in the workspace."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal[
+        "earnings",
+        "ex_dividend",
+        "dividend_pay",
+        "dividend",
+        "rating_change",
+        "filing",
+        "macro",
+        "price_key_moments",
+        "research_position",
+        "research_earnings",
+        "research_headline",
+        "news_and_events",
+        "upcoming_events",
+        "decision",
+    ]
+    evidence_id: str | None = Field(
+        default=None, alias="evidenceId", pattern=r"^ev_[a-zA-Z0-9_-]{1,80}$"
+    )
+    key: str | None = Field(default=None, pattern=r"^[a-f0-9]{20}$")
+    field: str | None = Field(
+        default=None, pattern=r"^/(?:status|data(?:/[A-Za-z0-9_.~=-]+)+)$", max_length=160
+    )
+    date: CalendarDay | None = None
+    end: CalendarDay | None = None
+    instant: AwareDatetime | None = None
+    side: Literal["buy", "sell"] | None = None
+    ordinal: int | None = Field(default=None, strict=True, ge=0, lt=2000)
+
+    def describe(self) -> str:
+        details = [self.kind, self.side, self.evidence_id, self.key, self.field]
+        if self.date:
+            details.append(
+                f"{self.date} to {self.end}" if self.end and self.end != self.date else self.date
+            )
+        if self.instant:
+            details.append(self.instant.isoformat())
+        if self.ordinal is not None:
+            details.append(f"ordinal {self.ordinal}")
+        return ", ".join(filter(None, details))
+
+
 class ChatContext(BaseModel):
     """What the page shows, sent by the web app beside the Vercel AI SDK fields."""
 
@@ -84,11 +137,18 @@ class ChatContext(BaseModel):
     object: dict[str, Any] | None = Field(default=None, max_length=20)
     page: PageHint | None = None
     scope: AccountScope | None = None
-    range: PageRange | None = None
+    range: PageRange | ChartRange | None = None
     ticker: Ticker | None = None
-    lens: Lens | None = None
+    lens: Lens | ResearchWorkspaceLens | None = None
     benchmark: Literal["VOO", "QQQ", "VT", "ALL"] | None = None
+    start: CalendarDay | None = None
+    end: CalendarDay | None = None
+    index_id: str | None = Field(default=None, alias="indexId", pattern=r"^[a-z0-9-]{1,64}$")
+    market: IndexScope | None = None
+    horizon: Literal["20_sessions", "to_date"] | None = None
+    habit: Literal["before_earnings", "basket_buy", "untraded_fall"] | None = None
     timezone: str | None = Field(default=None, max_length=64)
+    observation: ChatObservation | None = None
 
 
 class _SanitizedEventStream(VercelAIEventStream):
@@ -102,7 +162,27 @@ class _SanitizedEventStream(VercelAIEventStream):
             yield ErrorChunk(error_text=code) if isinstance(chunk, ErrorChunk) else chunk
 
 
+def _turn_context_metadata(context: ChatContext, snapshot_id: str | None) -> dict[str, Any] | None:
+    """Persist the validated page and selected object with the user message."""
+    data = context.model_dump(
+        mode="json",
+        by_alias=True,
+        exclude_none=True,
+        exclude={"timezone", "snapshot_id"},
+    )
+    if not data:
+        return None
+    if context._reading and (selected_scope := getattr(context._reading[1], "scope", None)):
+        data["scope"] = selected_scope
+    if snapshot_id:
+        data["snapshotId"] = snapshot_id
+    return data
+
+
+@dataclass
 class _Adapter(VercelAIAdapter):
+    turn_context: dict[str, Any] | None = None
+
     def build_event_stream(self) -> _SanitizedEventStream:
         return _SanitizedEventStream(
             self.run_input,
@@ -111,6 +191,27 @@ class _Adapter(VercelAIAdapter):
             server_message_id=self.server_message_id,
             manage_system_prompt=self.manage_system_prompt,
         )
+
+    def sanitize_messages(
+        self,
+        messages: Sequence[ModelMessage],
+        *,
+        deferred_tool_results: DeferredToolResults | None = None,
+    ) -> list[ModelMessage]:
+        sanitized = super().sanitize_messages(messages, deferred_tool_results=deferred_tool_results)
+        for message in sanitized:
+            if isinstance(message, ModelRequest):
+                kept = (
+                    {k: v for k, v in message.metadata.items() if k == "__pydantic_ai__"}
+                    if message.metadata
+                    else {}
+                )
+                if self.turn_context and any(
+                    isinstance(part, UserPromptPart) for part in message.parts
+                ):
+                    kept["turnContext"] = dict(self.turn_context)
+                message.metadata = kept or None
+        return sanitized
 
 
 def _timezone(value: str | None) -> ZoneInfo:
@@ -141,6 +242,54 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
         }
     try:
         context = ChatContext.model_validate(raw)
+        if context.page not in {"research", "sectors"} and context.range in {
+            "5D",
+            "3Y",
+            "5Y",
+            "MAX",
+        }:
+            raise ValueError("Unsupported chart range")
+        if context.page != "research" and context.lens in {"constituents", "tracking", "peers"}:
+            raise ValueError("Research-only lens")
+        if context.index_id and context.page not in {"research", "sectors"}:
+            raise ValueError("Index identity requires an index page")
+        if context.market and context.page != "sectors":
+            raise ValueError("Market selection requires the Markets page")
+        if (context.horizon or context.habit) and context.page != "review":
+            raise ValueError("Review-only filters")
+        if (context.start or context.end) and (
+            context.page != "analytics"
+            or not context.start
+            or not context.end
+            or context.start > context.end
+        ):
+            raise ValueError("The selected period requires ordered analytics dates")
+        if observation := context.observation:
+            if not context.snapshot_id or (
+                observation.end and (not observation.date or observation.end < observation.date)
+            ):
+                raise ValueError("An observation requires a publication and ordered dates")
+            if observation.kind == "decision":
+                if (
+                    context.page != "review"
+                    or context.scope not in {"invest", "isa"}
+                    or not (
+                        context.ticker
+                        and observation.date
+                        and observation.side
+                        and observation.ordinal is not None
+                    )
+                ):
+                    raise ValueError(
+                        "A selected decision requires its account, ticker, day, side and ordinal"
+                    )
+            elif (
+                context.page != "research"
+                or not observation.evidence_id
+                or observation.side
+                or observation.ordinal is not None
+            ):
+                raise ValueError("A research observation requires its evidence identifier")
         if context.role:
             from .roles import role_registry
 
@@ -186,7 +335,7 @@ def _context(body: dict[str, Any], request: Request) -> ChatContext:
                     for key in ("scope", "range", "benchmark")
                 ):
                     raise ValueError("The selected range must match its page origin")
-        elif context.object or context.snapshot_id:
+        elif context.object:
             raise ValueError("object requires a role")
         return context
     except (ValueError, ValidationError):
@@ -296,13 +445,15 @@ class AssistantService:
             raise HTTPException(status_code=exc.status_code, detail={"code": exc.code}) from None
         zone = _timezone(context.timezone)
         deps = self.deps_for_run(context.page, zone.key)
-        if context.snapshot_id and context.snapshot_id != deps.snapshot_id:
+        if context.snapshot_id:
+            # The authenticated workspace owns this store. Require the pinned
+            # publication to remain on disk even when it is still the latest.
             try:
                 deps = replace(
                     deps,
                     manifest=deps.store.load_manifest(context.snapshot_id, require_retained=True),
                 )
-            except FileNotFoundError:
+            except (FileNotFoundError, SnapshotIntegrityError):
                 raise HTTPException(404, detail={"code": "assistant_snapshot_missing"}) from None
         if context._reading:
             role, selected = context._reading
@@ -321,12 +472,15 @@ class AssistantService:
             _log_run("timed_out" if isinstance(exc, RunTimedOut) else "cancelled", started, model)
 
         # Entering the model makes it own its HTTP client until the stream ends.
+        snapshot_id = getattr(deps, "snapshot_id", None)
+        turn_context = _turn_context_metadata(context, snapshot_id)
         await model.__aenter__()
         try:
             response = await _Adapter.dispatch_request(
                 request,
                 agent=self.agent,
                 sdk_version=SDK_VERSION,
+                turn_context=turn_context,
                 model=model,
                 model_settings=bound.settings,
                 cancellation_token=bound.cancellation_token,
@@ -340,6 +494,18 @@ class AssistantService:
                     ticker=context.ticker,
                     lens=context.lens,
                     benchmark=context.benchmark,
+                    window=(context.start, context.end) if context.start and context.end else None,
+                    index_id=context.index_id,
+                    market=context.market,
+                    horizon=context.horizon,
+                    habit=context.habit,
+                    observation=context.observation.describe() if context.observation else None,
+                )
+                + (
+                    "\nUse the exact account, ticker, decision_date, side and ordinal with "
+                    "decision_timing_and_habits for this trade."
+                    if context.observation and context.observation.kind == "decision"
+                    else ""
                 )
                 + (SIDEBAR_FORMAT if response_format == "references" else "")
                 + (
@@ -361,6 +527,8 @@ class AssistantService:
                 await model.__aexit__(None, None, None)
             raise
         if isinstance(response, StreamingResponse):
+            if snapshot_id:
+                response.headers["X-Assistant-Snapshot-Id"] = snapshot_id
             response.body_iterator = _closing(
                 response.body_iterator,
                 model,

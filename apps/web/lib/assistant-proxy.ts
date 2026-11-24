@@ -10,8 +10,10 @@ import {
 
 export const ASSISTANT_MAX_REQUEST_BYTES = 1_000_000;
 const FORWARDED_QUERY = ["page", "tz", "format"] as const;
-// The AI SDK client reads the stream protocol version from this header.
-const FORWARDED_RESPONSE_HEADERS = ["content-type", "x-vercel-ai-ui-message-stream"] as const;
+// Forward stream framing and the workspace publication pinned by the API.
+const FORWARDED_RESPONSE_HEADERS = [
+  "content-type", "x-vercel-ai-ui-message-stream", "x-assistant-snapshot-id",
+] as const;
 
 async function boundedBody(
   request: Request,

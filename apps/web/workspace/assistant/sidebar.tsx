@@ -1,135 +1,425 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage, type UIMessageChunk } from "ai";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, ClockCounterClockwise, Plus, Square, Trash, X } from "@phosphor-icons/react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { ASSISTANT_NAME, conversationsErasedEvent } from "../assistant-settings";
 import { api } from "../data";
 import { useCopy } from "../foundation";
 import { isImeComposing } from "../shortcut-platform";
-import { errorLabel } from "./status-label";
 import { CardTitle, EvidenceLink, ReadingLines } from "./cards";
 import { useAssistant, type RoleCard } from "./context";
 import { focusAssistantControl } from "./focus";
-import { verifiedLines } from "./chat-reply";
-import { chatContext, displayTurns, readableDates, sourceLabel } from "./evidence";
+import { verifiedInterruptedLines, verifiedLines } from "./chat-reply";
+import { readableDates, sourceLabel } from "./evidence";
+import {
+  extractTurnContext,
+  formatTurnContext,
+  resolveTurnTarget,
+  type TurnContext,
+} from "./turn-context";
+import {
+  INITIAL_TURN_STORE,
+  assistantMessageForUserTurn,
+  beginTurnAttempt,
+  failureCode,
+  isRetryableStatus,
+  pairConversationTurns,
+  settleTurnAttempt,
+  shouldRestoreDraftOnStop,
+  stopTurnAttempt,
+  turnAnnouncementText,
+  turnStatusText,
+  withoutPublication,
+  type TurnRecord,
+  type TurnStore,
+} from "./turn-state";
+import { extractWorkSteps, stepStatusLabel, type WorkStep } from "./work-steps";
 
 // getRandomValues is available on loopback and existing HTTP workspaces.
 function makeConversationId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), byte => byte.toString(16).padStart(2, "0")).join("");
 }
-const transport = new DefaultChatTransport({
-  api: "/api/backend/assistant/chat?format=references",
-  prepareSendMessagesRequest: ({ id, messages, body }) => ({
-    body: { ...body, id, trigger: "submit-message", messages: messages.slice(-1) },
-  }),
-});
+
+type AttemptState = {
+  id: number;
+  userMessageId: string;
+  sawFinish: boolean;
+  sawAbort: boolean;
+  errorCode?: string;
+  httpStatus?: number;
+  snapshotId?: string;
+  draftRevision: number;
+  stopped: boolean;
+};
+
+class TurnTrackingTransport extends DefaultChatTransport<UIMessage> {
+  private attempt: AttemptState | null = null;
+
+  constructor() {
+    super({
+      api: "/api/backend/assistant/chat?format=references",
+      prepareSendMessagesRequest: ({ id, messages, body }) => ({
+        body: { ...body, id, trigger: "submit-message", messages: messages.slice(-1) },
+      }),
+      fetch: async (input, init) => {
+        if (init?.signal?.aborted) throw new DOMException("Aborted", "AbortError");
+        const attempt = this.attempt;
+        const response = await globalThis.fetch(input, init);
+        if (attempt && !attempt.stopped && !init?.signal?.aborted) {
+          attempt.httpStatus = response.status;
+          const snapshotId = response.headers.get("x-assistant-snapshot-id");
+          if (response.ok && snapshotId && /^[A-Za-z0-9_-]{1,100}$/.test(snapshotId)) {
+            attempt.snapshotId = snapshotId;
+          }
+        }
+        return response;
+      },
+    });
+  }
+
+  hasAttempt() {
+    return this.attempt !== null;
+  }
+
+  startAttempt(attempt: AttemptState) {
+    this.attempt = attempt;
+  }
+
+  recordError(message: string) {
+    const attempt = this.attempt;
+    if (attempt && !attempt.stopped) attempt.errorCode = failureCode(message, attempt.httpStatus);
+  }
+
+  stopAttempt() {
+    const attempt = this.attempt;
+    if (!attempt || attempt.stopped) return null;
+    attempt.stopped = true;
+    return attempt;
+  }
+
+  finishAttempt() {
+    const attempt = this.attempt;
+    this.attempt = null;
+    return attempt?.stopped ? null : attempt;
+  }
+
+  override async sendMessages(
+    options: Parameters<DefaultChatTransport<UIMessage>["sendMessages"]>[0],
+  ) {
+    const attempt = this.attempt;
+    const stream = await super.sendMessages(options);
+    if (!attempt) return stream;
+    if (options.abortSignal?.aborted) {
+      await stream.cancel().catch(() => undefined);
+      throw new DOMException("Aborted", "AbortError");
+    }
+    return stream.pipeThrough(
+      new TransformStream<UIMessageChunk, UIMessageChunk>({
+        transform(chunk, controller) {
+          if (attempt.stopped || options.abortSignal?.aborted) return;
+          if (chunk.type === "finish") attempt.sawFinish = true;
+          else if (chunk.type === "abort") attempt.sawAbort = true;
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+  }
+}
+
 function unverifiedNotice(t: ReturnType<typeof useCopy>) {
   return t("无法核实这次回复。", "This reply could not be verified.");
 }
-function ChatAnswer({ message, pending }: { message: UIMessage; pending: boolean }) {
+
+function VerifiedLines({ lines }: { lines: ReturnType<typeof verifiedLines> }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  if (pending) return null;
-  const lines = verifiedLines(message, locale, timeZone);
-  if (!lines.length) return <p className="mx-assistant-note">{unverifiedNotice(t)}</p>;
-  return lines.map((line, i) => <p className="mx-reading-line" key={i}>{readableDates(line.text, locale, timeZone)}{" "}
-    {line.evidence ? <EvidenceLink evidence={line.evidence}/> : <span className="mx-reading-source">{sourceLabel(null, t)}</span>}
-  </p>);
+  return lines.map((line, i) => (
+    <p className="mx-reading-line" key={i}>
+      {readableDates(line.text, locale, timeZone)}{" "}
+      {line.evidence ? <EvidenceLink evidence={line.evidence} /> : <span className="mx-reading-source">{sourceLabel(null, t)}</span>}
+    </p>
+  ));
 }
-function failureCode(message: string) {
-  if (/^[a-z_]{1,64}$/.test(message)) return message;
-  try {
-    const code = JSON.parse(message).detail?.code;
-    return typeof code === "string" && /^[a-z_]{1,64}$/.test(code) ? code : "assistant_unavailable";
-  } catch { return "assistant_unavailable"; }
+
+function WorkStepItems({ steps }: { steps: WorkStep[] }) {
+  const { locale } = useLocale();
+  return (
+    <ol className="mx-assistant-step-list" role="list">
+      {steps.map(step => (
+        <li key={step.id} data-step-status={step.status}>
+          <span>{step.label}</span>
+          <span className="mx-assistant-step-status">{stepStatusLabel(step.status, locale)}</span>
+        </li>
+      ))}
+    </ol>
+  );
 }
-function selectionKey(card: RoleCard | null) {
-  return hashKey([card?.role, card?.context, card?.origin, card?.reading?.snapshotId ?? card?.origin?.snapshotId]);
+
+function WorkStepsDisclosure({ steps }: { steps: WorkStep[] }) {
+  const t = useCopy();
+  if (!steps.length) return null;
+  return (
+    <details className="mx-assistant-steps">
+      <summary>{t("工作过程", "Work steps")}</summary>
+      <WorkStepItems steps={steps} />
+    </details>
+  );
 }
+
+function readingSelectionKey(card: RoleCard) {
+  return hashKey([card.context, card.origin?.research]);
+}
+
+type EditedOrigin = Pick<TurnRecord, "requestContext" | "turnContext" | "card">;
 type SidebarProps = { checking: boolean; page: string; scopeLabel: string; composerRef: (node: HTMLTextAreaElement | null) => void };
+
 function Thread({ page, scopeLabel, checking, composerRef, initial, history, onHistory, onNew }: SidebarProps & {
   history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
 }) {
   const t = useCopy();
   const { timeZone, locale } = useLocale();
-  const search = useSearchParams().toString();
-  const { open, ready, pending, close, pageCard, handoff } = useAssistant();
+  const params = useSearchParams();
+  const search = params.toString();
+  const route = page + "?" + search;
+  const { open, ready, pending, close, pageCard, handoff, pageContext, researchChartWindows } = useAssistant();
   const [draft, setDraft] = useState("");
-  const [contextCard, setContextCard] = useState<RoleCard | null>(null);
-  const [sentScope, setSentScope] = useState<string | null>(null);
-  const routeScope = page + search;
+  const [handoffBinding, setHandoffBinding] = useState<{ card: RoleCard; sentFrom?: string; selectionAtSend?: string } | null>(null);
+  const [editedOrigin, setEditedOrigin] = useState<EditedOrigin | null>(null);
+  const [turnStore, setTurnStore] = useState<TurnStore>(INITIAL_TURN_STORE);
   const historyButton = useRef<HTMLButtonElement>(null);
-  const wasHistory = useRef({history, sequence:handoff?.sequence});
-  const submitted = useRef<{text:string; card:RoleCard | null}>({text:"",card:null});
+  const textareaElement = useRef<HTMLTextAreaElement | null>(null);
+  const wasHistory = useRef({ history, sequence: handoff?.sequence });
+  const turnStoreRef = useRef<TurnStore>(INITIAL_TURN_STORE);
+  const nextAttemptRef = useRef(0);
+  const draftRevision = useRef(0);
+  const [transport] = useState(() => new TurnTrackingTransport());
+  const restoredFromStopRef = useRef<{ text: string; userMessageId: string } | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const scroller = useRef<HTMLDivElement>(null);
   const [seen, setSeen] = useState(initial.sequence);
   const client = useQueryClient();
-  const { messages, sendMessage, stop, status, error, clearError } = useChat({
-    id: initial.id, messages: initial.messages, transport,
-    onFinish: ({messages: completed, isAbort, isError, isDisconnect}) => {
-      void client.invalidateQueries({ queryKey: ["assistant-conversations"] });
-      const reply = displayTurns(completed).at(-1);
-      if (!isAbort && !isError && !isDisconnect && reply?.role === "assistant") {
-        const lines = verifiedLines(reply, locale, timeZone);
-        setAnnouncement(lines.length
-          ? lines.map(line => readableDates(line.text, locale, timeZone) + " " + sourceLabel(line.evidence, t)).join(" ")
-          : unverifiedNotice(t));
+
+  const setComposerNode = useCallback((node: HTMLTextAreaElement | null) => {
+    textareaElement.current = node;
+    composerRef(node);
+  }, [composerRef]);
+
+  const { messages, sendMessage, stop, status, clearError } = useChat({
+    id: initial.id,
+    messages: initial.messages,
+    transport,
+    onError: err => transport.recordError(err.message),
+    onFinish: ({ messages: completed, isAbort, isError, isDisconnect, finishReason }) => {
+      const attempt = transport.finishAttempt();
+      if (!attempt) return;
+      const assistantMessage = assistantMessageForUserTurn(completed, attempt.userMessageId);
+      const settled = settleTurnAttempt(turnStoreRef.current, {
+        attemptId: attempt.id,
+        assistantMessage,
+        isAbort,
+        isDisconnect,
+        isError,
+        sawFinish: attempt.sawFinish,
+        sawAbort: attempt.sawAbort,
+        finishReason,
+        errorCode: attempt.errorCode,
+        snapshotId: attempt.snapshotId,
+        locale,
+        timeZone,
+      });
+      turnStoreRef.current = settled.store;
+      setTurnStore(settled.store);
+      if (settled.announcement?.kind === "completed") {
+        void client.invalidateQueries({ queryKey: ["assistant-conversations"] });
+      }
+      if (settled.announcement && ready) {
+        setAnnouncement(turnAnnouncementText(settled.announcement, locale, timeZone, t));
       }
     },
   });
+
   const busy = status === "submitted" || status === "streaming";
-  useEffect(() => () => { void stop(); }, [stop]);
+  useEffect(() => () => {
+    transport.stopAttempt();
+    transport.finishAttempt();
+    void stop();
+  }, [stop, transport]);
   useEffect(() => { if (!ready) void stop(); }, [ready, stop]);
   useEffect(() => {
     if (open && wasHistory.current.history && !history && wasHistory.current.sequence === handoff?.sequence) {
       focusAssistantControl(historyButton.current);
     }
-    wasHistory.current = {history, sequence:handoff?.sequence};
+    wasHistory.current = { history, sequence: handoff?.sequence };
   }, [open, history, handoff?.sequence]);
   useEffect(() => {
     const el = scroller.current;
     if (el && open && el.scrollHeight - el.scrollTop - el.clientHeight < 320) el.scrollTop = el.scrollHeight;
-  }, [messages, open]);
-  // A page handoff is explicit. Ordinary navigation only changes the scope of
-  // the next turn and never replaces or sends the current draft.
+  }, [messages, turnStore, open]);
+
+  const liveSelection = pageCard && handoffBinding && pageCard.role === handoffBinding.card.role &&
+    (pageCard.origin?.page ?? page) === (handoffBinding.card.origin?.page ?? page) ? readingSelectionKey(pageCard) : undefined;
+  // Keep the unsent draft bound. Later questions follow a new selection in the same reading.
   if (handoff && seen !== handoff.sequence) {
     setSeen(handoff.sequence);
     setDraft(handoff.draft);
-    setContextCard(handoff.card);
-    setSentScope(null);
-  } else if (sentScope !== null && sentScope !== routeScope) {
-    setContextCard(null);
-    setSentScope(null);
-  } else if (sentScope !== null && pageCard?.role === "key-moment" &&
-    selectionKey(contextCard) !== selectionKey(pageCard)) {
-    setContextCard(pageCard);
+    setHandoffBinding({ card: handoff.card });
+    setEditedOrigin(null);
+  } else if (handoffBinding?.sentFrom && (
+    !open || handoffBinding.sentFrom !== route || (liveSelection && liveSelection !== handoffBinding.selectionAtSend)
+  )) {
+    setHandoffBinding(null);
   }
-  const context = chatContext(page, search, timeZone);
-  const card: RoleCard = contextCard ?? pageCard ?? {
-    role: "", title: t("工作区解读", "Workspace reading"), object: scopeLabel,
-    questions: [t("最近有哪些变化？", "What has changed recently?"), t("哪些数据还不完整？", "Which data is incomplete?"), t("本期的主要变动是什么？", "What moved most this period?")],
+
+  const card: RoleCard = editedOrigin?.card ?? handoffBinding?.card ?? pageCard ?? {
+    role: "",
+    title: t("工作区解读", "Workspace reading"),
+    object: scopeLabel,
+    questions: [
+      t("最近有哪些变化？", "What has changed recently?"),
+      t("哪些数据还不完整？", "Which data is incomplete?"),
+      t("本期的主要变动是什么？", "What moved most this period?"),
+    ],
   };
-  const sendingBlocked = !ready || pending || card.pendingBinding;
-  function send(value: string) {
-    const text = value.trim();
-    if (!text || busy || sendingBlocked) return;
+  const chart = page === "research" && (pageContext?.lens === "overview" || pageContext?.lens === "technical")
+    ? researchChartWindows[pageContext.lens] : undefined;
+  const selection = pageContext?.page === page ? pageContext : undefined;
+  const displayedSelection = chart && selection && !selection.observation && chart.identity === selection.ticker
+    ? { ...selection, range: chart.range, snapshotId: chart.snapshotId ?? selection.snapshotId } : selection;
+  const evidence = params.get("evidence");
+  const marketCitation = Boolean(params.get("snapshotId")) && (evidence === "market_sector" || evidence === "global_map");
+  // Keep the opening card visible when the ordinary composer has a different target.
+  const usePageForComposer = !handoffBinding && !editedOrigin && (
+    Boolean(card.origin?.research?.indexId) ||
+    (page === "sectors" && !marketCitation) ||
+    (card.role === "habits" && selection?.observation?.kind === "decision")
+  );
+  const openingTarget = editedOrigin ?? resolveTurnTarget(card, page, search, timeZone, displayedSelection);
+  const resolved = usePageForComposer ? resolveTurnTarget(null, page, search, timeZone, displayedSelection) : openingTarget;
+  const composerContextLabel = formatTurnContext(resolved.turnContext, locale, timeZone) || scopeLabel;
+  const readingPending = !editedOrigin && Boolean(card.pendingBinding);
+  const sendingBlocked = !ready || pending || (!usePageForComposer && readingPending);
+
+  function launchAttempt(params: {
+    text: string;
+    requestContext: Record<string, unknown>;
+    turnContext: TurnContext;
+    boundCard: RoleCard | null;
+    replaceUserMessageId?: string;
+    frozenAssistant?: UIMessage | null;
+  }) {
     clearError();
-    const origin = card.origin ?? {page, search, snapshotId:card.reading?.snapshotId ?? undefined};
-    const turn = card.role ? {...chatContext(origin.page, origin.search, timeZone), role:card.role, object:card.context ?? {}, snapshotId:origin.snapshotId} : context;
-    submitted.current = {text, card:card.role ? {...card, origin} : null};
+    const userMessageId = params.replaceUserMessageId ?? makeConversationId();
+    const attemptId = ++nextAttemptRef.current;
+    const attempt: AttemptState = {
+      id: attemptId,
+      userMessageId,
+      sawFinish: false,
+      sawAbort: false,
+      draftRevision: draftRevision.current,
+      stopped: false,
+    };
+    transport.startAttempt(attempt);
+    const nextStore = beginTurnAttempt(turnStoreRef.current, {
+      userMessageId,
+      attemptId,
+      prompt: params.text,
+      requestContext: params.requestContext,
+      turnContext: params.turnContext,
+      card: params.boundCard,
+      frozenAssistant: params.frozenAssistant,
+    });
+    turnStoreRef.current = nextStore;
+    setTurnStore(nextStore);
     setAnnouncement("");
-    setDraft("");
-    void sendMessage({ text }, { body: { context:turn } });
-    setContextCard(submitted.current.card);
-    setSentScope(routeScope);
+
+    void sendMessage({
+      id: userMessageId,
+      ...(params.replaceUserMessageId ? { messageId: userMessageId } : {}),
+      role: "user",
+      parts: [{ type: "text", text: params.text }],
+    }, { body: { context: params.requestContext } });
   }
-  const turns = displayTurns(messages);
+
+  function send(value: string, target = resolved) {
+    const text = value.trim();
+    if (!text || busy || transport.hasAttempt() || sendingBlocked) return;
+    restoredFromStopRef.current = null;
+    setDraft("");
+    if (handoffBinding && !handoffBinding.sentFrom && !editedOrigin) {
+      setHandoffBinding({
+        ...handoffBinding, sentFrom: route, selectionAtSend: liveSelection ?? readingSelectionKey(handoffBinding.card),
+      });
+    }
+    setEditedOrigin(null);
+    launchAttempt({
+      text,
+      requestContext: target.requestContext,
+      turnContext: target.turnContext,
+      boundCard: target.card,
+    });
+  }
+
+  function handleStop() {
+    const attempt = transport.stopAttempt();
+    if (!attempt) return;
+    const active = turnStoreRef.current.active;
+    if (active) {
+      const currentAssistant = assistantMessageForUserTurn(messages, active.userMessageId);
+      const stopped = stopTurnAttempt(turnStoreRef.current, active.attemptId, currentAssistant, attempt.snapshotId);
+      const currentRecord = stopped.store.turns[active.userMessageId];
+      turnStoreRef.current = stopped.store;
+      setTurnStore(stopped.store);
+      if (stopped.announcement) {
+        setAnnouncement(turnAnnouncementText(stopped.announcement, locale, timeZone, t));
+      }
+      if (currentRecord && shouldRestoreDraftOnStop(draft, draftRevision.current !== attempt.draftRevision)) {
+        setDraft(currentRecord.prompt);
+        setEditedOrigin(currentRecord);
+        restoredFromStopRef.current = { text: currentRecord.prompt, userMessageId: currentRecord.userMessageId };
+      }
+    }
+    void stop();
+  }
+
+  function retryTurn(record: TurnRecord, useCurrentData = false) {
+    if (busy || transport.hasAttempt() || !ready || pending) return;
+    if (
+      restoredFromStopRef.current?.userMessageId === record.userMessageId &&
+      restoredFromStopRef.current.text === draft
+    ) {
+      setDraft("");
+      setEditedOrigin(null);
+      restoredFromStopRef.current = null;
+    }
+    const lastUser = [...messages].reverse().find(m => m.role === "user");
+    const replaceUserMessageId = lastUser?.id === record.userMessageId ? record.userMessageId : undefined;
+    // Bound reading objects require their source publication. An expired
+    // reading can be asked again as an ordinary question in the same page scope.
+    launchAttempt({
+      text: record.prompt,
+      requestContext: useCurrentData ? withoutPublication(record.requestContext) : record.requestContext,
+      turnContext: useCurrentData ? withoutPublication(record.turnContext) : record.turnContext,
+      boundCard: useCurrentData ? null : record.card,
+      replaceUserMessageId: useCurrentData ? undefined : replaceUserMessageId,
+      frozenAssistant: !useCurrentData && record.frozenAssistant && verifiedInterruptedLines(record.frozenAssistant, locale, timeZone).length
+        ? record.frozenAssistant : undefined,
+    });
+  }
+
+  function editTurnPrompt(record: TurnRecord) {
+    if (busy) return;
+    restoredFromStopRef.current = null;
+    setDraft(record.prompt);
+    setEditedOrigin(record);
+    focusAssistantControl(textareaElement.current);
+  }
+
+  const exchanges = pairConversationTurns(messages);
   return <>
     <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><div>
       <button disabled={busy} onClick={onNew} aria-label={t("新对话", "New conversation")}><Plus /></button>
@@ -138,32 +428,106 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
       {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} />{card.status && <p role="status" className="mx-assistant-note">{card.status}</p>}<ReadingLines card={card} />
-        <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} disabled={sendingBlocked} onClick={() => send(q)}>{q}<span aria-hidden="true">→</span></button>)}</div>
+        <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} disabled={sendingBlocked || readingPending} onClick={() => send(q, openingTarget)}>{q}<span aria-hidden="true">→</span></button>)}</div>
       </div>}
-      {turns.map(m => <div key={m.id} className={"mx-assistant-turn mx-turn-" + m.role}>
-        {m.role === "user" ? m.parts.map((p, i) => p.type === "text" ? <p key={i}>{p.text}</p> : null) : <ChatAnswer message={m} pending={busy && m === turns.at(-1)} />}
-      </div>)}
-      {busy && <p className="mx-assistant-note" role="status">{t("正在读取", "Reading ")}{scopeLabel}…</p>}
-      {error && <p role="alert">{errorLabel(failureCode(error.message), t)}</p>}
+      {exchanges.map(exchange => {
+        const record = exchange.user ? turnStore.turns[exchange.user.id] : undefined;
+        const userContext = exchange.user
+          ? (record?.turnContext ?? extractTurnContext(exchange.user))
+          : null;
+        const userContextLabel = userContext ? formatTurnContext(userContext, locale, timeZone) : "";
+        const interrupted = record && isRetryableStatus(record.status) ? record.status : null;
+        const streamingTurn = record?.status === "streaming";
+        const effectiveAssistant = interrupted ? (record?.frozenAssistant ?? null) : (exchange.assistant ?? null);
+        const steps = extractWorkSteps(effectiveAssistant, Boolean(streamingTurn), locale);
+        const verify = interrupted ? verifiedInterruptedLines : verifiedLines;
+        const verified = !streamingTurn && effectiveAssistant ? verify(effectiveAssistant, locale, timeZone) : [];
+        const retained = streamingTurn && record.frozenAssistant
+          ? verifiedInterruptedLines(record.frozenAssistant, locale, timeZone) : [];
+        const showAssistantTurn = Boolean(effectiveAssistant || record);
+
+        return <Fragment key={exchange.id}>
+          {exchange.user && (
+            <div className="mx-assistant-turn mx-turn-user">
+              {userContextLabel && <span className="mx-assistant-turn-context">{userContextLabel}</span>}
+              {exchange.user.parts.map((p, i) => p.type === "text" ? <p key={i}>{p.text}</p> : null)}
+            </div>
+          )}
+          {showAssistantTurn && (
+            <div
+              className="mx-assistant-turn mx-turn-assistant"
+              data-turn-status={record?.status}
+            >
+              {streamingTurn ? (
+                <>
+                  {steps.length > 0 ? (
+                    <div className="mx-assistant-work" role="status">
+                      <WorkStepItems steps={steps} />
+                    </div>
+                  ) : (
+                    <p className="mx-assistant-note" role="status">
+                      {t("正在读取", "Reading ")}{userContextLabel || scopeLabel}…
+                    </p>
+                  )}
+                  <VerifiedLines lines={retained} />
+                </>
+              ) : interrupted && record ? (
+                <>
+                  <p className="mx-assistant-turn-status">
+                    {turnStatusText(interrupted, record.errorCode, verified.length > 0, t)}
+                  </p>
+                  <WorkStepsDisclosure steps={steps} />
+                  {verified.length > 0 && <VerifiedLines lines={verified} />}
+                  <div className="mx-assistant-turn-actions">
+                    {record.errorCode === "assistant_snapshot_missing" ? (
+                      <button type="button" disabled={busy || !ready || pending} onClick={() => retryTurn(record, true)}>
+                        {t("使用当前数据重新提问", "Ask again with current data")}
+                      </button>
+                    ) : (
+                      <>
+                        <button type="button" disabled={busy || !ready || pending} onClick={() => retryTurn(record)}>
+                          {t("重试", "Retry")}
+                        </button>
+                        <button type="button" disabled={busy} onClick={() => editTurnPrompt(record)}>
+                          {t("编辑问题", "Edit prompt")}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <WorkStepsDisclosure steps={steps} />
+                  {verified.length > 0 ? (
+                    <VerifiedLines lines={verified} />
+                  ) : (
+                    <p className="mx-assistant-note">{unverifiedNotice(t)}</p>
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </Fragment>;
+      })}
     </div>
     <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
     <form className="mx-assistant-composer" onSubmit={e => { e.preventDefault(); send(draft); }}>
-      <span className="mx-assistant-scope">{checking ? t("正在检查连接…", "Checking connection…") : contextCard?.object || [context.ticker, scopeLabel].filter(Boolean).join(" · ")}</span>
-      <div><textarea ref={history ? null : composerRef} rows={2} value={draft} onChange={e => setDraft(e.target.value)} maxLength={16000}
+      <span className="mx-assistant-scope">{checking ? t("正在检查连接…", "Checking connection…") : composerContextLabel}</span>
+      <div><textarea ref={history ? null : setComposerNode} rows={2} value={draft}
+        onChange={e => {
+          draftRevision.current++;
+          restoredFromStopRef.current = null;
+          setDraft(e.target.value);
+        }} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
-        {busy ? <button type="button" onClick={event => {
-          event.preventDefault();
-          void stop();
-          setDraft(submitted.current.text);
-          setContextCard(submitted.current.card);
-          setSentScope(null);
-        }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
+        {busy ? <button type="button" onClick={event => { event.preventDefault(); handleStop(); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
           : <button type="submit" disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp weight="bold" /></button>}
       </div>
     </form>
   </>;
 }
+
 function History({ select, back, removed }: { select: (id: string, messages: UIMessage[]) => void; back: () => void; removed: (id: string) => void }) {
   const t = useCopy();
   const client = useQueryClient();
@@ -179,12 +543,12 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
     if (!ready || action.current) return;
     const controller = new AbortController();
     action.current = controller;
-    const {signal} = controller;
+    const { signal } = controller;
     setBusy(true); setError(false);
     try {
       const path = "/assistant/conversations/" + encodeURIComponent(id);
       if (erase) { await api(path, { method: "DELETE", signal }); removed(id); await client.invalidateQueries({ queryKey: ["assistant-conversations"] }); }
-      else { const data = await api<{ messages: UIMessage[] }>(path, {signal}); select(id, data.messages); }
+      else { const data = await api<{ messages: UIMessage[] }>(path, { signal }); select(id, data.messages); }
     } catch { if (!signal.aborted) setError(true); } finally { action.current = null; setBusy(false); }
   }
   return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button data-assistant-dismiss ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
@@ -194,6 +558,7 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
     </div>)}{conversations.data?.length === 0 && <p>{t("暂无已保存的对话。", "No saved conversations yet.")}</p>}
     {(error || conversations.isError) && <p role="alert">{t("无法读取或更新对话。", "Could not read or update the conversation.")}</p>}</div></>;
 }
+
 export default function AssistantSidebar(props: SidebarProps) {
   const { handoff } = useAssistant();
   const [initial, setInitial] = useState(() => ({ id: makeConversationId(), messages: [] as UIMessage[], sequence: 0 }));
@@ -203,7 +568,7 @@ export default function AssistantSidebar(props: SidebarProps) {
   const fresh = () => setInitial({ id: makeConversationId(), messages: [], sequence: handoff?.sequence ?? 0 });
   useEffect(() => {
     const erased = () => {
-      setInitial({id:makeConversationId(), messages:[], sequence:handoff?.sequence ?? 0});
+      setInitial({ id: makeConversationId(), messages: [], sequence: handoff?.sequence ?? 0 });
       setHistoryAt(null);
     };
     window.addEventListener(conversationsErasedEvent, erased);

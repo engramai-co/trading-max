@@ -1,5 +1,6 @@
 "use client";
 
+import { useResearchChartWindow } from "./assistant/context";
 import Link from "./link";
 import { useMediaQuery } from "@mantine/hooks";
 import { useLocale } from "@/components/locale-provider";
@@ -27,8 +28,11 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
   const colours = useChartColours();
   const phone = useMediaQuery("(max-width: 767px)");
   const height = phone ? 235 : 280;
-  const points = inRange(query.data?.points ?? [], "3M").filter((p) => Number.isFinite(p.close));
+  const range = "3M";
+  const points = inRange(query.data?.points ?? [], range).filter((p) => Number.isFinite(p.close));
   const latest = points.at(-1);
+  const snapshotId = latest ? query.data?.snapshotId : undefined;
+  useResearchChartWindow(ticker, "overview", snapshotId ? range : "", snapshotId ?? undefined);
   const code = query.data?.currency ?? "";
   const bars = candleValues(points);
   const candles = bars.some((bar) => bar[0] != null);
@@ -36,7 +40,7 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
   const labels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
   return (
     <Panel
-      title={[t("价格走势", "Price history"), "3M", quoteUnit(code).currency].filter(Boolean).join(" · ")}
+      title={[t("价格走势", "Price history"), range, quoteUnit(code).currency].filter(Boolean).join(" · ")}
       className="mx-price-diagnosis-preview"
       action={<>
         {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}

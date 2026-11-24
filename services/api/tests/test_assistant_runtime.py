@@ -27,6 +27,8 @@ from services.api.trading_max_api.agent.service import (
     BoundModel,
 )
 from services.api.trading_max_api.agent.store import SqliteConversationStore
+from services.api.trading_max_api.artifacts import ArtifactStore
+from services.api.trading_max_api.models import SnapshotManifest
 from services.api.trading_max_api.routes.assistant import router
 
 MIGRATIONS = Path(__file__).resolve().parents[3] / "backend" / "migrations"
@@ -599,3 +601,190 @@ def test_delete_all_conversations_clears_the_workspace_beyond_the_recent_list(
             connection.execute("SELECT COUNT(*) FROM assistant_conversation_entries").fetchone()[0]
             == 0
         )
+
+
+def test_per_turn_context_persists_in_metadata_and_strips_untrusted_client_metadata(tmp_path):
+    stream, seen = answer_after_tool("lookup_total")
+    app, service = make_app(tmp_path, stream)
+    service.deps_for_run = lambda page, tz: type(
+        "PinnedDeps", (), {"page": page, "timezone": tz, "total": 1234.5, "snapshot_id": "pub-1"}
+    )()
+    client = TestClient(app)
+
+    first = user_turn("ctx-chat", "u1", "How did ISA do?")
+    first["messages"][0]["metadata"] = {
+        "turnContext": {"page": "settings", "scope": "cfd"},
+        "forged": "ignored",
+    }
+    first["context"] = {
+        "page": "analytics",
+        "scope": "isa",
+        "range": "ALL",
+        "start": "2026-01-06",
+        "end": "2026-01-20",
+        "benchmark": "QQQ",
+        "timezone": "Europe/London",
+    }
+    assert client.post("/v1/assistant/chat", json=first).status_code == 200
+
+    assert "the selected days 2026-01-06 to 2026-01-20" in seen[0][0].instructions
+    assert "daily_returns" in seen[0][0].instructions
+    bad = first | {"context": first["context"] | {"end": "2026-01-05"}}
+    assert client.post("/v1/assistant/chat", json=bad).status_code == 422
+
+    second = user_turn("ctx-chat", "u2", "What about NVDA valuation?")
+    second["context"] = {
+        "page": "research",
+        "ticker": "nvda",
+        "lens": "technical",
+        "range": "5D",
+        "timezone": "Europe/London",
+    }
+    assert client.post("/v1/assistant/chat", json=second).status_code == 200
+
+    third = user_turn("ctx-chat", "u3", "What about the semiconductor index?")
+    third["context"] = {
+        "page": "research",
+        "indexId": "marketvector-semiconductor-screened",
+        "lens": "technical",
+        "range": "1Y",
+    }
+    assert client.post("/v1/assistant/chat", json=third).status_code == 200
+    assert "the catalog index marketvector-semiconductor-screened" in (
+        seen[-2][-1].instructions or ""
+    )
+
+    # A contextless turn records no turnContext metadata.
+    fourth = user_turn("ctx-chat", "u4", "Plain follow-up")
+    assert client.post("/v1/assistant/chat", json=fourth).status_code == 200
+
+    stored = client.get("/v1/assistant/conversations/ctx-chat").json()
+    user_messages = [message for message in stored["messages"] if message["role"] == "user"]
+    assert len(user_messages) == 4
+    assert user_messages[0]["metadata"]["turnContext"] == {
+        "page": "analytics",
+        "scope": "isa",
+        "range": "ALL",
+        "start": "2026-01-06",
+        "end": "2026-01-20",
+        "benchmark": "QQQ",
+        "snapshotId": "pub-1",
+    }
+    assert "forged" not in user_messages[0]["metadata"]
+    assert user_messages[1]["metadata"]["turnContext"] == {
+        "page": "research",
+        "ticker": "NVDA",
+        "lens": "technical",
+        "range": "5D",
+        "snapshotId": "pub-1",
+    }
+    assert user_messages[2]["metadata"]["turnContext"] == {
+        "page": "research",
+        "indexId": "marketvector-semiconductor-screened",
+        "lens": "technical",
+        "range": "1Y",
+        "snapshotId": "pub-1",
+    }
+    assert "turnContext" not in user_messages[3].get("metadata", {})
+
+
+def test_ordinary_retry_pins_the_original_workspace_publication(tmp_path):
+    stream, seen = answer_after_tool("lookup_total")
+    app, service = make_app(tmp_path, stream)
+    store = ArtifactStore(tmp_path / "workspace")
+
+    @dataclass(frozen=True)
+    class PublishedDeps:
+        manifest: SnapshotManifest
+        store: ArtifactStore
+
+        @property
+        def snapshot_id(self):
+            return self.manifest.run_id
+
+        @property
+        def total(self):
+            return self.store.read_json(self.snapshot_id, "synthetic.json")["total"]
+
+    def deps_for_run(_page, _timezone):
+        manifest = store.latest_manifest()
+        assert manifest is not None
+        return PublishedDeps(manifest, store)
+
+    def publish(target, total):
+        artifact = target.immutable_artifacts.put_json(
+            key="synthetic.json", payload={"total": total}
+        )
+        return target.publish_typed(scope="all", source="test", artifacts=[artifact]).run_id
+
+    service.deps_for_run = deps_for_run
+    client = TestClient(app)
+    first = publish(store, 1234.5)
+    body = user_turn("pinned-retry", "u1", "How did ISA do?")
+    body["context"] = {"page": "analytics", "scope": "isa", "range": "3M"}
+    original = client.post("/v1/assistant/chat", json=body)
+    assert original.headers["x-assistant-snapshot-id"] == first
+    assert any(
+        x.get("output", {}).get("data") == {"total_value_gbp": 1234.5}
+        for x in events(original.text)
+    )
+
+    latest = publish(store, 9876.5)
+    assert latest != first
+    body["context"]["snapshotId"] = original.headers["x-assistant-snapshot-id"]
+    retried = client.post("/v1/assistant/chat", json=body)
+    assert retried.headers["x-assistant-snapshot-id"] == first
+    assert any(
+        x.get("output", {}).get("data") == {"total_value_gbp": 1234.5} for x in events(retried.text)
+    )
+    saved = client.get("/v1/assistant/conversations/pinned-retry").json()["messages"]
+    assert [m["metadata"]["turnContext"]["snapshotId"] for m in saved if m["role"] == "user"] == [
+        first
+    ]
+
+    body["context"]["snapshotId"] = publish(ArtifactStore(tmp_path / "other-workspace"), 999.0)
+    unavailable = client.post("/v1/assistant/chat", json=body)
+    assert unavailable.status_code == 404
+    assert unavailable.json() == {"detail": {"code": "assistant_snapshot_missing"}}
+
+    observation = {
+        "kind": "earnings",
+        "evidenceId": "ev_selected",
+        "date": "2026-01-20",
+        "end": "2026-01-21",
+        "instant": "2026-01-20T21:00:00Z",
+    }
+    cited = user_turn("pinned-cited-research", "u1", "Explain the selected release")
+    cited["context"] = {
+        "page": "research",
+        "ticker": "NVDA",
+        "lens": "analyst",
+        "snapshotId": first,
+        "observation": observation,
+    }
+    response = client.post("/v1/assistant/chat", json=cited)
+    assert response.headers["x-assistant-snapshot-id"] == first
+    instructions = seen[-2][-1].instructions
+    assert "security NVDA" in instructions
+    assert "ev_selected, 2026-01-20 to 2026-01-21" in instructions
+    stored = client.get("/v1/assistant/conversations/pinned-cited-research").json()["messages"][0]
+    assert stored["metadata"]["turnContext"]["observation"] == observation
+
+    del cited["context"]["snapshotId"]
+    assert client.post("/v1/assistant/chat", json=cited).status_code == 422
+
+    focused = user_turn("pinned-review-trade", "u1", "Explain this fill")
+    focused["context"] = {
+        "page": "review",
+        "scope": "isa",
+        "snapshotId": first,
+        "ticker": "NVDA",
+        "observation": {"kind": "decision", "date": "2026-01-20", "side": "buy", "ordinal": 1},
+    }
+    response = client.post("/v1/assistant/chat", json=focused)
+    assert response.headers["x-assistant-snapshot-id"] == first
+    assert "ordinal 1" in seen[-2][-1].instructions
+    stored = client.get("/v1/assistant/conversations/pinned-review-trade").json()["messages"][0]
+    assert stored["metadata"]["turnContext"]["observation"]["ordinal"] == 1
+    del focused["context"]["observation"]["ordinal"]
+    assert client.post("/v1/assistant/chat", json=focused).status_code == 422

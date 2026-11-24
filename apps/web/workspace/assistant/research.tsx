@@ -5,7 +5,6 @@ import { useMemo } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 import { useCopy } from "../foundation";
-import { useRouteState } from "../route-state";
 import { DigestRow, EvidenceLink, FollowUps, ReadingLines } from "./cards";
 import { useAssistant, usePageRole } from "./context";
 import { readerText, type Reading } from "./evidence";
@@ -13,17 +12,17 @@ import { fetchReading, useRoleReading } from "./reading";
 
 export type PriceObject = { ticker: string; published_series_id: string; index_id?: string };
 
-/** Preserve the resolved ticker and lens even when the Research URL uses its defaults. */
-export function useResearchOrigin(ticker: string, lens: string, snapshotId?: string) {
-  const { params } = useRouteState();
-  const search = params.toString();
-  return useMemo(() => {
-    const query = new URLSearchParams(search);
-    query.set("ticker", ticker);
-    if (lens === "technical" || lens === "overview" || lens === "price") query.set("scope","broker_total");
-    query.set("view", lens);
-    return { page: "research", search: "?" + query, snapshotId };
-  }, [ticker, lens, snapshotId, search]);
+/** Capture the reading's identity so a handoff keeps it across navigation. */
+export function useResearchOrigin(ticker: string, lens: string, snapshotId?: string, chartRange?: string, indexId?: string) {
+  const { researchChartWindows: { overview } } = useAssistant();
+  const range = chartRange ?? (lens === "overview" && overview?.identity === ticker
+    ? overview.range : undefined);
+  return useMemo(() => ({
+    page: "research",
+    search: lens === "technical" || lens === "overview" ? "scope=broker_total" : "",
+    snapshotId,
+    research: { ticker, lens, range, indexId },
+  }), [ticker, lens, range, snapshotId, indexId]);
 }
 
 type PositionProps = { security: PriceObject; snapshotId?: string; name?: string };
@@ -34,17 +33,17 @@ export function PositionReading(props: PositionProps) {
 function OpenPositionReading({ security, snapshotId, name }: PositionProps) {
   const t = useCopy();
   const result = useRoleReading({ role: "your-position", context: security, snapshotId }, true);
-  const origin = useResearchOrigin(security.ticker, "overview", snapshotId);
   const { ticker, published_series_id, index_id } = security;
+  const origin = useResearchOrigin(ticker, "overview", snapshotId, undefined, index_id);
   const context = useMemo(() => ({ticker, published_series_id, ...(index_id ? {index_id} : {})}), [ticker, published_series_id, index_id]);
   const card = useMemo(() => (result.data || result.isFetching) ? {
-    role: "your-position", title: t("与我相关", "Your position"), object: name || security.ticker,
+    role: "your-position", title: t("与我相关", "Your position"), object: name || ticker,
     questions: [t("这段时间价格如何变化？", "How did the price change?"),
       t("有哪些已核实的事件？", "Which dated events can be verified?"),
       t("与同期市场相比呢？", "How does it compare with the market?")],
     context, origin, reading: result.data,
     status: result.isFetching ? t("正在读取行情与成交记录…", "Reading prices and trade records…") : undefined,
-  } : null, [result.data, result.isFetching, t, name, security.ticker, context, origin]);
+  } : null, [result.data, result.isFetching, t, name, ticker, context, origin]);
   usePageRole(card);
   return null;
 }

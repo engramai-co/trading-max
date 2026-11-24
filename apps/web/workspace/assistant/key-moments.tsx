@@ -19,8 +19,8 @@ type Point = { date: string; category: string; high: number };
 type Mark = NumberedMoment & { x: number; y: number; high: number };
 
 /** ECharts supplies the coordinates after layout, including log scales, zoom and pane resizing. */
-export function MomentOverlay({ moments, chart, points, name }: {
-  moments: Moments; chart: RefObject<ECharts | null>; points: Point[]; name?: string;
+export function MomentOverlay({ moments, chart, points, name, range }: {
+  moments: Moments; chart: RefObject<ECharts | null>; points: Point[]; name?: string; range?: string;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -64,13 +64,13 @@ export function MomentOverlay({ moments, chart, points, name }: {
     {moments.current && moments.window && moments.snapshotId && <div className="mx-key-anchor"
       style={{ left: `clamp(4px, ${(active?.x ?? 180) - 180}px, max(4px, 100% - 364px))`, top: (active?.y ?? 0) + 14 }}>
       <MomentReading key={moments.key + moments.current.date} window={moments.window} date={moments.current.date}
-        snapshotId={moments.snapshotId} name={name} close={moments.close} />
+        snapshotId={moments.snapshotId} name={name} range={range} close={moments.close} />
     </div>}
   </div>;
 }
 
-function MomentReading({ window, date, snapshotId, name, close }: {
-  window: MomentWindow; date: string; snapshotId: string; name?: string; close: () => void;
+function MomentReading({ window, date, snapshotId, name, range, close }: {
+  window: MomentWindow; date: string; snapshotId: string; name?: string; range?: string; close: () => void;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -79,7 +79,7 @@ function MomentReading({ window, date, snapshotId, name, close }: {
   const context = useMemo(() => ({...window, date}), [window, date]);
   const request = {role: "key-moment", context, snapshotId};
   const result = useRoleReading(request, !stopped);
-  const origin = useResearchOrigin(window.ticker, window.index_id ? "price" : "technical", snapshotId);
+  const origin = useResearchOrigin(window.ticker, "technical", snapshotId, range, window.index_id);
   const wrapper = useRef<HTMLDivElement>(null);
   useEffect(() => { wrapper.current?.querySelector<HTMLButtonElement>(".mx-reading-close")?.focus({preventScroll: true}); }, []);
   const card = useMemo(() => ({
