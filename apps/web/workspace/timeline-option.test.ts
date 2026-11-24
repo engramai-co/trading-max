@@ -167,6 +167,27 @@ describe("shared performance timeline", () => {
     const axes = options().yAxis as Array<{ min?: number; max?: number }>;
     expect(axes[2]).toMatchObject({ min: -0.01, max: 0 });
   });
+  it("applies distinct named dash patterns while keeping solid lead width", () => {
+    const scheme = { ...colours, secondary: "teal" };
+    const option = timelineOption(["2025-01-01", "2025-01-02", "2025-01-03"], [{
+      label: "Return comparison",
+      percentage: true,
+      lines: [
+        { name: "Portfolio TWR", values: [0, 0.05, 0.1], colour: "brand" },
+        { name: "VOO", values: [0, 0.04, 0.08], colour: "axis", dash: "long" },
+        { name: "QQQ", values: [0, 0.06, 0.12], colour: "text", dash: "dash-dot" },
+        { name: "VT", values: [0, 0.03, 0.07], colour: "secondary", dash: "short" },
+      ],
+    }], scheme, String);
+    const styles = (option.series as Array<{ lineStyle: { color: string; width: number; type: string | number[] } }>)
+      .map((series) => series.lineStyle);
+    expect(styles).toEqual([
+      { color: scheme.brand, width: 2.5, type: "solid" },
+      { color: scheme.axis, width: 1.5, type: [8, 4] },
+      { color: scheme.text, width: 1.5, type: [8, 3, 2, 3] },
+      { color: scheme.secondary, width: 1.5, type: [3, 3] },
+    ]);
+  });
 });
 
 describe("money timeline", () => {

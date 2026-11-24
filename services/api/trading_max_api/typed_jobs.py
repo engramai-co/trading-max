@@ -799,6 +799,9 @@ class TypedJobManager:
         visible = self.queue.list(limit=max(1, limit), include_system=False)
         return [_api_record(record) for record in visible]
 
+    def latest_terminal_jobs(self) -> list[JobRecord]:
+        return [_api_record(record) for record in self.queue.latest_terminal_jobs()]
+
     def latest_refreshes(self) -> tuple[JobRecord | None, JobRecord | None]:
         full, intraday = self.queue.latest_refreshes()
         return (

@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page, type Route } from "@playwright/test";
 import { join } from "node:path";
+import type { components } from "../lib/api-schema";
 import type { ResearchLensSnapshot } from "../lib/types";
 
 // These cases read with the wide section index pinned; it starts closed for a new reader.
@@ -1881,3 +1882,384 @@ for (const locale of ["en", "zh"] as const) {
     }
   });
 }
+
+type NoteInput = components["schemas"]["ResearchNoteInput"];
+type ResearchNote = components["schemas"]["ResearchNote"];
+type ResearchJournal = components["schemas"]["ResearchJournal"] & { notes: ResearchNote[] };
+
+function researchNote(id: string, title: string): ResearchNote {
+  return {
+    id,
+    ticker: "SYNT",
+    revisions: [{
+      revision: 1,
+      savedAt: "2026-11-04T12:00:00Z",
+      content: { title, archived: false, thesis: "Saved thesis text", invalidation: "" },
+    }],
+  };
+}
+
+async function researchNoteFixture(page: Page) {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await synthetic(page, false);
+  let nextSave: { gate: Promise<void>; failure?: number } | undefined;
+  let nextRead: { gate: Promise<void>; start: () => void } | undefined;
+  const journals: Record<string, ResearchJournal> = {
+    SYNT: {
+      ticker: "SYNT",
+      schemaVersion: 1,
+      baselineModelId: null,
+      models: [],
+      notes: [researchNote("note-1", "Initial thesis")],
+    },
+    OTHR: { ticker: "OTHR", schemaVersion: 1, baselineModelId: null, models: [], notes: [] },
+  };
+  await page.route(/\/api\/backend\/research\/(SYNT|OTHR)\/journal(?:\/([^/?]+))?/, async (route) => {
+    const [, ticker, noteId] = /\/research\/(SYNT|OTHR)\/journal(?:\/([^/?]+))?/.exec(route.request().url())!;
+    const method = route.request().method();
+    if (method === "GET") {
+      const read = nextRead;
+      nextRead = undefined;
+      read?.start();
+      await read?.gate;
+      return route.fulfill({ json: journals[ticker] });
+    }
+    const body = route.request().postDataJSON() as NoteInput;
+    const save = nextSave;
+    nextSave = undefined;
+    await save?.gate;
+    if (save?.failure) return route.fulfill({ status: save.failure, json: { detail: "synthetic outage" } });
+    const journal = journals[ticker];
+    if (method === "PUT" && noteId) {
+      const note = journal.notes.find((item) => item.id === noteId)!;
+      const revision = note.revisions.at(-1)!.revision;
+      if (body.expectedRevision !== revision) {
+        return route.fulfill({ status: 409, json: { detail: "research-note-revision-conflict" } });
+      }
+      note.revisions.push({
+        revision: revision + 1,
+        savedAt: "2026-11-04T13:00:00Z",
+        content: body,
+      });
+    } else if (method === "POST") {
+      journal.notes.push({
+        id: "note-" + (journal.notes.length + 1),
+        ticker,
+        revisions: [{ revision: 1, savedAt: "2026-11-04T13:00:00Z", content: body }],
+      });
+    }
+    return route.fulfill({ json: journal });
+  });
+  return {
+    journal: journals.SYNT,
+    delayNextSave(failure?: number) {
+      let release!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      nextSave = { gate, failure };
+      return release;
+    },
+    delayNextRead() {
+      let release!: () => void;
+      let start!: () => void;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const started = new Promise<void>((resolve) => { start = resolve; });
+      nextRead = { gate, start };
+      return { release, started };
+    },
+  };
+}
+
+test.describe("research notes", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  test.beforeEach(async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+  });
+
+  test("editor keeps unsaved drafts across dismissals per ticker and discards explicitly", async ({ page }) => {
+    await researchNoteFixture(page);
+
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+    const newNote = page.getByRole("button", { name: "New note" });
+    await newNote.click();
+    const dialog = page.getByRole("dialog");
+    const title = dialog.getByRole("textbox", { name: /^Title/ });
+    const thesis = dialog.getByRole("textbox", { name: "Thesis & evidence" });
+
+    await title.fill("Draft SYNT title");
+    await thesis.fill("Draft SYNT thesis");
+    await title.dispatchEvent("keydown", { key: "Escape", code: "Escape", isComposing: true });
+    await title.dispatchEvent("keydown", { key: "Escape", code: "Escape", isComposing: false, keyCode: 229 });
+    await expect(dialog).toBeVisible();
+    await expect(title).toHaveValue("Draft SYNT title");
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(newNote).toBeFocused();
+
+    await newNote.click();
+    await expect(title).toHaveValue("Draft SYNT title");
+    await expect(thesis).toHaveValue("Draft SYNT thesis");
+    await thesis.fill("Draft SYNT thesis updated");
+    await dialog.getByRole("button", { name: "Close panel" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(newNote).toBeFocused();
+
+    // Drafts stay scoped per ticker for the session.
+    await page.goto("/research?ticker=OTHR&view=ledger&notebook=notes");
+    await page.getByRole("button", { name: "New note" }).click();
+    await expect(title).toHaveValue("");
+    await expect(thesis).toHaveValue("");
+    await page.keyboard.press("Escape");
+
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+    await newNote.click();
+    await expect(title).toHaveValue("Draft SYNT title");
+    await expect(thesis).toHaveValue("Draft SYNT thesis updated");
+
+    // Explicit discard throws away the draft and closes the editor.
+    await dialog.getByRole("button", { name: "Discard draft" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(newNote).toBeFocused();
+    await newNote.click();
+    await expect(title).toHaveValue("");
+    await expect(thesis).toHaveValue("");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+  });
+
+  for (const action of ["Load latest", "Keep my version"] as const) {
+    test(`editor resolves a conflict with ${action}`, async ({ page }) => {
+      const { delayNextSave, journal } = await researchNoteFixture(page);
+      await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+      const dialog = page.getByRole("dialog");
+      const title = dialog.getByRole("textbox", { name: /^Title/ });
+      const thesis = dialog.getByRole("textbox", { name: "Thesis & evidence" });
+      const editButton = page.getByRole("button", { name: "Edit" }).first();
+      await editButton.click();
+      await thesis.fill("Conflicted thesis draft");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+
+      const note = journal.notes[0];
+      note.revisions.push({
+        revision: 2,
+        savedAt: "2026-11-04T13:00:00Z",
+        content: { ...note.revisions[0].content, title: "Remote title" },
+      });
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "Remote title" })).toBeVisible();
+      await editButton.click();
+      await expect(title).toHaveValue("Initial thesis");
+      await expect(thesis).toHaveValue("Conflicted thesis draft");
+      const release = delayNextSave();
+      const submitted = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/journal/note-1"));
+      const conflict = page.waitForResponse((response) => response.request().method() === "PUT" && response.url().endsWith("/journal/note-1"));
+      await dialog.getByRole("button", { name: "Save note" }).click();
+      await submitted;
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      release();
+      const response = await conflict;
+      expect(response.status()).toBe(409);
+      expect(response.request().postDataJSON()).toMatchObject({ expectedRevision: 1 });
+      await expect(page.getByRole("alert").filter({ hasText: "This note has changed." })).toBeVisible();
+
+      await page.getByRole("button", { name: "New note" }).click();
+      await expect(dialog.getByRole("alert")).toHaveCount(0);
+      await page.keyboard.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await editButton.click();
+      await expect(dialog.getByRole("alert")).toHaveText("This note has changed.");
+      await expect(thesis).toHaveValue("Conflicted thesis draft");
+      await expect(dialog.getByRole("button", { name: "Load latest" })).toBeVisible();
+      await expect(dialog.getByRole("button", { name: "Keep my version" })).toBeVisible();
+      expect(note.revisions).toHaveLength(2);
+      expect(note.revisions.at(-1)?.content).toMatchObject({ title: "Remote title", thesis: "Saved thesis text" });
+
+      note.revisions.push({
+        revision: 3,
+        savedAt: "2026-11-04T14:00:00Z",
+        content: { ...note.revisions[1].content, title: "Newest remote title" },
+      });
+      await dialog.getByRole("button", { name: action }).click();
+      if (action === "Load latest") {
+        await expect(title).toHaveValue("Newest remote title");
+        await expect(thesis).toHaveValue("Saved thesis text");
+        await expect(dialog.getByRole("alert")).toHaveCount(0);
+        await expect(dialog.getByRole("button", { name: "Discard draft" })).toHaveCount(0);
+        expect(note.revisions).toHaveLength(3);
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        await editButton.click();
+        await expect(title).toHaveValue("Newest remote title");
+      } else {
+        await expect(dialog).toHaveCount(0);
+        await expect(page.locator(".mx-note-list")).toContainText("Conflicted thesis draft");
+        expect(note.revisions.at(-1)).toMatchObject({
+          revision: 4,
+          content: { title: "Initial thesis", thesis: "Conflicted thesis draft", expectedRevision: 3 },
+        });
+        await editButton.click();
+        await expect(thesis).toHaveValue("Conflicted thesis draft");
+        await expect(dialog.getByRole("button", { name: "Discard draft" })).toHaveCount(0);
+      }
+    });
+  }
+
+  test("editor stays read-only and focusable through close and reopen while saving", async ({ page }) => {
+    const { delayNextSave, journal } = await researchNoteFixture(page);
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+    const editButton = page.getByRole("button", { name: "Edit" }).first();
+    await editButton.click();
+    const dialog = page.getByRole("dialog");
+    const thesis = dialog.getByRole("textbox", { name: "Thesis & evidence" });
+    const save = dialog.getByRole("button", { name: "Save note" });
+    await thesis.fill("Submitted thesis");
+
+    const release = delayNextSave();
+    const submitted = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/journal/note-1"));
+    await save.click();
+    await submitted;
+    await expect(save).toBeDisabled();
+    await expect(thesis).not.toBeEditable();
+    await thesis.focus();
+    await expect(thesis).toBeFocused();
+    await thesis.press("ControlOrMeta+A");
+    await page.keyboard.insertText("Saved thesis text");
+    await expect(thesis).toHaveValue("Submitted thesis");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await editButton.click();
+    await expect(thesis).toHaveValue("Submitted thesis");
+    await expect(thesis).not.toBeEditable();
+    await dialog.getByRole("button", { name: "Close panel" }).click();
+    await expect(dialog).toHaveCount(0);
+    release();
+
+    await expect(page.locator(".mx-note-list")).toContainText("Submitted thesis");
+    await editButton.click();
+    await expect(thesis).toHaveValue("Submitted thesis");
+    await expect(thesis).toBeEditable();
+    await expect(dialog.getByRole("button", { name: "Discard draft" })).toHaveCount(0);
+    expect(journal.notes[0].revisions).toHaveLength(2);
+  });
+
+  test("a saved new note is edited with PUT after reopening", async ({ page }) => {
+    const { delayNextSave, journal } = await researchNoteFixture(page);
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+    const newNote = page.getByRole("button", { name: "New note" });
+    await newNote.click();
+    const dialog = page.getByRole("dialog");
+    const title = dialog.getByRole("textbox", { name: /^Title/ });
+    const thesis = dialog.getByRole("textbox", { name: "Thesis & evidence" });
+    const save = dialog.getByRole("button", { name: "Save note" });
+    await title.fill("New thesis");
+    const release = delayNextSave();
+    const created = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/journal"));
+    await save.click();
+    await created;
+    await expect(title).not.toBeEditable();
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await newNote.click();
+    await expect(title).toHaveValue("New thesis");
+    await expect(title).not.toBeEditable();
+    await expect(save).toBeDisabled();
+    release();
+    await expect(dialog).toHaveCount(0);
+
+    const note = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "New thesis" }) });
+    await note.getByRole("button", { name: "Edit" }).click();
+    await thesis.fill("Second save");
+    const updated = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/journal/note-2"));
+    await save.click();
+    expect((await updated).postDataJSON()).toMatchObject({ expectedRevision: 1 });
+    await expect(dialog).toHaveCount(0);
+    expect(journal.notes).toHaveLength(2);
+    expect(journal.notes[1].revisions.at(-1)).toMatchObject({ revision: 2, content: { thesis: "Second save" } });
+  });
+
+  test("a committed new note cannot be restored as a draft on reload during journal refetch", async ({ page }) => {
+    const { delayNextRead, journal } = await researchNoteFixture(page);
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+    const newNote = page.getByRole("button", { name: "New note" });
+    await newNote.click();
+    const dialog = page.getByRole("dialog");
+    const title = dialog.getByRole("textbox", { name: /^Title/ });
+    await title.fill("Already committed thesis");
+
+    const { release, started } = delayNextRead();
+    try {
+      await dialog.getByRole("button", { name: "Save note" }).click();
+      await started;
+      expect(journal.notes).toHaveLength(2);
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "Already committed thesis" })).toHaveCount(1);
+      await newNote.click();
+      await expect(title).toHaveValue("");
+      await expect(dialog.getByRole("button", { name: "Save note" })).toBeDisabled();
+    } finally {
+      release();
+    }
+  });
+
+  test("a failed save stays visible after closing and reopening the editor", async ({ page }) => {
+    const { delayNextSave } = await researchNoteFixture(page);
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+    const newNote = page.getByRole("button", { name: "New note" });
+    await newNote.click();
+    const dialog = page.getByRole("dialog");
+    const title = dialog.getByRole("textbox", { name: /^Title/ });
+    await title.fill("Keep this draft");
+    const release = delayNextSave(503);
+    const submitted = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/journal"));
+    await dialog.getByRole("button", { name: "Save note" }).click();
+    await submitted;
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    release();
+    const error = page.getByRole("alert").filter({ hasText: "Could not save the note." });
+    await expect(error).toBeVisible();
+    await newNote.click();
+    await expect(title).toHaveValue("Keep this draft");
+    await expect(dialog.getByRole("alert")).toHaveText("Could not save the note.");
+    await dialog.getByRole("button", { name: "Discard draft" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(error).toHaveCount(0);
+  });
+
+  test("a delayed save response leaves a different open editor and draft intact", async ({ page }) => {
+    const { delayNextSave, journal } = await researchNoteFixture(page);
+    journal.notes.push(researchNote("note-2", "Second thesis"));
+    await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
+    const firstNote = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Initial thesis" }) });
+    const secondNote = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Second thesis" }) });
+    await firstNote.getByRole("button", { name: "Edit" }).click();
+    const dialog = page.getByRole("dialog");
+    const thesis = dialog.getByRole("textbox", { name: "Thesis & evidence" });
+    await thesis.fill("Submitted first thesis");
+
+    const release = delayNextSave();
+    const submitted = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/journal/note-1"));
+    await dialog.getByRole("button", { name: "Save note" }).click();
+    await submitted;
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await secondNote.getByRole("button", { name: "Edit" }).click();
+    await thesis.fill("Draft for second note");
+    await expect(dialog.getByRole("button", { name: "Save note" })).toBeEnabled();
+    release();
+
+    await expect(firstNote).toContainText("Submitted first thesis");
+    await expect(thesis).toHaveValue("Draft for second note");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await secondNote.getByRole("button", { name: "Edit" }).click();
+    await expect(thesis).toHaveValue("Draft for second note");
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await firstNote.getByRole("button", { name: "Edit" }).click();
+    await expect(thesis).toHaveValue("Submitted first thesis");
+    await expect(dialog.getByRole("button", { name: "Discard draft" })).toHaveCount(0);
+  });
+});

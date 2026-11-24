@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.68.1] - 2026-11-24
+
+### Fixed
+- Settings keeps unsaved edits to Preferences and Model assignment when you switch tabs, and still warns before you leave. A save reports success only for the revision it committed. A change made elsewhere in the meantime is no longer overwritten; the save reports a conflict instead. Preferences shows the language currently in use.
+- A research note survives closing its editor or pressing Escape, per company and note, until you save or discard it. Fields stay read-only while a save runs. When the note changed elsewhere, the editor offers Load latest or Keep my version.
+- Data status no longer shows a healthy headline while an update, news or calendar source has failed. A failed update stays visible through later retries until its scope succeeds again. An unavailable history check reads as unavailable rather than empty. Screen readers hear only status changes, Check now keeps focus, and long diagnostics wrap.
+- Show all on Look-through no longer freezes the page with thousands of companies. Rows appear in batches in one list, and printing includes every row.
+- VOO, QQQ and VT each have their own colour and dash pattern on Returns, in the chart, legend and reading card, including in forced-colours mode.
+- Stopping a MaxAI answer restores the question and its reading card as an unsent draft, and a retry keeps the context it was asked in even after you move to another page. The MaxAI button meets the 44-pixel touch size on landscape phones.
+
+### Changed
+- The jobs API reports the latest finished job for each scope, and preference updates accept an expected revision.
+
 ## [1.68.0] - 2026-11-24
 
 ### Changed

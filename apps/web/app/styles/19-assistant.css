@@ -25,7 +25,7 @@
   font-size: 11px;
 }
 
-@media (max-width: 767px) {
+@media (max-width: 767px), (max-width: 959px) and (max-height: 500px) and (pointer: coarse) {
   .mx-assistant-trigger {
     min-height: 44px;
   }

@@ -15188,6 +15188,13 @@
             },
             "title": "Jobs",
             "type": "array"
+          },
+          "latestTerminalJobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobRecord"
+            },
+            "title": "Latestterminaljobs",
+            "type": "array"
           }
         },
         "title": "JobList",
@@ -19102,6 +19109,22 @@
           "publisher"
         ],
         "title": "PriorDecisionEvent",
+        "type": "object"
+      },
+      "ProfileRevisionConflictResponse": {
+        "properties": {
+          "detail": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Detail",
+            "type": "object"
+          }
+        },
+        "required": [
+          "detail"
+        ],
+        "title": "ProfileRevisionConflictResponse",
         "type": "object"
       },
       "ProjectionYear": {
@@ -28202,6 +28225,18 @@
             ],
             "title": "Displayname"
           },
+          "expectedRevision": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expectedrevision"
+          },
           "initials": {
             "anyOf": [
               {
@@ -30156,7 +30191,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.68.0"
+    "version": "1.68.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -32205,6 +32240,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileRevisionConflictResponse"
+                }
+              }
+            },
+            "description": "Profile revision conflict"
           },
           "422": {
             "content": {

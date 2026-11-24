@@ -225,6 +225,38 @@ def test_latest_refreshes_skip_system_and_research_only_jobs(tmp_path: Path) -> 
     assert intraday is not None and intraday.job_id == "intraday-refresh"
 
 
+def test_latest_terminal_job_orders_by_completion_and_excludes_cancellations(
+    tmp_path: Path,
+) -> None:
+    queue = make_queue(tmp_path)
+    with queue.database.transaction() as connection:
+        connection.executemany(
+            "INSERT INTO jobs(job_id, scope, trigger, status, created_at, finished_at) "
+            "VALUES (?, 'cfd', 'on_demand', ?, ?, ?)",
+            [
+                (
+                    "slow-failure",
+                    "failed",
+                    "2026-11-01T00:00:00+00:00",
+                    "2026-11-03T00:00:00+00:00",
+                ),
+                (
+                    "quick-success",
+                    "succeeded",
+                    "2026-11-02T00:00:00+00:00",
+                    "2026-11-02T00:00:00+00:00",
+                ),
+            ],
+        )
+    queue.cancel(queue.enqueue("cfd", job_id="cancelled-retry").job_id)
+    queue.enqueue("research", trigger="system", job_id="internal")
+    assert queue.claim("test-worker", allowed_triggers=("system",)) is not None
+    queue.complete("internal", "test-worker", snapshot_run_id="synthetic")
+
+    assert [job.job_id for job in queue.latest_terminal_jobs()] == ["slow-failure"]
+    queue.database.close()
+
+
 def test_trigger_summary_returns_latest_and_exact_counts(tmp_path: Path) -> None:
     queue = make_queue(tmp_path)
     queue.enqueue("intraday", trigger="intraday", job_id="older")

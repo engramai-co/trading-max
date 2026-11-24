@@ -260,6 +260,7 @@ export type HealthProbeError = {
 
 export type JobListResponse = {
   jobs: RefreshJob[];
+  latestTerminalJobs?: RefreshJob[];
 };
 
 export type JobOutcomes = ApiSchemas["JobOutcomes"];
@@ -271,6 +272,7 @@ export type HealthDetails = {
   readiness: ReadinessResponse | null;
   refresh: RefreshState | null;
   jobs: RefreshJob[];
+  latestTerminalJobs?: RefreshJob[];
   /** Seven days of finished updates; null when the service does not report them. */
   outcomes?: JobOutcomes | null;
   errors: HealthProbeError[];

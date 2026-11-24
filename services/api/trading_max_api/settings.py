@@ -78,6 +78,10 @@ class AutomationPreferences:
         return self.live_enabled
 
 
+class ProfileRevisionConflict(ValueError):
+    """A profile update was based on an older revision."""
+
+
 class SettingsRepository:
     """SQLite-backed settings metadata with revision and audit semantics."""
 
@@ -118,12 +122,15 @@ class SettingsRepository:
 
     def get_profile(self) -> UserProfile:
         with self.database.read() as connection:
-            row = connection.execute(
-                """SELECT p.*, a.enabled AND a.accepted_consent_revision = ? AS assistant_enabled
-                   FROM user_profile p LEFT JOIN assistant_preferences a
-                   ON a.preference_id = p.profile_id WHERE p.profile_id = 'local'""",
-                (ASSISTANT_CONSENT_REVISION,),
-            ).fetchone()
+            return self._read_profile(connection)
+
+    def _read_profile(self, connection: sqlite3.Connection) -> UserProfile:
+        row = connection.execute(
+            """SELECT p.*, a.enabled AND a.accepted_consent_revision = ? AS assistant_enabled
+               FROM user_profile p LEFT JOIN assistant_preferences a
+               ON a.preference_id = p.profile_id WHERE p.profile_id = 'local'""",
+            (ASSISTANT_CONSENT_REVISION,),
+        ).fetchone()
         if row is None:
             raise RuntimeError("local profile was not initialized")
         return self._profile(row)
@@ -279,33 +286,37 @@ class SettingsRepository:
         return self.get_automation_preferences()
 
     def update_profile(self, patch: UserProfilePatch, *, actor: str = "local") -> UserProfile:
-        current = self.get_profile()
-        values = current.model_dump(mode="python", by_alias=False)
-        values.update(
-            patch.model_dump(
+        with self.database.transaction(immediate=True) as connection:
+            current = self._read_profile(connection)
+            if patch.expected_revision is not None and patch.expected_revision != current.revision:
+                raise ProfileRevisionConflict(
+                    "Settings changed in another window. Reload before saving."
+                )
+            changes = patch.model_dump(
                 by_alias=False,
+                exclude={"expected_revision"},
                 exclude_unset=True,
                 exclude_none=True,
             )
-        )
-        if str(values["base_currency"]).upper() != "GBP":
-            raise ValueError("only GBP is supported as the base currency")
-        values["base_currency"] = str(values["base_currency"]).upper()
-        try:
-            ZoneInfo(values["timezone"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError("timezone must be a valid IANA timezone") from exc
-        updated_at = _iso()
-        revision = current.revision + 1
-        labels = values["account_labels"] or DEFAULT_ACCOUNT_LABELS
-        if set(labels) - set(DEFAULT_ACCOUNT_LABELS):
-            raise ValueError("account_labels may only contain A, B, and C")
-        if any(
-            not isinstance(label, str) or not 1 <= len(label.strip()) <= 80
-            for label in labels.values()
-        ):
-            raise ValueError("account labels must contain 1-80 characters")
-        with self.database.transaction(immediate=True) as connection:
+            values = current.model_dump(mode="python", by_alias=False)
+            values.update(changes)
+            if str(values["base_currency"]).upper() != "GBP":
+                raise ValueError("only GBP is supported as the base currency")
+            values["base_currency"] = str(values["base_currency"]).upper()
+            try:
+                ZoneInfo(values["timezone"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError("timezone must be a valid IANA timezone") from exc
+            updated_at = _iso()
+            revision = current.revision + 1
+            labels = values["account_labels"] or DEFAULT_ACCOUNT_LABELS
+            if set(labels) - set(DEFAULT_ACCOUNT_LABELS):
+                raise ValueError("account_labels may only contain A, B, and C")
+            if any(
+                not isinstance(label, str) or not 1 <= len(label.strip()) <= 80
+                for label in labels.values()
+            ):
+                raise ValueError("account labels must contain 1-80 characters")
             connection.execute(
                 """UPDATE user_profile SET display_name = ?, initials = ?, avatar_color = ?,
                    locale = ?, base_currency = ?, timezone = ?, account_labels_json = ?,
@@ -328,9 +339,9 @@ class SettingsRepository:
                 action="profile.updated",
                 integration_id=None,
                 revision=revision,
-                metadata={"fields": sorted(patch.model_dump(by_alias=False, exclude_unset=True))},
+                metadata={"fields": sorted(changes)},
             )
-        return self.get_profile()
+            return self._read_profile(connection)
 
     @staticmethod
     def _summary(row: Any) -> IntegrationSummary:
@@ -636,7 +647,7 @@ class SettingsRepository:
                 f"current {current.revision}"
             )
         revision = current.revision + 1
-        now = _iso()
+        now = _now()
         with self.database.transaction(immediate=True) as connection:
             updated = connection.execute(
                 """UPDATE llm_route_policy
@@ -646,7 +657,7 @@ class SettingsRepository:
                     default_route,
                     json.dumps(overrides, ensure_ascii=False, sort_keys=True),
                     revision,
-                    now,
+                    _iso(now),
                     current.revision,
                 ),
             )
@@ -663,7 +674,12 @@ class SettingsRepository:
                     "override_workloads": sorted(overrides),
                 },
             )
-        return self.get_route_policy()
+        return LLMRoutePolicy(
+            default_route=default_route,
+            overrides=overrides,
+            revision=revision,
+            updated_at=now,
+        )
 
     def get_runtime_llm(self) -> dict[str, str | None]:
         """Return legacy runtime metadata for callers not yet route-aware."""

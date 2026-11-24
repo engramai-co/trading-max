@@ -94,6 +94,27 @@ def test_profile_and_integration_overview_are_non_secret(
         assert updated.json()["initials"] == "RY"
         assert updated.json()["locale"] == "en"
 
+        headers = {"Authorization": "Bearer secret"}
+        current = updated.json()
+        stale = client.patch(
+            "/v1/profile",
+            json={"displayName": "Stale name", "expectedRevision": profile.json()["revision"]},
+            headers=headers,
+        )
+        assert stale.status_code == 409
+        assert stale.json()["detail"]["code"] == "profile_revision_conflict"
+        assert client.get("/v1/profile").json() == current
+
+        saved = client.patch(
+            "/v1/profile",
+            json={"displayName": "Fresh name", "expectedRevision": current["revision"]},
+            headers=headers,
+        )
+        assert saved.status_code == 200
+        assert saved.json()["displayName"] == "Fresh name"
+        assert saved.json()["locale"] == "en"
+        assert saved.json()["revision"] == current["revision"] + 1
+
 
 def test_settings_writes_require_the_same_write_boundary(
     research_root: Path,
@@ -521,3 +542,46 @@ def test_concurrent_settings_revision_updates_do_not_overwrite_each_other(
         assert read().revision == original.revision + 1
     finally:
         repository.close()
+
+
+@pytest.mark.parametrize("kind", ["profile", "routes"])
+def test_settings_write_returns_its_own_revision(tmp_path, monkeypatch, kind):
+    from contextlib import contextmanager
+
+    from services.api.trading_max_api.models import LLMRoutePolicyUpdate, UserProfilePatch
+    from services.api.trading_max_api.settings import SettingsRepository
+
+    first = SettingsRepository(tmp_path)
+    second = SettingsRepository(tmp_path)
+    transaction = first.database.transaction
+
+    def save(repository, value):
+        if kind == "profile":
+            return repository.update_profile(UserProfilePatch(display_name=value))
+        return repository.save_route_policy(LLMRoutePolicyUpdate(default_route=value))
+
+    first_value, second_value = (
+        ("First writer", "Second writer")
+        if kind == "profile"
+        else ("deepseek/deepseek-chat", "opencode/deepseek-v4-flash")
+    )
+    next_commit = None
+
+    @contextmanager
+    def commit_then_write(**kwargs):
+        nonlocal next_commit
+        with transaction(**kwargs) as connection:
+            yield connection
+        next_commit = save(second, second_value)
+
+    monkeypatch.setattr(first.database, "transaction", commit_then_write)
+    try:
+        committed = save(first, first_value)
+        assert next_commit is not None
+        assert committed.revision + 1 == next_commit.revision
+        field = "display_name" if kind == "profile" else "default_route"
+        assert getattr(committed, field) == first_value
+        assert getattr(next_commit, field) == second_value
+    finally:
+        second.close()
+        first.close()

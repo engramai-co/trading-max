@@ -13,7 +13,7 @@ import { Empty, useCopy } from "./foundation";
 import { historyGapSeries, historySeries } from "@/lib/portfolio/series";
 import { historyDay, type CalendarTimeline } from "@/lib/portfolio/history";
 import { timelineAxis } from "./timeline-axis";
-import type { ChartReadout, Reading, ReadingItem, ReadingKey } from "./chart-readout";
+import { LINE_DASH_PATTERNS, type ChartReadout, type LineDash, type Reading, type ReadingItem, type ReadingKey } from "./chart-readout";
 import { fixed, readingTone, signedPercent, signedPounds } from "./reading-format";
 
 import { Plot } from "./plot";
@@ -24,6 +24,7 @@ export type ChartLine = {
   values: Array<number | null>;
   colour?: "brand" | "accent" | "secondary" | "negative" | "text" | "axis";
   dashed?: boolean;
+  dash?: LineDash;
   area?: boolean;
   type?: "line" | "bar";
   step?: "end";
@@ -120,6 +121,7 @@ export function HistoryChart({
   const key = (line: ChartLine, index: number): ReadingKey => ({
     colour: historyLineColour(colours, line, index),
     ...(line.dashed ? { dashed: true } : {}),
+    ...(line.dash ? { dash: line.dash } : {}),
     ...(line.type === "bar" ? { kind: "bar" as const } : {}),
   });
   const read = (position: number): Reading | null => {
@@ -209,9 +211,9 @@ export function HistoryChart({
               connectNulls: false,
               smooth: false,
               lineStyle: {
-                width: line.dashed ? 1.5 : 2.5,
+                width: line.dash || line.dashed ? 1.5 : 2.5,
                 color: colour,
-                type: line.dashed ? "dashed" : "solid",
+                type: line.dash ? LINE_DASH_PATTERNS[line.dash].chart : line.dashed ? "dashed" : "solid",
               },
               itemStyle: { color: colour },
               areaStyle: line.area
@@ -273,20 +275,24 @@ export function HistoryChart({
 export function Legend({
   items,
 }: {
-  items: Array<{ label: string; colour?: string; dashed?: boolean; dotted?: boolean }>;
+  items: Array<{ label: string; colour?: string; dashed?: boolean; dotted?: boolean; dash?: LineDash }>;
 }) {
   return (
     <div className="mx-chart-legend">
-      {items.map((item, i) => (
-        <span key={item.label}>
-          {item.dashed || item.dotted ? (
-            <svg width="15" height="4" aria-hidden="true">
-              <path d="M0 2h15" stroke={item.colour ?? `var(--mx-chart-${i})`} strokeWidth="2" strokeDasharray={item.dotted ? "1 4" : "4 3"} />
-            </svg>
-          ) : <i style={{ background: item.colour ?? `var(--mx-chart-${i})` }} />}
-          {item.label}
-        </span>
-      ))}
+      {items.map((item, i) => {
+        const dashArray = item.dash ? LINE_DASH_PATTERNS[item.dash].swatch : item.dotted ? "1 4" : item.dashed ? "4 3" : undefined;
+        const width = item.dash ? 18 : 15;
+        return (
+          <span key={item.label}>
+            {dashArray ? (
+              <svg width={width} height="4" aria-hidden="true">
+                <path d={`M0 2h${width}`} stroke={item.colour ?? `var(--mx-chart-${i})`} strokeWidth="2" strokeDasharray={dashArray} />
+              </svg>
+            ) : <i style={{ background: item.colour ?? `var(--mx-chart-${i})` }} />}
+            {item.label}
+          </span>
+        );
+      })}
     </div>
   );
 }

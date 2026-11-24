@@ -55,6 +55,12 @@ import { ReconstructionMarketData } from "./settings-market-data";
 
 import { LocalOnboarding } from "./local-onboarding";
 import { ASSISTANT_NAME } from "./assistant-settings";
+import {
+  reconcileModelRoutingDraft,
+  sameStringRecord,
+  type ModelRoutingDraft,
+  type ModelRoutingSubmission,
+} from "./settings-drafts";
 import { settingsKey } from "./settings-query";
 
 const AssistantPreferences = dynamic(() => import("./settings-assistant").then((module) => module.AssistantPreferences), { loading: () => <Pending /> });
@@ -95,7 +101,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
   const query = useQuery({
     queryKey: settingsKey,
     enabled: view !== "assistant",
-    queryFn: () => api<IntegrationOverview>("/settings/integrations"),
+    queryFn: ({ signal }) => api<IntegrationOverview>("/settings/integrations", { signal }),
     retry: 1,
   });
   const [connection, setConnection] = useState<Connection | null>(null);
@@ -253,24 +259,28 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                   />
                 )}
               </Panel>
-              {data.llmRoutePolicy && (
-                <ModelRouting
-                  key={data.llmRoutePolicy.revision}
-                  policy={data.llmRoutePolicy}
-                  providers={data.llmProviders}
-                  refresh={() => void query.refetch()}
-                />
-              )}
             </>
           )}
           {view === "automation" && <AutomationPreferences />}
-          {view === "preferences" && (
-            <PersonalPreferences
-              profile={data.profile}
-              refresh={() => void query.refetch()}
-            />
-          )}
         </>
+      )}
+      {/* Keep the forms and their navigation guards mounted across Settings tabs. */}
+      {data?.llmRoutePolicy && (
+        <div hidden={view !== "models"}>
+          <ModelRouting
+            policy={data.llmRoutePolicy}
+            providers={data.llmProviders}
+            refresh={() => void query.refetch()}
+          />
+        </div>
+      )}
+      {data && (
+        <div hidden={view !== "preferences"}>
+          <PersonalPreferences
+            profile={data.profile}
+            refresh={() => void query.refetch()}
+          />
+        </div>
       )}
       <Modal
         opened={view === "models" && Boolean(data?.llmProviders.length) &&
@@ -693,8 +703,14 @@ function ModelRouting({
   refresh: () => void;
 }) {
   const t = useCopy();
-  const [defaultRoute, setDefaultRoute] = useState(policy.defaultRoute);
-  const [overrides, setOverrides] = useState(policy.overrides);
+  const client = useQueryClient();
+  const [draft, setDraft] = useState<ModelRoutingDraft>();
+  const activeDraft = draft?.baseRevision === policy.revision ? draft : undefined;
+  const defaultRoute = activeDraft?.defaultRoute ?? policy.defaultRoute;
+  const overrides = activeDraft?.overrides ?? policy.overrides;
+  const dirty = defaultRoute !== policy.defaultRoute ||
+    !sameStringRecord(overrides, policy.overrides);
+  useBuildNavigationGuard(dirty);
 
   const options = providers.flatMap((provider) =>
     provider.models.map((model) => ({
@@ -702,22 +718,32 @@ function ModelRouting({
       label: provider.label + " · " + model,
     })),
   );
-  for (const route of [policy.defaultRoute, ...Object.values(policy.overrides)]) {
+  for (const route of [
+    policy.defaultRoute, defaultRoute, ...Object.values(policy.overrides), ...Object.values(overrides),
+  ]) {
     if (!options.some((o) => o.value === route)) options.push({ value: route, label: route });
   }
   const lenses = [
     { value: "taxonomy", label: t("代码识别", "Ticker matching") },
   ];
   const mutation = useMutation({
-    mutationFn: (submitted: { defaultRoute: string; overrides: typeof overrides; expectedRevision: number }) =>
-      api("/settings/llm/routes", jsonRequest("PUT", submitted)),
-    onSuccess: () => refresh(),
+    mutationFn: (submitted: ModelRoutingSubmission) =>
+      api<LLMRoutePolicy>("/settings/llm/routes", jsonRequest("PUT", submitted)),
+    onSuccess: async (committed, submitted) => {
+      await client.cancelQueries({ queryKey: settingsKey });
+      setDraft((current) => reconcileModelRoutingDraft(current, submitted, committed));
+      client.setQueryData<IntegrationOverview>(settingsKey, (overview) =>
+        overview && (overview.llmRoutePolicy?.revision ?? 0) <= committed.revision
+          ? { ...overview, llmRoutePolicy: committed }
+          : overview,
+      );
+      refresh();
+    },
   });
-  const saved = mutation.isSuccess &&
-    mutation.variables.defaultRoute === defaultRoute &&
-    JSON.stringify(mutation.variables.overrides) === JSON.stringify(overrides);
-  useBuildNavigationGuard(!saved && (defaultRoute !== policy.defaultRoute ||
-    JSON.stringify(overrides) !== JSON.stringify(policy.overrides)));
+  const savedRevision = mutation.isSuccess &&
+    mutation.data.revision === mutation.variables.expectedRevision + 1 &&
+    mutation.data.revision === policy.revision;
+  const saved = savedRevision && !dirty;
   return (
     <Panel
       title={t("模型分配", "Model assignments")}
@@ -731,8 +757,8 @@ function ModelRouting({
           label={t("默认模型", "Default model")}
           data={options}
           value={defaultRoute}
-          onChange={(v) => {
-            setDefaultRoute(v ?? policy.defaultRoute);
+          onChange={(value) => {
+            setDraft({ ...activeDraft, baseRevision: policy.revision, defaultRoute: value ?? policy.defaultRoute });
           }}
           searchable
         />
@@ -754,12 +780,10 @@ function ModelRouting({
                 }}
                 searchable
                 onChange={(value) => {
-                  setOverrides((current) => {
-                    const next = { ...current };
-                    if (value) next[lens.value] = value;
-                    else delete next[lens.value];
-                    return next;
-                  });
+                  const next = { ...overrides };
+                  if (value) next[lens.value] = value;
+                  else delete next[lens.value];
+                  setDraft({ ...activeDraft, baseRevision: policy.revision, overrides: next });
                 }}
               />
             ))}
@@ -786,11 +810,15 @@ function ModelRouting({
         <Group>
           <Button
             loading={mutation.isPending}
-            onClick={() => mutation.mutate({ defaultRoute, overrides: { ...overrides }, expectedRevision: policy.revision })}
+            onClick={() => {
+              if (!mutation.isPending) mutation.mutate({
+                defaultRoute, overrides, expectedRevision: policy.revision,
+              });
+            }}
           >
             {t("保存模型分配", "Save model assignments")}
           </Button>
-          {mutation.isSuccess && !saved && (
+          {savedRevision && dirty && (
             <span role="status">{t("还有未保存的修改", "You have unsaved changes")}</span>
           )}
         </Group>

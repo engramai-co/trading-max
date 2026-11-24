@@ -158,6 +158,39 @@ def test_job_outcomes_route_is_not_read_as_a_job_id(boundary_client):
     assert boundary_client.get("/v1/jobs/outcomes?days=0").status_code == 422
 
 
+def test_latest_terminal_jobs_are_independent_of_recent_history(boundary_client):
+    queue = boundary_client.app.state.jobs.queue
+
+    def latest():
+        response = boundary_client.get("/v1/jobs?limit=12")
+        assert response.status_code == 200
+        payload = response.json()
+        return payload["jobs"], {job["scope"]: job for job in payload["latestTerminalJobs"]}
+
+    assert latest() == ([], {})
+    queue.enqueue("cfd", job_id="cfd-failed")
+    assert queue.claim("test-worker") is not None
+    queue.fail(
+        "cfd-failed", "test-worker", error_code="cfd.fixture", error_message="Synthetic CFD failure"
+    )
+    for index in range(13):
+        job = queue.enqueue("live", job_id=f"live-{index}", trigger="live")
+        assert queue.claim("test-worker") is not None
+        queue.complete(job.job_id, "test-worker", snapshot_run_id="synthetic")
+    queue.enqueue("cfd", job_id="cfd-retry")
+
+    recent, terminal = latest()
+    assert len(recent) == 12 and "cfd-failed" not in {job["jobId"] for job in recent}
+    assert terminal["cfd"]["jobId"] == "cfd-failed"
+    assert terminal["cfd"]["error"] == "Synthetic CFD failure"
+    assert terminal["live"]["jobId"] == "live-12"
+
+    assert queue.claim("test-worker") is not None
+    assert latest()[1]["cfd"]["status"] == "failed"
+    queue.complete("cfd-retry", "test-worker", snapshot_run_id="synthetic")
+    assert latest()[1]["cfd"]["status"] == "succeeded"
+
+
 def test_empty_installation_can_enable_live_schedule_without_restart(boundary_client, monkeypatch):
     import threading
 

@@ -47,7 +47,8 @@ def list_jobs(
     request: Request,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobList:
-    return JobList(jobs=app_service(request, "jobs").list(limit=limit))
+    jobs = app_service(request, "jobs")
+    return JobList(jobs=jobs.list(limit=limit), latest_terminal_jobs=jobs.latest_terminal_jobs())
 
 
 @router.get("/v1/jobs/outcomes", response_model=JobOutcomes)

@@ -4,6 +4,7 @@ import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowUp, ClockCounterClockwise, Plus, Square, Trash, X } from "@phosphor-icons/react";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { ASSISTANT_NAME, conversationsErasedEvent } from "../assistant-settings";
@@ -50,12 +51,13 @@ function failureCode(message: string) {
 function selectionKey(card: RoleCard | null) {
   return hashKey([card?.role, card?.context, card?.origin, card?.reading?.snapshotId ?? card?.origin?.snapshotId]);
 }
-type SidebarProps = { checking: boolean; page: string; search: string; scopeLabel: string; composerRef: (node: HTMLTextAreaElement | null) => void };
-function Thread({ page, search, scopeLabel, checking, composerRef, initial, history, onHistory, onNew }: SidebarProps & {
+type SidebarProps = { checking: boolean; page: string; scopeLabel: string; composerRef: (node: HTMLTextAreaElement | null) => void };
+function Thread({ page, scopeLabel, checking, composerRef, initial, history, onHistory, onNew }: SidebarProps & {
   history: boolean; initial: { id: string; messages: UIMessage[]; sequence: number }; onHistory: () => void; onNew: () => void;
 }) {
   const t = useCopy();
   const { timeZone, locale } = useLocale();
+  const search = useSearchParams().toString();
   const { open, ready, pending, close, pageCard, handoff } = useAssistant();
   const [draft, setDraft] = useState("");
   const [contextCard, setContextCard] = useState<RoleCard | null>(null);
@@ -150,7 +152,13 @@ function Thread({ page, search, scopeLabel, checking, composerRef, initial, hist
       <div><textarea ref={history ? null : composerRef} rows={2} value={draft} onChange={e => setDraft(e.target.value)} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
-        {busy ? <button type="button" onClick={event => { event.preventDefault(); void stop(); setDraft(submitted.current.text); setContextCard(submitted.current.card); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
+        {busy ? <button type="button" onClick={event => {
+          event.preventDefault();
+          void stop();
+          setDraft(submitted.current.text);
+          setContextCard(submitted.current.card);
+          setSentScope(null);
+        }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
           : <button type="submit" disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp weight="bold" /></button>}
       </div>
     </form>

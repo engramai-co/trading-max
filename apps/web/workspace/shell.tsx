@@ -508,7 +508,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           {children}
         </main>
       </div>
-      <AssistantPanel overlay={assistantOverlay} page={active?.href.slice(1) || "overview"} search={routeSearch} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
+      <AssistantPanel overlay={assistantOverlay} page={active?.href.slice(1) || "overview"} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
       <nav inert={assistantOverlay || undefined}
         className="mx-mobile-dock"
         aria-label={t("快捷导航", "Quick navigation")}

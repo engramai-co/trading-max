@@ -144,7 +144,8 @@ test.describe("portfolio workspace", () => {
     );
     await page.goto("/health");
     const main = page.getByRole("main");
-    const retry = main.getByRole("button", { name: /重新加载|Try again/ });
+    await expect(main.getByRole("heading", { name: /暂时无法读取数据|Data is temporarily unavailable/ })).toBeVisible();
+    const retry = main.getByRole("button", { name: /^(重新检查|Check now)$/ });
     await expect(retry).toBeVisible();
     await expect(main.getByRole("link", { name: /查看数据状态|Data status/ })).toHaveCount(0);
     const documentNavigations: string[] = [];

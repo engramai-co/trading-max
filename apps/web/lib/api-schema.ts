@@ -6412,6 +6412,8 @@ export interface components {
         JobList: {
             /** Jobs */
             jobs?: components["schemas"]["JobRecord"][];
+            /** Latestterminaljobs */
+            latestTerminalJobs?: components["schemas"]["JobRecord"][];
         };
         /** JobOutcomeCounts */
         JobOutcomeCounts: {
@@ -7637,6 +7639,13 @@ export interface components {
             title_zh: string;
             /** To Grade */
             to_grade?: string | null;
+        };
+        /** ProfileRevisionConflictResponse */
+        ProfileRevisionConflictResponse: {
+            /** Detail */
+            detail: {
+                [key: string]: string;
+            };
         };
         /** ProjectionYear */
         ProjectionYear: {
@@ -10775,6 +10784,8 @@ export interface components {
             baseCurrency?: string | null;
             /** Displayname */
             displayName?: string | null;
+            /** Expectedrevision */
+            expectedRevision?: number | null;
             /** Initials */
             initials?: string | null;
             /** Locale */
@@ -12652,6 +12663,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UserProfile"];
+                };
+            };
+            /** @description Profile revision conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileRevisionConflictResponse"];
                 };
             };
             /** @description Validation Error */

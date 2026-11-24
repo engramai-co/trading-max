@@ -49,7 +49,22 @@ function isFullAccountJob(job: RefreshJob | null | undefined): job is RefreshJob
 }
 
 function byNewest(left: RefreshJob, right: RefreshJob) {
-  return right.createdAt.localeCompare(left.createdAt);
+  return Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+    right.createdAt.localeCompare(left.createdAt);
+}
+
+function byJobTimestamp(left: string, right: string) {
+  // Date.parse truncates the queue's microsecond timestamps to milliseconds.
+  const fraction = (value: string) => Number(value.match(/\.\d+/)?.[0] ?? 0);
+  return Date.parse(right) - Date.parse(left) || fraction(right) - fraction(left);
+}
+
+function byLatestOutcome(left: RefreshJob, right: RefreshJob) {
+  const leftAt = left.finishedAt ?? left.startedAt ?? left.createdAt;
+  const rightAt = right.finishedAt ?? right.startedAt ?? right.createdAt;
+  const byTime = byJobTimestamp(leftAt, rightAt) || byJobTimestamp(left.createdAt, right.createdAt);
+  if (byTime || left.jobId === right.jobId) return byTime;
+  return left.jobId < right.jobId ? 1 : -1;
 }
 
 export function latestFullAccountJob(
@@ -64,7 +79,7 @@ export function latestFullAccountJob(
   );
 }
 
-export function activeAccountJob(
+function activeAccountJob(
   details: HealthDetails | null,
 ): RefreshJob | null {
   if (!details) return null;
@@ -80,54 +95,6 @@ export function activeAccountJob(
     (candidate.status === "queued" || candidate.status === "running")
     ? candidate
     : null;
-}
-
-export function deriveHealthTone(details: HealthDetails | null, localWorkspace = false): HealthTone {
-  if (!details) return "unknown";
-
-  const hasBackendProbe = Boolean(
-    details.health || details.readiness || details.refresh,
-  );
-  const hasBackendFailure = details.errors.some(
-    (error) => error.scope === "backend",
-  );
-  if (!hasBackendProbe && hasBackendFailure) return "unavailable";
-
-  if (activeAccountJob(details)) return "running";
-
-  const latestFull = latestFullAccountJob(details);
-  if (latestFull?.status === "failed" || latestFull?.status === "interrupted") {
-    return "degraded";
-  }
-
-  const health = details.health;
-  const readiness = details.readiness;
-  const worker = health?.worker ?? readiness?.worker;
-  const probeFailure = details.errors.length > 0;
-  const expectedEmpty = (error: string | null | undefined) =>
-    !error || error === "FileNotFoundError: no typed snapshot has been published";
-  if (
-    localWorkspace && health?.status === "degraded" && readiness?.status === "not_ready" &&
-    health.latestRunId === null && readiness.latestRunId === null && worker?.healthy === true &&
-    !probeFailure && expectedEmpty(health.bootstrapError) && expectedEmpty(readiness.bootstrapError) &&
-    details.jobs.length === 0 && !latestFull && !details.refresh?.latestJob &&
-    health.queue.succeeded === 0 && health.queue.failed === 0 && health.queue.interrupted === 0 &&
-    health.queue.running === 0 && health.queue.queued === 0
-  ) return "setup";
-  const unhealthy =
-    health?.status !== "ok" ||
-    readiness?.status !== "ready" ||
-    worker?.healthy !== true ||
-    Boolean(health?.bootstrapError || readiness?.bootstrapError) ||
-    health?.latestRunId === null;
-
-  return probeFailure || unhealthy ? "degraded" : "ready";
-}
-
-/** Publication and job history are independent. A copied or seeded snapshot may have no job log. */
-export function snapshotLifecycle(details: HealthDetails | undefined, tone: HealthTone) {
-  if (details?.health?.latestRunId || details?.readiness?.latestRunId) return "published";
-  return tone === "setup" ? "setup" : "unpublished";
 }
 
 export function latestStage(job: RefreshJob | null): RefreshJob["stages"][number] | null {
@@ -204,4 +171,102 @@ export function formatAge(
 export function shortRunId(value: string | null | undefined): string {
   if (!value) return "—";
   return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-6)}` : value;
+}
+
+/** A newer queued or running retry leaves the last completed outcome in place. */
+export function unresolvedScopeFailures(
+  details: HealthDetails | null | undefined,
+): RefreshJob[] {
+  if (!details) return [];
+  if (details.latestTerminalJobs) {
+    return details.latestTerminalJobs.filter((job) => job.status === "failed" || job.status === "interrupted").sort(byNewest);
+  }
+  // Older services only provide the recent list and scheduler pointers.
+  const { refresh } = details;
+  const terminalJobs = [
+    refresh?.latestJob,
+    refresh?.latestFullJob,
+    refresh?.latestIntradayJob,
+    refresh?.nightly?.lastJob,
+    refresh?.live?.lastJob,
+    refresh?.intraday?.lastJob,
+    refresh?.performance?.lastJob,
+    refresh?.research?.lastJob,
+    ...details.jobs,
+  ].filter((job): job is RefreshJob =>
+    job?.status === "succeeded" || job?.status === "failed" || job?.status === "interrupted",
+  ).sort(byLatestOutcome);
+  const latest = new Map<RefreshJob["scope"], RefreshJob>();
+  for (const job of terminalJobs) {
+    if (!latest.has(job.scope)) latest.set(job.scope, job);
+  }
+  return [...latest.values()].filter((job) => job.status !== "succeeded").sort(byNewest);
+}
+
+export function deriveHealthDecision(
+  details: HealthDetails | null | undefined,
+  { localWorkspace = false, readOnly = false } = {},
+) {
+  const health = details?.health;
+  const readiness = details?.readiness;
+  const queue = health?.queue ?? readiness?.queue;
+  const worker = health?.worker ?? readiness?.worker;
+  const queued = queue?.queued ?? 0;
+  const running = queue?.running ?? 0;
+  const failures = unresolvedScopeFailures(details);
+  const eventFailures = health?.eventRefreshes?.filter((event) => event.failedSources > 0)
+    .sort((left, right) => left.kind.localeCompare(right.kind)) ?? [];
+  const errors = details?.errors ?? [];
+  const backendUnavailable = errors.some((error) => error.scope === "backend");
+  const latestRunId = health?.latestRunId ?? readiness?.latestRunId ?? null;
+  const noSnapshotError = "FileNotFoundError: no typed snapshot has been published";
+  const expectedEmpty = (error?: string | null) => !error || error === noSnapshotError;
+  const bootstrapError = [health?.bootstrapError, readiness?.bootstrapError].find((error) => !expectedEmpty(error))
+    ?? health?.bootstrapError ?? readiness?.bootstrapError;
+  const emptySnapshot = health?.status === "degraded" && readiness?.status === "not_ready" &&
+    health.latestRunId === null && readiness.latestRunId === null &&
+    expectedEmpty(health.bootstrapError) && expectedEmpty(readiness.bootstrapError);
+  const activeFullJob = activeAccountJob(details ?? null);
+  const firstSync = emptySnapshot && Boolean(activeFullJob);
+  const setup = emptySnapshot && localWorkspace && details?.jobs.length === 0 &&
+    !details.refresh?.latestJob && !details.latestTerminalJobs?.length && !latestFullAccountJob(details) &&
+    queue?.succeeded === 0 && queue.failed === 0 && queue.interrupted === 0 &&
+    queued === 0 && running === 0;
+  const apiReachable = health?.status === "ok" || setup || firstSync;
+  const readinessIssue = Boolean(readiness && readiness.status !== "ready" && !setup && !firstSync);
+  const bootstrapIssue = bootstrapError && !(
+    bootstrapError === noSnapshotError && !latestRunId && (localWorkspace || firstSync)
+  ) ? bootstrapError : null;
+  const serviceHealthy = apiReachable && worker?.healthy === true && !bootstrapIssue &&
+    (setup || firstSync || (readiness?.status === "ready" && latestRunId !== null));
+  const tone: HealthTone = !details ? "unknown"
+    : backendUnavailable && !health && !readiness && !details.refresh ? "unavailable"
+    : !serviceHealthy || errors.length || failures.length || eventFailures.length ? "degraded"
+    : setup ? "setup"
+    : activeFullJob || queued > 0 || running > 0 ? "running"
+    : "ready";
+  const snapshot = latestRunId ? "published" : tone === "setup" ? "setup" : "unpublished";
+  const age = health?.artifactAgeSeconds;
+  const stale = !readOnly && snapshot === "published" && age != null && age > 86_400;
+  const checkedTime = Date.parse(details?.checkedAt ?? "");
+  const snapshotTime = snapshot === "published" && age != null && Number.isFinite(age) &&
+    Number.isFinite(checkedTime)
+    ? new Date(checkedTime - age * 1000).toISOString() : null;
+  const scheduleUnavailable = !details?.refresh || backendUnavailable || errors.some((error) => error.scope === "refresh");
+  const jobsUnavailable = backendUnavailable || errors.some((error) => error.scope === "jobs");
+  const serviceErrors = errors.filter((error) => error.scope !== "refresh" && error.scope !== "jobs");
+  const serviceIssue = !serviceHealthy || serviceErrors.length > 0;
+  const semanticKey = details && JSON.stringify([
+    tone, snapshot, stale, apiReachable, readinessIssue, worker?.healthy, Boolean(bootstrapIssue),
+    failures.map((job) => job.scope + ":" + job.status).sort(),
+    eventFailures.map((event) => [
+      event.kind, event.failedSources, event.failures?.map((failure) => failure.source).sort(),
+    ]),
+    [...new Set(errors.map((error) => error.scope))].sort(), scheduleUnavailable, jobsUnavailable,
+  ]);
+  return {
+    latestRunId, failures, tone, snapshot, stale, snapshotTime, queued, running, worker,
+    apiReachable, readinessIssue, bootstrapIssue, serviceHealthy, serviceIssue, serviceErrors, eventFailures,
+    scheduleUnavailable, jobsUnavailable, lastSuccess: queue?.last_success_at, semanticKey,
+  };
 }

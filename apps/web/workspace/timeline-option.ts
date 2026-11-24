@@ -1,5 +1,6 @@
 import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
+import { LINE_DASH_PATTERNS } from "./chart-readout";
 import type { ChartLine } from "./charts";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { percent } from "@/workspace/data";
@@ -48,6 +49,14 @@ export function includeDailyMarkers(calendar: CalendarTimeline, dates: string[],
 /** The stroke a timeline line is drawn with; reading keys and cursor dots use the same colour. */
 export function timelineLineColour(colours: ChartColours, layer: number, index: number, line: Pick<ChartLine, "colour">) {
   return colours[line.colour ?? (layer === 0 && index === 0 ? "brand" : index === 0 ? "text" : "axis")];
+}
+
+/** Width and dash pattern for a timeline line, shared by ECharts primary and observed strokes. */
+export function timelineLineStyle(line: Pick<ChartLine, "dashed" | "dash">) {
+  return {
+    width: line.dash || line.dashed ? 1.5 : 2.5,
+    type: line.dash ? LINE_DASH_PATTERNS[line.dash].chart : line.dashed ? ("dashed" as const) : ("solid" as const),
+  };
 }
 
 export type TimelineOptions = {
@@ -222,6 +231,7 @@ export function timelineOption(
     series: layers.flatMap((layer, axis) =>
       layer.lines.flatMap((line, index) => {
         const colour = timelineLineColour(colours, axis, index, line);
+        const stroke = timelineLineStyle(line);
         const marks = [...(layer.markers ?? []), ...(layer.markerDate ? [{ date: layer.markerDate, name: layer.label }] : [])];
         const markPoints = marks.flatMap(({ date, name }) => {
           const row = dates.indexOf(date);
@@ -260,8 +270,8 @@ export function timelineOption(
           step: line.step,
           lineStyle: {
             color: colour,
-            width: hasEstimates ? 0 : line.dashed ? 1.5 : 2.5,
-            type: line.dashed ? "dashed" : "solid",
+            width: hasEstimates ? 0 : stroke.width,
+            type: stroke.type,
           },
           itemStyle: { color: colour },
           markPoint: markPoints.length ? {
@@ -315,7 +325,7 @@ export function timelineOption(
           ...sourceStroke,
           id: `history-observed:${axis}:${index}`,
           data: strokes.observed,
-          lineStyle: { color: colour, width: line.dashed ? 1.5 : 2.5, type: line.dashed ? "dashed" as const : "solid" as const },
+          lineStyle: { color: colour, ...stroke },
         } satisfies SeriesOption] : [];
         // A lone reconstructed point has no visible dashed stroke.
         const reconstructed = strokes.reconstructed.some((point, index, points) =>
@@ -324,7 +334,7 @@ export function timelineOption(
           ...sourceStroke,
           id: `history-estimate:${axis}:${index}`,
           data: strokes.reconstructed,
-          lineStyle: { color: colour, width: line.dashed ? 1.5 : 2.5, type: "dashed" as const, opacity: 0.85 },
+          lineStyle: { color: colour, width: stroke.width, type: "dashed" as const, opacity: 0.85 },
         } satisfies SeriesOption] : [];
         return [primary, ...observed, ...reconstructed, ...area, ...(gaps.length ? [{
           id: `history-gap:${axis}:${index}`,

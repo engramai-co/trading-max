@@ -9,7 +9,7 @@ import socket
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from trading_max.domain.contracts import (
     JobRecord,
@@ -179,6 +179,23 @@ class SqliteJobQueue:
                 (int(include_system), max(1, min(limit, 5_000))),
             ).fetchall()
             return [self._record(row, connection) for row in rows]
+
+    def latest_terminal_jobs(self) -> list[JobRecord]:
+        """Read the last completed refresh of each scope, independent of history pagination."""
+
+        with self.database.transaction() as connection:
+            rows = [
+                connection.execute(
+                    "SELECT * FROM jobs WHERE scope = ? AND trigger != 'system' "
+                    "AND status IN ('succeeded', 'failed', 'interrupted') "
+                    "AND cancel_requested = 0 AND error_code IS NOT 'job.cancelled' "
+                    "ORDER BY COALESCE(finished_at, started_at, created_at) DESC, "
+                    "created_at DESC, job_id DESC LIMIT 1",
+                    (scope,),
+                ).fetchone()
+                for scope in get_args(JobScope)
+            ]
+            return [self._record(row, connection) for row in rows if row is not None]
 
     def latest_refreshes(self) -> tuple[JobRecord | None, JobRecord | None]:
         """Read the two refresh-state anchors without materializing job history."""

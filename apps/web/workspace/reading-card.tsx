@@ -11,7 +11,8 @@ function element(item: ReadingNode): ReactElement {
     else if (name === "style") {
       const at = value.indexOf(":");
       props.style = { [value.slice(0, at)]: value.slice(at + 1) } as CSSProperties;
-    } else props[name] = value;
+    } else if (name === "stroke-dasharray") props.strokeDasharray = value;
+    else props[name] = value;
   }
   return createElement(item.tag, props, ...item.children.map((child) => typeof child === "string" ? child : element(child)));
 }

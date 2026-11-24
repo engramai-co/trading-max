@@ -26,6 +26,8 @@ describe("financial presentation boundaries", () => {
     expect(percent(0)).toBe("0.0%");
     expect(currency(-0)).toBe("£0");
     expect(currency(-0.001, "GBP", 2)).toBe("£0.00");
+    expect(currency(1234.5, "USD", 2)).toBe("US$1,234.50");
+    expect(currency(1234.5, "INVALID", 0)).toBe("1,235 INVALID");
     expect(percent(-0.00001, true)).toBe("0.0%");
   });
   it("rebases compounded return instead of subtracting cumulative percentages", () => {

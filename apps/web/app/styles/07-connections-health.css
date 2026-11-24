@@ -386,3 +386,62 @@
   margin: 8px 0;
   color: var(--mx-muted);
 }
+.mx-health-page .mantine-Button-root[aria-disabled="true"] {
+  cursor: not-allowed;
+  color: var(--mx-muted);
+}
+.mx-health-page .mantine-Button-root[aria-disabled="true"]:active {
+  transform: none;
+}
+.mx-health-drawer .mantine-Drawer-title {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.mx-health-drawer .mantine-Stack-root {
+  min-inline-size: 0;
+}
+.mx-health-drawer h3 {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.mx-health-drawer .mx-tag {
+  white-space: normal;
+  max-inline-size: 100%;
+}
+.mx-health-drawer .mx-tag-bad {
+  color: color-mix(in srgb, var(--mx-down) 82%, var(--mx-ink));
+}
+.mx-health-drawer .mx-facts > div {
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.mx-health-drawer .mx-facts dt {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.mx-health-drawer .mx-facts dd {
+  min-inline-size: 0;
+}
+.mx-health-drawer .mantine-Button-root {
+  height: auto;
+  min-height: 40px;
+  padding-block: 8px;
+}
+.mx-health-drawer .mantine-Button-label {
+  white-space: normal;
+  text-align: center;
+}
+.mx-health-page .mx-notice > div,
+.mx-health-drawer .mx-notice > div {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.mx-diagnostic-code {
+  display: block;
+  color: var(--mx-ink);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-inline-size: 100%;
+}

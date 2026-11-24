@@ -5,7 +5,7 @@ import { useMediaQuery } from "@mantine/hooks";
 import { deepestDrawdown } from "@/lib/portfolio/drawdown-episodes";
 import { ReturnGrid } from "./performance-return-grid";
 import { DrawdownReading, drawdownMarks } from "./drawdown-reading";
-import { drawdowns, minimumObserved } from "@/lib/portfolio/math";
+import { minimumObserved } from "@/lib/portfolio/math";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import { useLocale } from "@/components/locale-provider";
@@ -51,7 +51,9 @@ import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { MoneyDrawdown, MoneySummary } from "./performance-money";
 import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
 import { usePublicationFailure } from "@/ui/publication-provider";
+import { useChartColours } from "@/ui/charts/palette";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
+import { ALL_BENCHMARKS, returnComparisonLayers, returnComparisonLines, returnDrawdownLines, returnLegendItems } from "./performance-return-lines";
 import { useRetainedResult } from "./retained-result";
 import { DashboardRanges, InlineRetry, WaitingAsOf, rangeName } from "./dashboard-controls";
 import { moneyTimelineLayout } from "./money-timeline-layout";
@@ -121,6 +123,7 @@ export function PerformanceContent({
   const historyQuery = usePortfolioHistory({ runId: historyId, range: requestedRange, scope: requestedScope },
     view === "money" && Boolean(historyId), [], Boolean(pinnedMoney));
   const runtime = useChartRuntime();
+  const colours = useChartColours();
   // A single commit point: figures, dates, records and plots all consume this pair.
   // Neither half can overwrite a complete prior selection on its own.
   const current = useMemo(() => (incoming || pinnedMoney) && (view !== "money" || historyQuery.data) ? {
@@ -188,7 +191,7 @@ export function PerformanceContent({
   const invalidScope =
     view !== "money" && (requestedScope === "cfd" || requestedScope === "household");
   const comparison = view === "returns"
-    ? benchmarkComparison(availablePoints, scope, data?.benchmarkSeries, benchmark === "ALL" ? ["VOO", "QQQ", "VT"] : [benchmark])
+    ? benchmarkComparison(availablePoints, scope, data?.benchmarkSeries, benchmark === "ALL" ? ALL_BENCHMARKS : [benchmark])
     : null;
   const returnsPoints = comparison?.points ?? [];
   const points = comparison?.points ?? availablePoints;
@@ -227,24 +230,12 @@ export function PerformanceContent({
         )
       : null;
 
-  const returnLines: ChartLine[] = [
-    {
-      name: t("组合 TWR", "Portfolio TWR"),
-      colour: "brand",
-      area: true,
-      values: returnsPoints.map((p) =>
-        periodReturn(
-          navNumber(returnsPoints[0], scope, "Twr"),
-          navNumber(p, scope, "Twr"),
-        ),
-      ),
-    },
-    ...(comparison?.comparisons ?? []).map((entry, i): ChartLine => ({
-      ...entry,
-      colour: (["axis", "text", "axis"] as const)[i],
-      dashed: true,
-    })),
-  ];
+  const returnLines: ChartLine[] = returnComparisonLines(
+    returnsPoints,
+    scope,
+    comparison?.comparisons ?? [],
+    t("组合 TWR", "Portfolio TWR"),
+  );
   const benchmarkEnd = returnLines.length === 2 ? returnLines[1].values.at(-1) : null;
   const spread = twr != null && benchmarkEnd != null ? Number(((twr - benchmarkEnd) * 100).toFixed(2)) || 0 : null;
   const moneyDrawdown = money.drawdown;
@@ -258,55 +249,49 @@ export function PerformanceContent({
     if (point.investModelValueGbp == null || point.isaModelValueGbp == null) return null;
     return point.investModelValueGbp + point.isaModelValueGbp + (scope === "household" ? history.carriedCfdValue ?? 0 : 0);
   });
-  const returnDrawdowns = returnLines.map((line) => ({
-    ...line,
-    values: drawdowns(line.values, true),
-    area: false,
-  }));
+  const returnDrawdowns = returnDrawdownLines(returnLines);
   const returnDates = returnsPoints.map((point) => point.date);
   const returnEpisode = deepestDrawdown(returnDrawdowns[0].values);
-  const timelineLayers: TimelineLayer[] = [
-    ...(view === "money" ? [
-      {
-        label: t("区间净盈亏", "Period net P&L"),
-        percentage: moneyUnit === "percent",
-        zeroBaseline: true,
-        markerDate: money.drawdownEpisode?.peak.date,
-        lines: [{
-          name: t("净盈亏", "Net P&L"),
-          values: moneyUnit === "percent" ? money.pnlPercents : periodPnls,
-          area: true,
-        }],
-      },
-      {
-        label: moneyUnit === "percent"
-          ? t("价值与净入金变化", "Value & net deposit change")
-          : t("账户价值与累计净入金", "Account value & cumulative net deposits"),
-        percentage: moneyUnit === "percent",
-        lines: portfolioValueLines(points, scope, t, moneyUnit === "percent"),
-      },
-    ] : [{ label: t("收益对比", "Return comparison"), lines: returnLines, percentage: true }]),
+  const timelineLayers: TimelineLayer[] = view === "money" ? [
     {
-      label: view === "money" ? t("盈亏回撤", "P&L drawdown") : t("期间回撤", "Period drawdown"),
-      percentage: view === "returns" || moneyUnit === "percent",
+      label: t("区间净盈亏", "Period net P&L"),
+      percentage: moneyUnit === "percent",
+      zeroBaseline: true,
+      markerDate: money.drawdownEpisode?.peak.date,
+      lines: [{
+        name: t("净盈亏", "Net P&L"),
+        values: moneyUnit === "percent" ? money.pnlPercents : periodPnls,
+        area: true,
+      }],
+    },
+    {
+      label: moneyUnit === "percent"
+        ? t("价值与净入金变化", "Value & net deposit change")
+        : t("账户价值与累计净入金", "Account value & cumulative net deposits"),
+      percentage: moneyUnit === "percent",
+      lines: portfolioValueLines(points, scope, t, moneyUnit === "percent"),
+    },
+    {
+      label: t("盈亏回撤", "P&L drawdown"),
+      percentage: moneyUnit === "percent",
       drawdown: true,
-      markers: view === "money" ? [
+      markers: [
         ...(money.drawdownEpisode ? [{ date: money.drawdownEpisode.trough.date, name: t("低点", "Trough") }] : []),
         ...(money.drawdownEpisode?.recovery ? [{ date: money.drawdownEpisode.recovery.date, name: t("恢复", "Recovery") }] : []),
-      ] : drawdownMarks(returnEpisode, returnDates, t),
-      lines:
-        view === "returns"
-          ? returnDrawdowns
-          : [
-              {
-                name: t("盈亏回撤", "P&L drawdown"),
-                values: moneyUnit === "percent" ? moneyDrawdownPercents : moneyDrawdown,
-                colour: "negative",
-                area: true,
-              },
-            ],
+      ],
+      lines: [{
+        name: t("盈亏回撤", "P&L drawdown"),
+        values: moneyUnit === "percent" ? moneyDrawdownPercents : moneyDrawdown,
+        colour: "negative",
+        area: true,
+      }],
     },
-  ];
+  ] : returnComparisonLayers(
+    returnLines,
+    { returns: t("收益对比", "Return comparison"), drawdown: t("期间回撤", "Period drawdown") },
+    drawdownMarks(returnEpisode, returnDates, t),
+    returnDrawdowns,
+  );
   const percentUnit = moneyUnit === "percent";
   // Money: one leading figure, then the drawdown and the two value lines, each keyed to its stroke.
   // Returns: the pane being read leads; the comparison and, for returns, the difference follow.
@@ -484,10 +469,7 @@ export function PerformanceContent({
                 {t("恢复上个区间", "Restore previous range")}
               </button>
             </div>}
-              {view === "returns" && <Legend items={returnLines.map((line, i) => ({
-                label: line.name, dashed: line.dashed,
-                colour: ["var(--mx-brand)", "var(--mx-muted)", "var(--mx-ink)", "var(--mx-muted)"][i],
-              }))} />}
+              {view === "returns" && <Legend items={returnLegendItems(returnLines, colours)} />}
               <TimelineChart
                 onBrush={brush}
                 fullscreen

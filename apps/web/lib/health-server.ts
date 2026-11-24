@@ -45,7 +45,14 @@ async function probe<T>(
         error: { scope, status: response.status, detail: `${scope} returned an empty response` },
       };
     }
-    return { ok: true, data: JSON.parse(text) as T };
+    const parsed: unknown = JSON.parse(text);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {
+        ok: false,
+        error: { scope, status: response.status, detail: `${scope} returned an invalid response` },
+      };
+    }
+    return { ok: true, data: parsed as T };
   } catch {
     return {
       ok: false,
@@ -77,16 +84,21 @@ export async function loadHealthDetails(): Promise<HealthDetails> {
     // Supplementary: a service that cannot summarize history is not degraded.
     probe<JobOutcomes>("jobs", "/v1/jobs/outcomes?days=7"),
   ]);
-  const errors = [health, readiness, refresh, jobs]
+  const jobsResult: Probe<JobListResponse> =
+    jobs.ok && !Array.isArray(jobs.data.jobs)
+      ? { ok: false, error: { scope: "jobs", status: 200, detail: "jobs returned an invalid response" } }
+      : jobs;
+  const errors = [health, readiness, refresh, jobsResult]
     .filter((result): result is { ok: false; error: HealthProbeError } => !result.ok)
     .map((result) => result.error);
-  const jobPayload = jobs.ok ? jobs.data.jobs : [];
+  const jobPayload = jobsResult.ok ? jobsResult.data : undefined;
   return {
     checkedAt,
     health: health.ok ? health.data : null,
     readiness: readiness.ok ? readiness.data : null,
     refresh: refresh.ok ? refresh.data : null,
-    jobs: Array.isArray(jobPayload) ? jobPayload : [],
+    jobs: jobPayload?.jobs ?? [],
+    latestTerminalJobs: Array.isArray(jobPayload?.latestTerminalJobs) ? jobPayload.latestTerminalJobs : undefined,
     outcomes: outcomes.ok ? outcomes.data : null,
     errors,
   };

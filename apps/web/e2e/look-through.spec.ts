@@ -15,7 +15,12 @@ const positions = Array.from({ length: 60 }, (_, i) => ({
   etfContributors: [],
 }));
 
-async function open(page: Page, locale: "zh" | "en" = "en", state = { runId: "synthetic-lookthrough", brokerAsOf: "2026-11-04T15:00:00Z" }) {
+async function open(
+  page: Page,
+  locale: "zh" | "en" = "en",
+  state = { runId: "synthetic-lookthrough", brokerAsOf: "2026-11-04T15:00:00Z" },
+  customPositions = positions,
+) {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
   // No write leaves the page.
@@ -29,7 +34,7 @@ async function open(page: Page, locale: "zh" | "en" = "en", state = { runId: "sy
     if (path.endsWith("/dashboard/lens/holdings-lookthrough")) return route.fulfill({ json: {
       runId: state.runId, lookthrough: {
         brokerAsOf: state.brokerAsOf,
-        available: true, positions, underlyingCount: positions.length, sources: [],
+        available: true, positions: customPositions, underlyingCount: customPositions.length, sources: [],
         countryAllocation: [], industryAllocation: [], gicsSubIndustryAllocation: [],
         lookthroughCoveragePct: 1, gicsCoveragePct: 1, etfValueGbp: 30000,
       },
@@ -39,7 +44,7 @@ async function open(page: Page, locale: "zh" | "en" = "en", state = { runId: "sy
   });
   await page.route("**/api/company-logo/**", (route) => route.fulfill({ status: 204 }));
   await page.goto("/holdings?view=lookthrough");
-  await expect(page.getByRole("button", { name: /SYN01/ }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: new RegExp(customPositions[0].ticker) }).first()).toBeVisible();
 }
 
 test.describe("look-through companies", () => {
@@ -160,3 +165,158 @@ for (const { height, title } of [
     }
   });
 }
+
+const largePositions = Array.from({ length: 5100 }, (_, i) => ({
+  entityId: `large-${i + 1}`,
+  ticker: `L${String(i + 1).padStart(4, "0")}`,
+  name: i === 0 ? "Zeta Holding 1" : i === 5099 ? "Alpha Holding 5100" : `Synthetic Holding ${i + 1}`,
+  country: i % 3 === 0 ? "United Kingdom" : "United States",
+  valueGbp: 10000 - i,
+  allocationPct: (10000 - i) / 25000000,
+  directValueGbp: i % 2 ? 0 : 10000 - i,
+  indirectValueGbp: i % 2 ? 10000 - i : 0,
+  gics: { sectorName: i % 2 ? "Information Technology" : "Financials" },
+  etfContributors: [],
+}));
+
+test.describe("look-through 5,100 companies", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+
+  test("Show all keeps every row in one layout and preserves sorting, filtering and pagination", async ({ page, isMobile }) => {
+    await open(page, "en", undefined, largePositions);
+
+    if (isMobile) {
+      await expect(page.locator(".mx-mobile-holdings")).toHaveCount(1);
+      await expect(page.locator(".mx-desktop-holdings")).toHaveCount(0);
+    } else {
+      await expect(page.locator(".mx-desktop-holdings")).toHaveCount(1);
+      await expect(page.locator(".mx-mobile-holdings")).toHaveCount(0);
+    }
+
+    const pager = page.getByLabel(
+      isMobile ? "Underlying holding pages, below the list" : "Underlying holding pages",
+      { exact: true },
+    );
+    await expect(pager).toContainText(isMobile ? "1 / 204" : "1 / 51");
+
+    const footer = page.locator(".mx-exposure-paging").last();
+    const expand = footer.getByRole("button", { name: "Show all 5,100", exact: true });
+    const collapse = footer.getByRole("button", { name: "Show in pages", exact: true });
+    const rowLocator = isMobile
+      ? page.locator(".mx-mobile-holdings .mx-holding-mobile")
+      : page.locator(".mx-desktop-holdings tbody tr");
+    const firstButton = isMobile
+      ? rowLocator.first().filter({ hasText: "L0001" })
+      : rowLocator.first().getByRole("button", { name: /L0001/ });
+
+    await expand.scrollIntoViewIfNeeded();
+    await expect(firstButton).not.toBeInViewport();
+    await expand.press("Enter");
+    await expect(collapse).toBeFocused();
+    await expect(firstButton).not.toBeInViewport();
+    await expect(pager).toHaveCount(0);
+
+    await expect(rowLocator).toHaveCount(5100);
+    await firstButton.scrollIntoViewIfNeeded();
+    await expect(firstButton).toBeInViewport();
+
+    const lastButton = isMobile
+      ? rowLocator.last().filter({ hasText: "L5100" })
+      : rowLocator.last().getByRole("button", { name: /L5100/ });
+    await lastButton.click();
+    const drawer = page.getByRole("dialog", { name: "Underlying exposure" });
+    await expect(drawer).toContainText("Alpha Holding 5100");
+    await page.keyboard.press("Escape");
+    await expect(drawer).toHaveCount(0);
+
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.getByRole("combobox", { name: "Sort exposure", exact: true }).click();
+    await page.getByRole("option", { name: "Name A–Z", exact: true }).click();
+    await expect(rowLocator.first()).toContainText("Alpha Holding 5100");
+
+    const search = page.getByRole("textbox", { name: "Search underlying holdings", exact: true });
+    await search.fill("L2500");
+    await expect(page.getByRole("status").filter({ hasText: "1 / 5,100" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /L2500/ })).toBeVisible();
+    await page.getByRole("combobox", { name: "Sort exposure", exact: true }).click();
+    await page.getByRole("option", { name: "Largest indirect", exact: true }).click();
+    await expect(rowLocator).toHaveCount(1);
+    await expect(rowLocator.first()).toContainText("L2500");
+
+    await collapse.click();
+    await expect(search).toHaveValue("L2500");
+    await search.fill("");
+    await expect(pager).toBeVisible();
+    await expect(expand).toBeVisible();
+    // Clearing the search remounts the footer, which fades in even with reduced motion.
+    await expect(footer).toHaveCSS("opacity", "1");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  });
+});
+
+test("a refreshed snapshot preserves focus beyond the first page of expanded holdings", async ({ page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+  await page.clock.install();
+  const state = { runId: "synthetic-first", brokerAsOf: "2026-11-04T15:00:00Z" };
+  const holdings = largePositions.slice(0, 120);
+  await open(page, "en", state, holdings);
+
+  await page.getByRole("button", { name: "Show all 120", exact: true }).click();
+  const selector = isMobile ? ".mx-mobile-holdings .mx-holding-mobile" : ".mx-desktop-holdings tbody tr";
+  const rows = page.locator(selector);
+  await expect(rows).toHaveCount(120);
+  const holding = page.getByRole("button", { name: /L0120/ });
+  await holding.focus();
+  await expect(holding).toBeFocused();
+
+  holdings[0] = { ...holdings[0], name: "Refreshed Holding 1" };
+  state.runId = "synthetic-second";
+  state.brokerAsOf = "2026-11-04T15:10:00Z";
+  await page.clock.fastForward(60_000);
+  await expect(rows.first()).toContainText("Refreshed Holding 1");
+  await expect(rows).toHaveCount(120);
+  await expect(holding).toBeFocused();
+});
+
+test("printing immediately after Show all includes every batch and reopening yields again", async ({ page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+  await open(page, "en", undefined, largePositions.slice(0, 120));
+
+  // Keep the next batch pending until beforeprint so this covers smaller expanded lists too.
+  await page.evaluate(() => {
+    Object.defineProperty(window, "scheduler", {
+      configurable: true,
+      value: { yield: () => new Promise(() => {}) },
+    });
+  });
+  const expand = page.getByRole("button", { name: "Show all 120", exact: true });
+  await expand.click();
+  const selector = isMobile ? ".mx-mobile-holdings .mx-holding-mobile" : ".mx-desktop-holdings tbody tr";
+  const counts = await page.evaluate((rows) => {
+    const before = document.querySelectorAll(rows).length;
+    window.dispatchEvent(new Event("beforeprint"));
+    return { before, onPrint: document.querySelectorAll(rows).length };
+  }, selector);
+  const firstPageSize = isMobile ? 25 : 100;
+  expect(counts).toEqual({ before: firstPageSize, onPrint: 120 });
+
+  // Emulate a paper width on the opposite side of the screen's layout breakpoint.
+  const screenViewport = page.viewportSize()!;
+  await page.emulateMedia({ media: "print" });
+  await page.setViewportSize({ ...screenViewport, width: isMobile ? 840 : 640 });
+  const paper = await page.evaluate(() => ({
+    printing: window.matchMedia("print").matches,
+    narrow: window.matchMedia("(max-width: 767px)").matches,
+  }));
+  expect(paper).toEqual({ printing: true, narrow: !isMobile });
+  const lastHolding = page.locator(selector).last();
+  await expect(lastHolding).toContainText("L0120");
+  await expect(lastHolding).toBeVisible();
+  await page.setViewportSize(screenViewport);
+  await page.emulateMedia({ media: "screen" });
+
+  await page.getByRole("button", { name: "Show in pages", exact: true }).click();
+  await expand.click();
+  await expect(page.locator(selector)).toHaveCount(firstPageSize);
+});
