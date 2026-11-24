@@ -1,3 +1,5 @@
+/* Share the global layer so deferred rules keep their original specificity. */
+@layer mantine {
 .mx-assistant-panel button,
 .mx-inline-reading button,
 .mx-reading-actions button,
@@ -383,4 +385,5 @@
 }
 .mx-inspection-anchor .mx-inline-reading {
   box-shadow: var(--mx-overlay-elevation);
+}
 }

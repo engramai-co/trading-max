@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "stage": "SH-4",
+  "appVersion": "1.68.1",
+  "toolchain": {
+    "next": "16.4.6",
+    "react": "^19.3.1",
+    "mantineCore": "^9.8.0",
+    "tailwindcss": "^4.3.5",
+    "shadcn": "4.23.0"
+  },
+  "source": {
+    "bundleStats": "apps/web/.next/diagnostics/route-bundle-stats.json",
+    "buildManifest": "apps/web/.next/build-manifest.json",
+    "cssManifests": "apps/web/.next/server/app/**/page_client-reference-manifest.js"
+  },
+  "sharedRuntimeJs": {
+    "rawBytes": 555662,
+    "gzipBytes": 170724,
+    "chunkCount": 5
+  },
+  "totalStaticAssets": {
+    "js": {
+      "rawBytes": 4519444,
+      "gzipBytes": 1512644,
+      "chunkCount": 62
+    },
+    "css": {
+      "rawBytes": 484162,
+      "gzipBytes": 78605,
+      "chunkCount": 4
+    }
+  },
+  "routes": [
+    {
+      "route": "/",
+      "firstLoadJsBytes": 1166391,
+      "firstLoadJsGzipBytes": 371639,
+      "firstLoadJsChunks": 15,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/_not-found",
+      "firstLoadJsBytes": 933719,
+      "firstLoadJsGzipBytes": 286792,
+      "firstLoadJsChunks": 11,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/account-analysis",
+      "firstLoadJsBytes": 933719,
+      "firstLoadJsGzipBytes": 286792,
+      "firstLoadJsChunks": 11,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/analytics",
+      "firstLoadJsBytes": 1093811,
+      "firstLoadJsGzipBytes": 345058,
+      "firstLoadJsChunks": 14,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/desktop/[[...page]]",
+      "firstLoadJsBytes": 2021291,
+      "firstLoadJsGzipBytes": 667215,
+      "firstLoadJsChunks": 20,
+      "entryCssBytes": 476461,
+      "entryCssGzipBytes": 76257,
+      "entryCssChunks": 2
+    },
+    {
+      "route": "/health",
+      "firstLoadJsBytes": 990712,
+      "firstLoadJsGzipBytes": 306991,
+      "firstLoadJsChunks": 13,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/holdings",
+      "firstLoadJsBytes": 1080867,
+      "firstLoadJsGzipBytes": 338043,
+      "firstLoadJsChunks": 14,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/research",
+      "firstLoadJsBytes": 1495310,
+      "firstLoadJsGzipBytes": 481109,
+      "firstLoadJsChunks": 15,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/review",
+      "firstLoadJsBytes": 1221283,
+      "firstLoadJsGzipBytes": 389723,
+      "firstLoadJsChunks": 15,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/sectors",
+      "firstLoadJsBytes": 1142606,
+      "firstLoadJsGzipBytes": 360988,
+      "firstLoadJsChunks": 14,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    },
+    {
+      "route": "/settings",
+      "firstLoadJsBytes": 1057479,
+      "firstLoadJsGzipBytes": 328107,
+      "firstLoadJsChunks": 13,
+      "entryCssBytes": 471282,
+      "entryCssGzipBytes": 74913,
+      "entryCssChunks": 1
+    }
+  ]
+}

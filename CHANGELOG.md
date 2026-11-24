@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.68.2] - 2026-11-24
+
+### Changed
+- The web interface now builds with Tailwind CSS v4 and a pinned shadcn/ui toolchain (Base UI, Lucide) alongside its current components, ready for a page-by-page migration. Nothing changes on screen: 576 views across both languages, both themes, desktop, phone and the App window render identically. Global styles keep their order through cascade layers, and the architecture check stops new code from adding Mantine or Phosphor imports.
+
 ## [1.68.1] - 2026-11-24
 
 ### Fixed

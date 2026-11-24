@@ -1,0 +1,777 @@
+{
+  "schemaVersion": 1,
+  "description": "Current legacy @mantine/* and @phosphor-icons/react imports. The architecture check requires an exact match and --write-baseline only accepts removals.",
+  "packages": [
+    "@mantine/*",
+    "@phosphor-icons/react"
+  ],
+  "files": {
+    "app/error.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group"
+      ]
+    },
+    "app/layout.tsx": {
+      "@mantine/core": [
+        "ColorSchemeScript",
+        "mantineHtmlProps"
+      ]
+    },
+    "app/not-found.tsx": {
+      "@mantine/core": [
+        "Button"
+      ]
+    },
+    "ui/charts/palette.ts": {
+      "@mantine/core": [
+        "useComputedColorScheme"
+      ]
+    },
+    "ui/charts/use-echarts.ts": {
+      "@mantine/core": [
+        "useComputedColorScheme"
+      ],
+      "@mantine/hooks": [
+        "useReducedMotion"
+      ]
+    },
+    "ui/pointer.tsx": {
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "ui/provider.tsx": {
+      "@mantine/core": [
+        "MantineProvider"
+      ],
+      "@mantine/notifications": [
+        "Notifications"
+      ]
+    },
+    "ui/theme.ts": {
+      "@mantine/core": [
+        "createTheme"
+      ]
+    },
+    "workspace/allocation-composition.tsx": {
+      "@mantine/core": [
+        "VisuallyHidden"
+      ],
+      "@mantine/hooks": [
+        "useReducedMotion"
+      ]
+    },
+    "workspace/assistant/cards.tsx": {
+      "@mantine/core": [
+        "Drawer"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "CaretDown",
+        "X"
+      ]
+    },
+    "workspace/assistant/overview.test.ts": {
+      "@mantine/core": [
+        "MantineProvider"
+      ]
+    },
+    "workspace/assistant/research-entry.tsx": {
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "workspace/assistant/review.tsx": {
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "CaretRight"
+      ]
+    },
+    "workspace/assistant/shell.tsx": {
+      "@phosphor-icons/react": [
+        "X"
+      ]
+    },
+    "workspace/assistant/sidebar.tsx": {
+      "@phosphor-icons/react": [
+        "ArrowUp",
+        "ClockCounterClockwise",
+        "Plus",
+        "Square",
+        "Trash",
+        "X"
+      ]
+    },
+    "workspace/dashboard-controls.tsx": {
+      "@mantine/core": [
+        "Menu"
+      ],
+      "@phosphor-icons/react": [
+        "CaretDown"
+      ]
+    },
+    "workspace/desktop-surfaces.tsx": {
+      "@phosphor-icons/react": [
+        "ArrowRight",
+        "CloudCheck",
+        "GearSix",
+        "Info",
+        "Pulse",
+        "UploadSimple",
+        "WarningCircle"
+      ]
+    },
+    "workspace/evidence-table.tsx": {
+      "@mantine/core": [
+        "Pagination"
+      ]
+    },
+    "workspace/foundation.tsx": {
+      "@mantine/core": [
+        "Button",
+        "CloseButton",
+        "Drawer",
+        "Group",
+        "Popover",
+        "Tooltip",
+        "TooltipProps"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowClockwise",
+        "ArrowRight",
+        "CheckCircle",
+        "Info",
+        "Question",
+        "WarningCircle"
+      ]
+    },
+    "workspace/global-markets.tsx": {
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "workspace/health.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Drawer",
+        "Group",
+        "Loader",
+        "Select",
+        "Stack"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowClockwise",
+        "ArrowRight",
+        "CheckCircle",
+        "Clock",
+        "Pulse",
+        "WarningCircle"
+      ]
+    },
+    "workspace/history-records.tsx": {
+      "@mantine/core": [
+        "Pagination"
+      ]
+    },
+    "workspace/holding-detail.tsx": {
+      "@mantine/core": [
+        "Button"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowRight"
+      ]
+    },
+    "workspace/holding-market-closed.test.ts": {
+      "@mantine/core": [
+        "<type-import>",
+        "MantineProvider"
+      ]
+    },
+    "workspace/holdings.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Checkbox",
+        "CloseButton",
+        "Drawer",
+        "Group",
+        "Select",
+        "TextInput"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowDown",
+        "MagnifyingGlass"
+      ]
+    },
+    "workspace/listed-indices.ts": {
+      "@mantine/hooks": [
+        "useLocalStorage"
+      ]
+    },
+    "workspace/local-onboarding.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Checkbox",
+        "Group",
+        "Progress",
+        "Stack",
+        "Text"
+      ]
+    },
+    "workspace/look-through.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Drawer",
+        "Group",
+        "Pagination",
+        "Select",
+        "Stack",
+        "TextInput"
+      ],
+      "@phosphor-icons/react": [
+        "FunnelSimple",
+        "MagnifyingGlass"
+      ]
+    },
+    "workspace/market-indices.tsx": {
+      "@mantine/core": [
+        "Select"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowClockwise",
+        "CaretRight",
+        "ChartBar"
+      ]
+    },
+    "workspace/narrative.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group",
+        "Stack"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowClockwise",
+        "Sparkle"
+      ]
+    },
+    "workspace/navigation-group.tsx": {
+      "@mantine/core": [
+        "Tooltip"
+      ],
+      "@phosphor-icons/react": [
+        "Icon"
+      ]
+    },
+    "workspace/overview-holdings.test.ts": {
+      "@mantine/core": [
+        "MantineProvider"
+      ]
+    },
+    "workspace/overview-sectors.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Menu",
+        "useComputedColorScheme"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "CaretDown"
+      ]
+    },
+    "workspace/overview.test.ts": {
+      "@mantine/core": [
+        "MantineProvider"
+      ]
+    },
+    "workspace/overview.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Select"
+      ],
+      "@phosphor-icons/react": [
+        "ChartLine"
+      ]
+    },
+    "workspace/performance-return-grid.tsx": {
+      "@mantine/core": [
+        "Select"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "CaretRight"
+      ]
+    },
+    "workspace/performance.tsx": {
+      "@mantine/core": [
+        "Select"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "workspace/plot.tsx": {
+      "@mantine/core": [
+        "FocusTrap"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowsIn",
+        "ArrowsOut",
+        "X"
+      ]
+    },
+    "workspace/research-analyst.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group",
+        "Select",
+        "TextInput"
+      ]
+    },
+    "workspace/research-cited-event.tsx": {
+      "@mantine/core": [
+        "Button"
+      ]
+    },
+    "workspace/research-company.tsx": {
+      "@mantine/core": [
+        "Checkbox",
+        "Group",
+        "Select",
+        "TextInput"
+      ]
+    },
+    "workspace/research-compare.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Modal",
+        "MultiSelect",
+        "Pill",
+        "Select"
+      ]
+    },
+    "workspace/research-evidence.tsx": {
+      "@mantine/core": [
+        "Group",
+        "MultiSelect",
+        "Select",
+        "TextInput"
+      ]
+    },
+    "workspace/research-financials.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Drawer",
+        "Group",
+        "Select"
+      ]
+    },
+    "workspace/research-finder.tsx": {
+      "@mantine/core": [
+        "Button",
+        "CloseButton",
+        "Modal",
+        "TextInput"
+      ],
+      "@phosphor-icons/react": [
+        "MagnifyingGlass"
+      ]
+    },
+    "workspace/research-forecasts.tsx": {
+      "@mantine/core": [
+        "Button"
+      ]
+    },
+    "workspace/research-header.tsx": {
+      "@mantine/core": [
+        "ActionIcon",
+        "Avatar",
+        "Button",
+        "Loader",
+        "Menu"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowClockwise",
+        "CaretDown",
+        "DotsThree",
+        "Trash"
+      ]
+    },
+    "workspace/research-index-chart.tsx": {
+      "@mantine/core": [
+        "MultiSelect",
+        "Switch"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "workspace/research-index.tsx": {
+      "@mantine/core": [
+        "ActionIcon",
+        "Button",
+        "Drawer",
+        "Menu",
+        "Select"
+      ],
+      "@phosphor-icons/react": [
+        "CaretDown",
+        "DotsThree",
+        "Trash"
+      ]
+    },
+    "workspace/research-notebook.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Drawer",
+        "Group",
+        "Select",
+        "TextInput",
+        "Textarea"
+      ]
+    },
+    "workspace/research-options.tsx": {
+      "@mantine/core": [
+        "Button",
+        "CheckIcon",
+        "Checkbox",
+        "Combobox",
+        "Drawer",
+        "Group",
+        "MultiSelect",
+        "NumberInput",
+        "Pill",
+        "Select",
+        "Stack"
+      ],
+      "@mantine/hooks": [
+        "useLocalStorage"
+      ]
+    },
+    "workspace/research-overview.tsx": {
+      "@phosphor-icons/react": [
+        "ArrowRight"
+      ]
+    },
+    "workspace/research-price-preview.tsx": {
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "workspace/research-price.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Checkbox",
+        "Group",
+        "Modal",
+        "Select"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "workspace/research-reading.tsx": {
+      "@mantine/hooks": [
+        "useLocalStorage"
+      ],
+      "@phosphor-icons/react": [
+        "PushPin"
+      ]
+    },
+    "workspace/research-seasonality.tsx": {
+      "@mantine/core": [
+        "Group",
+        "MultiSelect",
+        "Pill",
+        "Select"
+      ]
+    },
+    "workspace/research-technical.tsx": {
+      "@phosphor-icons/react": [
+        "ArrowRight",
+        "CaretDown",
+        "CaretRight",
+        "Minus",
+        "TrendDown",
+        "TrendUp"
+      ]
+    },
+    "workspace/research-universe.tsx": {
+      "@mantine/core": [
+        "ActionIcon",
+        "Checkbox",
+        "Group",
+        "Select",
+        "TextInput"
+      ],
+      "@phosphor-icons/react": [
+        "MagnifyingGlass",
+        "PushPin"
+      ]
+    },
+    "workspace/research-valuation-detail.tsx": {
+      "@mantine/core": [
+        "Select"
+      ]
+    },
+    "workspace/research-valuation-workbench.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group",
+        "Modal",
+        "NumberInput",
+        "Select",
+        "Textarea"
+      ],
+      "@mantine/hooks": [
+        "useDebouncedValue"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowClockwise",
+        "LockSimple",
+        "LockSimpleOpen"
+      ]
+    },
+    "workspace/research.tsx": {
+      "@mantine/core": [
+        "ActionIcon",
+        "Button",
+        "Drawer",
+        "Group",
+        "Modal",
+        "Select",
+        "Stack",
+        "Tooltip"
+      ],
+      "@mantine/hooks": [
+        "useLocalStorage",
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "CaretDown",
+        "CaretLeft",
+        "CaretRight",
+        "MagnifyingGlass"
+      ]
+    },
+    "workspace/review-board.tsx": {
+      "@phosphor-icons/react": [
+        "ArrowUpRight",
+        "CaretDown"
+      ]
+    },
+    "workspace/review-decisions.tsx": {
+      "@mantine/core": [
+        "CloseButton",
+        "Popover"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowUpRight"
+      ]
+    },
+    "workspace/review-evidence.tsx": {
+      "@mantine/core": [
+        "Select"
+      ]
+    },
+    "workspace/review-perspectives.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group",
+        "Select",
+        "Stack"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowUpRight"
+      ]
+    },
+    "workspace/review.tsx": {
+      "@phosphor-icons/react": [
+        "ArrowRight"
+      ]
+    },
+    "workspace/sectors-detail.tsx": {
+      "@phosphor-icons/react": [
+        "CaretRight"
+      ]
+    },
+    "workspace/sectors-map.tsx": {
+      "@mantine/core": [
+        "useComputedColorScheme"
+      ]
+    },
+    "workspace/sectors-market-switch.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Menu",
+        "Select"
+      ],
+      "@phosphor-icons/react": [
+        "CaretDown"
+      ]
+    },
+    "workspace/sectors.tsx": {
+      "@mantine/core": [
+        "Button"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowLeft"
+      ]
+    },
+    "workspace/security-peek.tsx": {
+      "@mantine/core": [
+        "Popover"
+      ]
+    },
+    "workspace/settings-assistant.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group",
+        "Modal",
+        "NativeSelect",
+        "Stack",
+        "Switch"
+      ]
+    },
+    "workspace/settings-index-data.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group",
+        "Modal",
+        "PasswordInput",
+        "Stack",
+        "Switch"
+      ]
+    },
+    "workspace/settings-market-data.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Group",
+        "Loader",
+        "Modal",
+        "PasswordInput",
+        "Stack",
+        "Switch"
+      ]
+    },
+    "workspace/settings-oauth.tsx": {
+      "@mantine/core": [
+        "Anchor",
+        "Button",
+        "Checkbox",
+        "Code",
+        "CopyButton",
+        "Group",
+        "Select",
+        "Stack",
+        "Text"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowSquareOut",
+        "Check",
+        "Copy"
+      ]
+    },
+    "workspace/settings-preferences.tsx": {
+      "@mantine/core": [
+        "Button",
+        "FileInput",
+        "Group",
+        "Select",
+        "Stack",
+        "Switch",
+        "TextInput"
+      ],
+      "@phosphor-icons/react": [
+        "CheckCircle",
+        "UploadSimple"
+      ]
+    },
+    "workspace/settings.tsx": {
+      "@mantine/core": [
+        "Button",
+        "Checkbox",
+        "Drawer",
+        "Group",
+        "Modal",
+        "PasswordInput",
+        "SegmentedControl",
+        "Select",
+        "Stack"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowRight",
+        "CheckCircle",
+        "LinkSimple"
+      ]
+    },
+    "workspace/shell.tsx": {
+      "@mantine/core": [
+        "ActionIcon",
+        "Button",
+        "CloseButton",
+        "Group",
+        "Menu",
+        "Modal",
+        "TextInput",
+        "Tooltip",
+        "useMantineColorScheme"
+      ],
+      "@mantine/hooks": [
+        "useMediaQuery",
+        "useOs"
+      ],
+      "@phosphor-icons/react": [
+        "ArrowRight",
+        "ChartBar",
+        "ChartLine",
+        "ChartPieSlice",
+        "Check",
+        "CircleHalf",
+        "ClockCounterClockwise",
+        "DotsThree",
+        "GearSix",
+        "Globe",
+        "Layout",
+        "MagnifyingGlass",
+        "Moon",
+        "SquaresFour",
+        "StackSimple",
+        "Sun"
+      ]
+    },
+    "workspace/timeline-chart.tsx": {
+      "@mantine/hooks": [
+        "useMediaQuery"
+      ]
+    },
+    "workspace/valuation-draft-editor.tsx": {
+      "@phosphor-icons/react": [
+        "Check",
+        "X"
+      ]
+    },
+    "workspace/valuation-maintenance.tsx": {
+      "@phosphor-icons/react": [
+        "LockSimple",
+        "X"
+      ]
+    }
+  }
+}
