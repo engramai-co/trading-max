@@ -78,7 +78,7 @@ export function IndexBreadthPanel({ history, stale, phone }: {
           axisLabel: { formatter: (value: number) => formatPercent(value, locale, 0) } },
         series: lines.flatMap(({ label, value }, i): SeriesOption[] => {
           const colour = i === 0 ? colours.text : colours.axis;
-          const data = rows.map((row, position) => ({ value: [position, row[value]], symbolSize: 4 }));
+          const data = rows.map((row, position) => ({ value: [position, row[value]], symbolSize: 6 }));
           const gaps = historyGapSeries(data);
           return [{
             id: value, name: label, type: "line", data, connectNulls: false,

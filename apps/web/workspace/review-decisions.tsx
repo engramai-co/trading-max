@@ -19,22 +19,24 @@ import {
   useState,
 } from "react";
 import type { EChartsType as ECharts } from "echarts/core";
+import type { ECElementEvent } from "echarts";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { formatCalendarDate, formatDateSpan, formatReadingTime } from "@/ui/formatters";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
-import { readingHtml, readingText, type Reading } from "./chart-readout";
+import { readingText, type Reading } from "./chart-readout";
 import { EvidenceTable } from "./evidence-table";
 import { Help, Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
 import Link from "./link";
 import { filingLabel, ratingLabel } from "./market-terms";
-import { READING_TOOLTIP } from "./reading-tooltip";
+import { ReadingCard } from "./reading-card";
 import { minus } from "./reading-figures";
 import { readingTone } from "./reading-format";
 import { isImeComposing } from "./shortcut-platform";
 import { SecurityPeek } from "./security-peek";
+import type { ChartColours } from "@/ui/charts/palette";
 
 export type AccountDecisions = NonNullable<DashboardLens["selectedAccountDecisions"]>;
 export type TradeDecision = NonNullable<AccountDecisions["decisions"]>[number] & { reviewOrdinal?: number };
@@ -119,6 +121,19 @@ export function parseDecisionParam(value: string | null | undefined): DecisionRe
 
 export function sameDecision(row: DecisionRef, other: DecisionRef) {
   return row.date === other.date && row.side === other.side && row.ticker === other.ticker;
+}
+
+/**
+ * The row a pinned decision is in after its rows are fetched again: the same object, else the same
+ * decision in the same account, matched by the account's code (never its editable display name)
+ * and, for two securities sharing a ticker, by the published ordinal.
+ */
+export function followDecision<T extends TradeDecision>(rows: readonly T[], pinned: T): T | undefined {
+  const account = (row: TradeDecision) => (row as TradeDecision & { account?: string }).account;
+  return rows.find((row) => row === pinned)
+    ?? rows.find((row) => sameDecision(row, pinned)
+      && (row.reviewOrdinal ?? null) === (pinned.reviewOrdinal ?? null)
+      && account(row) === account(pinned));
 }
 
 /**
@@ -545,11 +560,12 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
   // The chart's option only changes with its data: a new option resets ECharts, which would
   // drop a tooltip the keyboard just opened.
   const chart = useRef<ECharts | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
   const { sides, marks } = useMemo(() => timelinePoints(rows, focus), [rows, focus]);
   const largest = useMemo(() => Math.max(1, ...rows.map((row) => row.amountGbp ?? 0)), [rows]);
-  const point = useCallback((row: TradeDecision, colours: Record<string, string>) => {
+  const point = useCallback((row: TradeDecision, colours: ChartColours) => {
     const effect = decisionEffect(row, horizon);
-    const colour = effect == null ? colours.axis : effect >= 0 ? colours.positive : colours.negative;
+    const colour = effect == null || effect === 0 ? colours.axis : effect > 0 ? colours.positive : colours.negative;
     const size = 6 + 16 * Math.sqrt(Math.max(0, row.amountGbp ?? 0) / largest);
     const ring = row === focus ? { borderColor: colours.text, borderWidth: 2 } : null;
     return {
@@ -565,19 +581,14 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
     (row: TradeDecision) => decisionReading(row, horizon, days, t, locale, accountOf?.(row)),
     [accountOf, days, horizon, locale, t],
   );
-  const option = useCallback((colours: Record<string, string>) => ({
+  const option = useCallback((colours: ChartColours) => ({
     grid: { top: 40, right: 18, bottom: 30, left: 64 },
-    tooltip: {
-      ...READING_TOOLTIP,
-      trigger: "item" as const,
-      formatter: (input: unknown) =>
-        readingHtml(reading((input as { data: { row: TradeDecision } }).data.row), locale),
-    },
+    // Readings render as a React ReadingCard overlay rather than an ECharts HTML tooltip sink.
+    tooltip: { show: false },
     xAxis: { type: "time" as const, axisLabel: { formatter: (value: number) => formatCalendarDate(new Date(value).toISOString().slice(0, 10), locale) } },
     yAxis: {
       type: "value" as const,
       axisLabel: { formatter: (value: number) => minus(signedMoney(value)) },
-      splitLine: { lineStyle: { color: colours.grid, type: "dashed" as const } },
     },
     series: (["buy", "sell"] as const).map((side, index) => ({
       type: "scatter" as const,
@@ -592,61 +603,196 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
         : undefined,
     })),
     legend: { top: 0, right: 0, data: [t("买入", "Buys"), t("卖出", "Sells")] },
-  }), [focus, locale, point, reading, sides, t]);
-  const [tip, setTip] = useState(false);
+  }), [focus, locale, point, sides, t]);
+  const [hovered, setHovered] = useState<DecisionPoint | null>(null);
+  // A tap pins its reading in the phone strip until it is closed, another point is tapped or the
+  // reader taps outside; hover events do not clear it.
+  const [tapped, setTapped] = useState<DecisionPoint | null>(null);
+  const [tapSpoken, setTapSpoken] = useState("");
   const [step, setStep] = useState<number | null>(null);
-  const bound = useRef<WeakSet<ECharts>>(new WeakSet());
-  // The chart keeps the handlers it was given once; the latest pick handler is read when a point is picked.
-  const picker = useRef(onPick);
-  useLayoutEffect(() => {
-    picker.current = onPick;
-  });
-  const pick = (row: TradeDecision) => picker.current?.(row);
-  // The tooltip opens for the pointer, a tap or the arrow keys; Escape closes it wherever focus is.
-  const bind = () => {
-    const instance = chart.current;
-    if (!instance || bound.current.has(instance)) return;
-    bound.current.add(instance);
-    instance.on("showTip", () => setTip(true));
-    instance.on("hideTip", () => setTip(false));
-    instance.on("click", (params) => {
-      const row = (params.data as { row?: TradeDecision } | undefined)?.row;
-      if (row) pick(row);
-    });
+  const host = useRef<HTMLDivElement>(null);
+  const pointer = useRef<string>("mouse");
+  const seriesNames = [t("买入", "Buys"), t("卖出", "Sells")];
+  const names = useRef(seriesNames);
+  // The series a reader has hidden from the legend, read from the chart so a reset option or a
+  // scheme switch (which restores the legend) can never disagree with it.
+  const visibleSeries = () => {
+    const selected = (chart.current?.getOption() as { legend?: Array<{ selected?: Record<string, boolean> }> } | undefined)
+      ?.legend?.[0]?.selected ?? {};
+    return new Set([0, 1].filter((index) => selected[names.current[index]] !== false));
   };
-  useEscapeLayer(tip, () => {
-    chart.current?.dispatchAction({ type: "hideTip" });
-    setTip(false);
-    setStep(null);
+  const pointOf = (event: ECElementEvent | null): DecisionPoint | null => {
+    const row = event?.componentType === "series"
+      ? (event.data as { row?: TradeDecision } | undefined)?.row : undefined;
+    // ECharts clones the option data. Track the input rows separately to expire a reading on refresh.
+    return row ? { row, seriesIndex: event?.seriesIndex ?? 0, source: rows } : null;
+  };
+  const readPoint = (event: ECElementEvent | null) => {
+    const next = pointOf(event);
+    setHovered(next);
+    if (next) setStep(null);
+    return next?.row;
+  };
+  const clearTap = () => {
+    setTapped(null);
+    setTapSpoken("");
+  };
+  const stepped = step != null && marks[step] ? marks[step] : null;
+  const shownHover = hovered?.source === rows ? hovered : null;
+  // A tap opens its decision, which can refetch the rows: the pinned reading follows the same
+  // decision into the new rows and closes once it is gone.
+  const shownTap = useMemo(() => {
+    if (!tapped) return null;
+    const row = followDecision(rows, tapped.row);
+    return row ? { ...tapped, row, source: rows } : null;
+  }, [rows, tapped]);
+  if (tapped && !shownTap) {
+    setTapped(null);
+    setTapSpoken("");
+  }
+  const active = stepped ?? shownTap ?? shownHover;
+  const activeReading = active ? reading(active.row) : null;
+  const activeSeries = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    names.current = seriesNames;
+    activeSeries.current = active?.seriesIndex ?? null;
   });
-  const spoken = step == null || !marks[step] ? "" : readingText(reading(marks[step].row), locale);
+  // Hiding a series in the legend closes a reading of one of its decisions.
+  const bound = useRef<WeakSet<ECharts>>(new WeakSet());
+  useEffect(() => {
+    const instance = chart.current;
+    if (!instance || instance.isDisposed() || bound.current.has(instance)) return;
+    bound.current.add(instance);
+    instance.on("legendselectchanged", (event) => {
+      const selected = (event as { selected?: Record<string, boolean> }).selected ?? {};
+      const series = activeSeries.current;
+      if (series == null || selected[names.current[series]] !== false) return;
+      setHovered(null);
+      setStep(null);
+      clearTap();
+    });
+  });
+  useLayoutEffect(() => {
+    const card = tipRef.current;
+    const instance = chart.current;
+    if (!card || !active || !instance || instance.isDisposed()) return;
+    const position = () => {
+      if (instance.isDisposed()) return;
+      const point = instance.convertToPixel(
+        { seriesIndex: active.seriesIndex },
+        [Date.parse(active.row.date), decisionEffect(active.row, horizon) ?? 0],
+      );
+      if (!Array.isArray(point) || !point.every(Number.isFinite)) return;
+      const offset = 20;
+      const place = (value: number, size: number, limit: number) => {
+        const after = value + offset;
+        return Math.max(0, Math.min(after + size <= limit ? after : value - offset - size, limit - size));
+      };
+      const left = place(point[0], card.offsetWidth, instance.getWidth());
+      const top = place(point[1], card.offsetHeight, instance.getHeight());
+      card.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
+      card.style.visibility = "visible";
+    };
+    position();
+    const resize = new ResizeObserver(position);
+    resize.observe(instance.getDom());
+    resize.observe(card);
+    return () => resize.disconnect();
+  }, [active, horizon]);
+  useEffect(() => {
+    const instance = chart.current;
+    if (!instance || instance.isDisposed()) return;
+    instance.dispatchAction({ type: "downplay" });
+    if (stepped) {
+      instance.dispatchAction({ type: "highlight", seriesIndex: stepped.seriesIndex, dataIndex: stepped.dataIndex });
+    }
+  }, [stepped]);
+  // A pinned tap closes from outside the timeline, like the other charts' pinned readings.
+  useEffect(() => {
+    if (!shownTap) return;
+    const outside = (event: globalThis.PointerEvent) => {
+      if (!host.current?.contains(event.target as Node)) clearTap();
+    };
+    document.addEventListener("pointerdown", outside, true);
+    return () => document.removeEventListener("pointerdown", outside, true);
+  }, [shownTap]);
+  useEscapeLayer(active != null, () => {
+    setHovered(null);
+    setStep(null);
+    clearTap();
+  });
+  // Hover never speaks; keyboard steps and taps update the live region once each.
+  const spoken = stepped ? readingText(reading(stepped.row), locale) : shownTap ? tapSpoken : "";
   return (
-    <div onPointerEnter={bind} onKeyDownCapture={(event) => {
-      // The chart's own keys step through its first series only; these reach every decision.
-      if (isImeComposing(event) || !["ArrowLeft", "ArrowRight", "Home", "End", "Enter"].includes(event.key) || !marks.length) return;
+    <div ref={host} className="mx-decision-timeline" onPointerDownCapture={(event) => {
+      pointer.current = event.pointerType;
+    }} onKeyDownCapture={(event) => {
+      // The chart's own keys step through its first series only; these reach every visible decision.
+      if (isImeComposing(event) || !["ArrowLeft", "ArrowRight", "Home", "End", "Enter"].includes(event.key) || !marks.length || !chart.current) return;
       if (!(event.target instanceof HTMLElement) || event.target.getAttribute("role") !== "group") return;
       event.preventDefault();
       event.stopPropagation();
-      bind();
+      const visible = visibleSeries();
       if (event.key === "Enter") {
-        if (step != null && marks[step]) pick(marks[step].row);
+        if (stepped && visible.has(stepped.seriesIndex)) onPick?.(stepped.row);
         return;
       }
-      const next = event.key === "Home" ? 0 : event.key === "End" ? marks.length - 1
-        : step == null ? (event.key === "ArrowLeft" ? marks.length - 1 : 0)
-          : Math.max(0, Math.min(marks.length - 1, step + (event.key === "ArrowRight" ? 1 : -1)));
+      const next = stepVisibleMark(marks, visible, step, event.key as "ArrowLeft" | "ArrowRight" | "Home" | "End");
+      setHovered(null);
+      clearTap();
       setStep(next);
-      chart.current?.dispatchAction({ type: "showTip", seriesIndex: marks[next].seriesIndex, dataIndex: marks[next].dataIndex });
-      setTip(true);
     }} onBlur={(event) => {
       if (step == null || event.currentTarget.contains(event.relatedTarget as Node | null)) return;
-      chart.current?.dispatchAction({ type: "hideTip" });
       setStep(null);
     }}>
-      <Plot research controller={chart} label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} height={340} option={option as never} />
+      <Plot
+        research
+        controller={chart}
+        label={t("买卖决定的时间线", "Timeline of buy and sell decisions")}
+        height={340}
+        option={option}
+        pin={shownTap && activeReading && active === shownTap ? { reading: activeReading, onClose: clearTap } : null}
+        onPointHover={readPoint}
+        onPointClick={(event) => {
+          const picked = pointOf(event);
+          if (!picked) return;
+          if (pointer.current === "touch") {
+            setHovered(null);
+            setStep(null);
+            setTapped(picked);
+            setTapSpoken(readingText(reading(picked.row), locale));
+          } else {
+            readPoint(event);
+          }
+          onPick?.(picked.row);
+        }}
+        overlay={activeReading && active !== shownTap && (
+          <div ref={tipRef} className="mx-chart-popup mx-reading-tooltip" aria-hidden="true">
+            <ReadingCard reading={activeReading} />
+          </div>
+        )}
+      />
       <span className="sr-only" aria-live="polite" aria-atomic="true">{spoken}</span>
     </div>
   );
+}
+
+type DecisionPoint = { row: TradeDecision; seriesIndex: number; source: TradeDecision[] };
+
+/** The next decision for the timeline's keys, skipping series hidden from the legend. */
+export function stepVisibleMark(
+  marks: ReadonlyArray<{ seriesIndex: number }>,
+  visible: ReadonlySet<number>,
+  step: number | null,
+  key: "ArrowLeft" | "ArrowRight" | "Home" | "End",
+): number | null {
+  const order = marks.flatMap((mark, index) => (visible.has(mark.seriesIndex) ? [index] : []));
+  if (!order.length) return null;
+  if (key === "Home") return order[0];
+  if (key === "End") return order[order.length - 1];
+  const at = step == null ? -1 : order.indexOf(step);
+  if (at < 0) return key === "ArrowLeft" ? order[order.length - 1] : order[0];
+  return order[Math.max(0, Math.min(order.length - 1, at + (key === "ArrowRight" ? 1 : -1)))];
 }
 
 /** How the same-day round trips did, and how much of each day's range they took. */
@@ -667,8 +813,8 @@ export function RoundTrips({ data }: { data: AccountDecisions }) {
   const { locale } = useLocale();
   const verdict = roundTripVerdict(data.roundTripSummary);
   if (!verdict.count) return null;
-  const rows = [...(data.roundTrips ?? [])].reverse();
-  const largest = [...rows].sort((a, b) => Math.abs(b.resultGbp) - Math.abs(a.resultGbp)).slice(0, 5);
+  const rows = (data.roundTrips ?? []).toReversed();
+  const largest = rows.toSorted((a, b) => Math.abs(b.resultGbp) - Math.abs(a.resultGbp)).slice(0, 5);
   const columns = [
     { label: t("日期", "Date"), value: (row: RoundTrip) => formatCalendarDate(row.date, locale) },
     {

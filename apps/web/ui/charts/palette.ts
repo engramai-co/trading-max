@@ -2,9 +2,13 @@
 
 import { useSyncExternalStore } from "react";
 import { COLOR_SCHEME_ATTRIBUTE, type ResolvedColorScheme } from "@/lib/color-scheme";
+import { toCanvasColour } from "@/ui/charts/canvas-colour";
 
-const chartTokens = {
+type ReadCssToken = (name: string) => string;
+
+const chartColourTokens = {
   accent: "--chart-3",
+  allocationRest: "--allocation-rest",
   axis: "--muted-foreground",
   border: "--border-strong",
   brand: "--chart-1",
@@ -13,33 +17,50 @@ const chartTokens = {
   grid: "--border",
   keyMomentBg: "--key-moment-bg",
   keyMomentInk: "--key-moment-ink",
+  muted: "--muted",
   negative: "--loss",
   positive: "--gain",
   secondary: "--chart-4",
+  selection: "--selection",
   series5: "--chart-5",
   text: "--foreground",
   tooltip: "--popover",
   tooltipBorder: "--panel-edge",
-  tooltipMuted: "--muted-foreground",
-  tooltipShadow: "--chart-tooltip-shadow",
   tooltipText: "--popover-foreground",
   warning: "--warning",
 } as const;
 
-export type ChartColours = { [Key in keyof typeof chartTokens]: string };
-type ReadCssToken = (name: string) => string;
+export type ChartColours = {
+  [Key in keyof typeof chartColourTokens]: string;
+} & {
+  shadowPopover: string;
+  tooltipRadius: string;
+};
 
-export function readChartColours(read: ReadCssToken): ChartColours {
-  return Object.fromEntries(
-    Object.entries(chartTokens).map(([key, token]) => [key, read(token)]),
-  ) as ChartColours;
+function readChartStyle(read: ReadCssToken, readColour: ReadCssToken): ChartColours {
+  const colours = Object.fromEntries(
+    Object.entries(chartColourTokens).map(([key, token]) => [key, readColour(token)]),
+  ) as { [Key in keyof typeof chartColourTokens]: string };
+  return {
+    ...colours,
+    shadowPopover: read("--shadow-popover"),
+    tooltipRadius: read("--radius-tooltip"),
+  };
 }
 
-export function readAllocationChartColours(read: ReadCssToken): readonly string[] {
+export function readChartColours(read: ReadCssToken): ChartColours {
+  return readChartStyle(read, (token) => toCanvasColour(read(token)));
+}
+
+function allocationColours(read: ReadCssToken): readonly string[] {
   return [
     ...Array.from({ length: 12 }, (_, index) => read(`--allocation-${index + 1}`)),
     read("--allocation-rest"),
   ];
+}
+
+export function readAllocationChartColours(read: ReadCssToken): readonly string[] {
+  return allocationColours((token) => toCanvasColour(read(token)));
 }
 
 type Palette = {
@@ -50,36 +71,43 @@ type Palette = {
 };
 
 // HTML and SVG can use CSS variables during SSR. The canvas waits for resolved
-// colours so ECharts never receives var() strings or a palette for another scheme.
+// RGB colours so ECharts never receives var() or oklch() strings or a palette for another scheme.
 const cssReference = (name: string) => `var(${name})`;
 const serverPalette: Palette = {
   scheme: "dark",
-  chart: readChartColours(cssReference),
-  allocation: readAllocationChartColours(cssReference),
+  chart: readChartStyle(cssReference, cssReference),
+  allocation: allocationColours(cssReference),
   ready: false,
 };
 
-const palettes: Partial<Record<ResolvedColorScheme, Palette>> = {};
+let cachedPalette: Palette | undefined;
+let stale = true;
 const listeners = new Set<() => void>();
 let observer: MutationObserver | undefined;
+function samePalette(a: Palette, b: Palette): boolean {
+  return a.scheme === b.scheme
+    && a.allocation.every((colour, index) => b.allocation[index] === colour)
+    && (Object.keys(a.chart) as Array<keyof ChartColours>).every((key) => a.chart[key] === b.chart[key]);
+}
 
 function readPalette(): Palette {
   const root = document.documentElement;
   const scheme = root.getAttribute(COLOR_SCHEME_ATTRIBUTE) === "light" ? "light" : "dark";
-  const cached = palettes[scheme];
-  if (cached) return cached;
+  if (!stale && cachedPalette && cachedPalette.scheme === scheme) return cachedPalette;
   const styles = getComputedStyle(root);
-  const read = (name: string) => styles.getPropertyValue(name).trim();
-  if (!read("--chart-1")) return serverPalette;
-  return palettes[scheme] = {
-    scheme,
-    chart: readChartColours(read),
-    allocation: readAllocationChartColours(read),
-    ready: true,
-  };
+  const read: ReadCssToken = (name) => styles.getPropertyValue(name).trim();
+  const chart = readChartColours(read);
+  const allocation = readAllocationChartColours(read);
+  if (Object.values(chart).some((token) => !token) || allocation.some((colour) => !colour)) return serverPalette;
+  const next: Palette = { scheme, chart, allocation, ready: true };
+  stale = false;
+  if (cachedPalette && samePalette(cachedPalette, next)) return cachedPalette;
+  cachedPalette = next;
+  return next;
 }
 
 function notify() {
+  stale = true;
   for (const listener of listeners) listener();
 }
 
@@ -87,7 +115,10 @@ function subscribe(listener: () => void) {
   listeners.add(listener);
   if (!observer) {
     observer = new MutationObserver(notify);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: [COLOR_SCHEME_ATTRIBUTE] });
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: [COLOR_SCHEME_ATTRIBUTE, "class", "style"],
+    });
     window.addEventListener("load", notify);
   }
   return () => {
@@ -96,6 +127,7 @@ function subscribe(listener: () => void) {
       observer?.disconnect();
       observer = undefined;
       window.removeEventListener("load", notify);
+      stale = true;
     }
   };
 }

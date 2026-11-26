@@ -242,7 +242,7 @@ function buildIndexPlotLine(rows: readonly PlotRow[], key: "left" | "right", wid
     if (value === undefined) return;
     if (value == null) missing = true;
     else observed++;
-    data.push({ value: [i, value], symbolSize: 4 });
+    data.push({ value: [i, value], symbolSize: 6 });
   });
   return {
     visible: sampleLine(data, width, (point) => point.value[0], (point) => point.value[1]),

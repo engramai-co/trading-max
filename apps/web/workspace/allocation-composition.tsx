@@ -1,6 +1,5 @@
 "use client";
 
-import { VisuallyHidden } from "@mantine/core";
 import { useReducedMotion } from "@/lib/hooks";
 import { useId, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ECharts, EChartsOption } from "echarts";
@@ -148,9 +147,9 @@ export function AllocationComposition({ rows, companies = false, remainder, init
           <strong>{percent(shown.weight)}</strong>
           <small>{currency(shown.value, "GBP", 0)}</small>
         </div>
-        {companies ? <VisuallyHidden id={description}>
+        {companies ? <span id={description} className="sr-only">
           {t("点击扇区或公司查看详情，也可用左右方向键切换。", "Select a slice or company for details. Arrow keys also switch companies.")}
-        </VisuallyHidden> : <p id={description} className="mx-form-help">
+        </span> : <p id={description} className="mx-form-help">
           <CenteredCopy>{t("点击扇区或分类查看详情，也可用左右方向键切换。", "Select a slice or category for details. Arrow keys also switch categories.")}</CenteredCopy>
         </p>}
       </div>

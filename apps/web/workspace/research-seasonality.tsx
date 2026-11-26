@@ -10,7 +10,7 @@ import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { Plot } from "./charts";
 import { number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
-import type { ChartReadout, ReadingKey } from "./chart-readout";
+import { LINE_DASH_PATTERNS, type ChartReadout, type LineDash, type ReadingKey } from "./chart-readout";
 import { Facts, Panel, Segments, useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 import { readingTone, signedPercent } from "./reading-format";
@@ -22,21 +22,30 @@ const THIN_SAMPLE = 5;
 
 /**
  * The latest selected year leads in cobalt; earlier years use ink and grey, solid then dashed.
- * A benchmark path takes its year's colour, dotted. Legend, hover dot and reading key share it.
+ * A benchmark path is thin and broken in its year's colour, except that the latest year's benchmark
+ * uses the neutral comparison colour: cobalt belongs to the instrument's own line. Ink and grey
+ * repeat across years, so each benchmark year also takes its own pattern (dotted, dash-dot,
+ * dash-dot-dot): no two benchmark paths, and no benchmark and year path, draw alike in either scheme.
+ * Legend, hover dot and reading key share the stroke.
  */
 const YEAR_LINES = [
-  { colour: "brand", dashed: false, width: 2.1 },
+  { colour: "brand", dashed: false, width: 2 },
   { colour: "text", dashed: false, width: 1.3 },
   { colour: "axis", dashed: false, width: 1.3 },
   { colour: "text", dashed: true, width: 1.3 },
   { colour: "axis", dashed: true, width: 1.3 },
 ] as const satisfies ReadonlyArray<{ colour: keyof ChartColours; dashed: boolean; width: number }>;
+const BENCHMARK_DASHES = ["dot", "dot", "dash-dot", "dash-dot", "dash-dot-dot"] as const satisfies ReadonlyArray<LineDash>;
 export function seasonStroke(colours: ChartColours, year: number, benchmark = false) {
-  const line = YEAR_LINES[Math.min(year, YEAR_LINES.length - 1)];
+  const index = Math.min(year, YEAR_LINES.length - 1);
+  const line = YEAR_LINES[index];
+  const colour = benchmark && line.colour === "brand" ? colours.comparison : colours[line.colour];
+  const dash: LineDash | undefined = benchmark ? BENCHMARK_DASHES[index] : undefined;
   return {
-    colour: colours[line.colour],
+    colour,
     width: benchmark ? 1.2 : line.width,
-    type: benchmark ? [2, 3] : line.dashed ? [6, 4] : ("solid" as const),
+    type: dash ? LINE_DASH_PATTERNS[dash].chart : line.dashed ? [6, 4] : ("solid" as const),
+    dash,
   };
 }
 /** A year's change on a calendar day: its own close, or the close before a weekend or holiday. */
@@ -133,7 +142,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
   const comparable = benchmark.data?.currency === data.context?.quote.currency;
   const benchmarkPaths: Record<string, Record<string, unknown>[]> = {};
   if (comparable) {
-    const points = [...(benchmark.data?.points ?? [])].sort((a, b) =>
+    const points = (benchmark.data?.points ?? []).toSorted((a, b) =>
       a.date.localeCompare(b.date),
     );
     for (const year of paths) {
@@ -179,8 +188,8 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
   const key = (index: number): ReadingKey => {
     const line = pathLines[index];
     const stroke = seasonStroke(colours, line.year, line.benchmark);
-    // A benchmark path is dotted, an earlier year dashed; the key draws the same stroke.
-    return line.benchmark ? { colour: stroke.colour, dotted: true } : { colour: stroke.colour, dashed: stroke.type !== "solid" || undefined };
+    // A benchmark path keys its own pattern, an earlier year dashed; the key draws the same stroke.
+    return stroke.dash ? { colour: stroke.colour, dash: stroke.dash } : { colour: stroke.colour, dashed: stroke.type !== "solid" || undefined };
   };
   const dayLabel = (day: number) => formatDate(new Date(Date.UTC(2000, 0, 1 + day)), locale, { month: "short", day: "numeric", timeZone: "UTC" });
   // Every year reads at the same calendar day, so the reading opens wherever the pointer or keys rest.
@@ -460,7 +469,6 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
                   color: c.axis,
                   formatter: (n: number) => minus(percent(n)),
                 },
-                splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
               },
               series: pathLines.map((line) => {
                 const stroke = seasonStroke(c, line.year, line.benchmark);

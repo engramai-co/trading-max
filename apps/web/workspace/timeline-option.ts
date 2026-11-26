@@ -1,5 +1,6 @@
 import type { EChartsOption, SeriesOption } from "echarts";
 import type { ChartColours } from "@/ui/charts/palette";
+import { FONT_STACK } from "@/ui/theme";
 import { LINE_DASH_PATTERNS } from "./chart-readout";
 import type { ChartLine } from "./charts";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
@@ -54,7 +55,7 @@ export function timelineLineColour(colours: ChartColours, layer: number, index: 
 /** Width and dash pattern for a timeline line, shared by ECharts primary and observed strokes. */
 export function timelineLineStyle(line: Pick<ChartLine, "dashed" | "dash">) {
   return {
-    width: line.dash || line.dashed ? 1.5 : 2.5,
+    width: line.dash || line.dashed ? 1.5 : 2,
     type: line.dash ? LINE_DASH_PATTERNS[line.dash].chart : line.dashed ? ("dashed" as const) : ("solid" as const),
   };
 }
@@ -131,7 +132,7 @@ export function timelineOption(
     return {
       xAxis: layers.map(() => ({
         splitNumber: count - 1,
-        ...(ticks ? { axisLabel: { customValues: ticks }, axisTick: { customValues: ticks } } : {}),
+        ...(ticks ? { axisLabel: { customValues: ticks } } : {}),
       })),
     };
   };
@@ -161,6 +162,7 @@ export function timelineOption(
         text: layer.label,
         fill: colours.text,
         fontSize: 12,
+        fontFamily: FONT_STACK,
         fontWeight: 500,
       },
     })),
@@ -169,7 +171,7 @@ export function timelineOption(
       ...horizontalAxis,
       gridIndex: index,
       axisLine: { show: index === layers.length - 1, onZero: false, lineStyle: { color: colours.border } },
-      axisTick: { show: index === layers.length - 1, customValues: ticksForWidth(8), length: 4, lineStyle: { color: colours.border } },
+      axisTick: { show: false },
       axisPointer: { show: true, snap: true },
       axisLabel: {
         ...horizontalAxis.axisLabel,
@@ -189,7 +191,7 @@ export function timelineOption(
           // Side padding makes touching labels count as overlapping, so the
           // month-start tick next to a weekly tick is hidden instead of fused.
           date: { color: colours.axis, fontSize: 12, lineHeight: 18, padding: [0, 6] },
-          year: { color: colours.axis, fontSize: 11, lineHeight: 18 },
+          year: { color: colours.axis, fontSize: 12, lineHeight: 18 },
         },
       },
       splitNumber: 7,
@@ -225,7 +227,6 @@ export function timelineOption(
                   maximumSignificantDigits: 5,
                 }),
         },
-        splitLine: { lineStyle: { color: colours.grid, type: "dashed" } },
       };
     }),
     series: layers.flatMap((layer, axis) =>
@@ -265,7 +266,7 @@ export function timelineOption(
           connectNulls: false,
           symbol: single ? "circle" : "none",
           showSymbol: single,
-          symbolSize: 4,
+          symbolSize: 6,
           emphasis: { scale: false },
           step: line.step,
           lineStyle: {

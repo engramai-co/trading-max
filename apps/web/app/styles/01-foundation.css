@@ -27,12 +27,6 @@
   --mx-down: var(--loss);
   --mx-world-land: var(--world-land);
   --mx-warning: var(--warning);
-  --mx-chart-0: var(--chart-1);
-  --mx-chart-1: var(--chart-3);
-  --mx-chart-2: var(--chart-4);
-  --mx-chart-3: var(--allocation-4);
-  --mx-chart-4: var(--chart-5);
-  --mx-chart-5: var(--chart-2);
   /* The holdings donut's shared segment for everything outside its coloured holdings. */
   --mx-rest: var(--allocation-rest);
   --mx-ease: cubic-bezier(0.22, 1, 0.36, 1);

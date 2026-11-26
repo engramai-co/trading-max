@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readAllocationChartColours } from "@/ui/charts/palette";
+import { toCanvasColour } from "@/ui/charts/canvas-colour";
 import { darkCanvas, lightCanvas } from "@/ui/theme";
 import { ALLOCATION_SLICE_OPACITY } from "@/workspace/allocation-composition";
 import { chartColours, darkChartColours, parseBlock, resolveToken, themeCss, tokensByScheme } from "../tests/fixtures/theme-colours";
@@ -243,33 +244,48 @@ describe("Palette A neutral-ink colour tokens and WCAG contrast contract", () =>
     expect(darkCanvas).toBe(tokensByScheme.dark["--background"]);
     expect(lightCanvas).toBe(tokensByScheme.light["--background"]);
 
+    const canvasSafe = /^rgba?\(\d+, \d+, \d+(?:, (?:0|1|0?\.\d+))?\)$/;
     for (const [scheme, palette] of [
       ["light", chartColours],
       ["dark", darkChartColours],
     ] as const) {
       const tokens = tokensByScheme[scheme];
-      expect(palette.brand).toBe(tokens["--chart-1"]);
-      expect(palette.comparison).toBe(tokens["--chart-2"]);
-      expect(palette.accent).toBe(tokens["--chart-3"]);
-      expect(palette.secondary).toBe(tokens["--chart-4"]);
-      expect(palette.series5).toBe(tokens["--chart-5"]);
-      expect(palette.positive).toBe(tokens["--gain"]);
-      expect(palette.negative).toBe(tokens["--loss"]);
-      expect(palette.warning).toBe(tokens["--warning"]);
-      expect(palette.axis).toBe(tokens["--muted-foreground"]);
-      expect(palette.border).toBe(tokens["--border-strong"]);
-      expect(palette.grid).toBe(tokens["--border"]);
-      expect(palette.text).toBe(tokens["--foreground"]);
-      expect(palette.tooltip).toBe(tokens["--popover"]);
-      expect(palette.tooltipBorder).toBe(tokens["--panel-edge"]);
-      expect(palette.tooltipText).toBe(tokens["--popover-foreground"]);
-      expect(palette.tooltipMuted).toBe(tokens["--muted-foreground"]);
+      const rgb = (name: string) => toCanvasColour(resolveToken(tokens, name));
+      expect(palette.brand).toBe(rgb("--chart-1"));
+      expect(palette.comparison).toBe(rgb("--chart-2"));
+      expect(palette.accent).toBe(rgb("--chart-3"));
+      expect(palette.secondary).toBe(rgb("--chart-4"));
+      expect(palette.series5).toBe(rgb("--chart-5"));
+      expect(palette.positive).toBe(rgb("--gain"));
+      expect(palette.negative).toBe(rgb("--loss"));
+      expect(palette.warning).toBe(rgb("--warning"));
+      expect(palette.axis).toBe(rgb("--muted-foreground"));
+      expect(palette.border).toBe(rgb("--border-strong"));
+      expect(palette.grid).toBe(rgb("--border"));
+      expect(palette.canvas).toBe(rgb("--card"));
+      expect(palette.muted).toBe(rgb("--muted"));
+      expect(palette.selection).toBe(rgb("--selection"));
+      expect(palette.allocationRest).toBe(rgb("--allocation-rest"));
+      expect(palette.text).toBe(rgb("--foreground"));
+      expect(palette.tooltip).toBe(rgb("--popover"));
+      expect(palette.tooltipBorder).toBe(rgb("--panel-edge"));
+      expect(palette.tooltipText).toBe(rgb("--popover-foreground"));
+      expect(palette.shadowPopover).toBe(tokens["--shadow-popover"]);
+      expect(palette.tooltipRadius).toBe(tokens["--radius-tooltip"]);
+      for (const [key, value] of Object.entries(palette)) {
+        if (key === "shadowPopover" || key === "tooltipRadius") continue;
+        expect(value, `${scheme} palette.${key}`).toMatch(canvasSafe);
+      }
 
       const cssAllocation = [
-        ...Array.from({ length: 12 }, (_, index) => tokens[`--allocation-${index + 1}`]),
-        tokens["--allocation-rest"],
+        ...Array.from({ length: 12 }, (_, index) => rgb(`--allocation-${index + 1}`)),
+        rgb("--allocation-rest"),
       ];
-      expect(readAllocationChartColours((name) => resolveToken(tokens, name))).toEqual(cssAllocation);
+      const resolvedAllocation = readAllocationChartColours((name) => resolveToken(tokens, name));
+      expect(resolvedAllocation).toEqual(cssAllocation);
+      for (const colour of resolvedAllocation) {
+        expect(colour).toMatch(canvasSafe);
+      }
     }
   });
 });

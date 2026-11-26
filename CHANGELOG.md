@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.71.0] - 2026-11-26
+
+### Changed
+- Every chart takes its colours, fonts and lines from the page's own palette through one theme layer: muted 12px axis labels, faint horizontal grid lines only, a 2px primary line and 6px hover dots. Cobalt marks only a chart's own primary line; comparisons are neutral, and red and green mean only a fall or a rise.
+- Chart readings use the same card as the page's other pop-ups, in both appearances. Switching between dark and light keeps a chart's zoomed range.
+- An exported chart PNG uses the appearance on screen.
+
+### Fixed
+- On a touch screen, tapping a point on the decision timeline in Review pins its reading in a closable strip above the chart, announced once to screen readers, while still opening the decision. On a phone the strip stays in view below the top bar as the page scrolls. When two securities sold the same day share a ticker, the reading stays with the one tapped after the review refreshes.
+- The arrow keys on the decision timeline step only through decisions whose series is shown in the legend.
+- On the seasonality chart, the latest year's benchmark path is drawn in the neutral comparison colour, and each benchmark year has a line pattern of its own, so no two paths look alike in either appearance.
+
 ## [1.70.0] - 2026-11-26
 
 ### Changed

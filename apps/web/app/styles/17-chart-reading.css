@@ -38,6 +38,10 @@
   position: relative;
   min-width: 0;
 }
+/* The decision timeline's wrapper, which keeps its taps and keys, shrinks with its panel like the plot. */
+.mx-decision-timeline {
+  min-width: 0;
+}
 .mx-chart-marks {
   position: absolute;
   inset: 0;
@@ -65,6 +69,13 @@
 }
 .mx-chart-popup > .mx-reading {
   max-width: min(280px, 100%);
+}
+.mx-reading-tooltip .mx-reading-row {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+.mx-reading-tooltip .mx-reading-row > dd {
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 /* Phones: the reading strip covers the panel heading above the plot and its controls, never the
    plot itself. In the fullscreen dialog it reads in the free band below the plot. */
@@ -371,8 +382,8 @@
   }
 }
 
-/* Reading card (ReadingCard and readingHtml): the time, one leading figure, at most a few rows.
-   Text keeps 4.5:1 on the overlay ground in both themes: ink, muted, gain, loss and warning. */
+/* Reading card (ReadingCard): the time, one leading figure, at most a few rows.
+   Text keeps 4.5:1 on the popover ground in both themes: ink, muted, gain, loss and warning. */
 .mx-reading {
   display: grid;
   gap: 4px;
@@ -380,12 +391,12 @@
   width: max-content;
   min-width: 168px;
   max-width: min(280px, calc(100vw - 16px));
-  padding: 10px 12px;
-  border: var(--mx-overlay-edge);
-  border-radius: var(--mx-overlay-radius);
-  background: var(--mx-overlay-bg);
-  box-shadow: var(--mx-overlay-elevation);
-  color: var(--mx-ink);
+  padding: 16px;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-popover);
+  background: var(--popover);
+  box-shadow: var(--shadow-popover);
+  color: var(--popover-foreground);
   font-size: 12px;
   font-weight: 400;
   line-height: 1.4;
@@ -400,6 +411,11 @@
   gap: 12px;
   color: var(--mx-muted);
   font-weight: 500;
+}
+.mx-reading-time,
+.mx-reading-label,
+.mx-reading-row > dt {
+  overflow-wrap: anywhere;
 }
 .mx-reading-flag {
   display: inline-flex;
@@ -522,7 +538,10 @@ svg.mx-reading-key > path {
   width: 100%;
   min-width: 0;
   max-width: none;
+  /* The phone strip stays compact above the plot; its corners follow the tooltip. */
+  padding: 10px 12px;
   padding-inline-end: 56px;
+  border-radius: var(--radius-tooltip);
 }
 .mx-reading[data-variant="strip"] .mx-reading-primary > .mx-reading-value {
   font-size: 20px;

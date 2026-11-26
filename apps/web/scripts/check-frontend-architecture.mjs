@@ -12,7 +12,7 @@ const allowedCss = new Set(["app/globals.css", themeStylesheet, ...deferredStyle
 const stylesDirectory = "app/styles/";
 const stylesheetLineBudget = 900;
 const stylesheetLineLength = 160;
-const rawColourAllowlist = new Set(["ui/theme.ts", "ui/charts/palette.ts"]);
+const rawColourAllowlist = new Set(["ui/theme.ts"]);
 const serverMantineAllowlist = new Set(["app/layout.tsx", "ui/theme.ts"]);
 // Playwright traces contain captured CSS/JS, not authored application code.
 const generatedDirectories = new Set(["node_modules", ".next", ".run", "test-results", "playwright-report"]);

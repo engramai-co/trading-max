@@ -29,11 +29,6 @@
         "createTheme"
       ]
     },
-    "workspace/allocation-composition.tsx": {
-      "@mantine/core": [
-        "VisuallyHidden"
-      ]
-    },
     "workspace/assistant/cards.tsx": {
       "@mantine/core": [
         "Drawer"

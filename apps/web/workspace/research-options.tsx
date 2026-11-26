@@ -69,7 +69,7 @@ function sum(values: (number | null | undefined)[]) {
 const SIDES = ["call", "put"] as const;
 type Side = (typeof SIDES)[number];
 export function sideStroke(side: Side, colours: ChartColours) {
-  return side === "call" ? colours.brand : colours.accent;
+  return side === "call" ? colours.comparison : colours.accent;
 }
 
 /**
@@ -577,7 +577,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                         <th colSpan={activeCols.length}>{t("看跌", "Puts")}</th>
                       </tr>
                       <tr>
-                        {[...activeCols].reverse().map((k) => (
+                        {activeCols.toReversed().map((k) => (
                           <th scope="col" key={k}>
                             {columnNames[k]}
                           </th>
@@ -607,7 +607,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                               strike === nearest ? "mx-near-spot" : undefined
                             }
                           >
-                            {[...activeCols].reverse().map((k) => (
+                            {activeCols.toReversed().map((k) => (
                               <td
                                 key={k}
                                 className={
@@ -947,7 +947,7 @@ function Volatility({
             type: "line",
             smooth: false,
             connectNulls: false,
-            symbolSize: 5,
+            symbolSize: 6,
             itemStyle: { color: sideColour(side, c) },
             lineStyle: { color: sideColour(side, c) },
             data: [...smile[i]].map(([x, iv]) => [x, iv]),

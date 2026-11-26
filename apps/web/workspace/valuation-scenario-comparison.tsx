@@ -87,12 +87,12 @@ export function ValuationScenarioComparison({ preview, selected, onSelect, befor
       // The whole line answers the pointer, not only its two dots.
       triggerLineEvent: true,
       data: [[0, KEYS.indexOf(key)], [preview.scenarios[key].upside, KEYS.indexOf(key)]],
-      lineStyle: { color: c.brand, width: selected === key ? 3 : 2, opacity: selected === key ? 0.85 : 0.25 },
-      itemStyle: { color: selected === key ? c.brand : c.axis },
-      emphasis: { lineStyle: { opacity: 0.85 } },
+      lineStyle: { color: selected === key ? c.brand : c.comparison, width: selected === key ? 2 : 1.5 },
+      itemStyle: { color: selected === key ? c.brand : c.comparison },
+      emphasis: { lineStyle: { width: 2 } },
       markLine: i === 0 ? {
         silent: true, symbol: "none" as const, data: [{ xAxis: 0 }],
-        lineStyle: { color: c.axis, type: "dashed" as const, width: 1 },
+        lineStyle: { color: c.axis, type: [3, 3], width: 1 },
         label: { formatter: t("现价", "Current price"), position: "start" as const, color: c.text },
       } : undefined,
     })),

@@ -176,7 +176,6 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
             name: code,
             scale: true,
             axisLabel: { color: c.axis },
-            splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
           },
           series: [
             {
@@ -355,7 +354,6 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
             name: code,
             ...(axis ?? { scale: true }),
             axisLabel: { color: c.axis },
-            splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
           },
           series: [
             {

@@ -15,6 +15,8 @@ test.describe("chart evidence and fullscreen", () => {
   });
 
   test("fullscreen preserves a reading, downloads only visible records and restores focus", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("mantine-color-scheme-value", "auto"));
+    await page.emulateMedia({ colorScheme: "dark" });
     await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
       state: "available", range: "1D", index: { scope: "us", source: "Synthetic index" }, asOf: observations.at(-1)!.at, currency: "USD",
       points: observations.filter((_, index) => index !== 9), gaps: [observations[9].at],
@@ -45,10 +47,37 @@ test.describe("chart evidence and fullscreen", () => {
     expect(csv).toContain("after-missing-observation");
     // Mobile WebKit can preview generated images instead of emitting a native download event.
     if (!test.info().project.use.isMobile) {
-      const pngReady = page.waitForEvent("download");
-      await full.getByRole("button", { name: "Export PNG" }).click();
-      const png = await readFile((await (await pngReady).path())!);
-      expect(png.subarray(1, 4).toString()).toBe("PNG");
+      const sampleCorner = async (pngBytes: Buffer) => page.evaluate(async (bytes) => {
+        const blob = new Blob([new Uint8Array(bytes)], { type: "image/png" });
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement("canvas");
+        canvas.width = 4;
+        canvas.height = 4;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(bitmap, 0, 0);
+        const [r, g, b] = ctx.getImageData(2, 2, 1, 1).data;
+        bitmap.close();
+        return [r, g, b] as const;
+      }, [...pngBytes]);
+
+      const html = page.locator("html");
+      for (const scheme of ["dark", "light"] as const) {
+        await page.emulateMedia({ colorScheme: scheme });
+        await expect(html).toHaveAttribute("data-mantine-color-scheme", scheme);
+        const expected = await html.evaluate((root) => {
+          const swatch = document.createElement("span");
+          swatch.style.color = "var(--card)";
+          root.append(swatch);
+          const channels = getComputedStyle(swatch).color.match(/\d+/g)?.map(Number);
+          swatch.remove();
+          return channels;
+        });
+        const pngReady = page.waitForEvent("download");
+        await full.getByRole("button", { name: "Export PNG" }).click();
+        const png = await readFile((await (await pngReady).path())!);
+        expect(png.subarray(1, 4).toString()).toBe("PNG");
+        expect(await sampleCorner(png)).toEqual(expected);
+      }
     }
     await full.getByRole("button", { name: "Exit fullscreen" }).focus();
     await page.keyboard.press("Escape");
@@ -85,8 +114,7 @@ test.describe("chart evidence and fullscreen", () => {
       familyId: "synthetic", hedging: "unhedged", historyYears: 1, rights: "provider-terms",
     };
     await page.route("**/api/backend/indices/catalog", (route) => route.fulfill({ json: [identity] }));
-    let releaseHistory!: () => void;
-    const heldHistory = new Promise<void>((resolve) => { releaseHistory = resolve; });
+    const { promise: heldHistory, resolve: releaseHistory } = Promise.withResolvers<void>();
     await page.route("**/api/backend/indices/sp-500/history?**", async (route) => {
       await heldHistory;
       await route.fulfill({ json: {
@@ -218,8 +246,7 @@ test("a pinch zooms while a vertical swipe leaves the time range alone", async (
 
 test("a delayed index context preserves the pinch-zoomed records", async ({ browser, page, isMobile }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL || isMobile || browser.browserType().name() !== "chromium", "Uses Chromium touch input.");
-  let releaseContext!: () => void;
-  const gate = new Promise<void>((resolve) => { releaseContext = resolve; });
+  const { promise: gate, resolve: releaseContext } = Promise.withResolvers<void>();
   await page.route("**/api/backend/indices/sp-500/context", async (route) => {
     await gate;
     await route.fulfill({ json: {} });

@@ -1,4 +1,5 @@
 import type { ECharts } from "echarts";
+import { FONT_STACK } from "@/ui/theme";
 
 export type ChartRecord = {
   time: string;
@@ -43,7 +44,14 @@ export function exportChartCsv(rows: ChartRecord[]) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
 }
 
-export async function exportChartPng(chart: ECharts, label: string, reading: string, background: string, foreground: string) {
+export async function exportChartPng(
+  chart: ECharts,
+  label: string,
+  reading: string,
+  background: string,
+  foreground: string,
+  muted: string = foreground,
+) {
   const image = new Image();
   image.src = chart.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: background });
   await image.decode();
@@ -57,9 +65,10 @@ export async function exportChartPng(chart: ECharts, label: string, reading: str
   ctx.fillStyle = background;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.fillStyle = foreground;
-  ctx.font = "600 27px system-ui";
+  ctx.font = `600 27px ${FONT_STACK}`;
   ctx.fillText(label, 22, 38, canvas.width - 44);
-  ctx.font = "24px system-ui";
+  ctx.fillStyle = muted;
+  ctx.font = `24px ${FONT_STACK}`;
   rows.forEach((row, index) => ctx.fillText(row, 22, 68 + index * 33, canvas.width - 44));
   ctx.drawImage(image, 0, header, canvas.width, image.height);
   downloadChartFile(canvas.toDataURL("image/png"), "chart.png");

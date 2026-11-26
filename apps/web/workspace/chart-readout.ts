@@ -1,11 +1,13 @@
 import type { ChartRecord } from "./chart-export";
 
 export type ReadingTone = "up" | "down";
-export type LineDash = "long" | "short" | "dash-dot";
+export type LineDash = "long" | "short" | "dash-dot" | "dot" | "dash-dot-dot";
 export const LINE_DASH_PATTERNS: Record<LineDash, { chart: number[]; swatch: string }> = {
   long: { chart: [8, 4], swatch: "7 4" },
   short: { chart: [3, 3], swatch: "3 2" },
   "dash-dot": { chart: [8, 3, 2, 3], swatch: "6 2 2 2" },
+  dot: { chart: [2, 3], swatch: "2 3" },
+  "dash-dot-dot": { chart: [8, 3, 2, 3, 2, 3], swatch: "5 2 2 2 2 2" },
 };
 /** The series' own stroke, so a row matches its line without the legend. */
 export type ReadingKey = {
@@ -77,7 +79,7 @@ function documentLocale(): ReadingLocale {
   return typeof document !== "undefined" && document.documentElement.dataset.locale === "zh" ? "zh" : "en";
 }
 
-/** One element of the reading card. The React card and the HTML string are both built from it. */
+/** One element of the React reading card. */
 export type ReadingNode = {
   tag: "div" | "span" | "dl" | "dt" | "dd" | "i" | "svg" | "path";
   /** Attributes in render order; "style" carries one custom property. */
@@ -117,7 +119,7 @@ function row(item: ReadingItem) {
     node("dd", tone(item.tone), item.value, item.detail && node("span", [["class", "mx-reading-detail"]], item.detail)));
 }
 
-/** The reading card's structure, shared by ReadingCard and readingHtml so both render the same DOM. */
+/** The reading card's structure for desktop cards and touch strips. */
 export function readingTree(reading: Reading, variant: ReadingVariant = "card", locale: ReadingLocale = documentLocale()): ReadingNode {
   const copy = COPY[locale];
   const ohlc = reading.ohlc;
@@ -154,21 +156,6 @@ export function readingTree(reading: Reading, variant: ReadingVariant = "card", 
       ohlc.volume && row({ label: copy.volume, value: ohlc.volume })),
     ...groups,
     hidden > 0 && node("div", [["class", "mx-reading-more"]], copy.more(hidden)));
-}
-
-// The same escapes React applies to text and attribute values, so both renderings match byte for byte.
-const ESCAPES: Record<string, string> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#x27;" };
-const escape = (value: string) => value.replace(/[&<>"']/g, (char) => ESCAPES[char]);
-
-function html(item: ReadingNode | string): string {
-  if (typeof item === "string") return escape(item);
-  const attrs = item.attrs.map(([name, value]) => " " + name + '="' + escape(value) + '"').join("");
-  return "<" + item.tag + attrs + ">" + item.children.map(html).join("") + "</" + item.tag + ">";
-}
-
-/** The reading card as HTML for ECharts tooltips: every provider string is escaped. */
-export function readingHtml(reading: Reading, locale: ReadingLocale = documentLocale()): string {
-  return html(readingTree(reading, "card", locale));
 }
 
 /** The reading as lines for the live region, "Copy reading" and PNG export: time, figures, then any exception word. */
