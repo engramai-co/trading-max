@@ -4,8 +4,9 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatEventTime } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Select, TextInput } from "@mantine/core";
+import { Select, TextInput } from "@mantine/core";
 import { useState, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import {
   nextEarningsDate,
   estimateChange90,
@@ -238,8 +239,8 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
                     (p.providerEnd === r.date || p.actualEnd === r.date),
                 ) ? (
                   <Button
-                    variant="subtle"
-                    size="compact-xs"
+                    variant="ghost"
+                    size="table"
                     onClick={() => {
                       const p = data.financialFacts?.periods.find(
                         (p) =>
@@ -613,10 +614,10 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
             },
             {
               label: t("价格", "Price"),
-              value: (r) => (
+              value: (r, { compact }) => (
                 <Button
-                  variant="subtle"
-                  size="compact-xs"
+                  variant="ghost"
+                  size={compact ? "default" : "table"}
                   onClick={() =>
                     update({
                       view: "technical",
@@ -638,7 +639,7 @@ export function EarningsEvents({ data }: { data: ResearchLensSnapshot }) {
       )}
       {selected && (
         <>
-          <Button variant="subtle" onClick={() => update({ eventId: null })}>
+          <Button variant="ghost" onClick={() => update({ eventId: null })}>
             {t("全部事件", "All events")}
           </Button>
           <div className="mx-document-feed">

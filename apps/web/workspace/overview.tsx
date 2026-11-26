@@ -16,11 +16,12 @@
  *   DESIGN.md, and every shipping raster carrying its provenance.
  */
 
-import { Button, Select } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { ChartLine } from "@phosphor-icons/react";
 import Link from "./link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { buttonVariants } from "@/components/ui/button";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, RefreshAttention } from "@/lib/types";
 import { TimelineChart } from "./timeline-chart";
@@ -165,9 +166,9 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
             "Connect a Trading\u00a0212 account and sync once to see your investments here.",
           )}
           action={
-            <Button component={Link} href="/settings">
+            <Link href="/settings" data-slot="button" className={buttonVariants()}>
               {t("连接账户", "Connect an account")}
-            </Button>
+            </Link>
           }
         />
       </Panel>

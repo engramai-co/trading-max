@@ -1,7 +1,8 @@
 "use client";
 
-import { Button, Menu, Select } from "@mantine/core";
+import { Menu, Select } from "@mantine/core";
 import { CaretDown } from "@phosphor-icons/react";
+import { Button } from "@/components/ui/button";
 import { Segments, useCopy } from "./foundation";
 
 type MarketOption<T extends string> = {
@@ -73,12 +74,12 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
       <Menu position="bottom-end">
         <Menu.Target>
           <Button
-            variant="default"
-            rightSection={<CaretDown size={14} aria-hidden="true" />}
+            variant="outline"
             aria-label={t("更多市场", "More markets") + (selected ? `: ${selected.label}` : "")}
             data-selected-market={selected ? "" : undefined}
           >
             {selected?.label ?? t("更多", "More")}
+            <CaretDown size={14} aria-hidden="true" />
           </Button>
         </Menu.Target>
         <Menu.Dropdown>

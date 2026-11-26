@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Menu } from "@mantine/core";
+import { Menu } from "@mantine/core";
 import { CaretDown } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
+import { buttonVariants } from "@/components/ui/button";
 import { useBreakpoint } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import {
@@ -213,7 +214,7 @@ function SectorPanel({ market, title, picker }: { market: SectorMarketCode; titl
               ? t("下一次更新 ", "Next update ") + formatDateTime(data.monitor.nextRunAt, locale, timeZone)
               : undefined}
           action={data?.monitor?.enabled === false
-            ? <Button component={Link} href="/settings" variant="default">{t("打开设置", "Open settings")}</Button>
+            ? <Link href="/settings" data-slot="button" className={buttonVariants({ variant: "secondary" })}>{t("打开设置", "Open settings")}</Link>
             : undefined}
         />
       ) : (

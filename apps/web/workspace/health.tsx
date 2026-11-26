@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Drawer, Loader, Select } from "@mantine/core";
+import { Drawer, Select } from "@mantine/core";
 import {
   ArrowClockwise,
   ArrowRight,
@@ -13,6 +13,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "./link";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   deriveHealthDecision,
   durationBetween,
@@ -246,13 +247,14 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       description={readOnly ? t("这是只读演示，展示示例资料，不会执行账户更新。", "This read-only demo displays synthetic records and does not run account updates.") : undefined}
       className={desktop ? "mx-health-page mx-activity-page" : "mx-health-page"}
       actions={
-        <Actions {...(desktop ? { className: "flex flex-wrap items-center gap-mx-sm" } : {})}>{desktop && <Button variant="default" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
-          variant="default"
-          leftSection={manualChecking ? <Loader size={14} color="currentColor" aria-hidden="true" /> : <ArrowClockwise size={16} aria-hidden="true" />}
-          aria-disabled={manualChecking || undefined}
-          aria-busy={manualChecking || undefined}
+        <Actions {...(desktop ? { className: "flex flex-wrap items-center gap-mx-sm" } : {})}>{desktop && <Button variant="outline" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
+          variant="outline"
+          loading={manualChecking}
+          loadingLabel={t("检查中…", "Checking…")}
+          focusableWhenDisabled
           onClick={() => void runManualCheck()}
         >
+          <ArrowClockwise size={16} aria-hidden="true" />
           {t("重新检查", "Check now")}
         </Button></Actions>
       }
@@ -321,13 +323,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 {failures.map((job) => scopeLabel(job.scope)).join(" · ")}
               </span>
               {failures.length === 1 ? (
-                <Button size="compact-sm" variant="subtle" onClick={() => setSelected(failures[0].jobId)}>
+                <Button variant="ghost" onClick={() => setSelected(failures[0].jobId)}>
                   {t("查看原因", "View issue")}
                 </Button>
               ) : (
                 <div className="flex flex-wrap items-center gap-mx-xs">
                   {failures.map((item) => (
-                    <Button key={item.jobId} size="compact-sm" variant="subtle" onClick={() => setSelected(item.jobId)}>
+                    <Button key={item.jobId} variant="ghost" onClick={() => setSelected(item.jobId)}>
                       {t("查看", "View ")}{scopeLabel(item.scope)}
                     </Button>
                   ))}
@@ -344,7 +346,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               <div className="flex flex-col gap-mx-md">
                 {tone === "setup" ? <>
                   <Notice>{desktop && initialScope === "cfd" ? t("CSV 已保存。请先完成账户的首次同步，再更新 CFD 复盘，以便核对账户间的转账。", "Your CSV is saved. Complete the first account sync before updating CFD review so transfers between accounts can be reconciled.") : t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
-                  <div className="flex flex-wrap items-center gap-mx-md"><Button component={Link} href="/settings?tab=accounts&onboarding=1">{t("继续设置账户", "Continue account setup")}</Button></div>
+                  <div className="flex flex-wrap items-center gap-mx-md"><Link href="/settings?tab=accounts&onboarding=1" data-slot="button" className={buttonVariants()}>{t("继续设置账户", "Continue account setup")}</Link></div>
                 </> : <>
                 <Select
                   label={t("更新范围", "Update scope")}
@@ -375,23 +377,24 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     )}
                   </Notice>
                 )}
-                <div className="flex flex-wrap items-center gap-mx-md">
+                <div className="flex flex-wrap items-center gap-2">
                   <Button
-                    leftSection={<ArrowClockwise size={16} />}
                     loading={start.isPending}
+                    loadingLabel={t("正在开始…", "Starting…")}
                     disabled={readOnly || !data.health || queued > 0 || running > 0}
                     onClick={() => start.mutate()}
                   >
+                    <ArrowClockwise size={16} aria-hidden="true" />
                     {queued > 0 || running > 0 ? t("更新进行中", "Update in progress") : t("开始更新", "Start update")}
                   </Button>
-                  <Button
-                    component={Link}
+                  <Link
                     href="/settings?tab=automation"
-                    variant="subtle"
-                    rightSection={<ArrowRight size={15} />}
+                    data-slot="button"
+                    className={buttonVariants({ variant: "ghost" })}
                   >
                     {t("管理更新计划", "Manage schedule")}
-                  </Button>
+                    <ArrowRight size={15} aria-hidden="true" />
+                  </Link>
                 </div>
                 </>}
               </div>
@@ -524,7 +527,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 })}
               </div>
               {filter === "all" && data.jobs.some((j) => j.status === "succeeded") && (
-                <Button variant="subtle" size="compact-sm" mt="sm" onClick={() => setEveryRun((value) => !value)}>
+                <Button variant="ghost" className="mt-mx-sm" onClick={() => setEveryRun((value) => !value)}>
                   {everyRun ? t("合并重复的成功记录", "Combine repeated successes") : t("显示每一次更新", "Show every update")}
                 </Button>
               )}
@@ -645,7 +648,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             )}
             {(job.status === "failed" || job.status === "interrupted") && (
               <Button
-                variant="default"
+                variant="secondary"
+                className="h-auto py-2 whitespace-normal text-center"
                 onClick={() => {
                   setScope(job.scope);
                   setControlsOpen(true);

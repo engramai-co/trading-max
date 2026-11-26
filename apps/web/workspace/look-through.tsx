@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Button,
   Drawer,
   Pagination,
   Select,
@@ -10,6 +9,7 @@ import {
 import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import Link from "./link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   memo,
   useCallback,
@@ -349,7 +349,7 @@ function CompanyToolbar({
           {sort}
           {filtered && (
             <>
-              <Button variant="subtle" onClick={onClear}>
+              <Button variant="ghost" onClick={onClear}>
                 {t("清除筛选", "Clear filters")}
               </Button>
               <span role="status">{count}</span>
@@ -365,13 +365,13 @@ function CompanyToolbar({
         {search}
         <Button
           ref={toggle}
-          variant="default"
-          className="mx-exposure-filter-toggle"
-          leftSection={<FunnelSimple size={16} />}
+          variant="outline"
+          className="mx-exposure-filter-toggle self-stretch h-auto aria-expanded:bg-muted aria-expanded:text-link"
           aria-expanded={open}
           aria-controls={panel}
           onClick={() => setOpen(!open)}
         >
+          <FunnelSimple size={16} aria-hidden="true" />
           {t("筛选", "Filters")}
           {active > 0 && (
             <>
@@ -393,7 +393,7 @@ function CompanyToolbar({
         <span role="status">{filtered ? count : null}</span>
         {filtered && (
           <Button
-            variant="subtle"
+            variant="ghost"
             onClick={(event) => {
               // The button leaves with the filters; keyboard focus returns to 筛选 rather than the page.
               const focused = event.currentTarget === document.activeElement;
@@ -600,9 +600,9 @@ function Exposure({
             "Run a full update to see ETF constituents and classification coverage.",
           )}
           action={
-            <Button component={Link} href="/health">
+            <Link href="/health" data-slot="button" className={buttonVariants()}>
               {t("查看数据更新", "Open data status")}
-            </Button>
+            </Link>
           }
         />
       </Panel>
@@ -813,7 +813,7 @@ function Exposure({
                   />
                 )}
                 <Button
-                  variant="subtle"
+                  variant="ghost"
                   onClick={() => {
                     setShowAll((expanded) => !expanded);
                     setStart(0);
@@ -1010,12 +1010,13 @@ function Exposure({
               )}
             </Panel>
             {selected.ticker && (
-              <Button
-                component={Link}
+              <Link
                 href={"/research?ticker=" + encodeURIComponent(selected.ticker)}
+                data-slot="button"
+                className={buttonVariants()}
               >
                 {t("查看研究", "View research")}
-              </Button>
+              </Link>
             )}
           </div>
         )}

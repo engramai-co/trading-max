@@ -166,9 +166,10 @@ test.describe("data status and scheduled updates", () => {
       const beforeManual = requests;
       await page.keyboard.press("Enter");
       await expect.poll(() => requests).toBe(beforeManual + 1);
-      await expect(checkNow).toHaveAttribute("aria-disabled", "true");
-      await expect(checkNow).toHaveAttribute("aria-busy", "true");
-      await expect(checkNow).toBeFocused();
+      const checking = page.getByRole("button", { name: "Checking…", exact: true });
+      await expect(checking).toHaveAttribute("aria-disabled", "true");
+      await expect(checking).toHaveAttribute("aria-busy", "true");
+      await expect(checking).toBeFocused();
       await page.keyboard.press("Enter");
       expect(requests).toBe(beforeManual + 1);
 

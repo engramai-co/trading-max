@@ -6,11 +6,12 @@ import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Checkbox, Modal, Select } from "@mantine/core";
+import { Checkbox, Modal, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { formatCalendarDate, formatDateSpan, formatExchangeTime } from "@/ui/formatters";
 import { useChartColours } from "@/ui/charts/palette";
 import { Legend, Plot } from "./charts";
@@ -370,8 +371,8 @@ export function PriceHistory({
           </Checkbox.Group>}
           <Checkbox size="xs" label="RSI 14" checked={rsi} onChange={(e) => update({ rsi: e.currentTarget.checked ? "on" : null })} />
           <Checkbox size="xs" label="MACD 12/26/9" checked={macd} onChange={(e) => update({ macd: e.currentTarget.checked ? "on" : null })} />
-          <Button component="a" href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
-            target="_blank" rel="noreferrer" variant="subtle" size="compact-sm">TradingView ↗</Button>
+          <a href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
+            target="_blank" rel="noreferrer" data-slot="button" className={buttonVariants({ variant: "ghost" })}>TradingView ↗</a>
         </div>
       </details>}
     </div>
@@ -740,9 +741,9 @@ export function PriceHistory({
           {gapSeries.length > 0 && <Legend items={[{ label: t("缺失行情", "Missing price bars"), colour: colours.axis, dotted: true }]} />}
           <div className="mx-chart-footer mx-price-footer">
             <div className="flex flex-wrap items-center gap-1" aria-label={t("图表缩放", "Chart zoom")}>
-              <Button variant="default" size="compact-sm" aria-label={t("放大", "Zoom in")} onClick={() => zoom(0.65)}>+</Button>
-              <Button variant="default" size="compact-sm" aria-label={t("缩小", "Zoom out")} onClick={() => zoom(1.55)}>−</Button>
-              <Button variant="subtle" size="compact-sm" onClick={reset}>{t("恢复范围", "Reset zoom")}</Button>
+              <Button variant="secondary" size="icon" aria-label={t("放大", "Zoom in")} onClick={() => zoom(0.65)}>+</Button>
+              <Button variant="secondary" size="icon" aria-label={t("缩小", "Zoom out")} onClick={() => zoom(1.55)}>−</Button>
+              <Button variant="ghost" onClick={reset}>{t("恢复范围", "Reset zoom")}</Button>
             </div>
             <span>
               {isIntraday
@@ -805,7 +806,7 @@ export function PriceHistory({
         bare={compactChart}
         className={compactChart ? "mx-tech-chart" : undefined}
         title={[t("价格走势", "Price history"), quoteUnit(unit).currency].filter(Boolean).join(" · ")}
-        action={<Button ref={fullButton} variant="default" size="compact-sm" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}
+        action={<Button ref={fullButton} variant="secondary" onClick={() => toggleFull(true)}>{t("完整图表", "Full chart")}</Button>}
         help={<>
           <p>{t(
             "均线与指标按当前 K 线粒度计算：RSI 14 使用 Wilder 平滑，MACD 为 12/26/9。交易和公司事件另列于时间轴，不把当日收盘价当成交价。读数里的涨跌相对前一根 K 线的收盘价，盘中相对前一交易日的最后一根。",

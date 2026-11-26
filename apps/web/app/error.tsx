@@ -1,6 +1,6 @@
 "use client";
-import { Button } from "@mantine/core";
 import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, Page, Panel, useCopy } from "@/workspace/foundation";
 export default function ErrorPage({
   reset,
@@ -26,9 +26,9 @@ export default function ErrorPage({
           action={
             <div className="flex flex-wrap items-center gap-mx-md">
               <Button onClick={reset}>{t("重新加载", "Reload page")}</Button>
-              <Button component={Link} href="/" variant="default">
+              <Link href="/" data-slot="button" className={buttonVariants({ variant: "secondary" })}>
                 {t("返回总览", "Back to overview")}
-              </Button>
+              </Link>
             </div>
           }
         />

@@ -3,9 +3,10 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button, Drawer, Select } from "@mantine/core";
+import { Drawer, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
+import { Button } from "@/components/ui/button";
 import { Legend, Plot } from "./charts";
 import { compact, compactTick, number, percent } from "@/workspace/data";
 import { useChartColours } from "@/ui/charts/palette";
@@ -727,7 +728,7 @@ export function FinancialWorkbench({
               ))}
             </ul>
             <Button
-              variant="default"
+              variant="secondary"
               onClick={() => {
                 update({ financialMode: "full" });
                 setDetail(null);

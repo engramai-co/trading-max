@@ -6,16 +6,6 @@
     "@phosphor-icons/react"
   ],
   "files": {
-    "app/error.tsx": {
-      "@mantine/core": [
-        "Button"
-      ]
-    },
-    "app/not-found.tsx": {
-      "@mantine/core": [
-        "Button"
-      ]
-    },
     "ui/provider.tsx": {
       "@mantine/core": [
         "MantineProvider"
@@ -89,8 +79,6 @@
     },
     "workspace/foundation.tsx": {
       "@mantine/core": [
-        "Button",
-        "CloseButton",
         "Drawer",
         "Popover",
         "Tooltip",
@@ -98,7 +86,6 @@
       ],
       "@phosphor-icons/react": [
         "ArrowClockwise",
-        "ArrowRight",
         "CheckCircle",
         "Info",
         "Question",
@@ -107,9 +94,7 @@
     },
     "workspace/health.tsx": {
       "@mantine/core": [
-        "Button",
         "Drawer",
-        "Loader",
         "Select"
       ],
       "@phosphor-icons/react": [
@@ -127,9 +112,6 @@
       ]
     },
     "workspace/holding-detail.tsx": {
-      "@mantine/core": [
-        "Button"
-      ],
       "@phosphor-icons/react": [
         "ArrowRight"
       ]
@@ -142,9 +124,7 @@
     },
     "workspace/holdings.tsx": {
       "@mantine/core": [
-        "Button",
         "Checkbox",
-        "CloseButton",
         "Drawer",
         "Select",
         "TextInput"
@@ -156,14 +136,12 @@
     },
     "workspace/local-onboarding.tsx": {
       "@mantine/core": [
-        "Button",
         "Checkbox",
         "Progress"
       ]
     },
     "workspace/look-through.tsx": {
       "@mantine/core": [
-        "Button",
         "Drawer",
         "Pagination",
         "Select",
@@ -185,9 +163,6 @@
       ]
     },
     "workspace/narrative.tsx": {
-      "@mantine/core": [
-        "Button"
-      ],
       "@phosphor-icons/react": [
         "ArrowClockwise",
         "Sparkle"
@@ -208,7 +183,6 @@
     },
     "workspace/overview-sectors.tsx": {
       "@mantine/core": [
-        "Button",
         "Menu"
       ],
       "@phosphor-icons/react": [
@@ -222,7 +196,6 @@
     },
     "workspace/overview.tsx": {
       "@mantine/core": [
-        "Button",
         "Select"
       ],
       "@phosphor-icons/react": [
@@ -254,14 +227,8 @@
     },
     "workspace/research-analyst.tsx": {
       "@mantine/core": [
-        "Button",
         "Select",
         "TextInput"
-      ]
-    },
-    "workspace/research-cited-event.tsx": {
-      "@mantine/core": [
-        "Button"
       ]
     },
     "workspace/research-company.tsx": {
@@ -273,7 +240,6 @@
     },
     "workspace/research-compare.tsx": {
       "@mantine/core": [
-        "Button",
         "Modal",
         "MultiSelect",
         "Pill",
@@ -289,15 +255,12 @@
     },
     "workspace/research-financials.tsx": {
       "@mantine/core": [
-        "Button",
         "Drawer",
         "Select"
       ]
     },
     "workspace/research-finder.tsx": {
       "@mantine/core": [
-        "Button",
-        "CloseButton",
         "Modal",
         "TextInput"
       ],
@@ -305,17 +268,9 @@
         "MagnifyingGlass"
       ]
     },
-    "workspace/research-forecasts.tsx": {
-      "@mantine/core": [
-        "Button"
-      ]
-    },
     "workspace/research-header.tsx": {
       "@mantine/core": [
-        "ActionIcon",
         "Avatar",
-        "Button",
-        "Loader",
         "Menu"
       ],
       "@phosphor-icons/react": [
@@ -333,8 +288,6 @@
     },
     "workspace/research-index.tsx": {
       "@mantine/core": [
-        "ActionIcon",
-        "Button",
         "Drawer",
         "Menu",
         "Select"
@@ -347,7 +300,6 @@
     },
     "workspace/research-notebook.tsx": {
       "@mantine/core": [
-        "Button",
         "Drawer",
         "Select",
         "TextInput",
@@ -356,7 +308,6 @@
     },
     "workspace/research-options.tsx": {
       "@mantine/core": [
-        "Button",
         "CheckIcon",
         "Checkbox",
         "Combobox",
@@ -374,7 +325,6 @@
     },
     "workspace/research-price.tsx": {
       "@mantine/core": [
-        "Button",
         "Checkbox",
         "Modal",
         "Select"
@@ -404,7 +354,6 @@
     },
     "workspace/research-universe.tsx": {
       "@mantine/core": [
-        "ActionIcon",
         "Checkbox",
         "Select",
         "TextInput"
@@ -421,7 +370,6 @@
     },
     "workspace/research-valuation-workbench.tsx": {
       "@mantine/core": [
-        "Button",
         "Modal",
         "NumberInput",
         "Select",
@@ -435,8 +383,6 @@
     },
     "workspace/research.tsx": {
       "@mantine/core": [
-        "ActionIcon",
-        "Button",
         "Drawer",
         "Modal",
         "Select",
@@ -457,7 +403,6 @@
     },
     "workspace/review-decisions.tsx": {
       "@mantine/core": [
-        "CloseButton",
         "Popover"
       ],
       "@phosphor-icons/react": [
@@ -471,7 +416,6 @@
     },
     "workspace/review-perspectives.tsx": {
       "@mantine/core": [
-        "Button",
         "Select"
       ],
       "@phosphor-icons/react": [
@@ -490,7 +434,6 @@
     },
     "workspace/sectors-market-switch.tsx": {
       "@mantine/core": [
-        "Button",
         "Menu",
         "Select"
       ],
@@ -499,9 +442,6 @@
       ]
     },
     "workspace/sectors.tsx": {
-      "@mantine/core": [
-        "Button"
-      ],
       "@phosphor-icons/react": [
         "ArrowLeft"
       ]
@@ -513,7 +453,6 @@
     },
     "workspace/settings-assistant.tsx": {
       "@mantine/core": [
-        "Button",
         "Modal",
         "NativeSelect",
         "Switch"
@@ -521,7 +460,6 @@
     },
     "workspace/settings-index-data.tsx": {
       "@mantine/core": [
-        "Button",
         "Modal",
         "PasswordInput",
         "Switch"
@@ -529,7 +467,6 @@
     },
     "workspace/settings-market-data.tsx": {
       "@mantine/core": [
-        "Button",
         "Loader",
         "Modal",
         "PasswordInput",
@@ -538,22 +475,16 @@
     },
     "workspace/settings-oauth.tsx": {
       "@mantine/core": [
-        "Anchor",
-        "Button",
         "Checkbox",
         "Code",
-        "CopyButton",
         "Select"
       ],
       "@phosphor-icons/react": [
-        "ArrowSquareOut",
-        "Check",
-        "Copy"
+        "ArrowSquareOut"
       ]
     },
     "workspace/settings-preferences.tsx": {
       "@mantine/core": [
-        "Button",
         "FileInput",
         "Select",
         "Switch",
@@ -566,7 +497,6 @@
     },
     "workspace/settings.tsx": {
       "@mantine/core": [
-        "Button",
         "Checkbox",
         "Drawer",
         "Modal",
@@ -582,9 +512,6 @@
     },
     "workspace/shell.tsx": {
       "@mantine/core": [
-        "ActionIcon",
-        "Button",
-        "CloseButton",
         "Menu",
         "Modal",
         "TextInput",

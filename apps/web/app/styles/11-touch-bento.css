@@ -1,25 +1,62 @@
-/* Touch: keep compact visuals but give small controls a 44px hit area; summaries and inline links clear 24px. */
+/* Touch: keep compact visuals while small controls reach a 44px hit area directly. */
 @media (pointer: coarse) {
-  .mx-text-link {
+  .mx-text-link,
+  .mx-cell-button {
     min-height: 44px;
   }
-  .mx-info,
+  .mx-info {
+    width: 44px;
+    height: 44px;
+    margin: -11px -4px;
+  }
   .mx-tag-help {
     position: relative;
   }
-  .mx-info::after,
   .mx-tag-help::after {
     content: "";
     position: absolute;
     inset: -6px;
   }
-  details:not([class]) > summary,
-  .mx-chart-data > summary {
-    padding-block: 10px;
+  details:not(.mx-job-row) > summary {
+    min-height: 44px;
+    padding-block: 11px;
   }
   details:not([class]) a {
     display: inline-block;
     padding-block: 10px;
+  }
+  :is(.mantine-Modal-close, .mantine-Drawer-close) {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  .mantine-PasswordInput-input {
+    height: 44px;
+    min-height: 44px;
+    --input-fz: max(16px, 1rem);
+  }
+  .mantine-PasswordInput-innerInput {
+    padding-inline-end: 44px;
+    font-size: max(16px, 1rem);
+  }
+  .mantine-PasswordInput-section[data-position="right"] {
+    width: 44px;
+  }
+  .mantine-PasswordInput-visibilityToggle {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+  .mx-search-input .mantine-TextInput-input {
+    height: 44px;
+    min-height: 44px;
+    padding-inline-end: 44px;
+    font-size: max(16px, 1rem);
+  }
+  .mx-search-input .mantine-TextInput-section[data-position="right"] {
+    width: 44px;
   }
 }
 /* Touch: tabs and segments tile their row in cells of at least 44 × 44px, so no tap lands in a gap. */

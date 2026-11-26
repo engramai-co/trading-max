@@ -1,10 +1,11 @@
 "use client";
 
 import type { SecuritySearchResponse, SecuritySearchResult } from "@/lib/types";
-import { Button, CloseButton, Modal, TextInput } from "@mantine/core";
+import { Modal, TextInput } from "@mantine/core";
 import { MagnifyingGlass } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Button, CloseButton } from "@/components/ui/button";
 import { api } from "@/workspace/data";
 import { Instrument, Notice, Pending, useCopy } from "./foundation";
 import Link from "./link";
@@ -106,7 +107,7 @@ export function SecurityFinder({
             leftSection={<MagnifyingGlass size={18} />}
           />
         </form>
-        <CloseButton className="mx-search-close" size="lg" aria-label={t("关闭", "Close")} onClick={onClose} />
+        <CloseButton className="mx-search-close [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11" iconSize={18} aria-label={t("关闭", "Close")} onClick={onClose} />
       </div>
       {indices.length > 0 && <div className="mx-index-search">
         {indices.map((index) => (
@@ -133,8 +134,7 @@ export function SecurityFinder({
               <Instrument ticker={r.ticker} name={r.name} small />
               <span className="mx-form-help">{r.exchange}</span>
               <Button
-                size="xs"
-                variant={r.alreadyWatched ? "default" : "light"}
+                variant={r.alreadyWatched ? "outline" : "secondary"}
                 onClick={() => onSelect(r)}
               >
                 {t("查看", "Open")}

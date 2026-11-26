@@ -1,9 +1,12 @@
 "use client";
 
-import { Anchor, Button, Checkbox, Code, CopyButton, Select } from "@mantine/core";
-import { ArrowSquareOut, Copy, Check } from "@phosphor-icons/react";
+import { Checkbox, Code, Select } from "@mantine/core";
+import { ArrowSquareOut } from "@phosphor-icons/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { CopyButton } from "@/components/ui/copy-button";
+import { TextLink } from "@/components/ui/text-link";
 import type { IntegrationSummary, LLMProviderDescriptor, OAuthLoginStatus } from "@/lib/types";
 import { api, jsonRequest } from "./data";
 import { Notice, useCopy } from "./foundation";
@@ -17,6 +20,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
   onSaved: (result: "saved" | "disconnected") => void;
 }) {
   const t = useCopy();
+  const codeId = useId();
   const [model, setModel] = useState(existing?.model ?? provider.defaultModel);
   const [defaultModel, setDefaultModel] = useState(Boolean(useAsDefault));
   const [session, setSession] = useState<OAuthLoginStatus | null>(null);
@@ -82,30 +86,42 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       <p className="text-[0.9375rem] leading-[1.55] font-semibold">{t("在 OpenAI 完成授权", "Authorise with OpenAI")}</p>
       <p className="text-[0.8125rem] leading-[1.45]">{t("复制一次性代码，然后打开授权页面。完成后这里会自动连接。", "Copy the one-time code and open the authorisation page. This screen will connect automatically when you finish.")}</p>
       <div className="flex flex-nowrap items-center justify-between gap-mx-md">
-        <Code fz="xl" p="sm">{current.userCode}</Code>
-        <CopyButton value={current.userCode}>{({ copied, copy }) => <Button variant="light" onClick={copy} leftSection={copied ? <Check size={16} /> : <Copy size={16} />}>
-          {copied ? t("已复制", "Copied") : t("复制代码", "Copy code")}
-        </Button>}</CopyButton>
+        <Code id={codeId} fz="xl" p="sm">{current.userCode}</Code>
+        <CopyButton
+          value={current.userCode}
+          targetId={codeId}
+          label={t("复制代码", "Copy code")}
+          copiedLabel={t("已复制", "Copied")}
+          failedLabel={t("复制失败", "Copy failed")}
+          announcedCopied={t("一次性代码已复制", "One-time code copied")}
+          announcedFailed={t("未能复制代码，请手动复制", "Could not copy code. Copy it manually.")}
+        />
       </div>
-      <Button component="a" href={current.verificationUrl} target="_blank" rel="noopener noreferrer" rightSection={<ArrowSquareOut size={16} />}>
+      <a href={current.verificationUrl} target="_blank" rel="noopener noreferrer" data-slot="button" className={buttonVariants()}>
         {t("打开 OpenAI 授权", "Open OpenAI authorisation")}
-      </Button>
+        <ArrowSquareOut size={16} aria-hidden="true" />
+      </a>
       <p className="text-[0.8125rem] leading-[1.45] text-[var(--mx-muted)]">{t("代码约 15 分钟内有效。请仅在 OpenAI 官方页面登录并输入代码。", "The code is valid for about 15 minutes. Sign in and enter it only on the official OpenAI page.")}</p>
     </div>}
     {failed && <Notice tone="warn">{current?.errorCode === "credential_store_unavailable"
       ? t("设备的凭据存储不可用，连接未保存。请解锁系统钥匙串后重试。", "The device credential store is unavailable. Unlock the system keychain and try again.")
       : t("本次登录未完成或已过期，请重试。若无法取得授权码，请检查 ChatGPT 安全设置中的设备码登录权限。", "Login did not complete or expired. Try again; if no code appears, check device-code login permissions in ChatGPT security settings.")}</Notice>}
     {pending ? <div className="flex flex-wrap items-center gap-mx-md">
-      <Button variant="light" loading>{t("等待授权", "Waiting for authorisation")}</Button>
-      {session && <Button variant="subtle" onClick={() => cancel.mutate()} loading={cancel.isPending}>{t("取消", "Cancel")}</Button>}
-    </div> : <Button onClick={() => { setSession(null); start.mutate(); }} loading={start.isPending}>
+      <Button
+        variant="secondary"
+        loading
+        loadingLabel={t("等待授权", "Waiting for authorisation")}
+      >
+        {t("等待授权", "Waiting for authorisation")}
+      </Button>
+      {session && <Button variant="ghost" onClick={() => cancel.mutate()} loading={cancel.isPending} loadingLabel={t("取消中…", "Cancelling…")}>{t("取消", "Cancel")}</Button>}
+    </div> : <Button onClick={() => { setSession(null); start.mutate(); }} loading={start.isPending} loadingLabel={t("启动中…", "Starting…")}>
       {t("使用 ChatGPT 登录", "Sign in with ChatGPT")}
     </Button>}
     <p className="text-[0.8125rem] leading-[1.45] text-[var(--mx-muted)]">{t("账户可用模型和使用额度以 OpenAI 为准。", "Model access and usage limits depend on your OpenAI account.")} {" "}
-      <Anchor size="sm" href="https://learn.chatgpt.com/docs/auth" target="_blank" rel="noopener noreferrer">{t("登录帮助", "Sign-in help")}</Anchor>
+      <TextLink inline external href="https://learn.chatgpt.com/docs/auth">{t("登录帮助", "Sign-in help")}</TextLink>
     </p>
-    {existing?.configured && <Button className={disconnecting ? "mx-destructive-confirm" : undefined}
-        color={disconnecting ? "red" : undefined} variant={disconnecting ? "outline" : "subtle"} disabled={pending} loading={disconnect.isPending}
+    {existing?.configured && <Button variant={disconnecting ? "destructive" : "ghost"} disabled={pending} loading={disconnect.isPending} loadingLabel={t("断开中…", "Disconnecting…")}
       onClick={() => disconnecting ? disconnect.mutate() : setDisconnecting(true)}>
       {disconnecting ? t("确认移除此设备的授权", "Confirm removing this device’s authorisation") : t("断开 ChatGPT", "Disconnect ChatGPT")}
     </Button>}

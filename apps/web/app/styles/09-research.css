@@ -78,15 +78,6 @@
   .mx-research-page .mx-page-actions {
     --mx-tool: 44px;
   }
-  .mx-research-page .mx-page-actions .mantine-ActionIcon-root {
-    width: var(--mx-tool);
-    min-width: var(--mx-tool);
-    height: var(--mx-tool);
-    min-height: var(--mx-tool);
-  }
-  .mx-research-page .mx-page-actions .mantine-Button-root {
-    height: var(--mx-tool);
-  }
   .mx-security-switcher {
     margin-block: -8px;
     padding-block: 8px;
@@ -136,15 +127,8 @@
     display: inline;
   }
   /* Phones keep the refresh icon; its name stays 更新研究 and a spinner shows it working. */
-  .mx-research-refresh {
-    width: var(--mx-tool);
-    padding-inline: 0;
-  }
-  .mx-research-refresh .mantine-Button-label {
+  .mx-research-refresh .mx-research-refresh-label {
     display: none;
-  }
-  .mx-research-refresh .mantine-Button-section {
-    margin: 0;
   }
   .mx-security-panel .mx-security-header {
     display: block;
@@ -727,17 +711,32 @@ html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-str
 .mx-option-itm {
   background: color-mix(in srgb, var(--mx-brand) 4%, transparent);
 }
+.mx-option-chain td:has(> .mx-cell-button) {
+  padding: 0;
+}
 .mx-cell-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: 100%;
+  min-width: 44px;
+  min-height: 32px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
-  padding: 4px;
+  padding: 4px 10px;
   font: inherit;
-  color: inherit;
+  color: var(--link);
   cursor: pointer;
 }
+@media (hover: hover) {
+  .mx-cell-button:hover {
+    background: var(--ghost-hover);
+  }
+}
 .mx-cell-button:focus-visible {
-  outline: 2px solid var(--mx-brand);
-  outline-offset: 2px;
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
 .mx-overview-facts {

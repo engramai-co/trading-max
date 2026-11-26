@@ -2,9 +2,10 @@
 
 import { quoteValue } from "./financial-values";
 
-import { CloseButton, Popover } from "@mantine/core";
+import { Popover } from "@mantine/core";
 import { ArrowUpRight } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
+import { CloseButton } from "@/components/ui/button";
 import {
   type Dispatch,
   type ReactNode,
@@ -410,7 +411,7 @@ function DecisionEntry({
           <Popover.Dropdown ref={list} className="mx-help-popover" aria-labelledby={heading}>
             <div className="mx-help-heading">
               <strong id={heading}>{label}</strong>
-              <CloseButton data-autofocus size="sm" aria-label={t("关闭", "Close")} onClick={() => setOpened(false)} />
+              <CloseButton data-autofocus aria-label={t("关闭", "Close")} onClick={() => setOpened(false)} />
             </div>
             <ul className="mx-help-body mx-decision-more-list">
               {context.map((item, index) => (
@@ -1078,7 +1079,6 @@ export function DecisionTimelinePanel({
           {onClear && (
             <CloseButton
               className="mx-decision-unfocus"
-              size="md"
               aria-label={t("取消选中这笔决定", "Deselect this decision")}
               onClick={() => {
                 anchor.current?.focus({ preventScroll: true });

@@ -17,7 +17,7 @@ export function usePaginationLabels() {
 
 export type EvidenceColumn<T> = {
   label: string;
-  value: (row: T) => ReactNode;
+  value: (row: T, context: { compact: boolean }) => ReactNode;
   numeric?: boolean;
 };
 
@@ -87,14 +87,14 @@ export function EvidenceTable<T>({
                         key={c.label}
                         className={c.numeric ? "mx-align-right" : undefined}
                       >
-                        {c.value(row)}
+                        {c.value(row, { compact: false })}
                       </th>
                     ) : (
                       <td
                         key={c.label}
                         className={c.numeric ? "mx-align-right" : undefined}
                       >
-                        {c.value(row)}
+                        {c.value(row, { compact: false })}
                       </td>
                     ),
                   )}
@@ -105,7 +105,7 @@ export function EvidenceTable<T>({
       </div>
       {compactRecords && <div className="mx-compact-records" aria-label={label} role="region">
         {pageRows.map((row, i) => <dl key={i}>{columns.map((col) => <div key={col.label}>
-          <dt>{col.label}</dt><dd>{col.value(row)}</dd>
+          <dt>{col.label}</dt><dd>{col.value(row, { compact: true })}</dd>
         </div>)}</dl>)}
       </div>}
       {pages > 1 && (

@@ -87,8 +87,16 @@
   }
 }
 .mx-overview-market:focus-visible {
-  outline: 2px solid var(--mx-brand);
-  outline-offset: 1px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+@media (pointer: coarse) {
+  .mx-overview-market {
+    min-width: 44px;
+    min-height: 44px;
+    margin-block: -11px;
+    padding-block: 11px;
+  }
 }
 
 /* Global: the classic block world map, one equal block per market where it lies; the ocean corner holds MSCI ACWI. */

@@ -2,7 +2,6 @@
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
-  Button,
   FileInput,
   Select,
   Switch,
@@ -13,6 +12,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "./link";
 import { isValidTimeZone, useLocale } from "@/components/locale-provider";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type {
   AutomationSettings,
   CfdImportStatus,
@@ -294,11 +294,12 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
                 disabled={upload.isPending || readOnly}
               />
               <Button
-                leftSection={<UploadSimple size={16} />}
                 disabled={!file || readOnly}
                 loading={upload.isPending}
+                loadingLabel={t("导入中…", "Importing…")}
                 onClick={() => upload.mutate()}
               >
+                <UploadSimple size={16} aria-hidden="true" />
                 {t("导入账本", "Import ledger")}
               </Button>
               {desktop && file && <p className="mx-form-help">{file.name} · {number(file.size / 1024, 1)} KB · {t("确认后写入当前工作区，重复文件会跳过。", "Import into this workspace; duplicate files will be skipped.")}</p>}
@@ -324,7 +325,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
                     )}
               </Notice>
             )}
-            {desktop && imported && <div className="flex flex-wrap items-center gap-mx-md"><Button component={Link} href="/health?scope=cfd">{t("更新 CFD 复盘", "Update CFD review")}</Button><Button component={Link} href="/review?account=C" variant="subtle">{t("查看复盘", "View review")}</Button></div>}
+            {desktop && imported && <div className="flex flex-wrap items-center gap-mx-md"><Link href="/health?scope=cfd" data-slot="button" className={buttonVariants()}>{t("更新 CFD 复盘", "Update CFD review")}</Link><Link href="/review?account=C" data-slot="button" className={buttonVariants({ variant: "ghost" })}>{t("查看复盘", "View review")}</Link></div>}
             {preference.isError && (
               <Notice tone="bad">
                 {t(
@@ -585,8 +586,9 @@ export function PersonalPreferences({
                 conflict || !name.trim() || (zone !== "browser" && !isValidTimeZone(zone))
               }
               loading={mutation.isPending}
-              leftSection={<CheckCircle size={16} />}
+              loadingLabel={t("保存中…", "Saving…")}
             >
+              <CheckCircle size={16} aria-hidden="true" />
               {t("保存偏好", "Save preferences")}
             </Button>
             {savedRevision && dirty && (

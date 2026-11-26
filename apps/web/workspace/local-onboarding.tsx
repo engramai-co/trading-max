@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Checkbox, Progress } from "@mantine/core";
+import { Checkbox, Progress } from "@mantine/core";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "./link";
 import { useState } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { components } from "@/lib/api-schema";
 import { dashboardLensLatestKey } from "@/lib/dashboard-query";
 import type { DashboardLens } from "@/lib/types";
@@ -75,10 +76,10 @@ export function LocalOnboarding({ showAccountLink = false }: { showAccountLink?:
       {data.canConfirm && !data.confirmed && data.readiness.latestRunId && <BalanceConfirmation key={data.readiness.latestRunId} runId={data.readiness.latestRunId} onConfirm={(run) => confirm.mutate(run)} busy={confirm.isPending} />}
       {data.confirmed && <Notice tone="good">{t("账户金额已核对，工作区设置完成。", "Balances checked. Your workspace is set up.")}</Notice>}
       <div className="flex flex-wrap items-center gap-mx-md">
-        {showAccountLink && <Button component={Link} href="/settings?tab=accounts&onboarding=1" variant="default">{t("账户连接", "Account connections")}</Button>}
-        {!data.confirmed && !data.canConfirm && <Button disabled={!connected || active} loading={start.isPending} onClick={() => start.mutate()}>{failed ? t("重试同步", "Retry sync") : t("开始首次同步", "Start first sync")}</Button>}
-        {data.confirmed && ready && <Button component={Link} href="/">{t("进入工作区", "Open workspace")}</Button>}
-        {job && <Button component={Link} href="/health" variant="subtle">{t("查看同步详情", "View sync details")}</Button>}
+        {showAccountLink && <Link href="/settings?tab=accounts&onboarding=1" data-slot="button" className={buttonVariants({ variant: "secondary" })}>{t("账户连接", "Account connections")}</Link>}
+        {!data.confirmed && !data.canConfirm && <Button disabled={!connected || active} loading={start.isPending} loadingLabel={t("正在开始…", "Starting…")} onClick={() => start.mutate()}>{failed ? t("重试同步", "Retry sync") : t("开始首次同步", "Start first sync")}</Button>}
+        {data.confirmed && ready && <Link href="/" data-slot="button" className={buttonVariants()}>{t("进入工作区", "Open workspace")}</Link>}
+        {job && <Link href="/health" data-slot="button" className={buttonVariants({ variant: "ghost" })}>{t("查看同步详情", "View sync details")}</Link>}
       </div>
       <p className="text-xs leading-[1.4] text-[var(--mx-muted)]">{t("App 打开期间可在「更新计划」开启自动记录。退出 App 或 Mac 休眠后暂停更新；模型与 Alpaca 都是可选项。", "Enable automatic recording in Update schedule while the App is open. Updates pause when you quit or the Mac sleeps. Models and Alpaca are optional.")}</p>
     </div>
@@ -100,6 +101,6 @@ function BalanceConfirmation({ runId, onConfirm, busy }: { runId: string; onConf
     {accounts.map((account) => <div key={account.code} className="flex flex-wrap items-center justify-between gap-mx-md"><p className="text-[0.9375rem] leading-[1.55]">{account.code === "A" ? "Invest" : "ISA"}</p><p className="text-[0.9375rem] leading-[1.55] font-semibold">{currency(account.totalValueGbp, "GBP", 2)}</p></div>)}
     <p className="text-xs leading-[1.4] text-[var(--mx-muted)]">{t("按 GBP 统一展示；外币账户需对照折算后的金额。", "Values are shown in GBP; compare converted values for foreign-currency accounts.")}</p>
     <Checkbox label={t("我已核对，账户价值合理", "I have checked that the account values are plausible")} checked={checked} onChange={(e) => setChecked(e.currentTarget.checked)} />
-    <div className="flex flex-wrap items-center gap-mx-md"><Button loading={busy} disabled={!checked || !accounts.length} onClick={() => onConfirm(runId)}>{t("完成设置", "Finish setup")}</Button></div>
+    <div className="flex flex-wrap items-center gap-mx-md"><Button loading={busy} loadingLabel={t("保存中…", "Saving…")} disabled={!checked || !accounts.length} onClick={() => onConfirm(runId)}>{t("完成设置", "Finish setup")}</Button></div>
   </div>;
 }

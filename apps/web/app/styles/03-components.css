@@ -322,17 +322,10 @@
 .mx-decision-focus > .mx-decision-entry > .mx-row-link:focus-visible {
   outline-offset: -2px;
 }
-/* Centred on the security's line: the row's 14px padding plus half the mark's extra height. */
+/* Centred on the security's line: matches the row's 14px padding beside the 40px mark. */
 .mx-decision-unfocus {
-  margin-top: 16px;
+  margin-top: 14px;
   color: var(--mx-muted);
-}
-@media (pointer: coarse) {
-  .mx-decision-unfocus::after {
-    content: "";
-    position: absolute;
-    inset: -8px;
-  }
 }
 .mx-decision-watching {
   margin: 0;

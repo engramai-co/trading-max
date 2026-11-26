@@ -1,10 +1,5 @@
 /* Share the global layer so deferred rules keep their original specificity. */
 @layer mantine {
-/* Desktop presentation only. Financial views share the browser's icon rail. */
-.mx-sidebar-search.mantine-ActionIcon-root {
-  display: none;
-}
-
 /* Set by the App's native shell under a transparent title bar. Native code owns
    the top 28px for dragging, so nothing interactive may sit there. */
 html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar {
@@ -12,15 +7,6 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar {
 }
 html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar .mx-brand {
   display: none;
-}
-html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-sidebar-search.mantine-ActionIcon-root {
-  display: flex;
-  width: 100%;
-  height: 48px;
-  min-height: 48px;
-  margin: 4px 0 8px;
-  border-radius: 10px;
-  color: var(--mx-side-ink);
 }
 html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-topbar {
   position: sticky;

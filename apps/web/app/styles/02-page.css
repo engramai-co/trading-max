@@ -40,9 +40,6 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-breadcrumb-divider {
   display: none;
 }
-.mx-topbar-more.mantine-ActionIcon-root {
-  display: none;
-}
 .mx-topbar-actions {
   display: flex;
   flex-wrap: nowrap;
@@ -217,6 +214,10 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-info[aria-expanded="true"] {
   color: var(--mx-brand);
   background: var(--mx-brand-soft);
+}
+.mx-info:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .mx-panel-title {
   display: flex;

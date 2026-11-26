@@ -2,7 +2,6 @@
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
-  Button,
   Checkbox,
   Drawer,
   Modal,
@@ -19,6 +18,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "./link";
 import { useState } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type {
   IntegrationOverview,
   IntegrationSummary,
@@ -213,14 +213,14 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                       )}
                     </h3>
                   </div>
-                  <Button
-                    component={Link}
+                  <Link
                     href="/research"
-                    variant="subtle"
-                    rightSection={<ArrowRight size={16} />}
+                    data-slot="button"
+                    className={buttonVariants({ variant: "ghost" })}
                   >
                     {t("查看研究", "View research")}
-                  </Button>
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </Link>
                 </div>
               </Panel>
               <ReconstructionMarketData integration={data.integrations.find((item) => item.provider === "alpaca")} />
@@ -302,7 +302,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
             allowDeselect={false}
           />
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
-            <Button variant="subtle" onClick={() => setOfferModelConnection(false)}>
+            <Button variant="ghost" onClick={() => setOfferModelConnection(false)}>
               {t("稍后设置", "Set up later")}
             </Button>
             <Button onClick={() => {
@@ -310,8 +310,9 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
               if (!provider) return;
               setOfferModelConnection(false);
               openModel(provider, true);
-            }} rightSection={<ArrowRight size={16} />}>
+            }}>
               {t("继续连接", "Continue")}
+              <ArrowRight size={16} aria-hidden="true" />
             </Button>
           </div>
         </div>
@@ -391,10 +392,10 @@ function ConnectionCard({
         />
       )}
       <Button
-        variant={connected ? "default" : "filled"}
-        leftSection={<LinkSimple size={16} />}
+        variant={connected ? "outline" : "default"}
         onClick={onOpen}
       >
+        <LinkSimple size={16} aria-hidden="true" />
         {connected
           ? t("管理连接", "Manage connection")
           : (connectLabel ?? t("连接账户", "Connect account"))}
@@ -614,13 +615,14 @@ function ConnectionForm({
           <div className="flex flex-wrap items-center gap-mx-md">
             <Button
               className="grow max-w-[calc(50%-8px)]"
-              variant="default"
+              variant="outline"
               onClick={() => {
                 setToken(null);
                 test.mutate();
               }}
               disabled={!ready || save.isPending}
               loading={test.isPending}
+              loadingLabel={t("测试中…", "Testing…")}
             >
               {t("测试连接", "Test connection")}
             </Button>
@@ -629,8 +631,9 @@ function ConnectionForm({
               type="submit"
               disabled={!token || test.isPending}
               loading={save.isPending}
-              leftSection={<CheckCircle size={17} />}
+              loadingLabel={t("保存中…", "Saving…")}
             >
+              <CheckCircle size={17} aria-hidden="true" />
               {t("保存连接", "Save connection")}
             </Button>
           </div>
@@ -646,7 +649,7 @@ function ConnectionForm({
             )}
           </p>
           <Button
-            variant="subtle"
+            variant="ghost"
             onClick={() => setDisconnecting(true)}
           >
             {t("断开连接", "Disconnect")}
@@ -675,15 +678,14 @@ function ConnectionForm({
             </Notice>
           )}
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
-            <Button variant="default" onClick={() => setDisconnecting(false)}>
+            <Button variant="secondary" onClick={() => setDisconnecting(false)}>
               {t("保留连接", "Keep connection")}
             </Button>
             <Button
-              className="mx-destructive-confirm"
-              color="red"
-              variant="outline"
+              variant="destructive"
               onClick={() => disconnect.mutate()}
               loading={disconnect.isPending}
+              loadingLabel={t("断开中…", "Disconnecting…")}
             >
               {t("确认断开", "Disconnect")}
             </Button>
@@ -811,6 +813,7 @@ function ModelRouting({
         <div className="flex flex-wrap items-center gap-mx-md">
           <Button
             loading={mutation.isPending}
+            loadingLabel={t("保存中…", "Saving…")}
             onClick={() => {
               if (!mutation.isPending) mutation.mutate({
                 defaultRoute, overrides, expectedRevision: policy.revision,

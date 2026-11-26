@@ -4,7 +4,6 @@ import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
-  Button,
   Drawer,
   Select,
   Textarea,
@@ -12,6 +11,8 @@ import {
 } from "@mantine/core";
 import { skipToken, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { quoteUnit, quoteValue } from "./financial-values";
 import { isImeComposing } from "./shortcut-platform";
 import {
@@ -208,8 +209,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
   }, [opened]);
   const notes = (query.data?.notes ?? [])
     .filter((n) => Boolean(n.revisions.at(-1)?.content.archived) === archived)
-    .slice()
-    .reverse();
+    .toReversed();
   return (
     <>
       {!fund && <Segments
@@ -244,7 +244,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
               </p>
             )}
             <div className="flex flex-wrap items-center gap-mx-xs">
-              <Button variant="subtle" onClick={() => setArchived((v) => !v)}>
+              <Button variant="ghost" onClick={() => setArchived((v) => !v)}>
                 {archived
                   ? t("返回笔记", "Active notes")
                   : t("已归档", "Archived")}
@@ -311,22 +311,19 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
                     )}
                     <div className="flex flex-wrap items-center gap-mx-xs">
                       <Button
-                        size="compact-sm"
-                        variant="subtle"
+                        variant="ghost"
                         onClick={(e) => edit(note, e.currentTarget)}
                       >
                         {t("编辑", "Edit")}
                       </Button>
                       <Button
-                        size="compact-sm"
-                        variant="subtle"
+                        variant="ghost"
                         onClick={() => setHistory(note)}
                       >
                         {t("历史版本", "Revisions")} ({note.revisions.length})
                       </Button>
                       <Button
-                        size="compact-sm"
-                        variant="subtle"
+                        variant="ghost"
                         disabled={pending.some(({ id }) => id === note.id)}
                         onClick={() =>
                           changeNote({
@@ -451,8 +448,9 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
             <div className="flex flex-wrap items-center gap-mx-xs">
               <Button
                 type="button"
-                variant="default"
+                variant="secondary"
                 loading={editingAction === "load"}
+                loadingLabel={t("载入中…", "Loading…")}
                 disabled={readOnly}
                 onClick={() => resolveConflict("load")}
               >
@@ -461,6 +459,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
               <Button
                 type="button"
                 loading={editingAction === "keep"}
+                loadingLabel={t("保存中…", "Saving…")}
                 disabled={readOnly || !draft.title.trim()}
                 onClick={() => resolveConflict("keep")}
               >
@@ -471,8 +470,9 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
           <div className="flex flex-wrap items-center gap-mx-xs">
             <Button
               type="submit"
-              flex={1}
+              className="flex-1"
               loading={editingAction === "save"}
+              loadingLabel={t("保存中…", "Saving…")}
               disabled={readOnly || conflict || !draft.title.trim()}
             >
               {t("保存笔记", "Save note")}
@@ -480,7 +480,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
             {dirty && (
               <Button
                 type="button"
-                variant="default"
+                variant="outline"
                 disabled={readOnly}
                 onClick={discardEditor}
               >
@@ -499,8 +499,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
       >
         <div className="mx-note-list">
           {history?.revisions
-            .slice()
-            .reverse()
+            .toReversed()
             .map((r) => (
               <article key={r.revision}>
                 <time>
@@ -596,9 +595,9 @@ function ModelVersions({ journal }: { journal: Journal }) {
                     <th key={m.id}>
                       {m.savedAt.slice(0, 16).replace("T", " ")} UTC
                       <Button
-                        display="block"
-                        variant="subtle"
-                        size="compact-xs"
+                        className="flex"
+                        variant="ghost"
+                        size="table"
                         disabled={baseline.isPending}
                         aria-pressed={m.id === journal.baselineModelId}
                         onClick={() => baseline.mutate(m.id === journal.baselineModelId ? null : m.id)}
@@ -607,16 +606,19 @@ function ModelVersions({ journal }: { journal: Journal }) {
                           ? t("取消基准", "Clear baseline")
                           : t("设为基准", "Set as baseline")}
                       </Button>
-                      <Button display="block" variant="subtle" size="compact-xs" onClick={() => setOpened(m.id)}>
+                      <Button className="flex" variant="ghost" size="table" onClick={() => setOpened(m.id)}>
                         {t("查看底稿", "Open worksheet")}
                       </Button>
                       {notice?.modelId === m.id && <>
-                        <Button display="block" w="fit-content" variant="subtle" size="compact-xs" component={Link}
+                        <Link
                           href={`/research?ticker=${encodeURIComponent(journal.ticker)}&view=valuation&valuationView=scenario&evidence=open`}
-                          aria-describedby="model-evidence-notice">
+                          data-slot="button"
+                          className={cn(buttonVariants({ variant: "ghost", size: "table" }), "flex w-fit")}
+                          aria-describedby="model-evidence-notice"
+                        >
                           {t("看新证据", "See new evidence")}
                           <span className="mx-evidence-dot" aria-hidden="true" />
-                        </Button>
+                        </Link>
                         <span id="model-evidence-notice" className="sr-only">
                           {t("有新证据：", "New evidence: ") + noticeKinds(notice, t)}
                         </span>

@@ -173,17 +173,11 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
-.mx-model-jump {
-  display: none;
-}
 #valuation-results,
 #valuation-assumptions {
   scroll-margin-top: 20px;
 }
 @media (max-width: 1100px) {
-  .mx-model-jump {
-    display: inline-flex;
-  }
   .mx-model-workbench {
     grid-template-columns: 1fr;
   }

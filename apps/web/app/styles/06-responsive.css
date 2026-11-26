@@ -104,11 +104,6 @@
     padding-right: max(8px, env(safe-area-inset-right));
     gap: 8px;
   }
-  .mx-topbar .mantine-ActionIcon-root {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-  }
   .mx-topbar-workspace,
   .mx-breadcrumb-divider {
     display: none;
@@ -120,13 +115,6 @@
   .mx-topbar-title strong {
     overflow: hidden;
     text-overflow: ellipsis;
-  }
-  /* The dock carries the pages; one menu carries management and preferences. */
-  .mx-topbar-more.mantine-ActionIcon-root {
-    display: inline-flex;
-  }
-  .mx-topbar-preference.mantine-ActionIcon-root {
-    display: none;
   }
   .mx-more-menu .mantine-Menu-item {
     min-height: 44px;
@@ -148,10 +136,6 @@
   .mx-command-dialog .mantine-TextInput-input {
     min-height: 48px;
     font-size: 16px;
-  }
-  .mx-search-close {
-    min-width: 44px;
-    min-height: 44px;
   }
   .mx-command-dialog .mx-command-results {
     max-height: min(370px, calc(100dvh - 240px));
@@ -390,9 +374,6 @@
     align-items: flex-start;
     gap: 16px;
   }
-  .mx-setting-row .mantine-Button-root {
-    flex-shrink: 0;
-  }
   .mx-facts > div {
     gap: 15px;
     font-size: 12px;
@@ -425,8 +406,9 @@
     animation-name: mx-fade !important;
     animation-duration: 160ms !important;
   }
-  .mantine-Button-root:not(:disabled):active,
-  .mantine-ActionIcon-root:not(:disabled):active {
-    transform: none;
+  /* Loading spinners keep turning because they indicate work in progress. */
+  [data-slot="button-spinner"] {
+    animation-duration: 1s !important;
+    animation-iteration-count: infinite !important;
   }
 }
