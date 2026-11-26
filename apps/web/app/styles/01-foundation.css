@@ -1,81 +1,50 @@
 :root {
-  --mx-canvas: #f7f9fc;
-  --mx-surface: #ffffff;
-  --mx-soft: #f1f5fb;
-  --mx-ink: #17191c;
-  --mx-muted: #536176;
-  --mx-border: #dbe4ef;
-  --mx-shadow: 0 3px 14px rgb(17 24 39 / 3%);
-  --mx-brand: #1768e5;
-  --mx-brand-soft: #edf5ff;
-  --mx-selection: #d9e8ff;
-  --mx-selection-ink: #113f8f;
-  --mx-mark-accent: #1768e5;
-  --mx-sidebar: #edf4ff;
-  --mx-sidebar-end: #eaf1fa;
-  --mx-side-ink: #2a3f5f;
-  --mx-side-muted: #536176;
-  --mx-side-border: #cbd9ec;
-  --mx-side-hover: #ffffff;
-  --mx-nav-active: #1768e5;
-  --mx-nav-active-ink: #ffffff;
-  --mx-up: #2f7a49;
-  --mx-down: #b4473a;
-  --mx-up-on-wash: #195531;
-  --mx-down-on-wash: #8d3026;
-  --mx-world-land: #e2e8ef;
-  --mx-warning: #80530c;
-  --mx-chart-0: #1768e5;
-  --mx-chart-1: #d97706;
-  --mx-chart-2: #347985;
-  --mx-chart-3: #a24477;
-  --mx-chart-4: #7a6599;
-  --mx-chart-5: #6b7280;
+  color-scheme: light dark;
+  accent-color: var(--primary);
+  caret-color: var(--foreground);
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  --mx-canvas: var(--background);
+  --mx-surface: var(--card);
+  --mx-soft: var(--muted);
+  --mx-ink: var(--foreground);
+  --mx-muted: var(--muted-foreground);
+  --mx-border: var(--border);
+  --mx-shadow: none;
+  --mx-brand: var(--link);
+  --mx-brand-soft: var(--muted);
+  --mx-selection: var(--selection);
+  --mx-selection-ink: var(--foreground);
+  --mx-mark-accent: var(--brand-mark-accent);
+  --mx-sidebar: var(--sidebar);
+  --mx-sidebar-end: var(--sidebar);
+  --mx-side-ink: var(--sidebar-foreground);
+  --mx-side-muted: var(--sidebar-foreground);
+  --mx-side-border: var(--sidebar-border);
+  --mx-side-hover: var(--accent);
+  --mx-nav-active: var(--sidebar-accent);
+  --mx-nav-active-ink: var(--sidebar-accent-foreground);
+  --mx-up: var(--gain);
+  --mx-down: var(--loss);
+  --mx-world-land: var(--world-land);
+  --mx-warning: var(--warning);
+  --mx-chart-0: var(--chart-1);
+  --mx-chart-1: var(--chart-3);
+  --mx-chart-2: var(--chart-4);
+  --mx-chart-3: var(--allocation-4);
+  --mx-chart-4: var(--chart-5);
+  --mx-chart-5: var(--chart-2);
   /* The holdings donut's shared segment for everything outside its coloured holdings. */
-  --mx-rest: #d9dee5;
+  --mx-rest: var(--allocation-rest);
   --mx-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
-/* Mantine sets its colours on the scheme attribute; the same selector, loaded after Mantine, hands them ours.
-   On a bare :root the bridge lost to Mantine's grey dimmed text (3.3:1 on white). */
-:root[data-mantine-color-scheme] {
-  --mantine-color-body: var(--mx-surface);
-  --mantine-color-text: var(--mx-ink);
-  --mantine-color-dimmed: var(--mx-muted);
-  --mantine-color-default-border: var(--mx-border);
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
+  color-scheme: dark;
 }
-:root[data-mantine-color-scheme="dark"] {
-  /* Neutral charcoal: blue is reserved for the brand and selection. */
-  --mx-canvas: #0f1012;
-  --mx-surface: #17181b;
-  --mx-soft: #212328;
-  --mx-ink: #f2f3f5;
-  --mx-muted: #a3a8b2;
-  --mx-border: #2b2e34;
-  --mx-shadow: none;
-  --mx-brand: #7eb3ff;
-  --mx-brand-soft: #1a2638;
-  --mx-selection: #195dbd;
-  --mx-selection-ink: #f7fbff;
-  --mx-mark-accent: #5b9dff;
-  --mx-sidebar: #131416;
-  --mx-sidebar-end: #131416;
-  --mx-side-ink: #cdd1d8;
-  --mx-side-muted: #a3a8b2;
-  --mx-side-border: #26292e;
-  --mx-side-hover: #212328;
-  --mx-up: #78cf91;
-  --mx-down: #ff958a;
-  --mx-up-on-wash: #a8edb6;
-  --mx-down-on-wash: #ffbdb4;
-  --mx-world-land: #30343c;
-  --mx-warning: #f4c35f;
-  --mx-chart-0: #5b9dff;
-  --mx-chart-1: #f6ad55;
-  --mx-chart-2: #69bfcd;
-  --mx-chart-3: #e78db8;
-  --mx-chart-4: #b9a0e0;
-  --mx-chart-5: #a3a8b2;
-  --mx-rest: #3a3e45;
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  color-scheme: light;
+}
+:root[data-mantine-color-scheme="light"] {
+  --mx-shadow: 0 3px 14px rgb(17 24 39 / 3%);
 }
 /* Phones: one spacing rhythm and five type roles, used by 12-phone-rhythm.css. Wider windows keep literal values. */
 @media (max-width: 767px) {
@@ -130,11 +99,10 @@ button:disabled {
   cursor: not-allowed;
 }
 ::selection {
-  color: var(--mx-selection-ink);
-  background: var(--mx-selection);
+  background: var(--selection);
 }
 :focus-visible {
-  outline: 2px solid var(--mx-brand);
+  outline: 2px solid var(--ring);
   outline-offset: 4px;
 }
 [tabindex="-1"]:focus {
@@ -168,7 +136,7 @@ p {
   inset: 0 auto 0 0;
   width: 76px;
   padding: 24px 12px 16px;
-  background: linear-gradient(180deg, var(--mx-sidebar), var(--mx-sidebar-end));
+  background: var(--mx-sidebar);
   border-right: 1px solid var(--mx-side-border);
   color: var(--mx-side-ink);
   display: flex;

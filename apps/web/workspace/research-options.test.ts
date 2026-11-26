@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { darkChartColours } from "@/ui/charts/palette";
-import { chartColours } from "@/ui/theme";
+import { chartColours, darkChartColours } from "../tests/fixtures/theme-colours";
 import { compactTick } from "@/workspace/data";
 import {
   expiryStroke,

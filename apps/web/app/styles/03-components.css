@@ -52,7 +52,7 @@
   top: 0;
   left: 0;
   border-radius: 6px;
-  background: var(--mx-surface);
+  background: var(--segment-indicator);
   box-shadow: 0 1px 3px rgb(17 24 39 / 8%);
   pointer-events: none;
 }
@@ -71,7 +71,7 @@
   bottom: 0;
   height: 2px;
   border-radius: 2px;
-  background: var(--mx-brand);
+  background: var(--foreground);
   pointer-events: none;
 }
 .mx-tabs::-webkit-scrollbar {
@@ -104,7 +104,7 @@
   white-space: nowrap;
 }
 .mx-tabs button[aria-selected="true"] {
-  color: var(--mx-brand);
+  color: var(--foreground);
 }
 /* A tab with a phone label shows its full title until the row gets narrow. */
 .mx-tabs .mx-tab-short {

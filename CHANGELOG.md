@@ -4,6 +4,18 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.70.0] - 2026-11-26
+
+### Changed
+- A new neutral palette across every page: near-black and charcoal surfaces in dark, near-white in light, with no blue-tinted greys. Cobalt now marks only actions, links, keyboard focus and a chart's one primary line; the current navigation item and selected tabs and segments use a neutral highlight. Charts, heat maps and allocation colours draw from the same palette, and text meets WCAG AA contrast in both appearances.
+- The web interface opens in dark appearance by default. Light and System remain in Settings, and an appearance you chose before is kept. The desktop App continues to follow macOS.
+- The browser's colour scheme, theme colour, scrollbars and native controls, and the installed web app's launch colours follow the appearance in use.
+
+### Fixed
+- Text fields, switches and checkboxes have visible boundaries against their panels, and placeholder text is readable in both appearances.
+- The number on a selected key moment in a price chart is readable in dark appearance.
+- Job and connection states no longer use the profit and loss colours. **Delete all conversations** is styled as a deletion rather than a primary action.
+
 ## [1.69.2] - 2026-11-24
 
 ### Changed

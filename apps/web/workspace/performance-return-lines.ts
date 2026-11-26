@@ -9,13 +9,13 @@ import { timelineLineColour, type TimelineLayer } from "./timeline-option";
 export const ALL_BENCHMARKS = ["VOO", "QQQ", "VT"] as const;
 
 type BenchmarkVisualKey = {
-  colour: "axis" | "text" | "secondary";
+  colour: "comparison" | "text" | "secondary";
   dash: LineDash;
 };
 
 /** Stable per-ticker visual keys so every benchmark remains distinct in colour and monochrome across subsets. */
 const BENCHMARK_STROKES: Record<string, BenchmarkVisualKey> = {
-  VOO: { colour: "axis", dash: "long" },
+  VOO: { colour: "comparison", dash: "long" },
   QQQ: { colour: "text", dash: "dash-dot" },
   VT: { colour: "secondary", dash: "short" },
 };

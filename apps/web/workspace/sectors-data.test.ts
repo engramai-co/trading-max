@@ -101,8 +101,10 @@ describe("intraday line and colour", () => {
     expect(heat(-0.05)).toBe(-1);
     expect(heat(0.015)).toBeGreaterThan(0.5);
     expect(heat(-0.015)).toBeLessThan(-0.5);
-    expect(heatMix(0.05, "light")).toBe("56%");
-    expect(heatMix(-0.05, "dark")).toBe("46%");
+    expect(heatMix(0.05, "light")).toBe("55%");
+    expect(heatMix(-0.05, "dark")).toBe("70%");
+    expect(heatMix(0.0006, "light")).toBe("13%");
+    expect(heatMix(-0.0006, "dark")).toBe("24%");
     expect(heatMix(0.0004, "light")).toBe("0%");
     expect(heatMix(null, "dark")).toBe("0%");
   });

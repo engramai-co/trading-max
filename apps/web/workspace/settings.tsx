@@ -646,8 +646,7 @@ function ConnectionForm({
             )}
           </p>
           <Button
-            color="red"
-            variant="light"
+            variant="subtle"
             onClick={() => setDisconnecting(true)}
           >
             {t("断开连接", "Disconnect")}
@@ -680,7 +679,9 @@ function ConnectionForm({
               {t("保留连接", "Keep connection")}
             </Button>
             <Button
+              className="mx-destructive-confirm"
               color="red"
+              variant="outline"
               onClick={() => disconnect.mutate()}
               loading={disconnect.isPending}
             >

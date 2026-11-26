@@ -791,7 +791,9 @@ function SecurityResearchWorkspace() {
             {t("取消", "Cancel")}
           </Button>
           <Button
+            className="mx-destructive-confirm"
             color="red"
+            variant="outline"
             loading={operation.isPending}
             onClick={() => operation.mutate({ action: "remove" })}
           >

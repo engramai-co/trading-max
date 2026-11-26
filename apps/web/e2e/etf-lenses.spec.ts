@@ -156,6 +156,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
   test.beforeEach(async ({ page }, info) => {
     if (info.project.name === "mobile") await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("mantine-color-scheme-value", "auto"));
   });
 
   test("ETF cells arrive after the table and preserve the warning and loss dots", async ({ page }, info) => {

@@ -25,10 +25,12 @@ for (const locale of ["zh", "en"] as const) for (const scheme of ["light", "dark
   test(`a saved model with new evidence is marked until its evidence is opened · ${locale} · ${scheme}`, async ({ page }, info) => {
     test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
     const en = locale === "en";
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), scheme);
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
     const state = await desk(page, { notices: on });
     await page.goto("/research?ticker=SYNT&view=valuation");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
     const toggle = page.locator("#valuation-assumptions").getByRole("button", { name: en ? "See new evidence" : "看新证据", exact: true });
     await expect(toggle).toHaveAccessibleDescription(en ? "New evidence: New statements, EPS consensus" : "有新证据：新报表、EPS 一致预期");
     await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();

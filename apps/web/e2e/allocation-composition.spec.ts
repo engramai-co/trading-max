@@ -37,10 +37,29 @@ test.describe("allocation composition", () => {
     const controls = page.getByRole("group", { name: "Allocation chart" });
     const leadKey = page.getByRole("button", { name: "United States 70.0%" }).locator("i");
     const table = page.getByRole("table", { name: "Complete allocation details" });
-    for (const [colorScheme, colour] of [["light", "rgb(52, 70, 93)"], ["dark", "rgb(133, 149, 169)"]] as const) {
+    await page.evaluate(() => {
+      localStorage.setItem("mantine-color-scheme-value", "auto");
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: "mantine-color-scheme-value",
+        newValue: "auto",
+        storageArea: localStorage,
+      }));
+    });
+    for (const [colorScheme, colour] of [["light", "rgb(131, 149, 174)"], ["dark", "rgb(143, 163, 191)"]] as const) {
       await page.emulateMedia({ colorScheme });
       await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
       await expect(leadKey).toHaveCSS("background-color", colour);
+      const canvas = page.getByRole("group", { name: "Allocation composition", exact: true }).locator("canvas").first();
+      await expect.poll(() => canvas.evaluate((node: HTMLCanvasElement) => {
+        const swatch = getComputedStyle(document.documentElement).getPropertyValue("--allocation-2").trim();
+        const [r, g, b] = swatch.slice(1).match(/../g)!.map((channel) => parseInt(channel, 16));
+        const pixels = node.getContext("2d")!.getImageData(0, 0, node.width, node.height).data;
+        let opaque = 0;
+        for (let i = 0; i < pixels.length; i += 4) {
+          if (pixels[i] === r && pixels[i + 1] === g && pixels[i + 2] === b && pixels[i + 3] === 255) opaque++;
+        }
+        return opaque;
+      })).toBeGreaterThan(30);
       await controls.getByRole("button", { name: "Details", exact: true }).click();
       await expect(table).toBeVisible();
       await expect(page.locator(".mx-allocation-ranking__track")).toHaveCount(0);

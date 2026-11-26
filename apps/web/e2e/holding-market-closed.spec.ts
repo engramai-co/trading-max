@@ -134,9 +134,11 @@ for (const locale of ["zh", "en"] as const) {
       test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
       if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
       await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
+      await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), scheme);
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
       await syntheticHoldings(page);
       await page.goto("/holdings");
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
       const row = isMobile ? page.getByRole("button", { name: /SYNUS/ })
         : page.getByRole("row").filter({ hasText: "SYNUS" });
       if (!isMobile) await expect(row.getByRole("cell", { name: /3\.25/ })).toBeVisible();

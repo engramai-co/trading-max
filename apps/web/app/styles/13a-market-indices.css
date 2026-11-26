@@ -16,12 +16,28 @@
   overflow-x: auto;
   padding: 2px;
   scrollbar-width: thin;
-  scrollbar-color: var(--mx-border) transparent;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+@supports not (scrollbar-color: auto) {
+  .mx-index-cards {
+    scrollbar-width: auto;
+  }
+  .mx-index-cards::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  .mx-index-cards::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 6px;
+  }
+  .mx-index-cards::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
 }
 .mx-index-card {
   position: relative;
-  --mx-index-move-ink: var(--mx-ink);
   --mx-index-hue: var(--mx-soft);
+  --mx-heat-hue: var(--heat-base);
   display: grid;
   grid-template-rows: auto auto 25px;
   gap: 7px;
@@ -29,17 +45,17 @@
   min-width: 0;
   border: 1px solid var(--mx-border);
   border-radius: 10px;
-  background: color-mix(in oklab, var(--mx-index-hue) var(--mx-index-heat), var(--mx-surface));
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
   color: var(--mx-ink);
   text-decoration: none;
 }
 .mx-index-card[data-tone="up"] {
   --mx-index-hue: var(--mx-up);
-  --mx-index-move-ink: var(--mx-up-on-wash);
+  --mx-heat-hue: var(--heat-gain);
 }
 .mx-index-card[data-tone="down"] {
   --mx-index-hue: var(--mx-down);
-  --mx-index-move-ink: var(--mx-down-on-wash);
+  --mx-heat-hue: var(--heat-loss);
 }
 .mx-index-card:hover {
   border-color: var(--mx-muted);
@@ -75,7 +91,6 @@
   line-height: 1.1;
 }
 .mx-index-figures > span {
-  color: var(--mx-index-move-ink);
   font-size: 13px;
 }
 .mx-index-spark {
@@ -188,7 +203,7 @@
 }
 .mx-index-legend span:nth-child(2)::before {
   background: none;
-  border-top: 2px dashed var(--mx-muted);
+  border-top: 2px dashed var(--chart-2);
 }
 .mx-index-legend span:last-child {
   color: var(--mx-muted);

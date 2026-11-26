@@ -3,8 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { benchmarkComparison } from "@/lib/portfolio/benchmark-comparison";
 import type { BenchmarkPricePoint, NavPoint } from "@/lib/types";
-import { darkChartColours } from "@/ui/charts/palette";
-import { chartColours } from "@/ui/theme";
+import { chartColours, darkChartColours } from "../tests/fixtures/theme-colours";
 import { LINE_DASH_PATTERNS, readingHtml } from "./chart-readout";
 import { Legend } from "./charts";
 import {
@@ -115,6 +114,9 @@ describe("all-benchmarks visual keys", () => {
 
         const [portfolio, ...benchmarks] = paneSeries;
         expect(portfolio.lineStyle).toMatchObject({ color: colours.brand, width: 2.5, type: "solid" });
+        expect(benchmarks.find((series) => series.name?.endsWith(" · VOO"))?.lineStyle).toMatchObject({
+          color: colours.comparison, type: LINE_DASH_PATTERNS.long.chart,
+        });
         for (const benchmark of benchmarks) {
           expect([colours.brand, colours.positive, colours.negative]).not.toContain(benchmark.lineStyle?.color);
           expect(benchmark.lineStyle?.type).not.toBe("solid");

@@ -1177,6 +1177,7 @@ test.describe("review assistant", () => {
         const mobile = info.project.name === "mobile";
         const zh = locale === "zh";
         if (mobile) await page.setViewportSize({ width: 390, height: 844 });
+        await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), theme);
         await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
         await page.addInitScript((lang) => localStorage.setItem("trading_max-locale", lang), locale);
         await serve(page, () => ({ benchmark: 0.03, events: true, isa: true, observations: true }));
@@ -1265,6 +1266,7 @@ test.describe("review assistant", () => {
         });
         await page.route("**/api/logos/**", (route) => route.abort());
         await page.goto("/review");
+        await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
         const openHabits = () =>
           (mobile ? page.locator(".mx-phone-habits") : page.locator(".mx-digest-head > button")).click();
         await openHabits();

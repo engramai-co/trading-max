@@ -443,7 +443,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
 }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const scheme = useComputedColorScheme("light");
+  const scheme = useComputedColorScheme("dark");
   const total = formatDeltaPercent(acwiMove, locale, 2);
   // With weights, phones read the blocks by share, the largest first.
   const order = weighted
@@ -499,7 +499,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
 function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: number; label: string }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const scheme = useComputedColorScheme("light");
+  const scheme = useComputedColorScheme("dark");
   const map = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
   const [family, setFamily] = useState("");
@@ -613,7 +613,7 @@ function useSpoken() {
 
 function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: SectorMarketCode; label: string }) {
   const { locale } = useLocale();
-  const scheme = useComputedColorScheme("light");
+  const scheme = useComputedColorScheme("dark");
   const spoken = useSpoken();
   const map = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -701,7 +701,7 @@ function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: S
 /** Phones and touch: blocks in index-weight order, each opening its sector, with the full name where it fits. */
 function SectorGrid({ groups, market, label }: { groups: SectorGroup[]; market: SectorMarketCode; label: string }) {
   const { locale } = useLocale();
-  const scheme = useComputedColorScheme("light");
+  const scheme = useComputedColorScheme("dark");
   const spoken = useSpoken();
   const grid = useRef<HTMLDivElement>(null);
   // The width a label has: the first block's own, which may be a double block, and every other block's.

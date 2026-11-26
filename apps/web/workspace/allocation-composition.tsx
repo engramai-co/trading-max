@@ -22,6 +22,8 @@ export type AllocationSlice = {
   indirectValue?: number;
 };
 
+export const ALLOCATION_SLICE_OPACITY = 1;
+
 export function AllocationComposition({ rows, companies = false, remainder, initialGroup, onInspect, reading }: {
   rows: AllocationSlice[];
   companies?: boolean;
@@ -83,14 +85,14 @@ export function AllocationComposition({ rows, companies = false, remainder, init
       label: { show: false }, labelLine: { show: false },
       stillShowZeroSum: false,
       padAngle: 0.8,
-      emphasis: { scale: false, focus: "self" },
-      blur: { itemStyle: { opacity: 0.35 } },
+      emphasis: { scale: false, itemStyle: { borderColor: colours.text, borderWidth: 2 } },
       data: slices.map((row, index) => ({
         name: row.name, value: Math.max(0, row.weight ?? 0),
         itemStyle: {
           color: remainder && index === slices.length - 1 ? colours.axis : palette[index],
-          opacity: index === activeIndex ? 1 : 0.6,
-          borderWidth: 0,
+          opacity: ALLOCATION_SLICE_OPACITY,
+          borderColor: index === activeIndex ? colours.text : colours.axis,
+          borderWidth: index === activeIndex ? 2 : index === 12 ? 1 : 0,
           borderRadius: 2,
         },
       })),

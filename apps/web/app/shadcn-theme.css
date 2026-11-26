@@ -1,4 +1,4 @@
-/* Shared viewport breakpoints and Mantine pixel spacing scale. Mirrored by lib/breakpoints.ts and ui/theme.ts. */
+/* Shared viewport breakpoints, spacing scale, and Palette A ("neutral ink", Luma finish) tokens. */
 @theme {
   --breakpoint-narrow: 375px;
   --breakpoint-phone: 768px;
@@ -12,6 +12,52 @@
   --spacing-mx-lg: 24px;
   --spacing-mx-xl: 32px;
 }
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --color-warning: var(--warning);
+  --color-link: var(--link);
+  --color-selection: var(--selection);
+  --color-field: var(--field);
+  --color-placeholder: var(--placeholder);
+  --color-switch-off: var(--switch-off);
+  --color-border-strong: var(--border-strong);
+  --color-allocation-rest: var(--allocation-rest);
+  --color-panel-edge: var(--panel-edge);
+}
+
 :root {
   --mx-bp-narrow-max: 375px;
   --mx-bp-phone-max: 767px;
@@ -21,4 +67,215 @@
   --mx-bp-desktop-max: 1199px;
   --mx-bp-wide-min: 1280px;
   --mx-bp-research-index-max: 48em;
+}
+
+@layer theme {
+  :root {
+    /* Luma geometry, elevation, and motion tokens (reserved for per-component migrations). */
+    --radius-control: 9999px;
+    --radius-panel: 26px;
+    --radius-dialog: 26px;
+    --radius-popover: 22px;
+    --radius-menu: 22px;
+    --radius-select: 22px;
+    --radius-reading: 22px;
+    --radius-menu-item: 16px;
+    --radius-tooltip: 12px;
+    --radius-heat-tile: 12px;
+    --radius-checkbox: 6px;
+    --z-sticky: 10;
+    --z-nav: 20;
+    --z-sidebar: 30;
+    --z-overlay: 40;
+    --z-dialog: 50;
+    --z-popover: 60;
+    --z-tooltip: 70;
+    --z-toast: 80;
+    --z-skip-link: 90;
+    --motion-fast: 120ms cubic-bezier(0.2, 0, 0, 1);
+    --motion-base: 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    --motion-slow: 240ms cubic-bezier(0.16, 1, 0.3, 1);
+    --motion-exit: 120ms cubic-bezier(0.4, 0, 1, 1);
+    --overlay-scrim: rgb(0 0 0 / 0.3);
+    --overlay-blur: 8px;
+  }
+
+  :root,
+  html[data-mantine-color-scheme="dark"] {
+    --background: #09090b;
+    --foreground: #f4f4f5;
+    --card: #121214;
+    --card-foreground: #f4f4f5;
+    --popover: #1c1c1f;
+    --popover-foreground: #f4f4f5;
+    --primary: #1768e5;
+    --primary-foreground: #ffffff;
+    --secondary: #27272a;
+    --secondary-foreground: #f4f4f5;
+    --muted: #1c1c1f;
+    --muted-foreground: #a1a1aa;
+    --accent: #27272a;
+    --accent-foreground: #f4f4f5;
+    --destructive: #ff958a;
+    --border: #27272a;
+    --input: #6b6b73;
+    --ring: #7eb3ff;
+    --chart-1: #4a8ef5;
+    --chart-2: #a1a1aa;
+    --chart-3: #f5ad57;
+    --chart-4: #6cc4c6;
+    --chart-5: #b49be0;
+    --sidebar: #09090b;
+    --sidebar-foreground: #a1a1aa;
+    --sidebar-primary: #1768e5;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #1d1d1f;
+    --sidebar-accent-foreground: #f4f4f5;
+    --sidebar-border: #27272a;
+    --sidebar-ring: #7eb3ff;
+    --gain: #78cf91;
+    --loss: #ff958a;
+    --warning: #f4c35f;
+    --link: #7eb3ff;
+    --selection: #0d264c;
+    --field: #1c1c1f;
+    --placeholder: #8b8b93;
+    --switch-off: #63636b;
+    --border-strong: #3f3f46;
+    --allocation-rest: #3f3f46;
+    --panel-edge: #2a2a2c;
+    --primary-hover: #155fd2;
+    --primary-active: #124fb0;
+    --secondary-hover: #303034;
+    --secondary-active: #3a3a3e;
+    --ghost-hover: var(--accent);
+    --ghost-active: #303034;
+    --input-hover: #8b8b93;
+    --switch-off-hover: #71717a;
+    --segment-indicator: #2e2e33;
+    --destructive-hover: #2a1f20;
+    --destructive-active: #382727;
+    --destructive-active-ink: var(--destructive);
+    --key-moment-bg: #7eb3ff;
+    --key-moment-ink: #09090b;
+    --heat-base: #232327;
+    --heat-gain: #2f7a49;
+    --heat-loss: #b4473a;
+    --brand-mark-accent: #5b9dff;
+    --world-land: var(--heat-base);
+    --chart-tooltip-shadow: rgba(0, 0, 0, 0.16);
+    --allocation-1: #8fa3bf;
+    --allocation-2: #f5ad57;
+    --allocation-3: #6cc4c6;
+    --allocation-4: #ee96bd;
+    --allocation-5: #b49be0;
+    --allocation-6: #c4d66f;
+    --allocation-7: #e8b48c;
+    --allocation-8: #95bde6;
+    --allocation-9: #d6a2a2;
+    --allocation-10: #9fd3b5;
+    --allocation-11: #c9b38a;
+    --allocation-12: #a7a3d9;
+    --scrollbar-thumb: #6b6b73;
+    --scrollbar-track: transparent;
+    --shadow-panel: none;
+    --shadow-popover: 0 16px 40px rgb(0 0 0 / 0.45);
+    --shadow-dialog: 0 24px 64px rgb(0 0 0 / 0.6);
+  }
+
+  html[data-mantine-color-scheme="light"] {
+    --background: #fafafa;
+    --foreground: #18181b;
+    --card: #ffffff;
+    --card-foreground: #18181b;
+    --popover: #ffffff;
+    --popover-foreground: #18181b;
+    --primary: #1768e5;
+    --primary-foreground: #ffffff;
+    --secondary: #f4f4f5;
+    --secondary-foreground: #18181b;
+    --muted: #f4f4f5;
+    --muted-foreground: #66666e;
+    --accent: #ececee;
+    --accent-foreground: #18181b;
+    --destructive: #b4473a;
+    --border: #e4e4e7;
+    --input: #8b8b93;
+    --ring: #1768e5;
+    --chart-1: #1768e5;
+    --chart-2: #71717a;
+    --chart-3: #b26b00;
+    --chart-4: #1f8285;
+    --chart-5: #7b5cc0;
+    --sidebar: #fafafa;
+    --sidebar-foreground: #66666e;
+    --sidebar-primary: #1768e5;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #e9e9e9;
+    --sidebar-accent-foreground: #18181b;
+    --sidebar-border: #e4e4e7;
+    --sidebar-ring: #1768e5;
+    --gain: #2f7a49;
+    --loss: #b4473a;
+    --warning: #80530c;
+    --link: #1768e5;
+    /* Light enough to preserve link, gain and loss ink during text selection. */
+    --selection: #edf3fd;
+    --field: #f4f4f5;
+    --placeholder: #6b6b73;
+    --switch-off: #8b8b93;
+    --border-strong: #d4d4d8;
+    --allocation-rest: #d4d4d8;
+    --panel-edge: #f0f0f0;
+    --primary-hover: #155fd2;
+    --primary-active: #124fb0;
+    --secondary-hover: #e9e9eb;
+    --secondary-active: #e0e0e3;
+    --ghost-hover: var(--accent);
+    --ghost-active: #e4e4e7;
+    --input-hover: #6b6b73;
+    --switch-off-hover: #7a7a82;
+    --segment-indicator: #ffffff;
+    --destructive-hover: #f9f0ef;
+    --destructive-active: #f5e5e3;
+    --destructive-active-ink: #a94337;
+    --key-moment-bg: #1768e5;
+    --key-moment-ink: #ffffff;
+    --heat-base: #f4f4f5;
+    --heat-gain: #2f7a49;
+    --heat-loss: #b4473a;
+    --brand-mark-accent: var(--primary);
+    --world-land: var(--heat-base);
+    --chart-tooltip-shadow: rgba(17, 24, 39, 0.12);
+    --allocation-1: #8395ae;
+    --allocation-2: #c08844;
+    --allocation-3: #579ea0;
+    --allocation-4: #c67d9d;
+    --allocation-5: #9f89c6;
+    --allocation-6: #8c994f;
+    --allocation-7: #b0896a;
+    --allocation-8: #7594b4;
+    --allocation-9: #b28787;
+    --allocation-10: #759c85;
+    --allocation-11: #a29170;
+    --allocation-12: #8f8cba;
+    --scrollbar-thumb: #8b8b93;
+    --scrollbar-track: transparent;
+    --shadow-panel: 0 1px 2px rgb(9 9 11 / 0.06);
+    --shadow-popover: 0 8px 24px rgb(9 9 11 / 0.12);
+    --shadow-dialog: 0 24px 64px rgb(9 9 11 / 0.18);
+  }
+
+  @media (prefers-contrast: more) {
+    :root,
+    html[data-mantine-color-scheme="dark"] {
+      --scrollbar-thumb: #f4f4f5;
+      --scrollbar-track: #09090b;
+    }
+
+    html[data-mantine-color-scheme="light"] {
+      --scrollbar-thumb: #18181b;
+      --scrollbar-track: #ffffff;
+    }
+  }
 }

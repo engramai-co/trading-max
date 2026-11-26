@@ -1139,7 +1139,6 @@ function Payoff({
           />
           <Button
             variant="subtle"
-            color="red"
             onClick={() => setLegs(legs.filter((_, j) => i !== j))}
           >
             {t("移除", "Remove")}

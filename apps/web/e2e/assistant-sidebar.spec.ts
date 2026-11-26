@@ -122,6 +122,7 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
 for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as const) {
   test("brief and sidebar " + language + " " + theme, async ({ page }, info) => {
     if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), theme);
     await page.emulateMedia({colorScheme:theme,reducedMotion:"reduce"});
     await page.addInitScript(lang => {
       localStorage.setItem("trading_max-locale",lang);
@@ -129,6 +130,7 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
     },language);
     await fixtures(page);
     await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
     const digest = page.locator(".mx-digest");
     await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
     await expect(digest.locator(".mx-digest-summary")).toContainText("£18.40");
@@ -188,6 +190,7 @@ test("stopping a turn restores its question and evidence points to the selected 
   const input = page.getByRole("textbox", {name:"消息"});
   try {
     await input.fill("Show this period");
+    await expect(page.getByRole("button", { name: "发送", exact: true })).toBeEnabled();
     await input.press("Enter");
     await page.getByRole("button", {name:"停止",exact:true}).click();
     await expect(input).toHaveValue("Show this period");

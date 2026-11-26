@@ -105,6 +105,25 @@ function cacheText(page: Page) {
 test.describe("reconstruction market data", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
 
+  for (const scheme of ["dark", "light"] as const) {
+    test(`distinguishes the disabled connection test in ${scheme}`, async ({ page }) => {
+      await page.addInitScript((value) => localStorage.setItem("mantine-color-scheme-value", value), scheme);
+      const { panel } = await open(page, () => overview([]));
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+      await panel.getByRole("button", { name: "Connect Alpaca", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      const button = dialog.getByRole("button", { name: "Test connection", exact: true });
+      await expect(button).toBeDisabled();
+      const disabledBackground = await button.evaluate((node) => getComputedStyle(node).backgroundColor);
+      const disabledInk = await button.evaluate((node) => getComputedStyle(node).color);
+      await dialog.getByLabel("Alpaca API Key ID").fill("synthetic-key");
+      await dialog.getByLabel("Alpaca API Secret").fill("synthetic-secret");
+      await expect(button).toBeEnabled();
+      await expect(button).not.toHaveCSS("background-color", disabledBackground);
+      await expect(button).not.toHaveCSS("color", disabledInk);
+    });
+  }
+
   test("one switch turns Alpaca on, holds while it saves and keeps keyboard focus", async ({ page, isMobile }) => {
     let server = alpaca(false);
     const { panel, unexpected } = await open(page, () => overview([server]));
@@ -496,6 +515,51 @@ test.describe("CFD import", () => {
     expect(unexpected).toEqual([]);
   });
 });
+
+for (const scheme of ["dark", "light"] as const) {
+  test(`a pending model test dims checked and unchecked checkboxes in ${scheme}`, async ({ page }) => {
+    await page.addInitScript((value) => localStorage.setItem("mantine-color-scheme-value", value), scheme);
+    const server = overview([]);
+    server.llmProviders = [{
+      provider: "openai", label: "OpenAI", adapter: "openai", baseUrl: "https://example.invalid",
+      models: ["synthetic-model"], defaultModel: "synthetic-model", authMethod: "api_key",
+    }];
+    const { unexpected } = await open(page, () => server);
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+    await page.getByRole("tab", { name: "Model connections", exact: true }).click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const dialog = page.getByRole("dialog", { name: "Connect OpenAI", exact: true });
+    await dialog.locator('input[type="password"]').fill("synthetic-secret");
+    const checkbox = dialog.getByRole("checkbox", { name: "Use as the default model" });
+    const testConnection = dialog.getByRole("button", { name: "Test connection", exact: true });
+
+    let pending = gate();
+    await page.route("**/api/backend/settings/llm/providers/openai/test", async (route) => {
+      expect(route.request().method()).toBe("POST");
+      await pending.opened;
+      await route.fulfill({ json: { status: "succeeded", validationToken: "synthetic-receipt" } });
+    });
+    for (const checked of [true, false]) {
+      await checkbox.setChecked(checked);
+      const enabled = await checkbox.evaluate((node) => {
+        const style = getComputedStyle(node);
+        return { fill: style.backgroundColor, border: style.borderTopColor };
+      });
+      try {
+        await testConnection.click();
+        await expect(checkbox).toBeDisabled();
+        await expect(checkbox).toBeChecked({ checked });
+        await expect(checkbox).not.toHaveCSS("border-top-color", enabled.border);
+        if (checked) await expect(checkbox).not.toHaveCSS("background-color", enabled.fill);
+      } finally {
+        pending.release();
+      }
+      await expect(checkbox).toBeEnabled();
+      pending = gate();
+    }
+    expect(unexpected).toEqual([]);
+  });
+}
 
 test("an EODHD key is tested and saved with index history off by default", async ({ page }) => {
   let source: IntegrationSummary | undefined;

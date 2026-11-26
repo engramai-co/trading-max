@@ -44,9 +44,19 @@
   position: absolute;
   inset: -5px;
 }
-.mx-key-marker[aria-expanded="true"], .mx-track-moment[aria-expanded="true"] .mx-moment-number {
-  color: var(--mx-nav-active-ink);
-  background: var(--mx-brand);
+.mx-key-marker[aria-expanded="true"],
+.mx-track-moment[aria-expanded="true"] .mx-moment-number {
+  color: var(--key-moment-ink);
+  background: var(--key-moment-bg);
+  border-color: var(--key-moment-bg);
+  outline: 1.5px solid var(--key-moment-bg);
+  outline-offset: 2px;
+}
+@media (forced-colors: active) {
+  .mx-key-marker[aria-expanded="true"],
+  .mx-track-moment[aria-expanded="true"] .mx-moment-number {
+    outline-color: Highlight;
+  }
 }
 .mx-event-track .mx-moment-number {
   justify-self: center;

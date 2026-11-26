@@ -491,7 +491,10 @@
   margin-top: 4px;
 }
 .mx-option-chain tr.mx-near-spot {
-  background: var(--mx-brand-soft);
+  background: var(--selection);
+}
+html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-strike small {
+  color: color-mix(in srgb, var(--link) 78%, var(--foreground));
 }
 /* Narrow screens scroll the T-shaped chain sideways; the strike column stays in view. */
 @media (max-width: 767px) {
@@ -506,7 +509,7 @@
       1px 0 0 var(--mx-border);
   }
   .mx-option-chain tr.mx-near-spot .mx-strike {
-    background: color-mix(in srgb, var(--mx-brand) 14%, var(--mx-soft));
+    background: var(--selection);
   }
 }
 @media (max-width: 1100px) {

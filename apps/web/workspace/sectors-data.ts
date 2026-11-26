@@ -205,12 +205,16 @@ export function heat(change: number | null | undefined, saturation = 0.03) {
   return Math.sign(change) * Math.min(1, Math.abs(change) / saturation) ** 0.7;
 }
 
-/** The strongest wash, as a share of the gain or loss hue; dark grounds stop sooner so ink figures keep 4.5:1. */
-export const HEAT_MIX = { light: 56, dark: 46 } as const;
+/** Bounded heat wash range per scheme so ink figures keep ≥ 4.5:1 across all moves. */
+export const HEAT_MIN = { light: 12, dark: 23 } as const;
+export const HEAT_MIX = { light: 55, dark: 70 } as const;
 
-/** A block's wash for a session change, as a CSS percentage. */
-export function heatMix(change: number | null | undefined, scheme: keyof typeof HEAT_MIX) {
-  return Math.round(Math.abs(heat(change)) * HEAT_MIX[scheme]) + "%";
+/** A block's wash for a session change, as a CSS percentage: min + span × min(1, |change| / saturation). */
+export function heatMix(change: number | null | undefined, scheme: keyof typeof HEAT_MIX, saturation = 0.03) {
+  if (change == null || !Number.isFinite(change) || Math.abs(change) <= 0.0005 + 1e-9) return "0%";
+  const ratio = Math.min(1, Math.abs(change) / saturation);
+  const minimum = HEAT_MIN[scheme];
+  return Math.round(minimum + (HEAT_MIX[scheme] - minimum) * ratio) + "%";
 }
 
 /** Today's rank; null when too little of the group is priced to rank it. */

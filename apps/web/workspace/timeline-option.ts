@@ -168,8 +168,8 @@ export function timelineOption(
     xAxis: layers.map((_, index) => ({
       ...horizontalAxis,
       gridIndex: index,
-      axisLine: { show: index === layers.length - 1, onZero: false, lineStyle: { color: colours.grid } },
-      axisTick: { show: index === layers.length - 1, customValues: ticksForWidth(8), length: 4, lineStyle: { color: colours.grid } },
+      axisLine: { show: index === layers.length - 1, onZero: false, lineStyle: { color: colours.border } },
+      axisTick: { show: index === layers.length - 1, customValues: ticksForWidth(8), length: 4, lineStyle: { color: colours.border } },
       axisPointer: { show: true, snap: true },
       axisLabel: {
         ...horizontalAxis.axisLabel,
@@ -308,7 +308,7 @@ export function timelineOption(
           connectNulls: false,
           step: line.step,
           lineStyle: { width: 0, opacity: 0 },
-          areaStyle: { color: colour, opacity: 0.07, origin: layer.zeroBaseline ? 0 : "auto" as const },
+          areaStyle: { color: colour, opacity: 0.13, origin: layer.zeroBaseline ? 0 : "auto" as const },
           emphasis: { disabled: true },
         } satisfies SeriesOption] : [];
         const sourceStroke = {

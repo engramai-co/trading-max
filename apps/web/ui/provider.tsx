@@ -10,7 +10,7 @@ import {
   createMantineColorSchemeManager,
 } from "@/components/color-scheme-provider";
 import { DEFAULT_COLOR_SCHEME } from "@/lib/color-scheme";
-import { tradingMaxTheme } from "@/ui/theme";
+import { resolveMantineColours, tradingMaxTheme } from "@/ui/theme";
 import { PublicationProvider } from "@/ui/publication-provider";
 import { FinePointerProvider } from "@/ui/pointer";
 import type { SnapshotCacheEntry } from "@/lib/snapshot-cache";
@@ -28,6 +28,8 @@ export function TradingMaxProvider({
       <MantineProvider
         defaultColorScheme={DEFAULT_COLOR_SCHEME}
         colorSchemeManager={colorSchemeManager}
+        getRootElement={() => undefined}
+        cssVariablesResolver={resolveMantineColours}
         theme={tradingMaxTheme}
       >
         <QueryClientProvider client={queryClient}>

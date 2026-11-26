@@ -57,12 +57,12 @@
 .mx-assistant-model .mantine-NativeSelect-root {
   max-width: 100%;
 }
-.mx-assistant-settings .mantine-Switch-input:not(:checked, :disabled) + .mantine-Switch-track {
-  outline: 1px solid var(--mx-muted);
+.mx-assistant-settings .mantine-Switch-input:not(:checked, :disabled, [data-disabled]) + .mantine-Switch-track {
+  outline: 1px solid var(--switch-off);
   outline-offset: -1px;
 }
-.mx-assistant-settings .mantine-Switch-input:focus-visible + .mantine-Switch-track {
-  outline: 2px solid var(--mx-brand);
+.mx-assistant-settings .mantine-Switch-input:not(:disabled, [data-disabled]):focus-visible + .mantine-Switch-track {
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 @media (pointer: coarse) {
@@ -221,7 +221,7 @@
   place-items: center;
 }
 .mx-health-ready .mx-health-symbol {
-  color: var(--mx-up);
+  color: var(--foreground);
 }
 .mx-health-hero h2 {
   font-size: 23px;
@@ -316,8 +316,8 @@
   color: var(--mx-muted);
 }
 .mx-stage-complete {
-  background: color-mix(in srgb, var(--mx-up) 10%, var(--mx-surface));
-  color: var(--mx-up);
+  background: var(--secondary);
+  color: var(--foreground);
   border-color: transparent;
 }
 @media (max-width: 767px) {
@@ -407,9 +407,6 @@
 .mx-health-drawer .mx-tag {
   white-space: normal;
   max-inline-size: 100%;
-}
-.mx-health-drawer .mx-tag-bad {
-  color: color-mix(in srgb, var(--mx-down) 82%, var(--mx-ink));
 }
 .mx-health-drawer .mx-facts > div {
   flex-wrap: wrap;

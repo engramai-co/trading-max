@@ -22,7 +22,7 @@ export { Plot } from "./plot";
 export type ChartLine = {
   name: string;
   values: Array<number | null>;
-  colour?: "brand" | "accent" | "secondary" | "negative" | "text" | "axis";
+  colour?: "brand" | "comparison" | "accent" | "secondary" | "negative" | "text" | "axis";
   dashed?: boolean;
   dash?: LineDash;
   area?: boolean;
@@ -217,7 +217,7 @@ export function HistoryChart({
               },
               itemStyle: { color: colour },
               areaStyle: line.area
-                ? { opacity: 0.08, color: colour }
+                ? { opacity: 0.13, color: colour }
                 : undefined,
               markPoint: line.markers?.length ? {
                 silent: true, symbol: "circle", symbolSize: 7,

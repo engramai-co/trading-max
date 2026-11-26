@@ -1,13 +1,13 @@
 import type { Metadata, Viewport } from "next";
 import { connection } from "next/server";
 import { ColorSchemeScript } from "@/components/color-scheme-script";
-import { colorSchemeHtmlProps } from "@/lib/color-scheme";
+import { colorSchemeHtmlProps, DEFAULT_COLOR_SCHEME } from "@/lib/color-scheme";
 import { desktopSnapshotCache, snapshotCacheScope } from "@/lib/snapshot-cache-server";
 
 import { PresentationShell } from "@/workspace/presentation-shell";
 import { LocaleProvider } from "@/components/locale-provider";
 import { TradingMaxProvider } from "@/ui/provider";
-import { brandColours, darkCanvas } from "@/ui/theme";
+import { darkCanvas, tradingMaxTheme } from "@/ui/theme";
 
 import "./globals.css";
 
@@ -34,10 +34,6 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { color: brandColours[0], media: "(prefers-color-scheme: light)" },
-    { color: darkCanvas, media: "(prefers-color-scheme: dark)" },
-  ],
 };
 
 export default async function RootLayout({
@@ -51,10 +47,16 @@ export default async function RootLayout({
       lang="zh-CN"
       data-locale="zh"
       data-scroll-behavior="smooth"
+      data-respect-reduced-motion={tradingMaxTheme.respectReducedMotion ? "true" : undefined}
       {...colorSchemeHtmlProps}
     >
       <head>
-        <ColorSchemeScript defaultColorScheme="auto" />
+        {/* React hoists and matches meta elements by content. Keep the paint-time
+            hints outside that reconciliation so hydration cannot duplicate them. */}
+        <noscript dangerouslySetInnerHTML={{
+          __html: `<meta name="color-scheme" content="light dark"><meta name="theme-color" content="${darkCanvas}">`,
+        }} />
+        <ColorSchemeScript defaultColorScheme={DEFAULT_COLOR_SCHEME} />
       </head>
       <body>
         <TradingMaxProvider key={scope} scope={scope} desktopCache={desktopCache}>

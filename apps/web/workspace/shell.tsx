@@ -83,7 +83,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const router = useRouter();
   const navigateBuild = useBuildNavigation();
   const { locale, setLocale } = useLocale();
-  const { colorScheme, setColorScheme } = useColorScheme();
+  const { colorScheme, osColorScheme, setColorScheme } = useColorScheme();
   const os = useOs();
   const appleKeyboard = os === "macos" || os === "ios";
   const [searchOpen, setSearchOpen] = useState(false);
@@ -174,10 +174,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, [searchOpen]);
-  // The App has one appearance: macOS. Its native settings already follow it.
-  useEffect(() => {
-    if (desktop && colorScheme !== "auto") setColorScheme("auto");
-  }, [desktop, colorScheme, setColorScheme]);
   // The page title moves into the top bar (or the App's title band) once the
   // large heading scrolls away.
   useEffect(() => {
@@ -330,10 +326,19 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       </span>
     </Link>
   );
+  const systemResolved = osColorScheme === "dark"
+    ? t("深色", "Dark")
+    : osColorScheme === "light"
+      ? t("浅色", "Light")
+      : null;
   const appearances = [
     { value: "light", label: t("浅色", "Light"), Icon: Sun },
     { value: "dark", label: t("深色", "Dark"), Icon: Moon },
-    { value: "auto", label: t("跟随系统", "System"), Icon: CircleHalf },
+    {
+      value: "auto",
+      label: systemResolved ? `${t("跟随系统", "System")} · ${systemResolved}` : t("跟随系统", "System"),
+      Icon: CircleHalf,
+    },
   ] as const;
   const appearanceItems = appearances.map((item) => (
     <Menu.Item

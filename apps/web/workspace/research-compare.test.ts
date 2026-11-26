@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LineSeriesOption } from "echarts";
-import { darkChartColours } from "@/ui/charts/palette";
-import { chartColours } from "@/ui/theme";
+import { chartColours, darkChartColours } from "../tests/fixtures/theme-colours";
 import { compareReading, compareReturnsOption, compareStroke } from "./research-compare";
 
 const tickers = ["AAPL", "MSFT", "GOOGL", "AMZN"];

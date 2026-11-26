@@ -61,7 +61,7 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
         <Button variant="default" disabled={busy} onClick={() => open("keys")}>
           {configured ? t("更新密钥", "Update key") : t("连接 EODHD", "Connect EODHD")}
         </Button>
-        {configured && <Button variant="subtle" color="red" disabled={busy} onClick={() => open("remove")}>
+        {configured && <Button variant="subtle" disabled={busy} onClick={() => open("remove")}>
           {t("删除密钥", "Remove key")}
         </Button>}
       </div>
@@ -93,7 +93,7 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
         {commit.isError && error}
         <div className="flex flex-wrap items-center gap-mx-md">
           <Button variant="default" disabled={busy} onClick={() => open(null)}>{t("取消", "Cancel")}</Button>
-          <Button color="red" loading={busy} onClick={() => submit("remove")}>{t("删除密钥", "Remove key")}</Button>
+          <Button className="mx-destructive-confirm" color="red" variant="outline" loading={busy} onClick={() => submit("remove")}>{t("删除密钥", "Remove key")}</Button>
         </div>
       </div>
     </Modal>
