@@ -886,6 +886,23 @@ test.describe("market index layer", () => {
     expect(requests).toBe(0);
   });
 
+  test("Global keeps Retry on one line beside an unavailable contribution estimate", async ({ page }) => {
+    // Without a residual there is no estimate: the explanation fills the row and Retry must not shrink.
+    await mockIndices(page, { global: { ...globalFixture, residual: null } });
+    await page.goto("/sectors?market=global");
+    const status = page.locator(".mx-global-ranking .mx-global-status");
+    await expect(status).toContainText(/暂无可用的贡献估算|No contribution estimate available/);
+    const retry = status.getByRole("button", { name: /重试|Retry/ });
+    await expect(retry).toBeVisible();
+    expect(await retry.evaluate((button) => {
+      const range = document.createRange();
+      range.selectNodeContents(button);
+      const lines = new Set([...range.getClientRects()].map((rect) => Math.round(rect.top)));
+      return lines.size;
+    })).toBe(1);
+    await expect(retry).toHaveCSS("white-space", "nowrap");
+  });
+
   test("Global groups benchmarks and links the map to contribution rows", async ({ page }, testInfo) => {
     await mockIndices(page);
     await page.goto("/sectors?market=global");
