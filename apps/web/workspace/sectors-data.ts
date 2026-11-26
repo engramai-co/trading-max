@@ -84,24 +84,51 @@ export function squarify<K extends string>(items: ReadonlyArray<{ key: K; weight
 
 export type Direction = "left" | "right" | "up" | "down";
 
-/** The tile an arrow key reaches: the nearest centre in that direction, favouring the same row or column. */
+/**
+ * Spatial navigation candidate selection (edge-based direction test, preferring perpendicular
+ * overlap before weighted fallback). Returns null when no tile lies in the pressed direction
+ * so callers preserve native scrolling at treemap boundaries.
+ */
 export function neighbour(tiles: ReadonlyArray<Tile>, from: string, direction: Direction): string | null {
   const origin = tiles.find((tile) => tile.key === from);
   if (!origin) return tiles[0]?.key ?? null;
-  const cx = origin.x + origin.w / 2;
-  const cy = origin.y + origin.h / 2;
-  let best: { key: string; score: number } | null = null;
+  const horizontal = direction === "left" || direction === "right";
+  const originStart = horizontal ? origin.x : origin.y;
+  const originEnd = horizontal ? origin.x + origin.w : origin.y + origin.h;
+  const originPerpStart = horizontal ? origin.y : origin.x;
+  const originPerpEnd = horizontal ? origin.y + origin.h : origin.x + origin.w;
+  const originPerpCentre = (originPerpStart + originPerpEnd) / 2;
+  const tolerance = 1;
+
+  let bestAligned: { key: string; gap: number; perp: number } | null = null;
+  let bestFallback: { key: string; score: number } | null = null;
+
   for (const tile of tiles) {
     if (tile.key === from) continue;
-    const dx = tile.x + tile.w / 2 - cx;
-    const dy = tile.y + tile.h / 2 - cy;
-    const along = direction === "left" ? -dx : direction === "right" ? dx : direction === "up" ? -dy : dy;
-    const across = direction === "left" || direction === "right" ? Math.abs(dy) : Math.abs(dx);
-    if (along <= 0.5) continue;
-    const score = along + across * 2;
-    if (!best || score < best.score) best = { key: tile.key, score };
+    const start = horizontal ? tile.x : tile.y;
+    const end = horizontal ? tile.x + tile.w : tile.y + tile.h;
+    const perpStart = horizontal ? tile.y : tile.x;
+    const perpEnd = horizontal ? tile.y + tile.h : tile.x + tile.w;
+    const forward = direction === "right" || direction === "down";
+    const gap = forward ? start - originEnd : originStart - end;
+    if (gap < -tolerance) continue;
+    const clampedGap = Math.max(0, gap);
+    const perp = Math.abs((perpStart + perpEnd) / 2 - originPerpCentre);
+    const overlaps = Math.min(originPerpEnd, perpEnd) - Math.max(originPerpStart, perpStart) > 0.5;
+    if (overlaps) {
+      if (
+        !bestAligned ||
+        clampedGap < bestAligned.gap - 0.5 ||
+        (Math.abs(clampedGap - bestAligned.gap) <= 0.5 && perp < bestAligned.perp)
+      ) {
+        bestAligned = { key: tile.key, gap: clampedGap, perp };
+      }
+    } else {
+      const score = clampedGap + perp * 2;
+      if (!bestFallback || score < bestFallback.score) bestFallback = { key: tile.key, score };
+    }
   }
-  return best?.key ?? null;
+  return bestAligned?.key ?? bestFallback?.key ?? null;
 }
 
 export type MarketPhase = "open" | "break" | "closed" | "pre-open" | "unknown";
@@ -127,7 +154,7 @@ export function marketPhase(
   now: Date,
 ): { phase: MarketPhase; session: SectorSessionWindow | null; next: SectorSessionWindow | null } {
   const at = now.getTime();
-  const ordered = [...sessions].sort((a, b) => Date.parse(a.open) - Date.parse(b.open));
+  const ordered = sessions.toSorted((a, b) => Date.parse(a.open) - Date.parse(b.open));
   const next = ordered.find((session) => Date.parse(session.open) > at) ?? null;
   const current = ordered.find((session) => Date.parse(session.open) <= at && at < Date.parse(session.close));
   if (current) {
@@ -136,7 +163,7 @@ export function marketPhase(
     return { phase: inBreak ? "break" : "open", session: current, next };
   }
   if (!ordered.length) return { phase: "unknown", session: null, next: null };
-  const last = [...ordered].reverse().find((session) => Date.parse(session.close) <= at) ?? null;
+  const last = ordered.findLast((session) => Date.parse(session.close) <= at) ?? null;
   const today = zoneDate(now, timeZone);
   if (next && next.date === today) return { phase: "pre-open", session: last, next };
   return { phase: "closed", session: last, next };
@@ -236,5 +263,5 @@ export function byStanding(a: Pick<SectorGroup, "ranks" | "change">, b: Pick<Sec
 
 /** The group a board opens on: the day's best-ranked, so the detail is never empty. */
 export function strongestGroup(groups: ReadonlyArray<SectorGroup>): string | null {
-  return [...groups].sort(byStanding)[0]?.key ?? null;
+  return groups.toSorted(byStanding)[0]?.key ?? null;
 }

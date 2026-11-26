@@ -266,16 +266,29 @@
   font-size: 12px;
 }
 .mx-sensitivity-matrix td[data-direction="positive"] {
-  background: color-mix(in srgb, var(--mx-up) 10%, var(--mx-surface));
-  color: var(--mx-up);
+  background: var(--heat-gain-subtle);
+  color: var(--gain);
 }
 .mx-sensitivity-matrix td[data-direction="negative"] {
-  background: color-mix(in srgb, var(--mx-down) 8%, var(--mx-surface));
-  color: var(--mx-down);
+  background: var(--heat-loss-subtle);
+  color: var(--loss);
+}
+@supports (background: color-mix(in oklab, red, blue)) {
+  .mx-sensitivity-matrix td[data-direction="positive"] {
+    background: color-mix(in oklab, var(--gain) 10%, var(--card));
+  }
+  .mx-sensitivity-matrix td[data-direction="negative"] {
+    background: color-mix(in oklab, var(--loss) 8%, var(--card));
+  }
 }
 .mx-sensitivity-matrix td[data-base] {
-  outline: 2px solid var(--mx-brand);
+  outline: 2px solid var(--link);
   outline-offset: -2px;
+}
+@media (forced-colors: active) {
+  .mx-sensitivity-matrix td[data-base] {
+    outline-color: Highlight;
+  }
 }
 .mx-evidence-inputs {
   display: grid;

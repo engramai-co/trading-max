@@ -179,9 +179,27 @@ test.describe("sector map", () => {
     await expect(selected).toHaveAttribute("data-key", "45");
     await expect(page.locator(".mx-sector-detail h2")).toHaveText(/信息技术|Information Technology/);
     await selected.focus();
+    // At the top-left edge, pressing ArrowLeft or a modified arrow must not trap navigation or change selection.
+    const edgeHandled = await selected.evaluate((el) => {
+      const ev = new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true });
+      el.dispatchEvent(ev);
+      return ev.defaultPrevented;
+    });
+    expect(edgeHandled).toBe(false);
+    await page.keyboard.press("Alt+ArrowRight");
+    await expect(map.locator('.mx-sector-block[aria-pressed="true"]')).toHaveAttribute("data-key", "45");
     await page.keyboard.press("ArrowRight");
     await expect(map.locator('.mx-sector-block[aria-pressed="true"]')).not.toHaveAttribute("data-key", "45");
     await expect(map.locator(".mx-sector-block:focus")).toHaveAttribute("aria-pressed", "true");
+    // Forced colours must keep a real keyboard focus outline on treemap tiles (not box-shadow-only).
+    await page.emulateMedia({ forcedColors: "active" });
+    const focusOutline = await map.locator(".mx-sector-block:focus").evaluate((el) => {
+      const style = getComputedStyle(el);
+      return { style: style.outlineStyle, width: parseFloat(style.outlineWidth) };
+    });
+    expect(focusOutline.style).not.toBe("none");
+    expect(focusOutline.width).toBeGreaterThanOrEqual(2);
+    await page.emulateMedia({ forcedColors: "none" });
     await map.locator('[data-key="30"]').click();
     await expect(page.locator(".mx-sector-detail h2")).toHaveText(/日常消费品|Consumer Staples/);
     await expect(page).toHaveURL(/sector=30/);
@@ -233,8 +251,7 @@ test.describe("sector map", () => {
   test("a rejected market switch keeps the board on screen and offers a retry", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop");
     let hongKongUp = false;
-    let release = () => {};
-    const held = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
     await page.route("**/api/backend/sectors**", async (route) => {
       const code = new URL(route.request().url()).searchParams.get("market") ?? "us";
       if (code === "hk" && !hongKongUp) await route.fulfill({ status: 503, json: { detail: "synthetic outage" } });
@@ -652,6 +669,20 @@ test.describe("market index layer", () => {
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
     if (!mobile) {
       await expect(china).toHaveAccessibleName(/2.3%/);
+      // Overview sector/world tiles keep a real keyboard focus outline in forced colours.
+      await page.emulateMedia({ forcedColors: "active" });
+      await china.focus();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
+      await expect(china).toBeFocused();
+      const outline = await china.evaluate((el) => {
+        const style = getComputedStyle(el);
+        return { style: style.outlineStyle, width: parseFloat(style.outlineWidth), focusVisible: el.matches(":focus-visible") };
+      });
+      expect(outline.focusVisible).toBe(true);
+      expect(outline.style).not.toBe("none");
+      expect(outline.width).toBeGreaterThanOrEqual(2);
+      await page.emulateMedia({ forcedColors: "none" });
       // The map can finish measuring after the pointer arrives and move another block under it; hover again then.
       await expect(async () => {
         await china.hover();
@@ -774,8 +805,7 @@ test.describe("market index layer", () => {
 
   test("retains comparison and last chart while changing the currency or timing out", async ({ page }) => {
     await mockIndices(page);
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     const requests: string[] = [];
     await page.route("**/api/backend/indices/*/history?**", async (route) => {
       const url = new URL(route.request().url());
@@ -1213,5 +1243,93 @@ test.describe("market index layer", () => {
         await page.close();
       }
     }
+  });
+
+  test("preserves global sector map height on tablets, exposes full precision names, and guards 20px root labels", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop");
+    await page.addInitScript(() => {
+      localStorage.setItem("trading_max-locale", "en");
+      const apply = () => {
+        if (!document.documentElement) return false;
+        document.documentElement.style.fontSize = "125%";
+        return true;
+      };
+      if (!apply()) {
+        new MutationObserver((_, observer) => {
+          if (apply()) observer.disconnect();
+        }).observe(document, { childList: true });
+      }
+    });
+    await mockIndices(page);
+    await page.setViewportSize({ width: 820, height: 1000 });
+
+    // Global flat map must keep calc(100dvh - 336px) = 664px instead of the regional 50vh (500px) override.
+    await page.goto("/sectors?view=sectors");
+    const globalMap = page.locator(".mx-sector-map");
+    await expect(globalMap.locator(".mx-sector-block")).toHaveCount(11);
+    const globalHeight = (await globalMap.boundingBox())!.height;
+    expect(globalHeight).toBeGreaterThan(640);
+
+    // Regional map uses the narrow-screen 50vh (500px) height.
+    await page.goto("/sectors?market=us");
+    const usMap = page.locator(".mx-sector-map");
+    await expect(usMap.locator(".mx-sector-block")).toHaveCount(11);
+    const usHeight = (await usMap.boundingBox())!.height;
+    expect(usHeight).toBeCloseTo(500, 0);
+
+    // Sector headers must carry full name + two-decimal precision in accessible name, with explicit aria-label on compact headers.
+    await expect(usMap.locator('.mx-sector-block[data-key="50"]')).toHaveAccessibleName(/Communication Services \+0\.43%/);
+    const compactBlocks = usMap.locator(".mx-sector-block:not([data-roomy])");
+    expect(await compactBlocks.count()).toBeGreaterThan(0);
+    await expect(compactBlocks.first()).toHaveAttribute(
+      "aria-label",
+      /^.+ (?:[+-]\d+\.\d% \([+-]\d+\.\d{2}%\)|[+-]\d+\.\d{2}%)$/,
+    );
+
+    // At 20px root font, no non-none compact block or inner tile may clip vertically inside its padding box.
+    const clippedCompact = await usMap.locator('.mx-sector-block:not([data-roomy])[data-label-tier]:not([data-label-tier="none"]) .mx-sector-head, .mx-sector-tile[data-label-tier]:not([data-label-tier="none"])').evaluateAll((els) =>
+      els.filter((el) => {
+        const cs = getComputedStyle(el);
+        const rect = el.getBoundingClientRect();
+        const innerBottom = rect.bottom - (parseFloat(cs.paddingBottom) || 0) + 0.5;
+        return [...el.children].some((child) => child.getBoundingClientRect().bottom > innerBottom);
+      }).length);
+    expect(clippedCompact).toBe(0);
+
+    // A roomy !narrow block whose name clips beside its move keeps inspection enabled and shows the tooltip.
+    const twoBlockBoard = fixture("us");
+    twoBlockBoard.board.groupings[0].groups = [
+      { ...twoBlockBoard.board.groupings[0].groups[0], weight: 0.75 },
+      { ...twoBlockBoard.board.groupings[0].groups[2], weight: 0.25 },
+    ];
+    await page.route("**/api/backend/sectors?market=us", (route) => route.fulfill({ json: twoBlockBoard }));
+    await page.setViewportSize({ width: 1280, height: 700 });
+    await page.goto("/sectors?market=us");
+    const clippedBlock = usMap.locator('.mx-sector-block[data-key="50"][data-roomy]:not([data-narrow])');
+    await expect(clippedBlock).toBeVisible();
+    const isClipped = await clippedBlock.locator(".mx-sector-name").evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(isClipped).toBe(true);
+    await clippedBlock.hover();
+    await expect(page.getByRole("tooltip")).toContainText("Communication Services");
+
+    // Compact narrow headers lead with their visible reading and append full precision only when rounding changes it.
+    const roundedCompactBoard = fixture("us");
+    roundedCompactBoard.board.groupings[0].groups = [
+      { ...roundedCompactBoard.board.groupings[0].groups[0], weight: 0.89 },
+      { ...roundedCompactBoard.board.groupings[0].groups[1], weight: 0.055 },
+      { ...roundedCompactBoard.board.groupings[0].groups[2], weight: 0.055 },
+    ];
+    await page.route("**/api/backend/sectors?market=us", (route) => route.fulfill({ json: roundedCompactBoard }));
+    await page.goto("/sectors?market=us");
+    const roundedFinancials = usMap.locator('.mx-sector-block[data-key="40"]');
+    await expect(roundedFinancials).not.toHaveAttribute("data-roomy", "");
+    await expect(roundedFinancials.locator(".mx-sector-move")).toHaveText(/^-0\.6%$/);
+    await expect(roundedFinancials).toHaveAttribute("aria-label", /^Financials -0\.6% \(-0\.59%\)$/);
+    await expect(roundedFinancials).toHaveAccessibleName(/^Financials -0\.6% \(-0\.59%\)$/);
+    const unroundedComms = usMap.locator('.mx-sector-block[data-key="50"]');
+    await expect(unroundedComms).not.toHaveAttribute("data-roomy", "");
+    await expect(unroundedComms.locator(".mx-sector-move")).toHaveText(/^\+0\.43%$/);
+    await expect(unroundedComms).toHaveAttribute("aria-label", /^Communication Services \+0\.43%$/);
+    await expect(unroundedComms).toHaveAccessibleName(/^Communication Services \+0\.43%$/);
   });
 });

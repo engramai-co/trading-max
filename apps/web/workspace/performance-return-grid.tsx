@@ -41,7 +41,7 @@ export function ReturnGrid({ scope, onSelect, selected, runId }: {
     const active = selected?.start === period.start && selected.end === period.end;
     const partial = period.partial ? t("部分覆盖", "Partial coverage") : "";
     const title = [key, percent(period.value, true, 2), formatCalendarDate(period.start, locale) + " – " + formatCalendarDate(period.end, locale), partial].filter(Boolean).join(" · ");
-    return <button type="button" className={`mx-heat-pill mx-${tone(period.value)}`} title={title} aria-label={title}
+    return <button type="button" className={`mx-heat-pill tm-heat-pill mx-${tone(period.value)}`} title={title} aria-label={title}
       aria-pressed={active} data-partial={period.partial}
       style={{ "--mx-heat": Math.min(1, Math.abs(period.value) / 0.03) } as CSSProperties} onClick={() => onSelect(period)}>
       {showLabel && <small>{label(key)}</small>}

@@ -5,6 +5,7 @@ import { CaretDown } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useBreakpoint } from "@/lib/hooks";
+import { cn } from "@/lib/utils";
 import {
   useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type ReactNode,
 } from "react";
@@ -20,7 +21,15 @@ import Link from "./link";
 import { InlineRetry } from "./dashboard-controls";
 import { SectorSources, SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
 import { SECTOR_MARKETS, heatMix, marketPhase, sectorMarket, squarify, type Tile } from "./sectors-data";
-import { changeTone, groupName, textWidth } from "./sectors-map";
+import { changeTone, groupName } from "./sectors-map";
+import {
+  fitTileLabel,
+  measureTileText,
+  TILE_TIERS,
+  TILE_TIER_PADDING,
+  TILE_TIER_TEXT,
+  useMeasuredBox,
+} from "./tile-layout";
 
 /** Seam between blocks. */
 const GAP = 3;
@@ -34,12 +43,6 @@ function box(tile: Tile): Tile {
   const y = Math.round(tile.y);
   return { key: tile.key, x, y, w: Math.max(0, Math.round(tile.x + tile.w) - x - GAP), h: Math.max(0, Math.round(tile.y + tile.h) - y - GAP) };
 }
-/** A block's padding, type size and line height, as the stylesheet sets them; small blocks set tighter. */
-const ROOMY = { padX: 10, padY: 8, size: 13, line: 18 };
-const COMPACT = { padX: 6, padY: 5, size: 12, line: 16 };
-/** The last setting before a narrow block gives up its move: the smallest type, on the narrowest padding. */
-const TIGHT = { padX: 3, padY: 5, size: 12, line: 16 };
-type Type = typeof ROOMY;
 
 /** Brokers' short sector names, for blocks too small for the full one; the full name stays in the label. */
 const SHORT: Record<string, [string, string]> = {
@@ -64,112 +67,6 @@ const TINY: Record<string, string> = { "15": "Matl.", "55": "Util.", "60": "R. e
 const ASPECTS = [1, 0.9, 1.1, 0.8, 1.25, 0.7, 1.4, 0.65, 1.5, 0.6, 1.6, 0.55, 1.8];
 /** Moves the layout is chosen for, so a quote refresh never moves a block: the figures shown fit the chosen shapes. */
 const SAMPLE_MOVE = { full: "+0.00%", rounded: "+0.0%" };
-
-type Measure = (text: string, size: number) => number;
-type Shown = {
-  name: string;
-  change: string;
-  showName: boolean;
-  showChange: boolean;
-  wrap: boolean;
-  inline: boolean;
-  compact: boolean;
-  tight: boolean;
-  /** The full name and the two-decimal move are both on the block. */
-  complete: boolean;
-};
-
-let canvas: CanvasRenderingContext2D | null | undefined;
-const widths = new Map<string, number>();
-
-/** Rendered width of a semibold label in the page's own font; the estimate stands in without a canvas. */
-function measureText(text: string, size: number, family: string) {
-  if (canvas === undefined) canvas = typeof document === "undefined" ? null : document.createElement("canvas").getContext("2d");
-  if (!canvas || !family) return textWidth(text, size);
-  const key = family + "|" + size + "|" + text;
-  let width = widths.get(key);
-  if (width == null) {
-    canvas.font = "600 " + size + "px " + family;
-    width = canvas.measureText(text).width;
-    widths.set(key, width);
-  }
-  return width;
-}
-
-/** Lines a name needs at a width: Latin names break between words; Chinese names stay on one line. */
-function lineCount(name: string, room: number, size: number, measure: Measure) {
-  if (measure(name, size) <= room) return 1;
-  const words = name.split(" ");
-  if (words.length < 2) return Infinity;
-  const space = measure(" ", size);
-  let lines = 1;
-  let line = 0;
-  for (const word of words) {
-    const width = measure(word, size);
-    if (width > room) return Infinity;
-    if (line === 0) line = width;
-    else if (line + space + width <= room) line += space + width;
-    else {
-      lines += 1;
-      line = width;
-    }
-  }
-  return lines;
-}
-
-/**
- * What a block shows. Its name over its whole move, trying the full name, then tighter type, then the short
- * name, then the move to one decimal; then both on one line for a wide, short block; then two lines of name;
- * then the narrowest padding; then the name alone, since the wash already shows the direction. Whatever a block
- * leaves out, its tooltip and accessible name carry.
- */
-function labels(names: { full: string; short: string; tiny: string }, change: string, rounded: string, width: number, height: number,
-  measure: Measure): Shown {
-  const { full, short, tiny } = names;
-  const attempt = ({ name, change: move, type }: { name: string; change: string; type: Type }) => {
-    const room = width - type.padX * 2;
-    const rows = Math.floor((height - type.padY * 2) / type.line);
-    const lines = lineCount(name, room, type.size, measure);
-    const moveWidth = measure(move, type.size);
-    return {
-      name,
-      move,
-      compact: type !== ROOMY,
-      tight: type === TIGHT,
-      rows,
-      oneLine: lines === 1,
-      twoLines: lines <= 2,
-      fits: moveWidth <= room,
-      inline: lines === 1 && measure(name, type.size) + 6 + moveWidth <= room,
-    };
-  };
-  const attempts = [
-    { name: full, change, type: ROOMY },
-    { name: full, change, type: COMPACT },
-    { name: short, change, type: ROOMY },
-    { name: short, change, type: COMPACT },
-    { name: short, change: rounded, type: COMPACT },
-    { name: tiny, change: rounded, type: COMPACT },
-  ].map(attempt);
-  const pick = (chosen: ReturnType<typeof attempt>, shown: Partial<Shown>): Shown => {
-    const result = {
-      name: chosen.name, change: chosen.move, compact: chosen.compact, tight: chosen.tight,
-      showName: true, showChange: true, wrap: false, inline: false, ...shown,
-    };
-    return { ...result, complete: result.showName && result.showChange && result.name === full && result.change === change };
-  };
-  const stacked = attempts.find((a) => a.oneLine && a.fits && a.rows >= 2);
-  if (stacked) return pick(stacked, {});
-  const inline = attempts.find((a) => a.inline && a.rows >= 1);
-  if (inline) return pick(inline, { inline: true });
-  const wrapped = attempts.find((a) => a.twoLines && a.fits && a.rows >= 3);
-  if (wrapped) return pick(wrapped, { wrap: true });
-  const tight = attempt({ name: tiny, change: rounded, type: TIGHT });
-  if (tight.oneLine && tight.fits && tight.rows >= 2) return pick(tight, {});
-  const named = attempts.find((a) => a.oneLine && a.rows >= 1) ?? attempts.find((a) => a.twoLines && a.rows >= 2);
-  if (named) return pick(named, { showChange: false, wrap: !named.oneLine });
-  return pick(attempts[0], { showName: false, showChange: false });
-}
 
 type OverviewMarket = SectorMarketCode | "global";
 type WorldMarket = GlobalMarketContribution["markets"][number]["market"];
@@ -447,7 +344,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
   const total = formatDeltaPercent(acwiMove, locale, 2);
   // With weights, phones read the blocks by share, the largest first.
   const order = weighted
-    ? [...markets].sort((a, b) => (b.weight ?? 0) - (a.weight ?? 0) || WORLD_ORDER.indexOf(a.market) - WORLD_ORDER.indexOf(b.market))
+    ? markets.toSorted((a, b) => (b.weight ?? 0) - (a.weight ?? 0) || WORLD_ORDER.indexOf(a.market) - WORLD_ORDER.indexOf(b.market))
       .map((item) => item.market)
     : WORLD_ORDER;
   return (
@@ -469,12 +366,14 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
           // China's block shows a short name, so its full name and move also show on hover and focus.
           <Tip key={market} disabled={market !== "cn"} withinPortal describes={false}
             label={<TipLines name={globalMarketReading(market, full, locale)} figures={[change]} />}>
-          <Link href={"/sectors?market=" + market} className="mx-overview-sector" style={style}
+          <Link href={"/sectors?market=" + market}
+            className="mx-overview-sector tm-heat-surface tm-tile-interactive relative flex flex-col justify-center gap-[1px] overflow-clip rounded-[6px] px-1.5 py-2 text-foreground no-underline"
+            style={style}
             data-tone={idle ? undefined : changeTone(move)} data-idle={idle ? "" : undefined}
             aria-label={reading}>
-            <span className="mx-overview-sector-name">{locale === "zh" ? full : place.short}</span>
+            <span className="mx-overview-sector-name truncate text-[13px] font-semibold leading-[18px]">{locale === "zh" ? full : place.short}</span>
             {/* A narrow card rounds to one decimal; the accessible name keeps both. */}
-            <span className="mx-overview-sector-change">
+            <span className={cn("mx-overview-sector-change truncate tabular-nums", idle ? "text-xs font-medium leading-[18px] text-muted-foreground" : "text-[13px] font-semibold leading-[18px]")}>
               {idle ? change : <>
                 <span className="mx-overview-world-full">{change}</span>
                 <span className="mx-overview-world-short">{formatDeltaPercent(move, locale, 1)}</span>
@@ -501,23 +400,7 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
   const { locale } = useLocale();
   const scheme = useComputedColorScheme("dark");
   const map = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [family, setFamily] = useState("");
-  const measure = useCallback<Measure>((text, size) => measureText(text, size, family), [family]);
-  useLayoutEffect(() => {
-    const element = map.current;
-    if (!element) return;
-    setFamily(getComputedStyle(element).fontFamily);
-    const measure = () => {
-      const { width, height } = element.getBoundingClientRect();
-      setSize((current) =>
-        current && Math.abs(current.w - width) < 1 && Math.abs(current.h - height) < 1 ? current : { w: width, h: height });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  const { size, measure, budgets } = useMeasuredBox(map);
   const names = useCallback((key: WorldKey) => {
     if (key === "other") {
       const name = locale === "zh" ? "其他" : "Other";
@@ -541,7 +424,17 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
       const laid = squarify(items, { x: 0, y: 0, w: size.w + GAP, h: (size.h + GAP) * aspect })
         .map((tile) => box({ ...tile, y: tile.y / aspect, h: tile.h / aspect }) as Tile<WorldKey>);
       const lost = laid.reduce((sum, tile) => {
-        const shown = labels(names(tile.key), SAMPLE_MOVE.full, SAMPLE_MOVE.rounded, tile.w, tile.h, measure);
+        const shown = fitTileLabel({
+          names: names(tile.key),
+          change: SAMPLE_MOVE.full,
+          rounded: SAMPLE_MOVE.rounded,
+          width: tile.w,
+          height: tile.h,
+          measure,
+          tiers: budgets.tiers,
+          gapX: budgets.gapInline,
+          gapY: 1,
+        });
         return sum + (shown.showName ? 0 : 2) + (tile.key === "other" || shown.showChange ? 0 : 1);
       }, 0);
       if (!best || lost < best.lost) best = { tiles: laid, lost };
@@ -550,7 +443,7 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
     return best?.tiles ?? [];
     // The weights string stands for the items: a refresh that only changes moves keeps the layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weights, size, measure, names]);
+  }, [weights, size, measure, budgets, names]);
   const byMarket = new Map(markets.map((item) => [item.market as WorldKey, item]));
   return (
     <div ref={map} className="mx-overview-sector-map mx-overview-world-map" role="group" aria-label={label}>
@@ -559,7 +452,17 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
         const share = key === "other" ? other : item?.weight ?? 0;
         const idle = !item || item.notOpen || item.move == null;
         const change = item ? worldChange(item, locale, 2, t) : "";
-        const shown = labels(names(key), change, item ? worldChange(item, locale, 1, t) : "", width, height, measure);
+        const shown = fitTileLabel({
+          names: names(key),
+          change,
+          rounded: item ? worldChange(item, locale, 1, t) : "",
+          width,
+          height,
+          measure,
+          tiers: budgets.tiers,
+          gapX: budgets.gapInline,
+          gapY: 1,
+        });
         const name = key === "other" ? t("其他市场", "Other markets") : names(key).full;
         const reading = [globalMarketReading(key, name, locale), change].filter(Boolean).join(" ");
         const spoken = locale === "zh"
@@ -569,12 +472,26 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
         // The tooltip repeats the accessible name in two lines, so it does not also describe the link.
         return (
           <Tip key={key} label={<TipLines name={globalMarketReading(key, name, locale)} figures={[change, percent(share, false, 1)]} />} withinPortal describes={false}>
-            <Link href={key === "other" ? "/sectors" : "/sectors?market=" + key} className="mx-overview-sector"
+            <Link href={key === "other" ? "/sectors" : "/sectors?market=" + key}
+              className={cn(
+                "mx-overview-sector tm-heat-surface tm-tile-interactive absolute flex overflow-clip rounded-[6px] text-foreground no-underline",
+                shown.inline ? "flex-row items-baseline gap-1.5" : "flex-col gap-[1px]",
+                TILE_TIER_PADDING[shown.tier],
+                TILE_TIER_TEXT[shown.tier],
+              )}
               data-tone={idle ? undefined : changeTone(item!.move)} data-idle={idle ? "" : undefined}
-              data-compact={shown.compact ? "" : undefined} data-tight={shown.tight ? "" : undefined}
+              data-label-tier={shown.tier}
+              data-compact={shown.tier !== "roomy" ? "" : undefined} data-tight={shown.tier === "tight" ? "" : undefined}
               data-inline={shown.inline ? "" : undefined} style={style} aria-label={spoken}>
-              {shown.showName && <span className="mx-overview-sector-name" data-wrap={shown.wrap ? "" : undefined}>{shown.name}</span>}
-              {key !== "other" && shown.showChange && <span className="mx-overview-sector-change">{shown.change}</span>}
+              {shown.showName && (
+                <span className={cn("mx-overview-sector-name font-semibold", shown.wrap ? "line-clamp-2 whitespace-normal" : "truncate")}
+                  data-wrap={shown.wrap ? "" : undefined}>{shown.name}</span>
+              )}
+              {key !== "other" && shown.showChange && (
+                <span className={cn("mx-overview-sector-change truncate tabular-nums", idle ? "font-medium text-muted-foreground" : "font-semibold")}>
+                  {shown.change}
+                </span>
+              )}
             </Link>
           </Tip>
         );
@@ -616,23 +533,7 @@ function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: S
   const scheme = useComputedColorScheme("dark");
   const spoken = useSpoken();
   const map = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState<{ w: number; h: number } | null>(null);
-  const [family, setFamily] = useState("");
-  const measure = useCallback<Measure>((text, size) => measureText(text, size, family), [family]);
-  useLayoutEffect(() => {
-    const element = map.current;
-    if (!element) return;
-    setFamily(getComputedStyle(element).fontFamily);
-    const measure = () => {
-      const { width, height } = element.getBoundingClientRect();
-      setSize((current) =>
-        current && Math.abs(current.w - width) < 1 && Math.abs(current.h - height) < 1 ? current : { w: width, h: height });
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, []);
+  const { size, measure, budgets } = useMeasuredBox(map);
   // Each sector's names. The layout depends on these, the weights and the size only.
   const names = useCallback((group: SectorGroup) => {
     const full = groupName(group, "gics", locale);
@@ -650,7 +551,17 @@ function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: S
       const laid = squarify(items, { x: 0, y: 0, w: size.w + GAP, h: (size.h + GAP) * aspect })
         .map((tile) => box({ ...tile, y: tile.y / aspect, h: tile.h / aspect }));
       const lost = laid.reduce((sum, tile) => {
-        const shown = labels(names(byKey.get(tile.key)!), SAMPLE_MOVE.full, SAMPLE_MOVE.rounded, tile.w, tile.h, measure);
+        const shown = fitTileLabel({
+          names: names(byKey.get(tile.key)!),
+          change: SAMPLE_MOVE.full,
+          rounded: SAMPLE_MOVE.rounded,
+          width: tile.w,
+          height: tile.h,
+          measure,
+          tiers: budgets.tiers,
+          gapX: budgets.gapInline,
+          gapY: 1,
+        });
         return sum + (shown.showName ? 0 : 2) + (shown.showChange ? 0 : 1);
       }, 0);
       if (!best || lost < best.lost) best = { tiles: laid, lost };
@@ -659,27 +570,45 @@ function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: S
     return best?.tiles ?? [];
     // The weights string stands for the groups: a refresh that only changes moves keeps the layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weights, size, measure, names]);
+  }, [weights, size, measure, budgets, names]);
   const byKey = new Map(groups.map((group) => [group.key, group]));
   return (
     <div ref={map} className="mx-overview-sector-map" role="group" aria-label={label}>
       {tiles.map(({ key, x: left, y: top, w: width, h: height }) => {
         const group = byKey.get(key);
         if (!group) return null;
-        const shown = labels(names(group), formatDeltaPercent(group.change, locale, 2), formatDeltaPercent(group.change, locale, 1),
-          width, height, measure);
+        const shown = fitTileLabel({
+          names: names(group),
+          change: formatDeltaPercent(group.change, locale, 2),
+          rounded: formatDeltaPercent(group.change, locale, 1),
+          width,
+          height,
+          measure,
+          tiers: budgets.tiers,
+          gapX: budgets.gapInline,
+          gapY: 1,
+        });
         const style = { left, top, width, height, "--mx-heat-mix": heatMix(group.change, scheme) } as CSSProperties;
         const content = (
           <>
-            {shown.showName && <span className="mx-overview-sector-name" data-wrap={shown.wrap ? "" : undefined}>{shown.name}</span>}
-            {shown.showChange && <span className="mx-overview-sector-change">{shown.change}</span>}
+            {shown.showName && (
+              <span className={cn("mx-overview-sector-name font-semibold", shown.wrap ? "line-clamp-2 whitespace-normal" : "truncate")}
+                data-wrap={shown.wrap ? "" : undefined}>{shown.name}</span>
+            )}
+            {shown.showChange && <span className="mx-overview-sector-change truncate font-semibold tabular-nums">{shown.change}</span>}
           </>
         );
         const attributes = {
-          className: "mx-overview-sector",
+          className: cn(
+            "mx-overview-sector tm-heat-surface tm-tile-interactive absolute flex overflow-clip rounded-[6px] text-foreground no-underline",
+            shown.inline ? "flex-row items-baseline gap-1.5" : "flex-col gap-[1px]",
+            TILE_TIER_PADDING[shown.tier],
+            TILE_TIER_TEXT[shown.tier],
+          ),
           "data-tone": changeTone(group.change),
-          "data-compact": shown.compact ? "" : undefined,
-          "data-tight": shown.tight ? "" : undefined,
+          "data-label-tier": shown.tier,
+          "data-compact": shown.tier !== "roomy" ? "" : undefined,
+          "data-tight": shown.tier === "tight" ? "" : undefined,
           "data-inline": shown.inline ? "" : undefined,
           style,
         };
@@ -705,36 +634,56 @@ function SectorGrid({ groups, market, label }: { groups: SectorGroup[]; market: 
   const spoken = useSpoken();
   const grid = useRef<HTMLDivElement>(null);
   // The width a label has: the first block's own, which may be a double block, and every other block's.
-  const [room, setRoom] = useState<{ first: number; other: number } | null>(null);
-  const [family, setFamily] = useState("");
+  const [room, setRoom] = useState<{ first: number; other: number; fontSize: number; family: string } | null>(null);
   useLayoutEffect(() => {
     const element = grid.current;
     if (!element) return;
-    setFamily(getComputedStyle(element).fontFamily);
     const measure = () => {
-      const width = (block: Element | null) => (block ? block.getBoundingClientRect().width - ROOMY.padX * 2 : 0);
-      const next = { first: width(element.firstElementChild), other: width(element.lastElementChild) };
+      const width = (block: Element | null) => {
+        if (!block) return 0;
+        const cs = getComputedStyle(block);
+        const pad = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
+        return block.getBoundingClientRect().width - (pad > 0 ? pad : TILE_TIERS.roomy.padX * 2);
+      };
+      const nameElement = element.querySelector(".mx-overview-sector-name");
+      const nameStyle = nameElement ? getComputedStyle(nameElement) : null;
+      const fontSize = parseFloat(nameStyle?.fontSize ?? "") || TILE_TIERS.roomy.size;
+      const family = nameStyle?.fontFamily || getComputedStyle(element).fontFamily;
+      const next = { first: width(element.firstElementChild), other: width(element.lastElementChild), fontSize, family };
       setRoom((current) =>
-        current && Math.abs(current.first - next.first) < 1 && Math.abs(current.other - next.other) < 1 ? current : next);
+        current &&
+        Math.abs(current.first - next.first) < 1 &&
+        Math.abs(current.other - next.other) < 1 &&
+        current.fontSize === next.fontSize &&
+        current.family === next.family
+          ? current
+          : next,
+      );
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
+    const rootObserver = new MutationObserver(measure);
+    rootObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+    return () => {
+      observer.disconnect();
+      rootObserver.disconnect();
+    };
   }, []);
-  const ordered = useMemo(() => [...groups].sort((a, b) => b.weight - a.weight || a.key.localeCompare(b.key)), [groups]);
+  const ordered = useMemo(() => groups.toSorted((a, b) => b.weight - a.weight || a.key.localeCompare(b.key)), [groups]);
   return (
     <div ref={grid} className="mx-overview-sector-grid" role="group" aria-label={label}>
       {ordered.map((group, index) => {
         const full = groupName(group, "gics", locale);
         const short = SHORT[group.key]?.[locale === "zh" ? 0 : 1] ?? full;
-        const fits = !room || measureText(full, ROOMY.size, family) <= (index === 0 ? room.first : room.other);
+        const fits = !room || measureTileText(full, room.fontSize, room.family) <= (index === 0 ? room.first : room.other);
         return (
           <Link key={group.key} href={"/sectors?market=" + market + "&sector=" + encodeURIComponent(group.key)}
-            className="mx-overview-sector" data-tone={changeTone(group.change)} aria-label={spoken(group)}
+            className="mx-overview-sector tm-heat-surface tm-tile-interactive relative flex flex-col justify-center gap-[1px] overflow-clip rounded-[6px] px-2.5 py-2 text-foreground no-underline"
+            data-tone={changeTone(group.change)} aria-label={spoken(group)}
             style={{ "--mx-heat-mix": heatMix(group.change, scheme) } as CSSProperties}>
-            <span className="mx-overview-sector-name">{fits ? full : short}</span>
-            <span className="mx-overview-sector-change">{formatDeltaPercent(group.change, locale, 2)}</span>
+            <span className="mx-overview-sector-name truncate text-[13px] font-semibold leading-[18px]">{fits ? full : short}</span>
+            <span className="mx-overview-sector-change truncate text-[13px] font-semibold leading-[18px] tabular-nums">{formatDeltaPercent(group.change, locale, 2)}</span>
           </Link>
         );
       })}

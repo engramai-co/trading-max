@@ -189,12 +189,6 @@
 .mx-period-figure .mx-text-link {
   margin-left: auto;
 }
-.mx-source-legend {
-  padding-top: 6px;
-}
-.mx-source-legend svg {
-  flex: none;
-}
 .mx-ranking-link {
   padding: 0;
   border: 0;
@@ -319,42 +313,6 @@
 .mx-statements .mx-spark-cell {
   width: 1%;
   padding-inline: 16px 20px;
-}
-.mx-sparkbars {
-  display: block;
-  margin-left: auto;
-  color: var(--mx-muted);
-}
-.mx-sparkbars rect {
-  fill: currentColor;
-  opacity: 0.4;
-}
-.mx-sparkbars rect[data-latest] {
-  fill: var(--mx-ink);
-  opacity: 0.8;
-}
-.mx-sparkbars rect[data-negative] {
-  fill: var(--mx-down);
-  opacity: 0.55;
-}
-.mx-sparkbars rect[data-negative][data-latest] {
-  opacity: 1;
-}
-.mx-sparkline {
-  display: block;
-  width: 100%;
-  height: 44px;
-  overflow: visible;
-}
-.mx-sparkline-line {
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
-  stroke-linejoin: round;
-}
-.mx-sparkline-area {
-  fill: currentColor;
-  opacity: 0.08;
 }
 .mx-peek-target {
   min-width: 0;

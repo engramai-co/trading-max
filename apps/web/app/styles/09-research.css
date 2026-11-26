@@ -287,54 +287,6 @@
   font-size: 18px;
   font-weight: 550;
 }
-.mx-month-calendar {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 5px;
-}
-.mx-month-cell {
-  border: 1px solid transparent;
-  border-radius: 7px;
-  padding: 14px 3px;
-  background: var(--mx-soft);
-  font: inherit;
-  cursor: pointer;
-  min-width: 0;
-}
-.mx-month-cell.mx-up {
-  background: color-mix(in srgb, var(--mx-up) 9%, var(--mx-surface));
-}
-.mx-month-cell.mx-down {
-  background: color-mix(in srgb, var(--mx-down) 9%, var(--mx-surface));
-}
-.mx-month-cell span {
-  display: block;
-  color: var(--mx-muted);
-  font-size: 12px;
-  margin-bottom: 8px;
-}
-.mx-month-cell strong {
-  display: block;
-  font-size: 15px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.mx-month-cell[aria-pressed="true"] {
-  border-color: var(--mx-brand);
-}
-.mx-month-cell .mx-thin-sample {
-  display: block;
-  margin-top: 4px;
-  color: var(--mx-warning);
-}
-.mx-month-cell:hover:not(:disabled) {
-  outline: 1px solid var(--mx-border);
-  outline-offset: 2px;
-}
-.mx-month-cell:disabled {
-  cursor: default;
-  opacity: 0.55;
-}
 .mx-season-detail {
   padding-top: 22px;
 }
@@ -513,10 +465,6 @@ html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-str
   }
 }
 @media (max-width: 1100px) {
-  .mx-month-calendar {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-    gap: 7px;
-  }
   .mx-season-detail .mx-facts {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 18px;
@@ -550,12 +498,6 @@ html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-str
   .mx-valuation-context,
   .mx-valuation-references .mx-facts {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .mx-month-calendar {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  .mx-month-cell {
-    padding-block: 12px;
   }
   .mx-sensitivity-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -749,24 +691,6 @@ html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-str
 .mx-plot [tabindex]:focus-visible {
   outline: 2px solid var(--mx-brand);
   outline-offset: -2px;
-}
-.mx-season-table td {
-  text-align: center;
-  padding: 0;
-}
-.mx-season-table td button {
-  width: 100%;
-  padding: 12px 8px;
-  background: transparent;
-  border: 0;
-  color: inherit;
-  font-variant-numeric: tabular-nums;
-}
-.mx-season-table td[data-direction="up"] {
-  background: color-mix(in srgb, var(--mx-up) 9%, transparent);
-}
-.mx-season-table td[data-direction="down"] {
-  background: color-mix(in srgb, var(--mx-down) 9%, transparent);
 }
 @media (max-width: 767px) {
   .mx-price-tools > .mx-segments {

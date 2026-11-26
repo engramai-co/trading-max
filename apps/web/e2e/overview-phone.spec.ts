@@ -304,6 +304,44 @@ test.describe("overview on phones", () => {
     await expect(page.locator(".mx-overview-history .mx-day-drivers a")).toHaveCount(3);
     await expect(page.locator(".mx-overview-lead")).toBeHidden();
   });
+
+  test("sector grid measures the 13px label font at an enlarged root so fitting names stay unabbreviated", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "The phone layout");
+    await page.addInitScript(() => {
+      const apply = () => {
+        if (!document.documentElement) return false;
+        document.documentElement.style.fontSize = "125%";
+        return true;
+      };
+      if (!apply()) {
+        new MutationObserver((_, observer) => {
+          if (apply()) observer.disconnect();
+        }).observe(document, { childList: true });
+      }
+    });
+    await open(page, "en");
+
+    for (const width of [340, 768]) {
+      await resize(page, width);
+      const staples = page.locator('.mx-overview-sector-grid a[href*="sector=30"] .mx-overview-sector-name');
+      const comms = page.locator('.mx-overview-sector-grid a[href*="sector=50"] .mx-overview-sector-name');
+      await expect(staples).toHaveText("Consumer Staples");
+      await expect(comms).toHaveText("Comms");
+
+      const metrics = await page.locator(".mx-overview-sector-grid").evaluate((grid) => {
+        const link = grid.querySelector('a[href*="sector=30"]')!;
+        const label = link.querySelector(".mx-overview-sector-name")!;
+        return {
+          linkFontSize: parseFloat(getComputedStyle(link).fontSize),
+          labelFontSize: parseFloat(getComputedStyle(label).fontSize),
+          labelOverflows: label.scrollWidth > label.clientWidth + 1,
+        };
+      });
+      if (width >= 768) expect(metrics.linkFontSize).toBeGreaterThan(metrics.labelFontSize);
+      expect(metrics.labelFontSize).toBe(13);
+      expect(metrics.labelOverflows).toBe(false);
+    }
+  });
 });
 
 test("publishes an Overview run only after its history arrives and the chart reading ends", async ({ page, isMobile }) => {

@@ -85,7 +85,7 @@ export function HistoryCoverage({ history }: { history: PortfolioHistory }) {
   const t = useCopy();
   if (!history.pendingCashFlows) return null;
   return (
-    <div className="mx-history-coverage" data-history-source={history.source}>
+    <div className="mx-history-coverage mb-4 min-w-0" data-history-source={history.source}>
       {history.cashFlowCutoffAt
         ? <Freshness date={history.cashFlowCutoffAt} label={t("出入金待核对 · 统计截至", "Deposits and withdrawals pending · Calculated through")} />
         : t("已有估值记录，出入金待核对。", "Valuations are recorded; deposits and withdrawals await reconciliation.")}

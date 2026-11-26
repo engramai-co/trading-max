@@ -237,6 +237,24 @@ describe("Palette A neutral-ink colour tokens and WCAG contrast contract", () =>
           expect(oklabRatio, `${scheme} ink on OKLab ${hueToken} ${weight}`).toBeGreaterThanOrEqual(4.5);
         }
       }
+      for (const fallback of ["--heat-gain-fallback", "--heat-loss-fallback", "--heat-missing", "--heat-gain-subtle", "--heat-loss-subtle"] as const) {
+        const ratio = contrastRatio(ink, hex(fallback));
+        expect(ratio, `${scheme} ink on ${fallback} (${ratio.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
+      }
+      const card = hex("--card");
+      for (const [fgToken, subtleToken] of [
+        ["--gain", "--heat-gain-subtle"],
+        ["--loss", "--heat-loss-subtle"],
+      ] as const) {
+        const hue = hex(fgToken);
+        expect(contrastRatio(hue, hex(subtleToken)), `${scheme} ${fgToken} on ${subtleToken}`).toBeGreaterThanOrEqual(4.5);
+        const pillInk = mixOklab(hue, ink, 0.72);
+        for (const heat of [0, 0.5, 1]) {
+          const pillBg = mixOklab(hue, card, 0.07 + heat * 0.17);
+          const ratio = contrastRatio(pillInk, pillBg);
+          expect(ratio, `${scheme} return pill ${fgToken} heat=${heat} (${ratio.toFixed(2)}:1)`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
     });
   }
 

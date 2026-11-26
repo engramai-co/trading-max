@@ -34,88 +34,6 @@
     background: var(--scrollbar-track);
   }
 }
-.mx-index-card {
-  position: relative;
-  --mx-index-hue: var(--mx-soft);
-  --mx-heat-hue: var(--heat-base);
-  display: grid;
-  grid-template-rows: auto auto 25px;
-  gap: 7px;
-  padding: 10px 12px 7px;
-  min-width: 0;
-  border: 1px solid var(--mx-border);
-  border-radius: 10px;
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
-  color: var(--mx-ink);
-  text-decoration: none;
-}
-.mx-index-card[data-tone="up"] {
-  --mx-index-hue: var(--mx-up);
-  --mx-heat-hue: var(--heat-gain);
-}
-.mx-index-card[data-tone="down"] {
-  --mx-index-hue: var(--mx-down);
-  --mx-heat-hue: var(--heat-loss);
-}
-.mx-index-card:hover {
-  border-color: var(--mx-muted);
-}
-.mx-index-card:focus-visible,
-.mx-index-card[aria-current="page"],
-.mx-index-card[data-benchmark="primary"] {
-  outline: 2px solid var(--mx-brand);
-  outline-offset: -2px;
-}
-.mx-index-name,
-.mx-index-figures {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 6px;
-}
-.mx-index-name {
-  align-items: center;
-  font-size: 13px;
-  font-weight: 600;
-}
-.mx-index-name svg {
-  flex: none;
-  opacity: 0.65;
-}
-.mx-index-figures {
-  flex-wrap: wrap;
-}
-.mx-index-figures strong {
-  font-size: 21px;
-  font-weight: 650;
-  line-height: 1.1;
-}
-.mx-index-figures > span {
-  font-size: 13px;
-}
-.mx-index-spark {
-  position: relative;
-  color: var(--mx-index-hue);
-}
-.mx-index-card[data-tone="neutral"] .mx-index-spark {
-  color: var(--mx-muted);
-}
-.mx-index-spark svg {
-  width: 100%;
-  height: 100%;
-  stroke: currentColor;
-  stroke-width: 1.5px;
-}
-.mx-index-freshness {
-  position: absolute;
-  bottom: 7px;
-  right: 8px;
-  border-radius: 4px;
-  padding: 0 4px;
-  color: var(--mx-ink);
-  background: var(--mx-soft);
-  font-size: 11px;
-}
 .mx-index-stamp {
   display: flex;
   flex-wrap: wrap;
@@ -306,12 +224,6 @@
     grid-auto-columns: minmax(143px, 44%);
     gap: var(--mx-space-group);
     scroll-snap-type: x proximity;
-  }
-  .mx-index-card {
-    scroll-snap-align: start;
-  }
-  .mx-index-figures strong {
-    font-size: var(--mx-text-metric);
   }
   .mx-index-detail {
     gap: var(--mx-space-section);

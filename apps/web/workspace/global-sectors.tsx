@@ -151,9 +151,21 @@ function WorldSectorFacts({ sector, answer }: { sector: Sector; answer: GlobalSe
       </div>}
       {ranks.length > 0 && <div>
         <dt>{t("近 5 日排名", "Last 5 sessions")}</dt>
-        <dd className="mx-sector-ranks-cell"><ol className="mx-sector-ranks">
-          {ranks.map(({ rank, day }) => <li key={day} data-top={rank <= 3 || undefined}
-            title={formatCalendarDate(day, locale)}>{rank}</li>)}
+        <dd className="mx-sector-ranks-cell"><ol className="mx-sector-ranks m-0 flex list-none gap-1 p-0">
+          {ranks.map(({ rank, day }) => (
+            <li
+              key={day}
+              className={
+                rank <= 3
+                  ? "grid size-6 place-items-center rounded-[5px] bg-foreground text-xs font-semibold tabular-nums text-card"
+                  : "grid size-6 place-items-center rounded-[5px] bg-muted text-xs font-semibold tabular-nums text-muted-foreground"
+              }
+              data-top={rank <= 3 || undefined}
+              title={formatCalendarDate(day, locale)}
+            >
+              {rank}
+            </li>
+          ))}
         </ol></dd>
       </div>}
       {basis != null && basis > 0 && exposure != null && <div>

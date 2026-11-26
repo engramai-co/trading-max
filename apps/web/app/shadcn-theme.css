@@ -56,6 +56,15 @@
   --color-border-strong: var(--border-strong);
   --color-allocation-rest: var(--allocation-rest);
   --color-panel-edge: var(--panel-edge);
+  --color-heat-base: var(--heat-base);
+  --color-heat-gain: var(--heat-gain);
+  --color-heat-loss: var(--heat-loss);
+  --color-heat-gain-fallback: var(--heat-gain-fallback);
+  --color-heat-loss-fallback: var(--heat-loss-fallback);
+  --color-heat-missing: var(--heat-missing);
+  --color-heat-gain-subtle: var(--heat-gain-subtle);
+  --color-heat-loss-subtle: var(--heat-loss-subtle);
+  --color-world-land: var(--world-land);
 }
 
 :root {
@@ -161,6 +170,11 @@
     --heat-base: #232327;
     --heat-gain: #2f7a49;
     --heat-loss: #b4473a;
+    --heat-gain-fallback: #274333;
+    --heat-loss-fallback: #592f2d;
+    --heat-missing: #18181b;
+    --heat-gain-subtle: #1a241e;
+    --heat-loss-subtle: #281c1c;
     --brand-mark-accent: #5b9dff;
     --world-land: var(--heat-base);
     --allocation-1: #8fa3bf;
@@ -243,6 +257,11 @@
     --heat-base: #f4f4f5;
     --heat-gain: #2f7a49;
     --heat-loss: #b4473a;
+    --heat-gain-fallback: #c0d5c8;
+    --heat-loss-fallback: #e7c6c2;
+    --heat-missing: #ececee;
+    --heat-gain-subtle: #eaf2ed;
+    --heat-loss-subtle: #f7eceb;
     --brand-mark-accent: var(--primary);
     --world-land: var(--heat-base);
     --allocation-1: #8395ae;
@@ -274,6 +293,264 @@
     html[data-mantine-color-scheme="light"] {
       --scrollbar-thumb: #18181b;
       --scrollbar-track: #ffffff;
+    }
+  }
+}
+
+/* Shared graphic primitives: resolved fallbacks before OKLab color-mix() and border/outline focus states that survive forced colours. */
+@layer components {
+  .tm-heat-surface {
+    --mx-heat-hue: var(--heat-base);
+    background-color: var(--heat-base);
+  }
+  .tm-heat-surface[data-tone="up"] {
+    --mx-heat-hue: var(--heat-gain);
+    background-color: var(--heat-gain-fallback);
+  }
+  .tm-heat-surface[data-tone="down"] {
+    --mx-heat-hue: var(--heat-loss);
+    background-color: var(--heat-loss-fallback);
+  }
+  .tm-heat-surface[data-tone="missing"] {
+    --mx-heat-hue: var(--heat-missing);
+    background-color: var(--heat-missing);
+  }
+  @supports (background-color: color-mix(in oklab, red, blue)) {
+    .tm-heat-surface:not([data-tone="missing"]) {
+      background-color: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix, 0%), var(--heat-base));
+    }
+  }
+
+  /* Interactive treemap/heat blocks: borders and real inset outlines instead of shadows so forced colours keep both selection and focus visible. */
+  .tm-tile-interactive::after {
+    content: "";
+    position: absolute;
+    z-index: 2;
+    inset: 0;
+    border: 2px solid transparent;
+    border-radius: inherit;
+    pointer-events: none;
+    transition: border-color var(--motion-fast);
+  }
+  @media (hover: hover) {
+    .tm-tile-interactive:not([aria-pressed="true"]):hover::after {
+      border-width: 1px;
+      border-color: var(--border-strong);
+    }
+    @supports (border-color: color-mix(in oklab, red, blue)) {
+      .tm-tile-interactive:not([aria-pressed="true"]):hover::after {
+        border-color: color-mix(in oklab, var(--foreground) 35%, transparent);
+      }
+    }
+  }
+  .tm-tile-interactive[aria-pressed="true"]::after {
+    border: 2px solid var(--link);
+  }
+  .tm-tile-interactive:focus-visible {
+    z-index: 3;
+    outline: 2px solid var(--ring);
+    outline-offset: -2px;
+  }
+  .tm-tile-interactive:focus-visible::after {
+    inset: 2px;
+    border: 2px solid var(--card);
+    border-radius: max(0px, calc(var(--tm-tile-radius, 6px) - 2px));
+  }
+  @media (forced-colors: active) {
+    .tm-tile-interactive[aria-pressed="true"]::after {
+      inset: 0;
+      border: 2px solid ButtonText;
+    }
+    .tm-tile-interactive:focus-visible {
+      outline: 2px solid Highlight;
+      outline-offset: -4px;
+    }
+    .tm-tile-interactive:focus-visible:not([aria-pressed="true"])::after {
+      border-color: transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tm-tile-interactive::after {
+      transition: none;
+    }
+  }
+
+  /* World map SVG regions: resolved land/gain/loss fills first, OKLab mixing where supported, and high-contrast focus strokes. */
+  .tm-world-region {
+    --mx-world-mix: var(--mx-world-heat-light);
+    outline: none;
+  }
+  html[data-mantine-color-scheme="dark"] .tm-world-region {
+    --mx-world-mix: var(--mx-world-heat-dark);
+  }
+  .tm-world-shape {
+    fill: var(--world-land);
+  }
+  .tm-world-region[data-tone="up"]:not([data-neutral]) .tm-world-shape {
+    fill: var(--heat-gain-fallback);
+  }
+  .tm-world-region[data-tone="down"]:not([data-neutral]) .tm-world-shape {
+    fill: var(--heat-loss-fallback);
+  }
+  @supports (fill: color-mix(in oklab, red, blue)) {
+    .tm-world-region:is([data-tone="up"], [data-tone="down"]):not([data-neutral]) .tm-world-shape {
+      fill: color-mix(in oklab, var(--mx-world-hue) var(--mx-world-mix), var(--heat-base));
+    }
+  }
+  .tm-world-shape,
+  .tm-world-pin {
+    stroke: transparent;
+    stroke-linejoin: round;
+    stroke-width: 0.65px;
+    vector-effect: non-scaling-stroke;
+    transition: stroke var(--motion-base);
+  }
+  .tm-world-region:not([data-neutral]) :is(.tm-world-shape, .tm-world-pin) {
+    stroke: var(--mx-world-hue);
+  }
+  @supports (stroke: color-mix(in oklab, red, blue)) {
+    .tm-world-region:not([data-neutral]) :is(.tm-world-shape, .tm-world-pin) {
+      stroke: color-mix(in oklab, var(--mx-world-hue) 68%, var(--world-land));
+    }
+  }
+  .tm-world-region[data-linked] :is(.tm-world-shape, .tm-world-pin),
+  .tm-world-region:focus-visible :is(.tm-world-shape, .tm-world-pin) {
+    stroke: var(--ring);
+    stroke-width: 1.5px;
+  }
+  .tm-world-pin {
+    fill: var(--mx-world-hue);
+  }
+  .tm-world-leader {
+    fill: none;
+    stroke: var(--muted-foreground);
+    stroke-width: 0.8px;
+    vector-effect: non-scaling-stroke;
+  }
+  .tm-world-hit {
+    fill: transparent;
+    stroke: transparent;
+    vector-effect: non-scaling-stroke;
+  }
+  .tm-world-touch {
+    display: none;
+    fill: none;
+    stroke: transparent;
+    stroke-linejoin: round;
+    vector-effect: non-scaling-stroke;
+    pointer-events: stroke;
+  }
+  .tm-world-region:focus-visible .tm-world-hit,
+  .tm-world-region[data-market="jp"][data-linked] .tm-world-hit {
+    stroke: var(--ring);
+    stroke-width: 1.5px;
+  }
+  .tm-world-region[data-market="jp"][data-linked] .tm-world-leader {
+    stroke: var(--ring);
+  }
+  .tm-world-region text {
+    fill: var(--foreground);
+    paint-order: stroke;
+    stroke: var(--card);
+    stroke-opacity: 0.7;
+    stroke-width: 2px;
+    stroke-linejoin: round;
+    font-size: 18px;
+    font-weight: 650;
+    pointer-events: none;
+  }
+  .tm-world-label-phone {
+    display: none;
+  }
+  @media (max-width: 767px) {
+    .tm-world-region text {
+      font-size: 25px;
+    }
+    .tm-world-label-phone {
+      display: block;
+    }
+    .tm-world-touch {
+      display: block;
+    }
+    .tm-world-label-desktop {
+      display: none;
+    }
+  }
+  @media (forced-colors: active) {
+    .tm-world-region:focus-visible :is(.tm-world-shape, .tm-world-pin, .tm-world-hit) {
+      stroke: Highlight;
+      stroke-width: 2px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .tm-world-shape,
+    .tm-world-pin {
+      transition: none;
+    }
+  }
+
+  /* Subtle signed wash for seasonality cells, return matrices and valuation sensitivity tables. */
+  .tm-heat-subtle[data-tone="up"] {
+    background-color: var(--heat-gain-subtle);
+  }
+  .tm-heat-subtle[data-tone="down"] {
+    background-color: var(--heat-loss-subtle);
+  }
+  @supports (background-color: color-mix(in oklab, red, blue)) {
+    .tm-heat-subtle[data-tone="up"] {
+      background-color: color-mix(in oklab, var(--gain) 9%, var(--card));
+    }
+    .tm-heat-subtle[data-tone="down"] {
+      background-color: color-mix(in oklab, var(--loss) 9%, var(--card));
+    }
+  }
+
+  /* Periodic return pills: resolved surface first, then OKLab wash and ink blend meeting 4.5:1 across the full ramp. */
+  .tm-heat-pill {
+    display: inline-block;
+    min-width: 54px;
+    padding: 6px 5px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background-color: var(--heat-base);
+    color: var(--foreground);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+  }
+  .tm-heat-pill.mx-up {
+    color: var(--gain);
+    background-color: var(--heat-gain-subtle);
+  }
+  .tm-heat-pill.mx-down {
+    color: var(--loss);
+    background-color: var(--heat-loss-subtle);
+  }
+  @supports (background-color: color-mix(in oklab, red, blue)) {
+    .tm-heat-pill {
+      background-color: color-mix(in oklab, currentColor calc(7% + var(--mx-heat, 0) * 17%), transparent);
+    }
+    .tm-heat-pill.mx-up {
+      color: color-mix(in oklab, var(--gain) 72%, var(--foreground));
+      background-color: color-mix(in oklab, var(--gain) calc(7% + var(--mx-heat, 0) * 17%), var(--card));
+    }
+    .tm-heat-pill.mx-down {
+      color: color-mix(in oklab, var(--loss) 72%, var(--foreground));
+      background-color: color-mix(in oklab, var(--loss) calc(7% + var(--mx-heat, 0) * 17%), var(--card));
+    }
+  }
+  .tm-heat-pill[aria-pressed="true"] {
+    border-color: var(--link);
+  }
+  .tm-heat-pill:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  @media (forced-colors: active) {
+    .tm-heat-pill[aria-pressed="true"] {
+      border-color: ButtonText;
+    }
+    .tm-heat-pill:focus-visible {
+      outline: 2px solid Highlight;
     }
   }
 }

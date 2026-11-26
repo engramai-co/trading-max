@@ -49,7 +49,21 @@ describe("sector map layout", () => {
     expect(neighbour(tiles, "c", "left")).toBe("a");
     expect(neighbour(tiles, "a", "down")).toBe("d");
     expect(neighbour(tiles, "a", "left")).toBeNull();
+    expect(neighbour(tiles, "a", "up")).toBeNull();
+    expect(neighbour(tiles, "d", "down")).toBeNull();
+    expect(neighbour(tiles, "b", "right")).toBeNull();
     expect(neighbour(tiles, "missing", "up")).toBe("a");
+  });
+
+  it("prefers perpendicular overlap using edges rather than centres in asymmetrical treemaps", () => {
+    const tiles = [
+      { key: "wide", x: 0, y: 0, w: 300, h: 60 },
+      { key: "below-left", x: 0, y: 60, w: 60, h: 60 },
+      { key: "right-side", x: 300, y: 0, w: 60, h: 120 },
+    ];
+    expect(neighbour(tiles, "wide", "right")).toBe("right-side");
+    expect(neighbour(tiles, "wide", "down")).toBe("below-left");
+    expect(neighbour(tiles, "below-left", "up")).toBe("wide");
   });
 });
 
@@ -118,7 +132,7 @@ describe("intraday line and colour", () => {
       { key: "thin", change: 0.09, ranks: [null, null] },
     ] as SectorGroup[];
     expect(strongestGroup(groups)).toBe("b");
-    expect([...groups].sort(byStanding).map((group) => group.key)).toEqual(["b", "a", "thin", "c"]);
+    expect(groups.toSorted(byStanding).map((group) => group.key)).toEqual(["b", "a", "thin", "c"]);
     expect(strongestGroup([{ key: "c", change: null, ranks: [] }] as unknown as SectorGroup[])).toBe("c");
     expect(strongestGroup([])).toBeNull();
     expect(sectorMarket("hk")).toBe("hk");
