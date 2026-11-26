@@ -57,11 +57,11 @@ function ConsensusGauge({
             y1="111"
             x2={tip[0]}
             y2={tip[1]}
-            stroke="var(--mx-ink)"
+            stroke="var(--foreground)"
             strokeWidth="3"
             strokeLinecap="round"
           />
-          <circle cx="110" cy="111" r="5" fill="var(--mx-ink)" />
+          <circle cx="110" cy="111" r="5" fill="var(--foreground)" />
         </>
       )}
     </svg>

@@ -4,6 +4,7 @@ import { useBreakpoint } from "@/lib/hooks";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { cn } from "@/lib/utils";
 import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
 import { Empty, Help, Pending, QueryError, Tag, useCopy, useEscapeLayer } from "./foundation";
@@ -13,6 +14,7 @@ import { PageInspection } from "./assistant/inspection-entry";
 import { useAssistant } from "./assistant/context";
 import Link from "./link";
 import { heat } from "./sectors-data";
+import { changeTone } from "./sectors-map";
 
 type MapMarket = GlobalMapMarket;
 type Market = MapMarket | "em";
@@ -294,9 +296,19 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         {total != null && <div className="mx-global-move" data-tone={tone(total)}>{change(total)}</div>}
         <p className="mx-global-colour-key">{t("地图颜色：各市场指数的本币涨跌", "Map colours: local index moves")}</p>
       </header>
-      <div ref={mapHost} className="mx-global-map" data-testid="global-map">
-        <svg viewBox={wide ? WIDE_WORLD_VIEWBOX : WORLD_VIEWBOX} preserveAspectRatio="xMidYMid meet" role="group" aria-label={t("全球市场地图", "World market map")}>
-          <path className="mx-global-land" d={WORLD_LAND} fillRule="evenodd" />
+      <div
+        ref={mapHost}
+        className="mx-global-map relative grid min-w-0 place-items-center rounded-[14px] border border-border bg-card px-[5px] pb-2 pt-5 [grid-area:map] max-[1179px]:rounded-none max-[1179px]:border-y-0 max-[1179px]:px-3.5 max-[1179px]:py-2 max-[767px]:px-1 max-[767px]:py-2"
+        data-testid="global-map"
+      >
+        <svg
+          className="block h-auto w-full max-w-[980px] max-[1179px]:max-w-[820px]"
+          viewBox={wide ? WIDE_WORLD_VIEWBOX : WORLD_VIEWBOX}
+          preserveAspectRatio="xMidYMid meet"
+          role="group"
+          aria-label={t("全球市场地图", "World market map")}
+        >
+          <path className="mx-global-land fill-world-land" d={WORLD_LAND} fillRule="evenodd" />
           {(Object.entries(MAP) as [MapMarket, Label][]).map(([market, { label, phone, point }]) => {
             const reading = answer?.markets.find((item) => item.market === market);
             const move = reading?.move;
@@ -304,8 +316,13 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             // Focusing the EM aggregate outlines all of its mapped markets.
             const selected = active === market || (active === "em" && EM_MARKETS.has(market));
             const style = globalHeatStyle(move);
+            const regionTone = reading?.notOpen || move == null ? undefined : changeTone(move);
             return <a key={market} href={presentationLink(pathname, url(market)).href}
-              className="mx-global-region" data-market={market} data-neutral={style["--mx-world-heat-light"] === "0%" || undefined} data-linked={selected || undefined}
+              className="mx-global-region tm-world-region"
+              data-market={market}
+              data-tone={regionTone}
+              data-neutral={style["--mx-world-heat-light"] === "0%" || undefined}
+              data-linked={selected || undefined}
               aria-label={accessible(market, move, row?.contribution, reading?.notOpen)} style={style}
               aria-expanded={inspection?.market === market}
               aria-controls={inspection?.market === market ? "mx-global-inspection" : undefined}
@@ -330,9 +347,9 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
                   (popover.current?.querySelector<HTMLElement>("button, a") ?? detailLink.current)?.focus();
                 }
               }}>
-              {market !== "hk" && <path className="mx-global-shape" d={MARKET_PATHS[market]} fillRule="evenodd" />}
-              {market !== "hk" && TOUCH_OUTLINE[market] && <path className="mx-global-touch" d={MARKET_PATHS[market]} style={{ strokeWidth: TOUCH_OUTLINE[market] }} />}
-              {point && <circle className="mx-global-pin" cx={point[0]} cy={point[1]} r={market === "hk" ? 4.5 : 3.4} />}
+              {market !== "hk" && <path className="mx-global-shape tm-world-shape" d={MARKET_PATHS[market]} fillRule="evenodd" />}
+              {market !== "hk" && TOUCH_OUTLINE[market] && <path className="mx-global-touch tm-world-touch" d={MARKET_PATHS[market]} style={{ strokeWidth: TOUCH_OUTLINE[market] }} />}
+              {point && <circle className="mx-global-pin tm-world-pin" cx={point[0]} cy={point[1]} r={market === "hk" ? 4.5 : 3.4} />}
               <MapLabel name={name(market)} position={label} point={point} />
               <MapLabel name={name(market)} position={phone} point={point ?? label} phone />
             </a>;
@@ -435,15 +452,33 @@ function MapLabel({ name, position: [x, y], point, phone }: {
 }) {
   const width = phone ? 100 : 50;
   const height = phone ? 100 : 34;
-  return <g className={phone ? "mx-global-label-phone" : "mx-global-label-desktop"} aria-hidden="true">
-    {point && <path className="mx-global-leader" d={`M${point.join(",")} L${x},${y}`} />}
-    <rect className="mx-global-hit" x={x - width / 2} y={y - height / 2} width={width} height={height} rx="4" />
-    <text x={x} y={y} textAnchor="middle" dominantBaseline="central">{name}</text>
-  </g>;
+  return (
+    <g
+      className={phone ? "mx-global-label-phone tm-world-label-phone" : "mx-global-label-desktop tm-world-label-desktop"}
+      aria-hidden="true"
+    >
+      {point && <path className="mx-global-leader tm-world-leader" d={`M${point.join(",")} L${x},${y}`} />}
+      <rect className="mx-global-hit tm-world-hit" x={x - width / 2} y={y - height / 2} width={width} height={height} rx="4" />
+      <text x={x} y={y} textAnchor="middle" dominantBaseline="central">{name}</text>
+    </g>
+  );
 }
 
 function ContributionBar({ value, limit }: { value: number; limit: number }) {
-  return <span className="mx-global-bar" data-tone={tone(value)} aria-hidden="true">
-    <i style={{ width: `${Math.abs(value) / limit * 100}%` }} />
-  </span>;
+  const dir = tone(value);
+  return (
+    <span
+      className="mx-global-bar relative col-start-2 flex items-center after:absolute after:inset-y-0 after:left-[76%] after:w-px after:bg-border-strong after:content-['']"
+      data-tone={dir}
+      aria-hidden="true"
+    >
+      <i
+        className={cn(
+          "absolute h-3.5 max-[767px]:h-[11px]",
+          dir === "down" ? "right-[24%] bg-loss" : dir === "up" ? "left-[76%] bg-gain" : "",
+        )}
+        style={{ width: `${Math.abs(value) / limit * 100}%` }}
+      />
+    </span>
+  );
 }

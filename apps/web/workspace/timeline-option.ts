@@ -39,7 +39,7 @@ export function includeDailyMarkers(calendar: CalendarTimeline, dates: string[],
   if (!additions.size) return calendar;
   const result: CalendarTimeline = { ...calendar, categories: [], rowIndexes: [], anchors: [] };
   calendar.categories.forEach((day, position) => {
-    const extra = additions.get(day)?.sort((a, b) => a - b) ?? [];
+    const extra = additions.get(day)?.toSorted((a, b) => a - b) ?? [];
     result.categories.push(...extra.map(() => day), day);
     result.rowIndexes.push(...extra, calendar.rowIndexes[position]);
     result.anchors!.push(...extra.map(() => true), !!calendar.anchors?.[position]);
@@ -108,7 +108,7 @@ export function timelineOption(
       const target = first + Math.round((index * span) / (count - 1));
       picked.add(ticks.reduce((best, tick) => (Math.abs(tick - target) < Math.abs(best - target) ? tick : best), ticks[0]));
     }
-    return [...picked].sort((a, b) => a - b);
+    return [...picked].toSorted((a, b) => a - b);
   };
   const horizontalAxis = calendarAxis ? {
     ...calendarAxis,

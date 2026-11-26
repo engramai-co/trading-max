@@ -640,3 +640,45 @@ test.describe("research section index", () => {
     await expect.poll(async () => (await reading.boundingBox())!.width).toBe(width);
   });
 });
+
+test("opening MaxAI at 1440 keeps all 12 seasonality months on one row", async ({ page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  test.skip(isMobile, "Desktop MaxAI sidebar layout");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/research?ticker=NVDA&view=technical&technicalView=seasonality");
+  const calendar = page.locator(".mx-month-calendar");
+  const cells = calendar.locator(".mx-month-cell");
+  await expect(cells).toHaveCount(12);
+
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await expect(panel).toBeVisible();
+  const mainBox = (await page.locator("#main-content").boundingBox())!;
+  const panelBox = (await panel.boundingBox())!;
+  expect(mainBox.x + mainBox.width).toBeLessThanOrEqual(panelBox.x + 1);
+
+  const rowMetrics = await calendar.evaluate((el) => {
+    const tops = [...el.querySelectorAll(".mx-month-cell")].map((cell) => Math.round(cell.getBoundingClientRect().top));
+    return {
+      spread: Math.max(...tops) - Math.min(...tops),
+      columnGap: getComputedStyle(el).columnGap,
+    };
+  });
+  expect(rowMetrics.spread).toBeLessThanOrEqual(1);
+  expect(rowMetrics.columnGap).toBe("4px");
+
+  // Restored viewport breakpoints still wrap cleanly at <= 1100px (6 cols, 8px gap) and <= 767px (4 cols).
+  await page.setViewportSize({ width: 1100, height: 900 });
+  await expect.poll(() =>
+    calendar.evaluate((el) => {
+      const rows = new Set([...el.querySelectorAll(".mx-month-cell")].map((cell) => Math.round(cell.getBoundingClientRect().top)));
+      return { rows: rows.size, columnGap: getComputedStyle(el).columnGap };
+    }),
+  ).toEqual({ rows: 2, columnGap: "8px" });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() =>
+    calendar.evaluate((el) => new Set([...el.querySelectorAll(".mx-month-cell")].map((cell) => Math.round(cell.getBoundingClientRect().top))).size),
+  ).toBe(3);
+});

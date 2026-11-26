@@ -224,14 +224,13 @@
   margin-bottom: 12px;
 }
 .mx-month-return button {
-  border: 0;
   cursor: pointer;
   min-height: 36px;
   font: inherit;
   font-variant-numeric: tabular-nums;
 }
 .mx-month-return button[aria-pressed="true"] {
-  outline: 2px solid var(--mx-brand);
+  outline: 2px solid var(--link);
   outline-offset: -2px;
 }
 .mx-month-return button[data-partial="true"] {

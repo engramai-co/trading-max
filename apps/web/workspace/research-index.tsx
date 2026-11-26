@@ -4,17 +4,18 @@ import { useAssistant } from "./assistant/context";
 import { ActionIcon, Button, Drawer, Menu, Select } from "@mantine/core";
 import { CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
-import { useId, useState, type CSSProperties } from "react";
+import { useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { quoteUnit, quoteValue } from "./financial-values";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useLocale } from "@/components/locale-provider";
 import { researchShellKey } from "@/lib/dashboard-query";
 import type { ResearchShell } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { formatCalendarDate, formatCurrency, formatDateTime, formatDeltaPercent, formatNumber, formatPercent } from "@/ui/formatters";
 import { api, readApi, safeUrl } from "./data";
 import { useDemonstration } from "./demonstration";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, tabId, useCopy } from "./foundation";
+import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, tabId, Tip, useCopy } from "./foundation";
 import Link from "./link";
 import {
   indexHref, researchIndexHref, useIndexCatalog,
@@ -26,7 +27,9 @@ import { SecurityFinder, useSearchHandover } from "./research-finder";
 import { TechnicalScoreCard } from "./research-technical";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { useRouteState } from "./route-state";
-import { heatMix } from "./sectors-data";
+import { heatMix, neighbour, type Direction, type Tile } from "./sectors-data";
+import { changeTone } from "./sectors-map";
+import { fitTileLabel, scaleNormalisedTiles, TILE_TIER_PADDING, TILE_TIER_TEXT, useMeasuredBox } from "./tile-layout";
 
 const views = ["overview", "price", "constituents", "tracking"] as const;
 type Copy = ReturnType<typeof useCopy>;
@@ -307,7 +310,7 @@ function IndexMembers({ index, basket }: { index: IndexIdentity; basket?: IndexC
   const t = useCopy();
   const { locale } = useLocale();
   const [sort, setSort] = useState("weight");
-  const rows = [...(basket?.members ?? [])].sort((a, b) => sort === "name"
+  const rows = (basket?.members ?? []).toSorted((a, b) => sort === "name"
     ? a.ticker.localeCompare(b.ticker) : sort === "move" ? (b.move ?? -Infinity) - (a.move ?? -Infinity) : b.weight - a.weight);
   const raw = basket?.members ?? [];
   const concentration = raw.slice(0, 10).reduce((sum, row) => sum + row.weight, 0);
@@ -350,39 +353,173 @@ function IndexMembers({ index, basket }: { index: IndexIdentity; basket?: IndexC
   </>;
 }
 
-type Rect = { x: number; y: number; w: number; h: number };
-function treemap(items: IndexConstituent[], rect: Rect): { row: IndexConstituent; rect: Rect }[] {
-  if (items.length <= 1) return items.map((row) => ({ row, rect }));
-  const total = items.reduce((sum, item) => sum + item.weight, 0);
-  let cursor = 1, first = items[0].weight;
-  while (cursor < items.length - 1 && first + items[cursor].weight < total / 2) first += items[cursor++].weight;
-  const split = first / total;
-  const { x, y, w, h } = rect;
-  const horizontal = w > h;
-  return [
-    ...treemap(items.slice(0, cursor), { x, y, w: horizontal ? w * split : w, h: horizontal ? h : h * split }),
-    ...treemap(items.slice(cursor), { x: horizontal ? x + w * split : x, y: horizontal ? y : y + h * split,
-      w: horizontal ? w * (1 - split) : w, h: horizontal ? h : h * (1 - split) }),
-  ];
+const HEATMAP_GAP = 2;
+const HEATMAP_ARROWS: Record<string, Direction> = {
+  ArrowLeft: "left",
+  ArrowRight: "right",
+  ArrowUp: "up",
+  ArrowDown: "down",
+};
+
+function constituentKey(row: IndexConstituent) {
+  return row.isin ?? row.ticker;
 }
 
 function Heatmap({ rows }: { rows: IndexConstituent[] }) {
   const t = useCopy();
   const { locale } = useLocale();
   const scheme = useComputedColorScheme("dark");
-  const tiles = treemap(rows.filter((row) => row.weight > 0), { x: 0, y: 0, w: 100, h: 100 });
-  return <figure aria-label={t("成分热图", "Constituent heatmap")} className="mx-index-research-heatmap">
-    {tiles.map(({ row, rect }) => {
-      const move = row.move ?? 0;
-      const reading = [row.ticker, formatPercent(row.weight, locale, 2), formatDeltaPercent(row.move, locale, 2)].join(" · ");
-      return <div key={row.isin ?? row.ticker} title={reading} aria-hidden="true"
-        data-tone={move > 0 ? "up" : move < 0 ? "down" : "none"}
-        style={{ left: rect.x + "%", top: rect.y + "%", width: rect.w + "%", height: rect.h + "%",
-          "--mx-heat-blend": heatMix(row.move, scheme) } as CSSProperties}>
-        {rect.w >= 13 && rect.h >= 12 && <><strong>{row.ticker}</strong><span>{formatDeltaPercent(row.move, locale, 1)}</span></>}
-      </div>;
-    })}
-  </figure>;
+  const host = useRef<HTMLDivElement>(null);
+  const { size, measure, budgets } = useMeasuredBox(host);
+  const positive = useMemo(() => rows.filter((row) => row.weight > 0), [rows]);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
+  const laid = useMemo(
+    () =>
+      scaleNormalisedTiles(positive, size, HEATMAP_GAP).map(({ item, x, y, w, h }) => ({
+        key: constituentKey(item),
+        row: item,
+        x,
+        y,
+        w,
+        h,
+      })),
+    [positive, size],
+  );
+
+  const navTiles = useMemo<Tile[]>(() => laid.map(({ key, x, y, w, h }) => ({ key, x, y, w, h })), [laid]);
+  const currentTabKey = laid.some((item) => item.key === activeKey) ? activeKey : (laid[0]?.key ?? null);
+  const inspected = laid.find((item) => item.key === selectedKey)?.row ?? null;
+
+  const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>, key: string) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const direction = HEATMAP_ARROWS[event.key];
+    if (!direction) return;
+    const next = neighbour(navTiles, key, direction);
+    if (!next) return;
+    event.preventDefault();
+    setActiveKey(next);
+    setSelectedKey(next);
+    const target = host.current?.querySelector<HTMLButtonElement>('[data-key="' + CSS.escape(next) + '"]');
+    target?.focus();
+    target?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  };
+
+  return (
+    <figure aria-label={t("成分热图", "Constituent heatmap")} className="mx-0 my-4">
+      <div
+        ref={host}
+        className="mx-index-research-heatmap relative min-h-[clamp(215px,27vw,350px)] overflow-clip rounded-[var(--radius-heat-tile)] bg-card"
+        role="group"
+        aria-label={t("成分热图", "Constituent heatmap")}
+      >
+        {laid.map(({ key, row, x, y, w, h }) => {
+          const tileTone = row.move == null ? "missing" : changeTone(row.move);
+          const hasMissingBorder = tileTone === "missing" && w >= 6 && h >= 6;
+          const moveFull = row.move == null ? t("无报价", "No quote") : formatDeltaPercent(row.move, locale, 2);
+          const moveShort = row.move == null ? "—" : formatDeltaPercent(row.move, locale, 1);
+          const fit = fitTileLabel({
+            names: { full: row.ticker },
+            change: moveFull,
+            rounded: moveShort,
+            width: hasMissingBorder ? w - 2 : w,
+            height: hasMissingBorder ? h - 2 : h,
+            measure,
+            tiers: budgets.tiers,
+            startTier: "compact",
+            allowWrap: false,
+            allowInline: true,
+            allowTight: true,
+            gapX: budgets.gapInline,
+            gapY: budgets.gapStack,
+          });
+          const weightText = formatPercent(row.weight, locale, 2);
+          const spoken = [row.ticker, row.name && row.name !== row.ticker ? row.name : null, weightText, moveFull]
+            .filter(Boolean)
+            .join(" · ");
+          const selected = selectedKey === key;
+          return (
+            <Tip
+              key={key}
+              withinPortal
+              describes={false}
+              label={
+                <span className="mx-tooltip-stack">
+                  <span>{row.ticker}{row.name && row.name !== row.ticker ? " · " + row.name : ""}</span>
+                  <span>{weightText} · {moveFull}</span>
+                </span>
+              }
+            >
+              <button
+                type="button"
+                className={cn(
+                  "tm-heat-surface tm-tile-interactive absolute m-0 flex items-center justify-center overflow-clip rounded-[var(--radius-heat-tile)] border-0 text-center text-foreground [--tm-tile-radius:var(--radius-heat-tile)]",
+                  fit.inline ? "flex-row gap-1.5" : "flex-col gap-0.5",
+                  TILE_TIER_PADDING[fit.tier],
+                  TILE_TIER_TEXT[fit.tier],
+                  hasMissingBorder && "border border-dashed border-border",
+                )}
+                data-key={key}
+                data-tone={tileTone}
+                data-label-tier={fit.tier}
+                aria-label={spoken}
+                aria-pressed={selected}
+                tabIndex={key === currentTabKey ? 0 : -1}
+                style={{
+                  left: x,
+                  top: y,
+                  width: w,
+                  height: h,
+                  "--mx-heat-mix": heatMix(row.move, scheme),
+                } as CSSProperties}
+                onFocus={() => setActiveKey(key)}
+                onClick={() => {
+                  setActiveKey(key);
+                  setSelectedKey((prev) => (prev === key ? null : key));
+                }}
+                onKeyDown={(event) => onKeyDown(event, key)}
+              >
+                {fit.showName && <strong className="min-w-0 max-w-full truncate font-semibold">{fit.name}</strong>}
+                {fit.showChange && <span className="flex-none tabular-nums">{fit.change}</span>}
+              </button>
+            </Tip>
+          );
+        })}
+      </div>
+      {inspected && (
+        <figcaption
+          className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-[var(--radius-heat-tile)] border border-border bg-muted px-3 py-2 text-xs text-foreground"
+          aria-live="polite"
+        >
+          <span className="flex min-w-0 items-baseline gap-2">
+            <Link className="mx-text-link font-semibold" href={`/research?ticker=${encodeURIComponent(inspected.ticker)}`}>
+              {inspected.ticker}
+            </Link>
+            {inspected.name && inspected.name !== inspected.ticker && (
+              <span className="truncate text-muted-foreground">{inspected.name}</span>
+            )}
+          </span>
+          <span className="flex items-baseline gap-3 tabular-nums">
+            <span className="text-muted-foreground">{t("权重", "Weight")} {formatPercent(inspected.weight, locale, 2)}</span>
+            <strong
+              className={
+                inspected.move == null
+                  ? "text-muted-foreground"
+                  : changeTone(inspected.move) === "up"
+                    ? "text-gain"
+                    : changeTone(inspected.move) === "down"
+                      ? "text-loss"
+                      : "text-foreground"
+              }
+            >
+              {inspected.move == null ? t("无报价", "No quote") : formatDeltaPercent(inspected.move, locale, 2)}
+            </strong>
+          </span>
+        </figcaption>
+      )}
+    </figure>
+  );
 }
 
 function IndexBreadth({ basket }: { basket: IndexComposition }) {
@@ -409,19 +546,47 @@ function IndexBreadth({ basket }: { basket: IndexComposition }) {
         : t("等权 / 市值权重代理", "Equal weight / cap-weight proxy"),
         [basket.equalWeightMove, basket.priceWeightMove ?? basket.capWeightMove].map((n) => formatDeltaPercent(n, locale, 2)).join(" / ")],
     ]} />
-    {positions.length > 0 && <div className="mx-index-research-waterfall" role="list" aria-label={t("贡献瀑布", "Contribution waterfall")}>
-      {positions.map((row) => <div key={row.key} role="listitem">
-        <span>{row.key === "rest" ? t("其余已覆盖成分", "Other covered constituents") : row.key === "residual" ? t("对账残差", "Reconciliation residual") : row.key}</span>
-        <span className="mx-index-research-waterfall-axis" aria-hidden="true">
-          <i style={{ left: x(0) + "%" }} />
-          <b data-tone={(row.contribution ?? 0) >= 0 ? "up" : "down"} style={{
-            left: Math.min(x(row.start), x(row.end)) + "%", width: Math.abs(x(row.end) - x(row.start)) + "%",
-          }} />
-        </span>
-        <strong>{formatDeltaPercent(row.contribution, locale, 2)}</strong>
-      </div>)}
-      <div role="listitem"><strong>{basket.totalMove != null ? t("指数涨跌", "Index move") : t("已覆盖贡献", "Covered contribution")}</strong>
-        <span /><strong>{formatDeltaPercent(basket.totalMove ?? total, locale, 2)}</strong></div>
-    </div>}
+    {positions.length > 0 && (
+      <div
+        className="mx-index-research-waterfall @container mb-1 mt-4"
+        role="list"
+        aria-label={t("贡献瀑布", "Contribution waterfall")}
+      >
+        {positions.map((row) => {
+          const positiveBar = (row.contribution ?? 0) >= 0;
+          return (
+            <div
+              key={row.key}
+              role="listitem"
+              className="grid min-h-7 grid-cols-[minmax(60px,180px)_1fr_74px] items-center gap-[9px] border-t border-border tabular-nums @max-[560px]:grid-cols-[minmax(74px,32%)_1fr_62px] @max-[560px]:text-xs"
+            >
+              <span className="min-w-0">
+                {row.key === "rest" ? t("其余已覆盖成分", "Other covered constituents") : row.key === "residual" ? t("对账残差", "Reconciliation residual") : row.key}
+              </span>
+              <span className="mx-index-research-waterfall-axis relative h-2 rounded-[3px] bg-muted" aria-hidden="true">
+                <i className="absolute -inset-y-0.5 border-l border-muted-foreground" style={{ left: x(0) + "%" }} />
+                <b
+                  className={cn("absolute h-full rounded-[3px]", positiveBar ? "bg-gain" : "bg-loss")}
+                  data-tone={positiveBar ? "up" : "down"}
+                  style={{
+                    left: Math.min(x(row.start), x(row.end)) + "%",
+                    width: Math.abs(x(row.end) - x(row.start)) + "%",
+                  }}
+                />
+              </span>
+              <strong className="text-right">{formatDeltaPercent(row.contribution, locale, 2)}</strong>
+            </div>
+          );
+        })}
+        <div
+          role="listitem"
+          className="grid min-h-7 grid-cols-[minmax(60px,180px)_1fr_74px] items-center gap-[9px] border-t border-border tabular-nums @max-[560px]:grid-cols-[minmax(74px,32%)_1fr_62px] @max-[560px]:text-xs"
+        >
+          <strong>{basket.totalMove != null ? t("指数涨跌", "Index move") : t("已覆盖贡献", "Covered contribution")}</strong>
+          <span />
+          <strong className="text-right">{formatDeltaPercent(basket.totalMove ?? total, locale, 2)}</strong>
+        </div>
+      </div>
+    )}
   </Panel>;
 }

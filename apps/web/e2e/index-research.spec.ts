@@ -40,10 +40,10 @@ const shell = {
 };
 
 const publishedSeriesId = "f".repeat(20);
-async function indexFixture(page: Page, baseURL: string) {
+async function indexFixture(page: Page, baseURL: string, locale: "zh" | "en" = "zh") {
   const origin = new URL(baseURL).origin;
   await page.clock.install({ time: new Date(stamp) });
-  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+  await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
   await page.route("**/*", async (route) => {
     const req = route.request();
     const url = new URL(req.url());
@@ -119,7 +119,31 @@ async function exercise(page: Page, baseURL: string, name: string) {
   const screenshotDir = process.env.TRADING_MAX_INDEX_SCREENSHOTS;
   if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
   await tabs.getByRole("tab", { name: "成分与权重" }).click();
-  await expect(page.getByRole("figure", { name: "成分热图" })).toBeVisible();
+  const heatmap = page.getByRole("figure", { name: "成分热图" });
+  await expect(heatmap).toBeVisible();
+  // Missing quotes stay distinct from priced moves, carry no pointer-only title, and inspect by tap/keys.
+  await expect(heatmap.locator('button[data-tone="up"]')).toHaveCount(1);
+  await expect(heatmap.locator('button[data-tone="down"]')).toHaveCount(1);
+  await expect(heatmap.locator('button[data-tone="missing"]')).toHaveCount(1);
+  await expect(heatmap.locator("button[title]")).toHaveCount(0);
+  if (name !== "mobile") {
+    // Landscape panel keeps the 100x100 normalised split: the 65% constituent spans full width on top.
+    const boxHost = (await heatmap.locator(".mx-index-research-heatmap").boundingBox())!;
+    const box1 = (await heatmap.locator('button[data-key="ZZ0000000001"]').boundingBox())!;
+    const box2 = (await heatmap.locator('button[data-key="ZZ0000000002"]').boundingBox())!;
+    const box3 = (await heatmap.locator('button[data-key="ZZ0000000003"]').boundingBox())!;
+    expect(box1.width).toBeGreaterThanOrEqual(boxHost.width - 2);
+    expect(box2.y).toBeGreaterThanOrEqual(box1.y + box1.height);
+    expect(Math.abs(box2.y - box3.y)).toBeLessThanOrEqual(1);
+  }
+  const tileRadius = await heatmap.locator("button").first().evaluate((el) => getComputedStyle(el).borderTopLeftRadius);
+  expect(tileRadius).toBe("12px");
+  const firstTile = heatmap.locator("button").first();
+  await firstTile.click();
+  await expect(heatmap.locator("figcaption")).toContainText("SYN1");
+  await firstTile.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(heatmap.locator("figcaption")).toContainText(/SYN2|SYN3/);
   await expect(page.getByRole("list", { name: "贡献瀑布" })).toContainText("对账残差");
   await expect(page.getByText("指数涨跌", { exact: true })).toBeVisible();
   if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/index-members-${name}-light.png`, animations: "disabled", scale: "css" });
@@ -220,3 +244,79 @@ test("the index research lenses fit WebKit at the app width", async ({ baseURL }
     await browser.close();
   }
 });
+
+for (const [locale, expected] of [
+  ["zh", ["其余已覆盖成分", "对账残差"]],
+  ["en", ["Other covered constituents", "Reconciliation residual"]],
+] as const) {
+  test(`constituent heatmap excludes sub-pixel tiles from focus, wraps phone waterfall labels and respects 20px root (${locale})`, async ({ page, baseURL }, info) => {
+    test.skip(locale === "en" && info.project.name !== "mobile", "Phone bilingual waterfall check");
+    await indexFixture(page, baseURL!, locale);
+    const subpixelMembers = [
+      { ticker: "SYN1", name: "Synthetic A", isin: "ZZ0000000001", weight: 0.65, move: 0.02, contribution: 0.013, country: "Synthetic country" },
+      { ticker: "SYN2", name: "Synthetic B", isin: "ZZ0000000002", weight: 0.25, move: -0.019, contribution: -0.00475, country: "Synthetic country" },
+      { ticker: "SYN3", name: "Synthetic C", isin: "ZZ0000000003", weight: 0.0999, move: null, contribution: null, country: "Synthetic country" },
+      { ticker: "TINY", name: "Synthetic Tiny", isin: "ZZ0000000004", weight: 0.0001, move: 0.01, contribution: 0.000001, country: "Synthetic country" },
+    ];
+    await page.route("**/api/backend/indices/*/research**", (route) => route.fulfill({ json: {
+      index, depth: "L2", quote: { level: 612, change: 0.009, asOf: stamp, state: "closed" },
+      composition: { ...composition, members: subpixelMembers },
+      products: [],
+    } }));
+    await page.addInitScript(() => {
+      const apply = () => {
+        if (!document.documentElement) return false;
+        document.documentElement.style.fontSize = "125%";
+        return true;
+      };
+      if (!apply()) {
+        new MutationObserver((_, observer) => {
+          if (apply()) observer.disconnect();
+        }).observe(document, { childList: true });
+      }
+    });
+    await page.setViewportSize({ width: info.project.name === "mobile" ? 390 : 1280, height: 900 });
+    await page.goto("/research?type=index&index=synthetic-index&view=constituents");
+
+    const heatmap = page.getByRole("figure", { name: locale === "zh" ? "成分热图" : "Constituent heatmap" });
+    expect(await heatmap.evaluate((el) => getComputedStyle(el).marginLeft === "0px" && getComputedStyle(el).marginRight === "0px")).toBe(true);
+    await expect(heatmap.locator("button")).toHaveCount(3);
+    await expect(heatmap.locator('button[data-key="ZZ0000000004"]')).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /TINY/ })).toBeVisible();
+
+    // At 20px root font, labelled tiles must not clip vertically or horizontally.
+    const clipped = await heatmap.locator('button[data-label-tier]:not([data-label-tier="none"])').evaluateAll((buttons) =>
+      buttons.filter((button) => {
+        const btnStyle = getComputedStyle(button);
+        const btnRect = button.getBoundingClientRect();
+        const innerBottom = btnRect.bottom - (parseFloat(btnStyle.paddingBottom) || 0) + 0.5;
+        const innerRight = btnRect.right - (parseFloat(btnStyle.paddingRight) || 0) + 0.5;
+        return [...button.querySelectorAll("strong, span")].some((child) => {
+          const rect = child.getBoundingClientRect();
+          return child.scrollWidth > child.clientWidth + 1 || rect.bottom > innerBottom || rect.right > innerRight;
+        });
+      }).length);
+    expect(clipped).toBe(0);
+
+    if (info.project.name === "mobile") {
+      const waterfall = page.getByRole("list", { name: locale === "zh" ? "贡献瀑布" : "Contribution waterfall" });
+      await expect(waterfall).toBeVisible();
+      for (const text of expected) {
+        const label = waterfall.getByText(text, { exact: true });
+        await expect(label).toBeVisible();
+        const metrics = await label.evaluate((el) => {
+          const cs = getComputedStyle(el);
+          return {
+            overflows: el.scrollWidth > el.clientWidth + 1,
+            textOverflow: cs.textOverflow,
+            whiteSpace: cs.whiteSpace,
+          };
+        });
+        expect(metrics.overflows).toBe(false);
+        expect(metrics.textOverflow).not.toBe("ellipsis");
+        expect(metrics.whiteSpace).not.toBe("nowrap");
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+    }
+  });
+}

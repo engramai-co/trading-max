@@ -58,6 +58,7 @@ export function ValuationSensitivity({ result }: { result: Preview }) {
                         data-direction={
                           cell.upside >= 0 ? "positive" : "negative"
                         }
+                        data-tone={cell.upside >= 0 ? "up" : "down"}
                       >
                         <strong>{quoteValue(cell.value, result.basis.currency, { style: "figure" })}</strong>
                         <span>{percent(cell.upside, true, 1)}</span>
@@ -290,11 +291,11 @@ export function GrowthContext({
         (o) => o.periodId === p.id && o.metric === "revenue",
       )?.value,
     }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .toSorted((a, b) => a.date.localeCompare(b.date));
   const filed = objects(object(data.researchEvidence).annualRevenue)
     .filter((o) => o.currency === facts?.currency)
     .map((o) => ({ date: str(o.periodEnd), value: numeric(o.value) }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+    .toSorted((a, b) => a.date.localeCompare(b.date));
   const cagr = (years: number) => {
     for (const series of [annual, filed]) {
       const last = series.at(-1);
@@ -322,7 +323,7 @@ export function GrowthContext({
   };
   const quarter = facts?.periods
     .filter((p) => p.kind === "quarterly")
-    .sort((a, b) => b.providerEnd.localeCompare(a.providerEnd))[0];
+    .toSorted((a, b) => b.providerEnd.localeCompare(a.providerEnd))[0];
   const yoy = facts?.observations.find(
     (o) => o.periodId === quarter?.id && o.metric === "revenueGrowth",
   )?.value;

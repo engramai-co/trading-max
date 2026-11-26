@@ -9,6 +9,7 @@ import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { Plot } from "./charts";
 import { number, object, objects, percent, str, tone } from "@/workspace/data";
+import { cn } from "@/lib/utils";
 import { numeric } from "@/lib/numeric";
 import { LINE_DASH_PATTERNS, type ChartReadout, type LineDash, type ReadingKey } from "./chart-readout";
 import { Facts, Panel, Segments, useCopy } from "./foundation";
@@ -78,7 +79,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
   const matrix = objects(source.seasonalityMatrix);
   const cellIndex = new Map(matrix.map((r) => [`${r.year}-${r.month}`, r]));
   const yearPaths = object(source.yearPaths);
-  const years = [...new Set(matrix.map((r) => Number(r.year)))].sort(
+  const years = [...new Set(matrix.map((r) => Number(r.year)))].toSorted(
     (a, b) => b - a,
   );
   const window = ["5", "10", "20", "all", "custom"].includes(
@@ -137,7 +138,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
       timeZone: "UTC",
     }).format(new Date(Date.UTC(2000, i, 1))),
   );
-  const availablePaths = Object.keys(yearPaths).sort().reverse(),
+  const availablePaths = Object.keys(yearPaths).toSorted().toReversed(),
     paths = chosen ?? availablePaths.slice(0, 3);
   const comparable = benchmark.data?.currency === data.context?.quote.currency;
   const benchmarkPaths: Record<string, Record<string, unknown>[]> = {};
@@ -194,7 +195,7 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
   const dayLabel = (day: number) => formatDate(new Date(Date.UTC(2000, 0, 1 + day)), locale, { month: "short", day: "numeric", timeZone: "UTC" });
   // Every year reads at the same calendar day, so the reading opens wherever the pointer or keys rest.
   const seasonReadout: ChartReadout = {
-    positions: [...new Set(pathLines.flatMap((line) => line.series.map(([day]) => day)))].sort((a, b) => a - b),
+    positions: [...new Set(pathLines.flatMap((line) => line.series.map(([day]) => day)))].toSorted((a, b) => a - b),
     read: (day) => {
       const values = pathLines.map((line) => changeOnDay(line.series, day));
       if (!pathLines.length || values.every((value) => value == null)) return null;
@@ -282,30 +283,41 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
           />
         </div>
         <div
-          className="mx-month-calendar"
+          className="mx-month-calendar grid grid-cols-12 gap-1 max-[1101px]:grid-cols-6 max-[1101px]:gap-2 max-phone:grid-cols-4"
           role="group"
           aria-label={t("各月历史表现", "Historical performance by month")}
         >
-          {rows.map((row) => (
-            <button
-              key={Number(row.month)}
-              type="button"
-              className={
-                "mx-month-cell mx-" + tone(row[measure as keyof typeof row])
-              }
-              aria-pressed={selected.month === row.month}
-              onClick={() => setMonth(Number(row.month))}
-            >
-              <span>{months[Number(row.month) - 1]}</span>
-              <strong>
-                {percent(row[measure as keyof typeof row], true, 1)}
-              </strong>
-              {/* Only a thin sample needs its count. */}
-              {(numeric(row.observations) ?? 0) < THIN_SAMPLE && (
-                <small className="mx-thin-sample">n={number(row.observations, 0)}</small>
-              )}
-            </button>
-          ))}
+          {rows.map((row) => {
+            const cellTone = tone(row[measure as keyof typeof row]);
+            const toned = cellTone === "up" || cellTone === "down";
+            return (
+              <button
+                key={Number(row.month)}
+                type="button"
+                className={cn(
+                  "mx-month-cell tm-heat-subtle min-w-0 cursor-pointer rounded-[7px] border border-transparent px-[3px] py-3.5 font-[inherit] max-phone:py-3",
+                  "hover:enabled:outline hover:enabled:outline-1 hover:enabled:outline-offset-2 hover:enabled:outline-border",
+                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+                  "aria-pressed:border-link disabled:cursor-default disabled:opacity-55",
+                  "forced-colors:aria-pressed:border-[ButtonText] forced-colors:focus-visible:outline-[Highlight]",
+                  !toned && "bg-muted",
+                  "mx-" + cellTone,
+                )}
+                data-tone={toned ? cellTone : undefined}
+                aria-pressed={selected.month === row.month}
+                onClick={() => setMonth(Number(row.month))}
+              >
+                <span className="mb-2 block text-[12px] text-muted-foreground">{months[Number(row.month) - 1]}</span>
+                <strong className="block text-[15px] font-semibold tabular-nums">
+                  {percent(row[measure as keyof typeof row], true, 1)}
+                </strong>
+                {/* Only a thin sample needs its count. */}
+                {(numeric(row.observations) ?? 0) < THIN_SAMPLE && (
+                  <small className="mx-thin-sample mt-1 block text-warning">n={number(row.observations, 0)}</small>
+                )}
+              </button>
+            );
+          })}
         </div>
         <div className="mx-season-detail" aria-live="polite">
           <h3>{months[Number(selected.month) - 1]}</h3>
@@ -354,18 +366,21 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
                         cellIndex.get(`${year}-${i + 1}`)
                           ?.return,
                       );
+                      const direction =
+                        value == null || value === 0
+                          ? undefined
+                          : value > 0
+                            ? "up"
+                            : "down";
                       return (
                         <td
                           key={i}
-                          data-direction={
-                            value == null || value === 0
-                              ? undefined
-                              : value > 0
-                                ? "up"
-                                : "down"
-                          }
+                          className="tm-heat-subtle p-0 text-center"
+                          data-direction={direction}
+                          data-tone={direction}
                         >
                           <button
+                            className="w-full border-0 bg-transparent px-2 py-3 text-inherit tabular-nums focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
                             aria-label={`${year} ${months[i]} ${percent(value, true, 2)}`}
                             onClick={() => setMonth(i + 1)}
                           >

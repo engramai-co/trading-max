@@ -10,6 +10,7 @@ import { useLayoutEffect, useRef } from "react";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useLocale } from "@/components/locale-provider";
+import { cn } from "@/lib/utils";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent, formatReadingTime } from "@/ui/formatters";
@@ -91,9 +92,17 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
   const global = globalClock === undefined ? regions.data : globalClock;
   const newest = (query.data?.quotes ?? []).map((quote) => quote.asOf ?? "").sort().at(-1);
   const error = query.isError || query.data?.refreshFailed;
-  const card = (quote: IndexQuote) => <IndexCard key={quote.index.id} quote={quote} selected={selected === quote.index.id} open={open}
-    nameOverride={market === "global" ? GLOBAL_CARD_NAMES[quote.index.id] : undefined}
-    primaryBenchmark={market === "global" && !selected && quote.index.id === "msci-acwi"} />;
+  const card = (quote: IndexQuote) => (
+    <IndexCard
+      key={quote.index.id}
+      quote={quote}
+      selected={selected === quote.index.id}
+      open={open}
+      nameOverride={market === "global" ? GLOBAL_CARD_NAMES[quote.index.id] : undefined}
+      primaryBenchmark={market === "global" && !selected && quote.index.id === "msci-acwi"}
+      globalBenchmark={market === "global"}
+    />
+  );
   if (market === "global") {
     const quotes = new Map(query.data?.quotes.map((quote) => [quote.index.id, quote]));
     const acwi = quotes.get("msci-acwi");
@@ -166,12 +175,13 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
   );
 }
 
-function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
+function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, globalBenchmark = false }: {
   quote: IndexQuote;
   open: (event: MouseEvent<HTMLAnchorElement>, index: IndexIdentity) => void;
   selected: boolean;
   nameOverride?: string;
   primaryBenchmark?: boolean;
+  globalBenchmark?: boolean;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -199,29 +209,86 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
     : quote.index.rights === "licensed-source-required" ? t("暂无授权报价", "No licensed quote")
       : quote.state === "unavailable" ? t("无报价", "No quote") : null;
   const notice = quote.calendarKnown === false ? t("日历未知", "Calendar unknown") : freshness;
+  const sparkTone = tone === "up" ? "text-gain" : tone === "down" ? "text-loss" : "text-muted-foreground";
   return (
     <Link
       href={indexHref(index)}
       prefetch={false}
       onClick={(event) => open(event, index)}
       id={`index-card-${index.id}`}
-      className="mx-index-card"
+      className={cn(
+        "mx-index-card tm-heat-surface relative grid min-w-0 rounded-[var(--radius-heat-tile)] border border-border text-foreground no-underline hover:border-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight] max-[767px]:snap-start",
+        selected && "outline-2 -outline-offset-2 outline-ring",
+        primaryBenchmark && "outline-2 -outline-offset-2 outline-ring max-[767px]:outline-none max-[767px]:focus-visible:outline-2",
+        globalBenchmark
+          ? "grid-rows-[auto_auto_25px] gap-2 px-3 pb-2 pt-2.5 max-[1179px]:min-[768px]:px-2 max-[959px]:min-[768px]:grid-rows-[18px_auto_21px] max-[767px]:min-h-11 max-[767px]:grid-rows-[auto_auto] max-[767px]:content-center max-[767px]:gap-px max-[767px]:rounded-none max-[767px]:border-0 max-[767px]:border-b max-[767px]:border-border max-[767px]:bg-transparent max-[767px]:px-[5px] max-[767px]:py-[3px]"
+          : "grid-rows-[auto_auto_25px] gap-[7px] px-3 pb-[7px] pt-2.5",
+      )}
       data-tone={tone}
       data-benchmark={primaryBenchmark ? "primary" : undefined}
       aria-current={selected ? "page" : undefined}
       style={{ "--mx-heat-mix": heatMix(tone === "neutral" ? null : quote.change, scheme) } as CSSProperties}
     >
-      <span className="mx-index-name">
+      <span
+        className={cn(
+          "mx-index-name flex min-w-0 items-center justify-between gap-1.5 font-semibold",
+          globalBenchmark
+            ? "text-[14px] max-[1179px]:min-[768px]:block max-[1179px]:min-[768px]:truncate max-[1179px]:min-[768px]:text-[12px] max-[767px]:text-[12px] max-[767px]:leading-[1.25]"
+            : "text-[13px]",
+        )}
+      >
         {nameOverride ?? (index.basis === "total-return" ? `${name(index)} · ${basis(index)}` : name(index))}
-        <CaretRight size={13} aria-hidden="true" />
+        {!globalBenchmark && <CaretRight size={13} className="flex-none opacity-65" aria-hidden="true" />}
       </span>
-      <span className="mx-index-figures"><strong>{level}</strong><span>{move}</span></span>
-      <span className="mx-index-spark">
-        {points.length > 1 && <svg aria-hidden="true" viewBox="0 0 200 25" preserveAspectRatio="none">
-          <path d={line.path} fill="none" vectorEffect="non-scaling-stroke" />
-        </svg>}
+      <span
+        className={cn(
+          "mx-index-figures flex items-baseline justify-between gap-1.5",
+          globalBenchmark
+            ? "flex-wrap max-[1179px]:min-[768px]:flex-nowrap max-[1179px]:min-[768px]:gap-[3px] max-[959px]:min-[768px]:flex-col max-[959px]:min-[768px]:gap-px max-[767px]:flex-nowrap"
+            : "flex-wrap",
+        )}
+      >
+        <strong
+          className={cn(
+            "font-[650] leading-[1.1] tabular-nums max-[767px]:font-semibold",
+            globalBenchmark
+              ? "text-[22px] max-[1179px]:min-[768px]:text-[clamp(13px,1.65vw,19px)] max-[767px]:text-[15px]"
+              : "text-[21px] max-[767px]:text-[20px]",
+          )}
+        >
+          {level}
+        </strong>
+        <span
+          className={cn(
+            "tabular-nums",
+            globalBenchmark ? "text-[13px] max-[1179px]:min-[768px]:text-[12px]" : "text-[13px]",
+          )}
+        >
+          {move}
+        </span>
       </span>
-      {notice && <small className="mx-index-freshness">{notice}</small>}
+      <span className={cn("mx-index-spark relative", sparkTone, globalBenchmark && "max-[767px]:hidden")}>
+        {points.length > 1 && (
+          <svg
+            className={cn("h-full stroke-current [stroke-width:1.5px]", globalBenchmark ? "w-[72%]" : "w-full")}
+            aria-hidden="true"
+            viewBox="0 0 200 25"
+            preserveAspectRatio="none"
+          >
+            <path d={line.path} fill="none" vectorEffect="non-scaling-stroke" />
+          </svg>
+        )}
+      </span>
+      {notice && (
+        <small
+          className={cn(
+            "mx-index-freshness rounded bg-muted px-1 text-[12px] text-foreground",
+            globalBenchmark ? "absolute bottom-[7px] right-2 max-[767px]:static max-[767px]:justify-self-start" : "absolute bottom-[7px] right-2",
+          )}
+        >
+          {notice}
+        </small>
+      )}
     </Link>
   );
 }

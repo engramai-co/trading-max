@@ -178,10 +178,10 @@ export function TimelineChart({
     <>
       {moneyLayout ? <div className="mx-money-timeline">{plot}</div> : plot}
       {sourceKeys.length > 0 && (
-        <div className="mx-chart-legend mx-source-legend">
+        <div className="mx-chart-legend mx-source-legend pt-1.5">
           {sourceKeys.map((key) => (
             <span key={key.label}>
-              <svg width="18" height="4" aria-hidden="true">
+              <svg className="flex-none" width="18" height="4" aria-hidden="true">
                 <line x1="1" y1="2" x2="17" y2="2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray={key.dash} />
               </svg>
               {key.label}

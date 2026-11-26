@@ -11,7 +11,7 @@ export function globalHeatStyle(change: number | null | undefined): HeatStyle {
   return {
     "--mx-world-heat-light": heatMix(change, "light"),
     "--mx-world-heat-dark": heatMix(change, "dark"),
-    "--mx-world-hue": value > 0 ? "var(--heat-gain)" : value < 0 ? "var(--heat-loss)" : "var(--mx-world-land)",
+    "--mx-world-hue": value > 0 ? "var(--heat-gain)" : value < 0 ? "var(--heat-loss)" : "var(--world-land)",
   };
 }
 

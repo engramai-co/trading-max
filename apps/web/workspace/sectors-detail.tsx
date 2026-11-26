@@ -4,6 +4,7 @@ import { CaretRight } from "@phosphor-icons/react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoard, SectorBreadth, SectorGroup, SectorGroupingKind, SectorMember, SectorSessionWindow } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { formatCalendarDate, formatDate, formatDeltaPercent } from "@/ui/formatters";
 import { currency, percent } from "@/workspace/data";
 import { industryName } from "./exposure-names";
@@ -31,12 +32,12 @@ function byChange<T extends { change?: number | null }>(a: T, b: T) {
   return (b.change ?? -Infinity) - (a.change ?? -Infinity);
 }
 
-function BreadthBar({ breadth }: { breadth: SectorBreadth }) {
+function BreadthBar({ breadth, className }: { breadth: SectorBreadth; className?: string }) {
   return (
-    <span className="mx-sector-breadth-bar" aria-hidden="true">
-      <i data-tone="up" style={{ flexGrow: breadth.up }} />
-      <i data-tone="flat" style={{ flexGrow: breadth.flat }} />
-      <i data-tone="down" style={{ flexGrow: breadth.down }} />
+    <span className={cn("mx-sector-breadth-bar flex gap-px overflow-clip rounded-[3px]", className)} aria-hidden="true">
+      <i data-tone="up" className="block min-w-0 bg-gain" style={{ flexGrow: breadth.up }} />
+      <i data-tone="flat" className="block min-w-0 bg-border" style={{ flexGrow: breadth.flat }} />
+      <i data-tone="down" className="block min-w-0 bg-loss" style={{ flexGrow: breadth.down }} />
     </span>
   );
 }
@@ -87,7 +88,7 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
         <div>
           <dt>{t("涨跌家数", "Breadth")}</dt>
           <dd className="mx-sector-breadth-detail">
-            <BreadthBar breadth={group.breadth} />
+            <BreadthBar breadth={group.breadth} className="h-1.5" />
             <span>
               <span className="mx-up">{t("涨", "Up")} {up}</span>
               {flat > 0 && <span>{t("平", "Flat")} {flat}</span>}
@@ -110,17 +111,24 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
         <div>
           <dt>{t("近 5 日排名", "Last 5 sessions")}</dt>
           <dd className="mx-sector-ranks-cell">
-            <ol className="mx-sector-ranks">
+            <ol className="mx-sector-ranks m-0 flex list-none gap-1 p-0">
               {group.ranks.map((rank, index) => (
-                <li key={index} data-top={rank != null && rank <= 3 ? "" : undefined}
+                <li
+                  key={index}
+                  className={cn(
+                    "grid size-6 place-items-center rounded-[5px] text-xs font-semibold tabular-nums",
+                    rank != null && rank <= 3 ? "bg-foreground text-card" : "bg-muted text-muted-foreground",
+                  )}
+                  data-top={rank != null && rank <= 3 ? "" : undefined}
                   data-today={index === group.ranks.length - 1 ? "" : undefined}
-                  title={board.rankSessions[index] ? formatCalendarDate(board.rankSessions[index], locale) : undefined}>
+                  title={board.rankSessions[index] ? formatCalendarDate(board.rankSessions[index], locale) : undefined}
+                >
                   {rank ?? "–"}
                 </li>
               ))}
             </ol>
             {group.streak >= 2 && (
-              <span>{locale === "zh" ? `连续 ${group.streak} 日前三` : `Top three ${group.streak} sessions running`}</span>
+              <span className="text-[12px] text-muted-foreground">{locale === "zh" ? `连续 ${group.streak} 日前三` : `Top three ${group.streak} sessions running`}</span>
             )}
           </dd>
         </div>
@@ -158,28 +166,59 @@ function SectorSpark({ group, board, session, omitEmpty }: { group: SectorGroup;
   if (!line.path) {
     if (omitEmpty) return null;
     return (
-      <figure className="mx-sector-spark">
-        <div className="mx-sector-spark-plot mx-sector-spark-empty">{t("暂无日内走势", "No intraday prices yet")}</div>
+      <figure className="mx-sector-spark m-0">
+        <div className="mx-sector-spark-plot mx-sector-spark-empty relative grid h-28 place-items-center text-[13px] text-muted-foreground">
+          {t("暂无日内走势", "No intraday prices yet")}
+        </div>
       </figure>
     );
   }
+  const peakBorder = highTone === "up" ? "border-gain" : highTone === "down" ? "border-loss" : "border-muted-foreground";
   return (
-    <figure className="mx-sector-spark">
-      <div className="mx-sector-spark-plot">
-        <svg viewBox={"0 0 " + width + " " + height} preserveAspectRatio="none" role="img"
-          aria-label={t("日内走势", "Intraday") + (high ? t("，最高 ", ", high ") + formatDeltaPercent(high.value, locale, 2) : "")}>
-          <line x1={0} x2={width} y1={line.zero} y2={line.zero} className="mx-sector-spark-zero" vectorEffect="non-scaling-stroke" />
-          <path d={line.path} className={"mx-sector-spark-line mx-" + tone} vectorEffect="non-scaling-stroke" />
+    <figure className="mx-sector-spark m-0">
+      <div className="mx-sector-spark-plot relative h-28">
+        <svg
+          className="block size-full overflow-visible"
+          viewBox={"0 0 " + width + " " + height}
+          preserveAspectRatio="none"
+          role="img"
+          aria-label={t("日内走势", "Intraday") + (high ? t("，最高 ", ", high ") + formatDeltaPercent(high.value, locale, 2) : "")}
+        >
+          <line
+            x1={0}
+            x2={width}
+            y1={line.zero}
+            y2={line.zero}
+            className="mx-sector-spark-zero stroke-border [stroke-dasharray:3_3] [stroke-width:1]"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path
+            d={line.path}
+            className={cn(
+              "mx-sector-spark-line fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:1.75]",
+              "mx-" + tone,
+            )}
+            vectorEffect="non-scaling-stroke"
+          />
         </svg>
         {high && (
-          <span className="mx-sector-spark-peak" data-tone={highTone}
-            style={{ left: (high.x / width) * 100 + "%", top: (high.y / height) * 100 + "%" }} />
+          <span
+            className={cn(
+              "mx-sector-spark-peak absolute -ml-[3.5px] -mt-[3.5px] size-[7px] rounded-full border-[1.5px] bg-card",
+              peakBorder,
+            )}
+            data-tone={highTone}
+            style={{ left: (high.x / width) * 100 + "%", top: (high.y / height) * 100 + "%" }}
+          />
         )}
       </div>
-      <figcaption className="mx-sector-spark-axis">
+      <figcaption className="mx-sector-spark-axis mt-1.5 flex justify-between text-[12px] text-muted-foreground">
         <span>{clock(start)}</span>
         {high && (
-          <span className="mx-sector-spark-high" data-tone={highTone}>{t("最高 ", "High ") + formatDeltaPercent(high.value, locale, 2)}</span>
+          <span className="mx-sector-spark-high inline-flex items-center gap-1.5" data-tone={highTone}>
+            <i className={cn("size-[7px] rounded-full border-[1.5px]", peakBorder)} aria-hidden="true" />
+            {t("最高 ", "High ") + formatDeltaPercent(high.value, locale, 2)}
+          </span>
         )}
         <span>{clock(end)}</span>
       </figcaption>
@@ -195,7 +234,7 @@ function Subgroups({ group, openSubgroup }: { group: SectorGroup; openSubgroup: 
   return (
     <ul className="mx-sector-subgroups">
       {/* Industry groups by their move; the unclassified rest closes the list. */}
-      {[...group.subgroups].sort((a, b) => Number(a.key === "") - Number(b.key === "") || byChange(a, b)).map((subgroup) => {
+      {group.subgroups.toSorted((a, b) => Number(a.key === "") - Number(b.key === "") || byChange(a, b)).map((subgroup) => {
         const name = subgroup.key ? industryName(subgroup.name, locale) : t("其他", "Other");
         const expanded = open === subgroup.key;
         return (
@@ -221,7 +260,7 @@ function Members({ members }: { members: SectorMember[] }) {
   const t = useCopy();
   const { locale } = useLocale();
   const [all, setAll] = useState(false);
-  const sorted = [...members].sort(byChange);
+  const sorted = members.toSorted(byChange);
   const shown = all ? sorted : sorted.slice(0, MEMBERS_SHOWN);
   return (
     <div className="mx-sector-members">
@@ -271,7 +310,7 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
   const spots = positions(board, session);
   return (
     <ol ref={list} className="mx-panel mx-sector-list" data-index-only={indexOnly || undefined}>
-      {[...groups].sort(indexOnly ? byChange : byStanding).map((group) => {
+      {groups.toSorted(indexOnly ? byChange : byStanding).map((group) => {
         const name = groupName(group, kind, locale);
         const tone = changeTone(group.change);
         const line = sparkline(group.path, spots, 72, 26, 3);
@@ -280,15 +319,21 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
           <li key={group.key}>
             <button type="button" data-key={group.key} onClick={() => onOpen(group.key)}>
               <span className="mx-sector-list-name">{name}</span>
-              {(!indexOnly || line.path) && <svg className="mx-sector-list-spark" viewBox="0 0 72 26" aria-hidden="true">
-                <line x1={0} x2={72} y1={line.zero} y2={line.zero} className="mx-sector-spark-zero" />
-                <path d={line.path} className={"mx-sector-spark-line mx-" + tone} />
-              </svg>}
+              {(!indexOnly || line.path) && (
+                <svg className="mx-sector-list-spark h-[26px] w-[72px] overflow-visible [grid-area:spark] max-[359px]:hidden" viewBox="0 0 72 26" aria-hidden="true">
+                  <line x1={0} x2={72} y1={line.zero} y2={line.zero} className="mx-sector-spark-zero stroke-border [stroke-dasharray:3_3] [stroke-width:1]" />
+                  <path d={line.path} className={cn("mx-sector-spark-line fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:1.75]", "mx-" + tone)} />
+                </svg>
+              )}
               <span className={"mx-sector-list-change mx-" + tone}>{indexOnly && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</span>
               {!indexOnly && <span className="mx-sector-list-meta">
-                <BreadthBar breadth={group.breadth} />
+                <BreadthBar breadth={group.breadth} className="h-1 w-12 flex-none" />
                 <span>{t("涨", "Up")} {up} · {t("跌", "Down")} {down}</span>
-                {group.streak >= 2 && <span className="mx-sector-streak">{locale === "zh" ? `连 ${group.streak} 日前三` : `Top 3 · ${group.streak}d`}</span>}
+                {group.streak >= 2 && (
+                  <span className="mx-sector-streak flex-none rounded bg-card px-1.5 text-xs font-semibold leading-4 text-foreground">
+                    {locale === "zh" ? `连 ${group.streak} 日前三` : `Top 3 · ${group.streak}d`}
+                  </span>
+                )}
                 {group.leader && (
                   <span className="mx-sector-list-leader">
                     {displaySymbol(group.leader.symbol) + " " + formatDeltaPercent(group.leader.change, locale, 2)}

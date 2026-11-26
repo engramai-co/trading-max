@@ -147,69 +147,6 @@
   font-size: 14px;
   margin: 0 0 4px;
 }
-.mx-index-research-heatmap {
-  position: relative;
-  margin: 16px 0;
-  min-height: clamp(215px, 27vw, 350px);
-}
-.mx-index-research-heatmap > div {
-  position: absolute;
-  background: color-mix(in oklab, var(--mx-heat-hue, var(--heat-base)) var(--mx-heat-blend), var(--heat-base));
-  border: 1px solid var(--mx-border);
-  overflow: hidden;
-  display: grid;
-  place-content: center;
-  gap: 2px;
-  text-align: center;
-}
-.mx-index-research-heatmap > div[data-tone="none"] {
-  background: var(--heat-base);
-}
-.mx-index-research-heatmap > div[data-tone="up"] {
-  --mx-heat-hue: var(--heat-gain);
-}
-.mx-index-research-heatmap > div[data-tone="down"] {
-  --mx-heat-hue: var(--heat-loss);
-}
-.mx-index-research-heatmap > div span {
-  font-size: 12px;
-}
-.mx-index-research-waterfall {
-  margin: 16px 0 4px;
-}
-.mx-index-research-waterfall > div {
-  display: grid;
-  grid-template-columns: minmax(60px, 180px) 1fr 74px;
-  gap: 9px;
-  align-items: center;
-  min-height: 28px;
-  border-top: 1px solid var(--mx-border);
-}
-.mx-index-research-waterfall > div > :last-child {
-  text-align: right;
-}
-.mx-index-research-waterfall-axis {
-  background: var(--mx-soft);
-  border-radius: 3px;
-  height: 8px;
-  position: relative;
-}
-.mx-index-research-waterfall-axis > i {
-  position: absolute;
-  inset-block: -2px;
-  border-left: 1px solid var(--mx-muted);
-}
-.mx-index-research-waterfall-axis > b {
-  height: 100%;
-  position: absolute;
-  border-radius: 3px;
-}
-.mx-index-research-waterfall-axis > b[data-tone="up"] {
-  background: var(--mx-up);
-}
-.mx-index-research-waterfall-axis > b[data-tone="down"] {
-  background: var(--mx-down);
-}
 @media (max-width: 48em) {
   .mx-index-research-hero {
     align-items: flex-start;
@@ -231,9 +168,5 @@
   }
   .mx-index-research-chart-tools .mantine-MultiSelect-root {
     max-width: min(310px, 100%);
-  }
-  .mx-index-research-waterfall > div {
-    font-size: 12px;
-    grid-template-columns: minmax(74px, 32%) 1fr 62px;
   }
 }

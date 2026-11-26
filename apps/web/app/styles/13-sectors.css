@@ -40,188 +40,6 @@
 .mx-sectors-phone {
   display: none;
 }
-.mx-sector-map {
-  position: relative;
-  height: clamp(440px, calc(100dvh - 230px), 760px);
-  overflow: hidden;
-  border-radius: 12px;
-  background: var(--mx-surface);
-  transition: opacity 160ms var(--mx-ease);
-}
-.mx-sector-block,
-.mx-sector-tile {
-  --mx-heat-hue: var(--heat-base);
-}
-.mx-sector-block[data-tone="up"],
-.mx-sector-tile[data-tone="up"] {
-  --mx-heat-hue: var(--heat-gain);
-}
-.mx-sector-block[data-tone="down"],
-.mx-sector-tile[data-tone="down"] {
-  --mx-heat-hue: var(--heat-loss);
-}
-.mx-sector-block {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  border-radius: 6px;
-  background: var(--heat-base);
-  color: var(--mx-ink);
-  text-align: left;
-  transition: background-color 140ms var(--mx-ease);
-}
-.mx-sector-block:not([data-roomy]) {
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
-}
-.mx-sector-block::after {
-  content: "";
-  position: absolute;
-  z-index: 2;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 2px transparent;
-  pointer-events: none;
-  transition: box-shadow 160ms var(--mx-ease);
-}
-.mx-sector-block[aria-pressed="true"]::after {
-  box-shadow: inset 0 0 0 2px var(--mx-brand);
-}
-/* Hover draws a hairline rather than darkening the ground, so the gain and loss figures keep their contrast. */
-.mx-sector-block:not([aria-pressed="true"]):hover::after {
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--mx-ink) 35%, transparent);
-}
-.mx-sector-block:focus-visible {
-  outline: none;
-}
-.mx-sector-block:focus-visible::after {
-  box-shadow: inset 0 0 0 2px var(--mx-brand), inset 0 0 0 4px var(--mx-surface);
-}
-.mx-sector-head {
-  position: relative;
-  display: flex;
-  flex: none;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  height: 34px;
-  padding: 8px 10px 0;
-}
-/* The strip shows the sector's move while its tiles show the constituent moves. */
-.mx-sector-block[data-roomy] .mx-sector-head {
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
-}
-.mx-sector-block:not([data-roomy]) .mx-sector-head {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  height: auto;
-  padding: 7px 8px;
-}
-.mx-sector-block[data-narrow] .mx-sector-head {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  height: 52px;
-}
-.mx-sector-block[data-narrow] .mx-sector-name {
-  max-width: 100%;
-}
-.mx-sector-name {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mx-sector-block:not([data-roomy]) .mx-sector-name {
-  max-width: 100%;
-}
-.mx-sector-move {
-  display: inline-flex;
-  flex: none;
-  align-items: baseline;
-  gap: 6px;
-  margin-left: auto;
-}
-.mx-sector-block:not([data-roomy]) .mx-sector-move,
-.mx-sector-block[data-narrow] .mx-sector-move {
-  margin-left: 0;
-}
-.mx-sector-change {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 18px;
-}
-.mx-sector-streak {
-  padding: 0 5px;
-  border-radius: 4px;
-  background: var(--mx-surface);
-  color: var(--mx-ink);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 16px;
-}
-.mx-sector-breadth,
-.mx-sector-breadth-bar {
-  display: flex;
-  gap: 1px;
-  overflow: hidden;
-}
-.mx-sector-breadth {
-  position: absolute;
-  right: 10px;
-  bottom: 5px;
-  left: 10px;
-  height: 3px;
-  border-radius: 2px;
-}
-.mx-sector-breadth i,
-.mx-sector-breadth-bar i {
-  display: block;
-  min-width: 0;
-  background: var(--mx-border);
-}
-.mx-sector-breadth i[data-tone="up"],
-.mx-sector-breadth-bar i[data-tone="up"] {
-  background: var(--mx-up);
-}
-.mx-sector-breadth i[data-tone="down"],
-.mx-sector-breadth-bar i[data-tone="down"] {
-  background: var(--mx-down);
-}
-.mx-sector-tiles {
-  position: relative;
-  flex: 1;
-  margin: 0 3px 3px;
-}
-.mx-sector-tile {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  padding: 5px 6px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
-  color: var(--mx-ink);
-  font-size: 12px;
-  line-height: 16px;
-}
-.mx-sector-tile-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.mx-sector-tile-change {
-  font-weight: 600;
-}
 .mx-sector-detail {
   display: flex;
   flex-direction: column;
@@ -252,73 +70,6 @@
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
-.mx-sector-spark {
-  margin: 0;
-}
-.mx-sector-spark-plot {
-  position: relative;
-  height: 112px;
-}
-.mx-sector-spark-plot svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  overflow: visible;
-}
-.mx-sector-spark-zero {
-  stroke: var(--mx-border);
-  stroke-dasharray: 3 3;
-  stroke-width: 1;
-}
-.mx-sector-spark-line {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.75;
-}
-.mx-sector-spark-peak {
-  position: absolute;
-  width: 7px;
-  height: 7px;
-  margin: -3.5px 0 0 -3.5px;
-  border: 1.5px solid var(--mx-muted);
-  border-radius: 50%;
-  background: var(--mx-surface);
-}
-.mx-sector-spark-peak[data-tone="up"],
-.mx-sector-spark-high[data-tone="up"]::before {
-  border-color: var(--mx-up);
-}
-.mx-sector-spark-peak[data-tone="down"],
-.mx-sector-spark-high[data-tone="down"]::before {
-  border-color: var(--mx-down);
-}
-.mx-sector-spark-empty {
-  display: grid;
-  place-items: center;
-  color: var(--mx-muted);
-  font-size: 13px;
-}
-.mx-sector-spark-high {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.mx-sector-spark-high::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border: 1.5px solid var(--mx-muted);
-  border-radius: 50%;
-}
-.mx-sector-spark-axis {
-  display: flex;
-  justify-content: space-between;
-  margin-top: 6px;
-  color: var(--mx-muted);
-  font-size: 12px;
-}
 .mx-sector-facts {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -343,10 +94,6 @@
   flex-direction: column;
   align-items: stretch;
 }
-.mx-sector-breadth-bar {
-  height: 6px;
-  border-radius: 3px;
-}
 .mx-sector-breadth-detail > span:last-child {
   display: flex;
   gap: 10px;
@@ -358,32 +105,6 @@
   color: var(--mx-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.mx-sector-ranks {
-  display: flex;
-  gap: 4px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.mx-sector-ranks li {
-  display: grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 5px;
-  background: var(--mx-soft);
-  color: var(--mx-muted);
-  font-size: 12px;
-  font-weight: 600;
-}
-.mx-sector-ranks li[data-top] {
-  background: var(--mx-ink);
-  color: var(--mx-surface);
-}
-.mx-sector-ranks-cell > span {
-  color: var(--mx-muted);
-  font-size: 12px;
 }
 .mx-sector-subgroups,
 .mx-sector-members ul {
@@ -512,12 +233,6 @@ a.mx-sector-symbol:hover {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
-.mx-sector-list-spark {
-  grid-area: spark;
-  width: 72px;
-  height: 26px;
-  overflow: visible;
-}
 .mx-sector-list-change {
   grid-area: change;
   font-size: 15px;
@@ -534,14 +249,6 @@ a.mx-sector-symbol:hover {
   color: var(--mx-muted);
   font-size: 12px;
   white-space: nowrap;
-}
-.mx-sector-list-meta .mx-sector-breadth-bar {
-  flex: none;
-  width: 48px;
-  height: 4px;
-}
-.mx-sector-list-meta .mx-sector-streak {
-  flex: none;
 }
 .mx-sector-list-leader {
   min-width: 0;
@@ -568,8 +275,6 @@ a.mx-sector-symbol:hover {
   .mx-sector-detail {
     animation: none;
   }
-  .mx-sector-block,
-  .mx-sector-block::after,
   .mx-sector-subgroup svg {
     transition: none;
   }
@@ -577,9 +282,6 @@ a.mx-sector-symbol:hover {
 @media (max-width: 899px) {
   .mx-sectors-body {
     grid-template-columns: minmax(0, 1fr);
-  }
-  .mx-sector-map {
-    height: clamp(360px, 50vh, 520px);
   }
 }
 @media (max-width: 767px) {
@@ -621,9 +323,6 @@ a.mx-sector-symbol:hover {
       "meta meta caret";
     grid-template-columns: minmax(0, 1fr) minmax(64px, auto) 16px;
   }
-  .mx-sector-list-spark {
-    display: none;
-  }
   /* The leader waits for the sector's own step rather than clipping its number. */
   .mx-sector-list-leader {
     display: none;
@@ -649,15 +348,6 @@ a.mx-sector-symbol:hover {
   align-items: center;
   gap: 4px 8px;
   margin-inline-start: auto;
-}
-.mx-global-sectors-body .mx-sector-map {
-  height: clamp(440px, calc(100dvh - 336px), 760px);
-}
-.mx-sector-block[data-flat-map] {
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
-}
-.mx-sector-block[data-flat-map] .mx-sector-head {
-  background: none;
 }
 .mx-global-sector-ledger h3 {
   margin: 0 0 6px;

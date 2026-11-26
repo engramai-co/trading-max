@@ -426,10 +426,6 @@ html[data-scrolled] .mx-topbar-title strong {
 .mx-overview-notice {
   padding: 0 28px 24px;
 }
-.mx-history-coverage {
-  margin-bottom: 18px;
-  min-width: 0;
-}
 /* Seven days of update outcomes on the data page; one muted line when all succeeded. */
 .mx-job-outcomes {
   margin: 0 0 16px;

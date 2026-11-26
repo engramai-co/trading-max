@@ -4,7 +4,7 @@ import { globalHeatStyle, globalMarketReading } from "./global-markets-data";
 test("world map mixes into neutral land, respects the flat band and saturates at three percent", () => {
   for (const value of [undefined, null, NaN, 0, 0.0005, -0.0005]) {
     expect(globalHeatStyle(value)).toEqual({
-      "--mx-world-heat-light": "0%", "--mx-world-heat-dark": "0%", "--mx-world-hue": "var(--mx-world-land)",
+      "--mx-world-heat-light": "0%", "--mx-world-heat-dark": "0%", "--mx-world-hue": "var(--world-land)",
     });
   }
   expect(globalHeatStyle(0.00051)["--mx-world-heat-light"]).toBe("13%");
