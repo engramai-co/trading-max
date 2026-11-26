@@ -38,7 +38,7 @@
   border-radius: 8px;
 }
 .mx-overview-sector {
-  --mx-heat-hue: var(--mx-soft);
+  --mx-heat-hue: var(--heat-base);
   position: absolute;
   display: flex;
   flex-direction: column;
@@ -46,16 +46,16 @@
   padding: 8px 10px;
   overflow: hidden;
   border-radius: 6px;
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-soft));
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
   color: var(--mx-ink);
   text-decoration: none;
   transition: box-shadow 160ms var(--mx-ease);
 }
 .mx-overview-sector[data-tone="up"] {
-  --mx-heat-hue: var(--mx-up);
+  --mx-heat-hue: var(--heat-gain);
 }
 .mx-overview-sector[data-tone="down"] {
-  --mx-heat-hue: var(--mx-down);
+  --mx-heat-hue: var(--heat-loss);
 }
 /* Hover draws a hairline rather than darkening the wash, so the figures keep their contrast. */
 @media (hover: hover) {
@@ -324,13 +324,15 @@
 }
 .mx-ledger-donut path {
   fill: var(--mx-dot);
-  transition: opacity 150ms var(--mx-ease);
 }
 .mx-ledger-donut path[data-rest] {
   fill: var(--mx-rest);
+  stroke: var(--mx-muted);
+  stroke-width: 1px;
 }
-.mx-ledger-donut svg[data-focus] path:not([data-current]) {
-  opacity: 0.3;
+.mx-ledger-donut svg[data-focus] path[data-current] {
+  stroke: var(--mx-ink);
+  stroke-width: 2px;
 }
 .mx-ledger-centre {
   position: absolute;

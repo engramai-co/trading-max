@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import {
   createContext,
   useCallback,
@@ -14,7 +15,10 @@ import {
   COLOR_SCHEME_ATTRIBUTE,
   COLOR_SCHEME_STORAGE_KEY,
   DEFAULT_COLOR_SCHEME,
+  THEME_COLOR_BY_SCHEME,
   isColorScheme,
+  isDesktopAppearancePath,
+  preferenceForPath,
   type ColorScheme,
   type ResolvedColorScheme,
 } from "@/lib/color-scheme";
@@ -24,6 +28,7 @@ const DARK_MEDIA_QUERY = "(prefers-color-scheme: dark)";
 type ColorSchemeContextValue = {
   colorScheme: ColorScheme;
   resolvedColorScheme: ResolvedColorScheme;
+  osColorScheme: ResolvedColorScheme | null;
   setColorScheme: (value: ColorScheme, options?: { keepTransitions?: boolean }) => void;
   clearColorScheme: (options?: { keepTransitions?: boolean }) => void;
   toggleColorScheme: () => void;
@@ -74,12 +79,26 @@ export function resolveColorScheme(
   return scheme === "auto" ? osScheme : scheme;
 }
 
+function syncMetaTag(name: string, content: string) {
+  if (typeof document === "undefined" || typeof document.querySelector !== "function") return;
+  const meta = document.querySelector(`meta[name="${name}"]`);
+  if (meta && meta.getAttribute("content") !== content) {
+    meta.setAttribute("content", content);
+  }
+}
+
+function currentPathname() {
+  return typeof window === "undefined" ? "" : window.location?.pathname ?? "";
+}
+
 function applyColorSchemeAttribute(scheme: ColorScheme) {
   if (typeof document === "undefined") return;
-  const resolved = resolveColorScheme(scheme, readOsColorScheme());
+  const resolved = resolveColorScheme(preferenceForPath(scheme, currentPathname()), readOsColorScheme());
   if (document.documentElement.getAttribute(COLOR_SCHEME_ATTRIBUTE) !== resolved) {
     document.documentElement.setAttribute(COLOR_SCHEME_ATTRIBUTE, resolved);
   }
+  syncMetaTag("color-scheme", resolved);
+  syncMetaTag("theme-color", THEME_COLOR_BY_SCHEME[resolved]);
 }
 
 function ensurePreferenceInitialized(defaultValue: ColorScheme = DEFAULT_COLOR_SCHEME): ColorScheme {
@@ -176,6 +195,7 @@ function subscribeOs(listener: () => void) {
 }
 
 function writeStoredPreference(value: ColorScheme, keepTransitions = false) {
+  if (isDesktopAppearancePath(currentPathname())) return;
   const prev = ensurePreferenceInitialized();
   currentPreference = value;
   try {
@@ -196,6 +216,7 @@ function clearStoredPreference(
   defaultValue: ColorScheme = DEFAULT_COLOR_SCHEME,
   keepTransitions = false,
 ) {
+  if (isDesktopAppearancePath(currentPathname())) return;
   const prev = ensurePreferenceInitialized(defaultValue);
   currentPreference = defaultValue;
   try {
@@ -219,21 +240,23 @@ function clearStoredPreference(
 export function createMantineColorSchemeManager(
   defaultColorScheme: ColorScheme = DEFAULT_COLOR_SCHEME,
 ): MantineCompatibleColorSchemeManager {
+  const get = (fallback = defaultColorScheme) =>
+    preferenceForPath(ensurePreferenceInitialized(fallback), currentPathname());
   let unsubscribeStore: (() => void) | null = null;
   let lastNotified: ColorScheme | null = null;
   return {
-    get: (fallback) => ensurePreferenceInitialized(fallback ?? defaultColorScheme),
+    get,
     set: (value) => {
       if (!isColorScheme(value)) return;
-      if (ensurePreferenceInitialized(defaultColorScheme) === value) return;
+      if (get() === value) return;
       lastNotified = value;
       writeStoredPreference(value, true);
     },
     subscribe: (onUpdate) => {
       unsubscribeStore?.();
-      lastNotified = ensurePreferenceInitialized(defaultColorScheme);
+      lastNotified = get();
       unsubscribeStore = subscribePreference(() => {
-        const next = ensurePreferenceInitialized(defaultColorScheme);
+        const next = get();
         if (next === lastNotified) return;
         lastNotified = next;
         onUpdate(next);
@@ -280,24 +303,27 @@ export function ColorSchemeProvider({
   children: ReactNode;
   defaultColorScheme?: ColorScheme;
 }>) {
-  const colorScheme = useSyncExternalStore(
+  const pathname = usePathname();
+  const storedPreference = useSyncExternalStore(
     subscribePreference,
     () => ensurePreferenceInitialized(defaultColorScheme),
     () => defaultColorScheme,
   );
+  const colorScheme = preferenceForPath(storedPreference, pathname ?? currentPathname());
   const osColorScheme = useSyncExternalStore(
     subscribeOs,
     readOsColorScheme,
-    () => "light" as ResolvedColorScheme,
+    () => null as ResolvedColorScheme | null,
   );
-  const resolvedColorScheme = resolveColorScheme(colorScheme, osColorScheme);
+  const resolvedColorScheme = resolveColorScheme(colorScheme, osColorScheme ?? "dark");
 
-  // Keep the html attribute aligned on mount using the live client value so
-  // the SSR server snapshot never briefly overrides the blocking head script.
+  // Keep the html attribute and head metadata aligned on mount using the live client
+  // value so the SSR server snapshot never briefly overrides the blocking head script.
   useIsomorphicLayoutEffect(() => {
     ensureWindowListeners();
     applyColorSchemeAttribute(ensurePreferenceInitialized(defaultColorScheme));
-  }, [defaultColorScheme]);
+    notifyPreferenceListeners();
+  }, [defaultColorScheme, pathname]);
 
   const setColorScheme = useCallback(
     (value: ColorScheme, options?: { keepTransitions?: boolean }) => {
@@ -325,11 +351,12 @@ export function ColorSchemeProvider({
     () => ({
       colorScheme,
       resolvedColorScheme,
+      osColorScheme,
       setColorScheme,
       clearColorScheme,
       toggleColorScheme,
     }),
-    [colorScheme, resolvedColorScheme, setColorScheme, clearColorScheme, toggleColorScheme],
+    [colorScheme, resolvedColorScheme, osColorScheme, setColorScheme, clearColorScheme, toggleColorScheme],
   );
 
   return <ColorSchemeContext.Provider value={value}>{children}</ColorSchemeContext.Provider>;
@@ -337,7 +364,7 @@ export function ColorSchemeProvider({
 
 export function useColorScheme(): ColorSchemeContextValue {
   const context = useContext(ColorSchemeContext);
-  const fallbackScheme = useSyncExternalStore(
+  const fallbackPreference = useSyncExternalStore(
     subscribePreference,
     () => ensurePreferenceInitialized(DEFAULT_COLOR_SCHEME),
     () => DEFAULT_COLOR_SCHEME,
@@ -345,7 +372,7 @@ export function useColorScheme(): ColorSchemeContextValue {
   const fallbackOs = useSyncExternalStore(
     subscribeOs,
     readOsColorScheme,
-    () => "light" as ResolvedColorScheme,
+    () => null as ResolvedColorScheme | null,
   );
   const setColorScheme = useCallback(
     (value: ColorScheme, options?: { keepTransitions?: boolean }) => {
@@ -361,9 +388,11 @@ export function useColorScheme(): ColorSchemeContextValue {
     writeStoredPreference(live === "dark" ? "light" : "dark");
   }, []);
   if (context) return context;
+  const fallbackScheme = preferenceForPath(fallbackPreference, currentPathname());
   return {
     colorScheme: fallbackScheme,
-    resolvedColorScheme: resolveColorScheme(fallbackScheme, fallbackOs),
+    resolvedColorScheme: resolveColorScheme(fallbackScheme, fallbackOs ?? "dark"),
+    osColorScheme: fallbackOs,
     setColorScheme,
     clearColorScheme,
     toggleColorScheme,
@@ -371,8 +400,9 @@ export function useColorScheme(): ColorSchemeContextValue {
 }
 
 export function useComputedColorScheme(
-  defaultValue: ResolvedColorScheme = "light",
+  defaultValue: ResolvedColorScheme = "dark",
 ): ResolvedColorScheme {
+  const context = useContext(ColorSchemeContext);
   const colorScheme = useSyncExternalStore(
     subscribePreference,
     () => ensurePreferenceInitialized(DEFAULT_COLOR_SCHEME),
@@ -383,5 +413,6 @@ export function useComputedColorScheme(
     readOsColorScheme,
     () => defaultValue,
   );
-  return resolveColorScheme(colorScheme, osColorScheme);
+  return context?.resolvedColorScheme
+    ?? resolveColorScheme(preferenceForPath(colorScheme, currentPathname()), osColorScheme);
 }

@@ -41,11 +41,11 @@ function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
     },
     axisLine: {
       ...axis.axisLine,
-      lineStyle: { color: colours.axis, ...axis.axisLine?.lineStyle },
+      lineStyle: { color: colours.border, ...axis.axisLine?.lineStyle },
     },
     axisTick: {
       ...axis.axisTick,
-      lineStyle: { color: colours.axis, ...axis.axisTick?.lineStyle },
+      lineStyle: { color: colours.border, ...axis.axisTick?.lineStyle },
     },
     splitLine: {
       ...axis.splitLine,
@@ -159,9 +159,10 @@ export function Plot({
       textStyle: { color: colours.text, fontSize: 12 },
       color: [
         colours.brand,
+        colours.comparison,
         colours.accent,
         colours.secondary,
-        colours.negative,
+        colours.series5,
       ],
       grid: { top: 20, right: 18, bottom: 30, left: 58 },
       ...custom,

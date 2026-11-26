@@ -12,8 +12,10 @@ test.describe("held funds in research", () => {
       return url.pathname.startsWith("/api/company-logo/") ? route.fulfill({ status: 204 }) : route.continue();
     });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), "light");
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/?range=1D");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "light");
 
     const fixtureTicker = process.env.HELD_FUND_QA_TICKER;
     test.skip(!fixtureTicker, "Requires the isolated preview with an unlisted held fund.");

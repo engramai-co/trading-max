@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { brandColours, chartColours } from "@/ui/theme";
+import { darkCanvas } from "@/ui/theme";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -11,8 +11,8 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    background_color: brandColours[0],
-    theme_color: chartColours.text,
+    background_color: darkCanvas,
+    theme_color: darkCanvas,
     icons: [
       { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
       { src: "/brand/trading-max-icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

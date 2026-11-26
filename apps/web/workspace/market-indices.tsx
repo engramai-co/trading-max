@@ -8,6 +8,7 @@ import type { SeriesOption } from "echarts";
 import type { CSSProperties, MouseEvent } from "react";
 import { useLayoutEffect, useRef } from "react";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
+import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useLocale } from "@/components/locale-provider";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
@@ -27,7 +28,7 @@ import {
   type IndexContext, type IndexContribution, type IndexHistory, type IndexIdentity, type IndexMarket,
   type IndexQuote, type IndexRange, type IndexScope,
 } from "./market-indices-data";
-import { sparkline } from "./sectors-data";
+import { heatMix, sparkline } from "./sectors-data";
 
 const IndexDrawdownChart = dynamic(() => import("./index-drawdown-chart").then((module) => module.IndexDrawdownChart));
 const Plot = dynamic(() => import("./charts").then((module) => module.Plot));
@@ -193,7 +194,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
     : formatNumber(quote.level, locale, { maximumFractionDigits: 2, minimumFractionDigits: nameOverride ? 2 : undefined });
   const tone = index.kind === "volatility" || quote.change == null || quote.change === 0
     ? "neutral" : quote.change > 0 ? "up" : "down";
-  const heat = Math.min(1, Math.abs(quote.change ?? 0) / 0.03);
+  const scheme = useComputedColorScheme();
   const freshness = quote.state === "stale" ? t("未更新", "Stale")
     : quote.index.rights === "licensed-source-required" ? t("暂无授权报价", "No licensed quote")
       : quote.state === "unavailable" ? t("无报价", "No quote") : null;
@@ -208,7 +209,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark }: {
       data-tone={tone}
       data-benchmark={primaryBenchmark ? "primary" : undefined}
       aria-current={selected ? "page" : undefined}
-      style={{ "--mx-index-heat": `${Math.round(heat * 22 + (heat > 0 ? 5 : 0))}%` } as CSSProperties}
+      style={{ "--mx-heat-mix": heatMix(tone === "neutral" ? null : quote.change, scheme) } as CSSProperties}
     >
       <span className="mx-index-name">
         {nameOverride ?? (index.basis === "total-return" ? `${name(index)} · ${basis(index)}` : name(index))}
@@ -376,7 +377,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
       time: time + " · " + t("起点归 100", "Rebased to 100"),
       ...comparisonFigures([
         { item: { label: chartName, key: { colour: colours.brand }, value: fixed(row.left) }, change: row.left == null ? null : row.left / 100 - 1 },
-        { item: { label: peerName, key: { colour: colours.axis, dashed: true }, value: fixed(row.right) }, change: row.right == null ? null : row.right / 100 - 1 },
+        { item: { label: peerName, key: { colour: colours.comparison, dashed: true }, value: fixed(row.right) }, change: row.right == null ? null : row.right / 100 - 1 },
       ], t("相差", "Difference")),
     };
   };
@@ -396,7 +397,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
       const row = plotRows[position];
       return [
         ...(row?.left == null ? [] : [{ value: row.left, colour: colours.brand }]),
-        ...(row?.right == null || !matched.length ? [] : [{ value: row.right, colour: colours.axis }]),
+        ...(row?.right == null || !matched.length ? [] : [{ value: row.right, colour: colours.comparison }]),
       ];
     },
     records: (position: number) => {
@@ -491,7 +492,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           readout={indexReadout}
           option={(colours) => {
             const lines = [{ key: "left" as const, label: chartName, colour: colours.brand, dashed: false }];
-            const compared = matched.length ? [{ key: "right" as const, label: peerName, colour: colours.axis, dashed: true }] : [];
+            const compared = matched.length ? [{ key: "right" as const, label: peerName, colour: colours.comparison, dashed: true }] : [];
             return {
               animation: false,
               grid: { top: 17, right: 18, bottom: 31, left: 58 },

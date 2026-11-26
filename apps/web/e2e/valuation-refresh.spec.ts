@@ -959,7 +959,10 @@ for (const locale of ["en", "zh"] as const) {
         info.project.name === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 900 },
       );
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
-      await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
+      await page.addInitScript(({ value, mode }) => {
+        localStorage.setItem("trading_max-locale", value);
+        localStorage.setItem("mantine-color-scheme-value", mode);
+      }, { value: locale, mode: scheme });
       await synthetic(page, false);
       let release!: () => void;
       const gate = new Promise<void>((resolve) => { release = resolve; });
@@ -1091,6 +1094,7 @@ for (const example of ["bounded-margin", "ambiguous-margin"] as const) {
   test(`the valuation readout uses the published ${example} result`, async ({ page, isMobile }, info) => {
     test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
     if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), "light");
     await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     const ticker = "CASH";
@@ -1114,6 +1118,7 @@ for (const example of ["bounded-margin", "ambiguous-margin"] as const) {
       } });
     });
     await page.goto(`/research?ticker=${ticker}&view=valuation`);
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "light");
     const row = page.locator(".mx-valuation-readout");
     const reverse = row.locator(".mx-metric").filter({ hasText: "Target margin implied by price" });
     const expected = example === "bounded-margin" ? ">100.0%" : "—";
@@ -1132,7 +1137,10 @@ for (const locale of ["en", "zh"] as const) {
       test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
       await page.setViewportSize({ width: 390, height: 844 });
       await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
-      await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
+      await page.addInitScript(({ value, mode }) => {
+        localStorage.setItem("trading_max-locale", value);
+        localStorage.setItem("mantine-color-scheme-value", mode);
+      }, { value: locale, mode: scheme });
       await synthetic(page, false);
       let release!: () => void;
       const gate = new Promise<void>(resolve => { release = resolve; });
@@ -1245,6 +1253,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
     const en = locale === "en";
     await page.setViewportSize(info.project.name === "mobile" ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), scheme);
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
     await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
     await synthetic(page, false);
@@ -1267,6 +1276,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
       status: 409, json: { detail: "valuation-draft-review-required" },
     }); });
     await page.goto("/research?ticker=SYNT&view=valuation");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
     const editor = page.locator("#valuation-assumptions");
     const entry = editor.getByRole("button", { name: en ? "✦ Draft" : "✦ 起草", exact: true });
     await expect(entry).toBeVisible();
@@ -1305,6 +1315,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
   test(`review a bank assumption and withhold an ambiguous reading · ${locale} · ${scheme}`, async ({page}, info) => {
     test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
     await page.setViewportSize(info.project.name === "mobile" ? {width:390, height:844} : {width:1440, height:900});
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), scheme);
     await page.emulateMedia({colorScheme:scheme, reducedMotion:"reduce"});
     await page.addInitScript(value => localStorage.setItem("trading_max-locale", value), locale);
     await synthetic(page, false);
@@ -1338,6 +1349,7 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     const editor = page.locator("#valuation-assumptions");
     const entry = editor.getByRole("button", {name: en ? "✦ Draft" : "✦ 起草"});
     await page.goto("/research?ticker=SYNT&view=valuation");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
     await entry.click();
     await expect(editor.locator(".mx-draft-row")).toHaveCount(1);
     const accept = editor.getByRole("button", {name:en ? "Accept Year-one ROE" : "接受 第一年 ROE"});

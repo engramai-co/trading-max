@@ -74,12 +74,14 @@ test.describe("primary chart reading", () => {
 
   for (const colorScheme of ["light", "dark"] as const) {
     test(`fixed chart and technical chart work in ${colorScheme}`, async ({ page, isMobile }, info) => {
+      await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), colorScheme);
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
       await mockPrices(page);
       const width = page.viewportSize()!.width;
       const folder = process.env.CHART_QA_DIR;
       for (const ticker of ["AAPL", "BE", "NVDA"]) {
         await page.goto(`/research?ticker=${ticker}&view=overview`);
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
         const overview = page.locator(".mx-price-diagnosis-preview");
         const preview = overview.getByRole("group", { name: `${ticker} · Three-month candlestick chart` });
         await expect(preview).toHaveAttribute("data-tm-chart-ready", "true");
@@ -184,9 +186,11 @@ test.describe("primary chart reading", () => {
       for (const colorScheme of ["light", "dark"] as const) {
         test(`expands single and multiple orders in ${colorScheme}`, async ({ page }, info) => {
           const en = locale === "en";
+          await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), colorScheme);
           await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
           await mockPrices(page);
           await page.goto("/research?ticker=AAPL&view=technical");
+          await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
           const track = page.getByRole("region", { name: en ? "Event timeline" : "事件时间轴" });
           const marker = track.getByRole("button", { name: / · T \(\+4\)$/ });
           await expect(marker).toHaveAccessibleName(/ · T \(\+4\)$/);

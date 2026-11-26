@@ -44,7 +44,24 @@
   overscroll-behavior: contain;
   padding: 16px;
   scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   overflow-wrap: anywhere;
+}
+@supports not (scrollbar-color: auto) {
+  .mx-assistant-transcript {
+    scrollbar-width: auto;
+  }
+  .mx-assistant-transcript::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  .mx-assistant-transcript::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 6px;
+  }
+  .mx-assistant-transcript::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
 }
 .mx-assistant-transcript .mx-assistant-opening {
   padding: 0;
@@ -174,8 +191,14 @@
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  color: var(--mx-nav-active-ink);
-  background: var(--mx-nav-active);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+.mx-assistant-composer button:not(:disabled):hover {
+  background: var(--primary-hover);
+}
+.mx-assistant-composer button:not(:disabled):active {
+  background: var(--primary-active);
 }
 .mx-assistant-composer button:disabled {
   background: var(--mx-soft);
@@ -326,7 +349,7 @@
   .mx-reading-actions button:hover,
   .mx-assistant-questions button:hover,
   .mx-assistant-turn-actions button:not(:disabled):hover {
-    background: var(--mx-brand-soft);
+    background: var(--ghost-hover);
   }
 }
 .mx-brief-period {
@@ -342,7 +365,7 @@
   color: var(--mx-muted);
 }
 .mx-brief-period button[aria-pressed="true"] {
-  background: var(--mx-surface);
+  background: var(--segment-indicator);
   color: var(--mx-ink);
   box-shadow: var(--mx-shadow);
 }

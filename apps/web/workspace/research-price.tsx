@@ -523,7 +523,7 @@ export function PriceHistory({
                       lineStyle: { width: 2, color: c.brand },
                       areaStyle: normalized || points.length < 3
                         ? undefined
-                        : { color: c.brand, opacity: 0.04 },
+                        : { color: c.brand, opacity: 0.13 },
                     },
               ];
               if (comparable && benchmarkAnchor)

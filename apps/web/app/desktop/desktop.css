@@ -159,7 +159,8 @@ html[data-desktop-chrome="overlay"] .mx-desktop-app .mx-content main {
   min-height: 40px;
 }
 .mx-desktop-settings .mx-tabs button[aria-selected="true"] {
-  background: var(--mx-brand-soft);
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
 }
 .mx-desktop-settings .mx-tabs > .mx-indicator {
   display: none;

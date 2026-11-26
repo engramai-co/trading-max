@@ -7,12 +7,14 @@ test("world map mixes into neutral land, respects the flat band and saturates at
       "--mx-world-heat-light": "0%", "--mx-world-heat-dark": "0%", "--mx-world-hue": "var(--mx-world-land)",
     });
   }
-  expect(globalHeatStyle(0.00051)["--mx-world-heat-light"]).toBe("19%");
+  expect(globalHeatStyle(0.00051)["--mx-world-heat-light"]).toBe("13%");
   expect(globalHeatStyle(0.00051)["--mx-world-heat-dark"]).toBe("24%");
   expect(globalHeatStyle(-0.03)).toEqual(globalHeatStyle(-0.07));
   expect(globalHeatStyle(0.03)).toEqual(globalHeatStyle(0.07));
-  expect(globalHeatStyle(-0.01)["--mx-world-hue"]).toBe("var(--mx-down)");
-  expect(globalHeatStyle(0.01)["--mx-world-hue"]).toBe("var(--mx-up)");
+  expect(globalHeatStyle(-0.03)["--mx-world-heat-dark"]).toBe("70%");
+  expect(globalHeatStyle(0.03)["--mx-world-heat-light"]).toBe("55%");
+  expect(globalHeatStyle(-0.01)["--mx-world-hue"]).toBe("var(--heat-loss)");
+  expect(globalHeatStyle(0.01)["--mx-world-hue"]).toBe("var(--heat-gain)");
 });
 
 test("names the price proxy for China's move in both languages", () => {

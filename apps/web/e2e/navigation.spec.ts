@@ -221,6 +221,7 @@ test.describe("workspace navigation refinements", () => {
     test(`mobile tools and bottom menu fit ${size.width}×${size.height} in English`, async ({ page }, testInfo) => {
       test.skip(testInfo.project.name !== "mobile");
       await page.setViewportSize(size);
+      await page.emulateMedia({ colorScheme: "light" });
       await page.goto("/");
       // The dock holds the main pages; one menu adds only what the dock lacks.
       await page.getByRole("button", { name: "更多", exact: true }).tap();
@@ -242,7 +243,7 @@ test.describe("workspace navigation refinements", () => {
       const menu = page.getByRole("menu");
       // Mantine exposes the menu while it fades in; measure and scan it when fully painted.
       await expect(menu).toHaveCSS("opacity", "1");
-      await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Settings", "中文", "Light", "Dark", "System"]);
+      await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Settings", "中文", "Light", "Dark", "System · Light"]);
       const box = (await menu.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(size.width);

@@ -307,6 +307,7 @@ test("Research index uses page context unless a key moment is handed off", async
 
 for (const language of ["zh","en"]) for (const theme of ["light","dark"] as const) {
   test(`research cards ${language} ${theme}`, async ({page,isMobile},info) => {
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), theme);
     await page.emulateMedia({colorScheme:theme,reducedMotion:"reduce"});
     await page.addInitScript(lang => localStorage.setItem("trading_max-locale",lang),language);
     const reads = await fixtures(page);
@@ -315,6 +316,7 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
       if (folder) await page.screenshot({scale:"css",path:join(folder,[info.project.name,language,theme,name].join("-")+".png")});
     };
     await page.goto("/research?ticker=SYNT");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
     await expect(page.locator(".mx-tech-preview-grid")).toBeVisible();
     expect(reads).not.toContain("your-position");
     await page.locator("[data-assistant-trigger]").click();
@@ -847,10 +849,12 @@ test("company summary handoffs keep their context for typed follow-ups until dis
 
 for (const theme of ["light", "dark"] as const) {
   test(`a Chinese summary restates the company's English description, ${theme}`, async ({page, isMobile}, info) => {
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), theme);
     await page.emulateMedia({colorScheme:theme, reducedMotion:"reduce"});
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
     const {reads, summaries} = await profile(page);
     await page.goto("/research?ticker=SYNT");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
     const english = page.locator(".mx-business-excerpt");
     await expect(english).toHaveAttribute("lang", "en");
     const trigger = page.getByRole("button", {name:"✦ 中文摘要"});
@@ -887,10 +891,12 @@ for (const theme of ["light", "dark"] as const) {
 
   test(`a citation opens the description at its sentence and takes focus, ${theme}`, async ({page, isMobile}, info) => {
     if (isMobile) await page.setViewportSize({width:390, height:844});
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), theme);
     await page.emulateMedia({colorScheme:theme, reducedMotion:"reduce"});
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
     await profile(page);
     await page.goto("/research?ticker=SYNT");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
     // The two-sentence excerpt does not contain the third sentence.
     await expect(page.locator(".mx-business-excerpt")).not.toContainText("Exampleton");
     await page.getByRole("button", {name:"✦ 中文摘要"}).click();

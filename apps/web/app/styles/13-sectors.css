@@ -49,22 +49,16 @@
   transition: opacity 160ms var(--mx-ease);
 }
 .mx-sector-block,
-.mx-sector-tile,
-.mx-sector-breadth i,
-.mx-sector-breadth-bar i {
-  --mx-heat-hue: var(--mx-soft);
+.mx-sector-tile {
+  --mx-heat-hue: var(--heat-base);
 }
 .mx-sector-block[data-tone="up"],
-.mx-sector-tile[data-tone="up"],
-.mx-sector-breadth i[data-tone="up"],
-.mx-sector-breadth-bar i[data-tone="up"] {
-  --mx-heat-hue: var(--mx-up);
+.mx-sector-tile[data-tone="up"] {
+  --mx-heat-hue: var(--heat-gain);
 }
 .mx-sector-block[data-tone="down"],
-.mx-sector-tile[data-tone="down"],
-.mx-sector-breadth i[data-tone="down"],
-.mx-sector-breadth-bar i[data-tone="down"] {
-  --mx-heat-hue: var(--mx-down);
+.mx-sector-tile[data-tone="down"] {
+  --mx-heat-hue: var(--heat-loss);
 }
 .mx-sector-block {
   position: absolute;
@@ -75,13 +69,13 @@
   overflow: hidden;
   border: 0;
   border-radius: 6px;
-  background: var(--mx-soft);
+  background: var(--heat-base);
   color: var(--mx-ink);
   text-align: left;
   transition: background-color 140ms var(--mx-ease);
 }
 .mx-sector-block:not([data-roomy]) {
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-surface));
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
 }
 .mx-sector-block::after {
   content: "";
@@ -116,9 +110,9 @@
   height: 34px;
   padding: 8px 10px 0;
 }
-/* The strip carries the sector's own move as a light wash; its figures stay ink so contrast holds on any wash. */
+/* The strip shows the sector's move while its tiles show the constituent moves. */
 .mx-sector-block[data-roomy] .mx-sector-head {
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-head-mix), var(--mx-soft));
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
 }
 .mx-sector-block:not([data-roomy]) .mx-sector-head {
   flex-direction: column;
@@ -195,10 +189,12 @@
   background: var(--mx-border);
 }
 .mx-sector-breadth i[data-tone="up"],
+.mx-sector-breadth-bar i[data-tone="up"] {
+  background: var(--mx-up);
+}
 .mx-sector-breadth i[data-tone="down"],
-.mx-sector-breadth-bar i[data-tone="up"],
 .mx-sector-breadth-bar i[data-tone="down"] {
-  background: var(--mx-heat-hue);
+  background: var(--mx-down);
 }
 .mx-sector-tiles {
   position: relative;
@@ -213,7 +209,7 @@
   padding: 5px 6px;
   overflow: hidden;
   border-radius: 3px;
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-surface));
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
   color: var(--mx-ink);
   font-size: 12px;
   line-height: 16px;
@@ -658,7 +654,7 @@ a.mx-sector-symbol:hover {
   height: clamp(440px, calc(100dvh - 336px), 760px);
 }
 .mx-sector-block[data-flat-map] {
-  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--mx-soft));
+  background: color-mix(in oklab, var(--mx-heat-hue) var(--mx-heat-mix), var(--heat-base));
 }
 .mx-sector-block[data-flat-map] .mx-sector-head {
   background: none;

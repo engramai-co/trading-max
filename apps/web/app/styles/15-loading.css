@@ -122,6 +122,8 @@
   min-width: 86px;
 }
 .mx-inline-retry {
+  background: var(--muted);
+  border-color: var(--input);
   color: var(--mx-brand);
   font-size: 13px;
 }

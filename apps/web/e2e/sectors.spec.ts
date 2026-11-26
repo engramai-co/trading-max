@@ -526,6 +526,53 @@ const worldFixture: GlobalSectorBoard = {
 test.describe("market index layer", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to a synthetic local deployment.");
 
+  for (const [scheme, mix] of [["dark", "70%"], ["light", "55%"]] as const) {
+    test(`index cards and roomy sector headers use the saturated wash in ${scheme}`, async ({ page, isMobile }) => {
+      test.skip(isMobile, "Measures the index strip and roomy treemap headers.");
+      await page.addInitScript((value) => localStorage.setItem("mantine-color-scheme-value", value), scheme);
+      await mockIndices(page);
+      const board = fixture("us");
+      board.board.groupings[0].groups[0].change = 0.05;
+      board.board.groupings[0].groups[1].change = -0.05;
+      await page.route("**/api/backend/sectors?market=us", (route) => route.fulfill({ json: board }));
+      const stamp = new Date().toISOString();
+      await page.route("**/api/backend/indices?scope=us", (route) => route.fulfill({ json: {
+        scope: "us", refreshFailed: false,
+        quotes: indices.filter((index) => index.id === "sp-500" || index.id === "nasdaq-100").map((index) => ({
+          index, asOf: stamp, sessionDate: stamp.slice(0, 10), level: 100,
+          change: index.id === "sp-500" ? 0.05 : -0.05, state: "live", points: [],
+        })),
+      } }));
+      await page.goto("/sectors?market=us");
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+      for (const [card, head] of [["sp-500", "45"], ["nasdaq-100", "40"]]) {
+        const surfaces = [
+          page.locator("#index-card-" + card),
+          page.locator(`.mx-sector-block[data-key="${head}"][data-roomy] .mx-sector-head`),
+        ];
+        for (const surface of surfaces) {
+          await expect(surface).toHaveCSS("--mx-heat-mix", mix);
+          const ratio = await surface.evaluate((element) => {
+            const style = getComputedStyle(element);
+            const canvas = document.createElement("canvas");
+            const ctx = canvas.getContext("2d")!;
+            const luminance = (colour: string) => {
+              ctx.clearRect(0, 0, 1, 1);
+              ctx.fillStyle = colour;
+              ctx.fillRect(0, 0, 1, 1);
+              const rgb = [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).map((c) => c / 255)
+                .map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+              return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
+            };
+            const [ink, wash] = [luminance(style.color), luminance(style.backgroundColor)];
+            return (Math.max(ink, wash) + 0.05) / (Math.min(ink, wash) + 0.05);
+          });
+          expect(ratio).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    });
+  }
+
   test("China A has four index cards and no sector board", async ({ page }, { project }) => {
     const mobile = project.name === "mobile";
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
@@ -589,6 +636,7 @@ test.describe("market index layer", () => {
     const mobile = project.name === "mobile";
     if (mobile) await page.setViewportSize({ width: 390, height: 844 });
     const colorScheme = mobile ? "dark" : "light";
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), colorScheme);
     await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
     await mockIndices(page, { global: chinaGlobal });
     await page.goto("/");
@@ -688,13 +736,23 @@ test.describe("market index layer", () => {
   });
 
   test("shows sectors through index errors and opens a shared index URL", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("mantine-color-scheme-value", "light"));
     await mockIndices(page, { fail: true });
     await page.goto("/sectors?market=us");
     await expect(page.locator(".mx-index-strip")).toContainText(/暂时无法读取指数|Indices are unavailable/);
     await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
     await page.goto("/sectors?market=us&index=sp-500&range=MAX&compare=nasdaq-100");
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
-    await expect(page.locator(".mx-index-legend")).toContainText(/起点归 100|Rebased to 100/);
+    const legend = page.locator(".mx-index-legend");
+    await expect(legend).toContainText(/起点归 100|Rebased to 100/);
+    const peerKey = await legend.locator(":scope > span").nth(1).evaluate((node) => {
+      const style = getComputedStyle(node, "::before");
+      return { colour: style.borderTopColor, dash: style.borderTopStyle };
+    });
+    expect(peerKey).toEqual({ colour: "rgb(113, 113, 122)", dash: "dashed" });
+    const chart = page.locator(".mx-index-history [data-tm-chart-ready]");
+    await chart.press("End");
+    await expect(page.locator(".mx-index-history .mx-chart-mark").nth(1)).toHaveCSS("background-color", peerKey.colour);
     await expect(page.getByRole("heading", { name: /^(成分篮子|Constituent basket) · SYN$/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "SYNA" })).toBeVisible();
   });
@@ -1132,6 +1190,7 @@ test.describe("market index layer", () => {
           viewport: { width, height: 940 }, colorScheme: scheme, reducedMotion: "reduce",
           baseURL: process.env.PLAYWRIGHT_BASE_URL,
         });
+        await page.addInitScript((mode) => localStorage.setItem("mantine-color-scheme-value", mode), scheme);
         await mockIndices(page);
         await page.goto("/sectors?market=us");
         await expect(page.getByRole("link", { name: /标普 500|S&P 500/ })

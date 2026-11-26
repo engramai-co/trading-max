@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
+import type { IndexIdentity } from "../workspace/market-indices-data";
 
 const base = Date.UTC(2026, 9, 5, 10, 30);
 const observations = Array.from({ length: 20 }, (_, i) => ({ at: new Date(base + i * 300_000).toISOString(), value: 500 + i }));
@@ -71,6 +72,62 @@ test.describe("chart evidence and fullscreen", () => {
     await expect(reading).toContainText("Peak uses the selected range");
     await expect(reading).toContainText("Recovery unverified across a gap");
     await expect(reading).toContainText(/−28|-28/);
+  });
+
+  test("a scheme switch during delayed chart initialization preserves a later zoom", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("mantine-color-scheme-value", "auto"));
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    const identity: IndexIdentity = {
+      id: "sp-500", name: "Synthetic index", nameZh: "合成指数", scope: "us",
+      source: "Synthetic", kind: "index", basis: "price", currency: "USD",
+      symbol: "SYN", seriesCode: "SYN", ranges: ["1D"], calendar: "SYNTH",
+      aliases: [], compiler: "Synthetic fixture", compilerId: "synthetic",
+      familyId: "synthetic", hedging: "unhedged", historyYears: 1, rights: "provider-terms",
+    };
+    await page.route("**/api/backend/indices/catalog", (route) => route.fulfill({ json: [identity] }));
+    let releaseHistory!: () => void;
+    const heldHistory = new Promise<void>((resolve) => { releaseHistory = resolve; });
+    await page.route("**/api/backend/indices/sp-500/history?**", async (route) => {
+      await heldHistory;
+      await route.fulfill({ json: {
+        state: "available", range: "1D", index: identity,
+        asOf: observations.at(-1)!.at, currency: "USD", points: observations, gaps: [],
+      } });
+    });
+    const hold = await page.goto("/sectors?market=us&index=sp-500&range=1D")
+      .then(() => page.addStyleTag({ content: ".mx-index-history .mx-plot > [role=group] { width: 0 !important; }" }))
+      .finally(releaseHistory);
+    const index = page.locator(".mx-index-history");
+    const plot = index.locator(".mx-plot > [role=group]");
+    await expect(plot).toBeAttached();
+    await expect(plot).not.toHaveAttribute("data-tm-chart-ready");
+
+    const html = page.locator("html");
+    await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
+    await expect(html).toHaveAttribute("data-mantine-color-scheme", "light");
+    await hold.evaluate((style) => style.parentNode?.removeChild(style));
+    await expect(plot).toHaveAttribute("data-tm-chart-ready", "true");
+    await index.getByRole("button", { name: "Fullscreen", exact: true }).click();
+    const full = page.getByRole("dialog");
+
+    async function visibleRecords() {
+      await full.getByText("More", { exact: true }).click();
+      const ready = page.waitForEvent("download");
+      await full.getByRole("button", { name: "Export CSV" }).click();
+      const csv = await readFile((await (await ready).path())!, "utf8");
+      await full.getByText("More", { exact: true }).click();
+      return csv;
+    }
+    const all = await visibleRecords();
+    await full.getByRole("button", { name: "Zoom in" }).click();
+    const zoomed = await visibleRecords();
+    expect(zoomed.length).toBeLessThan(all.length);
+
+    const applied = await plot.getAttribute("data-tm-chart-applied-at");
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
+    await expect(html).toHaveAttribute("data-mantine-color-scheme", "dark");
+    await expect(plot).not.toHaveAttribute("data-tm-chart-applied-at", applied!);
+    expect(await visibleRecords()).toBe(zoomed);
   });
 
   test("quarterly EPS uses dates, same-quarter estimates and a signed surprise", async ({ page, isMobile }) => {

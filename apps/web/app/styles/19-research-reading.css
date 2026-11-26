@@ -426,7 +426,7 @@
 .mx-profile-sentence:focus,
 .mx-profile-sentence[data-assistant-evidence] {
   outline: none;
-  background: var(--mx-brand-soft);
+  background: var(--selection);
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
 }

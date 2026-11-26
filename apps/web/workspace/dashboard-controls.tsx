@@ -40,7 +40,7 @@ export function DashboardRanges({ value, onChange, label, intraday = true }: {
         <Menu.Dropdown aria-label={moreLabel}>
           {more.map((item) => (
             <Menu.Item key={item.value} aria-current={value === item.value || undefined}
-              color={value === item.value ? "blue" : undefined} onClick={() => onChange(item.value)}>{item.label}</Menu.Item>
+              onClick={() => onChange(item.value)}>{item.label}</Menu.Item>
           ))}
         </Menu.Dropdown>
       </Menu>

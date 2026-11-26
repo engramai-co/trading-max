@@ -154,7 +154,7 @@
 }
 .mx-index-research-heatmap > div {
   position: absolute;
-  background: color-mix(in oklab, var(--mx-heat-hue, var(--mx-soft)) var(--mx-heat-blend), var(--mx-surface));
+  background: color-mix(in oklab, var(--mx-heat-hue, var(--heat-base)) var(--mx-heat-blend), var(--heat-base));
   border: 1px solid var(--mx-border);
   overflow: hidden;
   display: grid;
@@ -163,13 +163,13 @@
   text-align: center;
 }
 .mx-index-research-heatmap > div[data-tone="none"] {
-  background: var(--mx-soft);
+  background: var(--heat-base);
 }
 .mx-index-research-heatmap > div[data-tone="up"] {
-  --mx-heat-hue: var(--mx-up);
+  --mx-heat-hue: var(--heat-gain);
 }
 .mx-index-research-heatmap > div[data-tone="down"] {
-  --mx-heat-hue: var(--mx-down);
+  --mx-heat-hue: var(--heat-loss);
 }
 .mx-index-research-heatmap > div span {
   font-size: 12px;

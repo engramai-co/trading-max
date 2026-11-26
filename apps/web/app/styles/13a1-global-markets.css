@@ -154,7 +154,7 @@
 }
 .mx-global-region {
   --mx-world-mix: var(--mx-world-heat-light);
-  --mx-world-fill: color-mix(in srgb, var(--mx-world-hue) var(--mx-world-mix), var(--mx-world-land));
+  --mx-world-fill: color-mix(in oklab, var(--mx-world-hue) var(--mx-world-mix), var(--heat-base));
   outline: none;
 }
 html[data-mantine-color-scheme="dark"] .mx-global-region {
@@ -292,9 +292,12 @@ a.mx-global-row {
   transition: background-color 155ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 a.mx-global-row[data-linked] {
-  background: var(--mx-brand-soft);
+  background: var(--selection);
   outline: 1px solid var(--mx-brand);
   outline-offset: -1px;
+}
+a.mx-global-row[data-linked] small {
+  color: var(--foreground);
 }
 a.mx-global-row:focus-visible {
   outline: 2px solid var(--mx-brand);

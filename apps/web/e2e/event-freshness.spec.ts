@@ -9,7 +9,10 @@ test.describe("published event source freshness", () => {
       test(`${locale} ${theme} keeps source failures beside their last observation`, async ({ page, isMobile }) => {
         await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
         await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
-        await page.addInitScript((language) => localStorage.setItem("trading_max-locale", language), locale);
+        await page.addInitScript(({ language, mode }) => {
+          localStorage.setItem("trading_max-locale", language);
+          localStorage.setItem("mantine-color-scheme-value", mode);
+        }, { language: locale, mode: theme });
         const failures = theme === "light" ? 1 : 2;
         const clock = "2026-11-18T08:00:00Z";
         const worker = { healthy: true };

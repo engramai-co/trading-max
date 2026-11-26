@@ -109,7 +109,7 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
           <summary>{integration?.configured ? t("管理 Alpaca 密钥", "Manage Alpaca keys") : t("覆盖范围与密钥获取", "Coverage and API keys")}</summary>        {integration?.configured && (
           <div className="flex flex-wrap items-center gap-mx-md">
             <Button variant="default" disabled={busy} onClick={() => setOpened(true)}>{t("更新 Alpaca 密钥", "Update Alpaca keys")}</Button>
-            <Button variant="subtle" color="red" disabled={busy} onClick={() => setRemoving(true)}>{t("删除密钥", "Remove keys")}</Button>
+            <Button variant="subtle" disabled={busy} onClick={() => setRemoving(true)}>{t("删除密钥", "Remove keys")}</Button>
           </div>
         )}
           <p className="mx-measure">{t("使用免费 Paper 账户的 API Key ID 和 Secret。密钥保存在服务器的系统凭据库中。", "Use a free Paper account’s API Key ID and Secret. Keys are kept in the server’s operating-system credential store.")}</p>
@@ -126,7 +126,7 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
           {remove.isError && <Notice tone="bad">{t("删除失败，请重试。", "Could not remove keys. Please retry.")}</Notice>}
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
             <Button variant="default" disabled={remove.isPending} onClick={() => setRemoving(false)}>{t("取消", "Cancel")}</Button>
-            <Button color="red" loading={remove.isPending} disabled={busy} onClick={() => { if (writeInFlight(client)) return; begin(); remove.mutate(); }}>{t("确认删除", "Remove keys")}</Button>
+            <Button className="mx-destructive-confirm" color="red" variant="outline" loading={remove.isPending} disabled={busy} onClick={() => { if (writeInFlight(client)) return; begin(); remove.mutate(); }}>{t("确认删除", "Remove keys")}</Button>
           </div>
         </div>
       </Modal>

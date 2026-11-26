@@ -68,6 +68,7 @@ test.describe("research section navigation", () => {
     const header = page.locator(".mx-security-price");
     await expect(header.locator("strong")).toHaveText("£31.00");
     await expect(header).toContainText(/3 Feb(?: 2026)? close/);
+    await page.unrouteAll({ behavior: "wait" });
   });
 
   test("legacy links, keyboard navigation, Back and manual scrolling follow the section headings", async ({ page, isMobile }) => {
@@ -468,11 +469,13 @@ test.describe("research section navigation", () => {
   }
 
   test("the close line connects Friday and Monday across a target-only Saturday", async ({ page }) => {
+    await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), "light");
     await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "light" });
     await page.route("**/api/backend/research/AAPL/prices?**", (route) => route.fulfill({ json: {
       ticker: "AAPL", currency: "USD", points: [{ date: days[1], close: 100 }, { date: days[2], close: 120 }],
     } }));
     await page.goto("/research?ticker=AAPL&view=analyst");
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "light");
     const chart = page.locator(".mx-target-chart");
     await chart.scrollIntoViewIfNeeded();
     await expect(chart.getByRole("group", { name: /^Historical prices/ })).toHaveAttribute("data-tm-chart-ready", "true");
@@ -545,6 +548,7 @@ test.describe("research section navigation", () => {
 
   for (const language of ["en", "zh"] as const) for (const theme of ["light", "dark"] as const) {
     test(`a published earnings brief opens Financials & business ahead of its reporting controls · ${language} · ${theme}`, async ({ page }, info) => {
+      await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), theme);
       await page.emulateMedia({ colorScheme: theme, reducedMotion: "reduce" });
       await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), language);
       await page.route("**/api/backend/profile", async (route) => {
@@ -564,6 +568,7 @@ test.describe("research section navigation", () => {
         } }) + "\n",
       }));
       await page.goto("/research?ticker=AAPL&view=fundamentals");
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
       const brief = page.locator(".mx-earnings-brief");
       await expect(brief).toContainText("AAPL · FY2026 Q4");
       await expect(page.locator("#research-performance")).toBeAttached();

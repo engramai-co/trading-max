@@ -6,6 +6,7 @@ import { CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useId, useState, type CSSProperties } from "react";
 import { quoteUnit, quoteValue } from "./financial-values";
+import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useLocale } from "@/components/locale-provider";
 import { researchShellKey } from "@/lib/dashboard-query";
 import type { ResearchShell } from "@/lib/types";
@@ -25,6 +26,7 @@ import { SecurityFinder, useSearchHandover } from "./research-finder";
 import { TechnicalScoreCard } from "./research-technical";
 import { UniverseHeading, UniverseList, useResearchUniverse } from "./research-universe";
 import { useRouteState } from "./route-state";
+import { heatMix } from "./sectors-data";
 
 const views = ["overview", "price", "constituents", "tracking"] as const;
 type Copy = ReturnType<typeof useCopy>;
@@ -195,7 +197,7 @@ function IndexListActions({ id }: { id: string }) {
           </ActionIcon>
         </Menu.Target>
         <Menu.Dropdown>
-          <Menu.Item color="red" leftSection={<Trash size={15} />} onClick={() => listed.remove(id)}>
+          <Menu.Item leftSection={<Trash size={15} />} onClick={() => listed.remove(id)}>
             {t("从研究清单移除", "Remove from research list")}
           </Menu.Item>
         </Menu.Dropdown>
@@ -367,6 +369,7 @@ function treemap(items: IndexConstituent[], rect: Rect): { row: IndexConstituent
 function Heatmap({ rows }: { rows: IndexConstituent[] }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const scheme = useComputedColorScheme("dark");
   const tiles = treemap(rows.filter((row) => row.weight > 0), { x: 0, y: 0, w: 100, h: 100 });
   return <figure aria-label={t("成分热图", "Constituent heatmap")} className="mx-index-research-heatmap">
     {tiles.map(({ row, rect }) => {
@@ -375,7 +378,7 @@ function Heatmap({ rows }: { rows: IndexConstituent[] }) {
       return <div key={row.isin ?? row.ticker} title={reading} aria-hidden="true"
         data-tone={move > 0 ? "up" : move < 0 ? "down" : "none"}
         style={{ left: rect.x + "%", top: rect.y + "%", width: rect.w + "%", height: rect.h + "%",
-          "--mx-heat-blend": (Math.min(1, Math.abs(move) / 0.03) * 30).toFixed(1) + "%" } as CSSProperties}>
+          "--mx-heat-blend": heatMix(row.move, scheme) } as CSSProperties}>
         {rect.w >= 13 && rect.h >= 12 && <><strong>{row.ticker}</strong><span>{formatDeltaPercent(row.move, locale, 1)}</span></>}
       </div>;
     })}

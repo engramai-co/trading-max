@@ -568,13 +568,9 @@ html[data-scrolled] .mx-topbar-title strong {
   white-space: nowrap;
 }
 .mx-tag-good {
-  color: var(--mx-up);
-  background: color-mix(in srgb, var(--mx-up) 10%, var(--mx-surface));
+  color: var(--foreground);
 }
-.mx-tag-bad {
-  color: var(--mx-down);
-  background: color-mix(in srgb, var(--mx-down) 9%, var(--mx-surface));
-}
+.mx-tag-bad,
 .mx-tag-warn {
   color: var(--mx-warning);
   background: color-mix(in srgb, var(--mx-warning) 10%, var(--mx-surface));
@@ -613,17 +609,13 @@ html[data-scrolled] .mx-topbar-title strong {
   flex-shrink: 0;
   margin-top: 1px;
 }
-.mx-notice-bad {
-  color: var(--mx-down);
-  background: color-mix(in srgb, var(--mx-down) 9%, var(--mx-surface));
-}
+.mx-notice-bad,
 .mx-notice-warn {
   color: var(--mx-warning);
   background: color-mix(in srgb, var(--mx-warning) 8%, var(--mx-surface));
 }
 .mx-notice-good {
-  color: var(--mx-up);
-  background: color-mix(in srgb, var(--mx-up) 10%, var(--mx-surface));
+  color: var(--foreground);
 }
 .mx-empty {
   display: flex;

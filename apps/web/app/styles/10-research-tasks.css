@@ -374,7 +374,7 @@
   background: var(--mx-soft);
 }
 .mx-allocation-choices button[aria-pressed="true"] {
-  background: var(--mx-brand-soft);
+  background: var(--selection);
   border-color: var(--mx-brand);
 }
 .mx-allocation-choices i {

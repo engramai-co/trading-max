@@ -104,7 +104,8 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
     <p className="text-[0.8125rem] leading-[1.45] text-[var(--mx-muted)]">{t("账户可用模型和使用额度以 OpenAI 为准。", "Model access and usage limits depend on your OpenAI account.")} {" "}
       <Anchor size="sm" href="https://learn.chatgpt.com/docs/auth" target="_blank" rel="noopener noreferrer">{t("登录帮助", "Sign-in help")}</Anchor>
     </p>
-    {existing?.configured && <Button color="red" variant="subtle" disabled={pending} loading={disconnect.isPending}
+    {existing?.configured && <Button className={disconnecting ? "mx-destructive-confirm" : undefined}
+        color={disconnecting ? "red" : undefined} variant={disconnecting ? "outline" : "subtle"} disabled={pending} loading={disconnect.isPending}
       onClick={() => disconnecting ? disconnect.mutate() : setDisconnecting(true)}>
       {disconnecting ? t("确认移除此设备的授权", "Confirm removing this device’s authorisation") : t("断开 ChatGPT", "Disconnect ChatGPT")}
     </Button>}

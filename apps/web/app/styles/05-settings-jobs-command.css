@@ -13,8 +13,8 @@
   font-size: 12px;
 }
 .mx-settings-nav button[aria-pressed="true"] {
-  background: var(--mx-brand-soft);
-  color: var(--mx-brand);
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
   font-weight: 600;
 }
 .mx-settings-content {
@@ -143,7 +143,7 @@
   margin-top: 4px;
 }
 .mx-command-result[data-active] {
-  background: var(--mx-brand-soft);
+  background: var(--selection);
 }
 .mx-command-result mark {
   background: transparent;
@@ -151,7 +151,7 @@
   font-weight: 700;
 }
 .mx-command-result[data-active]:hover {
-  background: var(--mx-brand-soft);
+  background: var(--selection);
 }
 .mx-command-clear {
   padding: 0;
@@ -272,14 +272,63 @@ details[open]:not(.mx-job-row) > :not(summary) {
 }
 .mantine-Input-input,
 .mantine-PasswordInput-input {
-  background: var(--mx-surface);
-  border-color: var(--mx-border);
-  color: var(--mx-ink);
+  background-color: var(--field);
+  border-color: var(--input);
+  color: var(--foreground);
+}
+.mantine-Input-input:hover:not(:disabled, [data-disabled], :focus, :focus-within),
+.mantine-PasswordInput-input:hover:not(:disabled, [data-disabled], :focus, :focus-within) {
+  border-color: var(--input-hover);
+}
+.mantine-Input-input:focus,
+.mantine-Input-input:focus-within,
+.mantine-PasswordInput-input:focus-within {
+  border-color: var(--ring);
 }
 .mantine-Input-input::placeholder,
+.mantine-PasswordInput-innerInput::placeholder,
 .mantine-InputPlaceholder-placeholder {
-  color: var(--mx-muted);
+  color: var(--placeholder);
   opacity: 1;
+}
+.mantine-Switch-input:not(:disabled, [data-disabled]) + .mantine-Switch-track {
+  background-color: var(--switch-off);
+  border-color: var(--switch-off);
+}
+.mantine-Switch-input:not(:checked, :disabled, [data-disabled]):hover + .mantine-Switch-track {
+  background-color: var(--switch-off-hover);
+  border-color: var(--switch-off-hover);
+}
+.mantine-Switch-input:checked:not(:disabled, [data-disabled]) + .mantine-Switch-track {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+.mantine-Switch-input:checked:not(:disabled, [data-disabled]):hover + .mantine-Switch-track {
+  background-color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+.mantine-Switch-input:not(:disabled, [data-disabled]) + .mantine-Switch-track > .mantine-Switch-thumb {
+  background-color: var(--primary-foreground);
+  border-color: transparent;
+}
+.mantine-Switch-input:not(:disabled, [data-disabled]):focus-visible + .mantine-Switch-track {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.mantine-Checkbox-input:not(:disabled, [data-disabled]) {
+  background-color: var(--field);
+  border-color: var(--input);
+}
+.mantine-Checkbox-input:not(:disabled, [data-disabled]):hover {
+  border-color: var(--input-hover);
+}
+.mantine-Checkbox-input:checked:not(:disabled, [data-disabled]) {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+.mantine-Checkbox-input:not(:disabled, [data-disabled]):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .mantine-InputWrapper-label {
   font-size: 12px;
@@ -293,15 +342,29 @@ details[open]:not(.mx-job-row) > :not(summary) {
 .mantine-Modal-content,
 .mantine-Modal-header,
 .mantine-Drawer-content,
-.mantine-Drawer-header,
+.mantine-Drawer-header {
+  background: var(--card);
+  color: var(--foreground);
+}
 .mantine-Menu-dropdown,
 .mantine-Combobox-dropdown {
-  background: var(--mx-surface);
-  color: var(--mx-ink);
+  background: var(--popover);
+  color: var(--popover-foreground);
+  border-color: var(--panel-edge);
+}
+.mantine-Menu-item[data-hovered],
+.mantine-Combobox-option[data-combobox-selected],
+.mantine-Combobox-option:hover {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+.mantine-Menu-item[aria-current] {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
 }
 /* Modal and Drawer compose Mantine Paper; keep Paper's 1px border after dropping Paper from theme.ts. */
 :where(.mantine-Modal-content, .mantine-Drawer-content) {
-  border: calc(0.0625rem * var(--mantine-scale)) solid var(--paper-border-color);
+  border: calc(0.0625rem * var(--mantine-scale)) solid var(--panel-edge);
 }
 .mantine-Modal-title,
 .mantine-Drawer-title {
@@ -315,7 +378,29 @@ details[open]:not(.mx-job-row) > :not(summary) {
     border-color 130ms,
     transform 100ms var(--mx-ease);
 }
-.mantine-Button-root:not(:disabled):active,
-.mantine-ActionIcon-root:not(:disabled):active {
+.mantine-Button-root:is([data-variant="filled"], :not([data-variant])):not(:disabled, [data-disabled]):active {
+  background: var(--primary-active);
+}
+.mantine-Button-root[data-variant="default"]:not(:disabled, [data-disabled]):active {
+  background: var(--secondary-active);
+}
+.mantine-Button-root[data-variant="subtle"]:not(:disabled, [data-disabled]) {
+  color: var(--foreground);
+}
+.mantine-Button-root[data-variant="subtle"]:not(:disabled, [data-disabled]):hover,
+.mantine-ActionIcon-root[data-variant="subtle"]:not(:disabled, [data-disabled]):hover {
+  background: var(--ghost-hover);
+}
+.mantine-Button-root[data-variant="subtle"]:not(:disabled, [data-disabled]):active,
+.mantine-ActionIcon-root[data-variant="subtle"]:not(:disabled, [data-disabled]):active {
+  background: var(--ghost-active);
+}
+.mantine-Button-root.mx-destructive-confirm:not(:disabled, [data-disabled]):active {
+  background: var(--destructive-active);
+  color: var(--destructive-active-ink);
+  border-color: currentColor;
+}
+.mantine-Button-root:not(:disabled, [data-disabled]):active,
+.mantine-ActionIcon-root:not(:disabled, [data-disabled]):active {
   transform: scale(0.98);
 }

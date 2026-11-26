@@ -1,18 +1,94 @@
 import { createTheme } from "@mantine/core";
 
+// Mantine emits its scheme variables outside the stylesheet layers. Use the
+// resolver so its buttons, portals and inputs inherit the same palette.
+export function resolveMantineColours() {
+  const scheme = {
+    "--mantine-color-body": "var(--card)",
+    "--mantine-color-text": "var(--foreground)",
+    "--mantine-color-bright": "var(--foreground)",
+    "--mantine-color-dimmed": "var(--muted-foreground)",
+    "--mantine-color-placeholder": "var(--placeholder)",
+    "--mantine-color-anchor": "var(--link)",
+    "--mantine-color-error": "var(--warning)",
+    "--mantine-color-success": "var(--foreground)",
+    "--mantine-color-default": "var(--secondary)",
+    "--mantine-color-default-hover": "var(--secondary-hover)",
+    "--mantine-color-default-color": "var(--secondary-foreground)",
+    "--mantine-color-default-border": "var(--border)",
+    "--mantine-primary-color-contrast": "var(--primary-foreground)",
+    "--mantine-color-brand-filled": "var(--primary)",
+    "--mantine-color-brand-filled-hover": "var(--primary-hover)",
+    "--mantine-color-brand-light": "var(--muted)",
+    "--mantine-color-brand-light-hover": "var(--accent)",
+    "--mantine-color-brand-light-color": "var(--link)",
+    "--mantine-color-brand-outline": "var(--link)",
+    "--mantine-color-brand-outline-hover": "var(--accent)",
+    "--mantine-color-red-outline": "var(--destructive)",
+    "--mantine-color-red-outline-hover": "var(--destructive-hover)",
+  };
+  return {
+    variables: { "--mantine-primary-color-light-color": "var(--link)" },
+    light: scheme,
+    dark: scheme,
+  };
+}
+
 export const brandColours = [
-  "#edf5ff",
-  "#d9e8ff",
-  "#aecfff",
+  "#f4f4f5",
+  "#dae7fb",
+  "#a8caff",
   "#7eb3ff",
-  "#559aff",
-  "#3888ff",
-  "#247eff",
+  "#4a8ef5",
+  "#2d7cef",
+  "#1e6ee6",
   "#1768e5",
-  "#1254bc",
-  "#113f8f",
+  "#155fd2",
+  "#124fb0",
 ] as const;
-export const darkCanvas = "#0f1012";
+
+export const neutralGrayScale = [
+  "#fafafa",
+  "#f4f4f5",
+  "#ececee",
+  "#e4e4e7",
+  "#d4d4d8",
+  "#8b8b93",
+  "#6b6b73",
+  "#66666e",
+  "#3f3f46",
+  "#18181b",
+] as const;
+
+export const neutralDarkScale = [
+  "#f4f4f5",
+  "#d4d4d8",
+  "#a1a1aa",
+  "#8b8b93",
+  "#3f3f46",
+  "#27272a",
+  "#1c1c1f",
+  "#121214",
+  "#09090b",
+  "#09090b",
+] as const;
+
+export const destructiveScale = [
+  "#f9f0ef",
+  "#f5e5e3",
+  "#f0cfc9",
+  "#ffbdb4",
+  "#ff958a",
+  "#e56a5d",
+  "#b4473a",
+  "#b4473a",
+  "#8d3026",
+  "#2a1f20",
+] as const;
+
+export const darkCanvas = "#09090b";
+export const lightCanvas = "#fafafa";
+
 // Canvas text cannot inherit CSS fonts, so charts receive the same stack explicitly.
 export const FONT_STACK =
   '"Avenir Next", Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif';
@@ -20,8 +96,13 @@ export const tradingMaxTheme = createTheme({
   primaryColor: "brand",
   autoContrast: true,
   primaryShade: { light: 7, dark: 7 },
-  colors: { brand: [...brandColours] },
-  black: "#111827",
+  colors: {
+    brand: [...brandColours],
+    gray: [...neutralGrayScale],
+    dark: [...neutralDarkScale],
+    red: [...destructiveScale],
+  },
+  black: "#18181b",
   white: "#ffffff",
   defaultRadius: "md",
   cursorType: "pointer",
@@ -110,26 +191,3 @@ export const tradingMaxTheme = createTheme({
     },
   },
 });
-export const chartColours = {
-  accent: "#d97706",
-  axis: "#536176",
-  border: "#dbe4ef",
-  brand: "#1768e5",
-  brandDark: "#113f8f",
-  canvas: "#ffffff",
-  grid: "#e5e9ef",
-  heatmapHigh: "#b8dfc3",
-  heatmapLow: "#f4b7b2",
-  heatmapMid: "#eef2f7",
-  heatmapText: "#253041",
-  negative: "#b4473a",
-  positive: "#2f7a49",
-  secondary: "#347985",
-  text: "#17191c",
-  tooltip: "#ffffff",
-  tooltipBorder: "#d8dadd",
-  tooltipMuted: "#61656c",
-  tooltipShadow: "rgba(17,24,39,.12)",
-  tooltipText: "#17191c",
-  warning: "#80530c",
-} as const;

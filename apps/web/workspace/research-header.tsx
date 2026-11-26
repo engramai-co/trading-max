@@ -222,7 +222,6 @@ export function SecurityActions({
           </Menu.Item>
           {/* Holdings always stay in the list; the item says why it is unavailable. */}
           <Menu.Item
-            color="red"
             disabled={held || pending}
             leftSection={<Trash size={15} />}
             rightSection={held ? <span className="mx-menu-note">{t("持仓中", "Held")}</span> : undefined}

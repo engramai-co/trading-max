@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Holding } from "@/lib/types";
-import { allocationChartColours } from "@/ui/charts/palette";
+import { allocationChartColours } from "../tests/fixtures/theme-colours";
 import { holdingSignals, SIGNAL_LIMIT } from "./attention";
 import { COLOURED_HOLDINGS, holdingsLedger, overviewHoldingsState, overviewScopedHoldings, readingColumns } from "./overview-holdings-data";
 

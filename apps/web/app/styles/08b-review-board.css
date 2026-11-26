@@ -308,8 +308,12 @@ a.mx-journal-act:focus-visible,
   color: var(--mx-muted);
 }
 .mx-review-expandable[data-open] .mx-review-expand-head {
-  background: var(--mx-brand-soft);
+  background: var(--selection);
   border-radius: 7px;
+}
+.mx-review-expandable[data-open] .mx-review-expand-head small,
+.mx-review-expandable[data-open] .mx-review-expand-head .mx-muted {
+  color: var(--foreground);
 }
 .mx-review-expandable[data-open] .mx-review-line > svg {
   transform: rotate(180deg);
@@ -366,7 +370,10 @@ a.mx-journal-act:focus-visible,
   flex: none;
 }
 .mx-habit-line[data-selected] {
-  background: var(--mx-brand-soft);
+  background: var(--selection);
+}
+.mx-habit-line[data-selected] .mx-muted {
+  color: var(--foreground);
 }
 /* The consented layout arrives with the review, independently of credential checks and the brief. */
 .mx-review-body {

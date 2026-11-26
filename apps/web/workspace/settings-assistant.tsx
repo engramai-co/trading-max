@@ -188,7 +188,8 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
           : t("未能删除对话，请重试。", "Could not delete conversations. Try again.")}</Notice>}
         <div className="flex flex-wrap items-center justify-end gap-mx-md">
           <Button variant="default" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
-          <Button disabled={busy} loading={erase.isPending} onClick={() => { if (!inFlight()) erase.mutate(); }}>{t("删除所有对话", "Delete all conversations")}</Button>
+          <Button className="mx-destructive-confirm" color="red" variant="outline" disabled={busy} loading={erase.isPending}
+            onClick={() => { if (!inFlight()) erase.mutate(); }}>{t("删除所有对话", "Delete all conversations")}</Button>
         </div>
       </div>}
     </Modal>

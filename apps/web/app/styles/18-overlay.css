@@ -1,19 +1,17 @@
 /* Overlay tokens shared by reading cards, hover cards, tooltips, popovers and drawers.
    Depth is declared once: a soft offset shadow in light, an edge on a raised ground in dark. */
 :root {
-  --mx-overlay-bg: #ffffff;
+  --mx-overlay-bg: var(--popover);
   --mx-overlay-radius: 12px;
   --mx-overlay-radius-tip: 8px;
-  --mx-overlay-elevation: 0 2px 6px rgb(17 24 39 / 6%), 0 12px 28px rgb(17 24 39 / 12%);
-  --mx-overlay-edge: 0 solid transparent;
+  --mx-overlay-elevation: none;
+  --mx-overlay-edge: 1px solid var(--panel-edge);
   --mx-overlay-z: 400;
   --mx-overlay-z-tip: 410;
   --mx-overlay-z-popover: 420;
   --mx-overlay-z-drawer: 430;
 }
-:root[data-mantine-color-scheme="dark"] {
-  --mx-overlay-bg: #212328;
-  --mx-overlay-elevation: none;
-  --mx-overlay-edge: 1px solid #3a3e45;
+:root[data-mantine-color-scheme="light"] {
+  --mx-overlay-elevation: 0 2px 6px rgb(17 24 39 / 6%), 0 12px 28px rgb(17 24 39 / 12%);
+  --mx-overlay-edge: 0 solid transparent;
 }
-

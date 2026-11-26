@@ -57,6 +57,56 @@ async function open(page: Page, locale: "en" | "zh" = "en", connected = true) {
 
 test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Use an isolated local web build.");
 
+for (const scheme of ["dark", "light"] as const) {
+  test(`pending switches use disabled colours and respect reduced motion in ${scheme}`, async ({ page }) => {
+    await page.addInitScript((value) => localStorage.setItem("mantine-color-scheme-value", value), scheme);
+    await open(page);
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+    await expect(page.locator("html")).toHaveAttribute("data-respect-reduced-motion", "true");
+
+    const checked = page.getByRole("switch", { name: "Write briefs in the background" });
+    const unchecked = page.getByRole("switch", { name: "Share saved valuation assumptions" });
+    await unchecked.click();
+    await expect(unchecked).not.toBeChecked();
+    await expect(unchecked).toBeEnabled();
+
+    const checkedThumb = checked.locator("xpath=following-sibling::*[1]").locator(".mantine-Switch-thumb");
+    await expect(checkedThumb).toHaveCSS("transition-duration", "0s");
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await expect(checkedThumb).toHaveCSS("transition-duration", "0.15s");
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expect(checkedThumb).toHaveCSS("transition-duration", "0s");
+
+    const enabled = await Promise.all([checked, unchecked].map(async (control) => {
+      const track = control.locator("xpath=following-sibling::*[1]");
+      const thumb = track.locator(".mantine-Switch-thumb");
+      const trackColour = await track.evaluate((node) => getComputedStyle(node).backgroundColor);
+      const thumbColour = await thumb.evaluate((node) => getComputedStyle(node).backgroundColor);
+      return { control, track, thumb, trackColour, thumbColour };
+    }));
+
+    let releaseSave!: () => void;
+    const saving = new Promise<void>((resolve) => { releaseSave = resolve; });
+    await page.route("**/api/backend/settings/assistant", async (route) => {
+      if (route.request().method() === "PUT") await saving;
+      await route.fallback();
+    });
+    try {
+      await checked.click();
+      await expect(checked).toBeChecked();
+      await expect(unchecked).not.toBeChecked();
+      for (const { control, track, thumb, trackColour, thumbColour } of enabled) {
+        await expect(control).toBeDisabled();
+        await expect(track).not.toHaveCSS("background-color", trackColour);
+        await expect(thumb).not.toHaveCSS("background-color", thumbColour);
+      }
+    } finally {
+      releaseSave();
+    }
+    await expect(checked).toBeEnabled();
+  });
+}
+
 test("consent, enablement, provider choice and conversation deletion are independent", async ({ page }) => {
   const { writes, tools, erasures } = await open(page);
   const enable = page.getByRole("switch", { name: "Enable " + ASSISTANT_NAME });
@@ -132,12 +182,22 @@ for (const locale of ["en", "zh"] as const) {
   for (const colorScheme of ["light", "dark"] as const) {
     test(`controls and consent fit in ${locale} and ${colorScheme}`, async ({ page, isMobile }, testInfo) => {
       if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), colorScheme);
       await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
       await open(page, locale);
       await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
       const shotDir = process.env.SETTINGS_SCREENSHOT_DIR;
       const prefix = [testInfo.project.name, locale, colorScheme].join("-");
       const panel = page.locator(".mx-panel").filter({ has: page.getByRole("heading", { name: ASSISTANT_NAME }) });
+      await panel.getByRole("button", { name: locale === "en" ? "Delete conversations" : "删除对话", exact: true }).click();
+      const confirmation = page.getByRole("dialog");
+      const confirm = confirmation.getByRole("button", { name: locale === "en" ? "Delete all conversations" : "删除所有对话", exact: true });
+      const destructive = colorScheme === "dark" ? "rgb(255, 149, 138)" : "rgb(180, 71, 58)";
+      await expect(confirm).toHaveCSS("color", destructive);
+      await expect(confirm).toHaveCSS("border-top-color", destructive);
+      await expect(confirm).toHaveCSS("border-top-width", "1px");
+      await expect(confirm).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      await confirmation.getByRole("button", { name: locale === "en" ? "Cancel" : "取消", exact: true }).click();
       // Check the opening frame deterministically, even on a busy device.
       await page.addStyleTag({ content: ".mx-tabs ~ * { animation-delay: 60s !important; animation-fill-mode: backwards !important; }" });
       for (const reducedMotion of ["reduce", "no-preference"] as const) {
