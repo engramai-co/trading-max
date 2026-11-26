@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.72.0] - 2026-11-26
+
+### Changed
+- Sector and index heat maps, the world map, index constituent tiles and waterfall, sparklines, timeline legends, history coverage bars, percentile bands, the seasonality calendar and the analyst gauges draw from the same palette and 4px spacing as the rest of the page, with text no smaller than 12px. Heat colours blend in a perceptual colour space where the browser supports it, with matching fallbacks elsewhere.
+- A tile too small for its label shows no label rather than overflowing; its full name and reading stay available on hover, focus and tap, and in the data table. Compact tiles name their reading as shown, followed by the exact figure when rounding changes it.
+
+### Fixed
+- Heat-map tiles and overview tiles show a solid focus outline, including in high-contrast mode.
+- Arrow keys on a heat map move to the neighbouring tile by its edges, and scroll the page only when they do not move the selection.
+
 ## [1.71.0] - 2026-11-26
 
 ### Changed
