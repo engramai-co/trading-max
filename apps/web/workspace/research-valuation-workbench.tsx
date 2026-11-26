@@ -3,13 +3,14 @@
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
-  Button,
   Modal,
   Select,
   NumberInput,
   Textarea,
 } from "@mantine/core";
 import { useDebouncedValue } from "@/lib/hooks";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { ArrowClockwise, LockSimple, LockSimpleOpen } from "@phosphor-icons/react";
 import {
   keepPreviousData,
@@ -283,10 +284,10 @@ export function ValuationWorkbench({
           {source && <span className="mx-unit mx-assumption-source">{source}</span>}
           {editor && <span ref={setEvidenceAction} className="mx-slot" />}
           {enabled && <span ref={setDraftAction}>
-            {!editor && block && <Button variant="default" size="compact-xs" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
+            {!editor && block && <Button variant="secondary" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
           </span>}
-          {editor && <Button className="mx-model-jump" component="a" href="#valuation-results"
-          variant="subtle" size="compact-xs">{t("查看结果", "View results")}</Button>}
+          {editor && <a href="#valuation-results" data-slot="button"
+            className={cn(buttonVariants({ variant: "ghost" }), "mx-model-jump hidden [@media(max-width:1100px)]:inline-flex px-1 text-xs")}>{t("查看结果", "View results")}</a>}
         </div>}>
         {chooser}
         {editor ? <div className="mx-model-fields" inert={switching}>
@@ -719,7 +720,7 @@ function ModelEditor({
         inputs={inputs} locked={locked} publication={publication} currentBasis={currentBasis} actions={actions}
         onChange={setDrafting} />}
       {evidenceAction && savedModel && createPortal(<>
-        <Button ref={evidenceToggle} variant="default" size="compact-xs"
+        <Button ref={evidenceToggle} variant="secondary"
           aria-expanded={reviewOpen} aria-controls="valuation-evidence"
           aria-describedby={unopened ? "valuation-evidence-notice" : undefined}
           onPointerEnter={loadEvidence} onFocus={loadEvidence}
@@ -731,9 +732,9 @@ function ModelEditor({
           {t("有新证据：", "New evidence: ") + noticeKinds(unopened, t)}
         </span>}
       </>, evidenceAction)}
-      {draftAction && createPortal(draft ? <Button variant="default" size="compact-xs" onClick={discardDraft}>
+      {draftAction && createPortal(draft ? <Button variant="secondary" onClick={discardDraft}>
         {t("放弃草稿", "Discard draft")}
-      </Button> : <Button variant="default" size="compact-xs"
+      </Button> : <Button variant="secondary"
         aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
         disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
         onClick={() => { if (drafting.phase) actions.current?.cancel(); else { setEditingProposal(null); void actions.current?.start(result); } }}>
@@ -746,15 +747,13 @@ function ModelEditor({
             id="valuation-results"
             action={
               <div className="flex flex-wrap items-center gap-mx-xs">
-                <Button
-                  className="mx-model-jump"
-                  component="a"
+                <a
                   href="#valuation-assumptions"
-                  variant="subtle"
-                  size="compact-xs"
+                  data-slot="button"
+                  className={cn(buttonVariants({ variant: "ghost" }), "mx-model-jump hidden [@media(max-width:1100px)]:inline-flex px-1 text-xs")}
                 >
                   {t("调整假设", "Adjust assumptions")}
-                </Button>
+                </a>
                 <Segments
                   label={t("预测年限", "Horizon")}
                   value={String(horizon)}
@@ -786,11 +785,10 @@ function ModelEditor({
               <div className="mx-model-refresh" role="alert">
                 <Tag tone="warn">{t("未能按最新价格重算", "Not revalued at the latest price")}</Tag>
                 <Button
-                  variant="subtle"
-                  size="compact-xs"
-                  leftSection={<ArrowClockwise size={12} />}
+                  variant="ghost"
                   onClick={onRetry}
                 >
+                  <ArrowClockwise size={12} aria-hidden="true" />
                   {t("重试", "Retry")}
                 </Button>
               </div>
@@ -893,8 +891,7 @@ function ModelEditor({
                 {forecastPeriodLabel(analyst, params.get("estimateRef"), t)} · {percent(estimateGrowth, true)}
               </p>
               <Button
-                variant="light"
-                size="xs"
+                variant="secondary"
                 disabled={estimateGrowth == null || estimateGrowth < -0.8 || estimateGrowth > 2 ||
                   isLocked(selected, "revenueCagr")}
                 onClick={() => {
@@ -1044,7 +1041,7 @@ function ModelEditor({
             />
           </details>
           <Button
-            variant="subtle"
+            variant="ghost"
             onClick={() => {
               setDraftValue(null);
               setInvalidInput(false);
@@ -1061,6 +1058,7 @@ function ModelEditor({
             fullWidth
             onClick={() => setSaveOpen(true)}
             loading={save.isPending}
+            loadingLabel={t("保存中…", "Saving…")}
             disabled={busy || query.isError || saved || staleDraft || Boolean(drafting.phase)}
           >
             {saved ? t("已保存", "Saved") : t("保存模型版本", "Save model version")}
@@ -1148,13 +1146,14 @@ function ModelEditor({
           maxLength={4000}
         />
         <div className="mt-mx-md flex flex-wrap items-center justify-end gap-mx-md">
-          <Button variant="default" onClick={() => setSaveOpen(false)}>
+          <Button variant="secondary" onClick={() => setSaveOpen(false)}>
             {t("取消", "Cancel")}
           </Button>
           <Button
             onClick={() => save.mutate({ ...liveRequest, familySelection, reason, draftReview: draft?.review,
               lockedInputs: sortedLocks(locked) })}
             loading={save.isPending}
+            loadingLabel={t("保存中…", "Saving…")}
             disabled={busy || query.isError || staleDraft || Boolean(drafting.phase)}
           >
             {t("保存版本", "Save version")}

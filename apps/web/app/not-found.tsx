@@ -1,6 +1,6 @@
 "use client";
-import { Button } from "@mantine/core";
 import Link from "next/link";
+import { buttonVariants } from "@/components/ui/button";
 import { Empty, Page, Panel, useCopy } from "@/workspace/foundation";
 export default function NotFound() {
   const t = useCopy();
@@ -18,9 +18,9 @@ export default function NotFound() {
             "The address may have changed. Choose a page from navigation or return to your portfolio.",
           )}
           action={
-            <Button component={Link} href="/">
+            <Link href="/" data-slot="button" className={buttonVariants()}>
               {t("返回组合总览", "Back to overview")}
-            </Button>
+            </Link>
           }
         />
       </Panel>

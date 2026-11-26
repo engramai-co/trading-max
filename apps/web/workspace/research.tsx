@@ -11,13 +11,12 @@ import type {
   SecuritySearchResponse,
 } from "@/lib/types";
 import {
-  ActionIcon,
-  Button,
   Drawer,
   Modal,
   Select,
   Tooltip,
 } from "@mantine/core";
+import { Button } from "@/components/ui/button";
 import { useBreakpoint, useLocalStorage } from "@/lib/hooks";
 import {
   CaretDown,
@@ -398,37 +397,39 @@ function SecurityResearchWorkspace() {
           {!selected && (
             <Button
               className="mx-universe-toggle"
-              variant="default"
-              rightSection={<CaretDown size={14} />}
+              variant="secondary"
               aria-expanded={listOpen}
               onClick={openUniverse}
             >
               {t("研究清单", "Research list")}
+              <CaretDown size={14} aria-hidden="true" />
             </Button>
           )}
           {selected && (
             <>
               <Tooltip label={<>{t("上一个", "Previous")} <kbd>K</kbd></>}>
-                <ActionIcon
-                  variant="default"
+                <Button
+                  variant="outline"
+                  size="icon"
                   aria-label={t("上一个", "Previous")}
                   aria-keyshortcuts="K"
                   disabled={!previous}
                   onClick={() => previous && selectTicker(previous.ticker)}
                 >
-                  <CaretLeft size={18} />
-                </ActionIcon>
+                  <CaretLeft size={18} aria-hidden="true" />
+                </Button>
               </Tooltip>
               <Tooltip label={<>{t("下一个", "Next")} <kbd>J</kbd></>}>
-                <ActionIcon
-                  variant="default"
+                <Button
+                  variant="outline"
+                  size="icon"
                   aria-label={t("下一个", "Next")}
                   aria-keyshortcuts="J"
                   disabled={!next}
                   onClick={() => next && selectTicker(next.ticker)}
                 >
-                  <CaretRight size={18} />
-                </ActionIcon>
+                  <CaretRight size={18} aria-hidden="true" />
+                </Button>
               </Tooltip>
               {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
             </>
@@ -479,12 +480,8 @@ function SecurityResearchWorkspace() {
                   {candidates.map((item) => (
                     <Button
                       key={item.ticker}
-                      variant="default"
-                      h="auto"
-                      py="sm"
-                      styles={{
-                        label: { whiteSpace: "normal", textAlign: "left" },
-                      }}
+                      variant="secondary"
+                      className="h-auto justify-start py-2.5 text-left whitespace-normal"
                       onClick={() => update({ ticker: item.ticker })}
                     >
                       {item.ticker} · {item.exchange} · {item.name}
@@ -502,13 +499,13 @@ function SecurityResearchWorkspace() {
                     <div className="flex flex-wrap items-center justify-center gap-mx-md">
                       <Button onClick={() => void security.refetch()}>{t("重试", "Retry")}</Button>
                       <Button
-                        variant="default"
-                        leftSection={<MagnifyingGlass size={16} />}
+                        variant="secondary"
                         onClick={() => {
                           setFinderQuery(ticker);
                           setFinder(true);
                         }}
                       >
+                        <MagnifyingGlass size={16} aria-hidden="true" />
                         {t("搜索", "Search")}
                       </Button>
                     </div>
@@ -518,7 +515,8 @@ function SecurityResearchWorkspace() {
             ) : !selected && !ticker ? (
               <Panel>
                 <div className="mx-research-start">
-                  <Button leftSection={<MagnifyingGlass size={16} />} onClick={() => setFinder(true)}>
+                  <Button onClick={() => setFinder(true)}>
+                    <MagnifyingGlass size={16} aria-hidden="true" />
                     {t("搜索", "Search")}
                   </Button>
                 </div>
@@ -529,13 +527,13 @@ function SecurityResearchWorkspace() {
                   title={t("没有找到“", "No results for “") + ticker + "”"}
                   action={
                     <Button
-                      leftSection={<MagnifyingGlass size={16} />}
                       onClick={() => {
                         // Open the finder already searching for this ticker.
                         setFinderQuery(ticker);
                         setFinder(true);
                       }}
                     >
+                      <MagnifyingGlass size={16} aria-hidden="true" />
                       {t("搜索", "Search")}
                     </Button>
                   }
@@ -545,8 +543,7 @@ function SecurityResearchWorkspace() {
               <>
                 {params.get("fromFund") && (
                   <Button
-                    variant="subtle"
-                    size="compact-sm"
+                    variant="ghost"
                     onClick={() =>
                       update({
                         ticker: params.get("fromFund"),
@@ -787,14 +784,13 @@ function SecurityResearchWorkspace() {
         title={t("从研究清单移除 ", "Remove ") + ticker + t("？", " from the research list?")}
       >
         <div className="flex flex-wrap items-center justify-end gap-mx-md">
-          <Button variant="default" onClick={() => setRemoveConfirm(false)}>
+          <Button variant="secondary" onClick={() => setRemoveConfirm(false)}>
             {t("取消", "Cancel")}
           </Button>
           <Button
-            className="mx-destructive-confirm"
-            color="red"
-            variant="outline"
+            variant="destructive"
             loading={operation.isPending}
+            loadingLabel={t("移除中…", "Removing…")}
             onClick={() => operation.mutate({ action: "remove" })}
           >
             {t("移除", "Remove")}

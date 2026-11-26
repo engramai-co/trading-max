@@ -1,15 +1,13 @@
 "use client";
 
 import {
-  ActionIcon,
-  Button,
-  CloseButton,
   Menu,
   Modal,
   TextInput,
   Tooltip,
 } from "@mantine/core";
 import { useColorScheme } from "@/components/color-scheme-provider";
+import { Button, CloseButton } from "@/components/ui/button";
 import { useBreakpoint, useOs } from "@/lib/hooks";
 import {
   ArrowRight,
@@ -358,13 +356,14 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const theme = (
     <Menu position="bottom-end" shadow="md" width={190} withinPortal={false} withInitialFocusPlaceholder={false}>
       <Menu.Target>
-        <ActionIcon
-          className="mx-topbar-preference"
-          variant="subtle"
+        <Button
+          className="mx-topbar-preference [@media(max-width:767px)]:hidden [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:hidden"
+          variant="ghost"
+          size="icon"
           aria-label={t("选择外观", "Choose appearance")}
         >
-          <CircleHalf size={20} />
-        </ActionIcon>
+          <CircleHalf size={20} aria-hidden="true" />
+        </Button>
       </Menu.Target>
       <Menu.Dropdown>{appearanceItems}</Menu.Dropdown>
     </Menu>
@@ -381,9 +380,14 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       classNames={{ dropdown: "mx-more-menu" }}
     >
       <Menu.Target>
-        <ActionIcon className="mx-topbar-more" variant="subtle" aria-label={t("更多", "More")}>
-          <DotsThree size={22} weight="bold" />
-        </ActionIcon>
+        <Button
+          className="mx-topbar-more hidden [@media(max-width:767px)]:inline-flex [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:inline-flex [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:min-w-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:min-h-11 [[data-desktop-chrome=overlay]_&]:hidden!"
+          variant="ghost"
+          size="icon"
+          aria-label={t("更多", "More")}
+        >
+          <DotsThree size={22} weight="bold" aria-hidden="true" />
+        </Button>
       </Menu.Target>
       <Menu.Dropdown>
         {navigation.filter((n) => n.group === 2).map((n) => (
@@ -444,9 +448,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       offset={position === "right" ? 12 : 8}
       interactive
     >
-      <ActionIcon
+      <Button
         className={className}
-        variant="subtle"
+        variant="ghost"
+        size="icon"
         data-search-trigger
         aria-label={t("搜索", "Search")}
         aria-haspopup="dialog"
@@ -459,7 +464,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         }}
       >
         <MagnifyingGlass size={desktop && position === "right" ? 22 : 19} aria-hidden="true" />
-      </ActionIcon>
+      </Button>
     </Tooltip>
   );
   return (
@@ -471,7 +476,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       <aside className="mx-sidebar" inert={assistantOverlay || undefined}>
         <Tooltip.Group openDelay={250} closeDelay={100}>
         {brand}
-        {desktop && searchTrigger("mx-sidebar-search", "right")}
+        {desktop && searchTrigger(
+          "mx-sidebar-search hidden [[data-desktop-chrome=overlay]_&]:flex [[data-desktop-chrome=overlay]_&]:w-full [[data-desktop-chrome=overlay]_&]:h-12 [[data-desktop-chrome=overlay]_&]:min-h-12 [[data-desktop-chrome=overlay]_&]:mt-1 [[data-desktop-chrome=overlay]_&]:mb-2 [[data-desktop-chrome=overlay]_&]:rounded-[10px] [[data-desktop-chrome=overlay]_&]:text-[var(--mx-side-ink)]",
+          "right",
+        )}
         <nav aria-label={t("主导航", "Primary navigation")}>
           {links([0, 1], true)}
         </nav>
@@ -495,15 +503,20 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           <div className="mx-topbar-actions">
             {demonstration && <Tag>{t("演示数据", "Demo data")}</Tag>}
             <AssistantEntry />
-            {searchTrigger("mx-topbar-search", "bottom-end")}
+            {searchTrigger(
+              "mx-topbar-search [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11 [[data-desktop-chrome=overlay]_&]:hidden!",
+              "bottom-end",
+            )}
             {/* In the App, language lives in workspace preferences and appearance follows macOS. */}
-            {!desktop && <ActionIcon
-              className="mx-topbar-preference"
+            {!desktop && <Button
+              className="mx-topbar-preference [@media(max-width:767px)]:hidden [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:hidden"
+              variant="ghost"
+              size="icon"
               aria-label={nextLocale.action}
               onClick={() => setLocale(nextLocale.value)}
             >
-              <Globe size={19} />
-            </ActionIcon>}
+              <Globe size={19} aria-hidden="true" />
+            </Button>}
             {!desktop && theme}
             {more}
           </div>
@@ -596,7 +609,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               }
             }}
           />
-          <CloseButton className="mx-search-close" size="lg" aria-label={t("关闭", "Close")} onClick={closeSearch} />
+          <CloseButton className="mx-search-close [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11" iconSize={18} aria-label={t("关闭", "Close")} onClick={closeSearch} />
         </div>
         <div className="mx-command-results" ref={resultsRef} id={searchId + "-results"} role="listbox" aria-label={t("搜索结果", "Search results")}>
           {results.map((item, i) => (
@@ -646,8 +659,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               )}
             </span>
             <Button
-              size="compact-xs"
-              variant="subtle"
+              variant="ghost"
               onClick={() => void directory.refetch()}
             >
               {t("重试", "Retry")}

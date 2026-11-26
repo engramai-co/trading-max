@@ -262,7 +262,13 @@ button.mx-review-highlight:focus-visible {
     flex-direction: row;
   }
   .mx-decision-tools .mx-info {
-    margin-left: -10px;
+    margin-left: -8px;
+  }
+  @media (pointer: coarse) {
+    .mx-decision-tools .mx-info {
+      margin-left: -14px;
+      margin-right: 0;
+    }
   }
   .mx-decision-tools > .mx-segments {
     flex: 1;
@@ -348,15 +354,6 @@ button.mx-text-link {
   flex: 1 1 120px;
   min-width: 0;
 }
-.mx-exposure-row > .mx-exposure-filter-toggle {
-  align-self: stretch;
-  height: auto;
-}
-/* Open, the toggle reads as selected, the same way a chosen settings section does. */
-.mx-exposure-filter-toggle[aria-expanded="true"] {
-  background: var(--mx-brand-soft);
-  color: var(--mx-brand);
-}
 /* A narrow search clips its hint with an ellipsis rather than mid-word. */
 .mx-exposure-toolbar .mantine-Input-input {
   text-overflow: ellipsis;
@@ -367,8 +364,8 @@ button.mx-text-link {
     height: 44px;
   }
   /* 清除筛选 takes 44px of taps without moving the list. */
-  .mx-exposure-result > .mantine-Button-root {
-    height: 44px;
+  .mx-exposure-result > [data-slot="button"] {
+    min-height: 44px;
     margin-block: -2px;
   }
 }
@@ -415,8 +412,8 @@ button.mx-text-link {
   font-variant-numeric: tabular-nums;
 }
 /* 清除筛选 ends on the controls' right edge. */
-.mx-exposure-result > .mantine-Button-root {
-  margin-inline-end: calc(var(--button-padding-x) * -1);
+.mx-exposure-result > [data-slot="button"] {
+  margin-inline-end: -16px;
 }
 .mx-exposure-paging {
   display: flex;
@@ -751,11 +748,6 @@ button.mx-text-link {
   }
 }
 @media (max-width: 767px) {
-  .mx-info {
-    width: 36px;
-    height: 36px;
-    margin-block: -7px;
-  }
   .mx-target-summary {
     gap: 8px;
   }

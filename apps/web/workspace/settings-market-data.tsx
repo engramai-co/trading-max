@@ -1,9 +1,10 @@
 "use client";
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { Button, Loader, Modal, PasswordInput, Switch } from "@mantine/core";
+import { Loader, Modal, PasswordInput, Switch } from "@mantine/core";
 import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { IntegrationOverview, IntegrationSummary } from "@/lib/types";
 import { api, jsonRequest } from "@/workspace/data";
 import { Freshness, Notice, Panel, useCopy } from "./foundation";
@@ -108,8 +109,8 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
         <details>
           <summary>{integration?.configured ? t("管理 Alpaca 密钥", "Manage Alpaca keys") : t("覆盖范围与密钥获取", "Coverage and API keys")}</summary>        {integration?.configured && (
           <div className="flex flex-wrap items-center gap-mx-md">
-            <Button variant="default" disabled={busy} onClick={() => setOpened(true)}>{t("更新 Alpaca 密钥", "Update Alpaca keys")}</Button>
-            <Button variant="subtle" disabled={busy} onClick={() => setRemoving(true)}>{t("删除密钥", "Remove keys")}</Button>
+            <Button variant="secondary" disabled={busy} onClick={() => setOpened(true)}>{t("更新 Alpaca 密钥", "Update Alpaca keys")}</Button>
+            <Button variant="ghost" disabled={busy} onClick={() => setRemoving(true)}>{t("删除密钥", "Remove keys")}</Button>
           </div>
         )}
           <p className="mx-measure">{t("使用免费 Paper 账户的 API Key ID 和 Secret。密钥保存在服务器的系统凭据库中。", "Use a free Paper account’s API Key ID and Secret. Keys are kept in the server’s operating-system credential store.")}</p>
@@ -125,8 +126,8 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
           <p>{t("删除后恢复使用 YF，已有券商记录和快照会保留。", "YF will remain active. Existing broker observations and snapshots are preserved.")}</p>
           {remove.isError && <Notice tone="bad">{t("删除失败，请重试。", "Could not remove keys. Please retry.")}</Notice>}
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
-            <Button variant="default" disabled={remove.isPending} onClick={() => setRemoving(false)}>{t("取消", "Cancel")}</Button>
-            <Button className="mx-destructive-confirm" color="red" variant="outline" loading={remove.isPending} disabled={busy} onClick={() => { if (writeInFlight(client)) return; begin(); remove.mutate(); }}>{t("确认删除", "Remove keys")}</Button>
+            <Button variant="secondary" disabled={remove.isPending} onClick={() => setRemoving(false)}>{t("取消", "Cancel")}</Button>
+            <Button variant="destructive" loading={remove.isPending} loadingLabel={t("删除中…", "Removing…")} disabled={busy} onClick={() => { if (writeInFlight(client)) return; begin(); remove.mutate(); }}>{t("确认删除", "Remove keys")}</Button>
           </div>
         </div>
       </Modal>
@@ -189,8 +190,8 @@ function AlpacaKeyForm({ onStart, onSaved }: { onStart: () => void; onSaved: () 
         {token && <Notice tone="good">{t("SIP 与隔夜 BOATS 访问测试通过。", "SIP and overnight BOATS access verified.")}</Notice>}
         {failed === "save" && <Notice tone="bad">{t("保存失败，请检查服务器凭据库并重新测试。", "Save failed. Check the server credential store and test again.")}</Notice>}
         <div className="flex flex-wrap items-center gap-mx-md">
-          <Button className="grow max-w-[calc(50%-8px)]" variant="default" disabled={!key.trim() || !secret.trim() || busy} loading={test.isPending} onClick={runTest}>{t("测试连接", "Test connection")}</Button>
-          <Button className="grow max-w-[calc(50%-8px)]" type="submit" disabled={!token || busy} loading={save.isPending}>{t("保存并开启增强", "Save and enable")}</Button>
+          <Button className="grow max-w-[calc(50%-8px)]" variant="outline" disabled={!key.trim() || !secret.trim() || busy} loading={test.isPending} loadingLabel={t("测试中…", "Testing…")} onClick={runTest}>{t("测试连接", "Test connection")}</Button>
+          <Button className="grow max-w-[calc(50%-8px)]" type="submit" disabled={!token || busy} loading={save.isPending} loadingLabel={t("保存中…", "Saving…")}>{t("保存并开启增强", "Save and enable")}</Button>
         </div>
       </div>
     </form>

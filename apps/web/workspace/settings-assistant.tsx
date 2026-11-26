@@ -1,8 +1,9 @@
 "use client";
 
-import { Button, Modal, NativeSelect, Switch } from "@mantine/core";
+import { Modal, NativeSelect, Switch } from "@mantine/core";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import type { AssistantSettings, AssistantUpdate, UserProfile } from "@/lib/types";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import { api, ApiError, jsonRequest } from "./data";
@@ -126,14 +127,14 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
             if (consented && settings.route?.split("/")[0] !== option.provider) consent(option, enabled);
             else update({ route: option.value });
           }} />
-        <Button variant="default" disabled={!canProbe || busy} loading={probe.isPending} onClick={() => {
+        <Button variant="secondary" disabled={!canProbe || busy} loading={probe.isPending} loadingLabel={t("测试中…", "Testing…")} onClick={() => {
           if (!selected || !canProbe || inFlight()) return;
           reset();
           probe.mutate(selected);
         }}>{t("测试工具调用", "Test tool calls")}</Button>
       </> : <>
         <h3>{t("尚无已连接的模型", "No connected model")}</h3>
-        <Button variant="default" onClick={openModels}>{t("连接模型", "Connect a model")}</Button>
+        <Button variant="secondary" onClick={openModels}>{t("连接模型", "Connect a model")}</Button>
       </>}
     </div>
     {models.length > 0 && settings.route && !selected && <Notice tone="warn">{t("已选模型不可用。请重新连接或选择其他模型。", "The selected model is unavailable. Reconnect it or choose another model.")}</Notice>}
@@ -148,9 +149,9 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
         onChange={(event) => update({ [key]: event.currentTarget.checked })} />
     </div>)}
     <div className="mt-mx-md flex flex-wrap items-center gap-mx-md">
-      <Button variant="default" disabled={busy || settings.acceptedConsentRevision === null}
+      <Button variant="secondary" disabled={busy || settings.acceptedConsentRevision === null}
         onClick={() => update({ enabled: false, acceptedConsentRevision: null })}>{t("撤回同意", "Withdraw consent")}</Button>
-      <Button variant="default" disabled={busy} onClick={() => { reset(); setDialog({ kind: "delete" }); }}>{t("删除对话", "Delete conversations")}</Button>
+      <Button variant="secondary" disabled={busy} onClick={() => { reset(); setDialog({ kind: "delete" }); }}>{t("删除对话", "Delete conversations")}</Button>
     </div>
     {!dialog && saveError}
     {erase.isSuccess && <Notice tone="good">{t("已删除此工作区中的对话。", "Conversations deleted from this workspace.")}</Notice>}
@@ -174,8 +175,8 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
         )}</p>
         {saveError}
         <div className="flex flex-wrap items-center justify-end gap-mx-md">
-          <Button variant="default" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
-          <Button disabled={busy || !currentDisclosure} loading={save.isPending} onClick={() => update({
+          <Button variant="secondary" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
+          <Button disabled={busy || !currentDisclosure} loading={save.isPending} loadingLabel={t("保存中…", "Saving…")} onClick={() => update({
             route: dialog.option.value, enabled: dialog.enable, expectedRevision: dialog.revision,
             acceptedConsentRevision: DISCLOSURE_REVISION, expectedConsentDestination: dialog.option.destination,
           })}>{dialog.enable ? t("同意并启用", "Agree and enable") : t("同意并保存", "Agree and save")}</Button>
@@ -187,8 +188,8 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
           ? t("请在当前回复结束后重试。", "Wait for the current reply to finish, then try again.")
           : t("未能删除对话，请重试。", "Could not delete conversations. Try again.")}</Notice>}
         <div className="flex flex-wrap items-center justify-end gap-mx-md">
-          <Button variant="default" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
-          <Button className="mx-destructive-confirm" color="red" variant="outline" disabled={busy} loading={erase.isPending}
+          <Button variant="secondary" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
+          <Button variant="destructive" disabled={busy} loading={erase.isPending} loadingLabel={t("删除中…", "Deleting…")}
             onClick={() => { if (!inFlight()) erase.mutate(); }}>{t("删除所有对话", "Delete all conversations")}</Button>
         </div>
       </div>}

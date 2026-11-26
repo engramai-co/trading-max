@@ -2132,7 +2132,7 @@ test.describe("research notes", () => {
     const submitted = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/journal/note-1"));
     await save.click();
     await submitted;
-    await expect(save).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Saving…" })).toBeDisabled();
     await expect(thesis).not.toBeEditable();
     await thesis.focus();
     await expect(thesis).toBeFocused();
@@ -2176,7 +2176,7 @@ test.describe("research notes", () => {
     await newNote.click();
     await expect(title).toHaveValue("New thesis");
     await expect(title).not.toBeEditable();
-    await expect(save).toBeDisabled();
+    await expect(dialog.getByRole("button", { name: "Saving…" })).toBeDisabled();
     release();
     await expect(dialog).toHaveCount(0);
 

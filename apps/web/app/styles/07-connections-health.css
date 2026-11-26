@@ -28,7 +28,7 @@
   color: var(--mx-muted);
   overflow-wrap: anywhere;
 }
-.mx-connection-card > .mantine-Button-root {
+.mx-connection-card > [data-slot="button"] {
   align-self: flex-start;
   margin-top: 10px;
 }
@@ -66,12 +66,8 @@
   outline-offset: 2px;
 }
 @media (pointer: coarse) {
-  .mx-assistant-settings :is(.mantine-NativeSelect-input, .mantine-Button-root),
-  .mx-assistant-dialog :is(.mantine-Button-root, .mantine-Modal-close) {
+  .mx-assistant-settings .mantine-NativeSelect-input {
     height: 44px;
-  }
-  .mx-assistant-dialog .mantine-Modal-close {
-    min-width: 44px;
   }
 }
 /* A free-form model identifier may be a single long word. */
@@ -167,7 +163,7 @@
   padding-top: 24px;
   margin-top: 16px;
 }
-.mx-danger-zone .mantine-Button-root {
+.mx-danger-zone [data-slot="button"] {
   margin-top: 12px;
 }
 .mx-details {
@@ -197,7 +193,7 @@
 .mx-import-drop > .mantine-InputWrapper-root {
   grid-column: 2;
 }
-.mx-import-drop > .mantine-Button-root {
+.mx-import-drop > [data-slot="button"] {
   grid-column: 2;
   justify-self: start;
 }
@@ -357,7 +353,7 @@
     padding: 18px;
   }
   .mx-import-drop > .mantine-InputWrapper-root,
-  .mx-import-drop > .mantine-Button-root {
+  .mx-import-drop > [data-slot="button"] {
     grid-column: 1;
   }
   .mx-setting-row {
@@ -386,13 +382,6 @@
   margin: 8px 0;
   color: var(--mx-muted);
 }
-.mx-health-page .mantine-Button-root[aria-disabled="true"] {
-  cursor: not-allowed;
-  color: var(--mx-muted);
-}
-.mx-health-page .mantine-Button-root[aria-disabled="true"]:active {
-  transform: none;
-}
 .mx-health-drawer .mantine-Drawer-title {
   min-inline-size: 0;
   overflow-wrap: anywhere;
@@ -419,12 +408,10 @@
 .mx-health-drawer .mx-facts dd {
   min-inline-size: 0;
 }
-.mx-health-drawer .mantine-Button-root {
+.mx-health-drawer [data-slot="button"] {
   height: auto;
   min-height: 40px;
   padding-block: 8px;
-}
-.mx-health-drawer .mantine-Button-label {
   white-space: normal;
   text-align: center;
 }

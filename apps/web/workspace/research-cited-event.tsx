@@ -3,9 +3,9 @@
 import { dividendAmount, dividendBasis } from "@/lib/dividend-disclosure";
 import { citedEventKind } from "@/lib/cited-calendar-event";
 import { useEffect, useRef } from "react";
-import { Button } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale } from "@/components/locale-provider";
+import { Button } from "@/components/ui/button";
 import type { components } from "@/lib/api-schema";
 import { formatDateTimeInTimeZone } from "@/ui/formatters";
 import { readApi, safeUrl } from "./data";
@@ -79,7 +79,7 @@ export function CitedResearchEvent({ recorded = false }: { recorded?: boolean })
         <p>{row.instant ? formatDateTimeInTimeZone(row.instant, locale, timeZone) : [...new Set([row.date, row.end_date].filter(Boolean))].join(" – ")}</p>
         {details && <p>{details}</p>}
         <p>{safeUrl(row.source_url ?? "") ? <a href={safeUrl(row.source_url ?? "")!} target="_blank" rel="noreferrer">{row.publisher}</a> : row.publisher}</p></> : <Empty title={t("引用的数据版本或事件暂不可用", "Cited publication or event unavailable")} />}
-    <Button variant="subtle" onClick={() => update({evidence:null,snapshotId:null,event:null,date:null,end:null,eventId:null,calendarEventId:null})}>
+    <Button variant="ghost" onClick={() => update({evidence:null,snapshotId:null,event:null,date:null,end:null,eventId:null,calendarEventId:null})}>
       {t("打开证券研究", "Open security research")}
     </Button>
   </Panel></section></Page>;

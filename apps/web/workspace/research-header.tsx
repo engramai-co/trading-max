@@ -1,10 +1,11 @@
 "use client";
 
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
-import { ActionIcon, Avatar, Button, Loader, Menu } from "@mantine/core";
+import { Avatar, Menu } from "@mantine/core";
 import { ArrowClockwise, CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Button } from "@/components/ui/button";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { currency, percent, tone } from "@/workspace/data";
 import { quoteValue } from "./financial-values";
@@ -198,21 +199,22 @@ export function SecurityActions({
   return (
     <div className="mx-research-actions">
       {/* Phones show the icon alone; the name stays 更新研究 in every state. */}
-      {onAdd ? <Button loading={busy} disabled={addDisabled} onClick={onAdd}>{t("加入研究清单", "Add to research list")}</Button> : <Button
-        className="mx-research-refresh"
+      {onAdd ? <Button loading={busy} loadingLabel={t("加入中…", "Adding…")} disabled={addDisabled} onClick={onAdd}>{t("加入研究清单", "Add to research list")}</Button> : <Button
+        className="mx-research-refresh [@media(max-width:767px)]:w-[var(--mx-tool)] [@media(max-width:767px)]:min-w-[var(--mx-tool)] [@media(max-width:767px)]:px-0"
         aria-label={t("更新研究", "Update research")}
-        variant="default"
-        leftSection={busy ? <Loader size={14} /> : <ArrowClockwise size={16} />}
-        disabled={busy}
+        variant="secondary"
+        loading={busy}
+        loadingLabel={<span className="mx-research-refresh-label">{t("更新中…", "Updating…")}</span>}
         onClick={() => onRefresh()}
       >
-        {busy ? t("更新中…", "Updating…") : t("更新研究", "Update research")}
+        <ArrowClockwise size={16} aria-hidden="true" />
+        <span className="mx-research-refresh-label">{t("更新研究", "Update research")}</span>
       </Button>}
       {watchlisted && <Menu shadow="md" position="bottom-end">
         <Menu.Target>
-          <ActionIcon aria-label={t("更多操作", "More actions")}>
-            <DotsThree size={23} />
-          </ActionIcon>
+          <Button variant="ghost" size="icon" aria-label={t("更多操作", "More actions")}>
+            <DotsThree size={23} aria-hidden="true" />
+          </Button>
         </Menu.Target>
         <Menu.Dropdown>
           <Menu.Item disabled={!categoriesAvailable} onClick={() => onManage()}>

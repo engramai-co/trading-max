@@ -2,9 +2,10 @@
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
-import { Button, Modal, MultiSelect, Pill, Select } from "@mantine/core";
+import { Modal, MultiSelect, Pill, Select } from "@mantine/core";
 import { useQueries } from "@tanstack/react-query";
 import type { EChartsOption } from "echarts";
+import { Button } from "@/components/ui/button";
 import { Plot } from "./charts";
 import { number, object, percent } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -235,8 +236,7 @@ export function ResearchComparison({
   return (
     <>
       <Button
-        variant="default"
-        size="sm"
+        variant="secondary"
         onClick={() => update({ compare: "on" })}
       >
         {t("比较", "Compare")}

@@ -2,15 +2,14 @@
 
 import { useAssistantPageContext } from "./assistant/context";
 import {
-  Button,
   Checkbox,
-  CloseButton,
   Drawer,
   Select,
   TextInput,
 } from "@mantine/core";
 import { ArrowDown, MagnifyingGlass } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
+import { Button, CloseButton } from "@/components/ui/button";
 import { useAllocationChartColours } from "@/ui/charts/palette";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -478,9 +477,9 @@ function Positions() {
                 </div>
                 {rows.length > limit && (
                   <Button
-                    variant="subtle"
+                    variant="ghost"
                     fullWidth
-                    mt="md"
+                    className="mt-mx-md"
                     onClick={() => setLimit((n) => n + 30)}
                   >
                     {t("继续显示", "Show more")} · {rows.length - limit}
@@ -501,7 +500,7 @@ function Positions() {
                 action={
                   search && (
                     <Button
-                      variant="default"
+                      variant="secondary"
                       onClick={() => update({ q: null })}
                     >
                       {t("清除筛选", "Clear filters")}

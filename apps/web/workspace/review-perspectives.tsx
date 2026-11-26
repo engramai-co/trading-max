@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, Select } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { ArrowUpRight } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Button } from "@/components/ui/button";
 import { numeric } from "@/lib/numeric";
 import type { DashboardLens } from "@/lib/types";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
@@ -560,7 +561,7 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
           ))}
           {rows.length > phaseLimit && (
             <Button
-              variant="default"
+              variant="secondary"
               onClick={() => setPhaseLimit((n) => n + 8)}
             >
               {t("查看更多阶段", "Show more phases")} · {phaseLimit} /{" "}

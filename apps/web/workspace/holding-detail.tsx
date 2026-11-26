@@ -1,10 +1,10 @@
 "use client";
 
-import { Button } from "@mantine/core";
 import { ArrowRight } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import type { ComponentProps } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { buttonVariants } from "@/components/ui/button";
 import type { Holding } from "@/lib/types";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { currency, number, percent, tone } from "./data";
@@ -121,13 +121,14 @@ export function HoldingDetail({ holding, account, positionAsOf, runId, today, no
         <Facts rows={calculation} />
       </details>
       <div className="mx-position-actions">
-        <Button component={Link} href={researchHref} rightSection={<ArrowRight size={16} />}>
+        <Link href={researchHref} data-slot="button" className={buttonVariants()}>
           {t("查看研究", "View research")}
-        </Button>
+          <ArrowRight size={16} aria-hidden="true" />
+        </Link>
         {holding.isFund && (
-          <Button component={Link} variant="default" href={researchHref + "&view=fundamentals"}>
+          <Link href={researchHref + "&view=fundamentals"} data-slot="button" className={buttonVariants({ variant: "secondary" })}>
             {t("查看基金持仓", "View fund holdings")}
-          </Button>
+          </Link>
         )}
       </div>
     </div>

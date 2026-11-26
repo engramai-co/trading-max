@@ -303,7 +303,7 @@
   .mx-page .mx-setting-row p {
     margin-block: var(--mx-space-tight);
   }
-  .mx-page .mx-connection-card > .mantine-Button-root {
+  .mx-page .mx-connection-card > [data-slot="button"] {
     margin-top: var(--mx-space-tight);
   }
   .mx-page .mx-health-hero :is(h2, p) + .mx-freshness {
@@ -432,8 +432,7 @@
 /* Touch on phones: every control offers 44 × 44px. Fields and buttons grow (a height wins over the theme's 40px
    minimum); small text targets keep their size and take a hit area centred on them. */
 @media (max-width: 767px) and (pointer: coarse) {
-  .mx-page :is(.mantine-Select-input, .mantine-TextInput-input, .mantine-NumberInput-input, .mantine-FileInput-input,
-    .mantine-Button-root) {
+  .mx-page :is(.mantine-Select-input, .mantine-TextInput-input, .mantine-NumberInput-input, .mantine-FileInput-input) {
     height: 44px;
   }
   .mx-page :is(.mx-attention a, .mx-chart-data > summary, .mx-event-link) {
@@ -454,10 +453,10 @@
     align-items: center;
     min-height: 44px;
   }
-  .mx-page :is(details:not(.mx-job-row) > summary, .mx-table tbody a, .mx-document-feed a, .mx-assumption-picker button) {
+  .mx-page :is(.mx-table tbody a, .mx-document-feed a, .mx-assumption-picker button) {
     position: relative;
   }
-  .mx-page :is(details:not(.mx-job-row) > summary, .mx-table tbody a, .mx-document-feed a)::after {
+  .mx-page :is(.mx-table tbody a, .mx-document-feed a)::after {
     content: "";
     position: absolute;
     inset: min(0px, calc(50% - 22px));
@@ -515,10 +514,6 @@
   /* Centred on its row, the estimate tag keeps its hit area within the figure, clear of the drivers below. */
   .mx-page .mx-period-figure > .mx-tag-help {
     align-self: center;
-  }
-  /* Info buttons offer the 44px minimum. A larger area would reach past the 12px below a heading into its content. */
-  .mx-page .mx-info::after {
-    inset: min(0px, calc(50% - 22px));
   }
   /* "+N" shares its line with the decision above it, so it takes the row's padding below and grows sideways. */
   .mx-page .mx-decision-more::after {

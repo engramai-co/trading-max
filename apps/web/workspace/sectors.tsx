@@ -22,12 +22,12 @@
  */
 
 import { useAssistantPageContext } from "./assistant/context";
-import { Button } from "@mantine/core";
 import { useBreakpoint } from "@/lib/hooks";
 import { ArrowLeft } from "@phosphor-icons/react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Button, buttonVariants } from "@/components/ui/button";
 import type { SectorBoardResponse, SectorGroupingKind, SectorMarketCode } from "@/lib/types";
 import { formatDateTime } from "@/ui/formatters";
 import { api } from "@/workspace/data";
@@ -285,11 +285,11 @@ export function SectorsWorkspace() {
                 ? t("最近一次采集未能取得行情。请重试读取，或在数据状态查看下一次采集。", "The last collection could not retrieve quotes. Retry loading or check Data status for the next collection.")
                 : t("尚未发布板块快照。", "No sector snapshot has been published yet.") + " " + sectorNext}
         action={demonstration ? undefined : boardIssue === "not_configured"
-          ? <Button component={Link} href="/settings?tab=automation" variant="default">{t("打开设置", "Open settings")}</Button>
+          ? <Link href="/settings?tab=automation" data-slot="button" className={buttonVariants({ variant: "secondary" })}>{t("打开设置", "Open settings")}</Link>
           : boardIssue === "fetch_failed"
-            ? <Button variant="default" onClick={() => void query.refetch()} loading={query.isFetching}>{t("重试读取", "Retry loading")}</Button>
+            ? <Button variant="secondary" onClick={() => void query.refetch()} loading={query.isFetching} loadingLabel={t("读取中…", "Loading…")}>{t("重试读取", "Retry loading")}</Button>
             : boardIssue === "awaiting_collection"
-              ? <Button component={Link} href="/health" variant="default">{t("查看数据状态", "Data status")}</Button>
+              ? <Link href="/health" data-slot="button" className={buttonVariants({ variant: "secondary" })}>{t("查看数据状态", "Data status")}</Link>
               : undefined}
       />
     </section>

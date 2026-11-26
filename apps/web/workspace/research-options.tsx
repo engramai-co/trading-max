@@ -2,7 +2,6 @@
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
-  Button,
   CheckIcon,
   Checkbox,
   Combobox,
@@ -16,6 +15,7 @@ import { useLocalStorage } from "@/lib/hooks";
 import type { BarSeriesOption, EChartsOption, LineSeriesOption } from "echarts";
 import { useState } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
+import { Button } from "@/components/ui/button";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { Plot } from "./charts";
@@ -455,7 +455,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
             )}
             action={available.length > 0 && !historical &&
               <Button
-                variant="light"
+                variant="secondary"
                 onClick={() => update({ chainMode: "history", expiries: null })}
               >
                 {t("查看历史快照", "View historical snapshot")}
@@ -607,48 +607,60 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                               strike === nearest ? "mx-near-spot" : undefined
                             }
                           >
-                            {activeCols.toReversed().map((k) => (
-                              <td
-                                key={k}
-                                className={
-                                  call?.inTheMoney ? "mx-option-itm" : undefined
-                                }
-                              >
-                                <button
-                                  disabled={!call}
-                                  tabIndex={k === activeCols[0] ? 0 : -1}
-                                  className="mx-cell-button"
-                                  onClick={() => setDetail(call!)}
-                                  aria-label={`${t("看涨", "Call")} ${value(strike)} ${columnNames[k]} ${cell(call, k, cc)}`}
+                            {activeCols.toReversed().map((k) => {
+                              const primary = k === activeCols[0];
+                              return (
+                                <td
+                                  key={k}
+                                  className={
+                                    call?.inTheMoney ? "mx-option-itm" : undefined
+                                  }
                                 >
-                                  {cell(call, k, cc)}
-                                </button>
-                              </td>
-                            ))}
+                                  {primary && call ? (
+                                    <button
+                                      type="button"
+                                      className="mx-cell-button"
+                                      onClick={() => setDetail(call)}
+                                      aria-label={`${t("看涨", "Call")} ${value(strike)} ${columnNames[k]} ${cell(call, k, cc)}`}
+                                    >
+                                      {cell(call, k, cc)}
+                                    </button>
+                                  ) : (
+                                    cell(call, k, cc)
+                                  )}
+                                </td>
+                              );
+                            })}
                             <th scope="row" className="mx-strike">
                               {quoteValue(strike, cc, { style: "figure" })}
                               {strike === nearest && (
                                 <small>{t("近现价", "Nearest spot")}</small>
                               )}
                             </th>
-                            {activeCols.map((k) => (
-                              <td
-                                key={k}
-                                className={
-                                  put?.inTheMoney ? "mx-option-itm" : undefined
-                                }
-                              >
-                                <button
-                                  disabled={!put}
-                                  tabIndex={k === activeCols[0] ? 0 : -1}
-                                  className="mx-cell-button"
-                                  onClick={() => setDetail(put!)}
-                                  aria-label={`${t("看跌", "Put")} ${value(strike)} ${columnNames[k]} ${cell(put, k, cc)}`}
+                            {activeCols.map((k) => {
+                              const primary = k === activeCols[0];
+                              return (
+                                <td
+                                  key={k}
+                                  className={
+                                    put?.inTheMoney ? "mx-option-itm" : undefined
+                                  }
                                 >
-                                  {cell(put, k, cc)}
-                                </button>
-                              </td>
-                            ))}
+                                  {primary && put ? (
+                                    <button
+                                      type="button"
+                                      className="mx-cell-button"
+                                      onClick={() => setDetail(put)}
+                                      aria-label={`${t("看跌", "Put")} ${value(strike)} ${columnNames[k]} ${cell(put, k, cc)}`}
+                                    >
+                                      {cell(put, k, cc)}
+                                    </button>
+                                  ) : (
+                                    cell(put, k, cc)
+                                  )}
+                                </td>
+                              );
+                            })}
                           </tr>
                         );
                       })}
@@ -1103,7 +1115,7 @@ function Payoff({
           w={320}
         />
         <Button
-          variant="light"
+          variant="secondary"
           onClick={add}
           disabled={!selected || legs.length >= 4}
         >
@@ -1138,7 +1150,7 @@ function Payoff({
             w={130}
           />
           <Button
-            variant="subtle"
+            variant="ghost"
             onClick={() => setLegs(legs.filter((_, j) => i !== j))}
           >
             {t("移除", "Remove")}

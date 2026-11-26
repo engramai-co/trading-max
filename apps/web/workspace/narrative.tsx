@@ -1,8 +1,8 @@
 "use client";
-import { Button } from "@mantine/core";
 import { ArrowClockwise, Sparkle } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/components/locale-provider";
 import {
   analysisRunKey,
@@ -77,7 +77,7 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
         "AI generated",
       )}
       action={
-        <Button variant="subtle" onClick={() => setOpened(!opened)}>
+        <Button variant="ghost" onClick={() => setOpened(!opened)}>
           {opened ? t("收起", "Collapse") : t("展开分析", "Read analysis")}
         </Button>
       }
@@ -154,14 +154,13 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
             </Notice>
           )}
           <Button
-            variant="default"
+            variant="secondary"
             loading={active}
-            leftSection={<ArrowClockwise size={15} />}
+            loadingLabel={t("正在分析", "Analysing")}
             onClick={() => void startAnalysisRun({ lens, ticker })}
           >
-            {active
-              ? t("正在分析", "Analysing")
-              : t("生成最新分析", "Generate analysis")}
+            <ArrowClockwise size={15} aria-hidden="true" />
+            {t("生成最新分析", "Generate analysis")}
           </Button>
         </div>
       )}

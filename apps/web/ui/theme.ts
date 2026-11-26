@@ -135,11 +135,6 @@ export const tradingMaxTheme = createTheme({
     xl: "0 32px 80px rgba(17,24,39,.18)",
   },
   components: {
-    Button: {
-      defaultProps: { size: "sm", radius: "sm" },
-      styles: { root: { minHeight: 40, fontWeight: 600 } },
-    },
-    ActionIcon: { defaultProps: { size: 40, radius: "sm", variant: "subtle" } },
     TextInput: { defaultProps: { size: "md", radius: "sm" } },
     PasswordInput: { defaultProps: { size: "md", radius: "sm" } },
     Select: {

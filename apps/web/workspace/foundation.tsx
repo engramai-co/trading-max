@@ -1,8 +1,6 @@
 "use client";
 
 import {
-  Button,
-  CloseButton,
   Drawer,
   Popover,
   Tooltip,
@@ -12,7 +10,6 @@ import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
 import {
   ArrowClockwise,
-  ArrowRight,
   CheckCircle,
   Info,
   Question,
@@ -21,6 +18,7 @@ import {
 import Link from "./link";
 import { cloneElement, useCallback, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Button, CloseButton, buttonVariants } from "@/components/ui/button";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 import { isReadTimeout, type ChangeTone } from "./data";
@@ -275,7 +273,6 @@ export function Help({
           <strong id={titleId}>{label}</strong>
           <CloseButton
             data-autofocus
-            size="sm"
             aria-label={t("关闭说明", "Close explanation")}
             data-mantine-stop-propagation="true"
             onClick={() => setOpened(false)}
@@ -545,17 +542,15 @@ export function QueryError({
         action={(retry || showDataStatusLink) && (
           <div className="flex flex-wrap items-center gap-mx-md">
             {retry && (
-              <Button
-                leftSection={<ArrowClockwise size={16} />}
-                onClick={() => void retry()}
-              >
+              <Button onClick={() => void retry()}>
+                <ArrowClockwise size={16} aria-hidden="true" />
                 {t("重新加载", "Try again")}
               </Button>
             )}
             {showDataStatusLink && (
-              <Button component={Link} href="/health" variant="default">
+              <Link href="/health" data-slot="button" className={buttonVariants({ variant: "secondary" })}>
                 {t("查看数据状态", "Data status")}
-              </Button>
+              </Link>
             )}
           </div>
         )}
@@ -589,20 +584,7 @@ export function Freshness({
     </span>
   );
 }
-export function TextLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: ReactNode;
-}) {
-  return (
-    <Link href={href} className="mx-text-link">
-      {children}
-      <ArrowRight size={15} />
-    </Link>
-  );
-}
+export { TextLink } from "@/components/ui/text-link";
 export function Segments<T extends string>({
   value,
   onChange,

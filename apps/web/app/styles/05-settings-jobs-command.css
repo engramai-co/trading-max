@@ -371,36 +371,3 @@ details[open]:not(.mx-job-row) > :not(summary) {
   font-weight: 600;
   font-size: 16px;
 }
-.mantine-Button-root,
-.mantine-ActionIcon-root {
-  transition:
-    background 130ms,
-    border-color 130ms,
-    transform 100ms var(--mx-ease);
-}
-.mantine-Button-root:is([data-variant="filled"], :not([data-variant])):not(:disabled, [data-disabled]):active {
-  background: var(--primary-active);
-}
-.mantine-Button-root[data-variant="default"]:not(:disabled, [data-disabled]):active {
-  background: var(--secondary-active);
-}
-.mantine-Button-root[data-variant="subtle"]:not(:disabled, [data-disabled]) {
-  color: var(--foreground);
-}
-.mantine-Button-root[data-variant="subtle"]:not(:disabled, [data-disabled]):hover,
-.mantine-ActionIcon-root[data-variant="subtle"]:not(:disabled, [data-disabled]):hover {
-  background: var(--ghost-hover);
-}
-.mantine-Button-root[data-variant="subtle"]:not(:disabled, [data-disabled]):active,
-.mantine-ActionIcon-root[data-variant="subtle"]:not(:disabled, [data-disabled]):active {
-  background: var(--ghost-active);
-}
-.mantine-Button-root.mx-destructive-confirm:not(:disabled, [data-disabled]):active {
-  background: var(--destructive-active);
-  color: var(--destructive-active-ink);
-  border-color: currentColor;
-}
-.mantine-Button-root:not(:disabled, [data-disabled]):active,
-.mantine-ActionIcon-root:not(:disabled, [data-disabled]):active {
-  transform: scale(0.98);
-}

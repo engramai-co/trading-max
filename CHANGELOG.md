@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.73.0] - 2026-11-26
+
+### Changed
+- Buttons, icon buttons, close buttons, the copy button and text links use the new design system: rounded pill buttons with a cobalt fill for primary buttons, and outline, ghost, secondary and link styles for the rest. Buttons are 40px tall on desktop and at least 44px on touch screens; the compact 32px size is used only inside table rows. Deletions keep red text and an outline for the final confirmation only.
+- A button that is working keeps its width and says what it is doing, such as **Saving…** or **Checking…**, instead of showing only a spinner. Keyboard focus shows one ring, only when you navigate with the keyboard.
+
+### Fixed
+- Touch targets reach 44px for the Overview market picker, Help buttons, dialog and drawer close buttons, password reveal buttons and the ETF price proxies disclosure. On the option chain, each contract side is one target instead of a button per figure.
+- Password fields use 16px text on touch screens, so iPhone no longer zooms in when you tap them.
+- On Markets → Global, **Retry** stays on one line when no contribution estimate is available.
+
 ## [1.72.0] - 2026-11-26
 
 ### Changed

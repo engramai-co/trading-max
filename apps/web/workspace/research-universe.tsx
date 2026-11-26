@@ -1,10 +1,11 @@
 "use client";
 
 import type { ResearchShell } from "@/lib/types";
-import { ActionIcon, Checkbox, Select, TextInput } from "@mantine/core";
+import { Checkbox, Select, TextInput } from "@mantine/core";
 import { MagnifyingGlass, PushPin } from "@phosphor-icons/react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { evidenceNoticesQuery } from "./evidence-notices";
 import { Instrument, useCopy } from "./foundation";
 import Link from "./link";
@@ -65,26 +66,29 @@ export function UniverseHeading({
       <span>{t("研究清单", "Research list")}</span>
       <span className="flex flex-wrap items-center gap-1">
         {wide && (
-          <ActionIcon
+          <Button
             aria-label={
               pinned
                 ? t("取消固定研究清单", "Unpin research list")
                 : t("固定研究清单", "Pin research list")
             }
             aria-pressed={pinned}
-            variant={pinned ? "light" : "subtle"}
+            variant={pinned ? "secondary" : "ghost"}
+            size="icon"
+            className={pinned ? "text-link" : undefined}
             onClick={onPin}
           >
-            <PushPin size={17} weight={pinned ? "fill" : "regular"} />
-          </ActionIcon>
+            <PushPin size={17} weight={pinned ? "fill" : "regular"} aria-hidden="true" />
+          </Button>
         )}
-        <ActionIcon
+        <Button
           aria-label={t("搜索", "Search")}
-          variant="subtle"
+          variant="ghost"
+          size="icon"
           onClick={onSearch}
         >
-          <MagnifyingGlass size={17} />
-        </ActionIcon>
+          <MagnifyingGlass size={17} aria-hidden="true" />
+        </Button>
       </span>
     </span>
   );
@@ -201,7 +205,7 @@ export function UniverseList({
             )}
           </button>
         ))}
-        {[...indices].sort(order).map((index) => (
+        {indices.toSorted(order).map((index) => (
           <Link
             key={index.id}
             className="mx-watchlist-item mx-research-index-result"

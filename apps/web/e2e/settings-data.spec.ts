@@ -114,13 +114,13 @@ test.describe("reconstruction market data", () => {
       const dialog = page.getByRole("dialog");
       const button = dialog.getByRole("button", { name: "Test connection", exact: true });
       await expect(button).toBeDisabled();
-      const disabledBackground = await button.evaluate((node) => getComputedStyle(node).backgroundColor);
-      const disabledInk = await button.evaluate((node) => getComputedStyle(node).color);
+      await expect(button).toHaveCSS("opacity", "0.5");
+      await expect(button).toHaveCSS("cursor", "not-allowed");
       await dialog.getByLabel("Alpaca API Key ID").fill("synthetic-key");
       await dialog.getByLabel("Alpaca API Secret").fill("synthetic-secret");
       await expect(button).toBeEnabled();
-      await expect(button).not.toHaveCSS("background-color", disabledBackground);
-      await expect(button).not.toHaveCSS("color", disabledInk);
+      await expect(button).toHaveCSS("opacity", "1");
+      await expect(button).toHaveCSS("cursor", "pointer");
     });
   }
 

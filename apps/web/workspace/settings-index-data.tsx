@@ -1,10 +1,11 @@
 "use client";
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { Button, Modal, PasswordInput, Switch } from "@mantine/core";
+import { Modal, PasswordInput, Switch } from "@mantine/core";
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { IntegrationSummary } from "@/lib/types";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
 import { api, jsonRequest } from "./data";
 import { Notice, Panel, useCopy } from "./foundation";
 import { settingsKey } from "./settings-query";
@@ -58,10 +59,10 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
         onChange={(event) => submit(event.currentTarget.checked ? "enable" : "disable")} />
         : <h3>{indexData.name}</h3>}
       <div className="flex flex-wrap items-center gap-mx-xs">
-        <Button variant="default" disabled={busy} onClick={() => open("keys")}>
+        <Button variant="secondary" disabled={busy} onClick={() => open("keys")}>
           {configured ? t("更新密钥", "Update key") : t("连接 EODHD", "Connect EODHD")}
         </Button>
-        {configured && <Button variant="subtle" disabled={busy} onClick={() => open("remove")}>
+        {configured && <Button variant="ghost" disabled={busy} onClick={() => open("remove")}>
           {t("删除密钥", "Remove key")}
         </Button>}
       </div>
@@ -83,7 +84,7 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
             value={key} maxLength={200} onChange={(event) => setKey(event.currentTarget.value)}
             disabled={busy} required />
           {commit.isError && error}
-          <Button type="submit" loading={busy} disabled={!key.trim()}>{t("测试并保存", "Test and save")}</Button>
+          <Button type="submit" loading={busy} loadingLabel={t("保存中…", "Saving…")} disabled={!key.trim()}>{t("测试并保存", "Test and save")}</Button>
         </div>
       </form>
     </Modal>
@@ -92,8 +93,8 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
       <div className="flex flex-col gap-mx-md">
         {commit.isError && error}
         <div className="flex flex-wrap items-center gap-mx-md">
-          <Button variant="default" disabled={busy} onClick={() => open(null)}>{t("取消", "Cancel")}</Button>
-          <Button className="mx-destructive-confirm" color="red" variant="outline" loading={busy} onClick={() => submit("remove")}>{t("删除密钥", "Remove key")}</Button>
+          <Button variant="secondary" disabled={busy} onClick={() => open(null)}>{t("取消", "Cancel")}</Button>
+          <Button variant="destructive" loading={busy} loadingLabel={t("删除中…", "Removing…")} onClick={() => submit("remove")}>{t("删除密钥", "Remove key")}</Button>
         </div>
       </div>
     </Modal>

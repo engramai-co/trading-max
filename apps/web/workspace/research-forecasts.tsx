@@ -1,8 +1,9 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Button } from "@mantine/core";
+import type { ReactNode } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
+import { Button } from "@/components/ui/button";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { compact, currency, number, object, objects, percent, str, tone } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -106,14 +107,14 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
                   ? compactMoney(value, code, locale)
                   : currency(value, code, 2);
           type Row = (typeof rows)[number];
-          const fields = [
+          const fields: { label: string; read: (r: Row, compact?: boolean) => ReactNode }[] = [
             { label: t("平均预期", "Average"), read: (r: Row) => format(r.avg, str(r.currency)) },
             { label: t("预期区间", "Range"), read: (r: Row) => <>{format(r.low, str(r.currency))}<span className="mx-range-separator">—</span>{format(r.high, str(r.currency))}</> },
             { label: t("去年同期", "Year ago"), read: (r: Row) => format(r[measure.prior], str(r.currency)) },
             { label: t("同比增长", "YoY growth"), read: (r: Row) => <span className={"mx-" + tone(r.growth)}>{percent(r.growth, true, 1)}</span> },
             { label: t("分析师人数", "Analysts"), read: (r: Row) => number(r.numberOfAnalysts, 0) },
-            ...(measure.revenue && period === "year" ? [{ label: t("估值参考", "Valuation reference"), read: (r: Row) =>
-              numeric(r.growth) == null ? "—" : <Button size="compact-xs" variant="subtle"
+            ...(measure.revenue && period === "year" ? [{ label: t("估值参考", "Valuation reference"), read: (r: Row, compact = false) =>
+              numeric(r.growth) == null ? "—" : <Button size={compact ? "default" : "table"} variant="ghost"
                 onClick={() => update({ view: "valuation", valuationView: "scenario", estimateRef: str(r.period ?? r.index) })}>
                 {t("带入模型参考", "Use as model reference")}</Button> }] : []),
           ];
@@ -128,14 +129,14 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
                       {rows.map((row, i) => <th scope="col" key={i}>{label(row.period ?? row.index)}{unit(row)}</th>)}
                     </tr></thead>
                     <tbody>{fields.map((field, index) => <tr key={field.label} className={index === 0 ? "mx-forecast-average" : undefined}>
-                      <th scope="row">{field.label}</th>{rows.map((row, i) => <td key={i}>{field.read(row)}</td>)}
+                      <th scope="row">{field.label}</th>{rows.map((row, i) => <td key={i}>{field.read(row, false)}</td>)}
                     </tr>)}</tbody>
                   </table>
                 </div>
                 <div className="mx-compact-records">
                   {rows.map((row, i) => <section key={i}>
                     <h4><abbr title={label(row.period ?? row.index)}>{shortForecastPeriod(analyst, row.period ?? row.index) ?? label(row.period ?? row.index)}</abbr> {unit(row)}</h4>
-                    <dl>{fields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.read(row)}</dd></div>)}</dl>
+                    <dl>{fields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.read(row, true)}</dd></div>)}</dl>
                   </section>)}
                 </div>
               </> : (

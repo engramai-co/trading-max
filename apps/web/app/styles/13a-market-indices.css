@@ -47,12 +47,14 @@
 }
 .mx-index-retry {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 5px;
   padding: 0;
   background: none;
   color: var(--mx-brand);
   border: 0;
+  white-space: nowrap;
   cursor: pointer;
 }
 .mx-index-retry:disabled {
