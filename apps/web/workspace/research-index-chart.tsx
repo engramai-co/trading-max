@@ -297,7 +297,7 @@ export function RiskChart({ dates, values, title, primary = false, signed = fals
           xAxis: { type: "category", boundaryGap: false, data: dates,
             axisLabel: { formatter: (day: string) => formatCalendarDate(day, locale) } },
           yAxis: { type: "value", scale: true, splitNumber: 3, axisLabel: { formatter: (value) => formatPercent(value, locale, 1) } },
-          series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: primary ? chartColours.brand : chartColours.text, width: 1.5 } }],
+          series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: primary ? chartColours.brand : chartColours.text, width: primary ? 2 : 1.5 } }],
         })} />}
   </section>;
 }

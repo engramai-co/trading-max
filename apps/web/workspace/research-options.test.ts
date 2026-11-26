@@ -56,7 +56,7 @@ describe("option charts read through the reading card", () => {
       const counts = [[1200, null], [800, 15_250]];
       const bars = interestSeries(colours, names, counts);
       expect(bars.map((bar) => bar.itemStyle?.color)).toEqual([sideStroke("call", colours), sideStroke("put", colours)]);
-      expect(bars.map((bar) => bar.color)).toEqual([colours.brand, colours.accent]);
+      expect(bars.map((bar) => bar.color)).toEqual([colours.comparison, colours.accent]);
       expect(interestRows(colours, names, counts, 1)).toEqual([
         { label: "Puts", value: "15,250", key: { colour: colours.accent, kind: "bar" } },
       ]);

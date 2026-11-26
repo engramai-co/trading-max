@@ -6,7 +6,7 @@ import type { ECharts, EChartsOption, ECElementEvent } from "echarts";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { useReadingLock } from "@/ui/charts/reading";
 import { useChartPalette } from "@/ui/charts/palette";
-import { FONT_STACK } from "@/ui/theme";
+import { applyLumaChartTheme, mergeLiveZoom, type LiveZoomEntry } from "@/ui/charts/theme";
 
 type EChartsRuntime = typeof import("@/ui/charts/echarts-runtime");
 export type EChartsRuntimeProfile = "core" | "research";
@@ -68,22 +68,11 @@ function setController(controller: RefObject<ECharts | null> | undefined, value:
 
 function withPreservedZoom(chart: ECharts, nextOption: EChartsOption): EChartsOption {
   if (!nextOption.dataZoom) return nextOption;
-  const liveOption = chart.getOption() as {
-    dataZoom?: Array<{ start?: number; end?: number }>;
-  } | undefined;
-  const liveZooms = liveOption?.dataZoom;
-  if (!Array.isArray(liveZooms) || liveZooms.length === 0) return nextOption;
-  const merge = (entry: Record<string, unknown>, index: number) => {
-    const live = liveZooms[index] ?? liveZooms[0];
-    if (!live || typeof live.start !== "number" || typeof live.end !== "number") return entry;
-    return { ...entry, start: live.start, end: live.end };
-  };
+  const liveOption = chart.getOption() as { dataZoom?: LiveZoomEntry[] } | undefined;
   return {
     ...nextOption,
-    dataZoom: Array.isArray(nextOption.dataZoom)
-      ? nextOption.dataZoom.map((entry, index) => merge(entry as Record<string, unknown>, index))
-      : merge(nextOption.dataZoom as Record<string, unknown>, 0),
-  } as EChartsOption;
+    dataZoom: mergeLiveZoom(nextOption.dataZoom, liveOption?.dataZoom),
+  };
 }
 
 export function useECharts(
@@ -94,30 +83,23 @@ export function useECharts(
   onClick?: (event: ECElementEvent) => void,
   pinned = false,
   updateWhileReading = false,
+  onHover?: (event: ECElementEvent | null) => void,
 ) {
-  const callbacks = useRef({ onZoom, onClick });
-  useLayoutEffect(() => { callbacks.current = { onZoom, onClick }; }, [onZoom, onClick]);
-  const { scheme, ready } = useChartPalette();
+  const callbacks = useRef({ onZoom, onClick, onHover });
+  useLayoutEffect(() => { callbacks.current = { onZoom, onClick, onHover }; }, [onZoom, onClick, onHover]);
+  const reportsHover = onHover != null;
+  const { chart: colours, scheme, ready } = useChartPalette();
   const reduced = useReducedMotion();
   const { status, retry } = useChartRuntime(profile);
   const themedOption = useMemo(
-    () =>
-      option && ready
-        ? {
-            ...option,
-            animation: !reduced && option.animation !== false,
-            animationDuration: 150,
-            animationDurationUpdate: 0,
-            // "inherit" is not a canvas font; without a family the labels fall back to 10px.
-            textStyle: { fontSize: 12, ...(option.textStyle as object | undefined), fontFamily: FONT_STACK },
-            darkMode: scheme === "dark",
-          }
-        : null,
-    [scheme, option, ready, reduced],
+    () => (option && ready ? applyLumaChartTheme(option, colours, scheme, reduced) : null),
+    [colours, scheme, option, ready, reduced],
   );
   const canvasRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<ECharts | null>(null);
   const lastApplied = useRef<EChartsOption | null>(null);
+  const lastColours = useRef(colours);
+  const latestColours = useRef(colours);
   const latest = useRef(themedOption);
   const hasOption = themedOption !== null;
   const [interacting, setInteracting] = useState(false);
@@ -155,7 +137,10 @@ export function useECharts(
     };
   }, [hasOption]);
 
-  useLayoutEffect(() => { latest.current = themedOption; }, [themedOption]);
+  useLayoutEffect(() => {
+    latest.current = themedOption;
+    latestColours.current = colours;
+  }, [colours, themedOption]);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
@@ -167,11 +152,17 @@ export function useECharts(
       chartRef.current = chart;
       chart.on("datazoom", () => callbacks.current.onZoom?.(chart));
       chart.on("click", (event: ECElementEvent) => callbacks.current.onClick?.(event));
+      if (reportsHover) {
+        chart.on("mouseover", (event: ECElementEvent) => callbacks.current.onHover?.(event));
+        chart.on("mouseout", () => callbacks.current.onHover?.(null));
+        chart.on("globalout", () => callbacks.current.onHover?.(null));
+      }
       setController(controller, chart);
       const entry = latest.current;
       const noMotion = window.matchMedia(MEDIA_QUERIES.reducedMotion).matches;
       chart.setOption(noMotion ? { ...entry, animation: false } : entry, { notMerge: true });
       lastApplied.current = entry;
+      lastColours.current = latestColours.current;
       canvas.dataset.tmChartReady = "true";
       canvas.dataset.tmChartAppliedAt = String(performance.mark("tm:chart-ready").startTime);
     };
@@ -191,21 +182,22 @@ export function useECharts(
       delete canvas.dataset.tmChartAppliedAt;
       setController(controller, null);
     };
-  }, [hasOption, profile, controller, status]);
+  }, [hasOption, profile, controller, reportsHover, status]);
 
   useLayoutEffect(() => {
-    const schemeChanged = themedOption?.darkMode !== lastApplied.current?.darkMode;
-    if ((!locked || updateWhileReading || schemeChanged) && themedOption && chartRef.current && lastApplied.current !== themedOption) {
+    const themeChanged = themedOption?.darkMode !== lastApplied.current?.darkMode || lastColours.current !== colours;
+    if ((!locked || updateWhileReading || themeChanged) && themedOption && chartRef.current && lastApplied.current !== themedOption) {
       // Replace the option on the existing canvas. ECharts treats notMerge as a
       // new model, so animationDurationUpdate alone wouldn't prevent replay.
-      const next = schemeChanged
+      const next = themeChanged
         ? withPreservedZoom(chartRef.current, { ...themedOption, animation: false })
         : { ...themedOption, animation: false };
       chartRef.current.setOption(next, { notMerge: true });
       lastApplied.current = themedOption;
+      lastColours.current = colours;
       if (canvasRef.current) canvasRef.current.dataset.tmChartAppliedAt = String(performance.now());
     }
-  }, [locked, themedOption, updateWhileReading]);
+  }, [colours, locked, themedOption, updateWhileReading]);
 
   return { ref: canvasRef, status, retry, applied: lastApplied };
 }

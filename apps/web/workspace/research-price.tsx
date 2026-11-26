@@ -14,7 +14,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan, formatExchangeTime } from "@/ui/formatters";
 import { useChartColours } from "@/ui/charts/palette";
 import { Legend, Plot } from "./charts";
-import type { Reading, ReadingItem, ReadingMark } from "./chart-readout";
+import { LINE_DASH_PATTERNS, type LineDash, type Reading, type ReadingItem, type ReadingMark } from "./chart-readout";
 import { comparisonFigures, fixed, readingTone, signedPercent, telling, volume } from "./reading-format";
 import { quoteAmount, quoteUnit, quoteValue } from "./financial-values";
 import { DataBasis } from "./reading-card";
@@ -47,6 +47,12 @@ import {
 
 const intervals = priceIntervals;
 const fullSelectStyles = { input: { height: 44, minHeight: 44 } };
+const movingAverageStyles = {
+  sma20: { colour: "text", dash: "long" },
+  sma50: { colour: "axis", dash: "short" },
+  sma200: { colour: "text", dash: "dash-dot" },
+} as const satisfies Record<string, { colour: "text" | "axis"; dash: LineDash }>;
+const movingAverages = ["sma20", "sma50", "sma200"] as const;
 export function PriceHistory({
   ticker,
   runId,
@@ -205,12 +211,7 @@ export function PriceHistory({
     return high == null ? [] : [{date: m.date, category: m.date, high}];
   });
   const labels = { change: t("涨跌", "Change"), volume: t("量", "Volume") };
-  const shownAverages = averages ? (["sma20", "sma50", "sma200"] as const).filter((key) => averagePeriods.includes(key.slice(3))) : [];
-  // Each average keeps its stroke: ink solid, grey dashed, ink dotted.
-  const averageStroke = (i: number) => ({
-    colour: [colours.text, colours.axis, colours.text][i],
-    ...(i === 1 ? { dashed: true } : i === 2 ? { dotted: true } : {}),
-  });
+  const shownAverages = averages ? movingAverages.filter((key) => averagePeriods.includes(key.slice(3))) : [];
   const references = previousCloses(points, isIntraday, (date) => marketDay.format(new Date(date)));
   const multipleSessions = new Set(points.map((p) => marketDay.format(new Date(p.date)))).size > 1;
   const readingTime = (date: string) => isIntraday
@@ -221,8 +222,9 @@ export function PriceHistory({
   const indicatorCells = (bar: (typeof points)[number], pane: string | undefined): ReadingItem[] => {
     const macdDigits = telling([quoteAmount(bar.macd, unit), quoteAmount(bar.macdSignal, unit)]);
     const cells = [
-      ...(normalized ? [] : shownAverages.map((key, i) => ({
-        pane: "price", label: "SMA " + key.slice(3), value: priceFigure(bar[key]), key: averageStroke(i),
+      ...(normalized ? [] : shownAverages.map((key) => ({
+        pane: "price", label: "SMA " + key.slice(3), value: priceFigure(bar[key]),
+        key: { colour: colours[movingAverageStyles[key].colour], dash: movingAverageStyles[key].dash },
       }))),
       ...(rsi ? [{ pane: "rsi", label: "RSI 14", value: fixed(bar.rsi14), key: { colour: colours.secondary } }] : []),
       ...(macd ? [
@@ -266,7 +268,7 @@ export function PriceHistory({
     return [
       ...(candle ? [] : [{ value: plottedCloses[index], colour: colours.brand }]),
       ...(comparable && benchmarkAnchor && other != null ? [{ value: other / benchmarkAnchor - 1, colour: colours.text }] : []),
-      ...shownAverages.map((key, i) => ({ value: value(bar[key]), colour: averageStroke(i).colour })),
+      ...shownAverages.map((key) => ({ value: value(bar[key]), colour: colours[movingAverageStyles[key].colour] })),
       ...(rsi ? [{ value: bar.rsi14, colour: colours.secondary, xAxisIndex: at("rsi"), yAxisIndex: at("rsi") }] : []),
       ...(macd ? [
         { value: bar.macd, colour: colours.text, xAxisIndex: at("macd"), yAxisIndex: at("macd") },
@@ -540,35 +542,33 @@ export function PriceHistory({
                   }),
                   lineStyle: { color: c.text, width: 1.6, type: "dashed" },
                 });
-              if (averages)
-                (["sma20", "sma50", "sma200"] as const)
-                  .filter((key) => averagePeriods.includes(key.slice(3)))
-                  .forEach((key, i) =>
-                    series.push({
-                      type: "line",
-                      name:
-                        key.toUpperCase() +
-                        (actualInterval === "1d"
-                          ? t(" · 日线", " · daily")
-                          : t(" · ", " · ") + actualInterval),
-                      showSymbol: false,
-                      connectNulls: false,
-                      data: slots.map(({ bar }) => value(bar?.[key])),
-                      lineStyle: {
-                        color: [c.text, c.axis, c.text][i],
-                        type: ["solid", "dashed", "dotted"][i] as "solid" | "dashed" | "dotted",
-                        width: selectedMa === key ? 2.5 : 1.2,
-                        opacity: selectedMa && selectedMa !== key ? 0.3 : 1,
-                      },
-                    }),
-                  );
+              shownAverages.forEach((key) => {
+                const style = movingAverageStyles[key];
+                series.push({
+                  type: "line",
+                  name:
+                    key.toUpperCase() +
+                    (actualInterval === "1d"
+                      ? t(" · 日线", " · daily")
+                      : t(" · ", " · ") + actualInterval),
+                  showSymbol: false,
+                  connectNulls: false,
+                  data: slots.map(({ bar }) => value(bar?.[key])),
+                  lineStyle: {
+                    color: c[style.colour],
+                    type: LINE_DASH_PATTERNS[style.dash].chart,
+                    width: selectedMa === key ? 2.5 : 1.2,
+                    opacity: selectedMa && selectedMa !== key ? 0.3 : 1,
+                  },
+                });
+              });
               series.push({
                 type: "bar",
                 name: t("成交量", "Volume"),
                 xAxisIndex: 1,
                 yAxisIndex: 1,
                 data: slots.map(({ bar }) => bar?.volume ?? null),
-                itemStyle: { color: c.axis, opacity: 0.52 },
+                itemStyle: { color: c.allocationRest },
                 barMaxWidth: 14,
               });
               if (rsi) {
@@ -585,7 +585,7 @@ export function PriceHistory({
                   markLine: {
                     silent: true,
                     symbol: "none",
-                    lineStyle: { color: c.axis, type: "dashed", opacity: 0.5 },
+                    lineStyle: { color: c.axis, type: [3, 3], opacity: 0.5 },
                     data: [{ yAxis: 30 }, { yAxis: 70 }],
                     label: { show: false },
                   },
@@ -638,7 +638,7 @@ export function PriceHistory({
                 series[0].markLine = {
                   silent: true,
                   symbol: "none",
-                  lineStyle: { color: c.axis, type: "dashed" },
+                  lineStyle: { color: c.axis, type: [3, 3] },
                   label: {
                     show: true,
                     formatter: eventDay ?? "",
@@ -695,7 +695,7 @@ export function PriceHistory({
                     pane === "price" || pane === "volume"
                       ? ""
                       : pane.toUpperCase(),
-                  nameTextStyle: { color: c.axis, fontSize: 11 },
+                  nameTextStyle: { color: c.axis, fontSize: 12 },
                   axisLabel: {
                     color: c.axis,
                     // Stacked panes sit close together: the lower pane's top label would collide.
@@ -707,7 +707,6 @@ export function PriceHistory({
                   },
                   splitLine: {
                     show: pane !== "volume",
-                    lineStyle: { color: c.grid, type: "dashed" },
                   },
                 })),
                 dataZoom: [
@@ -725,7 +724,6 @@ export function PriceHistory({
                         bottom: 0,
                         height: 18,
                         showDetail: false,
-                        borderColor: c.grid,
                         ...savedZoom(),
                       }] : []),
                     ],
@@ -736,10 +734,10 @@ export function PriceHistory({
           {/* A single series needs no legend; a comparison names both lines. */}
           {comparable && (
             <Legend
-              items={[{ label: ticker }, { label: comparison, colour: "var(--mx-ink)", dashed: true }]}
+              items={[{ label: ticker, colour: colours.brand }, { label: comparison, colour: colours.text, dashed: true }]}
             />
           )}
-          {gapSeries.length > 0 && <Legend items={[{ label: t("缺失行情", "Missing price bars"), colour: "var(--mx-muted)", dotted: true }]} />}
+          {gapSeries.length > 0 && <Legend items={[{ label: t("缺失行情", "Missing price bars"), colour: colours.axis, dotted: true }]} />}
           <div className="mx-chart-footer mx-price-footer">
             <div className="flex flex-wrap items-center gap-1" aria-label={t("图表缩放", "Chart zoom")}>
               <Button variant="default" size="compact-sm" aria-label={t("放大", "Zoom in")} onClick={() => zoom(0.65)}>+</Button>
@@ -764,7 +762,7 @@ export function PriceHistory({
             <EvidenceTable
               key={displayedRange + displayedInterval}
               label={t("价格记录", "Price records")}
-              rows={[...points].reverse()}
+              rows={points.toReversed()}
               columns={[
                 { label: t("时间", "Time"), value: (p) => formatDate(p.date) },
                 ...(

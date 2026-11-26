@@ -59,7 +59,7 @@ function withBand(base: EChartsOption, c: ChartColours, extent: [number, number]
         silent: true,
         symbol: "none",
         label: { show: false },
-        lineStyle: { color: c.axis, type: "dashed", width: 1 },
+        lineStyle: { color: c.axis, type: [3, 3], width: 1 },
         data: [{ yAxis: band.middle }],
       },
     }, ...rest, {

@@ -163,7 +163,6 @@
     --heat-loss: #b4473a;
     --brand-mark-accent: #5b9dff;
     --world-land: var(--heat-base);
-    --chart-tooltip-shadow: rgba(0, 0, 0, 0.16);
     --allocation-1: #8fa3bf;
     --allocation-2: #f5ad57;
     --allocation-3: #6cc4c6;
@@ -246,7 +245,6 @@
     --heat-loss: #b4473a;
     --brand-mark-accent: var(--primary);
     --world-land: var(--heat-base);
-    --chart-tooltip-shadow: rgba(17, 24, 39, 0.12);
     --allocation-1: #8395ae;
     --allocation-2: #c08844;
     --allocation-3: #579ea0;

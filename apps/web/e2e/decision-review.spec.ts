@@ -10,6 +10,8 @@ const asOf = "2026-10-20T12:00:00Z";
 type Context = {
   benchmark: number; events: boolean; failing?: boolean; healthFailing?: boolean; twin?: boolean; settled?: boolean;
   habitsConsented?: boolean; unpricedBasket?: boolean; renamed?: boolean; observations?: boolean; cluster?: boolean; empty?: boolean; isa?: boolean;
+  /** Both accounts carry one display name, and Stocks ISA also sold SYND.AS on Invest's day. */
+  namesake?: boolean;
 };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
@@ -66,9 +68,13 @@ function decisions(context: Context) {
 }
 
 /** Stocks ISA's own decisions: a buy that helped more than any in Invest, and a sale that cost. */
-function isa({ benchmark }: Context) {
+function isa({ benchmark, namesake }: Context) {
   const scored = { observedDays: 30, horizonComplete: true, marketReturnHorizon: benchmark, marketReturnToDate: benchmark, events: [] };
   return [
+    ...(namesake ? [{
+      ...scored, date: "2026-10-14", ticker: "SYND.AS", name: "Synthetic Delta", side: "sell", kind: "S", amountGbp: 75,
+      effectHorizonGbp: -12, effectToDateGbp: -12, returnHorizon: 0.03, returnToDate: 0.03,
+    }] : []),
     {
       ...scored, date: "2026-09-03", ticker: "SYNI", name: "Synthetic Iota", side: "buy", kind: "B", amountGbp: 400,
       effectHorizonGbp: 90, effectToDateGbp: 80, returnHorizon: 0.2, returnToDate: 0.18,
@@ -153,7 +159,8 @@ async function serve(page: Page, context: () => Context) {
       coverageStartDate: null, coverageEndDate: null, latestEventAt: null, lastImportedAt: null, staleAfterDays: 14, isStale: false,
       accountStatus: "active", staleRemindersEnabled: true, warnings: [],
     } });
-    return route.fulfill({ json: path.endsWith("/profile") ? { accountLabels: {}, assistantEnabled: true } : {} });
+    return route.fulfill({ json: path.endsWith("/profile")
+      ? { accountLabels: current.namesake ? { A: "Shared", B: "Shared" } : {}, assistantEnabled: true } : {} });
   });
 }
 
@@ -905,6 +912,109 @@ test.describe("the review across accounts", () => {
     await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Kappa/ })).toBeFocused();
   });
 
+  test.describe("on a touch screen", () => {
+    test.use({ hasTouch: true });
+    test("a tap pins the decision's reading in a closable strip, speaks it once and still opens the decision", async ({ page, isMobile }) => {
+      test.skip(isMobile, "The point is found by hovering; phones use the same strip.");
+      // Within one account and review window the timeline stays in place while the tapped decision
+      // opens; a change of window reloads the review, and the opened decision then takes focus.
+      await page.goto("/review?account=B&reviewWindow=20_sessions");
+      const review = page.locator(".mx-decision-review");
+      const chart = review.getByRole("group", { name: "买卖决定的时间线" });
+      await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+      await chart.scrollIntoViewIfNeeded();
+      const point = await pointOf(page, chart, ["2026-09-03", "2026-09-10", "2026-09-10"], /SYNK 卖出 £250/);
+      await page.touchscreen.tap(point.x, point.y);
+      await expect(page).toHaveURL((url) => url.searchParams.get("decision") === "2026-09-10.sell.SYNK"
+        && url.searchParams.get("account") === "B" && url.searchParams.get("reviewWindow") === "20_sessions");
+      const strip = page.locator(".mx-decision-review .mx-chart-strip");
+      await expect(strip).toContainText(/SYNK 卖出 £250/);
+      // The hover card gives way to the strip, and the live region speaks the tap once.
+      await expect(page.locator(".mx-decision-review .mx-reading-tooltip")).toHaveCount(0);
+      const spoken = page.locator(".mx-decision-review [aria-live]:not([role])");
+      await expect(spoken).toHaveText(/SYNK 卖出 £250/);
+      const close = strip.getByRole("button", { name: "关闭读数" });
+      await expect(close).toHaveCSS("width", "44px");
+      await close.tap();
+      await expect(strip).toHaveCount(0);
+      await expect(spoken).toHaveText("");
+    });
+
+    test("a tapped twin keeps its own reading when the review refreshes", async ({ page, isMobile }) => {
+      test.skip(isMobile, "The point is found by hovering; phones use the same strip.");
+      // Two securities sold the same day under one ticker: the pinned reading follows the published
+      // ordinal into the refetched rows, never the first sale of that ticker.
+      context = { ...context, twin: true };
+      await page.goto("/review?account=A&reviewWindow=to_date");
+      const chart = page.locator(".mx-decision-review").getByRole("group", { name: "买卖决定的时间线" });
+      await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+      await chart.scrollIntoViewIfNeeded();
+      const point = await pointOf(page, chart, ["2026-09-01", "2026-10-14", "2026-10-20"], /SYND\.AS 卖出 £120/);
+      await page.touchscreen.tap(point.x, point.y);
+      await expect(page).toHaveURL((url) => url.searchParams.get("decision") === "2026-10-14.sell.SYND.AS"
+        && url.searchParams.get("reviewOrdinal") === "1");
+      const strip = page.locator(".mx-decision-review .mx-chart-strip");
+      await expect(strip).toContainText(/SYND\.AS 卖出 £120/);
+      context = { ...context, benchmark: 0.034 };
+      await reconnect(page);
+      await expect(page.locator(".mx-decision-focus")).toContainText("+3.4%");
+      await expect(strip).toContainText(/SYND\.AS 卖出 £120/);
+      await expect(strip).not.toContainText("£300");
+    });
+
+    test("a tapped sale opens in its own account when two accounts share a name", async ({ page, isMobile }) => {
+      test.skip(isMobile, "The point is found by hovering; phones use the same strip.");
+      // Both accounts are called Shared and sold SYND.AS on 14 October: the tap follows the account's code.
+      // Across accounts a tap opens the decision in its account, which reloads the timeline as a change
+      // of window does; the decision card then holds the reading, and a refresh keeps the same sale.
+      context = { ...context, namesake: true };
+      await page.goto("/review?reviewWindow=to_date");
+      const chart = page.locator(".mx-decision-review").getByRole("group", { name: "买卖决定的时间线" });
+      await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+      await chart.scrollIntoViewIfNeeded();
+      const point = await pointOf(page, chart, ["2026-09-01", "2026-10-14", "2026-10-20"], /SYND\.AS 卖出 £75/);
+      await page.touchscreen.tap(point.x, point.y);
+      await expect(page).toHaveURL((url) => url.searchParams.get("account") === "B"
+        && url.searchParams.get("decision") === "2026-10-14.sell.SYND.AS");
+      const opened = page.locator(".mx-decision-focus");
+      await expect(opened).toContainText("£75");
+      await expect(opened).not.toContainText("£300");
+      context = { ...context, benchmark: 0.034 };
+      await reconnect(page);
+      await expect(opened).toContainText("+3.4%");
+      await expect(opened).toContainText("£75");
+      await expect(opened).not.toContainText("£300");
+    });
+
+    test("on a phone, a tapped reading docks below the top bar once its plot scrolls up", async ({ page, isMobile }) => {
+      test.skip(isMobile, "The point is found by hovering; this sets the phone width itself.");
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto("/review?account=B&reviewWindow=20_sessions");
+      const chart = page.locator(".mx-decision-review").getByRole("group", { name: "买卖决定的时间线" });
+      await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+      await chart.scrollIntoViewIfNeeded();
+      const point = await pointOf(page, chart, ["2026-09-03", "2026-09-10", "2026-09-10"], /SYNK 卖出 £250/);
+      await page.touchscreen.tap(point.x, point.y);
+      const strip = page.locator(".mx-decision-review .mx-chart-strip");
+      await expect(strip).toContainText(/SYNK 卖出 £250/);
+      // The tap opens the decision, whose focus can scroll the page; read the strip once that settles.
+      await expect(page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Kappa/ })).toBeFocused();
+      // Scrolled until the space above the plot sits under the top bar, the strip stays in view.
+      await chart.evaluate((plot) => window.scrollBy(0, plot.getBoundingClientRect().top - 40));
+      await expect.poll(() => chart.evaluate((plot) => Math.round(plot.getBoundingClientRect().top))).toBeLessThan(60);
+      await expect(strip).toHaveAttribute("data-docked", "");
+      const docked = (await strip.boundingBox())!;
+      const bar = (await page.locator(".mx-topbar").boundingBox())!;
+      const tabs = page.locator(".mx-mobile-dock");
+      const floor = await tabs.isVisible() ? (await tabs.boundingBox())!.y : page.viewportSize()!.height;
+      expect(docked.y).toBeGreaterThanOrEqual(bar.y + bar.height - 1);
+      expect(docked.y + docked.height).toBeLessThanOrEqual(floor + 1);
+      await expect(strip.getByRole("button", { name: "关闭读数" })).toBeInViewport();
+      await strip.getByRole("button", { name: "关闭读数" }).tap();
+      await expect(strip).toHaveCount(0);
+    });
+  });
+
   test("the recent record keeps a day's decisions in an account together, and each chip opens its own", async ({ page }) => {
     // Synthetic Beta and four more buys share 2 September in Invest.
     context = { ...context, cluster: true };
@@ -997,8 +1107,8 @@ test.describe("the review across accounts", () => {
     const verdict = (label: string) => lead.locator(".mx-metric").filter({ hasText: label }).locator(".mx-number-value");
     const delayB = () => {
       holdB = true;
-      heldB = new Promise<void>((resolve) => { releaseB = resolve; });
-      routeB = new Promise<unknown>((resolve) => { finishRouteB = resolve; });
+      ({ promise: heldB, resolve: releaseB } = Promise.withResolvers<void>());
+      ({ promise: routeB, resolve: finishRouteB } = Promise.withResolvers<unknown>());
     };
     const releaseAndVerifyB = async () => {
       holdB = false;
@@ -1150,6 +1260,10 @@ test("decisions sharing a day stay points of their own, read one at a time", asy
     await expect(card).toBeVisible();
     await expect(card).toContainText(ticker + " 买入 " + amount);
   }
+  // Readings render through the React ReadingCard overlay rather than an ECharts HTML tooltip sink.
+  await expect(timeline.locator(".mx-reading-tooltip > .mx-reading")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(card).toHaveCount(0);
   // The review no longer asks for an AI review.
   expect(reviews).toEqual([]);
 });
@@ -1456,9 +1570,8 @@ for (const expanded of [false, true]) {
     test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated web build.");
     await serve(page, () => ({ benchmark: 0.03, events: true, habitsConsented: true }));
     if (expanded) await page.addInitScript(() => localStorage.setItem("tm-reading-review-habits", "open"));
-    let consent!: () => void, publish!: () => void;
-    const status = new Promise<void>(resolve => { consent = resolve; });
-    const publication = new Promise<void>(resolve => { publish = resolve; });
+    const { promise: status, resolve: consent } = Promise.withResolvers<void>();
+    const { promise: publication, resolve: publish } = Promise.withResolvers<void>();
     await page.route("**/api/backend/assistant/status", async route => {
       await status;
       await route.fulfill({ json: { ready: true } });
@@ -1664,8 +1777,7 @@ for (const scope of ["all", "A"]) {
     await serve(page, () => ({benchmark:0.03, events:true, observations:true, isa:true}));
     await page.route("**/api/backend/assistant/status", route => route.fulfill({json:{ready:true}}));
     const lens = scope === "all" ? "review" : "account-analysis";
-    let release!: () => void;
-    const held = new Promise<void>(resolve => { release = resolve; });
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
     await page.route("**/api/backend/dashboard/lens/" + lens + "*", async route => {
       if (!new URL(route.request().url()).searchParams.has("runId")) await held;
       await route.fallback();
@@ -1700,9 +1812,8 @@ for (const provider of ["ready", "unavailable"]) {
       localStorage.setItem("tm-reading-review-habits","open");
     });
     await serve(page, () => ({benchmark:0.02,events:true,habitsConsented:true}));
-    let resolveStatus!: () => void, resolveBrief!: () => void;
-    const status = new Promise<void>(r => resolveStatus = r);
-    const brief = new Promise<void>(r => resolveBrief = r);
+    const { promise: status, resolve: resolveStatus } = Promise.withResolvers<void>();
+    const { promise: brief, resolve: resolveBrief } = Promise.withResolvers<void>();
     await page.route("**/api/backend/assistant/status", async r => {await status; await r.fulfill({json:{ready:provider === "ready"}});});
     const description = "In hindsight, the net hypothetical loss at each security’s average purchase size was about £94.52. Only four of the seven recorded purchases had a complete twenty-session outcome.";
     await page.route("**/api/backend/assistant/roles/habits/reading", async r => {
@@ -1748,9 +1859,8 @@ test("a consent change hides cached Review before the other tab's profile resolv
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await serve(page, () => ({benchmark:0.03,events:true,habitsConsented:true}));
   let changed = false, enabled = true;
-  let resolveProfile!: () => void, resolveStatus!: () => void;
-  const profileWait = new Promise<void>(r => { resolveProfile = r; });
-  const statusWait = new Promise<void>(r => { resolveStatus = r; });
+  const { promise: profileWait, resolve: resolveProfile } = Promise.withResolvers<void>();
+  const { promise: statusWait, resolve: resolveStatus } = Promise.withResolvers<void>();
   const requests: string[] = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
@@ -1805,8 +1915,7 @@ test("collapsed unavailable Habits keeps its footprint and opens MaxAI settings"
   if (isMobile) await page.setViewportSize({width:390,height:844});
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await serve(page, () => ({benchmark:0.03,events:true,habitsConsented:true}));
-  let release!: () => void;
-  const held = new Promise<void>(r => {release = r;});
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/api/backend/assistant/status", async route => {
     await held;
     await route.fulfill({json:{ready:false,code:"model_unavailable"}});

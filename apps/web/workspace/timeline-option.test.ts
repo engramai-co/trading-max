@@ -182,7 +182,7 @@ describe("shared performance timeline", () => {
     const styles = (option.series as Array<{ lineStyle: { color: string; width: number; type: string | number[] } }>)
       .map((series) => series.lineStyle);
     expect(styles).toEqual([
-      { color: scheme.brand, width: 2.5, type: "solid" },
+      { color: scheme.brand, width: 2, type: "solid" },
       { color: scheme.axis, width: 1.5, type: [8, 4] },
       { color: scheme.text, width: 1.5, type: [8, 3, 2, 3] },
       { color: scheme.secondary, width: 1.5, type: [3, 3] },

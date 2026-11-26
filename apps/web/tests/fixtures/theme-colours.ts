@@ -36,9 +36,10 @@ export function resolveToken(tokens: Record<string, string>, name: string): stri
   return ref ? resolveToken(tokens, ref[1]) : raw;
 }
 
+const sharedTokens = parseBlock(themeCss, /@layer\s+theme\s*\{\s*:root\s*\{/);
 export const tokensByScheme: Record<Scheme, Record<string, string>> = {
-  dark: parseBlock(themeCss, /:root,\s*html\[data-mantine-color-scheme="dark"\]\s*\{/),
-  light: parseBlock(themeCss, /html\[data-mantine-color-scheme="light"\]\s*\{/),
+  dark: { ...sharedTokens, ...parseBlock(themeCss, /:root,\s*html\[data-mantine-color-scheme="dark"\]\s*\{/) },
+  light: { ...sharedTokens, ...parseBlock(themeCss, /html\[data-mantine-color-scheme="light"\]\s*\{/) },
 };
 
 export const chartColours = readChartColours((name) => resolveToken(tokensByScheme.light, name));

@@ -9,6 +9,7 @@ import { useState, type ReactNode } from "react";
 import { Legend, Plot } from "./charts";
 import { compact, compactTick, number, percent } from "@/workspace/data";
 import { useChartColours } from "@/ui/charts/palette";
+import { FONT_STACK } from "@/ui/theme";
 import type { ChartReadout, ReadingKey } from "./chart-readout";
 import { Empty, Metric, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
 import { minus } from "./reading-figures";
@@ -235,8 +236,8 @@ export function FinancialWorkbench({
             <Select
               aria-label={t("选择报告期", "Reporting period")}
               value={period?.id ?? null}
-              data={[...periods]
-                .reverse()
+              data={periods
+                .toReversed()
                 .map((p) => ({ value: p.id, label: p.label }))}
               onChange={(v) => update({ period: v })}
               w={205}
@@ -403,9 +404,6 @@ export function FinancialWorkbench({
                         formatter: (n: number) =>
                           ratio ? percent(n) : compactTick(n, locale),
                       },
-                      splitLine: {
-                        lineStyle: { color: c.grid, type: "dashed" },
-                      },
                     },
                     series: chartMetrics.map((key, i) => ({
                       type: ratio || chart === "shares" ? "line" : "bar",
@@ -426,7 +424,7 @@ export function FinancialWorkbench({
                                   ? compact(p.value, locale)
                                   : label(key),
                               color: c.text,
-                              fontSize: 11,
+                              fontSize: 12,
                             }
                           : undefined,
                       labelLayout: { moveOverlap: "shiftY" },
@@ -436,11 +434,7 @@ export function FinancialWorkbench({
                 <Legend
                   items={chartMetrics.map((key, i) => ({
                     label: label(key),
-                    colour: [
-                      "var(--mx-chart-0)",
-                      "var(--mx-chart-2)",
-                      "var(--mx-chart-1)",
-                    ][i],
+                    colour: historyColours[i],
                   }))}
                 />
                 <details className="mx-chart-data">
@@ -461,7 +455,7 @@ export function FinancialWorkbench({
                       </tr>
                     </thead>
                     <tbody>
-                      {[...periods].reverse().map((p) => (
+                      {periods.toReversed().map((p) => (
                         <tr
                           key={p.id}
                           data-active={p.id === period.id || undefined}
@@ -517,9 +511,6 @@ export function FinancialWorkbench({
                           color: c.axis,
                           formatter: (n: number) => compactTick(n, locale),
                         },
-                        splitLine: {
-                          lineStyle: { color: c.grid, type: "dashed" },
-                        },
                       },
                       series: [
                         {
@@ -566,7 +557,8 @@ export function FinancialWorkbench({
                                     y: top - 6,
                                     text: compact(b.to - b.from, locale),
                                     fill: c.text,
-                                    fontSize: 11,
+                                    fontSize: 12,
+                                    fontFamily: FONT_STACK,
                                     align: "center",
                                     verticalAlign: "bottom",
                                   },
@@ -597,7 +589,7 @@ export function FinancialWorkbench({
                       <th className="mx-spark-cell">
                         <span className="sr-only">{t("趋势", "Trend")}</span>
                       </th>
-                      {[...periods].reverse().map((p) => (
+                      {periods.toReversed().map((p) => (
                         <th key={p.id}>
                           {p.label}
                           {p.actualEnd && <small>{formatCalendarDate(p.actualEnd, locale)}</small>}
@@ -621,7 +613,7 @@ export function FinancialWorkbench({
                           <td className="mx-spark-cell">
                             <Sparkbars values={periods.map((p) => get(p.id, key)?.value)} />
                           </td>
-                          {[...periods].reverse().map((p) => (
+                          {periods.toReversed().map((p) => (
                             <td key={p.id}>
                               <button
                                 type="button"

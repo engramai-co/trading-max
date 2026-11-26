@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { readingHtml, readingText, type Reading } from "./chart-readout";
+import { readingText, type Reading } from "./chart-readout";
 import { ReadingView } from "./reading-card";
 
 const money: Reading = {
@@ -31,12 +31,6 @@ const card = (reading: Reading, locale: "zh" | "en" = "en", variant: "card" | "s
   renderToStaticMarkup(createElement(ReadingView, { reading, locale, variant }));
 
 describe("reading card", () => {
-  it("renders the same DOM as the ECharts HTML tooltip", () => {
-    for (const reading of [money, candle, { time: "No data · 00:00–01:40" }, { time: "13 Nov", flag: "Estimate", primary: { value: "7,500.58" } }])
-      for (const locale of ["zh", "en"] as const)
-        expect(readingHtml(reading, locale)).toBe(card(reading, locale));
-  });
-
   it("leads with one figure, keys series rows and keeps tone on signed results", () => {
     const html = card(money);
     expect(html).toContain('<div class="mx-reading-primary" data-tone="up"><span class="mx-reading-label">Period net P&amp;L</span><span class="mx-reading-value">+£20,873.83</span><span class="mx-reading-detail">+9.62% vs opening</span></div>');
@@ -88,7 +82,7 @@ describe("reading card", () => {
     expect(html).toContain('<i class="mx-reading-key" data-dotted="" style="--key:#17191c" aria-hidden="true"></i>SMA200');
   });
 
-  it("shares the benchmark SVG strokes between the reading card and the ECharts tooltip", () => {
+  it("renders each benchmark's dash pattern in the reading card", () => {
     const benchmarks: Reading = {
       time: "26 Oct",
       primary: { label: "Portfolio TWR", value: "+5.00%", key: { colour: "#1768e5" } },
@@ -99,14 +93,13 @@ describe("reading card", () => {
       ]],
     };
     const rendered = card(benchmarks);
-    expect(readingHtml(benchmarks, "en")).toBe(rendered);
     expect(rendered).toContain('<svg class="mx-reading-key" style="--key:#536176" aria-hidden="true" width="18" height="4"><path d="M0 2h18" stroke-dasharray="7 4"></path></svg>VOO');
     expect(rendered).toContain('<svg class="mx-reading-key" style="--key:#17191c" aria-hidden="true" width="18" height="4"><path d="M0 2h18" stroke-dasharray="6 2 2 2"></path></svg>QQQ');
     expect(rendered).toContain('<svg class="mx-reading-key" style="--key:#347985" aria-hidden="true" width="18" height="4"><path d="M0 2h18" stroke-dasharray="3 2"></path></svg>VT');
   });
 
   it("escapes provider text and drops anything but a colour from the key", () => {
-    const html = readingHtml({
+    const html = card({
       time: "<img src=x onerror=alert(1)>",
       flag: "\"quoted\"",
       primary: { label: "A & B", value: "'1'", key: { colour: "red\" onmouseover=\"alert(1)" } },

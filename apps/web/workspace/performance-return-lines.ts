@@ -9,7 +9,7 @@ import { timelineLineColour, type TimelineLayer } from "./timeline-option";
 export const ALL_BENCHMARKS = ["VOO", "QQQ", "VT"] as const;
 
 type BenchmarkVisualKey = {
-  colour: "comparison" | "text" | "secondary";
+  colour: "comparison" | "text" | "axis";
   dash: LineDash;
 };
 
@@ -17,7 +17,7 @@ type BenchmarkVisualKey = {
 const BENCHMARK_STROKES: Record<string, BenchmarkVisualKey> = {
   VOO: { colour: "comparison", dash: "long" },
   QQQ: { colour: "text", dash: "dash-dot" },
-  VT: { colour: "secondary", dash: "short" },
+  VT: { colour: "axis", dash: "short" },
 };
 
 const FALLBACK_STROKES: readonly BenchmarkVisualKey[] = [

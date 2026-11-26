@@ -1,16 +1,21 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { formatCalendarDate } from "@/ui/formatters";
-import { readingHtml, readingText } from "./chart-readout";
+import { readingText } from "./chart-readout";
+import { ReadingView } from "./reading-card";
 import {
   contextFit,
   decisionAction,
   decisionContext,
   decisionKeys,
   decisionParam,
+  stepVisibleMark,
   decisionReading,
   effectTone,
   eventLabel,
   favourableCount,
+  followDecision,
   horizonScope,
   latestDecisions,
   linkedDecision,
@@ -41,6 +46,60 @@ const row = (side: "buy" | "sell", ticker: string, horizon: number | null, toDat
   returnHorizon: horizon == null ? null : horizon / 1000,
   returnToDate: toDate / 1000,
 });
+
+describe("stepVisibleMark", () => {
+  // Buys are series 0, sells series 1, in date order.
+  const marks = [{ seriesIndex: 0 }, { seriesIndex: 1 }, { seriesIndex: 0 }, { seriesIndex: 1 }];
+  const both = new Set([0, 1]);
+  const buysOnly = new Set([0]);
+
+  it("steps through every decision while both series are shown", () => {
+    expect(stepVisibleMark(marks, both, null, "ArrowRight")).toBe(0);
+    expect(stepVisibleMark(marks, both, null, "ArrowLeft")).toBe(3);
+    expect(stepVisibleMark(marks, both, 1, "ArrowRight")).toBe(2);
+    expect(stepVisibleMark(marks, both, 3, "ArrowRight")).toBe(3);
+  });
+
+  it("skips decisions of a series hidden from the legend", () => {
+    expect(stepVisibleMark(marks, buysOnly, null, "Home")).toBe(0);
+    expect(stepVisibleMark(marks, buysOnly, null, "End")).toBe(2);
+    expect(stepVisibleMark(marks, buysOnly, 0, "ArrowRight")).toBe(2);
+    expect(stepVisibleMark(marks, buysOnly, 2, "ArrowLeft")).toBe(0);
+    // A step on a now hidden decision restarts from the visible ends.
+    expect(stepVisibleMark(marks, buysOnly, 1, "ArrowRight")).toBe(0);
+  });
+
+  it("has nothing to read when every series is hidden", () => {
+    expect(stepVisibleMark(marks, new Set(), null, "Home")).toBeNull();
+  });
+});
+
+describe("followDecision", () => {
+  type Scoped = TradeDecision & { account?: string };
+  const sale = (account: string, amountGbp: number, reviewOrdinal?: number): Scoped =>
+    ({ ...row("sell", "SYND.AS", null, 0), account, amountGbp, ...(reviewOrdinal == null ? {} : { reviewOrdinal }) });
+
+  it("keeps the account's own sale when two accounts share a name", () => {
+    // Both accounts may carry the same display name; only their codes tell them apart.
+    const pinned = sale("B", 75);
+    const refetched = [sale("A", 300), sale("B", 75)];
+    expect(followDecision(refetched, pinned)?.account).toBe("B");
+    expect(followDecision(refetched, pinned)?.amountGbp).toBe(75);
+  });
+
+  it("keeps the published ordinal of two securities sharing a ticker", () => {
+    const pinned = sale("A", 120, 1);
+    const refetched = [sale("A", 300, 0), sale("A", 120, 1)];
+    expect(followDecision(refetched, pinned)?.amountGbp).toBe(120);
+  });
+
+  it("prefers the same row and lets a vanished decision go", () => {
+    const pinned = sale("A", 300);
+    expect(followDecision([sale("A", 300), pinned], pinned)).toBe(pinned);
+    expect(followDecision([sale("B", 300)], pinned)).toBeUndefined();
+  });
+});
+
 
 const rows = [
   row("sell", "MSFT", -300, -500),
@@ -367,7 +426,8 @@ describe("a timeline point's reading", () => {
   });
 
   it("escapes provider text in the tooltip card", () => {
-    const html = readingHtml(decisionReading({ ...amd, events: [{ date: "2026-07-20", kind: "news" as const, title: "<img src=x onerror=alert(1)>" }] }, "horizon", 20, en, "en"), "en");
+    const reading = decisionReading({ ...amd, events: [{ date: "2026-07-20", kind: "news", title: "<img src=x onerror=alert(1)>" }] }, "horizon", 20, en, "en");
+    const html = renderToStaticMarkup(createElement(ReadingView, { reading, locale: "en" }));
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
   });
@@ -402,7 +462,7 @@ describe("the decision timeline", () => {
     const { sides, marks } = timelinePoints(decisions, opened);
     expect(sides[0].at(-1)).toBe(opened);
     expect(new Set(sides.flat())).toEqual(new Set(decisions));
-    expect(marks.map((mark) => mark.row.date)).toEqual([...decisions.map((row) => row.date)].sort());
+    expect(marks.map((mark) => mark.row.date)).toEqual(decisions.map((row) => row.date).toSorted());
     for (const mark of marks) expect(sides[mark.seriesIndex][mark.dataIndex]).toBe(mark.row);
   });
 });

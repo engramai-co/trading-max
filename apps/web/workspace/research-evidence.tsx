@@ -272,7 +272,6 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
                 formatter: (n: number) =>
                   indexed ? number(n, 0) : shares ? percent(n) : compactTick(n, locale),
               },
-              splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
             },
             series: visibleMembers.map((member) => ({
               type: trend ? "line" : "bar",
@@ -562,7 +561,6 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
               type: "value",
               min: 0,
               axisLabel: { color: c.axis },
-              splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
             },
             series: [
               {
@@ -572,7 +570,7 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
                 smooth: false,
                 connectNulls: false,
                 showSymbol: mode === "annual" || series.length === 1,
-                symbolSize: 7,
+                symbolSize: 6,
                 lineStyle: { color: c.brand, width: 2 },
                 itemStyle: { color: c.brand },
               },

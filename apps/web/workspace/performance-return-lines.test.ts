@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { benchmarkComparison } from "@/lib/portfolio/benchmark-comparison";
 import type { BenchmarkPricePoint, NavPoint } from "@/lib/types";
 import { chartColours, darkChartColours } from "../tests/fixtures/theme-colours";
-import { LINE_DASH_PATTERNS, readingHtml } from "./chart-readout";
+import { LINE_DASH_PATTERNS } from "./chart-readout";
 import { Legend } from "./charts";
 import {
   ALL_BENCHMARKS,
@@ -15,6 +15,7 @@ import {
   returnLegendItems,
 } from "./performance-return-lines";
 import { comparisonFigures, readingTone, signedPercent } from "./reading-format";
+import { ReadingView } from "./reading-card";
 import { timelineOption } from "./timeline-option";
 import { timelineReadout, timelineRows } from "./timeline-reading";
 
@@ -95,7 +96,7 @@ function buildAllBenchmarks(colours: typeof chartColours | typeof darkChartColou
 
 describe("all-benchmarks visual keys", () => {
   for (const [scheme, colours] of [["light", chartColours], ["dark", darkChartColours]] as const) {
-    it("gives every series in both all-benchmarks panes a unique colour and dash pattern (" + scheme + ")", () => {
+    it("distinguishes every benchmark by its neutral dash pattern in both panes (" + scheme + ")", () => {
       const { returnLines, option } = buildAllBenchmarks(colours);
       const plotted = (option.series as SeriesWithStroke[]).filter((series) => !series.silent);
       expect(plotted).toHaveLength(8);
@@ -106,19 +107,17 @@ describe("all-benchmarks visual keys", () => {
         const visualKeys = paneSeries.map((series) =>
           `${series.lineStyle?.color}|${JSON.stringify(series.lineStyle?.type)}`,
         );
-        const lineColours = paneSeries.map((series) => series.lineStyle?.color);
         const dashPatterns = paneSeries.map((series) => JSON.stringify(series.lineStyle?.type));
         expect(new Set(visualKeys).size).toBe(4);
-        expect(new Set(lineColours).size).toBe(4);
         expect(new Set(dashPatterns).size).toBe(4);
 
         const [portfolio, ...benchmarks] = paneSeries;
-        expect(portfolio.lineStyle).toMatchObject({ color: colours.brand, width: 2.5, type: "solid" });
+        expect(portfolio.lineStyle).toMatchObject({ color: colours.brand, width: 2, type: "solid" });
         expect(benchmarks.find((series) => series.name?.endsWith(" · VOO"))?.lineStyle).toMatchObject({
           color: colours.comparison, type: LINE_DASH_PATTERNS.long.chart,
         });
         for (const benchmark of benchmarks) {
-          expect([colours.brand, colours.positive, colours.negative]).not.toContain(benchmark.lineStyle?.color);
+          expect([colours.comparison, colours.text, colours.axis]).toContain(benchmark.lineStyle?.color);
           expect(benchmark.lineStyle?.type).not.toBe("solid");
           expect(benchmark.lineStyle?.type).not.toBe("dotted");
           expect(benchmark.lineStyle?.width).toBe(1.5);
@@ -157,7 +156,7 @@ describe("all-benchmarks visual keys", () => {
         const readingKeys = items.map((item) => `${item.key!.colour}|${item.key!.dash ?? "solid"}`);
         expect(new Set(readingKeys).size).toBe(4);
 
-        const html = readingHtml(reading, "en");
+        const html = renderToStaticMarkup(createElement(ReadingView, { reading, locale: "en" }));
         items.forEach((item, index) => {
           const line = returnSeries[index];
           expect(item.key!.colour).toBe(line.lineStyle?.color);

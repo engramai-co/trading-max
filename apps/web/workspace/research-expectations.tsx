@@ -362,7 +362,7 @@ export function AnalystExpectations({
                     boundaryGap: hasCandles,
                     axisLabel: {
                       color: c.axis,
-                      fontSize: 11,
+                      fontSize: 12,
                       showMinLabel: true,
                       hideOverlap: true,
                       interval: (index: number, day: string) => index === 0 || day.slice(0, 7) !== days[index - 1]?.slice(0, 7),
@@ -380,10 +380,9 @@ export function AnalystExpectations({
                     splitNumber: 3,
                     axisLabel: {
                       color: c.axis,
-                      fontSize: 11,
+                      fontSize: 12,
                       formatter: (v: number) => quoteValue(v, code, { style: "number", digits: v < 10 ? 1 : 0 }),
                     },
-                    splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
                   },
                   { type: "value", gridIndex: 1, ...axis, show: false },
                 ],
@@ -405,7 +404,7 @@ export function AnalystExpectations({
                             label: { show: false },
                             lineStyle: {
                               color: c.axis,
-                              type: "dotted",
+                              type: [3, 3],
                               opacity: 0.55,
                             },
                             data: [{ yAxis: chartTargets.spot }],
@@ -447,8 +446,8 @@ export function AnalystExpectations({
                         position: "right" as const,
                         distance: 9,
                         color: c.text,
-                        fontSize: 11,
-                        lineHeight: 15,
+                        fontSize: 12,
+                        lineHeight: 16,
                         formatter:
                           targetLabels[row.key] + "\n" + quoteValue(row.value, code, { style: "number" }),
                       },

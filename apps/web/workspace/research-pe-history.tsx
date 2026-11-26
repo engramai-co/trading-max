@@ -207,7 +207,7 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
           markPoint: {
             silent: true,
             symbol: "circle",
-            symbolSize: 5,
+            symbolSize: 6,
             itemStyle: { color: c.text },
             data: [...plot.isolated, ...endMarker],
           },
@@ -219,7 +219,7 @@ export function PeHistoryChart({ trailing, forward, sales, disclosure }: { trail
           silent: true,
           tooltip: { show: false },
           showSymbol: false,
-          lineStyle: { color: c.text, width: 1.7 },
+          lineStyle: { color: c.text, width: 2 },
         },
       ],
     };

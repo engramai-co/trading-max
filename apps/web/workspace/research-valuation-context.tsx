@@ -281,7 +281,6 @@ export function FilingMultiples({
                 name: ratio + " · ×",
                 scale: true,
                 axisLabel: { color: c.axis },
-                splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
               },
               series: [
                 {

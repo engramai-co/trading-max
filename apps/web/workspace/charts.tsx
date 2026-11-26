@@ -194,7 +194,6 @@ export function HistoryChart({
                     ? number(v, 2)
                     : compact(v),
             },
-            splitLine: { lineStyle: { color: c.grid, type: "dashed" } },
           },
           series: lines.flatMap((line, i) => {
             const colour = historyLineColour(c, line, i);
@@ -207,11 +206,11 @@ export function HistoryChart({
               data,
               symbol: single ? "circle" : "none",
               showSymbol: single,
-              symbolSize: 4,
+              symbolSize: 6,
               connectNulls: false,
               smooth: false,
               lineStyle: {
-                width: line.dash || line.dashed ? 1.5 : 2.5,
+                width: line.dash || line.dashed ? 1.5 : 2,
                 color: colour,
                 type: line.dash ? LINE_DASH_PATTERNS[line.dash].chart : line.dashed ? "dashed" : "solid",
               },
@@ -277,18 +276,21 @@ export function Legend({
 }: {
   items: Array<{ label: string; colour?: string; dashed?: boolean; dotted?: boolean; dash?: LineDash }>;
 }) {
+  const colours = useChartColours();
+  const seriesColours = [colours.brand, colours.accent, colours.secondary, colours.series5, colours.comparison];
   return (
     <div className="mx-chart-legend">
       {items.map((item, i) => {
         const dashArray = item.dash ? LINE_DASH_PATTERNS[item.dash].swatch : item.dotted ? "1 4" : item.dashed ? "4 3" : undefined;
         const width = item.dash ? 18 : 15;
+        const stroke = item.colour ?? seriesColours[i % seriesColours.length];
         return (
           <span key={item.label}>
             {dashArray ? (
               <svg width={width} height="4" aria-hidden="true">
-                <path d={`M0 2h${width}`} stroke={item.colour ?? `var(--mx-chart-${i})`} strokeWidth="2" strokeDasharray={dashArray} />
+                <path d={`M0 2h${width}`} stroke={stroke} strokeWidth="2" strokeDasharray={dashArray} />
               </svg>
-            ) : <i style={{ background: item.colour ?? `var(--mx-chart-${i})` }} />}
+            ) : <i style={{ background: stroke }} />}
             {item.label}
           </span>
         );
@@ -336,13 +338,12 @@ export function Bars({
                   ? number(v, 2)
                   : compact(v),
           },
-          splitLine: { lineStyle: { color: c.grid } },
         },
         yAxis: {
           type: "category",
           inverse: true,
           data: labels,
-          axisLabel: { color: c.text, width: 102, overflow: "truncate" },
+          axisLabel: { width: 102, overflow: "truncate" },
           axisLine: { show: false },
           axisTick: { show: false },
         },

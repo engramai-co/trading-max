@@ -7,7 +7,7 @@ import { usePathname } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
 import { useECharts } from "@/ui/charts/use-echarts";
-import type { ECharts, EChartsOption, XAXisComponentOption, YAXisComponentOption } from "echarts";
+import type { ECharts, EChartsOption, ECElementEvent, XAXisComponentOption, YAXisComponentOption } from "echarts";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { Pending, useCopy } from "./foundation";
 import { isImeComposing } from "./shortcut-platform";
@@ -16,48 +16,6 @@ import { ReadingCard } from "./reading-card";
 import { chartNumber } from "./research-chart-format";
 import { exportChartCsv, exportChartPng } from "./chart-export";
 import { changeZoom, chartZoom, useChartGestures, zoomRange } from "./chart-zoom";
-
-function themeAxes<T extends XAXisComponentOption | YAXisComponentOption>(
-  axes: T | T[] | undefined,
-  colours: ChartColours,
-  horizontal = false,
-): T | T[] | undefined {
-  const theme = (axis: T): T => ({
-    ...axis,
-    nameTextStyle: { color: colours.axis, ...axis.nameTextStyle },
-    axisLabel: {
-      color: colours.axis,
-      hideOverlap: true,
-      // Keep edge ticks inside without shifting labels centred below bars.
-      ...(horizontal && (axis.type !== "category" || axis.boundaryGap === false) && {
-        alignMinLabel: axis.inverse ? "right" : "left",
-        alignMaxLabel: axis.inverse ? "left" : "right",
-      }),
-      ...(horizontal && axis.type === "category" && axis.boundaryGap === false && {
-        showMinLabel: true,
-        showMaxLabel: true,
-      }),
-      ...axis.axisLabel,
-    },
-    axisLine: {
-      ...axis.axisLine,
-      lineStyle: { color: colours.border, ...axis.axisLine?.lineStyle },
-    },
-    axisTick: {
-      ...axis.axisTick,
-      lineStyle: { color: colours.border, ...axis.axisTick?.lineStyle },
-    },
-    splitLine: {
-      ...axis.splitLine,
-      lineStyle: {
-        color: colours.grid,
-        type: "dashed",
-        ...axis.splitLine?.lineStyle,
-      },
-    },
-  });
-  return Array.isArray(axes) ? axes.map(theme) : axes ? theme(axes) : undefined;
-}
 
 /** The first index whose position is at or after the target. */
 function after(positions: readonly number[], target: number) {
@@ -80,9 +38,12 @@ export function Plot({
   updateWhileReading = false,
   controller,
   onZoom,
+  onPointClick,
+  onPointHover,
   readPoint,
   readout,
   overlay,
+  pin,
   fullscreen = false,
   customGestures = false,
   initialSelection = null,
@@ -96,9 +57,13 @@ export function Plot({
   updateWhileReading?: boolean;
   controller?: RefObject<ECharts | null>;
   onZoom?: (chart: ECharts) => void;
+  onPointClick?: (event: ECElementEvent) => void;
+  onPointHover?: (event: ECElementEvent | null) => void;
   readPoint?: (index: number) => string;
   readout?: ChartReadout;
   overlay?: ReactNode;
+  /** A reading the caller pinned from a tap (charts without a readout); shown in the phone strip. */
+  pin?: { reading: Reading; onClose: () => void } | null;
   fullscreen?: boolean;
   customGestures?: boolean;
   initialSelection?: number | null;
@@ -154,16 +119,8 @@ export function Plot({
   const colours = useChartColours();
   const settings = useMemo<EChartsOption>(() => {
     const custom = option(colours);
+    const customTooltip = custom.tooltip && !Array.isArray(custom.tooltip) ? custom.tooltip : undefined;
     return {
-      backgroundColor: "transparent",
-      textStyle: { color: colours.text, fontSize: 12 },
-      color: [
-        colours.brand,
-        colours.comparison,
-        colours.accent,
-        colours.secondary,
-        colours.series5,
-      ],
       grid: { top: 20, right: 18, bottom: 30, left: 58 },
       ...custom,
       dataZoom: custom.dataZoom ?? (fullscreen ? [{
@@ -171,46 +128,17 @@ export function Plot({
         filterMode: "none",
       }] : undefined),
       ...(hasReadout ? { axisPointer: undefined } : {}),
-      xAxis: themeAxes(hasReadout
+      xAxis: hasReadout
         ? Array.isArray(custom.xAxis) ? custom.xAxis.map((axis) => ({ ...axis, axisPointer: { show: false } }))
           : custom.xAxis ? { ...custom.xAxis, axisPointer: { show: false } } : undefined
-        : custom.xAxis, colours, true),
-      yAxis: themeAxes(custom.yAxis, colours),
-      legend: Array.isArray(custom.legend)
-        ? custom.legend.map((legend) => ({
-            ...legend,
-            textStyle: { color: colours.text, ...legend.textStyle },
-          }))
-        : custom.legend
-          ? {
-              ...custom.legend,
-              textStyle: { color: colours.text, ...custom.legend.textStyle },
-            }
-          : undefined,
-      tooltip: {
-        trigger: "axis",
-        renderMode: "richText",
-        backgroundColor: colours.tooltip,
-        textStyle: { color: colours.tooltipText, fontSize: 12 },
-        borderWidth: 1,
-        borderColor: colours.tooltipBorder,
-        shadowBlur: 16,
-        shadowColor: colours.tooltipShadow,
-        shadowOffsetY: 4,
-        padding: 12,
-        confine: true,
-        // Research charts read in the reader's units; portfolio charts keep theirs.
-        valueFormatter: (value) => chartNumber(value, research ? locale : "en"),
-        axisPointer: {
-          type: "line",
-          lineStyle: { color: colours.axis, type: "dashed" },
-        },
-        ...(custom.tooltip && !Array.isArray(custom.tooltip)
-          ? custom.tooltip
-          : {}),
-        ...(hasReadout ? { show: false, triggerOn: "none" } : {}),
-      },
-
+        : custom.xAxis,
+      tooltip: hasReadout
+        ? { ...customTooltip, show: false, triggerOn: "none" }
+        : {
+            // Research charts read in the reader's units; portfolio charts keep theirs.
+            valueFormatter: (value) => chartNumber(value, research ? locale : "en"),
+            ...customTooltip,
+          },
     };
   }, [colours, option, research, locale, hasReadout, fullscreen]);
   const internal = useRef<ECharts | null>(null);
@@ -227,9 +155,10 @@ export function Plot({
       setPinned(false);
       onZoom?.(instance);
     },
-    undefined,
+    onPointClick,
     pinned || picked != null || gapSpan != null || Boolean(reading),
     updateWhileReading,
+    onPointHover,
   );
   const gestures = useChartGestures(() => control.current, expanded || customGestures);
   useEffect(() => {
@@ -380,7 +309,9 @@ export function Plot({
     route.current = pathname;
     dismissRef.current();
   }, [pathname]);
-  const stripShown = Boolean(readout && touchLayout && shown);
+  // A caller's pinned tap reading uses the same strip and docking as a readout's touch reading.
+  const stripReading = pin?.reading ?? (readout && touchLayout ? shown : null);
+  const stripShown = Boolean(stripReading);
   // The strip sits above the plot and the chart's own controls, so fullscreen and More stay
   // reachable. When that space has scrolled under the top bar, it docks below the bar instead
   // of disappearing. In the fullscreen dialog, whose controls sit above the plot, it reads below.
@@ -522,10 +453,8 @@ export function Plot({
           }, t("已复制", "Copied"))}>{t("复制读数", "Copy reading")}</button>
           <button type="button" onClick={() => void action(() => exportChartCsv(visibleRecords()))}>{t("导出 CSV", "Export CSV")}</button>
           <button type="button" onClick={() => void action(async () => {
-            if (control.current && ref.current) {
-              const css = getComputedStyle(ref.current);
-              await exportChartPng(control.current, label, currentText,
-                css.getPropertyValue("--mx-surface").trim(), css.getPropertyValue("--mx-ink").trim());
+            if (control.current) {
+              await exportChartPng(control.current, label, currentText, colours.canvas, colours.text, colours.axis);
             }
           })}>{t("导出 PNG", "Export PNG")}</button>
           <span role="status">{exportStatus}</span>
@@ -551,9 +480,9 @@ export function Plot({
       </div>
     </div>}
     <div className="mx-plot-frame" ref={plotBox}>
-    {stripShown && shown && <div className="mx-chart-strip" ref={strip}>
-      <div aria-hidden="true"><ReadingCard reading={shown} variant="strip" /></div>
-      <button type="button" className="mx-chart-strip-close" aria-label={t("关闭读数", "Close reading")} onClick={dismiss}>
+    {stripShown && stripReading && <div className="mx-chart-strip" ref={strip}>
+      <div aria-hidden="true"><ReadingCard reading={stripReading} variant="strip" /></div>
+      <button type="button" className="mx-chart-strip-close" aria-label={t("关闭读数", "Close reading")} onClick={pin ? pin.onClose : dismiss}>
         <X size={18} aria-hidden="true" />
       </button>
     </div>}
