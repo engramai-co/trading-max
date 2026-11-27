@@ -1,15 +1,13 @@
 "use client";
 
-import { Tooltip } from "@mantine/core";
+import { Tip } from "./foundation";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type ReactElement, type ReactNode } from "react";
 
-export function NavigationHint({ label, children, enabled = true }: { label: ReactNode; children: ReactElement; enabled?: boolean }) {
-  // The theme's tooltip shell, shown at once: a fade would lag as the pointer runs along the rail.
-  return <Tooltip label={label} disabled={!enabled} position="right" offset={12}
-    transitionProps={{ duration: 0 }} interactive>
+export function NavigationHint({ label, children, enabled = true }: { label: ReactNode; children: ReactElement<Record<string, unknown>>; enabled?: boolean }) {
+  return <Tip label={label} disabled={!enabled} position="right" offset={12} describes={false}>
     {children}
-  </Tooltip>;
+  </Tip>;
 }
 
 export function NavigationIcon({ icon: Glyph }: { icon: LucideIcon }) {

@@ -1,7 +1,8 @@
 "use client";
 
+import { WorkspaceAlertDialog, WorkspaceDialog } from "./overlay";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { Modal, PasswordInput } from "@mantine/core";
+import { PasswordInput } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { IntegrationSummary } from "@/lib/types";
@@ -61,7 +62,7 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
         onCheckedChange={(checked) => submit(checked ? "enable" : "disable")} />
         : <h3>{indexData.name}</h3>}
       <div className="flex flex-wrap items-center gap-mx-xs">
-        <Button variant="secondary" disabled={busy} onClick={() => open("keys")}>
+        <Button data-autofocus variant="secondary" disabled={busy} onClick={() => open("keys")}>
           {configured ? t("更新密钥", "Update key") : t("连接 EODHD", "Connect EODHD")}
         </Button>
         {configured && <Button variant="ghost" disabled={busy} onClick={() => open("remove")}>
@@ -78,27 +79,25 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
       <a href={indexData.keysUrl} target="_blank" rel="noreferrer">{t("前往 EODHD", "Open EODHD")}</a>
     </details>
     {commit.isError && !mode && error}
-    <Modal opened={mode === "keys"} onClose={() => open(null)} closeOnClickOutside={!busy}
-      closeOnEscape={!busy} title={t("连接 EODHD", "Connect EODHD")}>
+    <WorkspaceDialog open={mode === "keys"} onClose={() => open(null)} preventDismiss={busy} title={t("连接 EODHD", "Connect EODHD")}>
       <form onSubmit={(event) => { event.preventDefault(); if (key.trim()) submit("save"); }}>
         <div className="flex flex-col gap-mx-md">
-          <PasswordInput label={t("API 密钥", "API key")} autoComplete="off"
+          <PasswordInput data-autofocus label={t("API 密钥", "API key")} autoComplete="off"
             value={key} maxLength={200} onChange={(event) => setKey(event.currentTarget.value)}
             disabled={busy} required />
           {commit.isError && error}
           <Button type="submit" loading={busy} loadingLabel={t("保存中…", "Saving…")} disabled={!key.trim()}>{t("测试并保存", "Test and save")}</Button>
         </div>
       </form>
-    </Modal>
-    <Modal opened={mode === "remove"} onClose={() => open(null)} closeOnClickOutside={!busy}
-      closeOnEscape={!busy} title={t("删除 EODHD 密钥", "Remove EODHD key")}>
+    </WorkspaceDialog>
+    <WorkspaceAlertDialog open={mode === "remove"} onClose={() => open(null)} preventDismiss={busy} title={t("删除 EODHD 密钥", "Remove EODHD key")}>
       <div className="flex flex-col gap-mx-md">
         {commit.isError && error}
         <div className="flex flex-wrap items-center gap-mx-md">
-          <Button variant="secondary" disabled={busy} onClick={() => open(null)}>{t("取消", "Cancel")}</Button>
+          <Button data-autofocus variant="secondary" disabled={busy} onClick={() => open(null)}>{t("取消", "Cancel")}</Button>
           <Button variant="destructive" loading={busy} loadingLabel={t("删除中…", "Removing…")} onClick={() => submit("remove")}>{t("删除密钥", "Remove key")}</Button>
         </div>
       </div>
-    </Modal>
+    </WorkspaceAlertDialog>
   </Panel>;
 }

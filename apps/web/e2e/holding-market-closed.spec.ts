@@ -148,11 +148,11 @@ test("a closed listing replaces the day figure on each position surface", async 
   await syntheticHoldings(page);
   await page.goto("/?range=1D");
   const overview = page.locator(".mx-overview-holdings");
-  const usRow = phone ? overview.getByRole("link", { name: new RegExp("SYNUS.*" + accessible) })
+  const usRow = phone ? overview.locator(".mx-ledger-item").filter({ has: page.getByRole("link", { name: /SYNUS/ }) })
     : overview.getByRole("row").filter({ hasText: "SYNUS" });
   await expect(usRow.getByText("休市", { exact: true })).toBeVisible();
   if (!phone) await expect(usRow.getByRole("cell", { name: accessible })).toBeVisible();
-  const ukRow = phone ? overview.getByRole("link", { name: /SYNUK/ })
+  const ukRow = phone ? overview.locator(".mx-ledger-item").filter({ has: page.getByRole("link", { name: /SYNUK/ }) })
     : overview.getByRole("row").filter({ hasText: "SYNUK" });
   await expect(ukRow.getByText("0.00%", { exact: true })).toBeVisible();
   expect((await new AxeBuilder({ page }).include(".mx-overview-holdings").analyze()).violations).toEqual([]);

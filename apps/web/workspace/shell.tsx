@@ -1,10 +1,8 @@
 "use client";
 
-import {
-  Menu,
-  Modal,
-  TextInput,
-  Tooltip,
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { WorkspaceDialog } from "./overlay";
+import { TextInput,
 } from "@mantine/core";
 import { useColorScheme } from "@/components/color-scheme-provider";
 import { Button, CloseButton } from "@/components/ui/button";
@@ -40,7 +38,7 @@ import { useEvidenceHighlight } from "./assistant/highlight";
 import { AssistantEntry, AssistantPanel } from "./assistant/shell";
 import { useAssistant } from "./assistant/context";
 import { useWorkspaceProfile } from "./profile";
-import { Tag, useCopy } from "./foundation";
+import { Tip, Tag, useCopy } from "./foundation";
 import { isImeComposing } from "./shortcut-platform";
 
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -340,85 +338,72 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     },
   ] as const;
   const appearanceItems = appearances.map((item) => (
-    <Menu.Item
+    <DropdownMenuItem
       key={item.value}
       onClick={() => setColorScheme(item.value)}
-      leftSection={<item.Icon aria-hidden="true" size={18} />}
-      rightSection={colorScheme === item.value && <Check aria-hidden="true" size={16} />}
     >
+      <item.Icon size={18} aria-hidden="true" />
       {item.label}
-    </Menu.Item>
+      {colorScheme === item.value && <Check className="ml-auto" size={16} aria-hidden="true" />}
+    </DropdownMenuItem>
   ));
   const nextLocale = locale === "zh"
     ? { value: "en" as const, label: "English", lang: "en", action: "Switch to English" }
     : { value: "zh" as const, label: "中文", lang: "zh-CN", action: "切换到中文" };
-  // Both top-bar menus open inside the banner landmark and focus their first
-  // item: Mantine's focus placeholder is not a valid child of role="menu".
   const theme = (
-    <Menu position="bottom-end" shadow="md" width={190} withinPortal={false} withInitialFocusPlaceholder={false}>
-      <Menu.Target>
-        <Button
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger render={<Button
           className="mx-topbar-preference [@media(max-width:767px)]:hidden [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:hidden"
           variant="ghost"
           size="icon"
           aria-label={t("选择外观", "Choose appearance")}
         >
           <Contrast size={20} aria-hidden="true" />
-        </Button>
-      </Menu.Target>
-      <Menu.Dropdown>{appearanceItems}</Menu.Dropdown>
-    </Menu>
+        </Button>} />
+      <DropdownMenuContent align="end" className="mx-appearance-menu">{appearanceItems}</DropdownMenuContent>
+    </DropdownMenu>
   );
   // Phones reach the six main pages from the dock. This one menu holds only
   // what the dock lacks: workspace management and, on the web, preferences.
   const more = (
-    <Menu
-      position="bottom-end"
-      shadow="md"
-      width={220}
-      withinPortal={false}
-      withInitialFocusPlaceholder={false}
-      classNames={{ dropdown: "mx-more-menu" }}
-    >
-      <Menu.Target>
-        <Button
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger render={<Button
           className="mx-topbar-more hidden [@media(max-width:767px)]:inline-flex [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:inline-flex [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:min-w-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:min-h-11 [[data-desktop-chrome=overlay]_&]:hidden!"
           variant="ghost"
           size="icon"
           aria-label={t("更多", "More")}
         >
           <Ellipsis size={20} aria-hidden="true" />
-        </Button>
-      </Menu.Target>
-      <Menu.Dropdown>
+        </Button>} />
+      <DropdownMenuContent align="end" className="mx-more-menu">
         {navigation.filter((n) => n.group === 2).map((n) => (
-          <Menu.Item
+          <DropdownMenuItem
             key={n.href}
-            component={Link}
-            href={n.href}
+            nativeButton={false}
+            render={<Link href={n.href} />}
             aria-current={active?.href === n.href ? "page" : undefined}
-            leftSection={<n.icon aria-hidden="true" size={18} />}
-            rightSection={active?.href === n.href && <Check aria-hidden="true" size={16} />}
           >
+            <n.icon size={18} aria-hidden="true" />
             {n.label}
-          </Menu.Item>
+            {active?.href === n.href && <Check className="ml-auto" size={16} aria-hidden="true" />}
+          </DropdownMenuItem>
         ))}
         {!desktop && (
           <>
-            <Menu.Divider role="separator" />
-            <Menu.Item
-              leftSection={<Globe aria-hidden="true" size={18} />}
+            <DropdownMenuSeparator role="separator" />
+            <DropdownMenuItem
               aria-label={nextLocale.action}
               onClick={() => setLocale(nextLocale.value)}
             >
+              <Globe size={18} aria-hidden="true" />
               <span lang={nextLocale.lang}>{nextLocale.label}</span>
-            </Menu.Item>
-            <Menu.Divider role="separator" />
+            </DropdownMenuItem>
+            <DropdownMenuSeparator role="separator" />
             {appearanceItems}
           </>
         )}
-      </Menu.Dropdown>
-    </Menu>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
   const links = (groups: number[], compact = false) => (
     <NavigationGroup activeHref={active && groups.includes(active.group) ? active.href : undefined}>
@@ -443,11 +428,11 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     </NavigationGroup>
   );
   const searchTrigger = (className: string, position: "bottom-end" | "right") => (
-    <Tooltip
+    <Tip
       label={<>{t("搜索", "Search")}{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</>}
       position={position}
       offset={position === "right" ? 12 : 8}
-      interactive
+      describes={false}
     >
       <Button
         className={className}
@@ -466,16 +451,16 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       >
         <Search size={20} aria-hidden="true" />
       </Button>
-    </Tooltip>
+    </Tip>
   );
   return (
-    <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} inert={searchOpen} data-assistant-open={assistant.open || undefined}>
+    <div className={desktop ? "mx-app mx-desktop-app" : "mx-app"} data-assistant-open={assistant.open || undefined}>
       <Suspense fallback={null}><SearchRouteObserver onChange={setRouteSearch} /></Suspense>
       <a className="mx-skip" href="#main-content" inert={assistantOverlay || undefined}>
         {t("跳到正文", "Skip to content")}
       </a>
       <aside className="mx-sidebar" inert={assistantOverlay || undefined}>
-        <Tooltip.Group openDelay={250} closeDelay={100}>
+
         {brand}
         {desktop && searchTrigger(
           "mx-sidebar-search hidden [[data-desktop-chrome=overlay]_&]:flex [[data-desktop-chrome=overlay]_&]:w-full [[data-desktop-chrome=overlay]_&]:h-12 [[data-desktop-chrome=overlay]_&]:min-h-12 [[data-desktop-chrome=overlay]_&]:mt-1 [[data-desktop-chrome=overlay]_&]:mb-2 [[data-desktop-chrome=overlay]_&]:rounded-[10px] [[data-desktop-chrome=overlay]_&]:text-[var(--mx-side-ink)]",
@@ -489,7 +474,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             {links([2], true)}
           </nav>}
         </div>
-        </Tooltip.Group>
+
       </aside>
       <div className="mx-content" inert={assistantOverlay || undefined}>
         <header className="mx-topbar">
@@ -547,31 +532,18 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           ))}
         </NavigationGroup>
       </nav>
-      <Modal
-        opened={searchOpen}
+      <WorkspaceDialog
+        open={searchOpen}
         onClose={closeSearch}
-        returnFocus={false}
-        zIndex={1100}
-        transitionProps={{ duration: 0 }}
-        closeOnEscape={false}
-        // Mantine drawers listen during window capture. Mark the focused target
-        // before Escape reaches them; this dialog alone handles its close.
-        onFocusCapture={(event) => event.target.setAttribute("data-mantine-stop-propagation", "true")}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && !isImeComposing(event)) {
-            event.preventDefault();
-            event.stopPropagation();
-            closeSearch();
-          }
-        }}
-        onExitTransitionEnd={() => {
+        finalFocus={false}
+        onClosed={() => {
           setQuery("");
           setIndex(0);
         }}
         title={t("搜索", "Search")}
-        withCloseButton={false}
-        classNames={{ content: "mx-command-dialog", header: "sr-only", body: "mx-search-body" }}
-        size={600}
+        hideClose
+        className="mx-command-dialog" headerClassName="sr-only" bodyClassName="mx-search-body"
+        width={600}
       >
         <div className="mx-search-row">
           <TextInput
@@ -672,7 +644,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           <span>{t("↑ ↓ 选择 · Enter 打开", "↑ ↓ navigate · Enter open")}</span>
           <span>Esc {t("关闭", "close")}</span>
         </div>
-      </Modal>
+      </WorkspaceDialog>
     </div>
   );
 }

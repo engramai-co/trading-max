@@ -1,11 +1,8 @@
 "use client";
 
-import {
-  Drawer,
-  Popover,
-  Tooltip,
-  type TooltipProps,
-} from "@mantine/core";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { hasOpenDialog, WorkspaceDrawer } from "./overlay";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
 import {
@@ -117,20 +114,23 @@ function useChangeCount(value: string | null) {
 // Open overlays, most recent last. One capture listener closes only the topmost
 // layer, wherever focus is: on its trigger before focus has moved in, inside it,
 // or on the page after a pointer opened it.
-const escapeLayers: Array<() => void> = [];
+const escapeLayers: Array<{ dismiss(): void; scope: RefObject<Element | null> }> = [];
 let escapeListening = false;
 function closeTopLayer(event: KeyboardEvent) {
-  if (event.key !== "Escape" || isImeComposing(event) || !escapeLayers.length) return;
-  // One press closes one layer; a dialog or chart behind it stays open.
+  if (event.key !== "Escape" || isImeComposing(event) || event.defaultPrevented) return;
+  const focusLayer = (event.target as Element | null)?.closest?.('[role="menu"], [role="dialog"], [role="alertdialog"]');
+  const layer = escapeLayers.findLast(({ scope }) => !focusLayer || focusLayer.contains(scope.current));
+  if (!layer) return;
+  event.preventDefault();
   event.stopPropagation();
-  escapeLayers.at(-1)!();
+  layer.dismiss();
 }
 /** While opened, Escape closes this overlay first. dismiss returns focus to the overlay's trigger. */
-export function useEscapeLayer(opened: boolean, dismiss: () => void) {
+export function useEscapeLayer(opened: boolean, scope: RefObject<Element | null>, dismiss: () => void) {
   const onDismiss = useEffectEvent(dismiss);
   useEffect(() => {
     if (!opened) return;
-    const layer = () => onDismiss();
+    const layer = { dismiss: () => onDismiss(), scope };
     escapeLayers.push(layer);
     if (!escapeListening) {
       document.addEventListener("keydown", closeTopLayer, true);
@@ -140,27 +140,55 @@ export function useEscapeLayer(opened: boolean, dismiss: () => void) {
       const index = escapeLayers.lastIndexOf(layer);
       if (index >= 0) escapeLayers.splice(index, 1);
     };
-  }, [opened]);
+  }, [opened, scope]);
 }
 
-/**
- * The shared tooltip. Styling, delays and motion come from the theme (mx-tooltip).
- * Set describes={false} when the label repeats the target's accessible name, so
- * a screen reader does not read the same words twice. Mantine merges the target's
- * own props last, so an explicit undefined there drops the description link it adds;
- * a target with its own aria-describedby keeps that one either way.
- */
-export function Tip({ children, describes = true, ...props }: Omit<TooltipProps, "children"> & { children: ReactElement<Record<string, unknown>>; describes?: boolean }) {
-  return <Tooltip events={{ hover: true, focus: true, touch: false }} {...props}>
-    {describes ? children : cloneElement(children, { "aria-describedby": undefined })}
+/** Supplemental text shares one delay and one collision-aware portal. */
+export function Tip({
+  children, label, describes = true, disabled, position = "top", offset = 8,
+}: {
+  children: ReactElement<Record<string, unknown>>;
+  label: ReactNode;
+  describes?: boolean;
+  disabled?: boolean;
+  position?: "top" | "right" | "bottom-end";
+  offset?: number;
+}) {
+  const id = useId();
+  const [open, setOpen] = useState(false);
+  const shown = open && !disabled;
+  const description = [children.props["aria-describedby"], describes && shown ? id : undefined].filter(Boolean).join(" ");
+  return <Tooltip disabled={disabled} onOpenChange={setOpen}>
+    <TooltipTrigger render={cloneElement(children, { "aria-describedby": description || undefined })} />
+    <TooltipContent id={id} side={position === "bottom-end" ? "bottom" : position}
+      align={position === "bottom-end" ? "end" : "center"} sideOffset={offset}>
+      {label}
+    </TooltipContent>
   </Tooltip>;
 }
 
+export function OverlayReading({ title, children }: { title: string; children: ReactNode }) {
+  const target = useRef<HTMLDivElement>(null);
+  const [overflow, setOverflow] = useState(false);
+  useLayoutEffect(() => {
+    const element = target.current;
+    if (!element) return;
+    const update = () => setOverflow(element.scrollHeight > element.clientHeight + 1);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    return () => observer.disconnect();
+  }, []);
+  return <div className="mx-help-body" ref={target} tabIndex={overflow ? 0 : undefined}
+    role={overflow ? "region" : undefined} aria-label={overflow ? title : undefined}>
+    <div>{children}</div>
+  </div>;
+}
+
+/** Phones read help in a bottom drawer; wider windows read it beside the trigger. */
 export function Help({
-  label,
-  children,
-  tag,
-  basis,
+  label, children, tag, basis, anchor, triggerContent, triggerLabel,
 }: {
   label: ReactNode;
   /** At most three short paragraphs. No live figures: they belong to the panel. */
@@ -169,16 +197,16 @@ export function Help({
   tag?: ReactNode;
   /** Source, method, frequency and as-of: always the last section, under 数据口径 / Data basis. */
   basis?: ReactNode;
+  anchor?: HTMLElement | null;
+  triggerContent?: ReactNode;
+  triggerLabel?: string;
 }) {
   const t = useCopy();
-  const [opened, setOpened] = useState(false);
+  const [open, setOpen] = useState(false);
   const sheet = useBreakpoint("phone");
   const trigger = useRef<HTMLButtonElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
   const titleId = useId();
-  useEscapeLayer(opened, () => {
-    setOpened(false);
-    trigger.current?.focus({ preventScroll: true });
-  });
   const explanation = typeof label === "string"
     ? label + t("说明", " explained")
     : t("查看说明", "Read explanation");
@@ -186,88 +214,41 @@ export function Help({
     <button
       ref={trigger}
       type="button"
-      className={tag ? "mx-tag-help" : "mx-info"}
-      data-mantine-stop-propagation={opened || undefined}
-      aria-label={tag ? undefined : explanation}
+      className={triggerContent !== undefined ? "tm-reading-trigger" : tag ? "mx-tag-help" : "mx-info"}
+      aria-label={triggerLabel ?? (tag ? undefined : explanation)}
       aria-haspopup="dialog"
-      aria-expanded={opened}
-      onClick={() => setOpened((value) => !value)}
-      onKeyDown={(event) => {
-        if (!isImeComposing(event) && (event.key === "Enter" || event.key === " ")) {
-          event.preventDefault();
-          if (!event.repeat) setOpened((value) => !value);
-        }
-      }}
+      aria-expanded={open}
+      onClick={sheet ? () => setOpen(value => !value) : undefined}
     >
-      {tag ? <>{tag}<span className="sr-only"> {explanation}</span></> : <CircleQuestionMark size={16} aria-hidden="true" />}
+      {triggerContent ?? (tag ? <>{tag}<span className="sr-only"> {explanation}</span></> : <CircleQuestionMark size={16} aria-hidden="true" />)}
     </button>
   );
-  const body = (
-    <div className="mx-help-body">
-      {children}
-      {/* The same closing paragraph the chart panels write with DataBasis. */}
-      {basis && <DataBasis>{basis}</DataBasis>}
-    </div>
-  );
-  if (sheet) return (
-    <>
-      {button}
-      <Drawer
-        opened={opened}
-        onClose={() => setOpened(false)}
-        position="bottom"
-        size="auto"
-        title={label}
-        zIndex="var(--mx-overlay-z-drawer)"
-        // A tap does not focus the "?" on every phone, so the sheet hands focus back to it once closed.
-        returnFocus={false}
-        onExitTransitionEnd={() => trigger.current?.focus({ preventScroll: true })}
-        closeButtonProps={{ "aria-label": t("关闭说明", "Close explanation") }}
-        classNames={{
-          inner: "mx-help-sheet-frame", overlay: "mx-help-sheet-frame", content: "mx-help-sheet",
-          header: "mx-help-sheet-header", title: "mx-help-sheet-title", close: "mx-help-sheet-close", body: "mx-help-sheet-body",
-        }}
-      >
-        {body}
-      </Drawer>
-    </>
-  );
-  return (
-    <Popover
-      opened={opened}
-      onChange={setOpened}
-      position="bottom-start"
-      width={320}
-      offset={8}
-      middlewares={{ flip: true, shift: { padding: 16 } }}
-      trapFocus
-      returnFocus
-      // Mantine 9.5 sets display: none while floating-ui reports the trigger as
-      // detached, as on a first positioning pass or once the trigger scrolls away.
-      // Focus then cannot enter (or drops to the page) and Escape stops closing it.
-      hideDetached={false}
-      transitionProps={{ transition: "fade", duration: 120, timingFunction: "ease-out" }}
-      zIndex="var(--mx-overlay-z-popover)"
-    >
-      <Popover.Target>{button}</Popover.Target>
-      <Popover.Dropdown className="mx-help-popover" data-mantine-stop-propagation="true"
-        aria-labelledby={titleId}
-        onFocusCapture={(event) => event.target.setAttribute("data-mantine-stop-propagation", "true")}
-      >
-        <div className="mx-help-heading">
-          <strong id={titleId}>{label}</strong>
-          <CloseButton
-            data-autofocus
-            aria-label={t("关闭说明", "Close explanation")}
-            data-mantine-stop-propagation="true"
-            onClick={() => setOpened(false)}
-          />
-        </div>
-        {body}
-      </Popover.Dropdown>
-    </Popover>
-  );
+  const reading = <OverlayReading title={typeof label === "string" ? label : explanation}>
+    {children}
+    {basis && <DataBasis>{basis}</DataBasis>}
+  </OverlayReading>;
+
+  if (sheet) return <>
+    {button}
+    <WorkspaceDrawer open={open} onClose={() => setOpen(false)} title={label} finalFocus={trigger}
+      closeLabel={t("关闭说明", "Close explanation")}
+      className="mx-help-sheet" headerClassName="mx-help-sheet-header" bodyClassName="mx-help-sheet-body">
+      {reading}
+    </WorkspaceDrawer>
+  </>;
+  return <Popover open={open} onOpenChange={setOpen} modal="trap-focus">
+    <PopoverTrigger render={button} />
+    <PopoverContent className="mx-help-popover" aria-labelledby={titleId}
+      anchor={anchor} align="start" sideOffset={8} initialFocus={close} finalFocus={trigger}>
+      <div className="mx-help-heading">
+        <strong id={titleId}>{label}</strong>
+        <CloseButton ref={close} aria-label={t("关闭说明", "Close explanation")} onClick={() => setOpen(false)} />
+      </div>
+      {reading}
+    </PopoverContent>
+  </Popover>;
 }
+
 export function Page({
   eyebrow,
   title,
@@ -310,6 +291,7 @@ export function Panel({
   help,
   helpLabel,
   helpBasis,
+  helpAnchor,
   action,
   children,
   className = "",
@@ -323,6 +305,7 @@ export function Panel({
   helpLabel?: string;
   /** The help's closing 数据口径 / Data basis section. */
   helpBasis?: ReactNode;
+  helpAnchor?: HTMLElement | null;
   action?: ReactNode;
   children: ReactNode;
   className?: string;
@@ -338,7 +321,7 @@ export function Panel({
             {title && (
               <div className="mx-panel-title">
                 <h2>{title}</h2>
-                {help && <Help label={helpLabel ?? title} basis={helpBasis}>{help}</Help>}
+                {help && <Help label={helpLabel ?? title} basis={helpBasis} anchor={helpAnchor}>{help}</Help>}
               </div>
             )}
             {description && <p>{description}</p>}
@@ -499,7 +482,7 @@ export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
   const label = updateFailureLabel(updatedAt, locale, timeZone);
   const action = label + " · " + t("重试", "Retry");
   // The tooltip adds what to check, so it also describes the button.
-  return <Tip label={detail} withinPortal>
+  return <Tip label={detail}>
     <button type="button" className="mx-tag mx-tag-warn mx-update-failure"
       aria-label={action} onClick={() => void retry()}>{showRetry ? action : label}</button>
   </Tip>;
@@ -620,8 +603,8 @@ export function Segments<T extends string>({
     const option = digit ? options[Number(digit) - 1] : undefined;
     if (!option) return;
     const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog']")) return;
-    if (document.querySelector("[aria-modal='true']")) return;
+    if (target?.closest("input, textarea, select, [contenteditable]:not([contenteditable='false']), [role='dialog'], [role='alertdialog']")) return;
+    if (hasOpenDialog()) return;
     event.preventDefault();
     if (option.value !== value) onChange(option.value);
   });

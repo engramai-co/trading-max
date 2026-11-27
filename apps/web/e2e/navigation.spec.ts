@@ -255,9 +255,9 @@ test.describe("workspace navigation refinements", () => {
       const inactiveItem = menu.getByRole("menuitem", { name: inactiveName });
       await expect(activeItem).toHaveAttribute("aria-current", "page");
       await expect(inactiveItem).not.toHaveAttribute("aria-current");
-      await expect(activeItem.locator('[data-position="right"] svg')).toHaveCount(1);
-      await expect(activeItem.locator('[data-position="right"] svg')).toBeVisible();
-      await expect(inactiveItem.locator('[data-position="right"] svg')).toHaveCount(0);
+      await expect(activeItem.locator("svg.lucide-check")).toHaveCount(1);
+      await expect(activeItem.locator("svg.lucide-check")).toBeVisible();
+      await expect(inactiveItem.locator("svg.lucide-check")).toHaveCount(0);
       await expect.poll(async () => {
         const [menuBg, activeBg] = await Promise.all([
           menu.evaluate((el) => getComputedStyle(el).backgroundColor),
@@ -403,7 +403,11 @@ test.describe("workspace navigation refinements", () => {
     expect(researchShape).not.toBe(await page.locator(".mx-topbar-search svg").innerHTML());
     expect(researchShape).not.toBe(await nav.getByRole("link", { name: /收益与风险|Performance/ }).locator(".mx-nav-icon svg").innerHTML());
     await research.hover();
-    await expect(page.getByRole("tooltip")).toHaveText(/^(研究|Research)$/);
+    const hint = page.getByRole("tooltip");
+    await expect(hint).toHaveText(/^(研究|Research)$/);
+    await expect(research).not.toHaveAttribute("aria-describedby");
+    await hint.hover();
+    await expect(hint).toBeVisible();
     await page.mouse.move(300, 80);
     await expect(page.getByRole("tooltip")).toHaveCount(0);
     await research.focus();

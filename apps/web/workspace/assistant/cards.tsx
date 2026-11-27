@@ -1,13 +1,14 @@
 "use client";
 
 import "./readings.css";
-import { Drawer } from "@mantine/core";
+import { WorkspaceDrawer } from "../overlay";
 import { ChevronDown, X } from "lucide-react";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
-import { useCopy } from "../foundation";
+import { useFinePointer } from "@/ui/pointer";
+import { Tip, useCopy } from "../foundation";
 import Link from "../link";
 import { useAssistant, type RoleCard } from "./context";
 import { evidenceHref, readerText, sourceLabel, type Evidence, type Reading } from "./evidence";
@@ -17,11 +18,18 @@ const FollowCitation = createContext<(() => void) | null>(null);
 
 export function EvidenceLink({ evidence, onNavigate }: { evidence: Evidence; onNavigate?: ComponentProps<typeof Link>["onNavigate"] }) {
   const t = useCopy();
+  const finePointer = useFinePointer();
   const { close, open } = useAssistant();
   const leaveSheet = useContext(FollowCitation);
   const word = sourceLabel(evidence, t);
   const href = evidenceHref(evidence);
-  if (href && /^https?:/.test(href)) return <a className="mx-reading-source" href={href} title={evidence.arguments?.credit} rel="noreferrer" target="_blank">{word}</a>;
+  if (href && /^https?:/.test(href)) {
+    const link = <a className="mx-reading-source" href={href} rel="noreferrer" target="_blank">{word}</a>;
+    const credit = evidence.arguments?.credit;
+    if (!credit) return link;
+    if (finePointer) return <Tip label={credit}>{link}</Tip>;
+    return <span className="mx-reading-citation">{link}<span className="mx-reading-credit"> · {credit}</span></span>;
+  }
   return href ? <Link className="mx-reading-source" href={href} onNavigate={(event) => { onNavigate?.(event); leaveSheet?.(); }}
     onClick={() => { if (open && window.matchMedia(MEDIA_QUERIES.compactDesktop).matches) close(); }}>{word}</Link> : <span className="mx-reading-source">{word}</span>;
 }
@@ -68,19 +76,19 @@ function ReadingSheet({ card, children, onClose, focusClose, returnFocusRef, clo
     const element = returnFocusRef?.current ?? trigger.current;
     onClose();
     if (element instanceof HTMLElement) requestAnimationFrame(() => {
-      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]');
+      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]:not([hidden]):not([data-closed]), [role="alertdialog"][aria-modal="true"]:not([hidden]):not([data-closed])');
       if (element.isConnected && (!dialog || dialog.contains(element))) element.focus({preventScroll:true});
     });
   }
   // The full-screen sidebar owns the phone screen; the sheet returns when it closes.
   if (open) return null;
-  return <Drawer opened onClose={dismiss} position="bottom" size="auto" title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title + " · " + card.object}</span>}
-    returnFocus={false} attributes={{header:{role:"presentation"}}} closeButtonProps={{ref:closeButton,"aria-label":t("关闭解读", "Close reading")}}
-    classNames={{content:"mx-reading-sheet", inner:"mx-reading-sheet-inner"}}>
+  return <WorkspaceDrawer open onClose={dismiss} title={<span className="mx-reading-title"><span aria-hidden="true">✦</span>{card.title + " · " + card.object}</span>}
+    finalFocus={false} closeRef={closeButton} closeLabel={t("关闭解读", "Close reading")}
+    className="mx-reading-sheet">
     <FollowCitation.Provider value={closeOnCitation ? onClose : null}>
       {children ?? <ReadingLines card={card} />}<FollowUps card={card} onContinue={onClose} />
     </FollowCitation.Provider>
-  </Drawer>;
+  </WorkspaceDrawer>;
 }
 export function InlineReading({ card, children, onClose, focusClose, returnFocusRef, closeOnCitation }: ReadingContainerProps) {
   const { ready } = useAssistant();

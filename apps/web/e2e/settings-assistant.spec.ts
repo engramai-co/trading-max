@@ -147,10 +147,12 @@ test("consent, enablement, provider choice and conversation deletion are indepen
   expect(writes.at(-1)).toMatchObject({ route: "ollama/local/model", expectedConsentDestination: "http://127.0.0.1:8456/v1" });
   await expect(page.getByText("Tool call succeeded.")).toHaveCount(0);
   await page.getByRole("button", { name: "Delete conversations" }).click();
-  await dialog.getByRole("button", { name: "Cancel" }).click();
+  const removeDialog = page.getByRole("alertdialog");
+  await expect(removeDialog.getByRole("button", { name: "Cancel" })).toBeFocused();
+  await removeDialog.getByRole("button", { name: "Cancel" }).click();
   expect(erasures()).toBe(0);
   await page.getByRole("button", { name: "Delete conversations" }).click();
-  await dialog.getByRole("button", { name: "Delete all conversations" }).click();
+  await removeDialog.getByRole("button", { name: "Delete all conversations" }).click();
   await expect(page.getByText("Conversations deleted from this workspace.")).toBeVisible();
   await expect(enable).toBeChecked();
   await withdraw.click();
@@ -183,7 +185,7 @@ for (const locale of ["en", "zh"] as const) {
       const prefix = [testInfo.project.name, locale, colorScheme].join("-");
       const panel = page.locator(".mx-panel").filter({ has: page.getByRole("heading", { name: ASSISTANT_NAME }) });
       await panel.getByRole("button", { name: locale === "en" ? "Delete conversations" : "删除对话", exact: true }).click();
-      const confirmation = page.getByRole("dialog");
+      const confirmation = page.getByRole("alertdialog");
       const confirm = confirmation.getByRole("button", { name: locale === "en" ? "Delete all conversations" : "删除所有对话", exact: true });
       const destructive = colorScheme === "dark" ? "rgb(255, 149, 138)" : "rgb(180, 71, 58)";
       await expect(confirm).toHaveCSS("color", destructive);
@@ -218,6 +220,7 @@ for (const locale of ["en", "zh"] as const) {
       await panel.getByRole("switch").first().click();
       const dialog = page.getByRole("dialog");
       await expect(dialog).toBeVisible();
+      await expect(dialog).toHaveCSS("opacity", "1");
       if (isMobile) {
         for (const button of await dialog.getByRole("button").all()) {
           const box = (await button.boundingBox())!;

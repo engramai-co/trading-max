@@ -1,8 +1,8 @@
 "use client";
 
-import { Popover } from "@mantine/core";
+import { HoverCard, HoverCardContent } from "@/components/ui/hover-card";
 import { useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { inRange } from "@/lib/portfolio/nav";
 import type { ResearchPriceSeries } from "@/lib/types";
@@ -12,7 +12,7 @@ import { api, currency, percent, tone } from "@/workspace/data";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { quoteValue } from "./financial-values";
-import { Facts, useCopy, useEscapeLayer } from "./foundation";
+import { Facts, useCopy } from "./foundation";
 import type { HoldingPeekQuote } from "./holding-detail-data";
 import { researchPriceQuery } from "./research-queries";
 import { Sparkline } from "./sparks";
@@ -152,6 +152,7 @@ export function SecurityPeek({
 function Peek({ ticker, priceTicker, position, session, quote, range, children }: {
   ticker: string; priceTicker?: string | null; position?: PeekPosition; session?: PeekSession; quote?: PeekQuote; range: PeekRange; children: ReactNode;
 }) {
+  const description = useId();
   const [opened, setOpened] = useState(false);
   const target = useRef<HTMLDivElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -183,29 +184,33 @@ function Peek({ ticker, priceTicker, position, session, quote, range, children }
     // schedule only reads refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  useEscapeLayer(opened, () => {
-    cancel();
-    setOpened(false);
-  });
-  // Below the name keeps the row's own figures visible; it flips above near the window's end.
+  useEffect(() => {
+    if (!opened) return;
+    const host = target.current?.closest<HTMLElement>("a[href], button, [tabindex]");
+    if (!host) return;
+    const descriptions = host.getAttribute("aria-describedby")?.split(/\s+/) ?? [];
+    host.setAttribute("aria-describedby", [...descriptions, description].join(" "));
+    return () => {
+      const remaining = host.getAttribute("aria-describedby")?.split(/\s+/).filter(id => id !== description);
+      if (remaining?.length) host.setAttribute("aria-describedby", remaining.join(" "));
+      else host.removeAttribute("aria-describedby");
+    };
+  }, [description, opened]);
+  // The existing row owns activation. The preview stays anchored to its name.
   return (
-    <Popover opened={opened} position="bottom-start" offset={6} withinPortal withRoles={false} trapFocus={false}
-      returnFocus={false} hideDetached={false} middlewares={{ flip: true, shift: { padding: 8 } }}
-      transitionProps={{ transition: "fade", duration: 120, timingFunction: "ease-out" }} zIndex="var(--mx-overlay-z-popover)">
-      <Popover.Target>
-        <div ref={target} className="mx-peek-target"
-          onPointerEnter={(event) => { if (event.pointerType !== "touch") schedule(true); }}
-          onPointerLeave={() => schedule(false)}>
-          {children}
-        </div>
-      </Popover.Target>
-      {/* The card renders in a portal but still bubbles through its trigger's link in React: a click on it stays here. */}
-      <Popover.Dropdown className="mx-peek" onClick={(event) => event.stopPropagation()}
+    <HoverCard open={opened} onOpenChange={(open) => { cancel(); setOpened(open); }}>
+      <div ref={target} className="mx-peek-target"
+        onPointerEnter={(event) => { if (event.pointerType !== "touch") schedule(true); }}
+        onPointerLeave={() => schedule(false)}>
+        {children}
+      </div>
+      <HoverCardContent id={description} anchor={target} align="start" alignOffset={0} sideOffset={6}
+        className="mx-peek" onClick={(event) => event.stopPropagation()}
         onPointerEnter={cancel} onPointerLeave={() => schedule(false)}>
         {session ? <SessionPeek ticker={ticker} position={position} session={session} /> :
           range === "1D" ? <DayPeek ticker={ticker} priceTicker={priceTicker} position={position} quote={quote} /> : <PeekBody ticker={ticker} position={position} />}
-      </Popover.Dropdown>
-    </Popover>
+      </HoverCardContent>
+    </HoverCard>
   );
 }
 
@@ -240,6 +245,57 @@ function SessionPeek({ ticker, session, position }: { ticker: string; session: P
         ...positionFact(position, t("持仓", "Holding")),
       ]} />
     </>
+  );
+}
+
+/**
+ * Market quote, session move and timestamp for an aggregated exposure detail sheet,
+ * matching the facts DayPeek previews on hover/focus.
+ */
+export function MarketQuoteBasis({ ticker, priceTicker }: { ticker?: string | null; priceTicker?: string | null }) {
+  const t = useCopy();
+  const { locale, timeZone } = useLocale();
+  const { today, now } = useCurrentDay();
+  const symbol = priceTicker || ticker || "";
+  const query = useQuery({
+    queryKey: ["workspace-prices", symbol, "15m", "peek"],
+    queryFn: ({ signal }) => api<ResearchPriceSeries>(
+      `/research/${encodeURIComponent(symbol)}/prices?limit=160&interval=15m`, { signal }),
+    enabled: Boolean(symbol && symbol !== "—"),
+    staleTime: 300_000,
+    retry: 1,
+  });
+  const { day, lastDate, closes, change, bars } = latestSession(query.data?.points ?? []);
+  const last = closes.at(-1);
+  if (query.isPending || last == null) return null;
+  const label = !day || day === today ? t("今日", "Today") : formatCalendarDate(day, locale, now);
+  const price = quoteValue(last, query.data?.currency);
+  const basis = dayPeekBasis({
+    marketDay: day,
+    marketBars: bars,
+    lastDate,
+    actualInterval: query.data?.actualInterval,
+    timezone: query.data?.timezone,
+    locale,
+    timeZone,
+    now,
+  });
+  return (
+    <Facts
+      rows={[
+        [
+          basis.marketQuoteLabel,
+          <span key="market-quote">
+            {price}
+            {" · "}
+            {lastDate ? <time dateTime={lastDate}>{basis.marketQuoteTime}</time> : basis.marketQuoteTime}
+          </span>,
+        ],
+        ...(change != null
+          ? [[label, <span key="change" className={"mx-" + tone(change)}>{percent(change, true, 2)}</span>] as [string, ReactNode]]
+          : []),
+      ]}
+    />
   );
 }
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { FocusTrap } from "@mantine/core";
+import { Dialog, DialogOverlay, DialogPortal, DialogSurface } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useBreakpoint } from "@/lib/hooks";
 import { Maximize2, Minimize2, X } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -86,22 +87,29 @@ export function Plot({
   const [exportStatus, setExportStatus] = useState("");
   const fullscreenTrigger = useRef<HTMLButtonElement>(null);
   const closeTrigger = useRef<HTMLButtonElement>(null);
-  useEffect(() => {
-    if (!expanded) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = previous; };
-  }, [expanded]);
-  const closeFullscreen = () => {
-    setExpanded(false);
-    requestAnimationFrame(() => fullscreenTrigger.current?.focus());
-  };
+  const [chartPortal, setChartPortal] = useState<HTMLDivElement | null>(null);
+  const closeFullscreen = () => setExpanded(false);
   const host = useRef<HTMLDivElement>(null);
   const cursor = useRef<HTMLDivElement>(null);
   const popup = useRef<HTMLDivElement>(null);
+  const actionsPopup = useRef<HTMLDivElement>(null);
   const marksLayer = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
   const plotBox = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    // The chart keeps its canvas in an inline portal. Make sibling content inert
+    // so even scripted focus cannot escape the active fullscreen surface.
+    const locked: HTMLElement[] = [];
+    for (let node: HTMLElement | null = chartPortal; node && node !== document.body; node = node.parentElement) {
+      for (const sibling of node.parentElement?.children ?? []) {
+        if (sibling === node || !(sibling instanceof HTMLElement) || sibling.inert || sibling.matches("script, style, link")) continue;
+        sibling.setAttribute("inert", "");
+        locked.push(sibling);
+      }
+    }
+    return () => { for (const element of locked) element.removeAttribute("inert"); };
+  }, [chartPortal, expanded]);
   // Pointer position inside a missing interval, where the cursor follows the pointer.
   const pointerX = useRef<number | null>(null);
   const frame = useRef(0);
@@ -144,7 +152,7 @@ export function Plot({
   const internal = useRef<ECharts | null>(null);
   const selected = useRef(0);
   const control = controller ?? internal;
-  const { ref, status, retry, applied } = useECharts(
+  const { ref: setCanvas, canvasEl, canvasRef: ref, status, retry, applied } = useECharts(
     settings,
     research ? "research" : "core",
     control,
@@ -174,7 +182,7 @@ export function Plot({
     };
     canvas.addEventListener("wheel", scroll, { passive: false });
     return () => canvas.removeEventListener("wheel", scroll);
-  }, [control, ref, expanded, customGestures]);
+  }, [control, ref, expanded, customGestures, canvasEl]);
   const active = picked != null && readout?.positions[closestChartPosition(readout.positions, picked)] === picked
     ? picked : null;
   const gap = active == null ? gapSpan : null;
@@ -234,7 +242,7 @@ export function Plot({
     const observer = new ResizeObserver(() => drawCursor.current());
     observer.observe(bounds);
     return () => observer.disconnect();
-  }, [ref]);
+  }, [ref, canvasEl]);
 
   const pickAt = (event: PointerEvent<HTMLDivElement>): Hit | null => {
     if (!readout) return null;
@@ -289,12 +297,15 @@ export function Plot({
     if (!open) return;
     const key = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event)) return;
+      const layer = (event.target as Element | null)?.closest?.('[role="menu"], [role="alertdialog"], [role="dialog"]');
+      if (layer && !layer.contains(host.current)) return;
       event.preventDefault();
       if (!pinned) suppressed.current = true;
       dismissRef.current();
     };
     const outside = (event: globalThis.PointerEvent) => {
-      if (pinned && !host.current?.contains(event.target as Node)) dismissRef.current();
+      const target = event.target as Node;
+      if (pinned && !host.current?.contains(target) && !actionsPopup.current?.contains(target)) dismissRef.current();
     };
     document.addEventListener("keydown", key, true);
     document.addEventListener("pointerdown", outside, true);
@@ -332,7 +343,7 @@ export function Plot({
       element.style.setProperty("--mx-strip-lift", `${Math.round(lift)}px`);
       // Inside a dialog (the research full chart), dock below the dialog's header, not the page's top bar.
       const dialog = element.closest<HTMLElement>("[role=dialog]");
-      const header = dialog?.querySelector<HTMLElement>(".mantine-Modal-header");
+      const header = dialog?.querySelector<HTMLElement>('[data-slot="dialog-header"]');
       const bar = dialog
         ? header ? header.getBoundingClientRect().bottom : dialog.getBoundingClientRect().top
         : document.querySelector(".mx-topbar")?.getBoundingClientRect().bottom ?? 0;
@@ -375,7 +386,7 @@ export function Plot({
       window.removeEventListener("scroll", place, { capture: true });
       window.removeEventListener("resize", place);
     };
-  }, [stripShown]);
+  }, [stripShown, canvasEl]);
   // A horizontal touch drag reads continuously; vertical movement stays with the page.
   const scrub = (event: PointerEvent<HTMLDivElement>) => {
     const start = touchStart.current;
@@ -425,13 +436,7 @@ export function Plot({
   const hasTools = fullscreen || (!!readout?.records);
   const content = (
     <div ref={host} className={hasTools ? "mx-chart-host" : undefined} data-expanded={expanded || undefined}
-      role={expanded ? "dialog" : undefined} aria-modal={expanded || undefined} aria-label={expanded ? label : undefined}
-      onKeyDown={(event) => {
-        if (expanded && event.key === "Escape" && !event.defaultPrevented && !isImeComposing(event)) {
-          event.preventDefault();
-          closeFullscreen();
-        }
-      }}>
+    >
     {hasTools && <div className="mx-chart-actions">
       {expanded && <strong>{label}</strong>}
       {expanded && <div className="mx-chart-zoom-buttons" aria-label={t("图表缩放", "Chart zoom")}>
@@ -439,10 +444,11 @@ export function Plot({
         <button type="button" aria-label={t("缩小", "Zoom out")} onClick={() => zoomBy(1.55)}>−</button>
         <button type="button" onClick={() => changeZoom(control.current, { start: 0, end: 100 })}>{t("恢复范围", "Reset zoom")}</button>
       </div>}
-      {readout?.records && <details>
-        <summary>{t("更多", "More")}</summary>
-        <div className="mx-chart-menu">
-          <button type="button" onClick={() => void action(async () => {
+      {exportStatus && <span className="mx-chart-status" role="status">{exportStatus}</span>}
+      {readout?.records && <DropdownMenu modal={false}>
+        <DropdownMenuTrigger render={<button type="button">{t("更多", "More")}</button>} />
+        <DropdownMenuContent ref={actionsPopup} align="end" className="mx-chart-menu">
+          <DropdownMenuItem onClick={() => void action(async () => {
             const plain = currentText.replaceAll("\n", " · ");
             if (typeof ClipboardItem === "function" && ClipboardItem.supports?.("text/tab-separated-values")) {
               await navigator.clipboard.write([new ClipboardItem({
@@ -450,21 +456,19 @@ export function Plot({
                 "text/tab-separated-values": new Blob([currentText.replaceAll("\n", "\t")], { type: "text/tab-separated-values" }),
               })]);
             } else await navigator.clipboard.writeText(plain);
-          }, t("已复制", "Copied"))}>{t("复制读数", "Copy reading")}</button>
-          <button type="button" onClick={() => void action(() => exportChartCsv(visibleRecords()))}>{t("导出 CSV", "Export CSV")}</button>
-          <button type="button" onClick={() => void action(async () => {
+          }, t("已复制", "Copied"))}>{t("复制读数", "Copy reading")}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void action(() => exportChartCsv(visibleRecords()))}>{t("导出 CSV", "Export CSV")}</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => void action(async () => {
             if (control.current) {
               await exportChartPng(control.current, label, currentText, colours.canvas, colours.text, colours.axis);
             }
-          })}>{t("导出 PNG", "Export PNG")}</button>
-          <span role="status">{exportStatus}</span>
-        </div>
-      </details>}
+          })}>{t("导出 PNG", "Export PNG")}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>}
       {fullscreen && (expanded
         ? <button data-autofocus type="button" ref={closeTrigger} aria-label={t("退出全屏", "Exit fullscreen")} onClick={closeFullscreen}><Minimize2 aria-hidden="true" size={18} /></button>
         : <button type="button" ref={fullscreenTrigger} aria-label={t("全屏", "Fullscreen")} onClick={() => {
           setExpanded(true);
-          requestAnimationFrame(() => closeTrigger.current?.focus());
         }}><Maximize2 aria-hidden="true" size={18} /></button>)}
     </div>}
     {/* The reading is spoken here; it shows as a card beside the cursor, or a strip above the plot on phones. */}
@@ -669,7 +673,7 @@ export function Plot({
             if (active!=null && active!==anchor) onBrush?.(Math.min(anchor,active),Math.max(anchor,active));
           }
         }}
-        ref={ref}
+        ref={setCanvas}
         style={{ height: "100%", width: "100%", touchAction: readout || expanded || customGestures ? "pan-y" : undefined }}
       />
       {onBrush && brushPixels && <div aria-hidden="true" className="mx-chart-brush" style={{left:Math.min(...brushPixels),width:Math.abs(brushPixels[1]-brushPixels[0])}}/>}
@@ -710,8 +714,25 @@ export function Plot({
     </div>
     </div>
   );
-  // FocusTrap replaces its child's ref, so the host ref goes through innerRef; outside taps need it.
-  return fullscreen ? <FocusTrap active={expanded} innerRef={host}>{content}</FocusTrap> : content;
+  if (!fullscreen) return content;
+  // Keep inline controls outside closed-dialog focus management; the chart preserves live zoom across remounts.
+  return <div ref={setChartPortal}>
+    {!expanded && content}
+    <Dialog open={expanded} disablePointerDismissal onOpenChange={(next, details) => {
+      if (next) return;
+      const event = details.event;
+      if (event instanceof KeyboardEvent && (event.defaultPrevented || isImeComposing(event))) details.cancel();
+      else closeFullscreen();
+    }}>
+      <DialogPortal container={chartPortal}>
+        <DialogOverlay />
+        <DialogSurface className="tm-chart-dialog" aria-modal="true" aria-label={label}
+          initialFocus={closeTrigger} finalFocus={fullscreenTrigger}>
+          {expanded ? content : null}
+        </DialogSurface>
+      </DialogPortal>
+    </Dialog>
+  </div>;
 }
 
 function chartReading(

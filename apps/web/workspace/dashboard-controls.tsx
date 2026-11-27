@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu } from "@mantine/core";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/lib/hooks";
@@ -32,20 +32,18 @@ export function DashboardRanges({ value, onChange, label, intraday = true }: {
   return (
     <div className="mx-dashboard-ranges">
       <Segments label={label} value={value} onChange={onChange} options={options} shortcuts compact={phone} />
-      <Menu position="bottom-end" withinPortal>
-        <Menu.Target>
-          <button className="mx-range-more" data-selected={Boolean(selected)} type="button"
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger render={<button className="mx-range-more" data-selected={Boolean(selected)} type="button"
             aria-label={moreLabel + (selected ? " · " + selected.label : "")}>
             {selected?.label ?? t("更多", "More")} <ChevronDown size={16} className="-mx-[2px] shrink-0" aria-hidden="true" />
-          </button>
-        </Menu.Target>
-        <Menu.Dropdown aria-label={moreLabel}>
+          </button>} />
+        <DropdownMenuContent align="end" aria-label={moreLabel}>
           {more.map((item) => (
-            <Menu.Item key={item.value} aria-current={value === item.value || undefined}
-              onClick={() => onChange(item.value)}>{item.label}</Menu.Item>
+            <DropdownMenuItem key={item.value} aria-current={value === item.value || undefined}
+              onClick={() => onChange(item.value)}>{item.label}</DropdownMenuItem>
           ))}
-        </Menu.Dropdown>
-      </Menu>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

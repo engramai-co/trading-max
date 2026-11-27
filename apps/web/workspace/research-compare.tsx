@@ -1,8 +1,9 @@
 "use client";
+import { WorkspaceDialog } from "./overlay";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
-import { Modal, MultiSelect, Pill, Select } from "@mantine/core";
+import { MultiSelect, Pill, Select } from "@mantine/core";
 import { useQueries } from "@tanstack/react-query";
 import type { EChartsOption } from "echarts";
 import { Button } from "@/components/ui/button";
@@ -241,14 +242,16 @@ export function ResearchComparison({
       >
         {t("比较", "Compare")}
       </Button>
-      <Modal
-        opened={opened}
+      <WorkspaceDialog
+        open={opened}
         onClose={() => update({ compare: null })}
         title={t("公司对比", "Compare companies")}
-        size="min(1200px, 96vw)"
+        className="mx-research-compare-dialog"
+        width="min(1200px, 96vw)"
       >
         <div className="mx-toolbar">
           <MultiSelect
+            comboboxProps={{ portalProps: { target: ".mx-research-compare-dialog" } }}
             renderPill={({ option, onRemove }) => (
               <Pill
                 withRemoveButton={option.value !== ticker}
@@ -280,6 +283,7 @@ export function ResearchComparison({
             maw="100%"
           />
           <Select
+            comboboxProps={{ portalProps: { target: ".mx-research-compare-dialog" } }}
             label={t("财务期间", "Financial period")}
             value={kind}
             onChange={(v) => update({ comparePeriod: v })}
@@ -442,7 +446,7 @@ export function ResearchComparison({
             )}
           </p>
         </details>
-      </Modal>
+      </WorkspaceDialog>
     </>
   );
 }

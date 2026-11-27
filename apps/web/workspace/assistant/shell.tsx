@@ -1,28 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import Link from "../link";
 import { useCopy } from "../foundation";
+import { Dialog, DialogOverlay, DialogPortal, DialogSurface } from "@/components/ui/dialog";
 import { isImeComposing } from "../shortcut-platform";
 import { errorLabel } from "./status-label";
 import { ASSISTANT_NAME } from "../assistant-settings";
 import { useAssistant } from "./context";
-import { canFocusAssistantControl, focusAssistantControl } from "./focus";
+import { focusAssistantControl } from "./focus";
 
 const Sidebar = dynamic(() => import("./sidebar"), { ssr: false });
-
-function cyclePanelTab(event: ReactKeyboardEvent<HTMLDivElement>) {
-  if (event.key !== "Tab" || event.defaultPrevented) return;
-  const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("a[href], button:enabled, summary, textarea:enabled, [tabindex]"))
-    .filter(control => control.tabIndex >= 0 && canFocusAssistantControl(control));
-  if (!controls.length) return;
-  event.preventDefault();
-  const index = controls.indexOf(document.activeElement as HTMLElement);
-  const next = event.shiftKey ? (index <= 0 ? controls.length - 1 : index - 1) : (index + 1) % controls.length;
-  controls[next].focus();
-}
 
 export function AssistantEntry() {
   const { open, toggle } = useAssistant();
@@ -39,25 +29,18 @@ export function AssistantPanel({ page, scopeLabel, searchOpen, overlay }: { over
   if (open && ready && !pending && thread !== "visible") setThread("visible");
   else if ((!open || !ready) && thread === "visible") setThread("hidden");
   const showThread = thread === "visible";
-  useEffect(() => {
-    if (!open || searchOpen) return;
-    function escape(e: KeyboardEvent) { if (e.key === "Escape" && !e.defaultPrevented && !isImeComposing(e)) { e.preventDefault(); close(); } }
-    window.addEventListener("keydown", escape);
-    const previous = document.body.style.overflow;
-    if (overlay) document.body.style.overflow = "hidden";
-    return () => { window.removeEventListener("keydown", escape); if (overlay) document.body.style.overflow = previous; };
-  }, [close, open, overlay, searchOpen]);
   const wasOpen = useRef(false);
   const focusedHandoff = useRef(0);
   const needsOpeningFocus = useRef(false);
+  const restoreDraftCaret = useRef(false);
   const [composer, setComposer] = useState<HTMLTextAreaElement | null>(null);
-  const panel = useRef<HTMLDivElement>(null);
+  const [panel, setPanel] = useState<HTMLDivElement | null>(null);
   const lastControl = useRef<HTMLElement>(null);
   useLayoutEffect(() => {
     if (open !== wasOpen.current) {
       needsOpeningFocus.current = open;
+      restoreDraftCaret.current = open;
       if (open && composer) lastControl.current = composer;
-      if (!open) focusAssistantControl(document.querySelector<HTMLElement>("[data-assistant-trigger]"));
     }
     wasOpen.current = open;
     if (!ready && !pending && !suspended) lastControl.current = null;
@@ -69,25 +52,48 @@ export function AssistantPanel({ page, scopeLabel, searchOpen, overlay }: { over
     }
     const active = document.activeElement;
     // An explicit open can precede the lazy composer. A non-modal panel leaves background focus alone.
-    if (!needsOpeningFocus.current && !overlay && active && active !== document.body && !panel.current?.contains(active)) return;
+    if (!needsOpeningFocus.current && !overlay && active && active !== document.body && !panel?.contains(active)) return;
     // The lazy thread can mount its Close button one render before its composer ref arrives.
     if (needsOpeningFocus.current && showThread && !composer && !lastControl.current) return;
-    const dismiss = panel.current?.querySelectorAll<HTMLElement>("[data-assistant-dismiss]") ?? [];
-    if (focusAssistantControl(lastControl.current, composer, ...dismiss)) needsOpeningFocus.current = false;
-  }, [open, overlay, pending, ready, suspended, searchOpen, composer, showThread, handoff]);
+    const focusPanel = () => {
+      const dismiss = panel?.querySelectorAll<HTMLElement>("[data-assistant-dismiss]") ?? [];
+      if (!focusAssistantControl(lastControl.current, composer, ...dismiss)) return false;
+      if (restoreDraftCaret.current && composer && document.activeElement === composer) {
+        composer.setSelectionRange(composer.value.length, composer.value.length);
+        restoreDraftCaret.current = false;
+      }
+      needsOpeningFocus.current = false;
+      return true;
+    };
+    if (!focusPanel() && needsOpeningFocus.current) {
+      const frame = requestAnimationFrame(focusPanel);
+      return () => cancelAnimationFrame(frame);
+    }
+  }, [open, overlay, pending, ready, suspended, searchOpen, composer, showThread, handoff, panel]);
   if (thread === "unvisited" && !open) return null;
-  return <div ref={panel} id="mx-assistant-panel" className="mx-assistant-panel" hidden={!open}
-    onKeyDown={overlay && !searchOpen ? cyclePanelTab : undefined}
-    role={overlay ? "dialog" : "complementary"} aria-modal={overlay && open || undefined} aria-label={ASSISTANT_NAME}>
-    {(ready || pending || suspended) && thread !== "unvisited" && <div className="mx-assistant-thread" hidden={!showThread}
-      onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, scopeLabel }} checking={showThread && pending} composerRef={setComposer} /></div>}
-    {!showThread && <>
-      <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button data-assistant-dismiss onClick={close}
-        onKeyDown={event => { if (pending && event.key === "Tab") event.preventDefault(); }}
-        aria-label={t("关闭侧栏","Close sidebar")}><X size={18} aria-hidden="true" /></button></div>
-      <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
-        {!pending && <Link href="/settings?tab=assistant" prefetch={false} onClick={close} className="mx-text-link">{t("打开设置","Open Settings")} →</Link>}
-      </div>
-    </>}
-  </div>;
+  return <Dialog open={open} modal={overlay} disablePointerDismissal onOpenChange={(next, { event, cancel }) => {
+    if (next) return;
+    if (searchOpen || (event instanceof KeyboardEvent && (event.defaultPrevented || isImeComposing(event)))) {
+      cancel();
+      return;
+    }
+    close();
+  }}>
+    <DialogPortal keepMounted>
+      {overlay && <DialogOverlay />}
+      <DialogSurface ref={setPanel} id="mx-assistant-panel" className="mx-assistant-panel"
+        role={overlay ? "dialog" : "complementary"} aria-modal={overlay || undefined} aria-label={ASSISTANT_NAME}
+        initialFocus={false} finalFocus={() => document.querySelector<HTMLElement>("[data-assistant-trigger]")}>
+        {(ready || pending || suspended) && thread !== "unvisited" && <div className="mx-assistant-thread" hidden={!showThread}
+          onFocusCapture={event => { lastControl.current = event.target; }}><Sidebar {...{ page, scopeLabel }} checking={showThread && pending} composerRef={setComposer} /></div>}
+        {!showThread && <>
+          <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button tabIndex={0} data-assistant-dismiss onClick={close}
+            aria-label={t("关闭侧栏","Close sidebar")}><X size={18} aria-hidden="true" /></button></div>
+          <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
+            {!pending && <Link tabIndex={0} href="/settings?tab=assistant" prefetch={false} onClick={close} className="mx-text-link">{t("打开设置","Open Settings")} →</Link>}
+          </div>
+        </>}
+      </DialogSurface>
+    </DialogPortal>
+  </Dialog>;
 }

@@ -1,4 +1,5 @@
 "use client";
+import { WorkspaceDialog } from "./overlay";
 import { useResearchChartWindow } from "./assistant/context";
 import { useBreakpoint } from "@/lib/hooks";
 import { markerHeadroom } from "./assistant/marker-layout";
@@ -6,7 +7,7 @@ import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Modal, Select } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
@@ -343,20 +344,20 @@ export function PriceHistory({
       {full && <details className="mx-price-advanced">
         <summary>{t("高级", "Advanced")}</summary>
         <div className="flex flex-wrap items-center gap-mx-sm">
-          <Select styles={fullSelectStyles} w={145} aria-label={t("行情粒度", "Bar interval")} value={interval}
+          <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-full-chart-dialog" } }} styles={fullSelectStyles} w={145} aria-label={t("行情粒度", "Bar interval")} value={interval}
             onChange={(v) => { update({ interval: v }); reset(); }}
             data={intervals.map((v, i) => ({
               value: v,
               label: [t("15 分钟", "15 min"), t("1 小时", "1 hour"), t("日线", "Daily"), t("周线", "Weekly")][i],
               disabled: !supportsPriceRange(v, range),
             }))} />
-          <Select styles={fullSelectStyles} w={110} aria-label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
+          <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-full-chart-dialog" } }} styles={fullSelectStyles} w={110} aria-label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
             data={[
               { value: "linear", label: t("线性", "Linear") },
               { value: "log", label: t("对数", "Log") },
               { value: "percent", label: t("涨跌幅", "Return %") },
             ]} />
-          <Select styles={fullSelectStyles} w={165} aria-label={t("基准对比", "Benchmark comparison")} value={comparison}
+          <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-full-chart-dialog" } }} styles={fullSelectStyles} w={165} aria-label={t("基准对比", "Benchmark comparison")} value={comparison}
             onChange={(v) => update({ benchmark: v === "none" ? null : v })}
             data={[
               { value: "none", label: t("加入对比", "Compare with") },
@@ -826,17 +827,17 @@ export function PriceHistory({
           {!full && content}
         </div>
       </Panel>
-      <Modal
-        fullScreen
-        opened={full}
+      <WorkspaceDialog
+        fullscreen
+        open={full}
         onClose={() => toggleFull(false)}
-        returnFocus={false}
-        onExitTransitionEnd={() => fullButton.current?.focus({ preventScroll: true })}
-        closeButtonProps={{ "aria-label": t("退出全屏", "Exit fullscreen"), size: 44 }}
+        finalFocus={fullButton}
+        closeLabel={t("退出全屏", "Exit fullscreen")}
+        className="mx-full-chart-dialog"
         title={ticker + " · " + t("完整图表", "Full chart")}
       >
         <div className="mx-full-chart">{full && content}</div>
-      </Modal>
+      </WorkspaceDialog>
     </>
   );
 }

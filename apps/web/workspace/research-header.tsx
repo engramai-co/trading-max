@@ -1,7 +1,8 @@
 "use client";
 
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
-import { Avatar, Menu } from "@mantine/core";
+import { Avatar } from "@mantine/core";
 import { ChevronDown, Ellipsis, RotateCw, Trash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -74,7 +75,7 @@ export function SecurityHeader({
   failure?: { updatedAt: number; retry: () => unknown };
   /** Whether the research list is open or pinned beside the page. */
   listOpen: boolean;
-  onSwitch: () => void;
+  onSwitch: React.MouseEventHandler<HTMLButtonElement>;
 }) {
   const t = useCopy();
   const now = useMinuteClock();
@@ -210,29 +211,27 @@ export function SecurityActions({
         <RotateCw size={16} aria-hidden="true" />
         <span className="mx-research-refresh-label">{t("更新研究", "Update research")}</span>
       </Button>}
-      {watchlisted && <Menu shadow="md" position="bottom-end">
-        <Menu.Target>
-          <Button variant="ghost" size="icon" aria-label={t("更多操作", "More actions")}>
+      {watchlisted && <DropdownMenu modal={false}>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t("更多操作", "More actions")}>
             <Ellipsis size={20} aria-hidden="true" />
-          </Button>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Item disabled={!categoriesAvailable} onClick={() => onManage()}>
+          </Button>} />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem disabled={!categoriesAvailable} onClick={() => onManage()}>
             {categoriesAvailable
               ? t("调整研究分类", "Change research category")
               : t("尚未设置研究分类", "No research categories configured")}
-          </Menu.Item>
+          </DropdownMenuItem>
           {/* Holdings always stay in the list; the item says why it is unavailable. */}
-          <Menu.Item
+          <DropdownMenuItem
             disabled={held || pending}
-            leftSection={<Trash aria-hidden="true" size={16} />}
-            rightSection={held ? <span className="mx-menu-note">{t("持仓中", "Held")}</span> : undefined}
             onClick={onRemove}
           >
+            <Trash size={15} aria-hidden="true" />
             {t("从研究清单移除", "Remove from research list")}
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu>}
+            {held && <span className="mx-menu-note ml-auto">{t("持仓中", "Held")}</span>}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>}
     </div>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
 
-import { Menu } from "@mantine/core";
 import { ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { buttonVariants } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useBreakpoint } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import {
@@ -141,6 +141,12 @@ function useOverviewSectors(market: SectorMarketCode | null) {
 export function OverviewSectors() {
   const t = useCopy();
   const [market, choose] = useOverviewMarket();
+  const restoreMarketFocus = useRef(false);
+  const marketTrigger = useCallback((node: HTMLButtonElement | null) => {
+    if (!node || !restoreMarketFocus.current) return;
+    restoreMarketFocus.current = false;
+    node.focus({ preventScroll: true });
+  }, []);
   const name = (value: string) => {
     const names = MARKET_NAMES[value];
     return names ? t(names[0], names[1]) : value.toUpperCase();
@@ -148,21 +154,25 @@ export function OverviewSectors() {
   const title = market === "global" ? t("全球市场", "Global markets")
     : market ? name(market) + t("板块", " sectors") : t("板块", "Sectors");
   const picker = (
-    <Menu position="bottom-start" withinPortal>
-      <Menu.Target>
-        <button type="button" className="mx-overview-market" aria-label={t("选择市场，当前：", "Choose market, now: ") + title}>
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger render={
+        <button ref={marketTrigger} type="button" className="mx-overview-market" aria-label={t("选择市场，当前：", "Choose market, now: ") + title}>
           {title}
           <ChevronDown size={16} aria-hidden="true" />
         </button>
-      </Menu.Target>
-      <Menu.Dropdown>
+      } />
+      <DropdownMenuContent aria-label={t("选择市场", "Choose market")}>
         {(["global", ...SECTOR_MARKETS] as OverviewMarket[]).map((value) => (
-          <Menu.Item key={value} aria-current={value === market ? "true" : undefined} onClick={() => choose(value)}>
+          <DropdownMenuItem key={value} aria-current={value === market ? "true" : undefined} onClick={() => {
+            // The global and single-market panels own separate trigger elements.
+            restoreMarketFocus.current = value !== market && (value === "global" || market === "global");
+            choose(value);
+          }}>
             {name(value)}
-          </Menu.Item>
+          </DropdownMenuItem>
         ))}
-      </Menu.Dropdown>
-    </Menu>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
   if (market === null) return (
     <Panel className="mx-overview-sectors" title={picker}>
@@ -365,7 +375,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
         } as CSSProperties;
         return (
           // China's block shows a short name, so its full name and move also show on hover and focus.
-          <Tip key={market} disabled={market !== "cn"} withinPortal describes={false}
+          <Tip key={market} disabled={market !== "cn"} describes={false}
             label={<TipLines name={globalMarketReading(market, full, locale)} figures={[change]} />}>
           <Link href={"/sectors?market=" + market}
             className="mx-overview-sector tm-heat-surface tm-tile-interactive relative flex flex-col justify-center gap-[1px] overflow-clip rounded-[6px] px-1.5 py-2 text-foreground no-underline"
@@ -472,7 +482,7 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
         const style = { left, top, width, height, "--mx-heat-mix": heatMix(idle ? null : item!.move, scheme) } as CSSProperties;
         // The tooltip repeats the accessible name in two lines, so it does not also describe the link.
         return (
-          <Tip key={key} label={<TipLines name={globalMarketReading(key, name, locale)} figures={[change, percent(share, false, 1)]} />} withinPortal describes={false}>
+          <Tip key={key} label={<TipLines name={globalMarketReading(key, name, locale)} figures={[change, percent(share, false, 1)]} />} describes={false}>
             <Link href={key === "other" ? "/sectors" : "/sectors?market=" + key}
               className={cn(
                 "mx-overview-sector tm-heat-surface tm-tile-interactive absolute flex overflow-clip rounded-[6px] text-foreground no-underline",
@@ -616,7 +626,7 @@ function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: S
         // A block that leaves part of its label out shows all of it on hover and on keyboard focus. The tooltip stays
         // mounted, only disabled, so a refresh that changes what fits keeps the link and its focus.
         return (
-          <Tip key={group.key} withinPortal disabled={shown.complete} describes={false}
+          <Tip key={group.key} disabled={shown.complete} describes={false}
             label={<TipLines name={groupName(group, "gics", locale)} figures={[formatDeltaPercent(group.change, locale, 2), percent(group.weight, false, 1)]} />}>
             <Link href={"/sectors?market=" + market + "&sector=" + encodeURIComponent(group.key)} {...attributes} aria-label={spoken(group)}>
               {content}

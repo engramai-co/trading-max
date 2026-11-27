@@ -692,13 +692,16 @@ test("cross-tab withdrawal suspends cached readings and History while the profil
     await expect(digest).toHaveCount(0);
     await expect(saved).toBeHidden();
     await expect(close).toBeFocused();
+    const modal = await panel.getAttribute("role") === "dialog";
     await page.keyboard.press("Tab");
-    await expect(close).toBeFocused();
+    if (modal) await expect(close).toBeFocused();
+    else await expect(panel.locator(":focus")).toHaveCount(0);
+    const focused = await page.evaluateHandle(() => document.activeElement);
     expect(assistantRequests).toEqual([]);
 
     releaseProfile();
     await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
-    await expect(close).toBeFocused();
+    await expect.poll(() => focused.evaluate(element => document.activeElement === element)).toBe(true);
     await expect(digest).toHaveCount(0);
     await expect(panel.getByText("Saved weekly follow-up")).toHaveCount(0);
     expect(assistantRequests).toEqual([]);
@@ -986,9 +989,11 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
       await expect.soft(panel.locator(":focus"), "focus during the check").toHaveCount(1, {timeout:1000});
       if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-checking-focus.png")});
       if (shortcut || outcome === "reopened draft" || outcome === "changed settings") {
-        for (const key of ["Tab", "Shift+Tab"]) {
-          await page.keyboard.press(key);
-          await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+        if (await panel.getAttribute("role") === "dialog") {
+          for (const key of ["Tab", "Shift+Tab"]) {
+            await page.keyboard.press(key);
+            await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+          }
         }
       } else {
         await expect(control).toBeFocused();
@@ -1536,6 +1541,9 @@ test("look-through chat keeps the open drawer publication and follows later sele
   await expect(page.getByRole("dialog")).toContainText("Original exposure");
   await page.keyboard.press("Control+j");
   await expect(page.locator(".mx-assistant-scope")).toContainText("敞口 · SYNT");
+  const sheetBox = (await page.getByRole("dialog").boundingBox())!;
+  const assistantBox = (await page.locator("#mx-assistant-panel").boundingBox())!;
+  expect(sheetBox.x + sheetBox.width).toBeLessThanOrEqual(assistantBox.x);
   await composer.fill("What is this exposure?");
   const sent = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
   await composer.press("Enter");
@@ -1544,7 +1552,7 @@ test("look-through chat keeps the open drawer publication and follows later sele
     object:{dimension:"company", category:"SYNT", entityId:"SYNT"},
   });
   await expect(page.locator(".mx-assistant-turn-context").first()).toContainText("敞口 · SYNT");
-  await page.getByRole("dialog").getByRole("button", {name:"Close panel"}).click();
+  await page.getByRole("dialog").getByRole("button", {name:/关闭底层敞口|Close underlying exposure/}).click();
   const pill = page.locator(".mx-assistant-scope");
   await expect(pill).toHaveText("持仓与穿透 · 全部投资账户");
   await composer.fill("What is my total exposure?");

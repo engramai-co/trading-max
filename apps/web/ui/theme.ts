@@ -144,45 +144,5 @@ export const tradingMaxTheme = createTheme({
     NumberInput: {
       defaultProps: { hideControls: true, size: "sm", radius: "sm" },
     },
-    Modal: {
-      defaultProps: {
-        closeButtonProps: { "aria-label": "Close dialog" },
-        radius: "lg",
-        centered: true,
-        overlayProps: { backgroundOpacity: 0.35, blur: 3 },
-        transitionProps: { duration: 170 },
-      },
-    },
-    Drawer: {
-      defaultProps: {
-        closeButtonProps: { "aria-label": "Close panel" },
-        position: "right",
-        size: 500,
-        padding: "lg",
-        overlayProps: { backgroundOpacity: 0.3, blur: 2 },
-        transitionProps: {
-          duration: 220,
-          timingFunction: "cubic-bezier(.22,1,.36,1)",
-        },
-      },
-    },
-    Tooltip: {
-      // Every tooltip shares the overlay shell (mx-tooltip in 02-page.css): no arrow,
-      // a 250 ms open and 100 ms close, and one 120 ms ease-out fade that reduced
-      // motion turns off (respectReducedMotion above). Keyboard focus opens it as
-      // hover does; touch never does, since a tap acts on its target.
-      defaultProps: {
-        withArrow: false,
-        openDelay: 250,
-        closeDelay: 100,
-        events: { hover: true, focus: true, touch: false },
-        multiline: true,
-        maw: 280,
-        offset: 8,
-        zIndex: "var(--mx-overlay-z-tip)",
-        transitionProps: { transition: "fade", duration: 120, timingFunction: "ease-out" },
-      },
-      classNames: { tooltip: "mx-tooltip" },
-    },
   },
 });

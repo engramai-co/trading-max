@@ -14,7 +14,7 @@ test.describe("chart evidence and fullscreen", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
   });
 
-  test("fullscreen preserves a reading, downloads only visible records and restores focus", async ({ page }) => {
+  test("each canvas initialises once and fullscreen preserves readings and restores focus", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("mantine-color-scheme-value", "auto"));
     await page.emulateMedia({ colorScheme: "dark" });
     await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
@@ -26,18 +26,29 @@ test.describe("chart evidence and fullscreen", () => {
     const chart = index.locator("[data-tm-chart-ready]").first();
     const open = index.getByRole("button", { name: "Fullscreen", exact: true });
     await expect(chart).toBeVisible();
+    await expect(chart).toHaveAttribute("data-tm-chart-init-count", "1");
     await chart.press("End");
     await chart.press("Enter");
+    await expect(chart).toHaveAttribute("data-tm-chart-init-count", "1");
     await open.click();
     const full = page.getByRole("dialog");
+    const fullCanvas = full.locator("[data-tm-chart-ready]");
     await expect(full).toBeVisible();
+    await expect(fullCanvas).toHaveAttribute("data-tm-chart-init-count", "1");
+    await page.locator(".mx-skip").evaluate((skip: HTMLElement) => skip.focus());
+    await expect(full.getByRole("button", { name: "Exit fullscreen" })).toBeFocused();
     await expect(full.locator("[data-chart-reading=selected]")).toContainText("519.00");
     await expect(full.locator("[data-chart-reading=selected]")).not.toContainText("USD");
 
     await full.getByRole("button", { name: "Zoom in", exact: true }).click();
-    await full.getByText("More", { exact: true }).click();
+    const more = full.getByRole("button", { name: "More", exact: true });
+    await more.press("ArrowDown");
+    await expect(page.getByRole("menuitem", { name: "Copy reading" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(more).toBeFocused();
+    await more.click();
     const csvReady = page.waitForEvent("download");
-    await full.getByRole("button", { name: "Export CSV" }).click();
+    await page.getByRole("menuitem", { name: "Export CSV" }).click();
     const csv = await readFile((await (await csvReady).path())!, "utf-8");
     const lines = csv.trim().split(/\r?\n/);
     expect(lines[0]).toBe("time,zone,currency,basis,source,gap_type,series,value");
@@ -72,17 +83,23 @@ test.describe("chart evidence and fullscreen", () => {
           swatch.remove();
           return channels;
         });
+        await full.getByRole("button", { name: "More", exact: true }).click();
         const pngReady = page.waitForEvent("download");
-        await full.getByRole("button", { name: "Export PNG" }).click();
+        await page.getByRole("menuitem", { name: "Export PNG" }).click();
         const png = await readFile((await (await pngReady).path())!);
         expect(png.subarray(1, 4).toString()).toBe("PNG");
         expect(await sampleCorner(png)).toEqual(expected);
       }
     }
-    await full.getByRole("button", { name: "Exit fullscreen" }).focus();
-    await page.keyboard.press("Escape");
+    await fullCanvas.press("End");
+    await fullCanvas.press("ArrowLeft");
+    await fullCanvas.press("Enter");
+    await expect(full.locator("[data-chart-reading=selected]")).toContainText("518.00");
+    await full.getByRole("button", { name: "Exit fullscreen" }).press("Enter");
     await expect(full).toHaveCount(0);
     await expect(open).toBeFocused();
+    await expect(chart).toHaveAttribute("data-tm-chart-init-count", "1");
+    await expect(index.locator("[data-chart-reading=selected]")).toContainText("518.00");
   });
 
   test("index risk shows a gap as unverified recovery", async ({ page }) => {
@@ -141,9 +158,8 @@ test.describe("chart evidence and fullscreen", () => {
     async function visibleRecords() {
       await full.getByText("More", { exact: true }).click();
       const ready = page.waitForEvent("download");
-      await full.getByRole("button", { name: "Export CSV" }).click();
+      await page.getByRole("menuitem", { name: "Export CSV" }).click();
       const csv = await readFile((await (await ready).path())!, "utf8");
-      await full.getByText("More", { exact: true }).click();
       return csv;
     }
     const all = await visibleRecords();
@@ -195,6 +211,97 @@ test.describe("chart evidence and fullscreen", () => {
     await chart.press("Escape");
     await expect(popup).toBeHidden();
   });
+
+  test("inline chart controls stay in keyboard tab order before and after fullscreen", async ({ page, isMobile }) => {
+    test.skip(isMobile, "Tab traversal across native buttons is desktop keyboard behaviour.");
+    await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
+      state: "available", range: "1D", index: { scope: "us", source: "Synthetic index" }, asOf: observations.at(-1)!.at, currency: "USD",
+      points: observations, gaps: [],
+    } }));
+    await page.goto("/sectors?market=us&index=sp-500&range=1D");
+    const index = page.locator(".mx-index-history");
+    const host = index.locator(".mx-chart-host").first();
+    const more = index.getByRole("button", { name: "More", exact: true });
+    const open = index.getByRole("button", { name: "Fullscreen", exact: true });
+    const chart = index.locator("[data-tm-chart-ready]").first();
+    await expect(chart).toBeVisible();
+
+    const verifyRoundTrip = async () => {
+      await more.focus();
+      await expect(more).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(open).toBeFocused();
+      await page.keyboard.press("Tab");
+      await expect(chart).toBeFocused();
+      await page.keyboard.press("Tab");
+      expect(await host.evaluate((node) => node.contains(document.activeElement))).toBe(false);
+      await page.keyboard.press("Shift+Tab");
+      await expect(chart).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(open).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(more).toBeFocused();
+    };
+
+    await verifyRoundTrip();
+
+    // Open fullscreen, zoom in, close, and verify inline tab order and zoom both survive.
+    await open.click();
+    const full = page.getByRole("dialog");
+    await expect(full).toBeVisible();
+    await full.getByRole("button", { name: "Zoom in", exact: true }).click();
+    await page.keyboard.press("Escape");
+    await expect(full).toHaveCount(0);
+    await expect(open).toBeFocused();
+
+    await verifyRoundTrip();
+
+    // Preserved zoom still limits exported CSV records inline after closing fullscreen.
+    await more.click();
+    const csvReady = page.waitForEvent("download");
+    await page.getByRole("menuitem", { name: "Export CSV" }).click();
+    const csv = await readFile((await (await csvReady).path())!, "utf-8");
+    const rows = csv.trim().split(/\r?\n/).slice(1);
+    expect(rows.length).toBeGreaterThan(3);
+    expect(rows.length).toBeLessThan(observations.length);
+  });
+
+  test("chart action feedback shows visibly beside More on clipboard success and failure", async ({ page }) => {
+    await page.addInitScript(() => {
+      let shouldFail = false;
+      (window as unknown as { __setClipboardFail?: (v: boolean) => void }).__setClipboardFail = (v) => { shouldFail = v; };
+      Object.defineProperty(navigator, "clipboard", {
+        configurable: true,
+        value: {
+          write: () => shouldFail ? Promise.reject(new Error("denied")) : Promise.resolve(),
+          writeText: () => shouldFail ? Promise.reject(new Error("denied")) : Promise.resolve(),
+        },
+      });
+    });
+    await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
+      state: "available", range: "1D", index: { scope: "us", source: "Synthetic index" }, asOf: observations.at(-1)!.at, currency: "USD",
+      points: observations, gaps: [],
+    } }));
+    await page.goto("/sectors?market=us&index=sp-500&range=1D");
+    const index = page.locator(".mx-index-history");
+    await expect(index.locator("[data-tm-chart-ready]").first()).toBeVisible();
+
+    const more = index.getByRole("button", { name: "More", exact: true });
+    await more.click();
+    await page.getByRole("menuitem", { name: "Copy reading" }).click();
+    const status = index.locator(".mx-chart-status[role=status]");
+    await expect(status).toBeVisible();
+    await expect(status).toHaveText("Copied");
+    const box = (await status.boundingBox())!;
+    expect(box.width).toBeGreaterThan(10);
+    expect(box.height).toBeGreaterThan(10);
+
+    await page.evaluate(() => (window as unknown as { __setClipboardFail?: (v: boolean) => void }).__setClipboardFail?.(true));
+    await more.click();
+    await page.getByRole("menuitem", { name: "Copy reading" }).click();
+    await expect(status).toBeVisible();
+    await expect(status).toHaveText("Action unavailable");
+  });
 });
 
 async function pinchIndex(page: Page) {
@@ -216,9 +323,8 @@ async function pinchIndex(page: Page) {
   async function visibleRecords() {
     await full.getByText("More", { exact: true }).click();
     const ready = page.waitForEvent("download");
-    await full.getByRole("button", { name: "Export CSV" }).click();
+    await page.getByRole("menuitem", { name: "Export CSV" }).click();
     const data = await readFile((await (await ready).path())!, "utf-8");
-    await full.getByText("More", { exact: true }).click();
     return data.trimEnd().split(/\r?\n/).slice(1);
   }
   expect(await visibleRecords()).toHaveLength(20);

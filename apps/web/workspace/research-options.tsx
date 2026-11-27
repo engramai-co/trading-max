@@ -1,10 +1,10 @@
 "use client";
 
+import { WorkspaceSheet } from "./overlay";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   CheckIcon,
   Combobox,
-  Drawer,
   MultiSelect,
   Pill,
   NumberInput,
@@ -829,12 +829,12 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
           </>
         )}
       </Panel>
-      <Drawer
-        opened={!!detail}
+      <WorkspaceSheet
+        open={!!detail}
         onClose={() => setDetail(null)}
+        closeLabel={t("关闭合约详情", "Close contract details")}
         title={detail?.contractSymbol || t("合约详情", "Contract details")}
-        position="right"
-        size="md"
+        width={440}
       >
         {detail && (
           <Facts
@@ -862,7 +862,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
             ]}
           />
         )}
-      </Drawer>
+      </WorkspaceSheet>
     </>
   );
 }

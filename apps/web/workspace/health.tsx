@@ -1,6 +1,7 @@
 "use client";
 
-import { Drawer, Select } from "@mantine/core";
+import { WorkspaceSheet } from "./overlay";
+import { Select } from "@mantine/core";
 import {
   Activity,
   ArrowRight,
@@ -556,14 +557,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           </Panel>
         </>
       )}
-      <Drawer
-        opened={selected !== null}
+      <WorkspaceSheet
+        open={selected !== null}
         onClose={() => setSelected(null)}
         title={t("更新任务详情", "Update task details")}
-        position="right"
-        size={520}
-        classNames={{ content: "mx-health-drawer" }}
-        attributes={{ header: { role: "presentation" } }}
+        closeLabel={t("关闭任务详情", "Close task details")}
+        width={520}
+        className="mx-health-drawer"
       >
         {job && (
           <div className="mx-health-drawer-body flex flex-col gap-mx-lg">
@@ -664,7 +664,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             )}
           </div>
         )}
-      </Drawer>
+      </WorkspaceSheet>
     </Page>
   );
 }

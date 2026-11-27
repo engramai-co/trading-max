@@ -1,4 +1,5 @@
 "use client";
+import { hasOpenDialog, WorkspaceAlertDialog, WorkspaceDialog, WorkspaceSheet } from "./overlay";
 import dynamic from "next/dynamic";
 import { useEarningsBrief, PositionReading } from "./assistant/research-entry";
 import { useAssistantPageContext } from "./assistant/context";
@@ -10,12 +11,7 @@ import type {
   ResearchShell,
   SecuritySearchResponse,
 } from "@/lib/types";
-import {
-  Drawer,
-  Modal,
-  Select,
-  Tooltip,
-} from "@mantine/core";
+import { Select } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { useBreakpoint, useLocalStorage } from "@/lib/hooks";
 import {
@@ -25,10 +21,10 @@ import {
   Search,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { isImeComposing } from "./shortcut-platform";
 import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
-import {
+import { Tip,
   Empty,
   LoadingStatus,
   Notice,
@@ -132,8 +128,9 @@ function SecurityResearchWorkspace() {
     setFinder(true);
   });
   const [universeOpen, setUniverseOpen] = useState(false);
+  const universeTrigger = useRef<HTMLElement>(null);
   const [manage, setManage] = useState(false);
-  const [removeConfirm, setRemoveConfirm] = useState(false);
+  const [removeTarget, setRemoveTarget] = useState<{ ticker: string; watchlistTicker: string } | null>(null);
   const client = useQueryClient();
   const runtime = useChartRuntime("research");
   const shell = useQuery({
@@ -263,32 +260,39 @@ function SecurityResearchWorkspace() {
     mutationFn: ({
       action,
       categoryId,
+      target,
     }: {
       action: "refresh" | "remove" | "move" | "add";
       categoryId?: string;
+      target?: { ticker: string; watchlistTicker: string };
     }) =>
       action === "add" && security.data
       ? api("/watchlist", jsonRequest("POST", { security: security.data, refresh: true }))
       : action === "refresh" && isFund && (selected?.held || selected?.watchlisted === false)
       ? api("/refresh", jsonRequest("POST", { scope: "research", skipSync: true, tickers: [ticker] }))
       : api(
-        "/watchlist/" + encodeURIComponent(selected?.watchlistTicker ?? ticker),
+        "/watchlist/" + encodeURIComponent(
+          action === "remove"
+            ? (target?.watchlistTicker ?? target?.ticker ?? selected?.watchlistTicker ?? ticker)
+            : (selected?.watchlistTicker ?? ticker),
+        ),
         jsonRequest("POST", { action, categoryId }),
       ),
     onSuccess: async (_, variables) => {
+      const affected = variables.action === "remove" ? (variables.target?.ticker ?? ticker) : ticker;
       if (variables.action === "remove") {
-        const rest = instruments.filter((item) => item.ticker !== ticker);
+        const rest = instruments.filter((item) => item.ticker !== affected);
         setDefaultTicker(rest.find((item) => item.held)?.ticker ?? rest[0]?.ticker ?? "");
-        update({ ticker: null });
-        setRemoveConfirm(false);
+        if (ticker === affected) update({ ticker: null });
+        setRemoveTarget(null);
       }
       setManage(false);
       await client.invalidateQueries({
         queryKey: ["workspace-research-shell"],
       });
-      await client.invalidateQueries({ queryKey: ["workspace-research", ticker] });
+      await client.invalidateQueries({ queryKey: ["workspace-research", affected] });
       if (variables.action === "refresh")
-        await client.invalidateQueries({ queryKey: ["workspace-prices", ticker] });
+        await client.invalidateQueries({ queryKey: ["workspace-prices", affected] });
     },
   });
   function selectTicker(value: string) {
@@ -297,12 +301,15 @@ function SecurityResearchWorkspace() {
   }
   // A pinned list is already on screen: switching means searching it.
   const listOpen = universeOpen || (wide && pinned);
-  function openUniverse() {
+  function openUniverse(event: MouseEvent<HTMLElement>) {
     if (wide && pinned)
       document
         .querySelector<HTMLInputElement>(".mx-research-universe input")
         ?.focus();
-    else setUniverseOpen(true);
+    else {
+      universeTrigger.current = event.currentTarget;
+      setUniverseOpen(true);
+    }
   }
   const position = displayed.findIndex((i) => i.ticker === ticker);
   const previous = position > 0 ? displayed[position - 1] : undefined;
@@ -326,8 +333,9 @@ function SecurityResearchWorkspace() {
       const origin = event.target instanceof Element ? event.target : null;
       if (
         !target ||
+        hasOpenDialog() ||
         origin?.closest(
-          "input, textarea, select, [contenteditable], [role=dialog], [role=combobox], [role=listbox], [role=menu]",
+          "input, textarea, select, [contenteditable]:not([contenteditable='false']), [role=dialog], [role=alertdialog], [role=combobox], [role=listbox], [role=menu]",
         )
       )
         return;
@@ -338,8 +346,9 @@ function SecurityResearchWorkspace() {
     window.addEventListener("keydown", step);
     return () => window.removeEventListener("keydown", step);
   }, [next, previous, update]);
-  const universeHeading = (
+  const universeHeading = (hideTitle = false) => (
     <UniverseHeading
+      hideTitle={hideTitle}
       wide={wide}
       pinned={pinned}
       onPin={() => {
@@ -386,6 +395,24 @@ function SecurityResearchWorkspace() {
     peers: t("同类", "Peers"),
     ledger: t("记录", "Journal"),
   };
+  const finderOverlay = (
+      <SecurityFinder
+        opened={finder}
+        onClose={() => {
+          setFinder(false);
+          handover.closed();
+        }}
+        key={finderQuery}
+        initial={finderQuery || (selected ? "" : ticker)}
+        onSelect={(result) => {
+          handover.chosen();
+          client.setQueryData(previewKey(result.ticker), result);
+          update({ ticker: result.ticker, view: null, fromFund: isFund ? ticker : null });
+          setFinder(false);
+          setFinderQuery("");
+        }}
+      />
+  );
   return (
     <Page
       className="mx-research-page"
@@ -407,7 +434,7 @@ function SecurityResearchWorkspace() {
           )}
           {selected && (
             <>
-              <Tooltip label={<>{t("上一个", "Previous")} <kbd>K</kbd></>}>
+              <Tip describes={false} label={<>{t("上一个", "Previous")} <kbd>K</kbd></>}>
                 <Button
                   variant="outline"
                   size="icon"
@@ -418,8 +445,8 @@ function SecurityResearchWorkspace() {
                 >
                   <ChevronLeft size={18} aria-hidden="true" />
                 </Button>
-              </Tooltip>
-              <Tooltip label={<>{t("下一个", "Next")} <kbd>J</kbd></>}>
+              </Tip>
+              <Tip describes={false} label={<>{t("下一个", "Next")} <kbd>J</kbd></>}>
                 <Button
                   variant="outline"
                   size="icon"
@@ -430,7 +457,7 @@ function SecurityResearchWorkspace() {
                 >
                   <ChevronRight size={18} aria-hidden="true" />
                 </Button>
-              </Tooltip>
+              </Tip>
               {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
             </>
           )}
@@ -445,7 +472,9 @@ function SecurityResearchWorkspace() {
               onAdd={readOnly ? () => { if (security.data) operation.mutate({ action: "add" }); } : undefined}
               addDisabled={readOnly && !security.data}
               onManage={() => setManage(true)}
-              onRemove={() => setRemoveConfirm(true)}
+              onRemove={() => {
+                if (ticker) setRemoveTarget({ ticker, watchlistTicker: selected?.watchlistTicker ?? ticker });
+              }}
             />
           )}
         </>
@@ -469,7 +498,7 @@ function SecurityResearchWorkspace() {
               className="mx-research-universe"
               aria-label={t("研究清单", "Research list")}
             >
-              <h2>{universeHeading}</h2>
+              <h2>{universeHeading()}</h2>
               {universe}
             </aside>
           )}
@@ -734,37 +763,27 @@ function SecurityResearchWorkspace() {
           </div>
         </div>
       )}
-      <Drawer
-        opened={universeOpen}
+      <WorkspaceSheet
+        open={universeOpen}
+        finalFocus={universeTrigger}
         onClose={() => setUniverseOpen(false)}
-        title={universeHeading}
-        styles={{ title: { flex: 1 }, header: { gap: 8 } }}
-        size={360}
+        title={t("研究清单", "Research list")}
+        headerActions={universeHeading(true)}
+        closeLabel={t("关闭研究清单", "Close research list")}
+        width={360}
       >
         {universe}
-      </Drawer>
-      <SecurityFinder
-        opened={finder}
-        onClose={() => {
-          setFinder(false);
-          handover.closed();
-        }}
-        key={finderQuery}
-        initial={finderQuery || (selected ? "" : ticker)}
-        onSelect={(result) => {
-          handover.chosen();
-          client.setQueryData(previewKey(result.ticker), result);
-          update({ ticker: result.ticker, view: null, fromFund: isFund ? ticker : null });
-          setFinder(false);
-          setFinderQuery("");
-        }}
-      />
-      <Modal
-        opened={manage}
+        {universeOpen && finderOverlay}
+      </WorkspaceSheet>
+      {!universeOpen && finderOverlay}
+      <WorkspaceDialog
+        open={manage}
         onClose={() => setManage(false)}
         title={t("研究分类", "Research category")}
+        className="mx-category-dialog"
       >
         <Select
+          comboboxProps={{ portalProps: { target: ".mx-category-dialog" } }}
           disabled={operation.isPending}
           label={t("选择分类", "Choose category")}
           value={selected?.categoryId}
@@ -776,26 +795,27 @@ function SecurityResearchWorkspace() {
             v && operation.mutate({ action: "move", categoryId: v })
           }
         />
-      </Modal>
-      <Modal
-        opened={removeConfirm}
-        onClose={() => setRemoveConfirm(false)}
-        title={t("从研究清单移除 ", "Remove ") + ticker + t("？", " from the research list?")}
+      </WorkspaceDialog>
+      <WorkspaceAlertDialog
+        open={removeTarget !== null}
+        onClose={() => setRemoveTarget(null)}
+        preventDismiss={operation.isPending}
+        title={removeTarget ? t("从研究清单移除 ", "Remove ") + removeTarget.ticker + t("？", " from the research list?") : ""}
       >
         <div className="flex flex-wrap items-center justify-end gap-mx-md">
-          <Button variant="secondary" onClick={() => setRemoveConfirm(false)}>
+          <Button data-autofocus variant="secondary" disabled={operation.isPending} onClick={() => setRemoveTarget(null)}>
             {t("取消", "Cancel")}
           </Button>
           <Button
             variant="destructive"
             loading={operation.isPending}
             loadingLabel={t("移除中…", "Removing…")}
-            onClick={() => operation.mutate({ action: "remove" })}
+            onClick={() => removeTarget && operation.mutate({ action: "remove", target: removeTarget })}
           >
             {t("移除", "Remove")}
           </Button>
         </div>
-      </Modal>
+      </WorkspaceAlertDialog>
     </Page>
   );
 }

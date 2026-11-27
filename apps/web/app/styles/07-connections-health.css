@@ -346,7 +346,7 @@
   margin: 8px 0;
   color: var(--mx-muted);
 }
-.mx-health-drawer .mantine-Drawer-title {
+.mx-health-drawer .tm-overlay-title {
   min-inline-size: 0;
   overflow-wrap: anywhere;
 }

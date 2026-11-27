@@ -51,11 +51,13 @@ export function useResearchUniverse(instruments: ResearchInstrument[]) {
 }
 
 export function UniverseHeading({
+  hideTitle,
   wide,
   pinned,
   onPin,
   onSearch,
 }: {
+  hideTitle?: boolean;
   wide: boolean;
   pinned: boolean;
   onPin: () => void;
@@ -64,7 +66,7 @@ export function UniverseHeading({
   const t = useCopy();
   return (
     <span className="mx-universe-heading">
-      <span>{t("研究清单", "Research list")}</span>
+      {!hideTitle && <span>{t("研究清单", "Research list")}</span>}
       <span className="flex flex-wrap items-center gap-1">
         {wide && (
           <Button

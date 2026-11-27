@@ -330,6 +330,33 @@ test.describe("sector map", () => {
     expect(await page.locator(".mx-sector-list button").evaluateAll((buttons) =>
       buttons.every((button) => button.getBoundingClientRect().height >= 44))).toBe(true);
   });
+
+  test("a focused sector tile keeps focus when a resize toggles its tooltip", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop");
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page);
+    const tile = page.locator('.mx-sector-block[data-key="50"]');
+    await expect(tile).toBeVisible();
+    await tile.click();
+    await tile.focus();
+    await expect(tile).toBeFocused();
+    await tile.evaluate((el) => { (el as HTMLElement & { __stableTile?: boolean }).__stableTile = true; });
+    await expect(tile).toHaveAttribute("data-roomy", "");
+    await expect(tile).toHaveAttribute("data-trigger-disabled", "");
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
+
+    // Narrowing below the label fit width enables the tooltip without remounting the button or dropping focus.
+    await page.setViewportSize({ width: 820, height: 640 });
+    await expect(tile).not.toHaveAttribute("data-trigger-disabled");
+    await expect(tile).toBeFocused();
+    expect(await tile.evaluate((el) => Boolean((el as HTMLElement & { __stableTile?: boolean }).__stableTile))).toBe(true);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await expect(tile).toHaveAttribute("data-trigger-disabled", "");
+    await expect(tile).toBeFocused();
+    expect(await tile.evaluate((el) => Boolean((el as HTMLElement & { __stableTile?: boolean }).__stableTile))).toBe(true);
+  });
 });
 
 const fakeIndex = (
@@ -659,9 +686,24 @@ test.describe("market index layer", () => {
     await page.goto("/");
     const card = page.locator(".mx-overview-sectors");
     const picker = card.getByRole("button", { name: /选择市场|Choose market/ });
-    await picker.click();
+    const global = page.getByRole("menuitem", { name: /^(全球|Global)$/ });
+    if (mobile) await picker.tap();
+    else {
+      await picker.press("ArrowDown");
+      await expect(global).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expect(global).not.toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(picker).toBeFocused();
+      await picker.press("ArrowDown");
+    }
     await expect(page.getByRole("menuitem", { name: /A 股|China A/ })).toHaveCount(0);
-    await page.getByRole("menuitem", { name: /^(全球|Global)$/ }).click();
+    if (mobile) await global.tap();
+    else {
+      await expect(global).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(card.getByRole("button", { name: /选择市场.*全球市场|Choose market.*Global markets/ })).toBeFocused();
+    }
     const board = card.locator(mobile ? ".mx-overview-world" : ".mx-overview-world-map");
     const china = board.getByRole("link", { name: /中国.*沪深 300.*1.23|China.*CSI 300.*1.23/ });
     await expect(china).toHaveAttribute("href", "/sectors?market=cn");

@@ -1,14 +1,11 @@
 "use client";
 
+import { WorkspaceSheet } from "./overlay";
 import { useAssistantPageContext } from "./assistant/context";
-import {
-  Drawer,
-  Select,
-  TextInput,
-} from "@mantine/core";
+import { Select, TextInput } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowDown, Search } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Button, CloseButton } from "@/components/ui/button";
 import { useAllocationChartColours } from "@/ui/charts/palette";
 import { usePublicationFailure } from "@/ui/publication-provider";
@@ -87,6 +84,7 @@ function Positions() {
   const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const search = params.get("q") ?? "";
   const requestedSort = holdingSort(params.get("positionSort"));
+  const detailTrigger = useRef<HTMLButtonElement>(null);
   const [selected, setSelected] = useState<{ holding: Holding; runId?: string; positionAsOf?: string | null; scope: string } | null>(null);
   const positionData = query.data;
   const focusedHolding = selected?.scope === account ? selected : null;
@@ -112,17 +110,10 @@ function Positions() {
   const sort = requestedSort === "day" && !hasDay ? "value" : requestedSort;
   const direction = holdingSortDirection(sort, params.get("direction"));
   const ascending = direction === "asc";
-  const rows = useMemo(
-    () =>
-      scoped
-        .filter((h) =>
-          (h.ticker + " " + h.name)
-            .toLowerCase()
-            .includes(search.toLowerCase().trim()),
-        )
-        .sort((a, b) => compareHoldings(a, b, sort, direction)),
-    [scoped, search, sort, direction],
-  );
+  const matching = search.toLowerCase().trim();
+  const rows = scoped
+    .filter(holding => (holding.ticker + " " + holding.name).toLowerCase().includes(matching))
+    .sort((a, b) => compareHoldings(a, b, sort, direction));
   const positionStamp = (holding: Holding) => holdingPositionAsOf(holding, positionData);
   const snapshotBasis = (holding: Holding) => {
     const at = positionStamp(holding);
@@ -130,7 +121,8 @@ function Positions() {
       ? <time dateTime={at}>{formatDateTime(at, locale, timeZone, now)}</time>
       : t("时间未提供", "Time unavailable")}</small>;
   };
-  function selectHolding(holding: Holding) {
+  function selectHolding(holding: Holding, trigger: HTMLButtonElement) {
+    detailTrigger.current = trigger;
     // Keep the timestamp paired with the figures even if the lens refreshes with the drawer open.
     const positionAsOf = positionStamp(holding);
     setSelected({ holding, positionAsOf, runId: positionData?.runId, scope: account });
@@ -326,7 +318,7 @@ function Positions() {
                           <td>
                             <button
                               className="mx-table-button"
-                              onClick={() => selectHolding(h)}
+                              onClick={(event) => selectHolding(h, event.currentTarget)}
                             >
                               <span className="sr-only">{t("查看持仓 ", "View holding ")}</span>
                               <SecurityPeek
@@ -431,7 +423,7 @@ function Positions() {
                     <button
                       key={h.account + h.ticker}
                       className="mx-holding-mobile"
-                      onClick={() => selectHolding(h)}
+                      onClick={(event) => selectHolding(h, event.currentTarget)}
                     >
                       <div>
                         <Instrument ticker={h.ticker} name={h.name} isin={h.fundIsin} />
@@ -518,12 +510,13 @@ function Positions() {
               />
             )}
           </Panel>
-      <Drawer
-        opened={selected !== null && selected.scope === account}
+      <WorkspaceSheet
+        open={selected !== null && selected.scope === account}
         onClose={() => setSelected(null)}
         title={t("持仓明细", "Holding detail")}
-        closeButtonProps={{ "aria-label": t("关闭持仓明细", "Close holding detail") }}
-        classNames={{ content: "mx-position-drawer" }}
+        finalFocus={detailTrigger}
+        closeLabel={t("关闭持仓明细", "Close holding detail")}
+        className="mx-position-drawer"
       >
         {selected && (
           <HoldingDetail
@@ -535,7 +528,7 @@ function Positions() {
             now={now}
           />
         )}
-      </Drawer>
+      </WorkspaceSheet>
     </>
   );
 }

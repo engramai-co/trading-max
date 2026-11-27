@@ -10,7 +10,7 @@ import { currency, percent, tone } from "@/workspace/data";
 import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./attention";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
-import { Empty, Instrument, Panel, Pending, QueryError, Tag, TextLink, useCopy } from "./foundation";
+import { Help, Empty, Instrument, Panel, Pending, QueryError, Tag, TextLink, useCopy } from "./foundation";
 import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy, type EvidenceTime } from "./etf-data";
 import { useEvidenceTime } from "./etf-reading";
 import Link from "./link";
@@ -56,30 +56,24 @@ function factText(fact: AttentionFact, zh: boolean) {
   return zh ? `浮亏 ${percent(Math.abs(fact.value), false, 0)}` : `${percent(fact.value, true, 0)} vs cost`;
 }
 
-/**
- * The readings past their thresholds for one column: a dot before the figure, every reading spelled out
- * for assistive technology. Red keeps its meaning for a loss; research readings take the warning tint.
- */
-function Flag({ facts, kinds }: { facts: AttentionFact[]; kinds: AttentionFact["kind"][] }) {
-  const { locale } = useLocale();
-  const matched = facts.filter((fact) => kinds.includes(fact.kind));
-  if (!matched.length) return null;
-  const text = matched.map((fact) => factText(fact, locale === "zh")).join(" · ");
-  return (
-    <>
-      <i className="mx-ledger-flag" data-tone={matched.some((fact) => fact.kind === "loss") ? "down" : "warning"}
-        title={text} aria-hidden="true" />
-      <span className="sr-only">{text}</span>
-    </>
-  );
-}
-
-function TrackingCell({ display, description, status, facts }: {
-  display: string; description: string; status?: string; facts: AttentionFact[];
+function FlaggedReading({ facts, kinds, label, value, className, basis }: {
+  facts: AttentionFact[];
+  kinds: AttentionFact["kind"][];
+  label: string;
+  value: string;
+  className?: string;
+  basis?: string;
 }) {
-  return <span className="mx-ledger-etf" role="group" aria-label={description} title={description} data-stale={status ? "" : undefined}>
-    <Flag facts={facts} kinds={["tracking"]} /><span aria-hidden="true">{display}</span>
-  </span>;
+  const { locale } = useLocale();
+  const matched = facts.filter(fact => kinds.includes(fact.kind));
+  const flag = matched.length > 0 && <i className="mx-ledger-flag"
+    data-tone={matched.some(fact => fact.kind === "loss") ? "down" : "warning"} aria-hidden="true" />;
+  const result = <span className={className}>{value}</span>;
+  if (!matched.length && !basis) return result;
+  return <Help label={label} triggerLabel={label + " · " + value} triggerContent={<>{flag}{result}</>}>
+    {matched.length > 0 && <p>{matched.map(fact => factText(fact, locale === "zh")).join(" · ")}</p>}
+    {basis && <p>{basis}</p>}
+  </Help>;
 }
 
 function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
@@ -87,27 +81,17 @@ function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
   const hasTracking = row.etf?.tracking.differencePp != null && row.etf.tracking.state !== "incomparable";
   return {
     day: row.dayClosed ? <ClosedMarket /> : <span className={changeClass(row.day, 2)}>{percent(row.day, true, 2)}</span>,
-    pnl: (
-      <>
-        <Flag facts={row.facts} kinds={["loss"]} />
-        <span className={changeClass(row.pnl, 1)}>{percent(row.pnl, true, 1)}</span>
-      </>
-    ),
-    score: (
-      <>
-        <Flag facts={row.facts} kinds={["score", "rsi"]} />
-        {row.score ?? "—"}
-      </>
-    ),
-    tracking: tracking && (
-      <TrackingCell facts={row.facts} {...tracking} display={hasTracking ? tracking.display : "—"} />
-    ),
-    upside: (
-      <>
-        <Flag facts={row.facts} kinds={["upside"]} />
-        <span title={row.baselineId ? t("已保存基准 · 五年中性估值","Saved baseline · five-year base value") : undefined}>{percent(row.upside, true, 0)}</span>
-      </>
-    ),
+    pnl: <FlaggedReading facts={row.facts} kinds={["loss"]} label={t("浮动盈亏", "Unrealised P&L")}
+      value={percent(row.pnl, true, 1)} className={changeClass(row.pnl, 1)} />,
+    score: <FlaggedReading facts={row.facts} kinds={["score", "rsi"]} label={t("技术评分", "Technical score")}
+      value={String(row.score ?? "—")} />,
+    tracking: tracking && <span className="mx-ledger-etf" data-stale={tracking.status ? "" : undefined}>
+      <FlaggedReading facts={row.facts} kinds={["tracking"]} label={t("一年跟踪差", "1-year tracking difference")}
+        value={hasTracking ? tracking.display : "—"} basis={tracking.description} />
+    </span>,
+    upside: <FlaggedReading facts={row.facts} kinds={["upside"]} label={t("模型空间", "Model upside")}
+      value={percent(row.upside, true, 0)}
+      basis={row.baselineId ? t("已保存基准 · 五年中性估值", "Saved baseline · five-year base value") : undefined} />,
   };
 }
 
@@ -241,13 +225,12 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                   {rows.map((row) => {
                     const cells = figures(row, t, when);
                     return (
-                      <li key={row.ticker}>
-                        <Link className="mx-ledger-item" href={row.href} {...keys(rowFocus(row))}>
-                          <span className="mx-ledger-item-head">
+                      <li className="mx-ledger-item" key={row.ticker}>
+                          <Link className="mx-ledger-item-head" href={row.href} {...keys(rowFocus(row))}>
                             {dot(row)}
                             <Instrument ticker={row.ticker} name={row.name} isin={row.isin} small />
                             <strong><span className="sr-only">{weightLabel} </span>{percent(row.weight)}</strong>
-                          </span>
+                          </Link>
                           <dl>
                             {columns.map(({ key, label }) => <div key={key}>
                               <dt className="sr-only">{key === "day" ? dayLabel(row.dayDate ?? ledger.columnDay) : label}</dt>
@@ -257,7 +240,6 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                               </dd>
                             </div>)}
                           </dl>
-                        </Link>
                       </li>
                     );
                   })}

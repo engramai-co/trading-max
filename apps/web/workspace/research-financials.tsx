@@ -1,9 +1,10 @@
 "use client";
+import { WorkspaceSheet } from "./overlay";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Drawer, Select } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -644,14 +645,14 @@ export function FinancialWorkbench({
       </div>
       <CompleteStatements ticker={ticker} revision={revision} preview={preview} frequency={frequency} />
       </ResearchReading>
-      <Drawer
-        position="right"
-        size="lg"
-        opened={Boolean(activeDetail)}
+      <WorkspaceSheet
+        width={620}
+        open={Boolean(activeDetail)}
         onClose={() => {
           setDetail(null);
           update({ fact: null });
         }}
+        closeLabel={t("关闭报表详情", "Close financial details")}
         title={activeDetail ? label(activeDetail.metric) : ""}
       >
         {activeDetail && (
@@ -738,7 +739,7 @@ export function FinancialWorkbench({
             </Button>
           </div>
         )}
-      </Drawer>
+      </WorkspaceSheet>
     </>
   );
 }

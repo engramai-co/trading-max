@@ -1,7 +1,9 @@
 "use client";
 
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { WorkspaceSheet } from "./overlay";
 import { useAssistant } from "./assistant/context";
-import { Drawer, Menu, Select } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { ChevronDown, Ellipsis, Trash } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
@@ -60,6 +62,11 @@ export function IndexResearchWorkspace() {
     setFinder(true);
   });
   const [listOpen, setListOpen] = useState(false);
+  const listTrigger = useRef<HTMLElement>(null);
+  function openList(event: React.MouseEvent<HTMLElement>) {
+    listTrigger.current = event.currentTarget;
+    setListOpen(true);
+  }
   const catalog = useIndexCatalog();
   const catalogue = catalog.data ?? [];
   const id = params.get("index") ?? "";
@@ -99,11 +106,21 @@ export function IndexResearchWorkspace() {
     setListOpen(false);
     update({ type: null, index: null, view: null, ticker });
   };
+  const finderOverlay = (
+      <SecurityFinder opened={finder} key={finderQuery} initial={finderQuery} onClose={() => {
+        setFinder(false);
+        handover.closed();
+      }} onSelect={(security) => {
+        handover.chosen();
+        update({ type: null, index: null, view: null, ticker: security.ticker });
+        setFinder(false);
+      }} />
+  );
   return (
     <Page title={t("研究", "Research")} titleHidden className="mx-research-page mx-index-research" actions={
       <>
         {!index && <Button className="mx-universe-toggle" variant="secondary"
-          aria-expanded={listOpen} onClick={() => setListOpen(true)}>
+          aria-expanded={listOpen} onClick={openList}>
           {t("研究清单", "Research list")}
           <ChevronDown size={16} aria-hidden="true" />
         </Button>}
@@ -118,7 +135,7 @@ export function IndexResearchWorkspace() {
                 <h2>
                   <button type="button" className="mx-security-switcher"
                     aria-label={name + t("，打开研究清单", ", open research list")}
-                    aria-expanded={listOpen} onClick={() => setListOpen(true)}>
+                    aria-expanded={listOpen} onClick={openList}>
                     {name}
                     <ChevronDown size={16} aria-hidden="true" />
                   </button>
@@ -159,21 +176,16 @@ export function IndexResearchWorkspace() {
               {t("在市场页查看", "Open in Markets")}
             </Link>
           </>}
-      <SecurityFinder opened={finder} key={finderQuery} initial={finderQuery} onClose={() => {
-        setFinder(false);
-        handover.closed();
-      }} onSelect={(security) => {
-        handover.chosen();
-        update({ type: null, index: null, view: null, ticker: security.ticker });
-        setFinder(false);
-      }} />
-      <Drawer
-        opened={listOpen}
+      {!listOpen && finderOverlay}
+      <WorkspaceSheet
+        open={listOpen}
+        finalFocus={listTrigger}
         onClose={() => setListOpen(false)}
-        title={<UniverseHeading wide={false} pinned={false} onPin={() => undefined}
-          onSearch={() => { setListOpen(false); setFinderQuery(""); setFinder(true); }} />}
-        styles={{ title: { flex: 1 }, header: { gap: 8 } }}
-        size={360}
+        title={t("研究清单", "Research list")}
+        closeLabel={t("关闭研究清单", "Close research list")}
+        headerActions={<UniverseHeading hideTitle wide={false} pinned={false} onPin={() => undefined}
+          onSearch={() => { setFinderQuery(""); setFinder(true); }} />}
+        width={360}
       >
         {shell.isError ? <QueryError retry={shell.refetch} /> : <UniverseList
           state={universe}
@@ -183,7 +195,8 @@ export function IndexResearchWorkspace() {
           indexId={id}
           onSelect={openTicker}
         />}
-      </Drawer>
+        {listOpen && finderOverlay}
+      </WorkspaceSheet>
     </Page>
   );
 }
@@ -194,18 +207,17 @@ function IndexListActions({ id }: { id: string }) {
   const listed = useListedIndices();
   return (
     <div className="mx-research-actions">
-      {listed.has(id) ? <Menu shadow="md" position="bottom-end">
-        <Menu.Target>
-          <Button variant="ghost" size="icon" aria-label={t("更多操作", "More actions")}>
+      {listed.has(id) ? <DropdownMenu modal={false}>
+        <DropdownMenuTrigger render={<Button variant="ghost" size="icon" aria-label={t("更多操作", "More actions")}>
             <Ellipsis size={20} aria-hidden="true" />
-          </Button>
-        </Menu.Target>
-        <Menu.Dropdown>
-          <Menu.Item leftSection={<Trash aria-hidden="true" size={16} />} onClick={() => listed.remove(id)}>
+          </Button>} />
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => listed.remove(id)}>
+            <Trash size={16} aria-hidden="true" />
             {t("从研究清单移除", "Remove from research list")}
-          </Menu.Item>
-        </Menu.Dropdown>
-      </Menu> : <Button onClick={() => listed.add(id)}>{t("加入研究清单", "Add to research list")}</Button>}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu> : <Button onClick={() => listed.add(id)}>{t("加入研究清单", "Add to research list")}</Button>}
     </div>
   );
 }
@@ -443,7 +455,6 @@ function Heatmap({ rows }: { rows: IndexConstituent[] }) {
           return (
             <Tip
               key={key}
-              withinPortal
               describes={false}
               label={
                 <span className="mx-tooltip-stack">

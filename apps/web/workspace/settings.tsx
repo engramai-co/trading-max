@@ -1,9 +1,8 @@
 "use client";
 
+import { WorkspaceAlertDialog, WorkspaceDialog, WorkspaceSheet } from "./overlay";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
-  Drawer,
-  Modal,
   PasswordInput,
   Select,
 } from "@mantine/core";
@@ -285,12 +284,12 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
       )}
       </TabPanel>
       </TabsScope>
-      <Modal
-        opened={view === "models" && Boolean(data?.llmProviders.length) &&
+      <WorkspaceDialog
+        open={view === "models" && Boolean(data?.llmProviders.length) &&
           !hasModelConnection && offerModelConnection && !connection}
         onClose={() => setOfferModelConnection(false)}
         title={t("连接你的模型", "Connect your model")}
-        centered
+        className="mx-model-provider-dialog"
       >
         <div className="flex flex-col gap-mx-lg">
           <p>{t(
@@ -298,6 +297,8 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
             "Choose a provider. OpenAI supports ChatGPT sign-in or an API key. You can also set this up later.",
           )}</p>
           <Select
+            data-autofocus
+            comboboxProps={{ portalProps: { target: ".mx-model-provider-dialog" } }}
             label={t("模型提供商", "Model provider")}
             value={selectedProvider}
             onChange={(value) => setSelectedProvider(value ?? "openai")}
@@ -321,13 +322,13 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
             </Button>
           </div>
         </div>
-      </Modal>
-      <Drawer
-        opened={connection !== null}
+      </WorkspaceDialog>
+      <WorkspaceSheet
+        open={connection !== null}
         onClose={() => setConnection(null)}
         title={connection ? t("连接 ", "Connect ") + connection.title : ""}
-        position="right"
-        size={480}
+        className="mx-connection-sheet"
+        width={480}
       >
         {connection && <div className="flex flex-col gap-mx-lg">
           {connection.kind === "model" && ["openai", "openai-codex"].includes(connection.provider.provider) &&
@@ -351,7 +352,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
                   void client.invalidateQueries({ queryKey: settingsKey });
                 }} />}
         </div>}
-      </Drawer>
+      </WorkspaceSheet>
     </Page>
   );
 }
@@ -500,6 +501,8 @@ function ConnectionForm({
         <div className="flex flex-col gap-mx-md">
           {connection.kind === "broker" && (
             <Select
+              data-autofocus
+              comboboxProps={{ portalProps: { target: ".mx-connection-sheet" } }}
               label={t("账户环境", "Account environment")}
               value={environment}
               onChange={(v) => edit(() => setEnvironment(v ?? "live"))}
@@ -511,6 +514,7 @@ function ConnectionForm({
             />
           )}
           <PasswordInput
+            data-autofocus={connection.kind !== "broker" || undefined}
             label={connection.kind === "broker" ? "API Key ID" : "API Key"}
             value={apiKey}
             onChange={(e) => {
@@ -543,6 +547,7 @@ function ConnectionForm({
             />
           ) : (
             <Select
+              comboboxProps={{ portalProps: { target: ".mx-connection-sheet" } }}
               label={t("测试模型", "Model to test")}
               value={model}
               onChange={(v) => edit(() => setModel(v ?? ""))}
@@ -661,11 +666,10 @@ function ConnectionForm({
           </Button>
         </div>
       )}
-      <Modal
-        opened={disconnecting}
+      <WorkspaceAlertDialog
+        open={disconnecting}
         onClose={() => setDisconnecting(false)}
         title={t("确认断开连接", "Confirm disconnection")}
-        centered
       >
         <div className="flex flex-col gap-mx-md">
           <p className="mx-body-copy">
@@ -683,7 +687,7 @@ function ConnectionForm({
             </Notice>
           )}
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
-            <Button variant="secondary" onClick={() => setDisconnecting(false)}>
+            <Button data-autofocus variant="secondary" onClick={() => setDisconnecting(false)}>
               {t("保留连接", "Keep connection")}
             </Button>
             <Button
@@ -696,7 +700,7 @@ function ConnectionForm({
             </Button>
           </div>
         </div>
-      </Modal>
+      </WorkspaceAlertDialog>
     </div>
   );
 }

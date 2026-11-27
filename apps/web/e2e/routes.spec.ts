@@ -59,15 +59,15 @@ test.describe("portfolio workspace", () => {
     ).toBeVisible();
     await page.getByRole("tab", { name: /模型连接|Model connections/ }).click();
     await expect(page).toHaveURL(/tab=models/);
+    // Synthetic workspaces have no model connection. Dismiss the optional
+    // first-connection offer before checking the next settings tab.
+    await page.getByRole("dialog").getByRole("button", { name: /稍后设置|Set up later/ }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(
       page.getByRole("heading", {
         name: /模型连接（可选）|Model connections \(optional\)/,
       }),
     ).toBeVisible();
-    // Synthetic workspaces have no model connection. Dismiss the optional
-    // first-connection offer before checking the next settings tab.
-    await page.getByRole("dialog").getByRole("button", { name: /稍后设置|Set up later/ }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
     await page.getByRole("tab", { name: /个人偏好|Preferences/ }).click();
     await expect(
       page.getByRole("textbox", { name: /显示名称|Display name/ }),

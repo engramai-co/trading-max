@@ -79,7 +79,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       "使用 ChatGPT 账户的 Codex 额度。授权保存在运行 Trading Max 的设备上；API Key 使用独立计费。",
       "Use your ChatGPT account’s Codex allowance. Authorisation stays on the device running Trading Max. API keys are billed separately.",
     )}</Notice>
-    <Select label={t("模型", "Model")} data={provider.models} value={model}
+    <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-connection-sheet" } }} label={t("模型", "Model")} data={provider.models} value={model}
       onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending} allowDeselect={false} />
     <Checkbox checked={defaultModel} onCheckedChange={(checked) => setDefaultModel(checked)}
       disabled={pending} label={t("设为默认模型", "Use as the default model")} />
