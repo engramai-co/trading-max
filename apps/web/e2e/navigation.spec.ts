@@ -258,6 +258,13 @@ test.describe("workspace navigation refinements", () => {
       await expect(activeItem.locator("svg.lucide-check")).toHaveCount(1);
       await expect(activeItem.locator("svg.lucide-check")).toBeVisible();
       await expect(inactiveItem.locator("svg.lucide-check")).toHaveCount(0);
+      // Destination icons render at 18px beside a 16px check, and the current row reads in semibold.
+      for (const item of [activeItem, inactiveItem]) {
+        await expect(item.locator("svg:not(.lucide-check)")).toHaveCSS("width", "18px");
+      }
+      await expect(activeItem.locator("svg.lucide-check")).toHaveCSS("width", "16px");
+      await expect(activeItem).toHaveCSS("font-weight", "600");
+      await expect(inactiveItem).not.toHaveCSS("font-weight", "600");
       await expect.poll(async () => {
         const [menuBg, activeBg] = await Promise.all([
           menu.evaluate((el) => getComputedStyle(el).backgroundColor),

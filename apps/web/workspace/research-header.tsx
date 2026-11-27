@@ -226,7 +226,7 @@ export function SecurityActions({
             disabled={held || pending}
             onClick={onRemove}
           >
-            <Trash size={15} aria-hidden="true" />
+            <Trash size={16} aria-hidden="true" />
             {t("从研究清单移除", "Remove from research list")}
             {held && <span className="mx-menu-note ml-auto">{t("持仓中", "Held")}</span>}
           </DropdownMenuItem>

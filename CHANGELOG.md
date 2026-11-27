@@ -4,6 +4,22 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.75.0] - 2026-11-27
+
+### Changed
+- Dialogs, side sheets, phone drawers, menus, pop-ups and tooltips use the new design system, with rounded panels and the same depth in both appearances; dialogs, sheets and drawers dim the page behind them. Phone drawers can be swiped down to close and stay above the on-screen keyboard.
+- Close buttons are named in the language in use.
+
+### Fixed
+- While a full-screen chart or a holding's details are open, the page behind can no longer take keyboard focus or be reached by screen readers.
+- Escape closes the innermost layer first: an open list before its dialog, the security finder before the research list, and a chart's actions menu before the chart. Focus returns to the control that opened each layer.
+- Tooltips stay open while the pointer moves onto them, are announced once and close with Escape. Help readings open with a tap on touch screens and scroll with the keyboard when long.
+- An ETF's data basis, a fund's provenance and holding flags can be read with the keyboard and on touch screens, not only by hovering.
+- The P&L help on desktop no longer covers the figure it explains.
+- In the docked MaxAI panel, Tab moves on to the page while MaxAI checks its connection; in the narrow MaxAI overlay, focus stays inside.
+- The chart actions menu works with the keyboard and closes with Escape or a click outside; copying a reading or exporting shows its result beside **More**.
+- On touch screens, a MaxAI citation shows its source, and the **Underlying exposure** sheet shows a security's quote and quote time when available.
+
 ## [1.74.0] - 2026-11-27
 
 ### Changed

@@ -342,7 +342,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       key={item.value}
       onClick={() => setColorScheme(item.value)}
     >
-      <item.Icon size={18} aria-hidden="true" />
+      <item.Icon size={18} className="size-[18px]" aria-hidden="true" />
       {item.label}
       {colorScheme === item.value && <Check className="ml-auto" size={16} aria-hidden="true" />}
     </DropdownMenuItem>
@@ -382,8 +382,9 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             nativeButton={false}
             render={<Link href={n.href} />}
             aria-current={active?.href === n.href ? "page" : undefined}
+            className="aria-[current=page]:font-semibold"
           >
-            <n.icon size={18} aria-hidden="true" />
+            <n.icon size={18} className="size-[18px]" aria-hidden="true" />
             {n.label}
             {active?.href === n.href && <Check className="ml-auto" size={16} aria-hidden="true" />}
           </DropdownMenuItem>
@@ -395,7 +396,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               aria-label={nextLocale.action}
               onClick={() => setLocale(nextLocale.value)}
             >
-              <Globe size={18} aria-hidden="true" />
+              <Globe size={18} className="size-[18px]" aria-hidden="true" />
               <span lang={nextLocale.lang}>{nextLocale.label}</span>
             </DropdownMenuItem>
             <DropdownMenuSeparator role="separator" />
