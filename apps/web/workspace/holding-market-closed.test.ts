@@ -31,17 +31,11 @@ vi.mock("./route-state", () => ({ useRouteState: () => ({ params: new URLSearchP
 vi.mock("next/navigation", () => ({ usePathname: () => "/" }));
 vi.mock("./current-day", () => ({ useCurrentDay: () => ({ today: day, now: Date.parse(day) }) }));
 vi.mock("@/ui/pointer", () => ({ useFinePointer: () => true }));
-vi.mock("@mantine/core", async (importOriginal) => {
-  const mantine = await importOriginal<typeof import("@mantine/core")>();
-  // Mount the hover content inline for this server render. Playwright checks the live portal.
-  const part = ({ children }: { children: ReactNode }) => el("div", null, children);
-  // The security peek is a Popover it opens itself after a delay.
-  return {
-    ...mantine,
-    HoverCard: Object.assign(part, { Target: part, Dropdown: part }),
-    Popover: Object.assign(part, { Target: part, Dropdown: part }),
-  };
-});
+vi.mock("@/components/ui/hover-card", () => ({
+  // Mount the preview inline for this server render. Playwright checks the live portal.
+  HoverCard: ({ children }: { children: ReactNode }) => el("div", null, children),
+  HoverCardContent: ({ children }: { children: ReactNode }) => el("div", null, children),
+}));
 
 function render(child: ReactNode) {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false } } });

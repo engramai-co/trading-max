@@ -25,12 +25,6 @@
     display: inline-block;
     padding-block: 10px;
   }
-  :is(.mantine-Modal-close, .mantine-Drawer-close) {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-    min-height: 44px;
-  }
   .mantine-PasswordInput-input {
     height: 44px;
     min-height: 44px;

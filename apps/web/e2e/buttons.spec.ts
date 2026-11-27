@@ -149,10 +149,9 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     const infoBtn = page.locator(".mx-info").first();
     await expect(infoBtn).toBeVisible();
     await infoBtn.click();
-    const helpClose = isMobile
-      ? page.locator(".mx-help-sheet-close")
-      : page.getByRole("button", { name: "Close explanation", exact: true });
+    const helpClose = page.getByRole("button", { name: "Close explanation", exact: true });
     await expect(helpClose).toBeVisible();
+    await expect(page.getByRole("dialog")).toHaveCSS("opacity", "1");
     const helpCloseBox = (await helpClose.boundingBox())!;
     expect(helpCloseBox.width).toBeGreaterThanOrEqual(minBox);
     expect(helpCloseBox.height).toBeGreaterThanOrEqual(minBox);
@@ -260,7 +259,7 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await page.goto("/settings?tab=assistant");
     await page.getByRole("button", { name: "Delete conversations" }).click();
-    const confirm = page.getByRole("dialog").getByRole("button", { name: "Delete all conversations" });
+    const confirm = page.getByRole("alertdialog").getByRole("button", { name: "Delete all conversations" });
     await expect(confirm).toBeVisible();
     const styles = await confirm.evaluate((el) => {
       const s = getComputedStyle(el);
@@ -297,7 +296,7 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     await page.getByRole("button", { name: /Manage connection|Connect account/ }).first().click();
     const dialog = page.getByRole("dialog");
     await expect(dialog).toBeVisible();
-    const closeBox = (await dialog.locator(".mantine-Drawer-close").boundingBox())!;
+    const closeBox = (await dialog.locator("[data-overlay-close]").boundingBox())!;
     expect(closeBox.width).toBeGreaterThanOrEqual(43.5);
     expect(closeBox.height).toBeGreaterThanOrEqual(43.5);
     const revealBox = (await dialog.locator(".mantine-PasswordInput-visibilityToggle").first().boundingBox())!;

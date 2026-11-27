@@ -1,8 +1,9 @@
 "use client";
 
-import { Menu, Select } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Segments, useCopy } from "./foundation";
 
 type MarketOption<T extends string> = {
@@ -71,8 +72,8 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
   return (
     <div className="mx-sector-market-overflow">
       <Segments label={label} value={value} onChange={onChange} options={fixed} shortcuts />
-      <Menu position="bottom-end">
-        <Menu.Target>
+      <DropdownMenu modal={false}>
+        <DropdownMenuTrigger render={
           <Button
             variant="outline"
             aria-label={t("更多市场", "More markets") + (selected ? `: ${selected.label}` : "")}
@@ -81,20 +82,20 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
             {selected?.label ?? t("更多", "More")}
             <ChevronDown size={16} aria-hidden="true" />
           </Button>
-        </Menu.Target>
-        <Menu.Dropdown>
+        } />
+        <DropdownMenuContent align="end" aria-label={t("更多市场", "More markets")}>
           {grouped.filter(({ options }) => options.length).map(({ group, options }) => (
-            <div key={group}>
-              <Menu.Label>{group}</Menu.Label>
+            <DropdownMenuGroup key={group}>
+              <DropdownMenuLabel>{group}</DropdownMenuLabel>
               {options.map((option) => (
-                <Menu.Item key={option.value} aria-current={option.value === value ? "true" : undefined} onClick={() => pick(option.value)}>
+                <DropdownMenuItem key={option.value} aria-current={option.value === value ? "true" : undefined} onClick={() => pick(option.value)}>
                   {option.marker && <span className="mx-segment-marker" aria-label={option.marker} />} {option.label}
-                </Menu.Item>
+                </DropdownMenuItem>
               ))}
-            </div>
+            </DropdownMenuGroup>
           ))}
-        </Menu.Dropdown>
-      </Menu>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

@@ -201,7 +201,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     const node = mapHost.current?.querySelector<MapAnchor>(`.mx-global-region[data-market="${region}"]`);
     if (node) inspect(region as MapMarket,node,true);
   }, [matchesCitation,region,inspect]);
-  useEscapeLayer(inspection != null, () => {
+  useEscapeLayer(inspection != null, mapHost, () => {
     // Focus inside the card goes back to the market that opened it.
     if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
     close();

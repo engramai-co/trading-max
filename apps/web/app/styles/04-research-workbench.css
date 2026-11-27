@@ -334,8 +334,11 @@
   font-weight: 600;
   gap: 16px;
 }
-.mantine-Drawer-title .mx-universe-heading {
+.tm-overlay-header .mx-universe-heading {
   margin-bottom: 0;
+}
+.tm-overlay-header:has(.mx-universe-heading) .tm-overlay-title {
+  margin-inline-end: auto;
 }
 .mx-watchlist {
   max-height: calc(100dvh - 360px);

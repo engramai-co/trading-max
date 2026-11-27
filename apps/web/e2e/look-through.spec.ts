@@ -124,6 +124,46 @@ test.describe("look-through companies", () => {
     await expect(page.getByRole("combobox", { name: "Filter country", exact: true })).toHaveValue("All countries");
     await expect(page.getByRole("button", { name: "Clear filters", exact: true })).toHaveCount(0);
   });
+
+  test("the exposure sheet requests and shows the quote basis only on touch", async ({ page, isMobile }) => {
+    await open(page);
+    const priceRequests: string[] = [];
+    await page.route("**/api/backend/research/SYN01/prices*", (route) => {
+      priceRequests.push(route.request().url());
+      return route.fulfill({ json: {
+        ticker: "SYN01",
+        requestedInterval: "15m",
+        actualInterval: "15m",
+        currency: "USD",
+        timezone: "America/New_York",
+        points: [
+          { date: "2026-11-03T16:00:00", close: 120 },
+          { date: "2026-11-04T09:30:00", close: 122 },
+          { date: "2026-11-04T10:00:00", close: 125 },
+        ],
+      } });
+    });
+    const holding = page.getByRole("button", { name: /SYN01/ }).first();
+    if (isMobile) await holding.tap();
+    else await holding.press("Enter");
+    const drawer = page.getByRole("dialog", { name: "Underlying exposure" });
+    await expect(drawer.getByText("Total exposure", { exact: true })).toBeVisible();
+    if (!isMobile) {
+      // Keyboard activation opens the sheet without warming the hover preview's cache.
+      const close = drawer.getByRole("button", { name: "Close underlying exposure" });
+      await expect(close).toBeFocused();
+      await expect(drawer).not.toContainText(/Market quote|Market close|\+4\.17%/);
+      await close.press("Escape");
+      await expect(drawer).toHaveCount(0);
+      expect(priceRequests).toHaveLength(0);
+      return;
+    }
+    await expect(drawer).toContainText("Market quote");
+    await expect(drawer).toContainText("US$125.00");
+    await expect(drawer).toContainText("+4.17%");
+    await expect(drawer.locator('time[datetime="2026-11-04T10:00:00"]')).toBeVisible();
+    expect(priceRequests).toHaveLength(1);
+  });
 });
 
 for (const { height, title } of [

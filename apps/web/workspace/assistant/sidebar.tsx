@@ -165,7 +165,7 @@ function WorkStepsDisclosure({ steps }: { steps: WorkStep[] }) {
   if (!steps.length) return null;
   return (
     <details className="mx-assistant-steps">
-      <summary>{t("工作过程", "Work steps")}</summary>
+      <summary tabIndex={0}>{t("工作过程", "Work steps")}</summary>
       <WorkStepItems steps={steps} />
     </details>
   );
@@ -422,13 +422,14 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
   const exchanges = pairConversationTurns(messages);
   return <>
     <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><div>
-      <button disabled={busy} onClick={onNew} aria-label={t("新对话", "New conversation")}><Plus size={18} aria-hidden="true" /></button>
-      <button ref={historyButton} disabled={busy} onClick={onHistory} aria-label={t("历史对话", "Conversation history")}><HistoryIcon size={18} aria-hidden="true" /></button>
-      <button data-assistant-dismiss onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X size={18} aria-hidden="true" /></button>
+      {/* WebKit skips native buttons during Tab traversal without an explicit tab index. */}
+      <button tabIndex={0} disabled={busy} onClick={onNew} aria-label={t("新对话", "New conversation")}><Plus size={18} aria-hidden="true" /></button>
+      <button tabIndex={0} ref={historyButton} disabled={busy} onClick={onHistory} aria-label={t("历史对话", "Conversation history")}><HistoryIcon size={18} aria-hidden="true" /></button>
+      <button tabIndex={0} data-assistant-dismiss onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X size={18} aria-hidden="true" /></button>
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
       {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} />{card.status && <p role="status" className="mx-assistant-note">{card.status}</p>}<ReadingLines card={card} />
-        <div className="mx-assistant-questions">{card.questions.map(q => <button key={q} disabled={sendingBlocked || readingPending} onClick={() => send(q, openingTarget)}>{q}<span aria-hidden="true">→</span></button>)}</div>
+        <div className="mx-assistant-questions">{card.questions.map(q => <button tabIndex={0} key={q} disabled={sendingBlocked || readingPending} onClick={() => send(q, openingTarget)}>{q}<span aria-hidden="true">→</span></button>)}</div>
       </div>}
       {exchanges.map(exchange => {
         const record = exchange.user ? turnStore.turns[exchange.user.id] : undefined;
@@ -480,15 +481,15 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
                   {verified.length > 0 && <VerifiedLines lines={verified} />}
                   <div className="mx-assistant-turn-actions">
                     {record.errorCode === "assistant_snapshot_missing" ? (
-                      <button type="button" disabled={busy || !ready || pending} onClick={() => retryTurn(record, true)}>
+                      <button type="button" tabIndex={0} disabled={busy || !ready || pending} onClick={() => retryTurn(record, true)}>
                         {t("使用当前数据重新提问", "Ask again with current data")}
                       </button>
                     ) : (
                       <>
-                        <button type="button" disabled={busy || !ready || pending} onClick={() => retryTurn(record)}>
+                        <button type="button" tabIndex={0} disabled={busy || !ready || pending} onClick={() => retryTurn(record)}>
                           {t("重试", "Retry")}
                         </button>
-                        <button type="button" disabled={busy} onClick={() => editTurnPrompt(record)}>
+                        <button type="button" tabIndex={0} disabled={busy} onClick={() => editTurnPrompt(record)}>
                           {t("编辑问题", "Edit prompt")}
                         </button>
                       </>
@@ -521,8 +522,8 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
         }} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
-        {busy ? <button type="button" onClick={event => { event.preventDefault(); handleStop(); }} aria-label={t("停止", "Stop")}><Square size={18} aria-hidden="true" fill="currentColor" /></button>
-          : <button type="submit" disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp size={18} aria-hidden="true" /></button>}
+        {busy ? <button type="button" tabIndex={0} onClick={event => { event.preventDefault(); handleStop(); }} aria-label={t("停止", "Stop")}><Square size={18} aria-hidden="true" fill="currentColor" /></button>
+          : <button type="submit" tabIndex={0} disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp size={18} aria-hidden="true" /></button>}
       </div>
     </form>
   </>;
@@ -551,10 +552,10 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
       else { const data = await api<{ messages: UIMessage[] }>(path, { signal }); select(id, data.messages); }
     } catch { if (!signal.aborted) setError(true); } finally { action.current = null; setBusy(false); }
   }
-  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button data-assistant-dismiss ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X size={18} aria-hidden="true" /></button></div>
+  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button tabIndex={0} data-assistant-dismiss ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X size={18} aria-hidden="true" /></button></div>
     <div className="mx-assistant-transcript">{conversations.data?.map(c => <div className="mx-assistant-history" key={c.id}>
-      <button disabled={busy} onClick={() => void act(c.id, false)}>{c.title || t("对话", "Conversation")}</button>
-      <button disabled={busy} onClick={() => void act(c.id, true)} aria-label={t("删除对话", "Delete conversation") + " · " + (c.title || "")}><Trash size={18} aria-hidden="true" /></button>
+      <button tabIndex={0} disabled={busy} onClick={() => void act(c.id, false)}>{c.title || t("对话", "Conversation")}</button>
+      <button tabIndex={0} disabled={busy} onClick={() => void act(c.id, true)} aria-label={t("删除对话", "Delete conversation") + " · " + (c.title || "")}><Trash size={18} aria-hidden="true" /></button>
     </div>)}{conversations.data?.length === 0 && <p>{t("暂无已保存的对话。", "No saved conversations yet.")}</p>}
     {(error || conversations.isError) && <p role="alert">{t("无法读取或更新对话。", "Could not read or update the conversation.")}</p>}</div></>;
 }

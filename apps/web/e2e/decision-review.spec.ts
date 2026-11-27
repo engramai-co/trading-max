@@ -1553,6 +1553,8 @@ test.describe("review assistant", () => {
       decision_date: "2026-09-02",
     });
     await expect(page.getByText("暂时无法读取。", { exact: true }).last()).toBeVisible();
+    const reading = page.getByRole("dialog");
+    if (await reading.isVisible()) await reading.getByRole("button", { name: /关闭解读|Close reading/ }).click();
     await expect(group.getByRole("button", { name: /SYNC3/ })).toBeAttached();
   });
 

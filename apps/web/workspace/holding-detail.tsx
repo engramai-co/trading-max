@@ -170,13 +170,13 @@ function FundPosition({ holding, runId }: { holding: Holding; runId: string }) {
   const unavailable: string[] = [];
   if (reading?.indexName) fundRows.push([t("跟踪指数", "Tracked index"), reading.indexName]);
   else unavailable.push(t("跟踪指数", "tracked index"));
-  if (fee !== missing) fundRows.push([feeLabel, <span key="fee" role="group" title={feeEvidence} aria-label={feeEvidence}>{fee}</span>]);
+  if (fee !== missing) fundRows.push([feeLabel, <EvidenceReading key="fee" display={fee} description={feeEvidence} basisLabel={feeLabel} />]);
   else unavailable.push(feeLabel);
   if (income) fundRows.push([t("收益分配", "Income use"), income]);
   else unavailable.push(t("收益分配", "income use"));
-  if (tracking.display !== missing) fundRows.push([t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...tracking} />]);
+  if (tracking.display !== missing) fundRows.push([t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" basisLabel={t("一年跟踪差", "1-year tracking difference")} {...tracking} />]);
   else unavailable.push(t("一年跟踪差", "1-year tracking difference"));
-  if (reading?.overlap?.value != null) fundRows.push([t("组合重叠", "Portfolio overlap"), <EvidenceReading key="overlap" {...overlap} />]);
+  if (reading?.overlap?.value != null) fundRows.push([t("组合重叠", "Portfolio overlap"), <EvidenceReading key="overlap" basisLabel={t("组合重叠", "Portfolio overlap")} {...overlap} />]);
   else unavailable.push(t("组合重叠", "portfolio overlap"));
   return (
     <>
@@ -185,13 +185,13 @@ function FundPosition({ holding, runId }: { holding: Holding; runId: string }) {
       <details className="mx-position-calculation">
         <summary>{t("基金底层持仓", "Underlying holdings")}</summary>
         {reading?.holdingsState === "holdings-stale" && <Tag tone="warn">{t("持仓未更新", "Holdings stale")}</Tag>}
-        {top.length ? <Facts rows={top.map((item) => {
-          const weight = percent(item.weightPct / 100, false, 2);
-          const basis = [reading?.issuer, t("发行商持仓权重", "Issuer holdings weight") + " " + weight,
-            holdings?.asOf && t("截至 ", "As of ") + when(holdings.asOf)].filter(Boolean).join(" · ");
-          return [item.name || item.ticker || item.isin,
-            <span key={item.isin || item.name} role="group" title={basis} aria-label={basis}>{weight}</span>];
-        })} /> : <p role="status">{
+        {top.length ? <>
+          <Help label={t("发行商持仓权重", "Issuer holdings weights")}>
+            <p>{[reading?.issuer, holdings?.asOf
+              ? t("截至 ", "As of ") + when(holdings.asOf) : t("日期未披露", "Effective date undisclosed")].filter(Boolean).join(" · ")}</p>
+          </Help>
+          <Facts rows={top.map(item => [item.name || item.ticker || item.isin, percent(item.weightPct / 100, false, 2)])} />
+        </> : <p role="status">{
           detail.isFetching || portfolio.isFetching ? t("正在读取已发布持仓…", "Loading published holdings…")
             : reading?.holdingsState === "data-failed" || detail.isError ? t("持仓数据读取失败", "Holdings data failed")
             : t("暂无持仓披露", "No holdings disclosure")

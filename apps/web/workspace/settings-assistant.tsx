@@ -1,6 +1,7 @@
 "use client";
 
-import { Modal, NativeSelect } from "@mantine/core";
+import { WorkspaceAlertDialog, WorkspaceDialog } from "./overlay";
+import { NativeSelect } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -108,6 +109,7 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
   const probeMatches = canProbe && selected && probe.variables?.value === selected.value &&
     probe.variables.destination === selected.destination;
 
+  const closeDialog = () => { if (!inFlight()) setDialog(null); };
   return <Panel className="mx-assistant-settings" title={ASSISTANT_NAME} action={<Switch
     className="mx-assistant-enable" aria-label={t("启用 ", "Enable ") + ASSISTANT_NAME}
     saving={save.isPending && save.variables.enabled != null}
@@ -159,10 +161,8 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
     {!dialog && saveError}
     {erase.isSuccess && <Notice tone="good">{t("已删除此工作区中的对话。", "Conversations deleted from this workspace.")}</Notice>}
     <span role="status" className="sr-only">{save.isPending ? t("正在保存…", "Saving…") : save.isSuccess ? t("已保存", "Saved") : null}</span>
-    <Modal opened={dialog !== null} onClose={() => { if (!inFlight()) setDialog(null); }} centered
-      transitionProps={{ duration: 0 }} classNames={{ content: "mx-assistant-dialog" }} attributes={{ header: { role: "presentation" } }}
-      closeButtonProps={{ "aria-label": t("关闭", "Close") }}
-      title={dialog?.kind === "delete" ? t("删除所有对话？", "Delete all conversations?") : t("同意向模型分享数据", "Consent to share data")}>
+    <WorkspaceDialog open={dialog?.kind === "consent"} onClose={closeDialog} preventDismiss={busy}
+      className="mx-assistant-dialog" title={t("同意向模型分享数据", "Consent to share data")}>
       {dialog?.kind === "consent" && <div className="flex flex-col gap-mx-md">
         <p className="mx-assistant-consent"><strong>{dialog.option.recipient} ({dialog.option.model}){dialog.option.local && <> · {dialog.option.destination}</>}</strong>{" "}{t(
           "将收到你的消息、当前对话和工具读取的数据，包括持仓和金额。",
@@ -178,24 +178,27 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
         )}</p>
         {saveError}
         <div className="flex flex-wrap items-center justify-end gap-mx-md">
-          <Button variant="secondary" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
+          <Button data-autofocus variant="secondary" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
           <Button disabled={busy || !currentDisclosure} loading={save.isPending} loadingLabel={t("保存中…", "Saving…")} onClick={() => update({
             route: dialog.option.value, enabled: dialog.enable, expectedRevision: dialog.revision,
             acceptedConsentRevision: DISCLOSURE_REVISION, expectedConsentDestination: dialog.option.destination,
           })}>{dialog.enable ? t("同意并启用", "Agree and enable") : t("同意并保存", "Agree and save")}</Button>
         </div>
       </div>}
+    </WorkspaceDialog>
+    <WorkspaceAlertDialog open={dialog?.kind === "delete"} onClose={closeDialog} preventDismiss={busy}
+      className="mx-assistant-dialog" title={t("删除所有对话？", "Delete all conversations?")}>
       {dialog?.kind === "delete" && <div className="flex flex-col gap-mx-md">
         <p>{t("此工作区保存的所有对话和消息将永久删除。", "All conversations and messages saved in this workspace will be permanently deleted.")}</p>
         {erase.isError && <Notice tone="bad">{erase.error instanceof ApiError && erase.error.code === "assistant_busy"
           ? t("请在当前回复结束后重试。", "Wait for the current reply to finish, then try again.")
           : t("未能删除对话，请重试。", "Could not delete conversations. Try again.")}</Notice>}
         <div className="flex flex-wrap items-center justify-end gap-mx-md">
-          <Button variant="secondary" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
+          <Button data-autofocus variant="secondary" disabled={busy} onClick={() => setDialog(null)}>{t("取消", "Cancel")}</Button>
           <Button variant="destructive" disabled={busy} loading={erase.isPending} loadingLabel={t("删除中…", "Deleting…")}
             onClick={() => { if (!inFlight()) erase.mutate(); }}>{t("删除所有对话", "Delete all conversations")}</Button>
         </div>
       </div>}
-    </Modal>
+    </WorkspaceAlertDialog>
   </Panel>;
 }

@@ -1,20 +1,15 @@
 "use client";
 
+import { WorkspaceSheet } from "./overlay";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import {
-  Drawer,
-  Select,
-  Textarea,
-  TextInput,
-} from "@mantine/core";
+import { Select, Textarea, TextInput } from "@mantine/core";
 import { skipToken, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { quoteUnit, quoteValue } from "./financial-values";
-import { isImeComposing } from "./shortcut-platform";
 import {
   clearNoteDraft,
   emptyNoteDraft,
@@ -190,23 +185,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
       ? { action, id }
       : { action, id, content: toNoteInput(current.draft, current.note) });
   };
-  const onEscapeDismiss = useEffectEvent(dismissEditor);
   const opened = Boolean(editor);
-  useEffect(() => {
-    if (!opened) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || event.defaultPrevented || isImeComposing(event)) return;
-      const target = event.target instanceof Element ? event.target : null;
-      if (target?.closest("[data-mantine-stop-propagation='true']")) return;
-      const dialog = target?.closest('[role="dialog"]');
-      if (dialog && !dialog.closest("[data-note-editor='true']")) return;
-      event.preventDefault();
-      event.stopPropagation();
-      onEscapeDismiss();
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [opened]);
   const notes = (query.data?.notes ?? [])
     .filter((n) => Boolean(n.revisions.at(-1)?.content.archived) === archived)
     .toReversed();
@@ -356,21 +335,13 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
           )}
         </Panel>
       )}
-      <Drawer
-        position="right"
-        size="lg"
-        opened={opened}
+      <WorkspaceSheet
+        width={620}
+        open={opened}
         onClose={dismissEditor}
-        closeOnEscape={false}
-        returnFocus={false}
-        onExitTransitionEnd={() => {
-          const active = document.activeElement;
-          if (!active || active === document.body || active.closest("[data-note-editor='true']")) {
-            const target = returnFocusTo.current?.isConnected ? returnFocusTo.current : newNoteButton.current;
-            target?.focus({ preventScroll: true });
-          }
-        }}
-        data-note-editor="true"
+        finalFocus={() => returnFocusTo.current?.isConnected ? returnFocusTo.current : newNoteButton.current}
+        closeLabel={t("关闭笔记", "Close note")}
+        className="mx-note-editor-sheet"
         title={
           editor?.note
             ? t("编辑笔记", "Edit note")
@@ -392,6 +363,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
           }}
         >
           <TextInput
+            data-autofocus
             label={t("标题", "Title")}
             required
             readOnly={readOnly}
@@ -423,6 +395,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
             onChange={(e) => updateDraft({ urls: e.currentTarget.value })}
           />
           <Select
+            comboboxProps={{ portalProps: { target: ".mx-note-editor-sheet" } }}
             clearable
             readOnly={readOnly}
             label={t("关联模型版本", "Related model version")}
@@ -489,11 +462,10 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
             )}
           </div>
         </form>
-      </Drawer>
-      <Drawer
-        position="right"
-        size="lg"
-        opened={Boolean(history)}
+      </WorkspaceSheet>
+      <WorkspaceSheet
+        width={620}
+        open={Boolean(history)}
         onClose={() => setHistory(null)}
         title={t("笔记历史", "Note history")}
       >
@@ -516,7 +488,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
               </article>
             ))}
         </div>
-      </Drawer>
+      </WorkspaceSheet>
     </>
   );
 }
@@ -759,11 +731,10 @@ function ModelVersions({ journal }: { journal: Journal }) {
         )}
       </Panel>
       {baseline.isError && <p role="alert">{t("基准设置失败", "Baseline change failed")}</p>}
-      <Drawer
-        opened={Boolean(detail)}
+      <WorkspaceSheet
+        open={Boolean(detail)}
         onClose={() => setOpened(null)}
-        position="right"
-        size="xl"
+        width={780}
         title={t("保存时的模型底稿", "Saved model worksheet")}
       >
         {detail && (
@@ -868,7 +839,7 @@ function ModelVersions({ journal }: { journal: Journal }) {
             </details>
           </>
         )}
-      </Drawer>
+      </WorkspaceSheet>
     </>
   );
 }

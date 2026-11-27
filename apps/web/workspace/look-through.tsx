@@ -1,13 +1,10 @@
 "use client";
 
-import {
-  Drawer,
-  Pagination,
-  Select,
-  TextInput,
-} from "@mantine/core";
+import { WorkspaceSheet } from "./overlay";
+import { Pagination, Select, TextInput } from "@mantine/core";
 import { ListFilter, Search } from "lucide-react";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
+import { useBreakpoint } from "@/lib/hooks";
 import Link from "./link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -23,6 +20,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { useLocale } from "@/components/locale-provider";
+import { useFinePointer } from "@/ui/pointer";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { LookthroughData, LookthroughPosition } from "@/lib/types";
@@ -60,7 +58,7 @@ import {
   type LookthroughSort,
   type PreparedLookthroughRow,
 } from "./look-through-data";
-import { SecurityPeek } from "./security-peek";
+import { MarketQuoteBasis, SecurityPeek } from "./security-peek";
 import { PageInspection } from "./assistant/inspection-entry";
 import { useAssistant, useAssistantPageContext } from "./assistant/context";
 import { useSearchParams } from "next/navigation";
@@ -442,7 +440,10 @@ function Exposure({
 }) {
   const t = useCopy();
   const { locale } = useLocale();
+  const finePointer = useFinePointer();
   const {ready, open: sidebarOpen} = useAssistant();
+  const compactDesktop = useBreakpoint("compactDesktop");
+  const dockedAssistant = sidebarOpen && !compactDesktop;
   const params = useSearchParams();
   const dimensionsByKey = {company: "companies", country:"countries", sector:"sectors", gics:"gics"} as const;
   const linkedDimension = params?.get("dimension") as keyof typeof dimensionsByKey;
@@ -953,10 +954,14 @@ function Exposure({
       </Panel>
       <Narrative snapshot={snapshot} lens="hidden_exposure" page="holdings" />
       {view === "companies" && chart !== "pie" && (!selected || phone) && role}
-      <Drawer
-        opened={Boolean(selection) && !(phone && (sidebarOpen || (ready && choice)))}
+      <WorkspaceSheet
+        modal={!dockedAssistant}
+        preventOutsideDismiss={dockedAssistant}
+        className={dockedAssistant ? "mx-exposure-sheet-docked" : undefined}
+        open={Boolean(selection) && !(phone && (sidebarOpen || (ready && choice)))}
         onClose={() => {setSelection(null); setChoice(null);}}
         title={t("穿透后的真实敞口", "Underlying exposure")}
+        closeLabel={t("关闭底层敞口", "Close underlying exposure")}
       >
         {selection && selected && (
           <div className="flex flex-col gap-mx-lg">
@@ -990,6 +995,7 @@ function Exposure({
                 ["ISIN", selected.isin ?? "—"],
               ]}
             />
+            {!finePointer && <MarketQuoteBasis ticker={selected.ticker} />}
             {chart !== "pie" && (phone && ready ?
               <button type="button" data-autofocus className="mx-text-link"
                 onClick={() => inspectPosition(selected, selection.snapshotId)}>
@@ -1025,7 +1031,7 @@ function Exposure({
             )}
           </div>
         )}
-      </Drawer>
+      </WorkspaceSheet>
     </>
   );
 }

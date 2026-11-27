@@ -3,7 +3,7 @@
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useReducedMotion } from "@/lib/hooks";
 import type { ECharts, EChartsOption, ECElementEvent } from "echarts";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { useReadingLock } from "@/ui/charts/reading";
 import { useChartPalette } from "@/ui/charts/palette";
 import { applyLumaChartTheme, mergeLiveZoom, type LiveZoomEntry } from "@/ui/charts/theme";
@@ -96,18 +96,24 @@ export function useECharts(
     [colours, scheme, option, ready, reduced],
   );
   const canvasRef = useRef<HTMLDivElement>(null);
+  const [canvasEl, setCanvasEl] = useState<HTMLDivElement | null>(null);
+  const attachCanvas = useCallback((element: HTMLDivElement | null) => {
+    canvasRef.current = element;
+    setCanvasEl(element);
+  }, []);
   const chartRef = useRef<ECharts | null>(null);
   const lastApplied = useRef<EChartsOption | null>(null);
   const lastColours = useRef(colours);
   const latestColours = useRef(colours);
   const latest = useRef(themedOption);
+  const preservedZoom = useRef<{ canvas: HTMLDivElement; zoom: LiveZoomEntry[] } | undefined>(undefined);
   const hasOption = themedOption !== null;
   const [interacting, setInteracting] = useState(false);
   const locked = interacting || pinned;
   useReadingLock(locked);
 
   useLayoutEffect(() => {
-    const canvas = canvasRef.current;
+    const canvas = canvasEl;
     if (!canvas) return;
     let hovering = false;
     const pressed = new Set<number>();
@@ -135,7 +141,7 @@ export function useECharts(
       window.removeEventListener("pointercancel", release, true);
       window.removeEventListener("blur", clear);
     };
-  }, [hasOption]);
+  }, [canvasEl]);
 
   useLayoutEffect(() => {
     latest.current = themedOption;
@@ -145,10 +151,12 @@ export function useECharts(
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
     const runtime = runtimes[profile].module;
-    if (!canvas || !hasOption || !runtime || status !== "ready") return;
+    // A callback ref runs during commit, before its element reaches state.
+    if (!canvas || canvas !== canvasEl || !hasOption || !runtime || status !== "ready") return;
     const initialize = () => {
       if (chartRef.current || !latest.current || !canvas.clientWidth || !canvas.clientHeight) return;
       const chart = runtime.init(canvas, undefined, { renderer: "canvas" });
+      canvas.dataset.tmChartInitCount = String(Number(canvas.dataset.tmChartInitCount ?? 0) + 1);
       chartRef.current = chart;
       chart.on("datazoom", () => callbacks.current.onZoom?.(chart));
       chart.on("click", (event: ECElementEvent) => callbacks.current.onClick?.(event));
@@ -159,8 +167,13 @@ export function useECharts(
       }
       setController(controller, chart);
       const entry = latest.current;
+      const saved = preservedZoom.current;
+      preservedZoom.current = undefined;
+      const restored = saved && saved.canvas !== canvas && entry.dataZoom
+        ? { ...entry, dataZoom: mergeLiveZoom(entry.dataZoom, saved.zoom) }
+        : entry;
       const noMotion = window.matchMedia(MEDIA_QUERIES.reducedMotion).matches;
-      chart.setOption(noMotion ? { ...entry, animation: false } : entry, { notMerge: true });
+      chart.setOption(noMotion ? { ...restored, animation: false } : restored, { notMerge: true });
       lastApplied.current = entry;
       lastColours.current = latestColours.current;
       canvas.dataset.tmChartReady = "true";
@@ -175,6 +188,8 @@ export function useECharts(
 
     return () => {
       resizeObserver.disconnect();
+      const liveOption = chartRef.current?.getOption() as { dataZoom?: LiveZoomEntry[] } | undefined;
+      preservedZoom.current = liveOption?.dataZoom?.length ? { canvas, zoom: liveOption.dataZoom } : undefined;
       chartRef.current?.dispose();
       chartRef.current = null;
       lastApplied.current = null;
@@ -182,7 +197,7 @@ export function useECharts(
       delete canvas.dataset.tmChartAppliedAt;
       setController(controller, null);
     };
-  }, [hasOption, profile, controller, reportsHover, status]);
+  }, [canvasEl, hasOption, profile, controller, reportsHover, status]);
 
   useLayoutEffect(() => {
     const themeChanged = themedOption?.darkMode !== lastApplied.current?.darkMode || lastColours.current !== colours;
@@ -199,5 +214,5 @@ export function useECharts(
     }
   }, [colours, locked, themedOption, updateWhileReading]);
 
-  return { ref: canvasRef, status, retry, applied: lastApplied };
+  return { ref: attachCanvas, canvasEl, canvasRef, status, retry, applied: lastApplied };
 }

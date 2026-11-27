@@ -102,10 +102,10 @@
   flex: 1 1 auto;
 }
 @media (max-width: 767px) {
-  .mx-position-drawer :is(.mantine-Drawer-header, .mantine-Drawer-body) {
+  .mx-position-drawer :is(.tm-overlay-header, .tm-overlay-body) {
     padding-inline: 16px;
   }
-  .mx-position-drawer .mantine-Drawer-close {
+  .mx-position-drawer [data-overlay-close] {
     min-width: 44px;
     min-height: 44px;
   }
@@ -792,6 +792,12 @@ button.mx-text-link {
   font-size: clamp(16px, 2.1vw, 24px);
   font-weight: 550;
   font-variant-numeric: tabular-nums;
+}
+.mx-tracking-basis {
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 400;
+  line-height: 1.5;
 }
 .mx-etf-reading {
   display: inline-flex;

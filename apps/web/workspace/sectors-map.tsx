@@ -193,8 +193,8 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, measure
   return (
     // The block's own description (its breadth and streak) stays linked; the tooltip adds no second one.
     <Tip
+      describes={false}
       disabled={complete}
-      withinPortal
       label={<span className="mx-tooltip-stack"><span>{name}</span><span>{[change, details].filter(Boolean).join(" · ")}</span></span>}
     >
       <button
@@ -314,7 +314,6 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, measure
                 <Tip
                   key={cell.key}
                   disabled={cellFit.complete}
-                  withinPortal
                   label={<span className="mx-tooltip-stack"><span>{cellName}</span><span>{fullChange}</span></span>}
                 >
                   <span

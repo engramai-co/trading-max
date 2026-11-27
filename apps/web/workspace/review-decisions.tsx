@@ -2,7 +2,7 @@
 
 import { quoteValue } from "./financial-values";
 
-import { Popover } from "@mantine/core";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowUpRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { CloseButton } from "@/components/ui/button";
@@ -318,10 +318,7 @@ function DecisionEntry({
   // and any focus on them stay.
   const place = measured.items === items ? measured : { items, shown: context.length };
   const [opened, setOpened] = useState(false);
-  useEscapeLayer(opened, () => {
-    setOpened(false);
-    button.current?.focus({ preventScroll: true });
-  });
+  const close = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     const row = entry.current;
     const element = line.current;
@@ -378,22 +375,8 @@ function DecisionEntry({
         )}
       </Link>
       {context.length > 0 && (
-        <Popover
-          opened={opened}
-          onChange={setOpened}
-          position="bottom-end"
-          width={320}
-          offset={8}
-          middlewares={{ flip: true, shift: { padding: 16 } }}
-          trapFocus
-          returnFocus
-          transitionProps={{ transition: "fade", duration: 120, timingFunction: "ease-out" }}
-          // Mantine hides a dropdown while its first position checks for a detached target,
-          // the moment its focus trap moves focus in; shown from the start, focus lands inside.
-          hideDetached={false}
-          zIndex="var(--mx-overlay-z-popover)"
-        >
-          <Popover.Target>
+        <Popover open={opened} onOpenChange={setOpened} modal="trap-focus">
+          <PopoverTrigger render={
             <button
               ref={button}
               type="button"
@@ -402,23 +385,23 @@ function DecisionEntry({
               aria-haspopup="dialog"
               aria-expanded={opened}
               style={{ left: place.left, top: place.top }}
-              onClick={() => setOpened((value) => !value)}
             >
               +{hidden || context.length}
               <span className="sr-only">{t(" 项", " more")}</span>
             </button>
-          </Popover.Target>
-          <Popover.Dropdown ref={list} className="mx-help-popover" aria-labelledby={heading}>
+          } />
+          <PopoverContent ref={list} className="mx-help-popover" aria-labelledby={heading}
+            align="end" sideOffset={8} initialFocus={close} finalFocus={button}>
             <div className="mx-help-heading">
               <strong id={heading}>{label}</strong>
-              <CloseButton data-autofocus aria-label={t("关闭", "Close")} onClick={() => setOpened(false)} />
+              <CloseButton ref={close} aria-label={t("关闭", "Close")} onClick={() => setOpened(false)} />
             </div>
             <ul className="mx-help-body mx-decision-more-list">
               {context.map((item, index) => (
                 <li key={index}>{item}</li>
               ))}
             </ul>
-          </Popover.Dropdown>
+          </PopoverContent>
         </Popover>
       )}
     </div>
@@ -717,7 +700,7 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [shownTap]);
-  useEscapeLayer(active != null, () => {
+  useEscapeLayer(active != null, host, () => {
     setHovered(null);
     setStep(null);
     clearTap();

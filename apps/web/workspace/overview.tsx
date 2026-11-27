@@ -19,7 +19,7 @@
 import { Select } from "@mantine/core";
 import { ChartLine } from "lucide-react";
 import Link from "./link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { buttonVariants } from "@/components/ui/button";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -374,7 +374,6 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
         {money.pnl != null && (
           <span
             className={"mx-" + tone(money.pnl)}
-            title={t("区间净盈亏 ÷ 期初账户价值", "Period net P&L divided by opening account value")}
           >
             {percent(money.pnlPercents.at(-1), true, 2)}
           </span>
@@ -404,6 +403,7 @@ function OverviewHistory({
 }) {
   const t = useCopy();
   const { range, scope } = selection;
+  const [figureAnchor, setFigureAnchor] = useState<HTMLDivElement | null>(null);
   const history = data?.history ?? selectPortfolioHistory({ range, scope });
   const { points } = history;
   const isIntraday = history.source === "intraday";
@@ -425,6 +425,7 @@ function OverviewHistory({
       className="mx-overview-history"
       title={t("区间净盈亏", "Period net P&L")}
       help={<HistoryHelp />}
+      helpAnchor={figureAnchor}
       action={
         <div className="mx-period-control">
           <PeriodSpan points={initialWaiting ? [] : points} reserve />
@@ -447,12 +448,12 @@ function OverviewHistory({
           {range !== requestedRange && <p className="mx-prior-range">
             {t("当前显示 ", "Showing ")}{rangeName(range, t("全部", "all"))}
           </p>}
-          <div className="mx-period-figure">
+          <div className="mx-period-figure" ref={setFigureAnchor}>
             <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
               {currency(money.pnl, "GBP", 2)}
             </strong>
             {money.pnl != null && (
-              <span title={t("区间净盈亏 ÷ 期初账户价值", "Period net P&L divided by opening account value")}>
+              <span>
                 {percent(money.pnlPercents.at(-1), true, 2)}
               </span>
             )}

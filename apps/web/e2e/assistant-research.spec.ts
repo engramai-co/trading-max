@@ -912,7 +912,7 @@ for (const theme of ["light", "dark"] as const) {
     if (isMobile) {
       // Following the citation leaves the sheet, its backdrop and its focus trap.
       await expect(page.locator(".mx-reading-sheet")).toHaveCount(0);
-      await expect(page.locator(".mantine-Drawer-overlay")).toHaveCount(0);
+      await expect(page.locator(".tm-drawer-backdrop")).toHaveCount(0);
     }
     expect((await new AxeBuilder({page}).include(".mx-overview-bento").analyze()).violations).toEqual([]);
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, [info.project.name, "zh", theme, "company-summary-citation"].join("-") + ".png")});

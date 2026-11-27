@@ -153,6 +153,7 @@
 }
 .mx-assistant-note,
 .mx-reading-source,
+.mx-reading-credit,
 .mx-assistant-scope {
   color: var(--mx-muted);
   font-size: 12px;
@@ -274,10 +275,9 @@
   position: absolute;
   inset: 4px 4px auto auto;
 }
-.mantine-Drawer-content.mx-reading-sheet {
-  height: auto;
-  max-height: 60dvh;
-  padding-bottom: env(safe-area-inset-bottom);
+.tm-overlay-drawer.mx-reading-sheet {
+  bottom: max(var(--tm-keyboard-inset, 0px), calc(68px + env(safe-area-inset-bottom)));
+  max-height: min(60dvh, var(--tm-drawer-available, 100dvh));
 }
 .mx-digest-head > button {
   min-width: 0;
@@ -382,13 +382,6 @@
   color: var(--mx-brand);
 }
 
-.mx-reading-sheet-inner {
-  padding-bottom: calc(68px + env(safe-area-inset-bottom));
-}
-.mx-reading-sheet .mantine-Drawer-close {
-  min-width: 44px;
-  min-height: 44px;
-}
 
 .mx-allocation-details .mx-inline-reading,
 .mx-sector-detail .mx-inline-reading,

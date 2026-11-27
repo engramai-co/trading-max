@@ -180,11 +180,11 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(funds.locator(headings)).toContainText("跟踪差");
     await expect(funds.locator(headings)).toContainText("技术");
     await expect(funds.locator(headings)).not.toContainText("重叠");
-    await expect(funds.locator('a.mx-ledger-link:visible, a.mx-ledger-item:visible')).toHaveAttribute("href", "/research?ticker=EQQQ.L&view=technical&technicalView=data");
+    await expect(funds.locator('a.mx-ledger-link:visible, a.mx-ledger-item-head:visible')).toHaveAttribute("href", "/research?ticker=EQQQ.L&view=technical&technicalView=data");
     expect(new URL((await fundLogo).url()).searchParams.get("isin")).toBe(isin);
-    await expect(funds.locator('.mx-ledger-flag[title*="RSI 22"]')).toBeVisible();
+    await expect(funds.locator(".tm-reading-trigger:has(.mx-ledger-flag)").first()).toBeVisible();
     const etf = funds.locator(".mx-ledger-etf");
-    const figures = etf.locator('> span[aria-hidden="true"]');
+    const figures = etf.locator(".tm-reading-trigger > span");
     try {
       await expect(etf).toHaveCount(1);
       await expect(figures).toHaveText(["—"]);
@@ -198,9 +198,20 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
         : cell.closest("dd")?.previousElementSibling?.textContent;
     }));
     expect(associatedHeadings).toEqual(["跟踪差"]);
-    // Hover text and the accessible name read dates in the reader's locale and leave the source link to the research page.
-    await expect(etf.first()).toHaveAttribute("aria-label", /截至 10月31日/);
-    await expect(etf.first()).not.toHaveAttribute("aria-label", /https?:|\d{4}-\d{2}-\d{2}/);
+    // The provenance reads dates in the reader's locale.
+    const source = etf.getByRole("button", { name: /一年跟踪差/ });
+    await source.click();
+    const basis = page.getByRole("dialog", { name: "一年跟踪差", exact: true });
+    await expect(basis).toContainText(/截至 10月31日/);
+    await expect(basis).not.toContainText(/https?:|\d{4}-\d{2}-\d{2}/);
+    await basis.getByRole("button", { name: "关闭说明" }).click();
+    await expect(source).toBeFocused();
+    const score = funds.getByRole("button", { name: /技术评分/ });
+    await score.click();
+    const tech = page.getByRole("dialog", { name: "技术评分", exact: true });
+    await expect(tech).toContainText("RSI 22");
+    await tech.getByRole("button", { name: "关闭说明" }).click();
+    await expect(score).toBeFocused();
     await expect(ledger.locator(".mx-ledger-flag[data-tone=warning]")).toHaveCount(2);
     await expect(ledger.locator(".mx-ledger-flag[data-tone=down]")).toHaveCount(1);
     await ledger.evaluate((node) => node.closest(".mx-overview-holdings")?.scrollIntoView({ block: "center", behavior: "instant" }));
@@ -240,7 +251,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     await expect(ledger.locator("[data-asset-class]")).toHaveCount(1);
     const funds = ledger.locator('[data-asset-class="funds"]');
     await expect(funds).toBeVisible();
-    await expect(funds.locator('.mx-ledger-etf > span[aria-hidden="true"]')).toHaveText(["—"]);
+    await expect(funds.locator(".mx-ledger-etf .tm-reading-trigger > span")).toHaveText(["—"]);
   });
 
   test("overview previews the ledger’s session move; holdings previews the session’s path", async ({ page }) => {

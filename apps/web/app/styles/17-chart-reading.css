@@ -286,7 +286,7 @@
 }
 .mx-chart-host[data-expanded="true"] {
   position: fixed;
-  z-index: 1100;
+  z-index: var(--z-dialog);
   inset: 0;
   overflow: auto;
   overscroll-behavior: contain;
@@ -304,8 +304,7 @@
 .mx-chart-actions > strong {
   margin-inline-end: auto;
 }
-.mx-chart-actions button,
-.mx-chart-actions summary {
+.mx-chart-actions button {
   min-width: 36px;
   min-height: 36px;
   border: 0;
@@ -318,33 +317,16 @@
   cursor: pointer;
   font: inherit;
 }
-.mx-chart-actions button:hover,
-.mx-chart-actions summary:hover {
+.mx-chart-actions button:hover {
   background: var(--mx-soft);
 }
-.mx-chart-actions details {
-  position: relative;
-}
 .mx-chart-menu {
-  position: absolute;
-  inset-inline-end: 0;
-  z-index: 3;
-  border: 1px solid var(--mx-border);
-  border-radius: 8px;
-  background: var(--mx-surface);
-  padding: 4px;
-  display: grid;
   min-width: max-content;
 }
-.mx-chart-menu button {
-  justify-items: start;
-}
-.mx-chart-menu [role="status"]:empty {
-  display: none;
-}
-.mx-chart-menu [role="status"] {
-  padding: 4px 8px;
+.mx-chart-status {
+  padding: 0 4px;
   color: var(--mx-muted);
+  font-size: 12px;
 }
 .mx-chart-zoom-buttons {
   display: flex;

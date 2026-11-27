@@ -41,7 +41,7 @@
 
 @media (min-width: 1200px) {
   .mx-app[data-assistant-open] #main-content {
-    margin-inline-end: 400px;
+    margin-inline-end: var(--mx-assistant-dock-width);
   }
 }
 
@@ -55,8 +55,8 @@
 .mx-assistant-panel {
   position: fixed;
   inset: 56px 14px 14px auto;
-  z-index: 125;
-  width: 386px;
+  z-index: var(--z-sidebar);
+  width: calc(var(--mx-assistant-dock-width) - 14px);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -99,7 +99,7 @@
 @media (max-width: 1199px) {
   .mx-assistant-panel {
     inset: 0 0 0 auto;
-    z-index: 500;
+    z-index: var(--z-dialog);
     width: 400px;
     border-radius: 0;
   }

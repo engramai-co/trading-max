@@ -116,7 +116,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .mx-more-menu .mantine-Menu-item {
+  .mx-more-menu [role="menuitem"] {
     min-height: 44px;
     font-size: 14px;
   }
@@ -155,7 +155,7 @@
     display: flex;
     position: fixed;
     inset: auto 0 0;
-    z-index: 110;
+    z-index: var(--z-nav);
     border-top: 1px solid var(--border);
     background: var(--background);
     background: color-mix(in srgb, var(--background) 86%, transparent);

@@ -146,6 +146,17 @@ function UKReporting({ fund }: { fund: Fund }) {
   </span>;
 }
 
+function trackingReason(reading: ETFReading, t: Copy) {
+  const tracking = reading.tracking;
+  if (tracking.state !== "incomparable") return null;
+  const currencyMismatch = tracking.currency && tracking.benchmarkCurrency && tracking.currency !== tracking.benchmarkCurrency;
+  const hedgeMismatch = tracking.navHedging && tracking.benchmarkHedging && tracking.navHedging !== tracking.benchmarkHedging;
+  if (currencyMismatch && hedgeMismatch) return t("币种及对冲口径不同", "Currency and hedging differ");
+  if (currencyMismatch) return t("币种不同", "Different currencies");
+  if (hedgeMismatch) return t("对冲口径不同", "Different hedging bases");
+  return t("份额净值与基准口径未确认一致", "NAV and benchmark bases unconfirmed");
+}
+
 function FundOverview({ fund, data }: { fund: Fund; data: ResearchLensSnapshot }) {
   const t = useCopy(), reading = fundReading(fund);
   const when = useEvidenceTime();
@@ -153,6 +164,8 @@ function FundOverview({ fund, data }: { fund: Fund; data: ResearchLensSnapshot }
   const facts = profile?.evidence;
   const overlap = overlapDisplay(reading, t, when);
   const fee = fund.expenseRatio == null ? absent(t) : percent(fund.expenseRatio, false, 2);
+  const tracking = trackingDisplay(reading, t, when);
+  const reason = trackingReason(reading, t);
   const feeName = profile?.feeBasis === "OCF" ? t("持续费用率", "Ongoing charge") : t("总费用率", "Total expense ratio");
   const source = t("发行商原文", "Issuer source");
   const metrics = object(object(data.fundamentals).metrics);
@@ -160,12 +173,12 @@ function FundOverview({ fund, data }: { fund: Fund; data: ResearchLensSnapshot }
   return (
     <Panel title={t("基金概况", "Fund profile")} action={sourceLink(fund.sourceUrl, source)}>
       <dl className="mx-etf-summary">
-        <div><dt>{t("跟踪质量", "Tracking quality")}</dt><dd><EvidenceReading {...trackingDisplay(reading, t, when)} /></dd></div>
+        <div><dt>{t("跟踪质量", "Tracking quality")}</dt><dd><EvidenceReading {...tracking} basisLabel={t("跟踪质量", "Tracking quality")} />{reason && <span className="mx-tracking-basis">{reason}</span>}</dd></div>
         <div><dt>{t("交易摩擦", "Trading costs")}</dt><dd>
-          <SourceValue label={feeName} value={fee} evidence={facts?.expense_ratio} t={t} />
+          <span>{fee}</span>
           <Help label={t("交易摩擦口径", "Trading costs basis")}>
             <Facts rows={[
-              [feeName, fee],
+              [feeName, fieldEvidence(feeName, fee, facts?.expense_ratio, t, when).slice(feeName.length + 1)],
               [t("买卖价差", "Bid–ask spread"), absent(t)],
               [t("溢折价", "Premium / discount"), fund.premiumDiscount?.points.length
           ? sourceLink(fund.premiumDiscount.sourceUrl, t("发行商资料", "Issuer data")) : absent(t)],
@@ -217,7 +230,7 @@ function FundTracking({ fund }: { fund: Fund }) {
             href={researchIndexHref({ id: fund.benchmarkRelationship.comparisonId })}>{t("查看研究", "View research")}</Link>] as const]
           .map(([label, value]): [string, React.ReactNode] => [label, value]) : []),
         ...(fund.profile?.rebalanceFrequency ? [[t("再平衡频率", "Rebalancing frequency"), fund.profile.rebalanceFrequency] as const] : []).map(([k, v]): [string, string] => [k, v]),
-        [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" {...trackingDisplay(reading, t, when)} />],
+        [t("一年跟踪差", "1-year tracking difference"), <EvidenceReading key="tracking" basisLabel={t("一年跟踪差", "1-year tracking difference")} {...trackingDisplay(reading, t, when)} />],
         [errorLabel, <SourceValue key="tracking-error" label={errorLabel} value={error} evidence={fund.profile?.evidence?.tracking_error} t={t} />],
         [t("日度跟踪", "Daily tracking"), fund.dailyTracking?.points.length
           ? sourceLink(fund.dailyTracking.sourceUrl, t("发行商文件", "Issuer file"))

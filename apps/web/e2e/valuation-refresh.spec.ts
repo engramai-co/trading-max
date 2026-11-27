@@ -2014,7 +2014,7 @@ test.describe("research notes", () => {
     await expect(title).toHaveValue("Draft SYNT title");
     await expect(thesis).toHaveValue("Draft SYNT thesis");
     await thesis.fill("Draft SYNT thesis updated");
-    await dialog.getByRole("button", { name: "Close panel" }).click();
+    await dialog.getByRole("button", { name: "Close note" }).click();
     await expect(dialog).toHaveCount(0);
     await expect(newNote).toBeFocused();
 
@@ -2146,7 +2146,7 @@ test.describe("research notes", () => {
     await editButton.click();
     await expect(thesis).toHaveValue("Submitted thesis");
     await expect(thesis).not.toBeEditable();
-    await dialog.getByRole("button", { name: "Close panel" }).click();
+    await dialog.getByRole("button", { name: "Close note" }).click();
     await expect(dialog).toHaveCount(0);
     release();
 
@@ -2246,7 +2246,7 @@ test.describe("research notes", () => {
     const { delayNextSave, journal } = await researchNoteFixture(page);
     journal.notes.push(researchNote("note-2", "Second thesis"));
     await page.goto("/research?ticker=SYNT&view=ledger&notebook=notes");
-    const firstNote = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Initial thesis" }) });
+    const firstNote = page.locator("article").filter({ has: page.locator("h3").filter({ hasText: /^Initial thesis$/ }) });
     const secondNote = page.getByRole("article").filter({ has: page.getByRole("heading", { name: "Second thesis" }) });
     await firstNote.getByRole("button", { name: "Edit" }).click();
     const dialog = page.getByRole("dialog");

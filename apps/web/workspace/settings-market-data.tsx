@@ -1,7 +1,8 @@
 "use client";
 
+import { WorkspaceAlertDialog, WorkspaceDialog } from "./overlay";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { Modal, PasswordInput } from "@mantine/core";
+import { PasswordInput } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -118,19 +119,19 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
         </details>
       </div>
       {/* A dialog stays open until its write settles, so its outcome shows where it was asked for. */}
-      <Modal opened={opened} onClose={() => { if (!busy) setOpened(false); }} title={t("连接 Alpaca 行情", "Connect Alpaca market data")} centered>
+      <WorkspaceDialog preventDismiss={busy} open={opened} onClose={() => { if (!busy) setOpened(false); }} title={t("连接 Alpaca 行情", "Connect Alpaca market data")}>
         {opened && <AlpacaKeyForm onStart={begin} onSaved={() => { setOpened(false); setOutcome("saved"); }} />}
-      </Modal>
-      <Modal opened={removing} onClose={() => { if (!remove.isPending) setRemoving(false); }} title={t("删除 Alpaca 密钥", "Remove Alpaca keys")} centered>
+      </WorkspaceDialog>
+      <WorkspaceAlertDialog preventDismiss={remove.isPending} open={removing} onClose={() => { if (!remove.isPending) setRemoving(false); }} title={t("删除 Alpaca 密钥", "Remove Alpaca keys")}>
         <div className="flex flex-col gap-mx-md">
           <p>{t("删除后恢复使用 YF，已有券商记录和快照会保留。", "YF will remain active. Existing broker observations and snapshots are preserved.")}</p>
           {remove.isError && <Notice tone="bad">{t("删除失败，请重试。", "Could not remove keys. Please retry.")}</Notice>}
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
-            <Button variant="secondary" disabled={remove.isPending} onClick={() => setRemoving(false)}>{t("取消", "Cancel")}</Button>
+            <Button data-autofocus variant="secondary" disabled={remove.isPending} onClick={() => setRemoving(false)}>{t("取消", "Cancel")}</Button>
             <Button variant="destructive" loading={remove.isPending} loadingLabel={t("删除中…", "Removing…")} disabled={busy} onClick={() => { if (writeInFlight(client)) return; begin(); remove.mutate(); }}>{t("确认删除", "Remove keys")}</Button>
           </div>
         </div>
-      </Modal>
+      </WorkspaceAlertDialog>
     </Panel>
   );
 }

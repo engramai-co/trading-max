@@ -1,13 +1,9 @@
 "use client";
 
+import { WorkspaceDialog } from "./overlay";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import {
-  Modal,
-  Select,
-  NumberInput,
-  Textarea,
-} from "@mantine/core";
+import { Select, NumberInput, Textarea } from "@mantine/core";
 import { useDebouncedValue } from "@/lib/hooks";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -1123,8 +1119,8 @@ function ModelEditor({
         </Panel>
         {!residual && <GrowthContext data={data} analyst={analyst} />}
       </>, referencePanel)}
-      <Modal
-        opened={saveOpen}
+      <WorkspaceDialog
+        open={saveOpen}
         onClose={() => setSaveOpen(false)}
         title={t("保存模型版本", "Save model version")}
       >
@@ -1161,7 +1157,7 @@ function ModelEditor({
         </div>
         {reReview}
         {save.isError && !staleDraft && <p role="alert">{t("保存失败，请重试。", "Could not save. Try again.")}</p>}
-      </Modal>
+      </WorkspaceDialog>
     </>
   );
 }

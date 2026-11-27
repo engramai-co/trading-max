@@ -115,7 +115,7 @@ p {
   position: fixed;
   top: 12px;
   left: 94px;
-  z-index: 1000;
+  z-index: var(--z-skip-link);
   padding: 12px 20px;
   border-radius: 8px;
   background: var(--mx-surface);
@@ -135,7 +135,7 @@ p {
   color: var(--mx-side-ink);
   display: flex;
   flex-direction: column;
-  z-index: 150;
+  z-index: var(--z-nav);
 }
 .mx-brand {
   display: flex;

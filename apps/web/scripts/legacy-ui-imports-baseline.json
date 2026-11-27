@@ -19,19 +19,9 @@
         "createTheme"
       ]
     },
-    "workspace/assistant/cards.tsx": {
-      "@mantine/core": [
-        "Drawer"
-      ]
-    },
     "workspace/assistant/overview.test.ts": {
       "@mantine/core": [
         "MantineProvider"
-      ]
-    },
-    "workspace/dashboard-controls.tsx": {
-      "@mantine/core": [
-        "Menu"
       ]
     },
     "workspace/evidence-table.tsx": {
@@ -39,17 +29,8 @@
         "Pagination"
       ]
     },
-    "workspace/foundation.tsx": {
-      "@mantine/core": [
-        "Drawer",
-        "Popover",
-        "Tooltip",
-        "TooltipProps"
-      ]
-    },
     "workspace/health.tsx": {
       "@mantine/core": [
-        "Drawer",
         "Select"
       ]
     },
@@ -60,20 +41,17 @@
     },
     "workspace/holding-market-closed.test.ts": {
       "@mantine/core": [
-        "<type-import>",
         "MantineProvider"
       ]
     },
     "workspace/holdings.tsx": {
       "@mantine/core": [
-        "Drawer",
         "Select",
         "TextInput"
       ]
     },
     "workspace/look-through.tsx": {
       "@mantine/core": [
-        "Drawer",
         "Pagination",
         "Select",
         "TextInput"
@@ -84,19 +62,9 @@
         "Select"
       ]
     },
-    "workspace/navigation-group.tsx": {
-      "@mantine/core": [
-        "Tooltip"
-      ]
-    },
     "workspace/overview-holdings.test.ts": {
       "@mantine/core": [
         "MantineProvider"
-      ]
-    },
-    "workspace/overview-sectors.tsx": {
-      "@mantine/core": [
-        "Menu"
       ]
     },
     "workspace/overview.test.ts": {
@@ -119,11 +87,6 @@
         "Select"
       ]
     },
-    "workspace/plot.tsx": {
-      "@mantine/core": [
-        "FocusTrap"
-      ]
-    },
     "workspace/research-analyst.tsx": {
       "@mantine/core": [
         "Select",
@@ -138,7 +101,6 @@
     },
     "workspace/research-compare.tsx": {
       "@mantine/core": [
-        "Modal",
         "MultiSelect",
         "Pill",
         "Select"
@@ -153,20 +115,17 @@
     },
     "workspace/research-financials.tsx": {
       "@mantine/core": [
-        "Drawer",
         "Select"
       ]
     },
     "workspace/research-finder.tsx": {
       "@mantine/core": [
-        "Modal",
         "TextInput"
       ]
     },
     "workspace/research-header.tsx": {
       "@mantine/core": [
-        "Avatar",
-        "Menu"
+        "Avatar"
       ]
     },
     "workspace/research-index-chart.tsx": {
@@ -176,14 +135,11 @@
     },
     "workspace/research-index.tsx": {
       "@mantine/core": [
-        "Drawer",
-        "Menu",
         "Select"
       ]
     },
     "workspace/research-notebook.tsx": {
       "@mantine/core": [
-        "Drawer",
         "Select",
         "TextInput",
         "Textarea"
@@ -193,7 +149,6 @@
       "@mantine/core": [
         "CheckIcon",
         "Combobox",
-        "Drawer",
         "MultiSelect",
         "NumberInput",
         "Pill",
@@ -202,7 +157,6 @@
     },
     "workspace/research-price.tsx": {
       "@mantine/core": [
-        "Modal",
         "Select"
       ]
     },
@@ -226,7 +180,6 @@
     },
     "workspace/research-valuation-workbench.tsx": {
       "@mantine/core": [
-        "Modal",
         "NumberInput",
         "Select",
         "Textarea"
@@ -234,15 +187,7 @@
     },
     "workspace/research.tsx": {
       "@mantine/core": [
-        "Drawer",
-        "Modal",
-        "Select",
-        "Tooltip"
-      ]
-    },
-    "workspace/review-decisions.tsx": {
-      "@mantine/core": [
-        "Popover"
+        "Select"
       ]
     },
     "workspace/review-evidence.tsx": {
@@ -257,30 +202,21 @@
     },
     "workspace/sectors-market-switch.tsx": {
       "@mantine/core": [
-        "Menu",
         "Select"
-      ]
-    },
-    "workspace/security-peek.tsx": {
-      "@mantine/core": [
-        "Popover"
       ]
     },
     "workspace/settings-assistant.tsx": {
       "@mantine/core": [
-        "Modal",
         "NativeSelect"
       ]
     },
     "workspace/settings-index-data.tsx": {
       "@mantine/core": [
-        "Modal",
         "PasswordInput"
       ]
     },
     "workspace/settings-market-data.tsx": {
       "@mantine/core": [
-        "Modal",
         "PasswordInput"
       ]
     },
@@ -299,18 +235,13 @@
     },
     "workspace/settings.tsx": {
       "@mantine/core": [
-        "Drawer",
-        "Modal",
         "PasswordInput",
         "Select"
       ]
     },
     "workspace/shell.tsx": {
       "@mantine/core": [
-        "Menu",
-        "Modal",
-        "TextInput",
-        "Tooltip"
+        "TextInput"
       ]
     }
   }

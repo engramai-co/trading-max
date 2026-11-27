@@ -1,7 +1,8 @@
 "use client";
 
+import { WorkspaceDialog } from "./overlay";
 import type { SecuritySearchResponse, SecuritySearchResult } from "@/lib/types";
-import { Modal, TextInput } from "@mantine/core";
+import { TextInput } from "@mantine/core";
 import { Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -85,13 +86,13 @@ export function SecurityFinder({
   }
   const results = showingCurrentSearch ? query.data?.results.slice(0, 3) ?? [] : [];
   return (
-    <Modal
-      opened={opened}
+    <WorkspaceDialog
+      open={opened}
       onClose={onClose}
       title={t("搜索", "Search")}
-      withCloseButton={false}
-      classNames={{ header: "sr-only", body: "mx-search-body" }}
-      size={620}
+      hideClose
+      headerClassName="sr-only" bodyClassName="mx-search-body"
+      width={620}
     >
       <div className="mx-search-row">
         <form onSubmit={submit} role="search">
@@ -147,6 +148,6 @@ export function SecurityFinder({
           {t("没有找到“", "No results for “") + search + "”"}
         </p>
       ) : null}
-    </Modal>
+    </WorkspaceDialog>
   );
 }

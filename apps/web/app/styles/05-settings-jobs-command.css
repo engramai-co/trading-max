@@ -300,36 +300,19 @@ details[open]:not(.mx-job-row) > :not(summary) {
   font-size: 12px;
   line-height: 1.8;
 }
-.mantine-Modal-content,
-.mantine-Modal-header,
-.mantine-Drawer-content,
-.mantine-Drawer-header {
-  background: var(--card);
-  color: var(--foreground);
-}
-.mantine-Menu-dropdown,
 .mantine-Combobox-dropdown {
   background: var(--popover);
   color: var(--popover-foreground);
   border-color: var(--panel-edge);
 }
-.mantine-Menu-item[data-hovered],
 .mantine-Combobox-option[data-combobox-selected],
 .mantine-Combobox-option:hover {
   background: var(--accent);
   color: var(--accent-foreground);
 }
-.mantine-Menu-item[aria-current] {
+/* The current destination in the phone More menu reads at a glance: an accent row beside its check mark. */
+.mx-more-menu [data-slot="dropdown-menu-item"][aria-current] {
   background: var(--accent);
   color: var(--accent-foreground);
   font-weight: 600;
-}
-/* Modal and Drawer compose Mantine Paper; keep Paper's 1px border after dropping Paper from theme.ts. */
-:where(.mantine-Modal-content, .mantine-Drawer-content) {
-  border: calc(0.0625rem * var(--mantine-scale)) solid var(--panel-edge);
-}
-.mantine-Modal-title,
-.mantine-Drawer-title {
-  font-weight: 600;
-  font-size: 16px;
 }

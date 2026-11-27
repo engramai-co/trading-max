@@ -515,6 +515,7 @@
     border-top: 1px solid var(--mx-ledger-rule);
   }
   .mx-ledger-item {
+    position: relative;
     display: block;
     padding-block: var(--mx-space-items);
     color: inherit;
@@ -525,6 +526,15 @@
     align-items: center;
     gap: 10px;
     min-width: 0;
+  }
+  .mx-ledger-item-head::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+  }
+  .mx-ledger-item .tm-reading-trigger {
+    position: relative;
+    z-index: 1;
   }
   .mx-ledger-item-head > .mx-instrument,
   .mx-ledger-item-head > span:not(.mx-ledger-dot) {
