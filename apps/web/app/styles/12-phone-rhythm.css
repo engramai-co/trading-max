@@ -363,12 +363,22 @@
   }
   .mx-page .mx-holdings-summary > .mx-metric-grid > .mx-metric {
     flex: 1 1 0;
+    max-inline-size: 100%;
   }
   .mx-page .mx-holdings-summary > .mx-metric-grid > .mx-metric:first-child {
     flex-grow: 1.3;
   }
   .mx-page .mx-holdings-summary > .mx-metric-grid > .mx-metric:first-child .mx-number {
     font-size: var(--mx-text-figure);
+  }
+  /* A figure keeps its full width as its smallest size, so one that does not fit moves to the next line whole rather
+     than breaking after its minus sign. Only a figure wider than the whole line, as with enlarged text on a narrow
+     phone, wraps inside its own box instead of running past the panel. */
+  .mx-page .mx-holdings-summary > .mx-metric-grid .mx-number-value {
+    display: inline-block;
+    inline-size: max-content;
+    max-inline-size: 100%;
+    word-break: break-all;
   }
   .mx-page .mx-holding-mobile {
     padding-block: var(--mx-space-items);
