@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.77.0] - 2026-11-27
+
+### Added
+- Exact-value tables are available for Market index history, full Research index price and risk charts, fund tracking series, the income bridge and the Review decision timeline, opened from the chart's heading or command row.
+
+### Changed
+- Chart controls, legends, reading cards and the existing Technical price and indicator table use the new design system. In full-screen charts, Tab reaches the zoom toolbar once, and arrow keys move between its commands.
+
+### Fixed
+- Keyboard chart reading on Returns reaches the drawdown pane.
+- Passive updates to sector quote times and the latest chart reading no longer trigger screen-reader announcements.
+- Long figures wrap in chart hover cards and scroll horizontally in phone reading strips.
+- On phones, the income bridge labels its first and last steps, and nine index ranges appear in rows of five and four.
+- The chart's **More** button is named "More chart actions" for screen readers, so it is told apart from the page's **More** menu.
+
 ## [1.76.0] - 2026-11-27
 
 ### Changed

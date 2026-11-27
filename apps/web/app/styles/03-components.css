@@ -252,16 +252,70 @@
   color: var(--muted-foreground);
   font-size: 12px;
 }
-.mx-chart-legend span {
+.mx-source-legend > span {
   display: inline-flex;
   align-items: center;
   gap: 7px;
 }
-.mx-chart-legend i {
-  width: 15px;
-  height: 3px;
-  border-radius: 2px;
+.mx-chart-cursor {
+  position: absolute;
+  inset: 12px auto 28px 0;
+  visibility: hidden;
+  pointer-events: none;
+  /* Solid: a dashed stroke already means an estimate on these charts. */
+  border-inline-start: 1px solid var(--mx-muted);
 }
+.mx-chart-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.mx-chart-mark {
+  position: absolute;
+  top: -3px;
+  left: -3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--mark);
+  box-shadow: 0 0 0 2px var(--mx-surface);
+  visibility: hidden;
+}
+.mx-chart-popup {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 4;
+  visibility: hidden;
+  pointer-events: none;
+  max-width: calc(100% - 8px);
+}
+/* Phones: the reading strip covers the panel heading above the plot and its controls, never the
+   plot itself. In the fullscreen dialog it reads in the free band below the plot. */
+.mx-chart-strip {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 4px + var(--mx-strip-lift, 0px));
+  left: 0;
+  z-index: var(--mx-overlay-z);
+}
+.mx-chart-strip[data-below] {
+  top: calc(100% + 4px);
+  bottom: auto;
+}
+.mx-chart-strip[data-docked-inside] {
+  top: var(--mx-strip-offset);
+  bottom: auto;
+}
+.mx-chart-strip[data-docked] {
+  position: fixed;
+  top: var(--mx-strip-top);
+  right: auto;
+  bottom: auto;
+  left: var(--mx-strip-left);
+  width: var(--mx-strip-width);
+}
+
 .mx-plot {
   position: relative;
   width: 100%;
@@ -662,5 +716,18 @@
   }
   .mx-retry-reading .mx-inline-retry {
     min-height: 44px;
+  }
+}
+
+/* Icon buttons share the heading's existing band and use the space above the plot. */
+.mx-panel-heading:has(> [data-chart-records-heading]) {
+  position: relative;
+  padding-inline-end: 44px;
+}
+
+@media (max-width: 767px) {
+  /* Use the panel gutter so the phone title and both 44px targets fit on one line. */
+  .mx-decision-review > .mx-panel-heading:has(> [data-chart-records-heading]) {
+    padding-inline-end: 36px;
   }
 }

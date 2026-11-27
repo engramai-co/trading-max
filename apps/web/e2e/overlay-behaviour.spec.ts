@@ -211,7 +211,7 @@ test.describe("workspace overlays", () => {
     await page.getByRole("button", { name: "Full chart", exact: true }).click();
     const fullChart = page.getByRole("dialog", { name: /NVDA.*Full chart/ });
     await expect(fullChart).toBeVisible();
-    await fullChart.locator("summary").filter({ hasText: "Advanced" }).click();
+    await fullChart.getByRole("button", { name: "Advanced", exact: true }).click();
     await fullChart.getByRole("combobox", { name: "Price axis" }).click();
     await expect(fullChart.getByRole("option", { name: "Log", exact: true })).toBeVisible();
     await page.keyboard.press("Escape");

@@ -183,8 +183,10 @@ export function PerformanceContent({
   }), [daily, data?.intradayNav, actualRange, scope, data?.brokerAsOf, view]);
   const history = view === "money" ? shown?.history?.history ?? fallbackHistory : fallbackHistory;
   const isIntraday = view === "money" && history.source === "intraday";
-  const availablePoints = view === "money" ? history.points : inRange(daily, actualRange).filter((p) =>
-    navNumber(p, scope) != null && (!customRange || actualRange !== "ALL" || p.date >= customRange.start && p.date <= customRange.end));
+  const rangeStart = customRange?.start, rangeEnd = customRange?.end;
+  const availablePoints = useMemo(() => view === "money" ? history.points : inRange(daily, actualRange).filter((p) =>
+    navNumber(p, scope) != null && (!rangeStart || !rangeEnd || actualRange !== "ALL" || p.date >= rangeStart && p.date <= rangeEnd)),
+  [view, history.points, daily, actualRange, scope, rangeStart, rangeEnd]);
   const allScope = [
     { value: "total", label: t("全部投资账户", "All investment accounts") },
     { value: "invest", label: accountName(profile, "A") },
@@ -203,11 +205,12 @@ export function PerformanceContent({
       : allScope;
   const invalidScope =
     view !== "money" && (requestedScope === "cfd" || requestedScope === "household");
-  const comparison = view === "returns"
+  const comparison = useMemo(() => view === "returns"
     ? benchmarkComparison(availablePoints, scope, data?.benchmarkSeries, benchmark === "ALL" ? ALL_BENCHMARKS : [benchmark])
-    : null;
-  const returnsPoints = comparison?.points ?? [];
-  const points = comparison?.points ?? availablePoints;
+    : null, [view, availablePoints, scope, data?.benchmarkSeries, benchmark]);
+  const returnsPoints = comparison?.points;
+  const points = returnsPoints ?? availablePoints;
+  const plottedDates = useMemo(() => points.map((point) => point.date), [points]);
   const plottedId = shown && publicationOf(shown);
   const brush = ready && plottedId && !rangeMismatch ? (a:string,b:string) => {
     setPhoneRange(null);
@@ -234,7 +237,8 @@ export function PerformanceContent({
       onClose={() => {setSelectionRange(null);setPhoneRange(null);if (citedWindow) updateRoute({inspectFrom:null,inspectTo:null});}}/>;
   const first = points[0],
     last = points.at(-1);
-  const money = view === "money" && shown?.history ? shown.history.money : portfolioMoney(points, scope);
+  const publishedMoney = view === "money" ? shown?.history?.money : undefined;
+  const money = useMemo(() => publishedMoney ?? portfolioMoney(points, scope), [publishedMoney, points, scope]);
   const twr =
     points.length > 1
       ? periodReturn(
@@ -243,12 +247,12 @@ export function PerformanceContent({
         )
       : null;
 
-  const returnLines: ChartLine[] = returnComparisonLines(
-    returnsPoints,
+  const returnLines: ChartLine[] = useMemo(() => returnComparisonLines(
+    returnsPoints ?? [],
     scope,
     comparison?.comparisons ?? [],
     t("组合 TWR", "Portfolio TWR"),
-  );
+  ), [returnsPoints, scope, comparison, t]);
   const benchmarkEnd = returnLines.length === 2 ? returnLines[1].values.at(-1) : null;
   const spread = twr != null && benchmarkEnd != null ? Number(((twr - benchmarkEnd) * 100).toFixed(2)) || 0 : null;
   const moneyDrawdown = money.drawdown;
@@ -262,10 +266,10 @@ export function PerformanceContent({
     if (point.investModelValueGbp == null || point.isaModelValueGbp == null) return null;
     return point.investModelValueGbp + point.isaModelValueGbp + (scope === "household" ? history.carriedCfdValue ?? 0 : 0);
   });
-  const returnDrawdowns = returnDrawdownLines(returnLines);
-  const returnDates = returnsPoints.map((point) => point.date);
-  const returnEpisode = deepestDrawdown(returnDrawdowns[0].values);
-  const timelineLayers: TimelineLayer[] = view === "money" ? [
+  const returnDrawdowns = useMemo(() => returnDrawdownLines(returnLines), [returnLines]);
+  const returnDates = useMemo(() => returnsPoints?.map((point) => point.date) ?? [], [returnsPoints]);
+  const returnEpisode = useMemo(() => deepestDrawdown(returnDrawdowns[0].values), [returnDrawdowns]);
+  const timelineLayers: TimelineLayer[] = useMemo(() => view === "money" ? [
     {
       label: t("区间净盈亏", "Period net P&L"),
       percentage: moneyUnit === "percent",
@@ -304,11 +308,11 @@ export function PerformanceContent({
     { returns: t("收益对比", "Return comparison"), drawdown: t("期间回撤", "Period drawdown") },
     drawdownMarks(returnEpisode, returnDates, t),
     returnDrawdowns,
-  );
+  ), [view, t, moneyUnit, money, periodPnls, points, scope, moneyDrawdownPercents, moneyDrawdown, returnLines, returnEpisode, returnDates, returnDrawdowns]);
   const percentUnit = moneyUnit === "percent";
   // Money: one leading figure, then the drawdown and the two value lines, each keyed to its stroke.
   // Returns: the pane being read leads; the comparison and, for returns, the difference follow.
-  const timelineReading: TimelineReading = view === "returns"
+  const timelineReading: TimelineReading = useMemo(() => view === "returns"
     ? (row, { grid, key }) => {
         const pane = grid === 1 ? 1 : 0;
         return comparisonFigures((pane === 1 ? returnDrawdowns : returnLines).map((line, index) => ({
@@ -331,7 +335,8 @@ export function PerformanceContent({
         percentage: percentUnit,
         valueLayer: 1,
         t,
-      });
+      }), [view, returnDrawdowns, returnLines, t, periodPnls, money.pnlPercents, moneyDrawdown,
+        moneyDrawdownPercents, money.periodFlows, timelineLayers, percentUnit]);
   return (
     <ReadingBoundary.Provider value={reading.report}>
       <TabsScope value={view} onChange={(v) =>
@@ -488,7 +493,8 @@ export function PerformanceContent({
                 onBrush={brush}
                 fullscreen
                 emptyHeadingLevel={2}
-                dates={points.map((p) => p.date)}
+                dates={plottedDates}
+                keyboardPanes={view === "returns" ? [t("收益", "Returns"), t("回撤", "Drawdown")] : undefined}
                 layers={timelineLayers}
                 drawdownHeading={view === "money" ? <MoneyDrawdown money={money} /> : undefined}
                 intraday={isIntraday}
@@ -531,7 +537,7 @@ export function PerformanceContent({
                   </thead>
                   <tbody>
                     {returnLines.map((line, index) => {
-                      const end = [...line.values].reverse().find((value) => value != null);
+                      const end = line.values.findLast((value) => value != null);
                       const drawdown = returnDrawdowns[index]?.values ?? [];
                       const maximumDrawdown = minimumObserved(drawdown);
                       return (
@@ -539,7 +545,7 @@ export function PerformanceContent({
                           <th>{line.name}</th>
                           <td className={"mx-align-right mx-" + tone(end)}>{percent(end, true, 2)}</td>
                           <td className={"mx-align-right mx-" + tone(maximumDrawdown)}>{percent(maximumDrawdown, false, 2)}</td>
-                          <td className="mx-align-right">{percent([...drawdown].reverse().find((value) => value != null), false, 2)}</td>
+                          <td className="mx-align-right">{percent(drawdown.findLast((value) => value != null), false, 2)}</td>
                         </tr>
                       );
                     })}

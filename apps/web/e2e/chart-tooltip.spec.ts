@@ -96,6 +96,59 @@ test.describe("performance reading popup", () => {
     await expect(chart.locator("xpath=..").locator(".mx-chart-popup")).toBeHidden();
   });
 
+  test("long currency figures wrap in the hover card and remain scrollable in the strip", async ({ page, isMobile }) => {
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    const records = observations.slice(-288).map((point, index) => {
+      const total = (index + 1) * 12_345_678_910_000_000_000_000;
+      return { ...point, total, invest: total * 0.6, isa: total * 0.4 };
+    });
+    await mockHistory(page, records);
+    await page.goto("/analytics?range=1D");
+    const chart = page.locator("[data-tm-chart-ready=true]").first();
+    await expect(chart).toBeVisible();
+    await chart.scrollIntoViewIfNeeded();
+    await page.evaluate((top) => window.scrollBy(0, top - 260), (await chart.boundingBox())!.y);
+    const widthBefore = await page.evaluate(() => document.documentElement.scrollWidth);
+    const box = (await chart.boundingBox())!;
+    if (isMobile) await page.touchscreen.tap(box.x + box.width * 0.7, box.y + 120);
+    else await page.mouse.move(box.x + box.width * 0.7, box.y + 120);
+    const reading = page.locator(isMobile ? ".mx-chart-strip .mx-reading" : ".mx-chart-popup .mx-reading");
+    const primary = reading.locator(".mx-reading-value");
+    await expect(primary).toHaveText(/£[\d,]{24,}\.00$/);
+    const geometry = await primary.evaluate((figure) => {
+      const range = document.createRange();
+      range.selectNodeContents(figure);
+      const card = figure.closest(".mx-reading")!.getBoundingClientRect();
+      return {
+        lines: [...range.getClientRects()].map(({ left, right }) => ({ left, right })),
+        card: { left: card.left, right: card.right },
+        overflow: figure.scrollWidth > figure.clientWidth + 1,
+        whiteSpace: getComputedStyle(figure).whiteSpace,
+      };
+    });
+    if (isMobile) {
+      expect(geometry.lines).toHaveLength(1);
+      expect(geometry.whiteSpace).toBe("nowrap");
+      expect(geometry.overflow).toBe(true);
+      expect(await primary.evaluate((figure) => { figure.scrollLeft = figure.scrollWidth; return figure.scrollLeft; })).toBeGreaterThan(0);
+    } else {
+      expect(geometry.lines.length).toBeGreaterThan(1);
+      expect(geometry.overflow).toBe(false);
+      expect(geometry.lines.every((line) => line.left >= geometry.card.left && line.right <= geometry.card.right)).toBe(true);
+      const supportingValue = reading.locator(".mx-reading-row > dd").filter({ hasText: /£[\d,]{24,}/ }).first();
+      await expect(supportingValue).toBeVisible();
+      expect(await supportingValue.evaluate((value) => value.scrollWidth <= value.clientWidth + 1)).toBe(true);
+      const swatch = reading.locator("i.mx-reading-key:not([data-dashed]):not([data-dotted]):not([data-kind])").first();
+      const borders = await swatch.evaluate((line) => {
+        const css = getComputedStyle(line);
+        return [css.borderTopWidth, css.borderRightWidth, css.borderBottomWidth, css.borderLeftWidth];
+      });
+      expect(borders).toEqual(["2px", "0px", "0px", "0px"]);
+      expect((await swatch.boundingBox())!.height).toBe(2);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(widthBefore);
+  });
+
   test("places the value keys between P&L and drawdown in GBP and percent", async ({ page, isMobile }) => {
     await mockHistory(page);
     if (isMobile) await page.setViewportSize({ width: 320, height: 740 });

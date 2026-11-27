@@ -72,6 +72,17 @@
   gap: 10px;
   flex-wrap: wrap;
 }
+/* Keep nine ranges in two balanced rows while preserving their source order. */
+@media (pointer: coarse) and (max-width: 767px) {
+  .mx-index-research-chart-tools > .mx-segments:has(> button:nth-of-type(9)) {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(44px, 1fr));
+    width: 100%;
+  }
+  .mx-index-research-chart-tools > .mx-segments:has(> button:nth-of-type(9)) > button {
+    min-width: 0;
+  }
+}
 .mx-index-research-chart-tools .mantine-MultiSelect-root {
   min-width: 164px;
   max-width: 380px;

@@ -142,11 +142,6 @@
         "Select"
       ]
     },
-    "workspace/research-price.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
     "workspace/research-seasonality.tsx": {
       "@mantine/core": [
         "MultiSelect",

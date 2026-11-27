@@ -1,7 +1,7 @@
 "use client";
 
 import { useBreakpoint } from "@/lib/hooks";
-import type { ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate, formatReadingTime, type ReadingGranularity } from "@/ui/formatters";
 import { useChartColours } from "@/ui/charts/palette";
@@ -37,6 +37,7 @@ export function TimelineChart({
   emptyHeadingLevel,
   fullscreen = false,
   onBrush,
+  keyboardPanes,
 }: {
   dates: string[];
   layers: TimelineLayer[];
@@ -59,42 +60,27 @@ export function TimelineChart({
   emptyHeadingLevel?: 2 | 3;
   fullscreen?: boolean;
   onBrush?: (start: string, end: string) => void;
+  keyboardPanes?: readonly [string, string];
 }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const colours = useChartColours();
   const phone = useBreakpoint("phone");
   const narrow = useBreakpoint("narrow");
-  const moneyLayout = drawdownHeading ? moneyTimelineLayout(!!phone, !!narrow) : undefined;
+  const hasDrawdownHeading = Boolean(drawdownHeading);
+  const moneyLayout = useMemo(() => hasDrawdownHeading ? moneyTimelineLayout(!!phone, !!narrow) : undefined,
+    [hasDrawdownHeading, phone, narrow]);
   const shortRange = range === "1D" || range === "1W";
-  const display = shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined;
   const plotHeight = (moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510))
     - (shortRange ? 24 : 0);
-  if (
+  const hasValues = useMemo(() => !(
     !dates.length ||
     (timeline && !timeline.rowIndexes.some((row) => row != null)) ||
     !layers.some((layer) =>
       layer.lines.some((line) => line.values.some((v) => v != null)),
     )
-  ) {
-    return (
-      <>
-        <Empty
-          headingLevel={emptyHeadingLevel}
-          title={pendingCashFlows && dates.length
-            ? t("估值已记录，净盈亏待核对", "Valuations recorded; net P&L awaits reconciliation")
-            : t("还没有可展示的观测记录", "No observations to chart yet")}
-          description={pendingCashFlows && dates.length
-            ? showHistoryEvidence && recordSource
-              ? t("出入金核对完成后，将恢复本区间的净盈亏曲线。已有记录仍可在下方查看。", "The net P&L chart returns after deposits and withdrawals are reconciled. Recorded values remain available below.")
-              : t("出入金核对完成后，将恢复本区间的净盈亏曲线。", "The net P&L chart returns after deposits and withdrawals are reconciled.")
-            : undefined}
-        />
-        {showHistoryEvidence && recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} retained={retainedRecords} label={label} />}
-      </>
-    );
-  }
-  const option = timelineOption(dates, layers, colours, (time) => {
+  ), [dates.length, layers, timeline]);
+  const option = useMemo(() => hasValues ? timelineOption(dates, layers, colours, (time) => {
     const zone = intraday ? timeZone : "UTC";
     // One line per date; the year appears only on dates outside the
     // latest year shown, so it marks the boundary instead of repeating.
@@ -105,28 +91,25 @@ export function TimelineChart({
       : day + "\n" + year;
   },
     timeline, {
-      display,
+      display: shortRange ? { locale, timeZone, intraday, clock: intraday && range === "1D" } : undefined,
       estimated: observations?.map((point) => point.valuationSource === "reconstructed"),
       moneyLayout,
       plotHeight,
       plotWidth: phone ? 320 : 950,
-    });
-  // Solid is the default. Key only the source exceptions that produced a
-  // visible stroke after sampling, using the same series as the chart.
-  const sourceKeys = showHistoryEvidence && observations ? [
-    { type: "estimate", dash: "4 3", label: t("估算", "Estimate") },
-    { type: "gap", dash: "1 4", label: t("缺失", "Missing") },
-  ].filter((key) => option.series.some((series) => typeof series.id === "string" && series.id.startsWith(`history-${key.type}:`))) : [];
-  const calendar = timeline && moneyLayout ? includeDailyMarkers(timeline, dates, layers) : timeline;
-  const rows = timelineRows(dates, layers, calendar);
+    }) : null, [hasValues, dates, layers, colours, intraday, timeZone, locale, timeline, shortRange, range, observations, moneyLayout, plotHeight, phone]);
+  const buildOption = useCallback(() => option ?? {}, [option]);
+  const calendar = useMemo(() => timeline && moneyLayout ? includeDailyMarkers(timeline, dates, layers) : timeline,
+    [timeline, moneyLayout, dates, layers]);
+  const rows = useMemo(() => option ? timelineRows(dates, layers, calendar) : new Map<number, number>(),
+    [option, dates, layers, calendar]);
   const granularity: ReadingGranularity = range === "1D" ? "clock"
     : range === "1W" || range === "1M" || (!range && intraday) ? "intraday" : "day";
-  const gaps = timelineGaps(option.series);
-  const gapEnds = new Set(gaps.map(([, end]) => end));
-  const reconstructed = observations?.map((point) => point.valuationSource === "reconstructed");
+  const gaps = useMemo(() => option ? timelineGaps(option.series) : [], [option]);
+  const gapEnds = useMemo(() => new Set(gaps.map(([, end]) => end)), [gaps]);
+  const reconstructed = useMemo(() => observations?.map((point) => point.valuationSource === "reconstructed"), [observations]);
   // When most of the window is reconstructed, the panel says so once; single points are flagged only as exceptions.
   const mostlyEstimated = !!reconstructed && reconstructed.filter(Boolean).length * 2 >= reconstructed.length;
-  const readout = timelineReadout({
+  const readout = useMemo(() => timelineReadout({
     rows,
     layers,
     colours,
@@ -153,7 +136,32 @@ export function TimelineChart({
         }];
       }));
     } : undefined,
-  });
+  }), [rows, layers, colours, reading, dates, locale, timeZone, granularity, gapEnds, t, reconstructed,
+    mostlyEstimated, gaps, calendar, fullscreen, observations]);
+  if (!option) {
+    return (
+      <>
+        <Empty
+          headingLevel={emptyHeadingLevel}
+          title={pendingCashFlows && dates.length
+            ? t("估值已记录，净盈亏待核对", "Valuations recorded; net P&L awaits reconciliation")
+            : t("还没有可展示的观测记录", "No observations to chart yet")}
+          description={pendingCashFlows && dates.length
+            ? showHistoryEvidence && recordSource
+              ? t("出入金核对完成后，将恢复本区间的净盈亏曲线。已有记录仍可在下方查看。", "The net P&L chart returns after deposits and withdrawals are reconciled. Recorded values remain available below.")
+              : t("出入金核对完成后，将恢复本区间的净盈亏曲线。", "The net P&L chart returns after deposits and withdrawals are reconciled.")
+            : undefined}
+        />
+        {showHistoryEvidence && recordSource && dates.length > 0 && <HistoryRecords selection={recordSource} retained={retainedRecords} label={label} />}
+      </>
+    );
+  }
+  // Solid is the default. Key only the source exceptions that produced a
+  // visible stroke after sampling, using the same series as the chart.
+  const sourceKeys = showHistoryEvidence && observations ? [
+    { type: "estimate", dash: "4 3", label: t("估算", "Estimate") },
+    { type: "gap", dash: "1 4", label: t("缺失", "Missing") },
+  ].filter((key) => option.series.some((series) => typeof series.id === "string" && series.id.startsWith(`history-${key.type}:`))) : [];
   const plot = (
     <Plot
       key={range ?? label}
@@ -171,7 +179,8 @@ export function TimelineChart({
       </>}
       readout={readout}
       height={plotHeight}
-      option={() => option}
+      option={buildOption}
+      keyboardPanes={keyboardPanes}
     />
   );
   return (

@@ -28,6 +28,7 @@ import { formatCalendarDate, formatDateSpan, formatReadingTime } from "@/ui/form
 import { api, currency, percent, tone } from "@/workspace/data";
 import { Plot } from "./charts";
 import { readingText, type Reading } from "./chart-readout";
+import { ChartRecords, ChartRecordsPanel, ChartRecordsTrigger } from "./chart-records";
 import { EvidenceTable } from "./evidence-table";
 import { Help, Instrument, Metric, Panel, Segments, useCopy, useEscapeLayer } from "./foundation";
 import Link from "./link";
@@ -708,7 +709,7 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
   // Hover never speaks; keyboard steps and taps update the live region once each.
   const spoken = stepped ? readingText(reading(stepped.row), locale) : shownTap ? tapSpoken : "";
   return (
-    <div ref={host} className="mx-decision-timeline" onPointerDownCapture={(event) => {
+    <div ref={host} className="mx-decision-timeline min-w-0" onPointerDownCapture={(event) => {
       pointer.current = event.pointerType;
     }} onKeyDownCapture={(event) => {
       // The chart's own keys step through its first series only; these reach every visible decision.
@@ -737,6 +738,10 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
         option={option}
         pin={shownTap && activeReading && active === shownTap ? { reading: activeReading, onClose: clearTap } : null}
         onPointHover={readPoint}
+        pointInstructions={t(
+          "左右方向键查看相邻决定，Home 和 End 到首尾，Enter 打开决定，Escape 关闭读数。轻点标记可查看读数并打开该决定。",
+          "Use the left and right arrows to read adjacent decisions, Home and End for the first and last, Enter to open a decision, and Escape to dismiss a reading. Tap a mark to read and open its decision.",
+        )}
         onPointClick={(event) => {
           const picked = pointOf(event);
           if (!picked) return;
@@ -757,6 +762,14 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
         )}
       />
       <span className="sr-only" aria-live="polite" aria-atomic="true">{spoken}</span>
+      {marks.length > 0 && <ChartRecordsPanel>
+        <EvidenceTable chart label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} rows={marks} columns={[
+          { label: t("日期", "Date"), value: ({ row }) => formatCalendarDate(row.date, locale) },
+          { label: t("决定", "Decision"), value: ({ row }) => decisionName(row, t, locale) },
+          ...(accountOf ? [{ label: t("账户", "Account"), value: ({ row }: (typeof marks)[number]) => accountOf(row) }] : []),
+          { label: t("结果 · GBP", "Outcome · GBP"), numeric: true, value: ({ row }) => signedMoney(decisionEffect(row, horizon), 2) },
+        ]} />
+      </ChartRecordsPanel>}
     </div>
   );
 }
@@ -1030,9 +1043,11 @@ export function DecisionTimelinePanel({
     ? (locale === "zh" ? `每笔决定 ${days} 个交易日后的结果` : `Each decision after ${days} trading days`)
     : t("每笔决定至今的结果", "Each decision to date");
   return (
+    <ChartRecords>
     <Panel
       className="mx-decision-review"
-      action={action}
+      action={<>{action}{rows.some((row) => row.side === "buy" || row.side === "sell") &&
+        <ChartRecordsTrigger label={t("查看精确读数", "View exact values")} placement="heading" />}</>}
       title={title}
       helpLabel={t("买卖决定", "Buy and sell decisions")}
       help={<>
@@ -1081,5 +1096,6 @@ export function DecisionTimelinePanel({
         </p>
       )}
     </Panel>
+    </ChartRecords>
   );
 }

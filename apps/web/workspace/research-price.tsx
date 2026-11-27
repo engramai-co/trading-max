@@ -7,7 +7,11 @@ import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select } from "@mantine/core";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ChevronDown, Minus, Plus } from "lucide-react";
+import { Toolbar } from "@base-ui/react/toolbar";
+import { ChartToolbar } from "./chart-toolbar";
 import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
@@ -26,6 +30,7 @@ import { PriceEventTrack, priceEventDays } from "./research-price-events";
 import { ApiError, compactTick, number, object, objects, percent, str } from "@/workspace/data";
 import { inRange, type Range } from "@/lib/portfolio/nav";
 import { EvidenceTable } from "./evidence-table";
+import { ChartRecords, ChartRecordsPanel, ChartRecordsTrigger } from "./chart-records";
 import {
   Empty,
   Freshness,
@@ -49,13 +54,30 @@ import {
 } from "./research-price-settings";
 
 const intervals = priceIntervals;
-const fullSelectStyles = { input: { height: 44, minHeight: 44 } };
 const movingAverageStyles = {
   sma20: { colour: "text", dash: "long" },
   sma50: { colour: "axis", dash: "short" },
   sma200: { colour: "text", dash: "dash-dot" },
 } as const satisfies Record<string, { colour: "text" | "axis"; dash: LineDash }>;
 const movingAverages = ["sma20", "sma50", "sma200"] as const;
+function PriceSelect({
+  label, width, value, onChange, options,
+}: {
+  label: string;
+  width: number;
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string; disabled?: boolean }[];
+}) {
+  const portal = useRef<HTMLDivElement>(null);
+  return <div ref={portal}><Select items={options} value={value} onValueChange={(next) => { if (next !== null) onChange(next); }}>
+    <SelectTrigger aria-label={label} style={{ width }}><SelectValue /></SelectTrigger>
+    <SelectContent align="start" portalContainer={portal}>
+      {options.map((option) => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
+    </SelectContent>
+  </Select></div>;
+}
+
 export function PriceHistory({
   ticker,
   runId,
@@ -333,7 +355,7 @@ export function PriceHistory({
         options={ranges.filter((v) => full || compactPriceRanges.includes(v) || v === range)
           .map((v) => ({ value: v, label: v === "ALL" ? t("全部", "All") : v }))}
       />
-      <div className="mx-price-common flex flex-wrap items-center gap-mx-xs">
+      <div className="mx-price-common flex min-w-0 flex-wrap items-center gap-mx-xs">
         <Segments label={t("价格样式", "Price style")} value={style} onChange={(v) => update({ priceStyle: v })}
           options={[{ value: "candles", label: t("K 线", "Candles") }, { value: "line", label: t("线", "Line") }]} />
         <Checkbox label="SMA" checked={averages}
@@ -341,44 +363,54 @@ export function PriceHistory({
         <Checkbox label={t("事件", "Events")} checked={showEvents}
           onCheckedChange={(checked) => setEventTrack(checked)} />
       </div>
-      {full && <details className="mx-price-advanced">
-        <summary>{t("高级", "Advanced")}</summary>
-        <div className="flex flex-wrap items-center gap-mx-sm">
-          <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-full-chart-dialog" } }} styles={fullSelectStyles} w={145} aria-label={t("行情粒度", "Bar interval")} value={interval}
-            onChange={(v) => { update({ interval: v }); reset(); }}
-            data={intervals.map((v, i) => ({
-              value: v,
-              label: [t("15 分钟", "15 min"), t("1 小时", "1 hour"), t("日线", "Daily"), t("周线", "Weekly")][i],
-              disabled: !supportsPriceRange(v, range),
-            }))} />
-          <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-full-chart-dialog" } }} styles={fullSelectStyles} w={110} aria-label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
-            data={[
-              { value: "linear", label: t("线性", "Linear") },
-              { value: "log", label: t("对数", "Log") },
-              { value: "percent", label: t("涨跌幅", "Return %") },
-            ]} />
-          <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-full-chart-dialog" } }} styles={fullSelectStyles} w={165} aria-label={t("基准对比", "Benchmark comparison")} value={comparison}
-            onChange={(v) => update({ benchmark: v === "none" ? null : v })}
-            data={[
-              { value: "none", label: t("加入对比", "Compare with") },
-              { value: "SPY", label: "SPY · S&P 500 ETF" },
-              { value: "QQQ", label: "QQQ · Nasdaq 100 ETF" },
-              { value: "VT", label: "VT · Global stocks" },
-            ]} />
-          {averages && <CheckboxGroup aria-label={t("均线周期", "Average periods")}
-            value={averagePeriods} onValueChange={(v) => update({ maPeriods: v.join(","), highlightMa: null, ma: v.length ? "on" : null })}>
-            <div className="flex flex-wrap items-center gap-mx-sm">
-              {["20", "50", "200"].map((v) => <Checkbox key={v} value={v} label={`SMA ${v}`} />)}
-            </div>
-          </CheckboxGroup>}
-          <Checkbox label="RSI 14" checked={rsi} onCheckedChange={(checked) => update({ rsi: checked ? "on" : null })} />
-          <Checkbox label="MACD 12/26/9" checked={macd} onCheckedChange={(checked) => update({ macd: checked ? "on" : null })} />
-          <a href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
-            target="_blank" rel="noreferrer" data-slot="button" className={buttonVariants({ variant: "ghost" })}>TradingView ↗</a>
-        </div>
-      </details>}
+      {full && <Collapsible className="basis-full">
+        <CollapsibleTrigger render={<Button variant="ghost" className="group/disclosure" />}>
+          <ChevronDown size={16} aria-hidden="true" className="-rotate-90 group-data-[panel-open]/disclosure:rotate-0" />
+          {t("高级", "Advanced")}
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div className="flex flex-wrap items-center gap-mx-sm pt-2.5">
+            <PriceSelect width={145} label={t("行情粒度", "Bar interval")} value={interval}
+              onChange={(v) => { update({ interval: v }); reset(); }}
+              options={intervals.map((v, i) => ({
+                value: v,
+                label: [t("15 分钟", "15 min"), t("1 小时", "1 hour"), t("日线", "Daily"), t("周线", "Weekly")][i],
+                disabled: !supportsPriceRange(v, range),
+              }))} />
+            <PriceSelect width={110} label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
+              options={[
+                { value: "linear", label: t("线性", "Linear") },
+                { value: "log", label: t("对数", "Log") },
+                { value: "percent", label: t("涨跌幅", "Return %") },
+              ]} />
+            <PriceSelect width={165} label={t("基准对比", "Benchmark comparison")} value={comparison}
+              onChange={(v) => update({ benchmark: v === "none" ? null : v })}
+              options={[
+                { value: "none", label: t("加入对比", "Compare with") },
+                { value: "SPY", label: "SPY · S&P 500 ETF" },
+                { value: "QQQ", label: "QQQ · Nasdaq 100 ETF" },
+                { value: "VT", label: "VT · Global stocks" },
+              ]} />
+            {averages && <CheckboxGroup aria-label={t("均线周期", "Average periods")}
+              value={averagePeriods} onValueChange={(v) => update({ maPeriods: v.join(","), highlightMa: null, ma: v.length ? "on" : null })}>
+              <div className="flex flex-wrap items-center gap-mx-sm">
+                {["20", "50", "200"].map((v) => <Checkbox key={v} value={v} label={`SMA ${v}`} />)}
+              </div>
+            </CheckboxGroup>}
+            <Checkbox label="RSI 14" checked={rsi} onCheckedChange={(checked) => update({ rsi: checked ? "on" : null })} />
+            <Checkbox label="MACD 12/26/9" checked={macd} onCheckedChange={(checked) => update({ macd: checked ? "on" : null })} />
+            <a href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
+              target="_blank" rel="noreferrer" data-slot="button" className={buttonVariants({ variant: "ghost" })}>TradingView ↗</a>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>}
     </div>
   );
+  const zoomControls = [
+    <Button key="in" variant="secondary" size="icon" aria-label={t("放大", "Zoom in")} onClick={() => zoom(0.65)}><Plus size={18} aria-hidden="true" /></Button>,
+    <Button key="out" variant="secondary" size="icon" aria-label={t("缩小", "Zoom out")} onClick={() => zoom(1.55)}><Minus size={18} aria-hidden="true" /></Button>,
+    <Button key="reset" variant="ghost" onClick={reset}>{t("恢复范围", "Reset zoom")}</Button>,
+  ];
   const content = (
     <>
       {tools}
@@ -742,11 +774,11 @@ export function PriceHistory({
           )}
           {gapSeries.length > 0 && <Legend items={[{ label: t("缺失行情", "Missing price bars"), colour: colours.axis, dotted: true }]} />}
           <div className="mx-chart-footer mx-price-footer">
-            <div className="flex flex-wrap items-center gap-1" aria-label={t("图表缩放", "Chart zoom")}>
-              <Button variant="secondary" size="icon" aria-label={t("放大", "Zoom in")} onClick={() => zoom(0.65)}>+</Button>
-              <Button variant="secondary" size="icon" aria-label={t("缩小", "Zoom out")} onClick={() => zoom(1.55)}>−</Button>
-              <Button variant="ghost" onClick={reset}>{t("恢复范围", "Reset zoom")}</Button>
-            </div>
+            {full ? <ChartToolbar className="flex flex-wrap items-center gap-1" aria-label={t("图表缩放", "Chart zoom")}>
+              {zoomControls.map((button) => <Toolbar.Button key={button.key} render={button} />)}
+            </ChartToolbar> : <div className="flex flex-wrap items-center gap-1" role="group" aria-label={t("图表缩放", "Chart zoom")}>
+              {zoomControls}
+            </div>}
             <span>
               {isIntraday
                 ? formatDate(points[0].date) + " → " + formatDate(points.at(-1)!.date)
@@ -758,11 +790,11 @@ export function PriceHistory({
             days={full || eventTrack === true ? days : days.filter((day) => day.marker)}
             openEarnings={(event) => update({ view: "analyst", analystView: "events", eventId: event.id, eventDate: event.date, chart: null })}
           />}
-          <details className="mx-chart-data">
-            <summary>
-              {t("行情与指标明细", "Price & indicator records")}
-            </summary>
-            <EvidenceTable
+          <div className="mx-chart-data min-w-0">
+          <ChartRecords>
+            <ChartRecordsTrigger label={t("行情与指标明细", "Price & indicator records")} />
+            <ChartRecordsPanel bordered={false}>
+            <EvidenceTable chart
               key={displayedRange + displayedInterval}
               label={t("价格记录", "Price records")}
               rows={points.toReversed()}
@@ -796,7 +828,9 @@ export function PriceHistory({
                 })),
               ]}
             />
-          </details>
+            </ChartRecordsPanel>
+          </ChartRecords>
+          </div>
           </div>
         </>
       )}

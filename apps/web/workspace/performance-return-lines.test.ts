@@ -156,7 +156,8 @@ describe("all-benchmarks visual keys", () => {
         const readingKeys = items.map((item) => `${item.key!.colour}|${item.key!.dash ?? "solid"}`);
         expect(new Set(readingKeys).size).toBe(4);
 
-        const html = renderToStaticMarkup(createElement(ReadingView, { reading, locale: "en" }));
+        const html = renderToStaticMarkup(createElement(ReadingView, { reading, locale: "en" }))
+          .replace(/class="mx-reading-key(?: [^"]*)?"/g, 'class="mx-reading-key"');
         items.forEach((item, index) => {
           const line = returnSeries[index];
           expect(item.key!.colour).toBe(line.lineStyle?.color);

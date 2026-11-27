@@ -20,6 +20,8 @@ import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent, fo
 import { useChartColours } from "@/ui/charts/palette";
 import type { ChartReadout, Reading, ReadingKey } from "./chart-readout";
 import { comparisonFigures, fixed, plainPercent, readingTone, signedPercent } from "./reading-format";
+import { ChartRecords, ChartRecordsPanel, ChartRecordsTrigger } from "./chart-records";
+import { EvidenceTable } from "./evidence-table";
 import { DataBasis } from "./reading-card";
 import { api } from "./data";
 import { Empty, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
@@ -184,7 +186,9 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
   const logarithmic = log && ["1Y", "3Y", "5Y", "MAX"].includes(period);
   const logDomain = logarithmic ? indexLogDomain(values) : {};
   return (
-    <Panel title={label} help={<>
+    <ChartRecords>
+    <Panel title={label} action={!preview && dates.length > 1 && !query.isError &&
+      <ChartRecordsTrigger label={t("查看精确读数", "View exact values")} placement="heading" />} help={<>
       <p>{t(
         "区间收益从图中首个有效读数计算。对比按第一个共同日期归一为 100；只允许同币种、同回报口径和同对冲的指数。",
         "Period return uses the first visible observation. Comparisons start at 100 on the first common date, with matching currency, return variant and hedge basis.",
@@ -254,6 +258,14 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
                 };
               }}
             />
+            {!preview && <ChartRecordsPanel>
+              <EvidenceTable chart key={period + labels.join("|")} rows={dates.map((at, index) => ({ at, index }))} label={comparing ? t("起点 = 100", "Rebased to 100") : [labels[0], unit].join(" · ")} columns={[
+                { label: t("时间", "Time"), value: (row) => stamp(row.at) },
+                ...labels.map((name, series) => ({
+                  label: name, numeric: true, value: ({ index }: { index: number }) => valueText(values[series]?.[index]),
+                })),
+              ]} />
+            </ChartRecordsPanel>}
             {moments.coverage}
             {moments.items.length > 0 && <PriceEventTrack days={[]} moments={moments} />}
             {!preview && (daily || weekly) && <div className="mx-index-research-risk">
@@ -262,6 +274,7 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
             </div>}
           </>}
     </Panel>
+    </ChartRecords>
   );
 }
 
@@ -287,8 +300,9 @@ export function RiskChart({ dates, values, title, primary = false, signed = fals
     marks: (i) => values[i] == null ? [] : [{ value: values[i]!, colour }],
     gap: (i) => values[Math.round(i)] == null,
   };
-  return <section className="mx-index-research-risk-chart" aria-label={title}>
-    <h3>{title}</h3>
+  return <ChartRecords render={<section className="mx-index-research-risk-chart relative" aria-label={title} />}>
+    <h3 className={positions.length ? "pe-11" : undefined}>{title}</h3>
+    {positions.length > 0 && <ChartRecordsTrigger label={t("查看精确读数", "View exact values")} placement="heading" />}
     {values.every((value) => value == null) ? <p>{t("历史数据不足", "Insufficient history")}</p>
       : <Plot height={155} label={title}
         readout={readout}
@@ -300,5 +314,20 @@ export function RiskChart({ dates, values, title, primary = false, signed = fals
           yAxis: { type: "value", scale: true, splitNumber: 3, axisLabel: { formatter: (value) => formatPercent(value, locale, 1) } },
           series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: primary ? chartColours.brand : chartColours.text, width: primary ? 2 : 1.5 } }],
         })} />}
-  </section>;
+    {positions.length > 0 && <IndexSeriesRecords dates={dates} label={title} figure={(i) => figure(values[i]).value} />}
+  </ChartRecords>;
+}
+
+export function IndexSeriesRecords({ dates, label, figure }: {
+  dates: string[]; label: string; figure: (position: number) => string;
+}) {
+  const t = useCopy();
+  const { locale, timeZone } = useLocale();
+  return <ChartRecordsPanel>
+    <EvidenceTable chart label={label} rows={dates.map((date, position) => ({ date, position }))} columns={[
+      { label: t("时间", "Time"), value: ({ date }) => date.includes("T")
+        ? formatReadingTime(date, locale, timeZone, "intraday") : formatCalendarDate(date, locale) },
+      { label, numeric: true, value: ({ position }) => figure(position) },
+    ]} />
+  </ChartRecordsPanel>;
 }

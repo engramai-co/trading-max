@@ -19,7 +19,7 @@
 import { Select } from "@mantine/core";
 import { ChartLine } from "lucide-react";
 import Link from "./link";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { buttonVariants } from "@/components/ui/button";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -348,7 +348,7 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
     attribution,
     scope,
     day: history.endDay,
-    dates: points.map((p) => p.date),
+    dates: points.map((point) => point.date),
     pnls: money.pnls,
     openings: data.openings,
     cutOff: history.pendingCashFlows,
@@ -404,18 +404,29 @@ function OverviewHistory({
   const t = useCopy();
   const { range, scope } = selection;
   const [figureAnchor, setFigureAnchor] = useState<HTMLDivElement | null>(null);
-  const history = data?.history ?? selectPortfolioHistory({ range, scope });
+  const history = useMemo(() => data?.history ?? selectPortfolioHistory({ range, scope }), [data?.history, range, scope]);
   const { points } = history;
   const isIntraday = history.source === "intraday";
-  const money = data?.money ?? portfolioMoney([], scope);
+  const money = useMemo(() => data?.money ?? portfolioMoney([], scope), [data?.money, scope]);
   // The 1D figure is today's: the positions behind it follow, as the five-day window's do.
   const attribution = range === "1D" ? dayAttribution : range === "1W" ? windowAttribution : undefined;
-  const lines = [{ name: t("净盈亏", "Net P&L"), values: money.pnls, area: true }];
+  const dates = useMemo(() => points.map((point) => point.date), [points]);
+  const layers = useMemo(() => {
+    const label = t("净盈亏", "Net P&L");
+    return [{ label, lines: [{ name: label, values: money.pnls, area: true }], zeroBaseline: true }];
+  }, [money.pnls, t]);
+  const readNetPnl = useCallback((row: number) => ({
+    primary: {
+      value: signedPounds(money.pnls[row]),
+      tone: readingTone(money.pnls[row]),
+      ...(money.pnlPercents[row] != null ? { detail: signedPercent(money.pnlPercents[row]) + t(" 相对期初", " vs opening") } : {}),
+    },
+  }), [money.pnlPercents, money.pnls, t]);
   const drivers = attribution ? dayDrivers({
     attribution,
     scope,
     day: history.endDay,
-    dates: points.map((p) => p.date),
+    dates,
     pnls: money.pnls,
     openings: data?.openings,
     cutOff: history.pendingCashFlows,
@@ -465,8 +476,8 @@ function OverviewHistory({
           {drivers && <DayDrivers span={range === "1W" ? "5D" : "1D"} drivers={drivers} />}
           <HistoryCoverage history={history} />
           <TimelineChart
-            dates={points.map((p) => p.date)}
-            layers={[{ label: t("净盈亏", "Net P&L"), lines, zeroBaseline: true }]}
+            dates={dates}
+            layers={layers}
             label={t("区间净盈亏曲线", "Period net profit and loss over time")}
             intraday={isIntraday}
             range={range}
@@ -475,13 +486,7 @@ function OverviewHistory({
             pendingCashFlows={history.pendingCashFlows}
             showHistoryEvidence={false}
             height={264}
-            reading={(row) => ({
-              primary: {
-                value: signedPounds(money.pnls[row]),
-                tone: readingTone(money.pnls[row]),
-                ...(money.pnlPercents[row] != null ? { detail: signedPercent(money.pnlPercents[row]) + t(" 相对期初", " vs opening") } : {}),
-              },
-            })}
+            reading={readNetPnl}
           />
         </div>
       )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoard, SectorBoardResponse, SectorMarketStatus } from "@/lib/types";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
@@ -90,10 +90,6 @@ export function SessionClock({ status, board, phase, phaseName, monitorOn, refre
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const demonstration = useDemonstration();
-  if (demonstration) return board ? <div className="mx-sectors-clock">
-    <DemoAsOf date={board.asOf} />
-    {sources && <Help label={t("板块数据来源", "Sector data sources")}><SectorSources source={board.source} /></Help>}
-  </div> : null;
   // An error at or after the shown board's fetch is current; an earlier one was already overcome.
   const failed = Boolean(status.lastErrorAt && (!board || Date.parse(status.lastErrorAt) >= Date.parse(board.fetchedAt)));
   // After the bell a board can be published before enough official closes arrive: it is not final yet.
@@ -103,8 +99,23 @@ export function SessionClock({ status, board, phase, phaseName, monitorOn, refre
   const lagging = !failed && phase === "open" && board?.asOf != null && now.getTime() - Date.parse(board.asOf) > 45 * 60_000;
   const asOf = board?.asOf ?? null;
   const source = board?.source;
+  const stale = failed || Boolean(refreshFailed) || lagging;
+  const previousStale = useRef(stale);
+  const [announcement, setAnnouncement] = useState("");
+  useEffect(() => {
+    if (previousStale.current === stale) return;
+    previousStale.current = stale;
+    setAnnouncement(stale ? t("板块报价暂未更新", "Sector quotes are stale")
+      : t("板块报价已恢复更新", "Sector quotes are updating again"));
+  }, [stale, t]);
+
+  if (demonstration) return board ? <div className="mx-sectors-clock">
+    <DemoAsOf date={board.asOf} />
+    {sources && <Help label={t("板块数据来源", "Sector data sources")}><SectorSources source={board.source} /></Help>}
+  </div> : null;
   return (
-    <div className="mx-sectors-clock" aria-live="polite">
+    <div className="mx-sectors-clock">
+      <div role="status" className="sr-only">{announcement}</div>
       {status.calendarKnown === false ? <Tag tone="warn">{t("日历未知", "Calendar unknown")}</Tag>
         : phaseName[phase] && <span>{phaseName[phase]}</span>}
       {asOf && <span>{t("截至 ", "As of ") + formatDateTime(asOf, locale, timeZone, now)}</span>}

@@ -198,7 +198,7 @@ function EpsTimeline({ data }: { data: ResearchLensSnapshot }) {
             },
           ],
         })}
-      /> : <div className="mx-chart-readout"><div className="mx-chart-readout-values">
+      /> : <div className="mx-chart-readout grid min-w-0 gap-1 pt-2 pb-1 text-xs tabular-nums"><div className="mx-chart-readout-values flex min-h-[1.5em] flex-wrap items-baseline gap-x-3 gap-y-[3px] text-muted-foreground [&_span:first-child]:text-foreground">
         {readingText(readEps(rows[0]), locale).split("\n").map((line, i) => <span key={i}>{line}</span>)}
       </div></div>}
       <details className="mx-chart-data">

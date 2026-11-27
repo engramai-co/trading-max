@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { tapRecordsBottom } from "./chart-records";
 
 const days = ["2026-10-01", "2026-10-02", "2026-10-05"];
 const lens = {
@@ -254,8 +255,7 @@ test.describe("research section navigation", () => {
 
   test("a clamped event jump stays current until the reader scrolls", async ({ page, isMobile }) => {
     test.skip(isMobile, "The short sections both fit in a desktop viewport.");
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     await page.route("**/api/backend/research/AAPL/prices?**", async (route) => { await gate; await route.fallback(); });
     await page.goto("/research?ticker=AAPL&view=analyst");
     const nav = page.getByRole("navigation", { name: "On this page" });
@@ -272,8 +272,26 @@ test.describe("research section navigation", () => {
     release();
     await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
     await expect(page.locator(".mx-target-chart").getByRole("group", { name: /^Historical prices/ })).toHaveAttribute("data-tm-chart-ready", "true");
+    const beforeResize = await page.evaluate(() => document.documentElement.scrollHeight);
     await ratings.evaluate((section) => { section.style.paddingBottom = ""; });
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(beforeResize);
+    // The browser clamps scrollY to the new bottom when the earlier section shrinks.
+    await expect.poll(atPageEnd).toBe(true);
+    // Grow the final section so the same viewport is above the bottom and above the Events
+    // scroll-tracking threshold. A cleared pin would now select an earlier section.
+    const unpinnedSection = await page.evaluate(async () => {
+      const events = document.querySelector<HTMLElement>("#research-events")!;
+      document.documentElement.style.overflowAnchor = "none";
+      events.style.paddingBottom = "120vh";
+      events.style.marginTop = "100vh";
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      const sections = Array.from(document.querySelectorAll<HTMLElement>(".mx-reading-sections [id^=research-]"));
+      const threshold = Number.parseFloat(getComputedStyle(sections[0]).scrollMarginTop) + Math.min(innerHeight / 10, 80);
+      return sections.findLast((section) => section.getBoundingClientRect().top <= threshold)?.id ?? sections[0].id;
+    });
     await expect.poll(atPageEnd).toBe(false);
+    expect(unpinnedSection).toBeDefined();
+    expect(unpinnedSection).not.toBe("research-events");
     await expect(events).toHaveAttribute("aria-current", "location");
     // A real reader gesture ends the pinned jump and resumes normal scroll tracking.
     await page.mouse.wheel(0, -160);
@@ -318,8 +336,7 @@ test.describe("research section navigation", () => {
           quote: { ...data.context.quote, price: 4.25, currency: "GBP", quoteUnit: "GBp", asOf: days[2] } },
           analyst: { ...lens.analyst, asOf: days[0], priceTargets: { median: 900 } } } });
       });
-      let release!: () => void;
-      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const { promise: gate, resolve: release } = Promise.withResolvers<void>();
       await page.route("**/api/backend/research/AAPL/prices?**", async (route) => {
         await gate;
         await route.fulfill({ json: { ticker: "AAPL", currency: "GBP",
@@ -454,8 +471,7 @@ test.describe("research section navigation", () => {
     test("the chart and its legend reserve their phone height at " + width, async ({ page, isMobile }) => {
       test.skip(!isMobile, "The phone label wraps.");
       await page.setViewportSize({ width, height: 844 });
-      let release!: () => void;
-      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const { promise: gate, resolve: release } = Promise.withResolvers<void>();
       await page.route("**/api/backend/research/AAPL/prices?**", async (route) => { await gate; await route.fallback(); });
       await page.goto("/research?ticker=AAPL&view=analyst");
       const heading = page.locator(".mx-target-chart-heading");
@@ -528,7 +544,7 @@ test.describe("research section navigation", () => {
     await expect(page.getByRole("tab", { name: "Seasonality" })).toHaveCount(0);
   });
 
-  test("financial sections read as one page and load every reported row on approach", async ({ page }) => {
+  test("financial sections read as one page and load every reported row on approach", async ({ page, isMobile }) => {
     let full = 0;
     page.on("request", (request) => {
       if (/\/research\/AAPL\/lens\/fundamentals\?.*detail=full/.test(request.url())) full += 1;
@@ -542,6 +558,14 @@ test.describe("research section navigation", () => {
     await expect(page.getByRole("region", { name: "Balance sheet" })).toBeAttached();
     await expect(page.getByRole("region", { name: "Cash flow statement" })).toBeAttached();
     expect(full).toBe(0);
+    if (isMobile) {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await expect(page.getByRole("group", { name: "Income bridge" })).toHaveAttribute("data-tm-chart-ready", "true");
+      const records = page.getByRole("button", { name: "Values by step" });
+      await tapRecordsBottom(records);
+      await expect(page.getByRole("region", { name: "Income bridge" }).getByRole("table")).toBeVisible();
+      await records.press("Enter");
+    }
     await index.getByRole("link", { name: "All reported rows" }).click();
     await expect(page.locator("#research-full h2").first()).toBeFocused();
     await expect.poll(() => full).toBeGreaterThan(0);
