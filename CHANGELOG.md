@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.78.0] - 2026-11-27
+
+### Added
+- The index comparison field keeps its label visible while you type. In company comparisons, long names wrap on touch screens and appear in full on hover on desktop.
+
+### Changed
+- Drop-downs, searchable pickers, multi-select lists and native selectors use the new design system. The price chart's **Bar interval**, **Price axis** and **Benchmark comparison** menus under **Advanced** match the other pickers.
+- The Overview account picker sizes itself to the account names available when the page opens. Saved names that arrive later no longer affect the space reserved for the picker.
+
+### Fixed
+- Account choices and picker buttons that clear or remove selections have touch targets of at least 44px.
+- If a selected contract disappears from the latest options data, the payoff editor disables **Add to analysis** until you select an available contract.
+
 ## [1.77.0] - 2026-11-27
 
 ### Added
