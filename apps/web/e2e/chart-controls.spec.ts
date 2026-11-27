@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import type { IndexIdentity } from "../workspace/market-indices-data";
+import { tapRecordsBottom } from "./chart-records";
 
 const base = Date.UTC(2026, 9, 5, 10, 30);
 const observations = Array.from({ length: 20 }, (_, i) => ({ at: new Date(base + i * 300_000).toISOString(), value: 500 + i }));
@@ -14,7 +15,7 @@ test.describe("chart evidence and fullscreen", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
   });
 
-  test("each canvas initialises once and fullscreen preserves readings and restores focus", async ({ page }) => {
+  test("each canvas initialises once and fullscreen preserves readings and restores focus", async ({ page, isMobile }) => {
     await page.addInitScript(() => localStorage.setItem("mantine-color-scheme-value", "auto"));
     await page.emulateMedia({ colorScheme: "dark" });
     await page.route("**/api/backend/indices/sp-500/history?**", (route) => route.fulfill({ json: {
@@ -34,6 +35,7 @@ test.describe("chart evidence and fullscreen", () => {
     const full = page.getByRole("dialog");
     const fullCanvas = full.locator("[data-tm-chart-ready]");
     await expect(full).toBeVisible();
+    await expect(page.getByRole("link", { name: "Skip to content" })).toHaveCount(0);
     await expect(fullCanvas).toHaveAttribute("data-tm-chart-init-count", "1");
     await page.locator(".mx-skip").evaluate((skip: HTMLElement) => skip.focus());
     await expect(full.getByRole("button", { name: "Exit fullscreen" })).toBeFocused();
@@ -41,7 +43,16 @@ test.describe("chart evidence and fullscreen", () => {
     await expect(full.locator("[data-chart-reading=selected]")).not.toContainText("USD");
 
     await full.getByRole("button", { name: "Zoom in", exact: true }).click();
-    const more = full.getByRole("button", { name: "More", exact: true });
+    const more = full.getByRole("button", { name: "More chart actions", exact: true });
+    const toolbar = full.getByRole("toolbar", { name: "Chart actions" });
+    const zoomIn = toolbar.getByRole("button", { name: "Zoom in" });
+    await zoomIn.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect(toolbar.getByRole("button", { name: "Zoom out" })).toBeFocused();
+    await page.keyboard.press("End");
+    await expect(more).toBeFocused();
+    await page.keyboard.press("Home");
+    await expect(zoomIn).toBeFocused();
     await more.press("ArrowDown");
     await expect(page.getByRole("menuitem", { name: "Copy reading" })).toBeFocused();
     await page.keyboard.press("Escape");
@@ -83,7 +94,7 @@ test.describe("chart evidence and fullscreen", () => {
           swatch.remove();
           return channels;
         });
-        await full.getByRole("button", { name: "More", exact: true }).click();
+        await full.getByRole("button", { name: "More chart actions", exact: true }).click();
         const pngReady = page.waitForEvent("download");
         await page.getByRole("menuitem", { name: "Export PNG" }).click();
         const png = await readFile((await (await pngReady).path())!);
@@ -100,6 +111,42 @@ test.describe("chart evidence and fullscreen", () => {
     await expect(open).toBeFocused();
     await expect(chart).toHaveAttribute("data-tm-chart-init-count", "1");
     await expect(index.locator("[data-chart-reading=selected]")).toContainText("518.00");
+    const values = index.getByRole("button", { name: "View exact values" });
+    await expect(index.getByRole("table")).toHaveCount(0);
+    expect(await values.evaluate((button) => button.parentElement?.classList.contains("mx-chart-actions"))).toBe(true);
+    const layout = () => index.evaluate((panel) => ({
+      height: panel.getBoundingClientRect().height,
+      metrics: panel.querySelector(".mx-index-metrics")?.getBoundingClientRect().top,
+    }));
+    const closed = await layout();
+    if (isMobile) await tapRecordsBottom(values);
+    else await values.press("Space");
+    await expect(values).toHaveAttribute("aria-expanded", "true");
+    const records = index.getByRole("region", { name: "S&P 500", exact: true }).getByRole("table");
+    await expect(records.getByRole("columnheader", { name: "S&P 500 · USD" })).toBeVisible();
+    await expect(records.getByRole("cell", { name: "—", exact: true })).toBeVisible();
+    expect((await layout()).height).toBeGreaterThan(closed.height);
+    await values.press("Enter");
+    await expect(records).toBeHidden();
+    await expect(values).toBeFocused();
+    await expect.poll(async () => (await layout()).height).toBe(closed.height);
+  });
+
+  test("the Returns keyboard reader can switch panes without rebuilding the chart", async ({ page }) => {
+    await page.goto("/analytics?view=returns");
+    const chart = page.getByRole("group", { name: "Returns and drawdowns on a shared timeline" });
+    await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
+    const revision = await chart.getAttribute("data-tm-chart-applied-at");
+    const reading = page.locator("[data-chart-reading]");
+    await chart.press("End");
+    await expect(reading).toContainText("Portfolio TWR");
+    const date = await reading.locator("span").nth(1).innerText();
+    await chart.press("ArrowDown");
+    await expect(reading).toContainText("Portfolio TWR drawdown");
+    await expect(reading.locator("span").nth(1)).toHaveText(date);
+    await chart.press("ArrowUp");
+    await expect(reading).not.toContainText("Portfolio TWR drawdown");
+    await expect(chart).toHaveAttribute("data-tm-chart-applied-at", revision!);
   });
 
   test("index risk shows a gap as unverified recovery", async ({ page }) => {
@@ -221,13 +268,16 @@ test.describe("chart evidence and fullscreen", () => {
     await page.goto("/sectors?market=us&index=sp-500&range=1D");
     const index = page.locator(".mx-index-history");
     const host = index.locator(".mx-chart-host").first();
-    const more = index.getByRole("button", { name: "More", exact: true });
+    const more = index.getByRole("button", { name: "More chart actions", exact: true });
     const open = index.getByRole("button", { name: "Fullscreen", exact: true });
     const chart = index.locator("[data-tm-chart-ready]").first();
     await expect(chart).toBeVisible();
 
     const verifyRoundTrip = async () => {
-      await more.focus();
+      const records = index.getByRole("button", { name: "View exact values" });
+      await expect(records).toHaveAttribute("aria-expanded", "false");
+      await records.focus();
+      await page.keyboard.press("Tab");
       await expect(more).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(open).toBeFocused();
@@ -241,6 +291,8 @@ test.describe("chart evidence and fullscreen", () => {
       await expect(open).toBeFocused();
       await page.keyboard.press("Shift+Tab");
       await expect(more).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(records).toBeFocused();
     };
 
     await verifyRoundTrip();
@@ -286,11 +338,11 @@ test.describe("chart evidence and fullscreen", () => {
     const index = page.locator(".mx-index-history");
     await expect(index.locator("[data-tm-chart-ready]").first()).toBeVisible();
 
-    const more = index.getByRole("button", { name: "More", exact: true });
+    const more = index.getByRole("button", { name: "More chart actions", exact: true });
+    await expect(index.locator(".mx-chart-status[role=status]")).toHaveText("");
     await more.click();
     await page.getByRole("menuitem", { name: "Copy reading" }).click();
     const status = index.locator(".mx-chart-status[role=status]");
-    await expect(status).toBeVisible();
     await expect(status).toHaveText("Copied");
     const box = (await status.boundingBox())!;
     expect(box.width).toBeGreaterThan(10);
@@ -300,7 +352,7 @@ test.describe("chart evidence and fullscreen", () => {
     await more.click();
     await page.getByRole("menuitem", { name: "Copy reading" }).click();
     await expect(status).toBeVisible();
-    await expect(status).toHaveText("Action unavailable");
+    await expect(status).toHaveText("Couldn’t copy the reading. Try again.");
   });
 });
 

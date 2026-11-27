@@ -1,6 +1,7 @@
 import { expect, test as base, type Page } from "@playwright/test";
 import { join } from "node:path";
 import type { ResearchPriceSeries } from "../lib/types";
+import { tapRecordsBottom } from "./chart-records";
 
 const test = base.extend<{ uiLocale: "en" | "zh" }>({ uiLocale: ["en", { option: true }] });
 
@@ -98,7 +99,9 @@ test.describe("primary chart reading", () => {
       const readout = chartPanel.locator("[data-chart-reading]");
       await expect(chart).toBeVisible();
       await expect(readout).toContainText("Open");
-      await expect(chartPanel.getByRole("button", { name: "Candles" })).toHaveAttribute("aria-pressed", "true");
+      const candles = chartPanel.getByRole("button", { name: "Candles" });
+      await expect(candles).toHaveAttribute("aria-pressed", "true");
+      await expect(chartPanel.locator(".mx-price-common")).toHaveCSS("min-width", "0px");
       // The chart, score and diagnosis share one surface; the diagnosis spans it below them.
       const [surfaceBox, chartBox, diagnosisBox] = await Promise.all([
         page.locator(".mx-tech-workspace").boundingBox(), chartPanel.boundingBox(), page.locator(".mx-tech-diagnosis").boundingBox(),
@@ -153,6 +156,21 @@ test.describe("primary chart reading", () => {
         await page.evaluate(() => window.scrollTo(0, 0));
         await page.screenshot({ path: join(folder, `technical-${info.project.name}-${width}-${colorScheme}.png`) });
       }
+
+      const records = chartPanel.getByRole("button", { name: "Price & indicator records" });
+      await expect(chartPanel.getByRole("table")).toHaveCount(0);
+      if (isMobile) await tapRecordsBottom(records);
+      else await records.press("Space");
+      const table = chartPanel.getByRole("table", { name: /Price records/ });
+      const closeColumn = table.getByRole("columnheader", { name: "Close", exact: true });
+      await expect(closeColumn).toBeVisible();
+      await expect(table).toHaveCSS("caption-side", "top");
+      expect((await table.locator("caption").boundingBox())!.y).toBeLessThan((await closeColumn.boundingBox())!.y);
+      const latestRecord = await table.getByRole("rowheader").first().innerText();
+      await chartPanel.getByRole("button", { name: "Next page" }).click();
+      await expect(table.getByRole("rowheader").first()).not.toHaveText(latestRecord);
+      await records.press("Enter");
+      await expect(table).toBeHidden();
 
       await chartPanel.getByRole("button", { name: "Full chart" }).click();
       const dialog = page.getByRole("dialog");

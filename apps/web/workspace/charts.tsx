@@ -279,18 +279,18 @@ export function Legend({
   const colours = useChartColours();
   const seriesColours = [colours.brand, colours.accent, colours.secondary, colours.series5, colours.comparison];
   return (
-    <div className="mx-chart-legend">
+    <div role="list" className="mx-chart-legend">
       {items.map((item, i) => {
         const dashArray = item.dash ? LINE_DASH_PATTERNS[item.dash].swatch : item.dotted ? "1 4" : item.dashed ? "4 3" : undefined;
         const width = item.dash ? 18 : 15;
         const stroke = item.colour ?? seriesColours[i % seriesColours.length];
         return (
-          <span key={item.label}>
+          <span role="listitem" key={item.label} className="inline-flex min-w-0 items-center gap-[7px] wrap-anywhere">
             {dashArray ? (
-              <svg width={width} height="4" aria-hidden="true">
+              <svg className="shrink-0" width={width} height="4" aria-hidden="true">
                 <path d={`M0 2h${width}`} stroke={stroke} strokeWidth="2" strokeDasharray={dashArray} />
               </svg>
-            ) : <i style={{ background: stroke }} />}
+            ) : <i className="h-[3px] w-[15px] shrink-0 rounded-sm" aria-hidden="true" style={{ background: stroke }} />}
             {item.label}
           </span>
         );

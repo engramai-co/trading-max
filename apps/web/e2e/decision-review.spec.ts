@@ -3,6 +3,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 import type { components } from "../lib/api-schema";
 import { backendFixture } from "../tests/loading/fixtures";
+import { tapRecordsBottom } from "./chart-records";
 
 // Two synthetic accounts. Invest has two scored decisions and three young ones a link can open; Stocks ISA, when
 // present, has a buy that helped more than any in Invest and a sale that cost. Between fetches only their context changes.
@@ -1242,7 +1243,7 @@ test("the recent record shows what fills moved, what was left alone and each acc
 test("decisions sharing a day stay points of their own, read one at a time", async ({ page }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   // Synthetic Beta and four more buys share 2 September.
-  await serve(page, () => ({ benchmark: 0.021, events: false, cluster: true }));
+  await serve(page, () => ({ benchmark: 0.021, events: true, cluster: true }));
   const reviews: string[] = [];
   page.on("request", (request) => {
     if (new URL(request.url()).searchParams.get("lens") === "decision_review") reviews.push(request.url());
@@ -1267,10 +1268,66 @@ test("decisions sharing a day stay points of their own, read one at a time", asy
   }
   // Readings render through the React ReadingCard overlay rather than an ECharts HTML tooltip sink.
   await expect(timeline.locator(".mx-reading-tooltip > .mx-reading")).toHaveCount(1);
+  await chart.press("Home");
+  await chart.press("ArrowRight");
+  const row = card.locator(".mx-reading-row").first();
+  await expect(row).toBeVisible();
+  const columns = await row.evaluate((element) => {
+    const [label, value] = element.children;
+    const range = document.createRange();
+    range.selectNodeContents(label);
+    return { label: label.getBoundingClientRect().width, naturalLabel: range.getBoundingClientRect().width,
+      value: value.getBoundingClientRect().width, row: element.getBoundingClientRect().width,
+      gap: Number.parseFloat(getComputedStyle(element).columnGap) };
+  });
+  expect(columns.label).toBeCloseTo(columns.naturalLabel, 0);
+  expect(columns.label + columns.value + columns.gap).toBeCloseTo(columns.row, 0);
   await page.keyboard.press("Escape");
   await expect(card).toHaveCount(0);
+  const exact = timeline.getByRole("button", { name: "查看精确读数" });
+  await expect(timeline.locator(".mx-panel-heading").getByRole("button", { name: "查看精确读数" })).toHaveCSS("position", "absolute");
+  const height = () => timeline.evaluate((panel) => panel.getBoundingClientRect().height);
+  const closedHeight = await height();
+  await exact.press("Space");
+  await expect(timeline.getByRole("table")).toBeVisible();
+  expect(await height()).toBeGreaterThan(closedHeight);
+  await exact.press("Enter");
+  await expect(timeline.getByRole("table")).toBeHidden();
+  await expect.poll(height).toBe(closedHeight);
   // The review no longer asks for an AI review.
   expect(reviews).toEqual([]);
+});
+
+test("the closed records disclosure preserves phone heading and plot geometry in English", async ({ page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL || !isMobile, "Requires the phone project and a local preview.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await serve(page, () => ({ benchmark: 0.021, events: true, cluster: true }));
+  await page.goto("/review?account=A");
+  const timeline = page.locator(".mx-decision-review");
+  await expect(timeline.locator("[data-tm-chart-ready]")).toBeVisible();
+  const records = timeline.getByRole("button", { name: "View exact values" });
+  await expect(records).toHaveAttribute("aria-expanded", "false");
+  const layout = await records.evaluate((button) => {
+    const heading = button.parentElement!;
+    const plot = heading.parentElement!.querySelector(".mx-plot")!;
+    const help = heading.querySelector(".mx-panel-title button")!;
+    const height = () => ({
+      heading: heading.getBoundingClientRect().height,
+      plot: plot.getBoundingClientRect().top,
+      page: document.documentElement.scrollHeight,
+    });
+    const withRecords = height();
+    const targetGap = button.getBoundingClientRect().left - help.getBoundingClientRect().right;
+    button.removeAttribute("data-chart-records-heading");
+    const withoutRecords = height();
+    button.setAttribute("data-chart-records-heading", "true");
+    return { withRecords, withoutRecords, targetGap };
+  });
+  expect(layout.withRecords).toEqual(layout.withoutRecords);
+  expect(layout.targetGap).toBeGreaterThanOrEqual(0);
+  await tapRecordsBottom(records);
+  await expect(timeline.getByRole("table")).toBeVisible();
 });
 
 test("CFD without history offers prerequisites and the import screen", async ({ page }) => {

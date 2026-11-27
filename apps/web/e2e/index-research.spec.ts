@@ -1,6 +1,7 @@
 import { expect, test, webkit, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { formatCalendarDate } from "../ui/formatters";
+import { tapRecordsBottom } from "./chart-records";
 
 const index = {
   id: "synthetic-index", name: "Synthetic broad market", nameZh: "合成宽基指数", scope: "us",
@@ -40,7 +41,7 @@ const shell = {
 };
 
 const publishedSeriesId = "f".repeat(20);
-async function indexFixture(page: Page, baseURL: string, locale: "zh" | "en" = "zh") {
+async function indexFixture(page: Page, baseURL: string, locale: "zh" | "en" = "zh", unconfirmedTracking = false) {
   const origin = new URL(baseURL).origin;
   await page.clock.install({ time: new Date(stamp) });
   await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
@@ -60,12 +61,16 @@ async function indexFixture(page: Page, baseURL: string, locale: "zh" | "en" = "
     if (path.endsWith("/fund")) return route.fulfill({ json: {
       ticker: "SYNF.L", state: "available", fetchedAt: stamp, isin: fundIsin, benchmark: index, indexName: index.nameZh,
       dailyTracking: {
-        isin: fundIsin, benchmarkId: index.id, state: "available", navCurrency: "USD", benchmarkCurrency: "USD",
+        isin: fundIsin, benchmarkId: index.id, state: unconfirmedTracking ? "hedged-comparison-unconfirmed" : "available",
+        navCurrency: "USD", benchmarkCurrency: "USD",
         sourceUrl: product.evidenceUrl, summary: {
           firstDate: "2026-01-01", lastDate: "2026-10-01", commonObservations: 192, dailyReturnObservations: 190,
           trackingDifference: -.001, trackingError: .005,
         },
-        points: points.map(({ at }, i) => ({ date: at.slice(0, 10), cumulativeDifference: -i / 10000, rollingTrackingError: i / 10000 })),
+        points: points.map(({ at, value }, i) => ({
+          date: at.slice(0, 10), nav: value / 20, benchmarkLevel: value,
+          cumulativeDifference: -i / 10000, rollingTrackingError: i / 10000,
+        })),
       },
     } });
     if (path.endsWith("/research")) return route.fulfill({ json: {
@@ -92,7 +97,17 @@ async function exercise(page: Page, baseURL: string, name: string) {
   await indexFixture(page, baseURL);
   await page.goto(new URL("/research?ticker=SYNF.L&view=tracking", baseURL).href);
   await expect(page.getByRole("region", { name: "累计跟踪差" })).toBeVisible();
-  await expect(page.getByRole("region", { name: "滚动一年跟踪误差" })).toBeVisible();
+  const trackingError = page.getByRole("region", { name: "滚动一年跟踪误差" });
+  await expect(trackingError).toBeVisible();
+  if (name === "mobile") await expect(trackingError).toHaveCSS("border-top-width", "1px");
+  const exactValues = trackingError.getByRole("button", { name: "查看精确读数" });
+  await expect(exactValues).toHaveCSS("position", "absolute");
+  const closedHeight = (await trackingError.boundingBox())!.height;
+  await exactValues.press("Space");
+  await expect(trackingError.getByRole("table")).toBeVisible();
+  await exactValues.press("Enter");
+  await expect(trackingError.getByRole("table")).toBeHidden();
+  await expect.poll(async () => (await trackingError.boundingBox())!.height).toBe(closedHeight);
   await page.getByRole("link", { name: index.nameZh }).click();
   await expect(page).toHaveURL(/type=index&index=synthetic-index$/);
   await expect(page.getByRole("heading", { name: index.nameZh })).toBeVisible();
@@ -168,6 +183,50 @@ async function exercise(page: Page, baseURL: string, name: string) {
 test("a fund benchmark opens an index with private exposure, constituents and chart tools", async ({ page, baseURL }, info) => {
   await page.setViewportSize({ width: info.project.name === "mobile" ? 390 : 1440, height: 900 });
   await exercise(page, baseURL!, info.project.name);
+});
+
+test("phone taps at the bottom of research chart disclosures open the exact records", async ({ page, baseURL, isMobile }) => {
+  test.skip(!isMobile, "Requires a touch context.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await indexFixture(page, baseURL!, "en");
+  await page.goto("/research?ticker=SYNF.L&view=tracking");
+  for (const title of ["Cumulative tracking difference", "Rolling one-year tracking error"]) {
+    const chart = page.getByRole("region", { name: title, exact: true });
+    await expect(chart.locator("[data-tm-chart-ready]")).toBeVisible();
+    const trigger = chart.getByRole("button", { name: "View exact values" });
+    const closedHeight = (await chart.boundingBox())!.height;
+    await tapRecordsBottom(trigger);
+    await expect(chart.getByRole("table")).toBeVisible();
+    await trigger.press("Enter");
+    await expect.poll(async () => (await chart.boundingBox())!.height).toBe(closedHeight);
+  }
+
+  await page.getByRole("link", { name: index.nameZh }).click();
+  await page.getByRole("tab", { name: "Price & trend" }).click();
+  const price = page.locator("section.mx-panel").filter({ has: page.getByRole("heading", { name: "Price & trend", exact: true }) });
+  const trigger = price.getByRole("button", { name: "View exact values" }).first();
+  await tapRecordsBottom(trigger);
+  await expect(price.getByRole("table")).toBeVisible();
+  await trigger.press("Enter");
+  for (const title of ["Drawdown", "Rolling volatility · 20 bars"]) {
+    const chart = price.getByRole("region", { name: title, exact: true });
+    await expect(chart.locator("[data-tm-chart-ready]")).toBeVisible();
+    await tapRecordsBottom(chart.getByRole("button", { name: "View exact values" }));
+    await expect(chart.getByRole("table")).toBeVisible();
+  }
+});
+
+test("phone taps at the bottom of unconfirmed tracking chart disclosures open the exact records", async ({ page, baseURL, isMobile }) => {
+  test.skip(!isMobile, "Requires a touch context.");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await indexFixture(page, baseURL!, "en", true);
+  await page.goto("/research?ticker=SYNF.L&view=tracking");
+  for (const title of ["Share-class NAV · USD", "Benchmark index · USD"]) {
+    const chart = page.getByRole("region", { name: title, exact: true });
+    await expect(chart.locator("[data-tm-chart-ready]")).toBeVisible();
+    await tapRecordsBottom(chart.getByRole("button", { name: "View exact values" }));
+    await expect(chart.getByRole("table")).toBeVisible();
+  }
 });
 
 test("index reading questions keep the selected series and typed chat uses page context", async ({ page, baseURL, isMobile }) => {

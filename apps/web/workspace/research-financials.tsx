@@ -1,5 +1,6 @@
 "use client";
 import { WorkspaceSheet } from "./overlay";
+import { useBreakpoint } from "@/lib/hooks";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
@@ -8,6 +9,8 @@ import { Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { ChartRecords, ChartRecordsPanel, ChartRecordsTrigger } from "./chart-records";
+import { EvidenceTable } from "./evidence-table";
 import { Legend, Plot } from "./charts";
 import { compact, compactTick, number, percent } from "@/workspace/data";
 import { useChartColours } from "@/ui/charts/palette";
@@ -56,6 +59,7 @@ export function FinancialWorkbench({
   const { locale } = useLocale();
   const { params, update } = useRouteState("push");
   const colours = useChartColours();
+  const phone = useBreakpoint("phone");
   const [detail, setDetail] = useState<Observation | null>(null);
   const facts = data.financialFacts;
   if (!facts?.periods?.length)
@@ -489,7 +493,9 @@ export function FinancialWorkbench({
               </Panel>
               {bridge.length > 0 && (
                 // The summary above carries the currency once; each step's reading adds its share of revenue.
-                <Panel title={t("从营收到净利润", "Revenue to net income")}>
+                <ChartRecords>
+                <Panel title={t("从营收到净利润", "Revenue to net income")}
+                  action={<ChartRecordsTrigger label={t("查看各步读数", "Values by step")} placement="heading" />}>
                   <Plot
                     research
                     label={t("利润桥接", "Income bridge")}
@@ -552,8 +558,9 @@ export function FinancialWorkbench({
                                         : c.positive,
                                   },
                                 },
-                                {
-                                  type: "text",
+                                // Keep every value in the point reader and records when narrow.
+                                ...(!phone || i === 0 || i === bridge.length - 1 ? [{
+                                  type: "text" as const,
                                   style: {
                                     x: from[0],
                                     y: top - 6,
@@ -561,10 +568,10 @@ export function FinancialWorkbench({
                                     fill: c.text,
                                     fontSize: 12,
                                     fontFamily: FONT_STACK,
-                                    align: "center",
-                                    verticalAlign: "bottom",
+                                    align: "center" as const,
+                                    verticalAlign: "bottom" as const,
                                   },
-                                },
+                                }] : []),
                               ],
                             };
                           },
@@ -572,7 +579,14 @@ export function FinancialWorkbench({
                       ],
                     })}
                   />
+                  <ChartRecordsPanel>
+                    <EvidenceTable chart label={t("利润桥接", "Income bridge")} rows={bridge} columns={[
+                      { label: t("项目", "Step"), value: ({ metric }) => label(metric) },
+                      { label: t("金额", "Amount"), numeric: true, value: ({ from, to }) => number(to - from, 2) },
+                    ]} />
+                  </ChartRecordsPanel>
                 </Panel>
+                </ChartRecords>
               )}
           </section>
           {(["income", "balance", "cash"] as const).map((section) => (

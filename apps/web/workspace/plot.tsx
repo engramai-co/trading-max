@@ -1,9 +1,12 @@
 "use client";
 
+import { Button, CloseButton } from "@/components/ui/button";
+import { Toolbar } from "@base-ui/react/toolbar";
+import { ChartToolbar } from "./chart-toolbar";
 import { Dialog, DialogOverlay, DialogPortal, DialogSurface } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { useBreakpoint } from "@/lib/hooks";
-import { Maximize2, Minimize2, X } from "lucide-react";
+import { Maximize2, Minimize2, Minus, Plus } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
@@ -50,6 +53,9 @@ export function Plot({
   initialSelection = null,
   onSelectionChange,
   onBrush,
+  keyboardPanes,
+  pointInstructions,
+  inlineActions,
 }: {
   label: string;
   option: (colours: ChartColours) => EChartsOption;
@@ -69,6 +75,9 @@ export function Plot({
   customGestures?: boolean;
   initialSelection?: number | null;
   onBrush?: (start: number, end: number) => void;
+  keyboardPanes?: readonly [string, string];
+  pointInstructions?: string;
+  inlineActions?: ReactNode;
   onSelectionChange?: (position: number | null) => void;
 }) {
   const t = useCopy();
@@ -85,6 +94,8 @@ export function Plot({
   const [announced, setAnnounced] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [exportStatus, setExportStatus] = useState("");
+  const menuContainer = useRef<HTMLDivElement>(null);
+  const pendingAnnouncement = useRef<string | null>(null);
   const fullscreenTrigger = useRef<HTMLButtonElement>(null);
   const closeTrigger = useRef<HTMLButtonElement>(null);
   const [chartPortal, setChartPortal] = useState<HTMLDivElement | null>(null);
@@ -122,8 +133,9 @@ export function Plot({
   const keyboardAnchor = useRef<number | null>(null);
   const [brushPixels, setBrushPixels] = useState<[number,number] | null>(null);
   const touchY = useRef<number | null>(null);
-  // The pane under the pointer or touch; keyboard readings have none.
+  // The pane under the pointer or touch, or explicitly selected with the keyboard.
   const [pane, setPane] = useState<number | undefined>(undefined);
+  const keyboardPane = useRef(0);
   const colours = useChartColours();
   const settings = useMemo<EChartsOption>(() => {
     const custom = option(colours);
@@ -206,6 +218,9 @@ export function Plot({
       const pixel = active != null ? instance?.convertToPixel({ xAxisIndex: 0 }, active) : gap != null ? pointerX.current : null;
       const x = typeof pixel === "number" ? pixel : NaN;
       const width = bounds.clientWidth;
+      const height = bounds.clientHeight;
+      const card = popup.current;
+      const cardWidth = card?.childElementCount ? card.offsetWidth : 0;
       const shownAt = typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= width;
       el.style.visibility = shownAt ? "visible" : "hidden";
       if (shownAt) el.style.transform = `translateX(${x}px)`;
@@ -215,19 +230,18 @@ export function Plot({
         const point = shownAt && mark && active != null
           ? instance?.convertToPixel({ xAxisIndex: mark.xAxisIndex ?? 0, yAxisIndex: mark.yAxisIndex ?? 0 }, [active, mark.value])
           : undefined;
-        const placed = Array.isArray(point) && point.every(Number.isFinite) && point[1] >= 0 && point[1] <= bounds.clientHeight;
+        const placed = Array.isArray(point) && point.every(Number.isFinite) && point[1] >= 0 && point[1] <= height;
         dot.style.visibility = placed ? "visible" : "hidden";
         if (placed) dot.style.transform = `translate(${point[0]}px, ${point[1]}px)`;
       });
-      const card = popup.current;
       if (!card) return;
-      if (!shownAt || !card.childElementCount) {
+      if (!shownAt || !cardWidth) {
         card.style.visibility = "hidden";
         return;
       }
       // The card's top sits 8px into the plot; it follows the cursor sideways,
       // flips left near the right edge and always stays inside the plot.
-      const w = card.offsetWidth, spacing = 12;
+      const w = cardWidth, spacing = 12;
       let left = x + spacing;
       if (left + w > width - 4) left = x - spacing - w;
       left = Math.max(4, Math.min(left, width - w - 4));
@@ -275,9 +289,17 @@ export function Plot({
     drawCursor.current();
   };
   // Hover never speaks; keyboard and touch selections update the live region.
-  const announce = (position: number | null, grid?: number) => {
+  const announce = (position: number | null, grid?: number, repeat = false) => {
     const value = position == null ? null : readout?.read(position, { grid });
-    if (value) setAnnounced(readingText(value, locale));
+    if (!value) return;
+    const paneName = grid != null ? keyboardPanes?.[grid] : null;
+    const text = [paneName, readingText(value, locale)].filter(Boolean).join("\n");
+    pendingAnnouncement.current = repeat ? text : null;
+    if (!repeat) setAnnounced(text);
+  };
+  const finishAnnouncement = () => {
+    if (pendingAnnouncement.current) setAnnounced(pendingAnnouncement.current);
+    pendingAnnouncement.current = null;
   };
   const dismiss = () => {
     choose(null, true);
@@ -286,7 +308,8 @@ export function Plot({
     control.current?.dispatchAction({ type: "hideTip" });
     setPinned(false);
     setReading(null);
-    // The live region returns to the latest reading.
+    pendingAnnouncement.current = null;
+    keyboardPane.current = 0;
     setAnnounced(null);
   };
   const dismissRef = useRef(dismiss);
@@ -333,26 +356,21 @@ export function Plot({
       const element = strip.current;
       const box = plotBox.current?.getBoundingClientRect();
       if (!stripShown || !element || !box) return;
-      element.toggleAttribute("data-below", expanded);
       if (expanded) {
         element.removeAttribute("data-docked");
+        element.removeAttribute("data-docked-inside");
         return;
       }
       const actions = host.current?.querySelector<HTMLElement>(":scope > .mx-chart-actions");
       const lift = actions?.offsetHeight ? Math.max(0, box.top - actions.getBoundingClientRect().top) : 0;
-      element.style.setProperty("--mx-strip-lift", `${Math.round(lift)}px`);
       // Inside a dialog (the research full chart), dock below the dialog's header, not the page's top bar.
       const dialog = element.closest<HTMLElement>("[role=dialog]");
       const header = dialog?.querySelector<HTMLElement>('[data-slot="dialog-header"]');
       const bar = dialog
         ? header ? header.getBoundingClientRect().bottom : dialog.getBoundingClientRect().top
         : document.querySelector(".mx-topbar")?.getBoundingClientRect().bottom ?? 0;
-      const docked = box.top - lift - element.offsetHeight - 4 < bar && box.bottom > bar + element.offsetHeight;
-      // A dialog's content can be transformed and scrolls on its own, so there the strip docks by
-      // offset from the plot rather than to the viewport.
-      element.toggleAttribute("data-docked", docked && !dialog);
-      element.toggleAttribute("data-docked-inside", docked && !!dialog);
-      element.style.setProperty("--mx-strip-offset", `${Math.round(bar + 4 - box.top)}px`);
+      const stripHeight = element.offsetHeight;
+      const docked = box.top - lift - stripHeight - 4 < bar && box.bottom > bar + stripHeight;
       // Docked strips sit under the top bar, or above the phone's tab bar when the dot being read,
       // the one nearest the finger, is up there.
       const dock = document.querySelector(".mx-mobile-dock")?.getBoundingClientRect();
@@ -365,8 +383,12 @@ export function Plot({
         return Array.isArray(point) && Number.isFinite(point[1]) ? [canvas.top + point[1]] : [];
       });
       const focus = finger == null ? null : dots.reduce((best, y) => Math.abs(y - finger) < Math.abs(best - finger) ? y : best, dots[0] ?? finger);
-      const low = focus != null && focus < bar + element.offsetHeight + 24;
-      element.style.setProperty("--mx-strip-top", `${Math.round(low ? floor - element.offsetHeight - 4 : bar + 4)}px`);
+      const low = focus != null && focus < bar + stripHeight + 24;
+      element.toggleAttribute("data-docked", docked && !dialog);
+      element.toggleAttribute("data-docked-inside", docked && !!dialog);
+      element.style.setProperty("--mx-strip-lift", `${Math.round(lift)}px`);
+      element.style.setProperty("--mx-strip-offset", `${Math.round(bar + 4 - box.top)}px`);
+      element.style.setProperty("--mx-strip-top", `${Math.round(low ? floor - stripHeight - 4 : bar + 4)}px`);
       element.style.setProperty("--mx-strip-left", `${Math.round(box.left)}px`);
       element.style.setProperty("--mx-strip-width", `${Math.round(box.width)}px`);
     };
@@ -375,13 +397,21 @@ export function Plot({
   useLayoutEffect(() => {
     const element = strip.current;
     if (!stripShown || !element) return;
-    const place = () => placeStrip.current();
-    const resized = new ResizeObserver(() => place());
+    let scheduled = 0;
+    const place = () => {
+      if (scheduled) return;
+      scheduled = requestAnimationFrame(() => {
+        scheduled = 0;
+        placeStrip.current();
+      });
+    };
+    const resized = new ResizeObserver(place);
     resized.observe(element);
     // Capture scrolls of any container, such as a dialog's body, not only the page.
     window.addEventListener("scroll", place, { passive: true, capture: true });
     window.addEventListener("resize", place);
     return () => {
+      cancelAnimationFrame(scheduled);
       resized.disconnect();
       window.removeEventListener("scroll", place, { capture: true });
       window.removeEventListener("resize", place);
@@ -425,52 +455,63 @@ export function Plot({
     const rows = readout.records;
     return positions.flatMap((position) => position >= min && position <= max ? rows(position) : []);
   };
-  const action = async (work: () => void | Promise<void>, success = "") => {
+  const action = async (work: () => void | Promise<void>, success = "", failure = t("未能完成操作", "Action unavailable")) => {
     try {
       await work();
       setExportStatus(success);
     } catch {
-      setExportStatus(t("未能完成操作", "Action unavailable"));
+      setExportStatus(failure);
     }
   };
-  const hasTools = fullscreen || (!!readout?.records);
+  const hasTools = fullscreen || !!readout?.records;
+  const menu = readout?.records && <DropdownMenu modal={false}>
+    <DropdownMenuTrigger aria-label={t("更多图表操作", "More chart actions")} render={expanded
+      ? <Toolbar.Button render={<Button variant="ghost" />} />
+      : <Button variant="ghost" />}>{t("更多", "More")}</DropdownMenuTrigger>
+    <DropdownMenuContent ref={actionsPopup} portalContainer={expanded ? menuContainer : undefined} align="end">
+      <DropdownMenuItem onClick={() => void action(async () => {
+        const plain = currentText.replaceAll("\n", " · ");
+        if (typeof ClipboardItem === "function" && ClipboardItem.supports?.("text/tab-separated-values")) {
+          try {
+            await navigator.clipboard.write([new ClipboardItem({
+              "text/plain": new Blob([plain], { type: "text/plain" }),
+              "text/tab-separated-values": new Blob([currentText.replaceAll("\n", "\t")], { type: "text/tab-separated-values" }),
+            })]);
+            return;
+          } catch {
+            // Some hosts reject the extra MIME type but allow plain-text writes.
+          }
+        }
+        await navigator.clipboard.writeText(plain);
+      }, t("已复制", "Copied"), t("未能复制读数，请重试", "Couldn’t copy the reading. Try again."))}>{t("复制读数", "Copy reading")}</DropdownMenuItem>
+      <DropdownMenuItem onClick={() => void action(() => exportChartCsv(visibleRecords()))}>{t("导出 CSV", "Export CSV")}</DropdownMenuItem>
+      <DropdownMenuItem onClick={() => void action(async () => {
+        if (control.current) {
+          await exportChartPng(control.current, label, currentText, colours.canvas, colours.text, colours.axis);
+        }
+      })}>{t("导出 PNG", "Export PNG")}</DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>;
+  const feedback = <span className={exportStatus ? "mx-chart-status text-xs text-muted-foreground" : "mx-chart-status sr-only"} role="status">{exportStatus}</span>;
   const content = (
-    <div ref={host} className={hasTools ? "mx-chart-host" : undefined} data-expanded={expanded || undefined}
-    >
-    {hasTools && <div className="mx-chart-actions">
-      {expanded && <strong>{label}</strong>}
-      {expanded && <div className="mx-chart-zoom-buttons" aria-label={t("图表缩放", "Chart zoom")}>
-        <button type="button" aria-label={t("放大", "Zoom in")} onClick={() => zoomBy(0.65)}>+</button>
-        <button type="button" aria-label={t("缩小", "Zoom out")} onClick={() => zoomBy(1.55)}>−</button>
-        <button type="button" onClick={() => changeZoom(control.current, { start: 0, end: 100 })}>{t("恢复范围", "Reset zoom")}</button>
-      </div>}
-      {exportStatus && <span className="mx-chart-status" role="status">{exportStatus}</span>}
-      {readout?.records && <DropdownMenu modal={false}>
-        <DropdownMenuTrigger render={<button type="button">{t("更多", "More")}</button>} />
-        <DropdownMenuContent ref={actionsPopup} align="end" className="mx-chart-menu">
-          <DropdownMenuItem onClick={() => void action(async () => {
-            const plain = currentText.replaceAll("\n", " · ");
-            if (typeof ClipboardItem === "function" && ClipboardItem.supports?.("text/tab-separated-values")) {
-              await navigator.clipboard.write([new ClipboardItem({
-                "text/plain": new Blob([plain], { type: "text/plain" }),
-                "text/tab-separated-values": new Blob([currentText.replaceAll("\n", "\t")], { type: "text/tab-separated-values" }),
-              })]);
-            } else await navigator.clipboard.writeText(plain);
-          }, t("已复制", "Copied"))}>{t("复制读数", "Copy reading")}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void action(() => exportChartCsv(visibleRecords()))}>{t("导出 CSV", "Export CSV")}</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => void action(async () => {
-            if (control.current) {
-              await exportChartPng(control.current, label, currentText, colours.canvas, colours.text, colours.axis);
-            }
-          })}>{t("导出 PNG", "Export PNG")}</DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>}
+    <div ref={host} className={hasTools ? "mx-chart-host min-w-0" : undefined} data-expanded={expanded || undefined}>
+    {hasTools && <div className="mx-chart-actions flex flex-wrap items-center justify-end gap-1 text-sm">
+      {expanded && <strong className="me-auto min-w-0 break-words max-md:basis-full">{label}</strong>}
+      {expanded ? <ChartToolbar aria-label={t("图表操作", "Chart actions")} className="flex min-w-0 flex-wrap items-center justify-end gap-1">
+        <Toolbar.Group aria-label={t("图表缩放", "Chart zoom")} className="flex flex-wrap gap-1">
+          <Toolbar.Button render={<Button size="icon" variant="ghost" />} aria-label={t("放大", "Zoom in")} onClick={() => zoomBy(0.65)}><Plus size={18} aria-hidden="true" /></Toolbar.Button>
+          <Toolbar.Button render={<Button size="icon" variant="ghost" />} aria-label={t("缩小", "Zoom out")} onClick={() => zoomBy(1.55)}><Minus size={18} aria-hidden="true" /></Toolbar.Button>
+          <Toolbar.Button render={<Button variant="ghost" />} onClick={() => changeZoom(control.current, { start: 0, end: 100 })}>{t("恢复范围", "Reset zoom")}</Toolbar.Button>
+        </Toolbar.Group>
+        <Toolbar.Separator className="mx-1 h-4 w-px shrink-0 bg-border" />
+        {feedback}
+        {menu}
+      </ChartToolbar> : <>{inlineActions}{feedback}{menu}</>}
       {fullscreen && (expanded
-        ? <button data-autofocus type="button" ref={closeTrigger} aria-label={t("退出全屏", "Exit fullscreen")} onClick={closeFullscreen}><Minimize2 aria-hidden="true" size={18} /></button>
-        : <button type="button" ref={fullscreenTrigger} aria-label={t("全屏", "Fullscreen")} onClick={() => {
-          setExpanded(true);
-        }}><Maximize2 aria-hidden="true" size={18} /></button>)}
+        ? <Button data-autofocus variant="ghost" size="icon" ref={closeTrigger} aria-label={t("退出全屏", "Exit fullscreen")} onClick={closeFullscreen}><Minimize2 aria-hidden="true" size={18} /></Button>
+        : <Button variant="ghost" size="icon" ref={fullscreenTrigger} aria-label={t("全屏", "Fullscreen")} onClick={() => setExpanded(true)}><Maximize2 aria-hidden="true" size={18} /></Button>)}
     </div>}
+    {expanded && <div ref={menuContainer} />}
     {/* The reading is spoken here; it shows as a card beside the cursor, or a strip above the plot on phones. */}
     {readout && <div className="sr-only">
       <div className="mx-chart-readout-latest"><strong>{readout.latest}</strong>
@@ -479,16 +520,15 @@ export function Plot({
           {(readout.observationCount ?? readout.positions.length) === 1 ? t("个观测", "observation") : t("个观测", "observations")}
         </span>}
       </div>
-      <div className="mx-chart-readout-values" data-chart-reading={active == null ? "latest" : "selected"} aria-live="polite" aria-atomic="true">
+      <div className="mx-chart-readout-values" data-chart-reading={active == null ? "latest" : "selected"}>
         {(announced ?? latestText).split("\n").filter(Boolean).map((line, i) => <span key={i}>{line}</span>)}
       </div>
+      <span role="status" className="sr-only">{announced}</span>
     </div>}
-    <div className="mx-plot-frame" ref={plotBox}>
-    {stripShown && stripReading && <div className="mx-chart-strip" ref={strip}>
+    <div className="mx-plot-frame relative min-w-0" ref={plotBox}>
+    {stripShown && stripReading && <div className="mx-chart-strip" data-below={expanded || undefined} ref={strip}>
       <div aria-hidden="true"><ReadingCard reading={stripReading} variant="strip" /></div>
-      <button type="button" className="mx-chart-strip-close" aria-label={t("关闭读数", "Close reading")} onClick={pin ? pin.onClose : dismiss}>
-        <X size={18} aria-hidden="true" />
-      </button>
+      <CloseButton iconSize={18} className="absolute top-1/2 right-1 size-11 -translate-y-1/2" aria-label={t("关闭读数", "Close reading")} onClick={pin ? pin.onClose : dismiss} />
     </div>}
     <div className="mx-plot" style={{ height: expanded ? `max(${height}px, calc(100dvh - 180px))` : height }}>
       {overlay}
@@ -595,6 +635,7 @@ export function Plot({
           setPinned(true);
         }}
         onBlur={(event) => {
+          finishAnnouncement();
           const next = event.relatedTarget;
           if (!pinned && (reading || active != null) &&
             !(next && event.currentTarget.closest(".mx-chart-host")?.contains(next))) dismiss();
@@ -612,15 +653,26 @@ export function Plot({
           }
           if (readout) {
             const values = readout.positions;
-            setPane(undefined);
+            if (keyboardPanes && values.length && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+              event.preventDefault();
+              const grid = event.key === "ArrowUp" ? 0 : 1;
+              keyboardPane.current = grid;
+              setPane(grid);
+              const position = active ?? values.at(-1)!;
+              choose(position, true);
+              announce(position, grid, event.repeat);
+              return;
+            }
+            const grid = keyboardPanes ? keyboardPane.current : undefined;
             if (event.key === " " || event.key === "Enter") {
+              setPane(grid);
               event.preventDefault();
               if (pinned) dismiss();
               else if (values.length) {
                 const position = active ?? values.at(-1)!;
                 choose(position, true);
                 setPinned(true);
-                announce(position);
+                announce(position, grid);
               }
               return;
             }
@@ -629,9 +681,10 @@ export function Plot({
             const index = active == null ? values.length - 1 : closestChartPosition(values, active);
             const next = event.key === "Home" ? 0 : event.key === "End" ? values.length - 1
               : Math.max(0, Math.min(values.length - 1, index + (event.key === "ArrowRight" ? 1 : -1)));
+            setPane(grid);
             if (onBrush && event.shiftKey) keyboardAnchor.current ??= values[index];
             choose(values[next], true);
-            announce(values[next]);
+            announce(values[next], grid, event.repeat);
             return;
           }
           if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key))
@@ -667,6 +720,7 @@ export function Plot({
           });
         }}
         onKeyUp={(event) => {
+          if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) finishAnnouncement();
           if (event.key === "Shift" && keyboardAnchor.current != null) {
             const anchor=keyboardAnchor.current;
             keyboardAnchor.current=null;
@@ -689,8 +743,9 @@ export function Plot({
           : <button className="mx-inline-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</button>}
       </div>}
       <span id={description} className="sr-only">
+        {keyboardPanes && t("上下方向键切换收益与回撤。", "Use the up and down arrows to switch between returns and drawdown.")}{" "}
         {onBrush && t("拖动选择归因区间，或按住 Shift 并用方向键选择。","Drag to select an attribution range, or hold Shift and use the arrow keys.")}
-        {t(
+        {pointInstructions ?? t(
           "左右方向键查看相邻读数，Home 和 End 到首尾，Escape 关闭。触控轻点或横向拖动查看读数，再次轻点关闭。",
           "Use arrow keys for adjacent readings, Home and End for the first and last point, and Escape to dismiss. Tap or drag sideways to read, then tap again to dismiss.",
         )}
@@ -706,9 +761,7 @@ export function Plot({
           : reading.text)}
       </span>
       {pinned && !readout && (
-        <button type="button" className="mx-chart-tip-close" aria-label={t("关闭读数", "Close reading")} onClick={dismiss}>
-          <X size={18} aria-hidden="true" />
-        </button>
+        <CloseButton iconSize={18} className="absolute top-1 right-1 z-[5] border-panel-edge bg-popover shadow-(--shadow-popover)" aria-label={t("关闭读数", "Close reading")} onClick={dismiss} />
       )}
     </div>
     </div>
@@ -726,7 +779,7 @@ export function Plot({
     }}>
       <DialogPortal container={chartPortal}>
         <DialogOverlay />
-        <DialogSurface className="tm-chart-dialog" aria-modal="true" aria-label={label}
+        <DialogSurface className="tm-chart-dialog tm-overlay-surface" aria-modal="true" aria-label={label}
           initialFocus={closeTrigger} finalFocus={fullscreenTrigger}>
           {expanded ? content : null}
         </DialogSurface>

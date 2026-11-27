@@ -18,6 +18,8 @@ import { useChartColours } from "@/ui/charts/palette";
 import type { ChartReadout, Reading } from "./chart-readout";
 import { comparisonFigures, fixed } from "./reading-format";
 import { quoteUnit, quoteValue } from "./financial-values";
+import { EvidenceTable } from "./evidence-table";
+import { ChartRecords, ChartRecordsPanel, ChartRecordsTrigger } from "./chart-records";
 import { DataBasis } from "./reading-card";
 import { api, isReadTimeout, readApi } from "@/workspace/data";
 import { Empty, Help, Pending, QueryError, Segments, TextLink, useCopy } from "./foundation";
@@ -217,9 +219,9 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
       onClick={(event) => open(event, index)}
       id={`index-card-${index.id}`}
       className={cn(
-        "mx-index-card tm-heat-surface relative grid min-w-0 rounded-[var(--radius-heat-tile)] border border-border text-foreground no-underline hover:border-muted-foreground focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight] max-[767px]:snap-start",
-        selected && "outline-2 -outline-offset-2 outline-ring",
-        primaryBenchmark && "outline-2 -outline-offset-2 outline-ring max-[767px]:outline-none max-[767px]:focus-visible:outline-2",
+        "mx-index-card tm-heat-surface relative grid min-w-0 rounded-[var(--radius-heat-tile)] border border-border text-foreground no-underline hover:border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight] max-[767px]:snap-start",
+        selected && "outline-2 -outline-offset-2 outline-link focus-visible:outline-offset-2 focus-visible:outline-ring",
+        primaryBenchmark && "min-[768px]:border-border-strong",
         globalBenchmark
           ? "grid-rows-[auto_auto_25px] gap-2 px-3 pb-2 pt-2.5 max-[1179px]:min-[768px]:px-2 max-[959px]:min-[768px]:grid-rows-[18px_auto_21px] max-[767px]:min-h-11 max-[767px]:grid-rows-[auto_auto] max-[767px]:content-center max-[767px]:gap-px max-[767px]:rounded-none max-[767px]:border-0 max-[767px]:border-b max-[767px]:border-border max-[767px]:bg-transparent max-[767px]:px-[5px] max-[767px]:py-[3px]"
           : "grid-rows-[auto_auto_25px] gap-[7px] px-3 pb-[7px] pt-2.5",
@@ -490,6 +492,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   };
   return (
     <div className="mx-index-detail">
+      <ChartRecords>
       <section className="mx-panel mx-index-history">
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
@@ -556,6 +559,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           <p className="mx-form-help">{t("此区间的日线覆盖不完整。", "Daily history is incomplete for this range.")}</p>}
         {incompatiblePeer && <p className="mx-index-note">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
         {points.length > 0 && <Plot fullscreen label={chartLabel} height={phone ? 235 : 300}
+          inlineActions={<ChartRecordsTrigger label={t("查看精确读数", "View exact values")} placement="actions" />}
           readout={indexReadout}
           option={(colours) => {
             const lines = [{ key: "left" as const, label: chartName, colour: colours.brand, dashed: false }];
@@ -609,8 +613,19 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           <div><dt>{t("最大回撤", "Max drawdown")}</dt><dd>{formatPercent(history?.maxDrawdown, locale, 2)}</dd></div>
           <div><dt>{t("年化波动率", "Annualised volatility")}</dt><dd>{formatPercent(history?.volatility, locale, 2)}</dd></div>
         </dl>
+        {plotRows.length > 0 && <ChartRecordsPanel>
+          <EvidenceTable chart key={period + chartLabel + seriesCurrency} label={chartLabel} rows={plotRows} columns={[
+            { label: t("时间", "Time"), value: (row) => formatReadingTime(row.at, locale, intraday ? timeZone : "UTC", intraday ? "intraday" : "day") },
+            { label: matched.length ? chartName : [chartName, readingUnit].filter(Boolean).join(" · "), numeric: true, value: (row) => levelText(row.left) },
+            ...(matched.length ? [
+              { label: peerName, numeric: true, value: (row: (typeof plotRows)[number]) => fixed(row.right) },
+              { label: t("相差（百分点）", "Difference (percentage points)"), numeric: true, value: (row: (typeof plotRows)[number]) => row.left == null || row.right == null ? "—" : fixed(row.left - row.right) },
+            ] : []),
+          ]} />
+        </ChartRecordsPanel>}
         {history && <IndexDrawdownChart history={history} />}
       </section>
+      </ChartRecords>
       <IndexContextPanels id={index.id} phone={phone} />
     </div>
   );

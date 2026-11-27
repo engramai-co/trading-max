@@ -22,10 +22,16 @@
   width: 220px;
 }
 
-.tm-chart-dialog[data-open] {
-  position: fixed;
+/* Fullscreen plot keeps its own scroll container and safe-area insets. */
+.tm-overlay-surface.tm-chart-dialog {
   inset: 0;
-  z-index: var(--z-dialog);
+  display: block;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 0;
+  border-radius: 0;
+  padding-block: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-bottom));
+  padding-inline: max(16px, env(safe-area-inset-left)) max(16px, env(safe-area-inset-right));
 }
 .tm-overlay-backdrop {
   position: fixed;

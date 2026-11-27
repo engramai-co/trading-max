@@ -28,7 +28,9 @@ const candle: Reading = {
 };
 
 const card = (reading: Reading, locale: "zh" | "en" = "en", variant: "card" | "strip" = "card") =>
-  renderToStaticMarkup(createElement(ReadingView, { reading, locale, variant }));
+  // Assert card structure and content independently of utility class changes.
+  renderToStaticMarkup(createElement(ReadingView, { reading, locale, variant }))
+    .replace(/class="(mx-reading[^ "]*)(?: [^"]*)?"/g, 'class="$1"');
 
 describe("reading card", () => {
   it("leads with one figure, keys series rows and keeps tone on signed results", () => {

@@ -8,7 +8,8 @@ import { formatCalendarDate, formatDeltaPercent, formatNumber, formatPercent } f
 import { Notice, useCopy } from "./foundation";
 import type { ChartReadout } from "./chart-readout";
 import { minus } from "./reading-figures";
-import { RiskChart } from "./research-index-chart";
+import { ChartRecords, ChartRecordsTrigger } from "./chart-records";
+import { IndexSeriesRecords, RiskChart } from "./research-index-chart";
 
 type DailyTracking = components["schemas"]["DailyTracking"];
 const Plot = dynamic(() => import("./charts").then((module) => module.Plot));
@@ -55,6 +56,7 @@ export function DailyTrackingSeries({ data, hedgeUnconfirmed }: {
 
 function RawSeries({ dates, values, title }: { dates: string[]; values: (number | null)[]; title: string }) {
   const { locale } = useLocale();
+  const t = useCopy();
   const colours = useChartColours();
   const value = (i: number) => minus(formatNumber(values[i], locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   // One line per chart, so the reading is its date and level; the title carries the currency.
@@ -64,8 +66,9 @@ function RawSeries({ dates, values, title }: { dates: string[]; values: (number 
     marks: (i) => values[i] == null ? [] : [{ value: values[i]!, colour: colours.brand }],
     latest: dates.length ? value(dates.length - 1) : "—",
   };
-  return <section className="mx-index-research-risk-chart" aria-label={title}>
-    <h3>{title}</h3>
+  return <ChartRecords render={<section className="mx-index-research-risk-chart relative" aria-label={title} />}>
+    <h3 className={dates.length ? "pe-11" : undefined}>{title}</h3>
+    {dates.length > 0 && <ChartRecordsTrigger label={t("查看精确读数", "View exact values")} placement="heading" />}
     <Plot label={title} height={170} readout={readout}
       option={(colours) => ({
         animation: false,
@@ -74,7 +77,8 @@ function RawSeries({ dates, values, title }: { dates: string[]; values: (number 
         yAxis: { type: "value", scale: true, splitNumber: 4 },
         series: [{ type: "line", data: values, showSymbol: false, lineStyle: { color: colours.brand }, itemStyle: { color: colours.brand } }],
       })} />
-  </section>;
+    {dates.length > 0 && <IndexSeriesRecords dates={dates} label={title} figure={value} />}
+  </ChartRecords>;
 }
 
 
