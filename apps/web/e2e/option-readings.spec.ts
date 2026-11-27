@@ -149,6 +149,45 @@ test.describe("option and rating charts read through the reading card", () => {
     }
   });
 
+  test("a refreshed chain retains the selected label while its contract is unavailable", async ({ page }) => {
+    const now = new Date("2026-11-16T15:00:00Z");
+    await page.clock.setFixedTime(now);
+    let omitContract = false;
+    await page.route("**/api/backend/research/AAPL/lens/options?**", async (route) => {
+      const options = omitContract ? {
+        ...chain,
+        contracts: chain.contracts.filter(contract => !(
+          contract.expiry === expiries[0] && contract.side === "call" && contract.strike === 100
+        )),
+      } : chain;
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), options } });
+    });
+    await page.goto("/research?ticker=AAPL&view=options&optionView=payoff");
+    const contract = page.getByRole("combobox", { name: "Contract", exact: true });
+    const add = page.getByRole("button", { name: "Add to analysis" });
+    await contract.fill("CALL 100");
+    const choice = page.getByRole("option", { name: /^CALL 100 · / });
+    const label = (await choice.textContent())!;
+    await choice.click();
+    await expect(contract).toHaveValue(label);
+    await expect(add).toBeEnabled();
+
+    omitContract = true;
+    await page.clock.setFixedTime(new Date(now.getTime() + 120_000));
+    const refresh = page.waitForResponse(response => response.url().includes("/lens/options?"));
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("offline"));
+      window.dispatchEvent(new Event("online"));
+    });
+    await refresh;
+    await contract.click();
+    await expect(choice).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(contract).toHaveValue(label);
+    await expect(add).toBeDisabled();
+  });
+
   test("native paste and cut support undo and redo", async ({ page }) => {
     const fee = await openPayoffEditor(page);
     const premium = page.getByRole("textbox", { name: /^Assumed premium/ });
@@ -323,7 +362,7 @@ test.describe("option and rating charts read through the reading card", () => {
     // A link asking for six keeps the first five.
     await page.goto("/research?ticker=AAPL&view=options&optionView=gamma&expiries=" + seven.slice(0, 6).join(","));
     const field = page.getByRole("combobox", { name: "Select captured expirations" });
-    const picked = page.locator(".mantine-MultiSelect-root").filter({ has: field }).locator(".mantine-Pill-label");
+    const picked = page.locator('[data-slot="picker"]').filter({ has: field }).locator('[data-slot="picker-chip-label"]');
     await expect(picked).toHaveText([/^20 Nov( 2026)?$/, /^27 Nov( 2026)?$/, /^4 Dec( 2026)?$/, /^11 Dec( 2026)?$/, /^18 Dec( 2026)?$/]);
     // The keyboard opens the list; the pills cover most of the field.
     await field.focus();

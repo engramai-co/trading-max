@@ -681,7 +681,7 @@ test("Preferences can save the language selected from the shell", async ({ page,
     await page.getByRole("button", { name: "切换到中文", exact: true }).click();
   }
   await page.getByRole("tab", { name: "个人偏好", exact: true }).click();
-  await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveValue("简体中文");
+  await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveText("简体中文");
   const name = page.getByRole("textbox", { name: "显示名称" });
   const originalName = await name.inputValue();
   const save = page.getByRole("button", { name: "保存偏好", exact: true });
@@ -710,7 +710,7 @@ test("Preferences follows a shell language change after editing its language sel
   const language = page.getByRole("combobox", { name: /^(Interface language|界面语言)$/ });
   await language.click();
   await page.getByRole("option", { name: "Chinese (Simplified)" }).click();
-  await expect(language).toHaveValue("简体中文");
+  await expect(language).toHaveText("简体中文");
 
   if (isMobile) {
     await page.getByRole("button", { name: "更多", exact: true }).click();
@@ -718,7 +718,7 @@ test("Preferences follows a shell language change after editing its language sel
   } else {
     await page.getByRole("button", { name: "Switch to English", exact: true }).click();
   }
-  await expect(language).toHaveValue("English");
+  await expect(language).toHaveText("English");
   await page.getByRole("textbox", { name: "Display name" }).fill("Updated name");
   await page.getByRole("button", { name: "Save preferences", exact: true }).click();
   await expect(page.getByText("Preferences saved.", { exact: true })).toBeVisible();
@@ -764,7 +764,7 @@ test("a preference draft survives tabs and a language change during save still g
   await preferences.click();
   await expect(page.getByText("还有未保存的修改")).toBeVisible();
   await expect(name).toHaveValue("Draft name");
-  await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveValue("简体中文");
+  await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveText("简体中文");
   await accounts.click();
   await expectDraftNavigation(page, isMobile);
   expect(unexpected).toEqual([]);

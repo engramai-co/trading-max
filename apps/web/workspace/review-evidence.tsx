@@ -2,12 +2,12 @@
 
 import { behaviorObservation, reviewLabel, systemReason } from "./review-copy";
 import { useState, type ReactNode } from "react";
-import { Select } from "@mantine/core";
 import { Bars, HistoryChart } from "./charts";
 import { currency, number, object, objects, percent, str, type Json } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
 import { EvidenceTable } from "./evidence-table";
 import { Facts, Notice, Panel, useCopy } from "./foundation";
+import { SelectPicker } from "./picker";
 
 export const field = (data: Json, key: string): unknown =>
   data[key] ??
@@ -363,11 +363,12 @@ export function EndingEvidence({ data }: { data: Json }) {
       <Panel
         title={t("这个账户的期末敞口", "This account’s ending exposures")}
         action={
-          <Select
+          <SelectPicker
+            className="phone:w-[180px]"
             aria-label={t("期末敞口维度", "Ending exposure dimension")}
             value={dimension}
             onChange={(v) => setDimension(v ?? "country")}
-            data={[
+            options={[
               { value: "country", label: t("国家/地区", "Country") },
               { value: "industry", label: t("行业", "Industry") },
               { value: "currency", label: t("币种", "Currency") },

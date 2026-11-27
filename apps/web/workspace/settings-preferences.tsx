@@ -4,9 +4,6 @@ import { FilePicker } from "@/components/ui/file-picker";
 import { TextField, useRequiredFields } from "@/components/ui/form-field";
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import {
-  Select,
-} from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { CircleCheck, Upload } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -43,6 +40,7 @@ import {
   Tag,
   useCopy,
 } from "./foundation";
+import { SearchPicker, SelectPicker } from "./picker";
 
 export function AutomationPreferences() {
   const t = useCopy();
@@ -246,10 +244,11 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
           <div className="flex flex-col gap-mx-lg">
             <div className="mx-toolbar">
               {data.isStale && !retired && <Tag tone="warn">{t("记录需要更新", "History needs updating")}</Tag>}
-              <Select
+              <SelectPicker
+                style={{ width: 180 }}
                 aria-label={t("CFD 账户状态", "CFD account status")}
                 value={data.accountStatus}
-                data={[
+                options={[
                   { value: "active", label: t("仍在使用", "Still active") },
                   { value: "retired", label: t("已停止使用", "Retired") },
                 ]}
@@ -502,23 +501,22 @@ export function PersonalPreferences({
               required
               onChange={(e) => updateDraft({ name: e.currentTarget.value })}
             />
-            <Select
+            <SelectPicker
               label={t("界面语言", "Interface language")}
               value={locale}
               onChange={(v) => {
                 if (v === "en" || v === "zh") setLocale(v);
               }}
-              data={[
+              options={[
                 { value: "zh", label: t("简体中文", "Chinese (Simplified)") },
                 { value: "en", label: "English" },
               ]}
             />
-            <Select
+            <SearchPicker
               label={t("时间显示", "Display timezone")}
               value={zone}
               onChange={(v) => updateDraft({ zone: v ?? "Europe/London" })}
-              searchable
-              data={Array.from(
+              options={Array.from(
                 new Set([
                   "browser",
                   "Europe/London",

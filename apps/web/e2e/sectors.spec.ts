@@ -1143,10 +1143,19 @@ test.describe("market index layer", () => {
       await page.goto("/sectors");
       if (mobile) {
         const picker = page.getByRole("combobox", { name: /^(市场|Market)$/ });
+        expect(await picker.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
         await picker.fill("zzzz");
         await expect(page.getByText(/没有匹配的市场|No matching market/)).toBeVisible();
         await picker.clear();
-        await page.getByRole("option", { name: market.names }).click();
+        const list = page.getByRole("listbox", { name: /^(市场|Market)$/ });
+        await expect(list.getByRole("option").first()).toBeVisible();
+        const listInset = await list.evaluate((element) => {
+          const popup = element.closest('[data-slot="combobox-content"]')!;
+          return element.getBoundingClientRect().top - popup.getBoundingClientRect().top;
+        });
+        expect(listInset).toBeLessThanOrEqual(1);
+        await expect.poll(() => list.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeGreaterThan(0);
+        await list.getByRole("option", { name: market.names }).tap();
       } else {
         await page.getByRole("button", { name: /更多市场|More markets/ }).click();
         await expect(page.getByText(market.code === "ca" ? /^(美洲|Americas)$/ : /^(亚太|Asia Pacific)$/)).toBeVisible();

@@ -1042,7 +1042,7 @@ for (const locale of ["en", "zh"] as const) {
       const roe = page.getByLabel(locale === "en" ? "Year-one ROE" : "第一年 ROE", { exact: true });
       const firstScenario = page.getByRole("group", { name: locale === "en" ? "Edit scenario" : "编辑情景" })
         .getByRole("button", { name: locale === "en" ? "Bear" : "保守", exact: true });
-      await expect(select).toHaveValue(cash);
+      await expect(select).toHaveText(cash);
       async function choose(direction: "ArrowUp" | "ArrowDown") {
         await select.focus();
         await page.keyboard.press(direction);
@@ -1053,8 +1053,14 @@ for (const locale of ["en", "zh"] as const) {
       for (const cached of [false, true]) {
         // The dark cases exercise the reader scrolling away with the selector still focused.
         let readerScroll: number | undefined;
-        await choose("ArrowUp");
-        await expect(select).toHaveValue(name);
+        if (locale === "en" && scheme === "light" && !cached) {
+          await select.focus();
+          await expect(select).toHaveAttribute("aria-expanded", "false");
+          await page.keyboard.press("r");
+        } else {
+          await choose("ArrowUp");
+        }
+        await expect(select).toHaveText(name);
         if (!cached) {
           await expect.poll(() => residualGets).toBe(1);
           await expect(select).toBeFocused();
@@ -1084,7 +1090,7 @@ for (const locale of ["en", "zh"] as const) {
         await expect(roe).toBeFocused();
         if (!cached) {
           await choose("ArrowDown");
-          await expect(select).toHaveValue(cash);
+          await expect(select).toHaveText(cash);
           await expect(page.getByLabel(locale === "en" ? "Revenue growth · years 1–5" : "前五年营收增长", { exact: true })).toBeVisible();
         }
       }
@@ -1791,7 +1797,7 @@ test("explicitly choosing the displayed model preserves edited saved assumptions
   await page.goto("/research?ticker=SYNT&view=valuation");
   const editor = page.locator("#valuation-assumptions");
   const select = editor.getByRole("combobox",{name:"Valuation model"});
-  await expect(select).toHaveValue("Equity cash flow");
+  await expect(select).toHaveText("Equity cash flow");
   const growth = editor.getByLabel("Revenue growth · years 1–5", {exact:true});
   await expect(growth).toHaveValue("22%");
   await growth.fill("23");
@@ -1804,7 +1810,7 @@ test("explicitly choosing the displayed model preserves edited saved assumptions
   expect(stored.scenarios.base.revenueCagr).toBe(0.23);
   expect(selections).toEqual([null]);
   await page.reload();
-  await expect(select).toHaveValue("Equity cash flow");
+  await expect(select).toHaveText("Equity cash flow");
   await expect(growth).toHaveValue("23%");
   await captureDraft(page, info.project.name, "en", "light", "same-family-reopened");
   await editor.getByRole("button",{name:"✦ Draft",exact:true}).click();

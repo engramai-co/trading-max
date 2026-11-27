@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, type CSSProperties, type ReactNode } from "react";
+import { createContext, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogClose, AlertDialogContent, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -44,15 +44,7 @@ export function hasOpenDialog() {
   return Boolean(document.querySelector(OPEN_DIALOG_SELECTOR));
 }
 
-function isExpandedComboboxEscape(event: Event) {
-  if (!(event instanceof KeyboardEvent) || event.key !== "Escape") return false;
-  const target = event.target instanceof Element ? event.target : null;
-  return Boolean(
-    target?.closest(
-      '[data-mantine-stop-propagation="true"], [aria-haspopup="listbox"][aria-expanded="true"], [data-expanded="true"][role="combobox"], .mantine-Combobox-dropdown',
-    ),
-  );
-}
+export const OverlayPopupContainer = createContext<RefObject<HTMLDivElement | null> | undefined>(undefined);
 
 export function WorkspaceDialog(props: OverlayProps) {
   return <Overlay {...props} kind="dialog" />;
@@ -80,13 +72,6 @@ function Overlay({
   const change = (nextOpen: boolean, details: DismissEvent) => {
     if (nextOpen) return;
     const event = details.event;
-    if (isExpandedComboboxEscape(event)) {
-      // Mantine Select/MultiSelect closes its listbox on Escape without calling preventDefault;
-      // consume the event here so the native document Escape listener does not also dismiss this overlay.
-      event.preventDefault();
-      details.cancel();
-      return;
-    }
     if (preventDismiss || (event instanceof KeyboardEvent && (event.defaultPrevented || isImeComposing(event)))) {
       details.cancel();
       return;
@@ -118,7 +103,9 @@ function Overlay({
         render={<CloseButton data-overlay-close="" className={closeClassName} aria-label={closeLabel ?? (locale === "zh" ? "关闭" : "Close")} />}
       />}
     </div>
-    <div className={cn("tm-overlay-body", bodyClassName)}>{children}</div>
+    <div className={cn("tm-overlay-body", bodyClassName)}>
+      <OverlayPopupContainer.Provider value={popup}>{children}</OverlayPopupContainer.Provider>
+    </div>
   </>;
   switch (kind) {
     case "drawer":

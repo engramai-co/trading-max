@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import type { IntegrationOverview } from "../lib/types";
+import type { IntegrationOverview, ResearchShell } from "../lib/types";
 
 test.describe("workspace overlays", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires the seeded preview.");
@@ -147,7 +147,7 @@ test.describe("workspace overlays", () => {
     await expect(selection).toContainText("Synthetic Two");
   });
 
-  test("Escape closes an expanded Mantine Select listbox before its parent overlay", async ({ page, request }) => {
+  test("Escape closes an expanded select listbox before its parent overlay", async ({ page, request }) => {
     // 1. Model-provider dialog and OAuth connection sheet
     const overview = await (await request.get("/api/backend/settings/integrations")).json() as IntegrationOverview;
     overview.integrations = overview.integrations.map((item) => ({ ...item, configured: false, enabled: false }));
@@ -219,6 +219,146 @@ test.describe("workspace overlays", () => {
     await expect(fullChart).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(fullChart).toHaveCount(0);
+  });
+
+  test("composing Backspace leaves both comparison companies selected", async ({ page }) => {
+    await page.goto("/research?ticker=NVDA&compare=on&peers=AAPL");
+    const dialog = page.getByRole("dialog", { name: "Compare companies" });
+    const input = dialog.getByRole("combobox", { name: "Up to 4 companies" });
+    const chips = dialog.locator('[data-slot="picker-chip-label"]');
+    await expect(chips).toHaveCount(2);
+    await input.focus();
+    await expect(input).toHaveValue("");
+    await input.dispatchEvent("keydown", { key: "Backspace", isComposing: true });
+    await expect(chips).toHaveCount(2);
+    await expect(page).toHaveURL(/peers=AAPL/);
+
+    await input.press("Backspace");
+    await expect(chips).toHaveCount(1);
+    await expect(page).not.toHaveURL(/peers=AAPL/);
+  });
+
+  test("successive Escapes close the company list then its dialog and retain the peer", async ({ page }) => {
+    await page.goto("/research?ticker=NVDA&compare=on&peers=AAPL");
+    const dialog = page.getByRole("dialog", { name: "Compare companies" });
+    const input = dialog.getByRole("combobox", { name: "Up to 4 companies" });
+    const list = dialog.getByRole("listbox", { name: "Up to 4 companies" });
+    await input.click();
+    await expect(list).toBeVisible();
+    await expect(input).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(list).toHaveCount(0);
+    await expect(dialog).toBeVisible();
+    await expect(input).toBeFocused();
+    await expect(dialog.getByRole("button", { name: /^Remove AAPL/ })).toBeVisible();
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(page).toHaveURL(/peers=AAPL/);
+    await page.getByRole("button", { name: "Compare", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: /^Remove AAPL/ })).toBeVisible();
+  });
+
+  test("successive Escapes close the model list then its connection sheet", async ({ page, request }) => {
+    const overview = await (await request.get("/api/backend/settings/integrations")).json() as IntegrationOverview;
+    overview.integrations = overview.integrations.map((item) => ({ ...item, configured: false, enabled: false }));
+    await page.route("**/api/backend/settings/integrations", (route) => route.fulfill({ json: overview }));
+    await page.goto("/settings?tab=models");
+    const provider = page.getByRole("dialog", { name: "Connect your model" });
+    await provider.getByRole("combobox", { name: "Model provider" }).click();
+    await provider.getByRole("option", { name: "Anthropic", exact: true }).click();
+    await provider.getByRole("button", { name: "Continue" }).click();
+    const sheet = page.getByRole("dialog", { name: "Connect Anthropic" });
+    const model = sheet.getByRole("combobox", { name: "Model to test" });
+    await expect(model).toHaveValue(/claude-/);
+    const label = await model.inputValue();
+    await model.click();
+    const list = sheet.getByRole("listbox", { name: "Model to test" });
+    await expect(list).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(list).toHaveCount(0);
+    await expect(model).toBeFocused();
+    await expect(model).toHaveValue(label);
+
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+  });
+
+  test("the related model clear button has its own touch target", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "Touch target on the mobile project.");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.route("**/api/backend/research/NVDA/journal*", (route) => route.fulfill({ json: {
+      ticker: "NVDA",
+      baselineModelId: null,
+      notes: [],
+      models: [{
+        id: "model-1",
+        savedAt: "2026-11-10T10:00:00Z",
+        preview: { horizon: 5, basis: { currency: "USD" }, scenarios: { base: { value: 150 } } },
+      }],
+    } }));
+    await page.goto("/research?ticker=NVDA&view=ledger");
+    await page.getByRole("button", { name: "New note", exact: true }).tap();
+    const dialog = page.getByRole("dialog", { name: "New note", exact: true });
+    const picker = dialog.getByRole("combobox", { name: "Related model version" });
+    await picker.tap();
+    await dialog.getByRole("option").first().tap();
+    const clear = dialog.getByRole("button", { name: "Clear", exact: true });
+    await expect(clear).toBeVisible();
+    const targets = await clear.evaluate((button) => {
+      const rect = button.getBoundingClientRect();
+      const trigger = button.previousElementSibling!.getBoundingClientRect();
+      return { width: rect.width, height: rect.height, space: rect.left - trigger.right };
+    });
+    expect(targets.width).toBeGreaterThanOrEqual(44);
+    expect(targets.height).toBeGreaterThanOrEqual(44);
+    expect(targets.space).toBeGreaterThanOrEqual(0);
+    await clear.tap();
+    await expect(clear).toHaveCount(0);
+    await expect(picker).toHaveText("");
+    await expect(dialog.getByRole("listbox")).toHaveCount(0);
+  });
+
+  test("company comparison exposes full long labels and retains its pinned company", async ({ page, request, isMobile }) => {
+    const directory = await (await request.get("/api/backend/research/shell")).json() as ResearchShell;
+    const sample = directory.instruments.find((item) => item.ticker === "NVDA")!;
+    const company = "Synthetic International Holdings " + "有限责任公司全球投资".repeat(8);
+    await page.route("**/api/backend/research/shell", (route) => route.fulfill({ json: {
+      ...directory, instruments: [...directory.instruments, { ...sample, ticker: "SYN", name: company }],
+    } }));
+    if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/research?ticker=NVDA&compare=on");
+    const dialog = page.getByRole("dialog", { name: "Compare companies" });
+    const field = dialog.getByRole("combobox", { name: "Up to 4 companies" });
+    await field.fill("Synthetic International");
+    const option = dialog.getByRole("option", { name: "SYN · " + company, exact: true });
+    await expect(option).toBeVisible();
+    await option.click();
+
+    const selected = dialog.locator('[data-slot="picker-chip-label"]').filter({ hasText: company });
+    await expect(selected).toBeVisible();
+    const truncated = () => selected.evaluate((element) => element.scrollWidth > element.clientWidth);
+    if (isMobile) {
+      expect(await truncated()).toBe(false);
+    } else {
+      expect(await truncated()).toBe(true);
+      await selected.hover();
+      await expect(page.locator('[data-slot="tooltip-content"]').filter({ hasText: company })).toBeVisible();
+    }
+    const remove = dialog.getByRole("button", { name: "Remove SYN · " + company });
+    if (isMobile) {
+      const box = (await remove.boundingBox())!;
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+      const trigger = (await dialog.locator('[data-slot="combobox-trigger"]').boundingBox())!;
+      expect(box.x + box.width <= trigger.x || box.y + box.height <= trigger.y || box.y >= trigger.y + trigger.height).toBe(true);
+      await remove.tap();
+    } else {
+      await remove.click();
+    }
+    await expect(selected).toHaveCount(0);
+    await expect(dialog.locator('[data-slot="picker-chip-label"]').filter({ hasText: "NVDA" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /^Remove NVDA/ })).toHaveCount(0);
   });
 
   test("AlertDialog uses the shared dialog surface tokens and scrolling body", async ({ page }) => {

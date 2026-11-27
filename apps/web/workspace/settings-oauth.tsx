@@ -1,6 +1,6 @@
 "use client";
 
-import { Code, Select } from "@mantine/core";
+import { Code } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ExternalLink } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -11,6 +11,7 @@ import { TextLink } from "@/components/ui/text-link";
 import type { IntegrationSummary, LLMProviderDescriptor, OAuthLoginStatus } from "@/lib/types";
 import { api, jsonRequest } from "./data";
 import { Notice, useCopy } from "./foundation";
+import { SelectPicker } from "./picker";
 
 const loginPath = "/settings/llm/oauth/openai";
 
@@ -79,8 +80,8 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       "使用 ChatGPT 账户的 Codex 额度。授权保存在运行 Trading Max 的设备上；API Key 使用独立计费。",
       "Use your ChatGPT account’s Codex allowance. Authorisation stays on the device running Trading Max. API keys are billed separately.",
     )}</Notice>
-    <Select comboboxProps={{ keepMounted: false, portalProps: { target: ".mx-connection-sheet" } }} label={t("模型", "Model")} data={provider.models} value={model}
-      onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending} allowDeselect={false} />
+    <SelectPicker label={t("模型", "Model")} options={provider.models} value={model}
+      onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending}  />
     <Checkbox checked={defaultModel} onCheckedChange={(checked) => setDefaultModel(checked)}
       disabled={pending} label={t("设为默认模型", "Use as the default model")} />
     {current?.state === "pending" && current.userCode && current.verificationUrl && <div className="flex flex-col gap-mx-md" aria-live="polite">

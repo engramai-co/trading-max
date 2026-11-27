@@ -3,9 +3,6 @@
 import { WorkspaceAlertDialog, WorkspaceDialog, WorkspaceSheet } from "./overlay";
 import { CredentialField, useRequiredFields } from "@/components/ui/form-field";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import {
-  Select,
-} from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowRight,
@@ -61,6 +58,7 @@ import {
   type ModelRoutingSubmission,
 } from "./settings-drafts";
 import { settingsKey } from "./settings-query";
+import { SearchPicker, SelectPicker } from "./picker";
 
 const AssistantPreferences = dynamic(() => import("./settings-assistant").then((module) => module.AssistantPreferences), { loading: () => <Pending /> });
 
@@ -296,16 +294,14 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
             "选择你想使用的提供商。OpenAI 支持 ChatGPT 登录或 API Key；你也可以稍后再设置。",
             "Choose a provider. OpenAI supports ChatGPT sign-in or an API key. You can also set this up later.",
           )}</p>
-          <Select
+          <SelectPicker
             data-autofocus
-            comboboxProps={{ portalProps: { target: ".mx-model-provider-dialog" } }}
             label={t("模型提供商", "Model provider")}
             value={selectedProvider}
             onChange={(value) => setSelectedProvider(value ?? "openai")}
-            data={visibleProviders.map((provider) => ({
+            options={visibleProviders.map((provider) => ({
               value: provider.provider, label: provider.label,
             })) ?? []}
-            allowDeselect={false}
           />
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
             <Button variant="ghost" onClick={() => setOfferModelConnection(false)}>
@@ -504,13 +500,12 @@ function ConnectionForm({
       >
         <div className="flex flex-col gap-mx-md">
           {connection.kind === "broker" && (
-            <Select
+            <SelectPicker
               data-autofocus
-              comboboxProps={{ portalProps: { target: ".mx-connection-sheet" } }}
               label={t("账户环境", "Account environment")}
               value={environment}
               onChange={(v) => edit(() => setEnvironment(v ?? "live"))}
-              data={[
+              options={[
                 { value: "live", label: t("真实账户", "Live account") },
                 { value: "demo", label: t("模拟账户", "Demo account") },
               ]}
@@ -545,13 +540,11 @@ function ConnectionForm({
               disabled={busy}
             />
           ) : (
-            <Select
-              comboboxProps={{ portalProps: { target: ".mx-connection-sheet" } }}
+            <SearchPicker
               label={t("测试模型", "Model to test")}
               value={model}
               onChange={(v) => edit(() => setModel(v ?? ""))}
-              data={Array.from(new Set([model, ...connection.provider.models].filter(Boolean)))}
-              searchable
+              options={Array.from(new Set([model, ...connection.provider.models].filter(Boolean)))}
               disabled={busy}
             />
           )}
@@ -765,14 +758,13 @@ function ModelRouting({
       )}
     >
       <div className="flex flex-col gap-mx-lg">
-        <Select
+        <SearchPicker
           label={t("默认模型", "Default model")}
-          data={options}
+          options={options}
           value={defaultRoute}
           onChange={(value) => {
             setDraft({ ...activeDraft, baseRevision: policy.revision, defaultRoute: value ?? policy.defaultRoute });
           }}
-          searchable
         />
         <details className="mx-details">
           <summary>
@@ -780,17 +772,14 @@ function ModelRouting({
           </summary>
           <div className="mx-form-grid">
             {lenses.map((lens) => (
-              <Select
+              <SearchPicker
                 key={lens.value}
                 label={lens.label}
-                data={options}
+                options={options}
                 placeholder={t("使用默认模型", "Use default model")}
                 value={overrides[lens.value] ?? null}
                 clearable
-                clearButtonProps={{
-                  "aria-label": t("使用默认模型", "Use default model"),
-                }}
-                searchable
+                clearLabel={t("使用默认模型", "Use default model")}
                 onChange={(value) => {
                   const next = { ...overrides };
                   if (value) next[lens.value] = value;

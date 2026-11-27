@@ -1,6 +1,5 @@
 "use client";
 
-import { Select } from "@mantine/core";
 import { ChevronRight } from "lucide-react";
 import { useMemo, useState, type CSSProperties } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -11,6 +10,7 @@ import { returnPeriods, type ReturnPeriod } from "@/lib/portfolio/return-periods
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { percent, tone } from "@/workspace/data";
 import { Empty, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { SelectPicker } from "./picker";
 
 export function ReturnGrid({ scope, onSelect, selected, runId }: {
   scope: Scope;
@@ -58,7 +58,7 @@ export function ReturnGrid({ scope, onSelect, selected, runId }: {
             { value: "quarter", label: t("季", "Quarter") },
             { value: "year", label: t("年", "Year") },
           ]} />
-          {phone && periods.years.length > 1 && <Select aria-label={t("年份", "Year")} value={year} data={periods.years} onChange={(value) => setYear(value ?? undefined)} />}
+          {phone && periods.years.length > 1 && <SelectPicker aria-label={t("年份", "Year")} value={year} options={periods.years} onChange={(value) => setYear(value ?? undefined)} />}
         </div>
         {query.isPending ? <Pending compact /> : query.isError && !query.data ? <QueryError retry={query.refetch} />
           : !year ? <Empty title={t("需要更多每日收益记录", "More daily return observations are needed")} />

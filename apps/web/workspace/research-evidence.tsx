@@ -5,7 +5,6 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { MultiSelect, Select } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
 import type { ChartReadout, ReadingItem } from "./chart-readout";
@@ -19,6 +18,7 @@ import { EvidenceTable } from "./evidence-table";
 import { filingTitle } from "./research-filings";
 import { useAllocationChartColours, useChartColours } from "@/ui/charts/palette";
 import { epsFigure, minus } from "./reading-figures";
+import { SearchMultiPicker, SelectPicker } from "./picker";
 
 /** A fiscal period end as the axis names it: month and year, never an ISO date. */
 function periodLabel(end: string, locale: "zh" | "en") {
@@ -175,7 +175,8 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
     <Panel
       title={groupLabel(axis ?? "")}
       action={
-        <Select
+        <SelectPicker
+          className="phone:w-[180px]"
           aria-label={t("分部维度", "Segment dimension")}
           value={axis}
           onChange={(v) =>
@@ -185,7 +186,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
               segmentMembers: null,
             })
           }
-          data={axes.map((a) => ({ value: a, label: groupLabel(a) }))}
+          options={axes.map((a) => ({ value: a, label: groupLabel(a) }))}
         />
       }
     >
@@ -224,7 +225,7 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
         />
       </div>
       {trend && (
-        <MultiSelect
+        <SearchMultiPicker
           aria-label={t("选择分部", "Select segments")}
           placeholder={
             selectedMembers.length ? undefined : t("全部分部", "All segments")
@@ -236,13 +237,12 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
               segmentMember: null,
             })
           }
-          data={members.map((member) => ({
+          options={members.map((member) => ({
             value: member,
             label: label(member),
           }))}
           clearable
-          searchable
-          mb="md"
+          style={{ marginBottom: 16 }}
         />
       )}
       {indexed && !anchorPeriod && (
@@ -678,7 +678,7 @@ export function ResearchDocuments({
               setLimit(20);
             }}
           />
-          <Select
+          <SelectPicker
             aria-label={
               news ? t("新闻来源", "News source") : t("披露类型", "Filing type")
             }
@@ -687,7 +687,7 @@ export function ResearchDocuments({
               update(news ? { newsSource: v } : { documentType: v });
               setLimit(20);
             }}
-            data={[
+            options={[
               {
                 value: "all",
                 label: news

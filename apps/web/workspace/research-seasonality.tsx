@@ -1,7 +1,6 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { MultiSelect, Pill, Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -17,6 +16,7 @@ import { minus } from "./reading-figures";
 import { readingTone, signedPercent } from "./reading-format";
 import { researchPriceQuery } from "./research-queries";
 import { useRouteState } from "./route-state";
+import { MultiPicker, SelectPicker } from "./picker";
 
 /** Fewer observations than this make a month's average unreliable. */
 const THIN_SAMPLE = 5;
@@ -244,19 +244,19 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
       >
         {matrix.length > 0 && window === "custom" && (
           <div className="mb-mx-md flex flex-wrap items-center gap-mx-md">
-            <Select
-              w={140}
+            <SelectPicker
+              style={{ width: 140 }}
               label={t("起始年份", "From year")}
               value={params.get("seasonFrom") ?? String(years.at(-1))}
               onChange={(v) => update({ seasonFrom: v })}
-              data={years.map(String)}
+              options={years.map(String)}
             />
-            <Select
-              w={140}
+            <SelectPicker
+              style={{ width: 140 }}
               label={t("截至年份", "Through year")}
               value={params.get("seasonTo") ?? String(years[0])}
               onChange={(v) => update({ seasonTo: v })}
-              data={years
+              options={years
                 .filter(
                   (y) => y >= Number(params.get("seasonFrom") ?? years.at(-1)),
                 )
@@ -405,32 +405,21 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
           )}
           action={
             <div className="flex flex-wrap items-center gap-mx-xs">
-              <MultiSelect
-                w={250}
+              <MultiPicker
+                style={{ width: 250 }}
                 maxValues={5}
                 aria-label={t("对比年份", "Compare years")}
-                renderPill={({ option, onRemove }) => (
-                  <Pill
-                    withRemoveButton
-                    onRemove={onRemove}
-                    removeButtonProps={{
-                      "aria-label":
-                        t("移除年份 ", "Remove year ") + option.label,
-                    }}
-                  >
-                    {option.label}
-                  </Pill>
-                )}
+                removeLabel={(option) => t("移除年份 ", "Remove year ") + option.label}
                 value={paths}
                 onChange={setChosen}
-                data={availablePaths}
+                options={availablePaths}
               />
-              <Select
-                w={135}
+              <SelectPicker
+                style={{ width: 135 }}
                 aria-label={t("年内路径基准", "Year-path benchmark")}
                 value={benchmarkSymbol}
                 onChange={(v) => update({ seasonBenchmark: v })}
-                data={[
+                options={[
                   { value: "none", label: t("无基准", "No benchmark") },
                   { value: "SPY", label: "SPY · ETF" },
                   { value: "QQQ", label: "QQQ · ETF" },

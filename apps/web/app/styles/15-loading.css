@@ -105,8 +105,18 @@
   gap: 6px;
 }
 /* The account picker stays at the row's end; its data time sits just before it. */
+.mx-analytics-toolbar {
+  container: mx-analytics-tools / inline-size;
+}
 .mx-analytics-toolbar > .mx-freshness-group {
   margin-left: auto;
+}
+/* Keep the data time on its own line in narrow toolbars as the account picker sizes to its labels. */
+@container mx-analytics-tools (max-width: 22.5rem) {
+  .mx-analytics-toolbar > .mx-freshness-group:has(> .mx-freshness) {
+    flex-basis: 100%;
+    justify-content: flex-end;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .mx-data-body {

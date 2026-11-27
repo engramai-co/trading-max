@@ -29,11 +29,6 @@
         "Pagination"
       ]
     },
-    "workspace/health.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
     "workspace/history-records.tsx": {
       "@mantine/core": [
         "Pagination"
@@ -44,20 +39,9 @@
         "MantineProvider"
       ]
     },
-    "workspace/holdings.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
     "workspace/look-through.tsx": {
       "@mantine/core": [
-        "Pagination",
-        "Select"
-      ]
-    },
-    "workspace/market-indices.tsx": {
-      "@mantine/core": [
-        "Select"
+        "Pagination"
       ]
     },
     "workspace/overview-holdings.test.ts": {
@@ -70,139 +54,14 @@
         "MantineProvider"
       ]
     },
-    "workspace/overview.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/performance-return-grid.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/performance.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research-analyst.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research-company.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research-compare.tsx": {
-      "@mantine/core": [
-        "MultiSelect",
-        "Pill",
-        "Select"
-      ]
-    },
-    "workspace/research-evidence.tsx": {
-      "@mantine/core": [
-        "MultiSelect",
-        "Select"
-      ]
-    },
-    "workspace/research-financials.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
     "workspace/research-header.tsx": {
       "@mantine/core": [
         "Avatar"
       ]
     },
-    "workspace/research-index-chart.tsx": {
-      "@mantine/core": [
-        "MultiSelect"
-      ]
-    },
-    "workspace/research-index.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research-notebook.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research-options.tsx": {
-      "@mantine/core": [
-        "CheckIcon",
-        "Combobox",
-        "MultiSelect",
-        "Pill",
-        "Select"
-      ]
-    },
-    "workspace/research-seasonality.tsx": {
-      "@mantine/core": [
-        "MultiSelect",
-        "Pill",
-        "Select"
-      ]
-    },
-    "workspace/research-universe.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research-valuation-detail.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research-valuation-workbench.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/research.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/review-evidence.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/review-perspectives.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/sectors-market-switch.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/settings-assistant.tsx": {
-      "@mantine/core": [
-        "NativeSelect"
-      ]
-    },
     "workspace/settings-oauth.tsx": {
       "@mantine/core": [
-        "Code",
-        "Select"
-      ]
-    },
-    "workspace/settings-preferences.tsx": {
-      "@mantine/core": [
-        "Select"
-      ]
-    },
-    "workspace/settings.tsx": {
-      "@mantine/core": [
-        "Select"
+        "Code"
       ]
     }
   }

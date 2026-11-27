@@ -5,7 +5,6 @@ import { TextareaField, TextField } from "@/components/ui/form-field";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { skipToken, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -38,6 +37,7 @@ import { ResearchDocuments } from "./research-evidence";
 import { useRouteState } from "./route-state";
 import { noticeKinds, useEvidenceNotice } from "./evidence-notices";
 import Link from "./link";
+import { SelectPicker } from "./picker";
 
 type Journal = components["schemas"]["ResearchJournal"];
 type Note = components["schemas"]["ResearchNote"];
@@ -398,14 +398,13 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
             value={draft.urls}
             onChange={(e) => updateDraft({ urls: e.currentTarget.value })}
           />
-          <Select
-            comboboxProps={{ portalProps: { target: ".mx-note-editor-sheet" } }}
+          <SelectPicker
             clearable
             readOnly={readOnly}
             label={t("关联模型版本", "Related model version")}
             value={draft.modelId}
             onChange={(v) => updateDraft({ modelId: v })}
-            data={(query.data?.models ?? []).map((m) => ({
+            options={(query.data?.models ?? []).map((m) => ({
               value: m.id,
               label: `${m.savedAt.slice(0, 16).replace("T", " ")} · ${m.preview.horizon}Y · ${quoteValue(m.preview.scenarios.base.value, m.preview.basis.currency)}`,
             }))}
@@ -538,16 +537,18 @@ function ModelVersions({ journal }: { journal: Journal }) {
         action={
           models.length > 0 && (
             <div className="flex flex-wrap items-center gap-mx-md">
-              <Select
+              <SelectPicker
+                style={{ width: 180 }}
                 aria-label={t("模型版本", "Model version")}
                 value={selected.id}
-                data={options}
+                options={options}
                 onChange={(v) => update({ model: v })}
               />
-              <Select
+              <SelectPicker
+                style={{ width: 180 }}
                 aria-label={t("比较模型", "Compare model")}
                 value={second?.id ?? null}
-                data={options.filter((o) => o.value !== selected.id)}
+                options={options.filter((o) => o.value !== selected.id)}
                 onChange={setCompare}
               />
             </div>

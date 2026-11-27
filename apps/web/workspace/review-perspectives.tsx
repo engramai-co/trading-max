@@ -1,6 +1,5 @@
 "use client";
 
-import { Select } from "@mantine/core";
 import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -16,6 +15,7 @@ import Link from "./link";
 import { reviewLabel } from "./review-copy";
 import { Availability, DetailFacts, EndingEvidence, field } from "./review-evidence";
 import { SecurityPeek } from "./security-peek";
+import { SelectPicker } from "./picker";
 
 export function Coverage({ data }: { data: Json }) {
   const t = useCopy();
@@ -101,12 +101,12 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
     <Panel
       title={t("已实现盈亏归因 · GBP", "Realised P&L attribution · GBP")}
       action={
-        <Select
+        <SelectPicker
           aria-label={t("归因维度", "Attribution dimension")}
           value={dimension}
           onChange={(v) => setDimension(v ?? "instrument")}
-          data={Object.keys(keys).map((k) => ({ value: k, label: labels[k] }))}
-          w={140}
+          options={Object.keys(keys).map((k) => ({ value: k, label: labels[k] }))}
+          style={{ width: 140 }}
         />
       }
     >

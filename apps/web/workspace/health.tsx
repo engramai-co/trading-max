@@ -1,7 +1,6 @@
 "use client";
 
 import { WorkspaceSheet } from "./overlay";
-import { Select } from "@mantine/core";
 import {
   Activity,
   ArrowRight,
@@ -47,6 +46,7 @@ import { useSearchParams } from "next/navigation";
 import { DemoAsOf } from "./demonstration";
 import { collapseRoutineRuns } from "./job-history";
 import { JobOutcomeSummary } from "./job-outcomes";
+import { SelectPicker } from "./picker";
 
 export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
@@ -349,11 +349,11 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   <Notice>{desktop && initialScope === "cfd" ? t("CSV 已保存。请先完成账户的首次同步，再更新 CFD 复盘，以便核对账户间的转账。", "Your CSV is saved. Complete the first account sync before updating CFD review so transfers between accounts can be reconciled.") : t("从账户连接开始；首次同步完成后再核对金额。", "Start by connecting an account, then check balances after the first sync.")}</Notice>
                   <div className="flex flex-wrap items-center gap-mx-md"><Link href="/settings?tab=accounts&onboarding=1" data-slot="button" className={buttonVariants()}>{t("继续设置账户", "Continue account setup")}</Link></div>
                 </> : <>
-                <Select
+                <SelectPicker
                   label={t("更新范围", "Update scope")}
                   value={scope}
                   onChange={(v) => setScope(v as RefreshJob["scope"])}
-                  data={scopes}
+                  options={scopes}
                   disabled={start.isPending || queued > 0 || running > 0}
                 />
                 {start.isError && (
@@ -443,11 +443,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             title={t("更新记录", "Update history")}
             action={
               jobsUnavailable ? undefined : (
-                <Select
+                <SelectPicker
+                  className="phone:w-[180px]"
                   aria-label={t("筛选任务状态", "Filter task status")}
                   value={filter}
                   onChange={(v) => setFilter(v ?? "all")}
-                  data={[
+                  options={[
                     { value: "all", label: t("全部状态", "All statuses") },
                     ...[
                       "queued",

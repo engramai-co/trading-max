@@ -16,7 +16,6 @@
  *   DESIGN.md, and every shipping raster carrying its provenance.
  */
 
-import { Select } from "@mantine/core";
 import { ChartLine } from "lucide-react";
 import Link from "./link";
 import { useCallback, useMemo, useState } from "react";
@@ -68,6 +67,7 @@ import { OverviewSectors } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
 import { DashboardRanges, InlineRetry, WaitingAsOf, rangeName } from "./dashboard-controls";
+import { SelectPicker } from "./picker";
 
 const OverviewBrief = dynamic(() => import("./assistant/overview").then(module => module.OverviewBrief));
 
@@ -81,9 +81,13 @@ export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?:
 }
 function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
-  const { locale } = useLocale();
   const { ready: assistantReady } = useAssistant();
   const { data: profile } = useWorkspaceProfile();
+  // A late profile can rename options while the reader is switching accounts.
+  const [accountWidthLabels] = useState(() => ({
+    invest: accountName(profile, "A"),
+    isa: accountName(profile, "B"),
+  }));
   const { params, update } = useRouteState();
   const { now } = useCurrentDay();
   const query = useDashboardLens("overview", undefined, true, { detail: "summary" });
@@ -188,10 +192,11 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           aria-label={t("账户价值", "Account value")}
         >
           <div className="mx-summary-top">
-            <Select
+            <SelectPicker
               aria-label={t("组合账户", "Portfolio account")}
-              w={locale === "zh" ? 186 : 212}
-              data={[
+              intrinsic
+              widthLabels={accountWidthLabels}
+              options={[
                 {
                   value: "total",
                   label: t("全部投资账户", "All investment accounts"),

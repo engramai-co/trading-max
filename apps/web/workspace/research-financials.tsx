@@ -1,11 +1,11 @@
 "use client";
+
 import { WorkspaceSheet } from "./overlay";
 import { useBreakpoint } from "@/lib/hooks";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ import { financialSections, ResearchReading, useApproached } from "./research-re
 import { useRouteState } from "./route-state";
 import { Sparkbars } from "./sparks";
 import { chartNumber } from "./research-chart-format";
+import { SelectPicker } from "./picker";
 
 export function FinancialWorkbench({
   data,
@@ -239,14 +240,14 @@ export function FinancialWorkbench({
                   : []),
               ]}
             />
-            <Select
+            <SelectPicker
               aria-label={t("选择报告期", "Reporting period")}
               value={period?.id ?? null}
-              data={periods
+              options={periods
                 .toReversed()
                 .map((p) => ({ value: p.id, label: p.label }))}
               onChange={(v) => update({ period: v })}
-              w={205}
+              style={{ width: 205 }}
             />
           </div>
           </div>
@@ -331,11 +332,12 @@ export function FinancialWorkbench({
                     : undefined
                 }
                 action={
-                  <Select
+                  <SelectPicker
+                    className="phone:w-[180px]"
                     aria-label={t("历史指标", "Historical metrics")}
                     value={chart}
                     onChange={(v) => update({ metricGroup: v })}
-                    data={[
+                    options={[
                       {
                         value: "income",
                         label: t("营收与利润", "Revenue & profit"),

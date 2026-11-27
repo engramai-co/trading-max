@@ -365,7 +365,7 @@ test("retained ISA peek isolates same-ETF quotes across accounts and publication
 
   await page.goto(`/holdings?account=B&snapshotId=${retainedRunId}&evidence=list_holdings`);
   const accountSelect = page.getByRole("combobox", { name: "Choose account" });
-  await expect(accountSelect).toHaveValue("Stocks\u00a0ISA");
+  await expect(accountSelect).toHaveText("Stocks\u00a0ISA");
   const retainedIsaRows = rows.filter({ hasText: "SYNETF" });
   await expect(retainedIsaRows).toHaveCount(1);
   await expect(retainedIsaRows).toContainText("£115.50");
@@ -398,7 +398,7 @@ test("retained ISA peek isolates same-ETF quotes across accounts and publication
   await page.getByRole("tab", { name: "Direct holdings", exact: true }).click();
   await expect(page).toHaveURL(/account=B/);
   await expect(page).not.toHaveURL(/view=lookthrough/);
-  await expect(accountSelect).toHaveValue("Stocks\u00a0ISA");
+  await expect(accountSelect).toHaveText("Stocks\u00a0ISA");
   await expect(retainedIsaRows).toHaveCount(1);
   await expect(retainedIsaRows).toContainText("£115.50");
   await expect(retainedIsaRows.locator(".mx-holding-quote-basis time")).toHaveAttribute("datetime", isaRetainedAt);

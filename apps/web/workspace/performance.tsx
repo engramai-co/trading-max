@@ -1,6 +1,5 @@
 "use client";
 
-import { Select } from "@mantine/core";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
 import { deepestDrawdown } from "@/lib/portfolio/drawdown-episodes";
@@ -60,6 +59,7 @@ import { ALL_BENCHMARKS, returnComparisonLayers, returnComparisonLines, returnDr
 import { useRetainedResult } from "./retained-result";
 import { DashboardRanges, InlineRetry, WaitingAsOf, rangeName } from "./dashboard-controls";
 import { moneyTimelineLayout } from "./money-timeline-layout";
+import { SelectPicker } from "./picker";
 
 export function PerformanceWorkspace() {
   const t = useCopy();
@@ -364,13 +364,13 @@ export function PerformanceContent({
           {(!data || runtime.status === "loading") && waiting ? <WaitingAsOf label={waitingLabel} /> : <Freshness date={shown?.history?.brokerAsOf ?? data?.brokerAsOf} />}
           {view !== "money" && inlineFailure && <UpdateFailure {...inlineFailure} />}
         </span>
-        <Select
+        <SelectPicker
           disabled={!!fixedScope}
           aria-label={t("分析账户", "Analysis account")}
           value={requestedScope}
           onChange={(v) => update({ scope: v === "total" ? null : v })}
-          data={scopeOptions}
-          w={locale === "zh" ? 200 : 212}
+          options={scopeOptions}
+          intrinsic
         />
       </div>
       <TabPanel value={view}>
@@ -406,12 +406,11 @@ export function PerformanceContent({
                   ]}
                 />
               ) : (
-                <Select
+                <SelectPicker
                   aria-label={t("基准", "Benchmark")}
                   value={benchmark}
                   onChange={(v) => { rememberBenchmark(v ?? "VOO"); update({ benchmark: v }); }}
-                  allowDeselect={false}
-                  data={[
+                  options={[
                     { value: "VOO", label: "S&P 500 · VOO" },
                     { value: "QQQ", label: "Nasdaq 100 · QQQ" },
                     {
@@ -420,7 +419,7 @@ export function PerformanceContent({
                     },
                     { value: "ALL", label: t("全部基准", "All benchmarks") },
                   ]}
-                  w={220}
+                  style={{ width: 220 }}
                 />
               )}
               <div className="mx-period-control" onClickCapture={event => {

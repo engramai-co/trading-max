@@ -4,13 +4,6 @@ import { WorkspaceSheet } from "./overlay";
 import { FormField } from "@/components/ui/form-field";
 import { NumericInput } from "@/components/ui/numeric-input";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import {
-  CheckIcon,
-  Combobox,
-  MultiSelect,
-  Pill,
-  Select,
-} from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useLocalStorage } from "@/lib/hooks";
 import type { BarSeriesOption, EChartsOption, LineSeriesOption } from "echarts";
@@ -38,6 +31,7 @@ import { minus } from "./reading-figures";
 import { readingTone, signedNumber, signedPounds } from "./reading-format";
 import { usFundRelation } from "./research-fund-reference";
 import { useRouteState } from "./route-state";
+import { MultiPicker, SearchPicker, SelectPicker } from "./picker";
 
 type Chain = NonNullable<ResearchLensSnapshot["options"]>;
 type Contract = Chain["contracts"][number];
@@ -404,31 +398,12 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
             ]}
           />
           {dates.length > 0 && (
-            <MultiSelect
-              renderPill={({ option, onRemove }) => (
-                <Pill
-                  withRemoveButton
-                  onRemove={onRemove}
-                  removeButtonProps={{
-                    "aria-label":
-                      t("移除到期日 ", "Remove expiration ") + option.label,
-                  }}
-                >
-                  {option.label}
-                </Pill>
-              )}
+            <MultiPicker
+              removeLabel={(option) => t("移除到期日 ", "Remove expiration ") + option.label}
               // Once five are chosen the rest are disabled, and their names say why. Chosen ones keep the check.
-              renderOption={({ option, checked }) => (
-                <>
-                  {checked && <CheckIcon className={Combobox.classes.optionsDropdownCheckIcon} />}
-                  {option.disabled ? <>
-                    <span aria-hidden="true">{option.label}</span>
-                    <span className="sr-only">{option.label + t("，", ", ") + fullReason}</span>
-                  </> : <span>{option.label}</span>}
-                </>
-              )}
+              optionName={(option) => option.disabled ? option.label + t("，", ", ") + fullReason : option.label}
               aria-label={t("选择已采集到期日", "Select captured expirations")}
-              data={dates.map((date) => ({
+              options={dates.map((date) => ({
                 value: date,
                 label: formatCalendarDate(date, locale),
                 disabled: full && !selected.includes(date),
@@ -438,7 +413,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
               onChange={(v) => {
                 if (v.length) update({ expiries: v.join(",") });
               }}
-              w={320}
+              style={{ width: 320 }}
             />
           )}
           <span className={partialExpiries ? "mx-warning-text" : "mx-muted"}>
@@ -507,9 +482,10 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                   onCheckedChange={(checked) => setLiquid(checked)}
                 />
                 {selected.length > 1 && (
-                  <Select
+                  <SelectPicker
+                    style={{ width: 180 }}
                     label={t("详细到期日", "Detail expiration")}
-                    data={selected.map((date) => ({ value: date, label: formatCalendarDate(date, locale) }))}
+                    options={selected.map((date) => ({ value: date, label: formatCalendarDate(date, locale) }))}
                     value={active}
                     onChange={(v) => {
                       if (v)
@@ -527,27 +503,16 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
             {mode === "chain" && (
               <>
                 <div className="mx-toolbar" style={{ margin: "20px 0" }}>
-                  <MultiSelect
-                    renderPill={({ option, onRemove }) => (
-                      <Pill
-                        withRemoveButton
-                        onRemove={onRemove}
-                        removeButtonProps={{
-                          "aria-label":
-                            t("移除列 ", "Remove column ") + option.label,
-                        }}
-                      >
-                        {option.label}
-                      </Pill>
-                    )}
+                  <MultiPicker
+                    removeLabel={(option) => t("移除列 ", "Remove column ") + option.label}
                     aria-label={t("期权链列", "Option chain columns")}
-                    data={Object.entries(columnNames).map(([value, label]) => ({
+                    options={Object.entries(columnNames).map(([value, label]) => ({
                       value,
                       label,
                     }))}
                     value={activeCols}
                     onChange={setColumns}
-                    w={480}
+                    style={{ width: 480 }}
                   />
                   <Checkbox
                     label={t("所有行权价", "All strikes")}
@@ -1038,8 +1003,9 @@ function Payoff({
   const eligible = contracts.filter(
     (c) => c.multiplier != null && c.multiplier > 0 && c.contractSymbol,
   );
+  const selectedContract = eligible.find((contract) => contract.contractSymbol === selected);
   const add = () => {
-    const c = eligible.find((c) => c.contractSymbol === selected);
+    const c = selectedContract;
     if (c && legs.length < 4)
       setLegs([
         ...legs,
@@ -1104,21 +1070,20 @@ function Payoff({
   return (
     <div className="mt-mx-lg flex flex-col gap-mx-md">
       <div className="flex flex-wrap items-end gap-mx-md">
-        <Select
+        <SearchPicker
           label={t("合约", "Contract")}
-          searchable
-          data={eligible.map((c) => ({
+          options={eligible.map((c) => ({
             value: c.contractSymbol!,
             label: `${c.side.toUpperCase()} ${quoteValue(c.strike, currencyCode, { style: "number", digits: 8 })} · ${formatCalendarDate(c.expiry, locale)}`,
           }))}
           value={selected}
           onChange={setSelected}
-          w={320}
+          style={{ width: 320 }}
         />
         <Button
           variant="secondary"
           onClick={add}
-          disabled={!selected || legs.length >= 4}
+          disabled={!selectedContract || legs.length >= 4}
         >
           {t("加入试算", "Add to analysis")}
         </Button>

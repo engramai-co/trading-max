@@ -49,9 +49,7 @@ textarea.tm-field-control {
 
 .tm-field-control:focus-visible,
 [data-slot="input-group"]:has(> [data-slot="input-group-control"]:focus-visible),
-.tm-file-picker:has(> button:not([data-slot]):focus-visible),
-.mx-summary-top .mantine-Select-input:focus-visible,
-.mx-holdings-account-select:focus-visible {
+.tm-file-picker:has(> button:not([data-slot]):focus-visible) {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
@@ -103,9 +101,7 @@ html[data-mantine-color-scheme="light"] .tm-field-control {
 @media (forced-colors: active) {
   .tm-field-control:focus-visible,
   [data-slot="input-group"]:has(> [data-slot="input-group-control"]:focus-visible),
-  .tm-file-picker:has(> button:not([data-slot]):focus-visible),
-  .mx-summary-top .mantine-Select-input:focus-visible,
-  .mx-holdings-account-select:focus-visible {
+  .tm-file-picker:has(> button:not([data-slot]):focus-visible) {
     outline-color: Highlight;
   }
 }

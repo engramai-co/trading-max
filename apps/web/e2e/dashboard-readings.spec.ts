@@ -50,7 +50,7 @@ test.describe("dashboard readings", () => {
     });
     await page.goto("/analytics?view=returns&range=1M");
     const benchmark = page.getByRole("combobox", { name: "Benchmark" });
-    await expect(benchmark).toHaveValue("S&P 500 · VOO");
+    await expect(benchmark).toHaveText("S&P 500 · VOO");
     await expect(page.getByRole("group", { name: "Performance range" })).toBeVisible();
     await expect(page.getByRole("status").filter({ hasText: "Loading 1M records…" })).toBeVisible();
     await expect(page.locator("[data-tm-chart-ready=true]")).toHaveCount(0);
@@ -167,7 +167,7 @@ test.describe("dashboard readings", () => {
     await expect(page.locator(".mx-overview-portfolio time.mx-freshness")).toBeVisible();
     await expect(page.locator(".mx-overview-history [data-tm-chart-ready=true]")).toBeVisible();
     await page.goto(new URL("/desktop/analytics?view=returns", demo).href);
-    await expect(page.getByRole("combobox", { name: "Benchmark", exact: true })).toHaveValue("S&P 500 · VOO");
+    await expect(page.getByRole("combobox", { name: "Benchmark", exact: true })).toHaveText("S&P 500 · VOO");
     await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
     await page.getByRole("tab", { name: "Risk profile" }).click();
     await expect(page.locator(".mx-risk-basis")).toContainText("All available history");

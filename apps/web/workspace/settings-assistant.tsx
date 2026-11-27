@@ -1,7 +1,6 @@
 "use client";
 
 import { WorkspaceAlertDialog, WorkspaceDialog } from "./overlay";
-import { NativeSelect } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -12,6 +11,7 @@ import { api, ApiError, jsonRequest } from "./data";
 import { Notice, Panel, Pending, QueryError, useCopy } from "./foundation";
 import { workspaceProfileKey } from "./profile";
 import { ASSISTANT_NAME, assistantSettingsChange, assistantSettingsKey, conversationsErasedEvent, connectedAssistantModels, DISCLOSURE_REVISION } from "./assistant-settings";
+import { NativePicker } from "./picker";
 
 const path = "/settings/assistant";
 const actionKey = [...assistantSettingsKey, "action"];
@@ -123,8 +123,8 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
   />}>
     <div className="mx-setting-row mx-assistant-model">
       {models.length ? <>
-        <NativeSelect label={t("模型", "Model")} value={selected?.value ?? ""} disabled={busy}
-          data={[...(!selected ? [{ value: "", label: t("请选择已连接的模型", "Choose a connected model"), disabled: true }] : []), ...models.map(({ value, label }) => ({ value, label }))]}
+        <NativePicker label={t("模型", "Model")} value={selected?.value ?? ""} disabled={busy}
+          options={[...(!selected ? [{ value: "", label: t("请选择已连接的模型", "Choose a connected model"), disabled: true }] : []), ...models.map(({ value, label }) => ({ value, label }))]}
           onChange={(event) => {
             const option = models.find((item) => item.value === event.currentTarget.value);
             if (!option || inFlight()) return;
