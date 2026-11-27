@@ -1,6 +1,6 @@
 /* Share the global layer so deferred rules keep their original specificity. */
 @layer mantine {
-.mx-assistant-panel button,
+.mx-assistant-panel button:not([data-slot="button"]),
 .mx-inline-reading button,
 .mx-reading-actions button,
 .mx-digest button,
@@ -25,7 +25,7 @@
 .mx-digest-head,
 .mx-reading-title,
 .mx-assistant-history,
-.mx-assistant-composer > div {
+.mx-assistant-composer-row {
   display: flex;
   align-items: center;
 }
@@ -164,47 +164,6 @@
   text-decoration-color: var(--mx-border);
   white-space: nowrap;
 }
-.mx-assistant-composer {
-  margin: 10px;
-  padding: 9px 10px;
-  border: 1px solid var(--mx-border);
-  border-radius: 10px;
-}
-.mx-assistant-composer:focus-within {
-  border-color: var(--mx-brand);
-}
-.mx-assistant-composer textarea {
-  width: 100%;
-  border: 0;
-  outline: 0;
-  resize: none;
-  font: inherit;
-  background: transparent;
-  color: var(--mx-ink);
-}
-.mx-assistant-composer textarea::placeholder {
-  color: var(--mx-muted);
-}
-.mx-assistant-composer button {
-  border-radius: 50%;
-  width: 34px;
-  height: 34px;
-  flex-shrink: 0;
-  display: grid;
-  place-items: center;
-  color: var(--primary-foreground);
-  background: var(--primary);
-}
-.mx-assistant-composer button:not(:disabled):hover {
-  background: var(--primary-hover);
-}
-.mx-assistant-composer button:not(:disabled):active {
-  background: var(--primary-active);
-}
-.mx-assistant-composer button:disabled {
-  background: var(--mx-soft);
-  color: var(--mx-muted);
-}
 .mx-assistant-scope {
   display: inline-block;
   padding: 2px 7px;
@@ -332,9 +291,6 @@
   .mx-reading-sheet button,
   .mx-digest button {
     min-height: 44px;
-  }
-  .mx-assistant-composer button {
-    min-width: 44px;
   }
   .mx-digest-grid {
     grid-template-columns: 1fr;

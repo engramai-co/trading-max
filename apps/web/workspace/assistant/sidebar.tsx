@@ -1,5 +1,8 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
+import { InputGroup, InputGroupTextarea } from "@/components/ui/input-group";
+
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage, type UIMessageChunk } from "ai";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -513,18 +516,24 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
     </div>
     <div className="sr-only" aria-live="polite" aria-atomic="true">{announcement}</div>
     <form className="mx-assistant-composer" onSubmit={e => { e.preventDefault(); send(draft); }}>
-      <span className="mx-assistant-scope">{checking ? t("正在检查连接…", "Checking connection…") : composerContextLabel}</span>
-      <div><textarea ref={history ? null : setComposerNode} rows={2} value={draft}
-        onChange={e => {
-          draftRevision.current++;
-          restoredFromStopRef.current = null;
-          setDraft(e.target.value);
-        }} maxLength={16000}
-        aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
-        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
-        {busy ? <button type="button" tabIndex={0} onClick={event => { event.preventDefault(); handleStop(); }} aria-label={t("停止", "Stop")}><Square size={18} aria-hidden="true" fill="currentColor" /></button>
-          : <button type="submit" tabIndex={0} disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp size={18} aria-hidden="true" /></button>}
-      </div>
+      <InputGroup className="mx-assistant-composer-field flex-col items-stretch">
+        <span className="mx-assistant-scope self-start">{checking ? t("正在检查连接…", "Checking connection…") : composerContextLabel}</span>
+        <div className="mx-assistant-composer-row"><InputGroupTextarea ref={history ? null : setComposerNode} rows={2} name="message" value={draft}
+          onChange={e => {
+            draftRevision.current++;
+            restoredFromStopRef.current = null;
+            setDraft(e.target.value);
+          }} maxLength={16000}
+          aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
+          onKeyDown={e => {
+            if (e.key !== "Enter" || e.shiftKey || isImeComposing(e)) return;
+            e.preventDefault();
+            if (!busy && !sendingBlocked && draft.trim()) e.currentTarget.form?.requestSubmit();
+          }} />
+          {busy ? <Button type="button" size="icon" tabIndex={0} onClick={event => { event.preventDefault(); handleStop(); }} aria-label={t("停止", "Stop")}><Square size={18} aria-hidden="true" fill="currentColor" /></Button>
+            : <Button type="submit" size="icon" tabIndex={0} disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp size={18} aria-hidden="true" /></Button>}
+        </div>
+      </InputGroup>
     </form>
   </>;
 }

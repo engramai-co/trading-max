@@ -135,14 +135,9 @@ export const tradingMaxTheme = createTheme({
     xl: "0 32px 80px rgba(17,24,39,.18)",
   },
   components: {
-    TextInput: { defaultProps: { size: "md", radius: "sm" } },
-    PasswordInput: { defaultProps: { size: "md", radius: "sm" } },
     Select: {
       defaultProps: { size: "sm", radius: "sm", allowDeselect: false },
       styles: { input: { minHeight: 40 } },
-    },
-    NumberInput: {
-      defaultProps: { hideControls: true, size: "sm", radius: "sm" },
     },
   },
 });

@@ -46,15 +46,13 @@
     },
     "workspace/holdings.tsx": {
       "@mantine/core": [
-        "Select",
-        "TextInput"
+        "Select"
       ]
     },
     "workspace/look-through.tsx": {
       "@mantine/core": [
         "Pagination",
-        "Select",
-        "TextInput"
+        "Select"
       ]
     },
     "workspace/market-indices.tsx": {
@@ -89,14 +87,12 @@
     },
     "workspace/research-analyst.tsx": {
       "@mantine/core": [
-        "Select",
-        "TextInput"
+        "Select"
       ]
     },
     "workspace/research-company.tsx": {
       "@mantine/core": [
-        "Select",
-        "TextInput"
+        "Select"
       ]
     },
     "workspace/research-compare.tsx": {
@@ -109,18 +105,12 @@
     "workspace/research-evidence.tsx": {
       "@mantine/core": [
         "MultiSelect",
-        "Select",
-        "TextInput"
+        "Select"
       ]
     },
     "workspace/research-financials.tsx": {
       "@mantine/core": [
         "Select"
-      ]
-    },
-    "workspace/research-finder.tsx": {
-      "@mantine/core": [
-        "TextInput"
       ]
     },
     "workspace/research-header.tsx": {
@@ -140,9 +130,7 @@
     },
     "workspace/research-notebook.tsx": {
       "@mantine/core": [
-        "Select",
-        "TextInput",
-        "Textarea"
+        "Select"
       ]
     },
     "workspace/research-options.tsx": {
@@ -150,7 +138,6 @@
         "CheckIcon",
         "Combobox",
         "MultiSelect",
-        "NumberInput",
         "Pill",
         "Select"
       ]
@@ -169,8 +156,7 @@
     },
     "workspace/research-universe.tsx": {
       "@mantine/core": [
-        "Select",
-        "TextInput"
+        "Select"
       ]
     },
     "workspace/research-valuation-detail.tsx": {
@@ -180,9 +166,7 @@
     },
     "workspace/research-valuation-workbench.tsx": {
       "@mantine/core": [
-        "NumberInput",
-        "Select",
-        "Textarea"
+        "Select"
       ]
     },
     "workspace/research.tsx": {
@@ -210,16 +194,6 @@
         "NativeSelect"
       ]
     },
-    "workspace/settings-index-data.tsx": {
-      "@mantine/core": [
-        "PasswordInput"
-      ]
-    },
-    "workspace/settings-market-data.tsx": {
-      "@mantine/core": [
-        "PasswordInput"
-      ]
-    },
     "workspace/settings-oauth.tsx": {
       "@mantine/core": [
         "Code",
@@ -228,20 +202,12 @@
     },
     "workspace/settings-preferences.tsx": {
       "@mantine/core": [
-        "FileInput",
-        "Select",
-        "TextInput"
+        "Select"
       ]
     },
     "workspace/settings.tsx": {
       "@mantine/core": [
-        "PasswordInput",
         "Select"
-      ]
-    },
-    "workspace/shell.tsx": {
-      "@mantine/core": [
-        "TextInput"
       ]
     }
   }

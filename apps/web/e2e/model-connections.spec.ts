@@ -20,15 +20,21 @@ test.describe("model connection setup", () => {
     await expect(dialog.getByRole("checkbox")).toBeChecked();
     const key = dialog.getByLabel(/^API Key/);
     const save = dialog.getByRole("button", { name: /保存连接|Save connection/ });
+    const prerequisite = dialog.getByText(/连接测试通过后即可保存。|Test the connection before saving\./);
     await expect(save).toBeDisabled();
+    await expect(prerequisite).toBeVisible();
+    await expect(save).toHaveAccessibleDescription(/连接测试通过后即可保存。|Test the connection before saving\./);
     await key.fill("synthetic-key");
     await page.route("**/api/backend/settings/llm/providers/anthropic/test", (route) => route.fulfill({ json: { status: "succeeded", validationToken: "synthetic-receipt" } }));
     await dialog.getByRole("button", { name: /测试连接|Test connection/ }).click();
     await expect(save).toBeEnabled();
+    await expect(prerequisite).toHaveCount(0);
     await key.fill("changed-synthetic-key");
     await expect(save).toBeDisabled();
+    await expect(prerequisite).toBeVisible();
     await dialog.getByRole("button", { name: /测试连接|Test connection/ }).click();
     await expect(save).toBeEnabled();
+    await expect(prerequisite).toHaveCount(0);
     await page.route("**/api/backend/settings/llm/providers/anthropic", (route) => {
       const body = route.request().postDataJSON();
       expect(body.useAsDefault).toBe(true);

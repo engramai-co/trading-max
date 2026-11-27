@@ -1,0 +1,179 @@
+.tm-field-control {
+  box-sizing: border-box;
+  min-block-size: 2.5rem;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-control);
+  background: var(--field);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  padding-inline: 14px;
+  transition: border-color var(--motion-fast);
+}
+
+[data-slot="input-group"].tm-field-control {
+  width: 100%;
+  padding-inline: 0;
+}
+
+textarea.tm-field-control {
+  display: block;
+  border-radius: var(--radius-menu-item);
+  padding-block: 7px;
+  resize: none;
+}
+
+.tm-field-control::placeholder {
+  color: var(--placeholder);
+  opacity: 1;
+}
+
+@media (hover: hover) {
+  .tm-field-control:hover:not(:disabled, [data-disabled], [aria-invalid="true"]) {
+    border-color: var(--input-hover);
+  }
+}
+
+.tm-field-control:disabled,
+.tm-field-control[data-disabled] {
+  opacity: 0.5;
+}
+
+.tm-field-control[aria-invalid="true"],
+.tm-field-control[aria-invalid="true"]:hover,
+.tm-field-control[data-slot="input-group"]:has(> [aria-invalid="true"]),
+.tm-field-control[data-slot="input-group"]:has(> [aria-invalid="true"]):hover {
+  border-color: var(--destructive);
+}
+
+.tm-field-control:focus-visible,
+[data-slot="input-group"]:has(> [data-slot="input-group-control"]:focus-visible),
+.tm-file-picker:has(> button:not([data-slot]):focus-visible),
+.mx-summary-top .mantine-Select-input:focus-visible,
+.mx-holdings-account-select:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+[data-slot="input-group-control"].tm-field-control {
+  min-block-size: calc(2.5rem - 2px);
+  border: 0;
+  background: transparent;
+  opacity: 1;
+}
+
+input[data-slot="input-group-control"].tm-field-control {
+  min-block-size: 2.5rem;
+  margin-block: -1px;
+}
+
+[data-slot="input-group-control"].tm-field-control:focus-visible,
+.tm-file-picker > button:not([data-slot]):focus-visible {
+  outline: none;
+}
+
+/* Keep the existing explicit clear controls and combobox Escape behaviour. */
+.tm-field-control::-webkit-search-cancel-button {
+  display: none;
+}
+
+html[data-mantine-color-scheme="dark"] .tm-field-control {
+  color-scheme: dark;
+}
+
+html[data-mantine-color-scheme="light"] .tm-field-control {
+  color-scheme: light;
+}
+
+@media (pointer: coarse) {
+  .tm-field-control {
+    min-block-size: 2.75rem;
+  }
+
+  :is(input, textarea).tm-field-control {
+    font-size: max(16px, 1rem);
+  }
+
+  input[data-slot="input-group-control"].tm-field-control {
+    min-block-size: 2.75rem;
+  }
+}
+
+@media (forced-colors: active) {
+  .tm-field-control:focus-visible,
+  [data-slot="input-group"]:has(> [data-slot="input-group-control"]:focus-visible),
+  .tm-file-picker:has(> button:not([data-slot]):focus-visible),
+  .mx-summary-top .mantine-Select-input:focus-visible,
+  .mx-holdings-account-select:focus-visible {
+    outline-color: Highlight;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-field-control {
+    transition: none;
+  }
+}
+
+.tm-field-reveal[data-slot="button"],
+.tm-finder-submit[data-slot="button"],
+.tm-file-picker > [data-slot="button"] {
+  margin-block: -1px;
+}
+
+.tm-file-picker > button:not([data-slot]) {
+  appearance: none;
+  min-block-size: calc(2.5rem - 2px);
+  border: 0;
+  background: transparent;
+  color: inherit;
+}
+
+.tm-file-picker button[data-placeholder] {
+  color: var(--placeholder);
+}
+
+.mx-import-drop > .mx-form-help {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+[data-slot="input-group"]:has(> [data-align="inline-start"]) > [data-slot="input-group-control"] {
+  padding-inline-start: 8px;
+}
+
+.mx-research-filter {
+  width: 183px;
+  max-width: 100%;
+}
+
+@media (pointer: coarse) {
+  .tm-file-picker > button:not([data-slot]) {
+    min-block-size: calc(2.75rem - 2px);
+  }
+}
+
+.mx-assistant-composer {
+  margin: 10px;
+}
+
+.mx-assistant-composer-field[data-slot="input-group"] {
+  padding: 9px 10px;
+  border-radius: var(--radius-menu-item);
+}
+
+.mx-assistant-composer textarea[data-slot="input-group-control"] {
+  padding: 0;
+}
+
+.mx-assistant-composer-field:has(textarea:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+@media (forced-colors: active) {
+  .mx-assistant-composer-field:has(textarea:focus-visible) {
+    outline-color: Highlight;
+  }
+}

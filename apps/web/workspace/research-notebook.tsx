@@ -1,10 +1,11 @@
 "use client";
 
 import { WorkspaceSheet } from "./overlay";
+import { TextareaField, TextField } from "@/components/ui/form-field";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { components } from "@/lib/api-schema";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select, Textarea, TextInput } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { skipToken, useMutation, useMutationState, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -362,34 +363,37 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
             });
           }}
         >
-          <TextInput
+          <TextField
             data-autofocus
             label={t("标题", "Title")}
+            name="title"
             required
             readOnly={readOnly}
             maxLength={200}
             value={draft.title}
             onChange={(e) => updateDraft({ title: e.currentTarget.value })}
           />
-          <Textarea
+          <TextareaField
             label={t("投资判断与依据", "Thesis & evidence")}
+            name="thesis"
             minRows={7}
-            autosize
             readOnly={readOnly}
             maxRows={18}
             value={draft.thesis}
             onChange={(e) => updateDraft({ thesis: e.currentTarget.value })}
           />
-          <Textarea
+          <TextareaField
             label={t("什么会改变这个判断", "What would change this thesis")}
+            name="invalidation"
             minRows={3}
-            autosize
             readOnly={readOnly}
             value={draft.invalidation}
             onChange={(e) => updateDraft({ invalidation: e.currentTarget.value })}
           />
-          <Textarea
+          <TextareaField
             label={t("证据链接 · 每行一个", "Evidence links · one per line")}
+            name="urls"
+            rows={2}
             readOnly={readOnly}
             value={draft.urls}
             onChange={(e) => updateDraft({ urls: e.currentTarget.value })}
@@ -406,7 +410,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
               label: `${m.savedAt.slice(0, 16).replace("T", " ")} · ${m.preview.horizon}Y · ${quoteValue(m.preview.scenarios.base.value, m.preview.basis.currency)}`,
             }))}
           />
-          <TextInput
+          <TextField
             type="date"
             name="reviewDate"
             readOnly={readOnly}

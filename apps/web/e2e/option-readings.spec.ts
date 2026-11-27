@@ -36,6 +36,16 @@ function reading(page: Page, chart: Locator, isMobile: boolean) {
   };
 }
 
+async function openPayoffEditor(page: Page) {
+  await page.goto("/research?ticker=AAPL&view=options&optionView=payoff");
+  const contract = page.getByRole("combobox", { name: "Contract", exact: true });
+  await contract.click();
+  await contract.fill("CALL 100");
+  await page.getByRole("option", { name: /^CALL 100 · / }).click();
+  await page.getByRole("button", { name: "Add to analysis" }).click();
+  return page.getByRole("textbox", { name: "Cost per contract" });
+}
+
 test.describe("option and rating charts read through the reading card", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a seeded local preview.");
 
@@ -87,16 +97,184 @@ test.describe("option and rating charts read through the reading card", () => {
     await expect(shown).toBeHidden();
   });
 
+  test("IME commits into a fee at the original selection", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium", "Uses Chromium's native IME events via CDP.");
+    const fee = await openPayoffEditor(page);
+    await fee.fill("1234");
+    await expect(fee).toHaveValue("1234");
+    await fee.evaluate((input: HTMLInputElement) => input.setSelectionRange(4, 4));
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await cdp.send("Input.imeSetComposition", { text: "5", selectionStart: 1, selectionEnd: 1 });
+      await expect(fee).toHaveValue("12345");
+      await cdp.send("Input.insertText", { text: "5" });
+      await expect(fee).toHaveValue("12345");
+      expect(await fee.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([5, 5]);
+      const chart = page.getByRole("group", { name: "Hypothetical expiration P/L" });
+      await chart.press("Home");
+      await expect(reading(page, chart, false).spoken).toContainText("12,765.00");
+
+      await fee.focus();
+      await fee.evaluate((input: HTMLInputElement) => input.setSelectionRange(1, 3));
+      await cdp.send("Input.imeSetComposition", { text: "9", selectionStart: 1, selectionEnd: 1 });
+      await expect(fee).toHaveValue("1945");
+      await cdp.send("Input.insertText", { text: "9" });
+      await expect(fee).toHaveValue("1945");
+      expect(await fee.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([2, 2]);
+
+      await cdp.send("Input.imeSetComposition", { text: "8", selectionStart: 1, selectionEnd: 1 });
+      await cdp.send("Input.imeSetComposition", { text: "", selectionStart: 0, selectionEnd: 0 });
+      await expect(fee).toHaveValue("1945");
+      expect(await fee.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd])).toEqual([2, 2]);
+    } finally {
+      await cdp.detach();
+    }
+  });
+
+  test("blurring during IME composition clamps the fee", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium", "Uses Chromium's native IME events via CDP.");
+    const fee = await openPayoffEditor(page);
+    await fee.fill("1");
+    await fee.press("ControlOrMeta+A");
+    const cdp = await page.context().newCDPSession(page);
+    try {
+      await cdp.send("Input.imeSetComposition", { text: "-5", selectionStart: 2, selectionEnd: 2 });
+      await expect(fee).toHaveValue("-5");
+      const premium = page.getByRole("textbox", { name: /^Assumed premium/ });
+      await premium.click();
+      await expect(premium).toBeFocused();
+      await expect(fee).toHaveValue("0");
+    } finally {
+      await cdp.detach();
+    }
+  });
+
+  test("native paste and cut support undo and redo", async ({ page }) => {
+    const fee = await openPayoffEditor(page);
+    const premium = page.getByRole("textbox", { name: /^Assumed premium/ });
+    // Seed each baseline through a controlled step so WebKit has no setup typing transaction to undo.
+    await fee.fill("76");
+    await fee.press("ArrowUp");
+    await expect(fee).toHaveValue("77");
+    await premium.fill("12");
+    await premium.press("ControlOrMeta+A");
+    await premium.press("ControlOrMeta+C");
+    await fee.press("ControlOrMeta+A");
+    await fee.press("ControlOrMeta+V");
+    await expect(fee).toHaveValue("12");
+    await fee.press("ControlOrMeta+Z");
+    await expect(fee).toHaveValue("77");
+    await fee.press("ControlOrMeta+Shift+Z");
+    await expect(fee).toHaveValue("12");
+
+    await fee.fill("122");
+    await fee.press("ArrowUp");
+    await expect(fee).toHaveValue("123");
+    await fee.evaluate(async (input: HTMLInputElement) => {
+      // Select after NumericFormat's post-render caret correction for the step.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+      input.setSelectionRange(0, 1);
+    });
+    await fee.press("ControlOrMeta+X");
+    await expect(fee).toHaveValue("23");
+    await fee.press("ControlOrMeta+Z");
+    await expect(fee).toHaveValue("123");
+    await fee.press("ControlOrMeta+Shift+Z");
+    await expect(fee).toHaveValue("23");
+
+    // Copy external comma-decimal text from a plain field so paste runs the normalizer.
+    const external = page.getByTestId("clipboard-source");
+    await page.evaluate(() => {
+      const source = document.createElement("input");
+      source.dataset.testid = "clipboard-source";
+      source.value = "1,25";
+      document.body.append(source);
+    });
+    await external.press("ControlOrMeta+A");
+    await external.press("ControlOrMeta+C");
+    await fee.press("ControlOrMeta+A");
+    await fee.press("ControlOrMeta+V");
+    await expect(fee).toHaveValue("1.25");
+    await fee.press("ControlOrMeta+Z");
+    await expect(fee).toHaveValue("23");
+    await fee.press("ControlOrMeta+Shift+Z");
+    await expect(fee).toHaveValue("1.25");
+  });
+
+  test("fees round-trip through copy and cut", async ({ page }) => {
+    const fee = await openPayoffEditor(page);
+    const premium = page.getByRole("textbox", { name: /^Assumed premium/ });
+    await fee.fill("1234");
+    await expect(fee).toHaveValue("1234");
+    await fee.press("ControlOrMeta+A");
+    await fee.press("ControlOrMeta+C");
+    await fee.fill("0");
+    await fee.press("ControlOrMeta+A");
+    await fee.press("ControlOrMeta+V");
+    await expect(fee).toHaveValue("1234");
+    await premium.press("ControlOrMeta+A");
+    await premium.press("ControlOrMeta+V");
+    await expect(premium).toHaveValue("1234");
+
+    await fee.fill("1234.5");
+    await expect(fee).toHaveValue("1234.5");
+    await fee.evaluate((input: HTMLInputElement) => input.setSelectionRange(0, 3));
+    await fee.press("ControlOrMeta+X");
+    await expect(fee).toHaveValue("4.5");
+    await premium.press("ControlOrMeta+A");
+    await premium.press("ControlOrMeta+V");
+    await expect(premium).toHaveValue("123");
+  });
+
   test("the payoff reads a signed, toned result at each underlying price", async ({ page, isMobile }) => {
-    await page.goto("/research?ticker=AAPL&view=options&optionView=payoff");
-    const contract = page.getByRole("combobox", { name: "Contract", exact: true });
-    await contract.click();
-    await contract.fill("CALL 100");
-    await page.getByRole("option", { name: /^CALL 100 · / }).click();
-    await page.getByRole("button", { name: "Add to analysis" }).click();
+    const fee = await openPayoffEditor(page);
+    await fee.fill("1234567890.5");
+    await expect(fee).toHaveValue("1234567890.5");
+    const feeBox = (await fee.boundingBox())!;
+    expect(feeBox.x + feeBox.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    // Typing and pasting comma-decimal values match Mantine NumberInput (thousandSeparator unset).
+    await fee.click();
+    await fee.press("ControlOrMeta+A");
+    await fee.pressSequentially("1,25");
+    await expect(fee).toHaveValue("1.25");
+    const pasteInto = async (text: string) => {
+      await fee.evaluate((el, value) => {
+        const input = el as HTMLInputElement;
+        input.focus();
+        input.setSelectionRange(0, input.value.length);
+        const dt = new DataTransfer();
+        dt.setData("text/plain", value);
+        input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+      }, text);
+    };
+    await pasteInto("1.234,56");
+    await expect(fee).toHaveValue("1234.56");
+    await pasteInto("1 234,567");
+    await expect(fee).toHaveValue("1234.567");
+    await pasteInto("£1,234");
+    await expect(fee).toHaveValue("1.234");
+    await pasteInto("1,234");
+    await expect(fee).toHaveValue("1.234");
     const chart = page.getByRole("group", { name: "Hypothetical expiration P/L" });
     await expect(chart).toHaveAttribute("data-tm-chart-ready", "true");
     const { spoken, shown } = reading(page, chart, isMobile);
+    // Fee 1.234 on top of the 420.00 premium yields +4,578.77 at expiry 150.00 (not +3,346.00 from 1,234).
+    await expect(spoken).toContainText("+4,578.77");
+    await pasteInto("1,25");
+    await expect(fee).toHaveValue("1.25");
+    // Fee 1.25 on top of the 420.00 premium yields +4,578.75 at expiry 150.00 (not +4,455.00 from 125).
+    await expect(spoken).toContainText("+4,578.75");
+    await fee.fill("1234567890123456");
+    await expect(fee).toHaveValue("1234567890123456");
+    await fee.press("ArrowDown");
+    await expect(fee).toHaveValue("1234567890123455");
+    await fee.press("ArrowUp");
+    await expect(fee).toHaveValue("1234567890123456");
+    await fee.fill("0");
+    await fee.press("ArrowUp");
+    await expect(fee).toHaveValue("1");
+    await fee.press("ArrowDown");
+    await expect(fee).toHaveValue("0");
     // The premium is the mid quote, 4.20 on 100 shares: below the strike the call loses 420.00.
     await chart.press("Home");
     await expect(spoken).toContainText("Underlying at expiry 0.00");

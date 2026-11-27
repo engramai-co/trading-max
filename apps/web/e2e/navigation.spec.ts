@@ -41,8 +41,15 @@ test.describe("workspace navigation refinements", () => {
 
   test("search has accessible keyboard selection, literal highlights and focus return", async ({ page }) => {
     await page.goto("/");
+    const account = page.getByRole("combobox", { name: /组合账户|Portfolio account/ });
+    await account.focus();
+    await expect(account).toHaveCSS("outline-width", "2px");
     const trigger = page.getByRole("button", { name: searchName });
     const input = await openSearch(page);
+    await input.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(input).toBeFocused();
+    await expect(input.locator("..")).toHaveCSS("outline-width", "2px");
     await input.fill("BE");
     const selected = page.getByRole("option", { selected: true });
     await expect(selected).toContainText("BE");
@@ -74,7 +81,7 @@ test.describe("workspace navigation refinements", () => {
     await expect(page.getByRole("status").filter({ hasText: /加上代码|Add a ticker/ })).toBeVisible();
   });
 
-  test("search hands a security outside the research list to the finder over the current view and its filters", async ({ page }) => {
+  test("search hands a security outside the research list to the finder over the current view and its filters", async ({ page, browserName }) => {
     const searches: string[] = [];
     await page.route("**/api/backend/securities/search?**", (route) => {
       searches.push(new URL(route.request().url()).searchParams.get("q") ?? "");
@@ -105,6 +112,135 @@ test.describe("workspace navigation refinements", () => {
     await expect(finder.getByText("Synthetic Example Holdings")).toBeVisible();
     expect(searches).toEqual(["Synthetic Example"]);
     await expect(page).toHaveURL((url) => url.pathname + url.search === address);
+    const finderInput = finder.getByRole("searchbox");
+    await finderInput.click();
+    await finderInput.fill("");
+    await finderInput.evaluate((el) => {
+      const form = el.closest("form");
+      const log: Array<{
+        type: string;
+        isComposing?: boolean;
+        key?: string;
+        keyCode?: number;
+        cancelable?: boolean;
+        defaultPrevented?: boolean;
+      }> = [];
+      let submits = 0;
+      const onStart = () => log.push({ type: "compositionstart" });
+      const onEnd = () => log.push({ type: "compositionend" });
+      const onSubmit = () => { submits += 1; };
+      // Observe on window (bubble phase, after React's root listener) so defaultPrevented reflects React's onKeyDown.
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.target === el && event.key === "Enter") {
+          log.push({
+            type: "keydown",
+            key: event.key,
+            isComposing: event.isComposing,
+            keyCode: event.keyCode,
+            cancelable: event.cancelable,
+            defaultPrevented: event.defaultPrevented,
+          });
+        }
+      };
+      el.addEventListener("compositionstart", onStart);
+      el.addEventListener("compositionend", onEnd);
+      form?.addEventListener("submit", onSubmit);
+      window.addEventListener("keydown", onKeyDown);
+      const w = window as unknown as Record<string, unknown>;
+      w.__tmImeLog = log;
+      w.__tmImeSubmits = () => submits;
+      w.__tmImeCleanup = () => {
+        el.removeEventListener("compositionstart", onStart);
+        el.removeEventListener("compositionend", onEnd);
+        form?.removeEventListener("submit", onSubmit);
+        window.removeEventListener("keydown", onKeyDown);
+      };
+    });
+    if (browserName === "chromium") {
+      // Exercise a real browser IME composition path that can reach native implicit form submission.
+      const cdp = await page.context().newCDPSession(page);
+      await cdp.send("Input.imeSetComposition", {
+        text: "Another Synthetic Example",
+        selectionStart: 25,
+        selectionEnd: 25,
+      });
+      await page.keyboard.press("Enter");
+      await cdp.send("Input.insertText", { text: "Another Synthetic Example" });
+      // Also exercise Safari/WKWebView's post-compositionend confirming Enter (keyCode 229).
+      await cdp.send("Input.dispatchKeyEvent", {
+        type: "rawKeyDown",
+        key: "Enter",
+        code: "Enter",
+        windowsVirtualKeyCode: 229,
+      });
+      await cdp.send("Input.dispatchKeyEvent", {
+        type: "keyUp",
+        key: "Enter",
+        code: "Enter",
+        windowsVirtualKeyCode: 229,
+      });
+      await cdp.detach();
+    } else {
+      // WebKit lacks CDP: drive composition and Safari's cancelable confirming Enter (isComposing / keyCode 229 + keypress/keyup).
+      await finderInput.dispatchEvent("compositionstart");
+      await page.keyboard.insertText("Another Synthetic Example");
+      await finderInput.evaluate((el) => {
+        const dispatchEnter = (
+          type: "keydown" | "keypress" | "keyup",
+          options: { isComposing: boolean; keyCode: number; charCode?: number },
+        ) => {
+          const event = new KeyboardEvent(type, {
+            key: "Enter",
+            code: "Enter",
+            bubbles: true,
+            cancelable: true,
+            isComposing: options.isComposing,
+            keyCode: options.keyCode,
+            charCode: options.charCode ?? 0,
+            which: options.keyCode,
+          });
+          if (event.keyCode !== options.keyCode) {
+            Object.defineProperty(event, "keyCode", { value: options.keyCode });
+          }
+          return el.dispatchEvent(event);
+        };
+        // Confirming Enter during composition (isComposing=true): if not prevented, Safari's default action fires keypress and submits the form.
+        if (dispatchEnter("keydown", { isComposing: true, keyCode: 229 })) {
+          dispatchEnter("keypress", { isComposing: true, keyCode: 13, charCode: 13 });
+        }
+        dispatchEnter("keyup", { isComposing: false, keyCode: 13 });
+        el.dispatchEvent(new CompositionEvent("compositionend", { data: "Another Synthetic Example", bubbles: true }));
+        // Safari/WKWebView post-compositionend confirming Enter (isComposing=false, keyCode=229): if not prevented, keypress triggers WebKit's native implicit submit.
+        if (dispatchEnter("keydown", { isComposing: false, keyCode: 229 })) {
+          dispatchEnter("keypress", { isComposing: false, keyCode: 13, charCode: 13 });
+        }
+        dispatchEnter("keyup", { isComposing: false, keyCode: 13 });
+      });
+    }
+    const imeBeforeSubmit = await page.evaluate(() => {
+      const w = window as unknown as Record<string, unknown>;
+      return {
+        log: w.__tmImeLog as Array<{ type: string; isComposing?: boolean; keyCode?: number; cancelable?: boolean; defaultPrevented?: boolean }>,
+        submits: (w.__tmImeSubmits as () => number)(),
+      };
+    });
+    expect(imeBeforeSubmit.log.some((entry) => entry.type === "compositionstart")).toBe(true);
+    expect(imeBeforeSubmit.log.some((entry) => entry.type === "compositionend")).toBe(true);
+    expect(imeBeforeSubmit.log.some((entry) => entry.type === "keydown" && entry.isComposing && entry.cancelable && entry.defaultPrevented)).toBe(true);
+    expect(imeBeforeSubmit.log.some((entry) => entry.type === "keydown" && !entry.isComposing && entry.keyCode === 229 && entry.cancelable && entry.defaultPrevented)).toBe(true);
+    expect(imeBeforeSubmit.submits).toBe(0);
+    await expect(finderInput).toHaveValue("Another Synthetic Example");
+    expect(searches).toEqual(["Synthetic Example"]);
+    await page.keyboard.press("Enter");
+    await expect.poll(() => searches).toEqual(["Synthetic Example", "Another Synthetic Example"]);
+    const submitsAfterEnter = await page.evaluate(() => {
+      const w = window as unknown as Record<string, unknown>;
+      const count = (w.__tmImeSubmits as () => number)();
+      (w.__tmImeCleanup as (() => void) | undefined)?.();
+      return count;
+    });
+    expect(submitsAfterEnter).toBe(1);
+    expect(searches).toHaveLength(2);
     // Closing the finder leaves the page as it was, without a history entry, and returns to Search.
     await page.keyboard.press("Escape");
     await expect(finder).toHaveCount(0);
@@ -265,6 +401,8 @@ test.describe("workspace navigation refinements", () => {
       await expect(activeItem.locator("svg.lucide-check")).toHaveCSS("width", "16px");
       await expect(activeItem).toHaveCSS("font-weight", "600");
       await expect(inactiveItem).not.toHaveCSS("font-weight", "600");
+      // Destinations are links, but read as menu items: no link underline.
+      for (const item of [activeItem, inactiveItem]) await expect(item).toHaveCSS("text-decoration-line", "none");
       await expect.poll(async () => {
         const [menuBg, activeBg] = await Promise.all([
           menu.evaluate((el) => getComputedStyle(el).backgroundColor),

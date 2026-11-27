@@ -503,7 +503,7 @@ html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-str
   .mx-forecast-table th {
     padding-inline: 5px;
   }
-  .mx-statement-filter .mantine-TextInput-root {
+  .mx-statement-filter .mx-research-filter {
     width: 100%;
   }
   .mx-statements tbody th {

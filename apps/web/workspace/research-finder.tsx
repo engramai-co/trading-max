@@ -1,8 +1,9 @@
 "use client";
 
 import { WorkspaceDialog } from "./overlay";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { searchInputHints } from "@/components/ui/search-input";
 import type { SecuritySearchResponse, SecuritySearchResult } from "@/lib/types";
-import { TextInput } from "@mantine/core";
 import { Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
@@ -12,6 +13,7 @@ import { Instrument, Notice, Pending, useCopy } from "./foundation";
 import Link from "./link";
 import { researchIndexHref, matchIndices, useIndexCatalog } from "./market-indices-data";
 import { useRouteState } from "./route-state";
+import { isImeComposing } from "./shortcut-platform";
 
 /**
  * Text that Search hands to this page's finder through the address. The finder opens on it once and
@@ -96,17 +98,26 @@ export function SecurityFinder({
     >
       <div className="mx-search-row">
         <form onSubmit={submit} role="search">
-          <TextInput
-            data-autofocus
-            aria-label={t("搜索", "Search")}
-            placeholder={initial || t("代码或名称", "Ticker or name")}
-            enterKeyHint="search"
-            autoComplete="off"
-            value={text}
-            maxLength={100}
-            onChange={(e) => setText(e.currentTarget.value)}
-            leftSection={<Search aria-hidden="true" size={18} />}
-          />
+          <InputGroup>
+            <InputGroupAddon className="p-0">
+              <Button type="submit" variant="ghost" size="icon" className="tm-finder-submit" aria-label={t("提交搜索", "Submit search")}>
+                <Search size={18} aria-hidden="true" />
+              </Button>
+            </InputGroupAddon>
+            <InputGroupInput
+              {...searchInputHints}
+              name="q"
+              data-autofocus
+              aria-label={t("搜索", "Search")}
+              placeholder={initial || t("代码或名称", "Ticker or name")}
+              value={text}
+              maxLength={100}
+              onChange={(e) => setText(e.currentTarget.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && isImeComposing(e)) e.preventDefault();
+              }}
+            />
+          </InputGroup>
         </form>
         <CloseButton className="mx-search-close [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11" iconSize={18} aria-label={t("关闭", "Close")} onClick={onClose} />
       </div>

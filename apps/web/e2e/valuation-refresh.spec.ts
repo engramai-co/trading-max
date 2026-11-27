@@ -400,6 +400,31 @@ test.describe("valuation refresh", () => {
     const spot = page.locator(".mx-scenario-spot");
     await expect(spot).toContainText("100.00");
     const growth = page.getByLabel("Revenue growth · years 1–5");
+    const inputBox = (await growth.boundingBox())!;
+    const labelBox = (await page.locator(".mx-assumption-edit > label").boundingBox())!;
+    expect(Math.abs(inputBox.y + inputBox.height / 2 - labelBox.y - labelBox.height / 2)).toBeLessThanOrEqual(2);
+    // Comma-decimal typing and pasting match Mantine NumberInput (thousandSeparator unset), never 100x or 1,000x.
+    await growth.click();
+    await growth.press("ControlOrMeta+A");
+    await growth.pressSequentially("1,25");
+    await expect(growth).toHaveValue("1.25%");
+    await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBeCloseTo(0.0125, 6);
+    const pasteGrowth = async (text: string) => {
+      await growth.evaluate((el, value) => {
+        const input = el as HTMLInputElement;
+        input.focus();
+        input.setSelectionRange(0, input.value.length);
+        const dt = new DataTransfer();
+        dt.setData("text/plain", value);
+        input.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+      }, text);
+    };
+    await pasteGrowth("1,234");
+    await expect(growth).toHaveValue("1.23%");
+    await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBeCloseTo(0.0123, 6);
+    await pasteGrowth("-2,5");
+    await expect(growth).toHaveValue("-2.5%");
+    await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBeCloseTo(-0.025, 6);
     await growth.fill("20");
     await expect.poll(() => state.posts.at(-1)?.scenarios.base.revenueCagr).toBe(0.2);
 
@@ -1305,6 +1330,15 @@ for (const locale of ["en", "zh"] as const) for (const scheme of ["light", "dark
     await expect(evidence.getByRole("link")).toHaveAttribute("href", /view=analyst/);
     await editor.getByRole("button", {name:(en ? "Reject " : "拒绝 ") + margin, exact:true}).click();
     await editor.getByRole("button", {name:en ? "Save model version" : "保存模型版本",exact:true}).click();
+    const reasonField = page.getByRole("dialog").getByRole("textbox", { name: en ? "Reason for this view" : "记录这次判断的理由" });
+    await expect(reasonField).toHaveAttribute("rows", "2");
+    expect(await reasonField.evaluate((el) => {
+      const s = getComputedStyle(el);
+      const inner = el.getBoundingClientRect().height
+        - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom)
+        - parseFloat(s.borderTopWidth) - parseFloat(s.borderBottomWidth);
+      return Math.round(inner / parseFloat(s.lineHeight));
+    })).toBe(2);
     await page.getByRole("dialog").getByRole("button",{name:en ? "Save version" : "保存版本",exact:true}).click();
     await expect(page.getByRole("dialog").getByRole("button",{name:en ? "Reload for review" : "重新载入并重审"})).toBeVisible();
     expect(saved).toMatchObject({scenarios:{base:{revenueCagr:0.19,targetFcfMargin:0.15}},
@@ -1998,6 +2032,15 @@ test.describe("research notes", () => {
     const dialog = page.getByRole("dialog");
     const title = dialog.getByRole("textbox", { name: /^Title/ });
     const thesis = dialog.getByRole("textbox", { name: "Thesis & evidence" });
+    const urls = dialog.getByRole("textbox", { name: /Evidence links/ });
+    await expect(urls).toHaveAttribute("rows", "2");
+    expect(await urls.evaluate((el) => {
+      const s = getComputedStyle(el);
+      const inner = el.getBoundingClientRect().height
+        - parseFloat(s.paddingTop) - parseFloat(s.paddingBottom)
+        - parseFloat(s.borderTopWidth) - parseFloat(s.borderBottomWidth);
+      return Math.round(inner / parseFloat(s.lineHeight));
+    })).toBe(2);
 
     await title.fill("Draft SYNT title");
     await thesis.fill("Draft SYNT thesis");

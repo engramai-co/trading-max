@@ -25,33 +25,6 @@
     display: inline-block;
     padding-block: 10px;
   }
-  .mantine-PasswordInput-input {
-    height: 44px;
-    min-height: 44px;
-    --input-fz: max(16px, 1rem);
-  }
-  .mantine-PasswordInput-innerInput {
-    padding-inline-end: 44px;
-    font-size: max(16px, 1rem);
-  }
-  .mantine-PasswordInput-section[data-position="right"] {
-    width: 44px;
-  }
-  .mantine-PasswordInput-visibilityToggle {
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-    min-height: 44px;
-  }
-  .mx-search-input .mantine-TextInput-input {
-    height: 44px;
-    min-height: 44px;
-    padding-inline-end: 44px;
-    font-size: max(16px, 1rem);
-  }
-  .mx-search-input .mantine-TextInput-section[data-position="right"] {
-    width: 44px;
-  }
 }
 /* Touch: tabs and segments tile their row in cells of at least 44 × 44px, so no tap lands in a gap. */
 @media (pointer: coarse) {

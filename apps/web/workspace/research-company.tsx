@@ -1,9 +1,11 @@
 "use client";
+
+import { SearchInput } from "@/components/ui/search-input";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select, TextInput } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { compact, number, object, objects, percent, str, type Json } from "@/workspace/data";
@@ -530,7 +532,8 @@ export function FinancialStatements({
         )}
       </div>
       <div className="mx-toolbar mx-statement-filter">
-        <TextInput
+        <SearchInput
+          className="mx-research-filter"
           aria-label={t("查找报表科目", "Find a statement line")}
           placeholder={t("查找科目…", "Find a line item…")}
           value={lineFilter}

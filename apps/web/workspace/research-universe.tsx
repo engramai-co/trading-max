@@ -1,7 +1,9 @@
 "use client";
 
+import { SearchInput } from "@/components/ui/search-input";
+
 import type { ResearchShell } from "@/lib/types";
-import { Select, TextInput } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pin, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -142,13 +144,12 @@ export function UniverseList({
     Number(listed.has(b.id)) - Number(listed.has(a.id));
   return (
     <>
-      <TextInput
-        size="xs"
+      <SearchInput
         aria-label={t("筛选研究清单", "Filter research list")}
         placeholder={t("筛选", "Filter")}
         value={filter}
         onChange={(e) => setFilter(e.currentTarget.value)}
-        leftSection={<Search aria-hidden="true" size={16} />}
+        leading={<Search aria-hidden="true" size={16} />}
       />
       <Select
         mt="sm"

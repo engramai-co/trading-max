@@ -1,7 +1,8 @@
 "use client";
 
 import { WorkspaceSheet } from "./overlay";
-import { Pagination, Select, TextInput } from "@mantine/core";
+import { SearchInput } from "@/components/ui/search-input";
+import { Pagination, Select } from "@mantine/core";
 import { ListFilter, Search } from "lucide-react";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
@@ -675,7 +676,7 @@ function Exposure({
             <CompanyToolbar
               phone={phone}
               search={
-                <TextInput
+                <SearchInput
                   className="mx-search-input"
                   value={search}
                   onChange={(e) => {
@@ -687,7 +688,7 @@ function Exposure({
                     "公司、代码、ISIN 或行业…",
                     "Company, ticker, ISIN or industry…",
                   )}
-                  leftSection={<Search aria-hidden="true" size={18} />}
+                  leading={<Search aria-hidden="true" size={18} />}
                 />
               }
               filters={

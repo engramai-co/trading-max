@@ -1,9 +1,11 @@
 "use client";
 
 import { WorkspaceDialog } from "./overlay";
+import { FormField, TextareaField } from "@/components/ui/form-field";
+import { NumericInput } from "@/components/ui/numeric-input";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select, NumberInput, Textarea } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { useDebouncedValue } from "@/lib/hooks";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -955,41 +957,42 @@ function ModelEditor({
                 // The selected row is the input; its label names the field once.
                 <div key={field.key} className="mx-assumption-edit" data-locked={fieldLocked || undefined}>
                   <label id={"assumption-label-" + field.key} htmlFor={"assumption-" + field.key}>{field.label}</label>
-                  <NumberInput
-                    key={selected + field.key}
-                    id={"assumption-" + field.key}
-                    size="xs"
-                    readOnly={fieldLocked}
-                    value={draftValue ?? Number(((inputs[selected][field.key] ?? 0) * field.scale).toFixed(3))}
+                  <FormField id={"assumption-" + field.key} fieldClassName="w-28 shrink-0" announceError
                     error={
                       invalidInput
                         ? `${t("请输入", "Enter a value between ")}${field.min} – ${field.max}${field.suffix}`
                         : undefined
-                    }
-                    onChange={(v) => {
-                      if (fieldLocked) return;
-                      setDraftValue(v);
-                      const value = numeric(v);
-                      setInvalidInput(value == null || value < field.min || value > field.max);
-                      if (value != null && value >= field.min && value <= field.max) {
-                        if (p) actions.current?.decide(p, "edited");
-                        setInputs((previous) => ({
-                          ...previous,
-                          [selected]: {
-                            ...previous[selected],
-                            [field.key]: value / field.scale,
-                          },
-                        }));
-                        if (field.key === "revenueCagr")
-                          setReferences((v) => v.filter((r) => r.scenario !== selected));
-                      }
-                    }}
-                    min={field.min}
-                    max={field.max}
-                    step={field.key === "rampYears" || field.key === "exitFcfMultiple" ? 1 : 0.5}
-                    decimalScale={field.key === "rampYears" ? 0 : 2}
-                    suffix={field.suffix}
-                  />
+                    }>
+                    {attributes => <NumericInput
+                      {...attributes}
+                      key={selected + field.key}
+                      readOnly={fieldLocked}
+                      value={draftValue ?? Number(((inputs[selected][field.key] ?? 0) * field.scale).toFixed(3))}
+                      onChange={(v) => {
+                        if (fieldLocked) return;
+                        setDraftValue(v);
+                        const value = numeric(v);
+                        setInvalidInput(value == null || value < field.min || value > field.max);
+                        if (value != null && value >= field.min && value <= field.max) {
+                          if (p) actions.current?.decide(p, "edited");
+                          setInputs((previous) => ({
+                            ...previous,
+                            [selected]: {
+                              ...previous[selected],
+                              [field.key]: value / field.scale,
+                            },
+                          }));
+                          if (field.key === "revenueCagr")
+                            setReferences((v) => v.filter((r) => r.scenario !== selected));
+                        }
+                      }}
+                      min={field.min}
+                      max={field.max}
+                      step={field.key === "rampYears" || field.key === "exitFcfMultiple" ? 1 : 0.5}
+                      decimalScale={field.key === "rampYears" ? 0 : 2}
+                      suffix={field.suffix}
+                    />}
+                  </FormField>
                   <button type="button" className="mx-lock" aria-pressed={fieldLocked}
                     aria-label={t("锁定", "Lock")} aria-describedby={"assumption-label-" + field.key}
                     disabled={invalidInput}
@@ -1130,7 +1133,8 @@ function ModelEditor({
             [scenarioNames[selected], quoteValue(current.value, result.basis.currency)],
           ]}
         />
-        <Textarea
+        <TextareaField
+          name="reason"
           label={t("记录这次判断的理由", "Reason for this view")}
           placeholder={t(
             "例如：增长回归历史均值，现金流率保持稳定。",
@@ -1138,7 +1142,7 @@ function ModelEditor({
           )}
           value={reason}
           onChange={(e) => setReason(e.currentTarget.value)}
-          minRows={3}
+          rows={2}
           maxLength={4000}
         />
         <div className="mt-mx-md flex flex-wrap items-center justify-end gap-mx-md">

@@ -1,8 +1,8 @@
 "use client";
 
 import { WorkspaceAlertDialog, WorkspaceDialog } from "./overlay";
+import { CredentialField, useRequiredFields } from "@/components/ui/form-field";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { PasswordInput } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -162,8 +162,10 @@ function AlpacaKeyForm({ onStart, onSaved }: { onStart: () => void; onSaved: () 
   // Any Alpaca write in flight, including one that began before this dialog opened.
   const writing = useIsMutating({ mutationKey: writeKey }) > 0;
   const busy = test.isPending || writing;
+  const required = useRequiredFields();
   function edit(action: () => void) { action(); setToken(null); setFailed(null); }
-  function runTest() {
+  function runTest(form: HTMLFormElement | null) {
+    if (busy || !required.validate(form)) return;
     setToken(null);
     setFailed(null);
     test.mutate(undefined, {
@@ -183,16 +185,26 @@ function AlpacaKeyForm({ onStart, onSaved }: { onStart: () => void; onSaved: () 
     });
   }
   return (
-    <form onSubmit={(event) => { event.preventDefault(); submit(); }}>
+    <form method="post" noValidate onSubmit={(event) => { event.preventDefault(); if (required.validate(event.currentTarget)) submit(); }}>
       <div className="flex flex-col gap-mx-md">
-        <PasswordInput label="Alpaca API Key ID" visibilityToggleButtonProps={{ "aria-label": t("显示或隐藏 Key ID", "Show or hide key ID") }} autoComplete="off" spellCheck={false} value={key} disabled={busy} onChange={(event) => { const value = event.currentTarget.value; edit(() => setKey(value)); }} />
-        <PasswordInput label="Alpaca API Secret" visibilityToggleButtonProps={{ "aria-label": t("显示或隐藏 Secret", "Show or hide secret") }} autoComplete="new-password" spellCheck={false} value={secret} disabled={busy} onChange={(event) => { const value = event.currentTarget.value; edit(() => setSecret(value)); }} />
+        <CredentialField label="Alpaca API Key ID" name="alpaca-key-id"
+          revealLabel={t("显示或隐藏 Key ID", "Show or hide key ID")}
+          error={required.missing(key) ? t("请输入 API Key ID。", "Enter the API key ID.") : undefined}
+          value={key} disabled={busy} onChange={(event) => { const value = event.currentTarget.value; edit(() => setKey(value)); }} />
+        <CredentialField label="Alpaca API Secret" name="alpaca-secret"
+          revealLabel={t("显示或隐藏 Secret", "Show or hide secret")}
+          error={required.missing(secret) ? t("请输入 API Secret。", "Enter the API secret.") : undefined}
+          autoComplete="new-password" value={secret} disabled={busy}
+          onChange={(event) => { const value = event.currentTarget.value; edit(() => setSecret(value)); }} />
         {failed === "test" && <Notice tone="bad">{t("历史行情测试失败，请检查密钥与 SIP / BOATS 访问权限。", "Historical market-data test failed. Check the keys and SIP / BOATS access.")}</Notice>}
         {token && <Notice tone="good">{t("SIP 与隔夜 BOATS 访问测试通过。", "SIP and overnight BOATS access verified.")}</Notice>}
         {failed === "save" && <Notice tone="bad">{t("保存失败，请检查服务器凭据库并重新测试。", "Save failed. Check the server credential store and test again.")}</Notice>}
-        <div className="flex flex-wrap items-center gap-mx-md">
-          <Button className="grow max-w-[calc(50%-8px)]" variant="outline" disabled={!key.trim() || !secret.trim() || busy} loading={test.isPending} loadingLabel={t("测试中…", "Testing…")} onClick={runTest}>{t("测试连接", "Test connection")}</Button>
-          <Button className="grow max-w-[calc(50%-8px)]" type="submit" disabled={!token || busy} loading={save.isPending} loadingLabel={t("保存中…", "Saving…")}>{t("保存并开启增强", "Save and enable")}</Button>
+        <div className="flex flex-col gap-mx-xs">
+          <div className="flex flex-wrap items-center gap-mx-md">
+            <Button className="grow max-w-[calc(50%-8px)]" variant="outline" disabled={busy} loading={test.isPending} loadingLabel={t("测试中…", "Testing…")} onClick={event => runTest((event.currentTarget as HTMLButtonElement).form)}>{t("测试连接", "Test connection")}</Button>
+            <Button className="grow max-w-[calc(50%-8px)]" type="submit" aria-describedby={!token ? "alpaca-save-requirement" : undefined} disabled={!token || busy} loading={save.isPending} loadingLabel={t("保存中…", "Saving…")}>{t("保存并开启增强", "Save and enable")}</Button>
+          </div>
+          {!token && <p className="mx-form-help" id="alpaca-save-requirement">{t("连接测试通过后即可保存。", "Test the connection before saving.")}</p>}
         </div>
       </div>
     </form>

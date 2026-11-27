@@ -270,23 +270,19 @@ details[open]:not(.mx-job-row) > :not(summary) {
   margin: 18px 0 8px;
   font-size: 13px;
 }
-.mantine-Input-input,
-.mantine-PasswordInput-input {
+.mantine-Input-input {
   background-color: var(--field);
   border-color: var(--input);
   color: var(--foreground);
 }
-.mantine-Input-input:hover:not(:disabled, [data-disabled], :focus, :focus-within),
-.mantine-PasswordInput-input:hover:not(:disabled, [data-disabled], :focus, :focus-within) {
+.mantine-Input-input:hover:not(:disabled, [data-disabled], :focus, :focus-within) {
   border-color: var(--input-hover);
 }
 .mantine-Input-input:focus,
-.mantine-Input-input:focus-within,
-.mantine-PasswordInput-input:focus-within {
+.mantine-Input-input:focus-within {
   border-color: var(--ring);
 }
 .mantine-Input-input::placeholder,
-.mantine-PasswordInput-innerInput::placeholder,
 .mantine-InputPlaceholder-placeholder {
   color: var(--placeholder);
   opacity: 1;
