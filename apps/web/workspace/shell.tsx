@@ -382,7 +382,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             nativeButton={false}
             render={<Link href={n.href} />}
             aria-current={active?.href === n.href ? "page" : undefined}
-            className="aria-[current=page]:font-semibold"
+            className="no-underline aria-[current=page]:font-semibold"
           >
             <n.icon size={18} className="size-[18px]" aria-hidden="true" />
             {n.label}

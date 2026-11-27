@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.76.0] - 2026-11-27
+
+### Changed
+- Text, password, number and file fields, the search boxes and the MaxAI message box use the new design system: filled fields with a clear boundary in both appearances, and labels, hints and errors attached to their fields. Text you type into fields and the message box is 16px on touch screens, so iPhone does not zoom in.
+- A connection's **Save** button explains beside it that the connection must pass its test first.
+
+### Fixed
+- The show and hide buttons on keys and passwords can be reached with Tab.
+- Account and search fields show keyboard focus clearly.
+- The research finder now has a search button. Pressing Enter to confirm an input-method candidate no longer submits the search.
+- In connection and personal-preference forms, empty required fields say so beside the field, and the first one receives focus.
+- In the phone **More** menu, page names no longer appear underlined.
+
 ## [1.75.0] - 2026-11-27
 
 ### Changed

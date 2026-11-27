@@ -37,7 +37,7 @@ export function FormField({
     "aria-describedby": [describedBy, descriptionId, errorId].filter(Boolean).join(" ") || undefined,
     "aria-invalid": error ? true : required ? false : undefined,
   };
-  const feedback = error && <FieldError id={errorId}><CircleAlert className="size-3.5 shrink-0" aria-hidden="true" />{error}</FieldError>;
+  const feedback = error && <FieldError id={errorId}><CircleAlert className="size-4 shrink-0" aria-hidden="true" />{error}</FieldError>;
   return (
     <Field className={fieldClassName} data-invalid={Boolean(error) || undefined} data-disabled={disabled || undefined}>
       {label && <div className="leading-[1.55]">
@@ -101,7 +101,7 @@ export function CredentialField({
               }
               setVisible(current => !current);
             }}>
-            {visible ? <EyeOff size={17} aria-hidden="true" /> : <Eye size={17} aria-hidden="true" />}
+            {visible ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
           </Button>
         </InputGroupAddon>
       </InputGroup>

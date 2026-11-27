@@ -401,6 +401,8 @@ test.describe("workspace navigation refinements", () => {
       await expect(activeItem.locator("svg.lucide-check")).toHaveCSS("width", "16px");
       await expect(activeItem).toHaveCSS("font-weight", "600");
       await expect(inactiveItem).not.toHaveCSS("font-weight", "600");
+      // Destinations are links, but read as menu items: no link underline.
+      for (const item of [activeItem, inactiveItem]) await expect(item).toHaveCSS("text-decoration-line", "none");
       await expect.poll(async () => {
         const [menuBg, activeBg] = await Promise.all([
           menu.evaluate((el) => getComputedStyle(el).backgroundColor),
