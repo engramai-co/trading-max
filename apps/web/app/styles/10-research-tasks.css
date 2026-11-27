@@ -116,10 +116,6 @@
   border: 1px solid var(--mx-border);
   border-radius: 6px;
 }
-.mx-assumption-edit > .mantine-NumberInput-root {
-  width: 112px;
-  flex-shrink: 0;
-}
 .mx-assumption-edit input {
   text-align: right;
   font-weight: 600;

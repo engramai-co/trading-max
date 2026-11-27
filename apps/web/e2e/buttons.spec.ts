@@ -132,7 +132,7 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
 
     // Holdings search clear button.
     await page.goto("/holdings");
-    const filter = page.getByRole("textbox", { name: "Filter holdings" });
+    const filter = page.getByRole("searchbox", { name: "Filter holdings" });
     await filter.fill("a");
     const clearBtn = page.getByRole("button", { name: "Clear search", exact: true });
     await expect(clearBtn).toBeVisible();
@@ -299,10 +299,10 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     const closeBox = (await dialog.locator("[data-overlay-close]").boundingBox())!;
     expect(closeBox.width).toBeGreaterThanOrEqual(43.5);
     expect(closeBox.height).toBeGreaterThanOrEqual(43.5);
-    const revealBox = (await dialog.locator(".mantine-PasswordInput-visibilityToggle").first().boundingBox())!;
+    const revealBox = (await dialog.getByRole("button", { name: /show or hide/i }).first().boundingBox())!;
     expect(revealBox.width).toBeGreaterThanOrEqual(43.5);
     expect(revealBox.height).toBeGreaterThanOrEqual(43.5);
-    const passwordFontSize = await dialog.locator(".mantine-PasswordInput-innerInput").first().evaluate(
+    const passwordFontSize = await dialog.locator("input[type=password]").first().evaluate(
       (el) => parseFloat(getComputedStyle(el).fontSize),
     );
     expect(passwordFontSize).toBeGreaterThanOrEqual(16);

@@ -133,10 +133,6 @@
   .mx-command-footer {
     display: none;
   }
-  .mx-command-dialog .mantine-TextInput-input {
-    min-height: 48px;
-    font-size: 16px;
-  }
   .mx-command-dialog .mx-command-results {
     max-height: min(370px, calc(100dvh - 240px));
   }

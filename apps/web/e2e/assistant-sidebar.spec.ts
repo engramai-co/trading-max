@@ -81,6 +81,7 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   page.on("request", r => {
     if (new URL(r.url()).pathname.endsWith("/assistant/chat")) sends.push(r.url());
   });
+  await input.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: true });
   await input.dispatchEvent("keydown", { key: "Enter", code: "Enter", isComposing: false, keyCode: 229 });
   await expect(input).toHaveValue(wording);
   expect(sends).toEqual([]);

@@ -1,9 +1,9 @@
 "use client";
 
 import { WorkspaceAlertDialog, WorkspaceDialog, WorkspaceSheet } from "./overlay";
+import { CredentialField, useRequiredFields } from "@/components/ui/form-field";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
-  PasswordInput,
   Select,
 } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -440,12 +440,14 @@ function ConnectionForm({
       ? { apiKeyId: apiKey, secretKey, environment }
       : { apiKey, model };
   const test = useMutation({
+    gcTime: 0,
     mutationFn: () =>
       api<TestResult>(path + "/test", jsonRequest("POST", payload)),
     onSuccess: (result) =>
       setToken(result.status === "succeeded" ? result.validationToken : null),
   });
   const save = useMutation({
+    gcTime: 0,
     mutationFn: () =>
       api(
         path,
@@ -468,17 +470,18 @@ function ConnectionForm({
     onSuccess: () => onSaved("disconnected"),
   });
   const busy = test.isPending || save.isPending;
+  const required = useRequiredFields();
   function edit(update: () => void) {
     update();
     setToken(null);
     test.reset();
     save.reset();
   }
-  const ready =
-    apiKey.trim().length > 0 &&
-    (connection.kind === "broker"
-      ? secretKey.trim().length > 0
-      : model.length > 0);
+  function runTest(form: HTMLFormElement | null) {
+    if (busy || !required.validate(form) || (connection.kind === "model" && !model)) return;
+    setToken(null);
+    test.mutate();
+  }
   return (
     <div className="flex flex-col gap-mx-lg">
       {(connection.kind === "model" || connection.existing?.configured) && (
@@ -491,11 +494,12 @@ function ConnectionForm({
               )}
         </Notice>
       )}
-      <form
+      <form method="post" noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (token) save.mutate();
-          else if (ready) test.mutate();
+          if (busy) return;
+          if (token && required.validate(e.currentTarget)) save.mutate();
+          else if (!token) runTest(e.currentTarget);
         }}
       >
         <div className="flex flex-col gap-mx-md">
@@ -513,36 +517,31 @@ function ConnectionForm({
               disabled={busy}
             />
           )}
-          <PasswordInput
+          <CredentialField
             data-autofocus={connection.kind !== "broker" || undefined}
             label={connection.kind === "broker" ? "API Key ID" : "API Key"}
+            name={connection.kind === "broker" ? `trading212-${connection.profile}-key-id` : `model-${connection.provider.provider}-api-key`}
+            error={required.missing(apiKey) ? t("请输入 API 密钥。", "Enter the API key.") : undefined}
             value={apiKey}
             onChange={(e) => {
               const value = e.currentTarget.value;
               edit(() => setApiKey(value));
             }}
-            visibilityToggleButtonProps={{
-              "aria-label": t("显示或隐藏密钥", "Show or hide key"),
-            }}
-            autoComplete="off"
-            spellCheck={false}
-            required
+            revealLabel={t("显示或隐藏密钥", "Show or hide key")}
             disabled={busy}
           />
           {connection.kind === "broker" ? (
-            <PasswordInput
+            <CredentialField
               label="API Secret"
+              name={`trading212-${connection.profile}-secret`}
+              error={required.missing(secretKey) ? t("请输入 API Secret。", "Enter the API secret.") : undefined}
               value={secretKey}
               onChange={(e) => {
                 const value = e.currentTarget.value;
                 edit(() => setSecretKey(value));
               }}
-              visibilityToggleButtonProps={{
-                "aria-label": t("显示或隐藏 Secret", "Show or hide secret"),
-              }}
+              revealLabel={t("显示或隐藏 Secret", "Show or hide secret")}
               autoComplete="new-password"
-              spellCheck={false}
-              required
               disabled={busy}
             />
           ) : (
@@ -622,30 +621,31 @@ function ConnectionForm({
               )}
             </Notice>
           )}
-          <div className="flex flex-wrap items-center gap-mx-md">
-            <Button
-              className="grow max-w-[calc(50%-8px)]"
-              variant="outline"
-              onClick={() => {
-                setToken(null);
-                test.mutate();
-              }}
-              disabled={!ready || save.isPending}
-              loading={test.isPending}
-              loadingLabel={t("测试中…", "Testing…")}
-            >
-              {t("测试连接", "Test connection")}
-            </Button>
-            <Button
-              className="grow max-w-[calc(50%-8px)]"
-              type="submit"
-              disabled={!token || test.isPending}
-              loading={save.isPending}
-              loadingLabel={t("保存中…", "Saving…")}
-            >
-              <CircleCheck size={18} aria-hidden="true" />
-              {t("保存连接", "Save connection")}
-            </Button>
+          <div className="flex flex-col gap-mx-xs">
+            <div className="flex flex-wrap items-center gap-mx-md">
+              <Button
+                className="grow max-w-[calc(50%-8px)]"
+                variant="outline"
+                onClick={event => runTest((event.currentTarget as HTMLButtonElement).form)}
+                disabled={save.isPending || (connection.kind === "model" && !model)}
+                loading={test.isPending}
+                loadingLabel={t("测试中…", "Testing…")}
+              >
+                {t("测试连接", "Test connection")}
+              </Button>
+              <Button
+                className="grow max-w-[calc(50%-8px)]"
+                type="submit"
+                aria-describedby={!token ? "connection-save-requirement" : undefined}
+                disabled={!token || test.isPending}
+                loading={save.isPending}
+                loadingLabel={t("保存中…", "Saving…")}
+              >
+                <CircleCheck size={18} aria-hidden="true" />
+                {t("保存连接", "Save connection")}
+              </Button>
+            </div>
+            {!token && <p className="mx-form-help" id="connection-save-requirement">{t("连接测试通过后即可保存。", "Test the connection before saving.")}</p>}
           </div>
         </div>
       </form>

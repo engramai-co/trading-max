@@ -154,7 +154,7 @@
   align-self: center;
   color: var(--mx-brand);
 }
-.mx-import-drop > .mantine-InputWrapper-root {
+.mx-import-drop > .tm-file-picker {
   grid-column: 2;
 }
 .mx-import-drop > [data-slot="button"] {
@@ -316,7 +316,7 @@
     grid-template-columns: 1fr;
     padding: 18px;
   }
-  .mx-import-drop > .mantine-InputWrapper-root,
+  .mx-import-drop > .tm-file-picker,
   .mx-import-drop > [data-slot="button"] {
     grid-column: 1;
   }

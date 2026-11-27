@@ -1,8 +1,8 @@
 "use client";
 
 import { WorkspaceAlertDialog, WorkspaceDialog } from "./overlay";
+import { CredentialField, useRequiredFields } from "@/components/ui/form-field";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { PasswordInput } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { IntegrationSummary } from "@/lib/types";
@@ -20,11 +20,13 @@ const mutationKey = ["settings", indexData.provider, "write"];
 
 export function IndexMarketData({ integration }: { integration?: IntegrationSummary }) {
   const t = useCopy(), client = useQueryClient();
+  const required = useRequiredFields();
   const [mode, setMode] = useState<"keys" | "remove" | null>(null);
   const [key, setKey] = useState("");
   useBuildNavigationGuard(mode !== null);
   const busy = useIsMutating({ mutationKey }) > 0;
   const commit = useMutation({
+    gcTime: 0,
     mutationKey,
     mutationFn: async (action: "save" | "remove" | "enable" | "disable") => {
       if (action === "remove") return api(indexData.path, { method: "DELETE" });
@@ -47,6 +49,7 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
     if (client.isMutating({ mutationKey })) return;
     commit.reset();
     setKey("");
+    required.reset();
     setMode(value);
   }
   function submit(action: "save" | "remove" | "enable" | "disable") {
@@ -80,13 +83,15 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
     </details>
     {commit.isError && !mode && error}
     <WorkspaceDialog open={mode === "keys"} onClose={() => open(null)} preventDismiss={busy} title={t("连接 EODHD", "Connect EODHD")}>
-      <form onSubmit={(event) => { event.preventDefault(); if (key.trim()) submit("save"); }}>
+      <form method="post" noValidate onSubmit={(event) => { event.preventDefault(); if (!busy && required.validate(event.currentTarget)) submit("save"); }}>
         <div className="flex flex-col gap-mx-md">
-          <PasswordInput data-autofocus label={t("API 密钥", "API key")} autoComplete="off"
+          <CredentialField data-autofocus label={t("API 密钥", "API key")} name="eodhd-api-key"
+            revealLabel={t("显示或隐藏密钥", "Show or hide key")}
+            error={required.missing(key) ? t("请输入 API 密钥。", "Enter the API key.") : undefined}
             value={key} maxLength={200} onChange={(event) => setKey(event.currentTarget.value)}
-            disabled={busy} required />
+            disabled={busy} />
           {commit.isError && error}
-          <Button type="submit" loading={busy} loadingLabel={t("保存中…", "Saving…")} disabled={!key.trim()}>{t("测试并保存", "Test and save")}</Button>
+          <Button type="submit" loading={busy} loadingLabel={t("保存中…", "Saving…")}>{t("测试并保存", "Test and save")}</Button>
         </div>
       </form>
     </WorkspaceDialog>

@@ -1,8 +1,9 @@
 "use client";
 
 import { WorkspaceSheet } from "./overlay";
+import { SearchInput } from "@/components/ui/search-input";
 import { useAssistantPageContext } from "./assistant/context";
-import { Select, TextInput } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowDown, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
@@ -83,6 +84,7 @@ function Positions() {
   const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
   const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
   const search = params.get("q") ?? "";
+  const searchInput = useRef<HTMLInputElement>(null);
   const requestedSort = holdingSort(params.get("positionSort"));
   const detailTrigger = useRef<HTMLButtonElement>(null);
   const [selected, setSelected] = useState<{ holding: Holding; runId?: string; positionAsOf?: string | null; scope: string } | null>(null);
@@ -170,6 +172,7 @@ function Positions() {
           <div className="mx-panel mx-holdings-summary">
             <div className="mx-toolbar">
               <Select
+                classNames={{ input: "mx-holdings-account-select" }}
                 aria-label={t("选择账户", "Choose account")}
                 w={locale === "zh" ? 190 : 212}
                 value={account}
@@ -210,21 +213,22 @@ function Positions() {
           </div>
           <Panel className="mx-holdings-list">
             <div className="mx-toolbar">
-              <TextInput
+              <SearchInput
                 className="mx-search-input"
+                ref={searchInput}
                 aria-label={t("筛选持仓", "Filter holdings")}
                 placeholder={t("筛选持仓…", "Filter holdings…")}
-                leftSection={<Search aria-hidden="true" size={18} />}
+                leading={<Search aria-hidden="true" size={18} />}
                 value={search}
                 onChange={(e) => {
                   setLimit(20);
                   update({ q: e.currentTarget.value || null });
                 }}
-                rightSection={
+                trailing={
                   search && (
                     <CloseButton
                       aria-label={t("清除搜索", "Clear search")}
-                      onClick={() => update({ q: null })}
+                      onClick={() => { update({ q: null }); searchInput.current?.focus(); }}
                     />
                   )
                 }

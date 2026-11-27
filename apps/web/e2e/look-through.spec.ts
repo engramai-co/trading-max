@@ -191,7 +191,7 @@ for (const { height, title } of [
         const centre = async (control: typeof sort) => { const box = (await control.boundingBox())!; return box.y + box.height / 2; };
         expect(Math.abs((await centre(sort)) - (await centre(views.first())))).toBeLessThan(2);
         for (const control of [
-          page.getByRole("textbox", { name: zh ? "搜索底层持仓" : "Search underlying holdings", exact: true }),
+          page.getByRole("searchbox", { name: zh ? "搜索底层持仓" : "Search underlying holdings", exact: true }),
           page.getByRole("button", { name: zh ? "筛选" : "Filters", exact: true }),
           sort,
           views.first(),
@@ -277,7 +277,7 @@ test.describe("look-through 5,100 companies", () => {
     await page.getByRole("option", { name: "Name A–Z", exact: true }).click();
     await expect(rowLocator.first()).toContainText("Alpha Holding 5100");
 
-    const search = page.getByRole("textbox", { name: "Search underlying holdings", exact: true });
+    const search = page.getByRole("searchbox", { name: "Search underlying holdings", exact: true });
     await search.fill("L2500");
     await expect(page.getByRole("status").filter({ hasText: "1 / 5,100" })).toBeVisible();
     await expect(page.getByRole("button", { name: /L2500/ })).toBeVisible();

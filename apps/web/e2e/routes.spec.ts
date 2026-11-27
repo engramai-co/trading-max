@@ -77,26 +77,38 @@ test.describe("portfolio workspace", () => {
   test("the broker form requires a successful candidate test before save", async ({
     page,
   }) => {
+    let requests = 0;
+    await page.route("**/api/backend/settings/integrations/trading212/*/test", (route) => {
+      requests++;
+      return route.fulfill({ json: { status: "succeeded", validationToken: "synthetic-receipt" } });
+    });
     await page.goto("/settings");
     await page
       .getByRole("button", { name: /连接账户|Connect account$/, exact: false })
       .first()
       .click();
     const dialog = page.getByRole("dialog");
-    await expect(
-      dialog.getByRole("button", { name: /保存连接|Save connection/ }),
-    ).toBeDisabled();
-    await expect(
-      dialog.getByRole("button", { name: /测试连接|Test connection/ }),
-    ).toBeDisabled();
-    await dialog.getByLabel(/^API Key ID/).fill("synthetic-id");
-    await dialog.getByLabel(/^API Secret/).fill("synthetic-secret");
-    await expect(
-      dialog.getByRole("button", { name: /测试连接|Test connection/ }),
-    ).toBeEnabled();
-    await expect(
-      dialog.getByRole("button", { name: /保存连接|Save connection/ }),
-    ).toBeDisabled();
+    const testConnection = dialog.getByRole("button", { name: /测试连接|Test connection/ });
+    const save = dialog.getByRole("button", { name: /保存连接|Save connection/ });
+    const key = dialog.getByLabel(/^API Key ID/);
+    const secret = dialog.getByLabel(/^API Secret/);
+    await expect(save).toBeDisabled();
+    await expect(testConnection).toBeEnabled();
+    await testConnection.click();
+    await expect(key).toBeFocused();
+    await expect(key).toHaveAttribute("aria-invalid", "true");
+    await expect(secret).toHaveAttribute("aria-invalid", "true");
+    expect(requests).toBe(0);
+    await key.fill("synthetic-id");
+    await secret.fill("synthetic-secret");
+    await expect(key).toHaveAttribute("aria-invalid", "false");
+    await expect(secret).toHaveAttribute("aria-invalid", "false");
+    await expect(save).toBeDisabled();
+    await testConnection.click();
+    await expect(save).toBeEnabled();
+    expect(requests).toBe(1);
+    await secret.fill("synthetic-new");
+    await expect(save).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
   });

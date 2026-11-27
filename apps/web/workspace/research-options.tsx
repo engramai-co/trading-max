@@ -1,13 +1,14 @@
 "use client";
 
 import { WorkspaceSheet } from "./overlay";
+import { FormField } from "@/components/ui/form-field";
+import { NumericInput } from "@/components/ui/numeric-input";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   CheckIcon,
   Combobox,
   MultiSelect,
   Pill,
-  NumberInput,
   Select,
 } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1125,30 +1126,30 @@ function Payoff({
       {legs.map((leg, i) => (
         <div key={i} className="flex flex-wrap items-end gap-mx-md">
           <span>{leg.symbol}</span>
-          <NumberInput
-            label={t("数量（负数为卖出）", "Quantity (negative = short)")}
-            value={leg.quantity}
-            min={-100}
-            max={100}
-            allowDecimal={false}
-            onChange={(v) => edit(i, "quantity", Number(v))}
-            w={150}
-          />
-          <NumberInput
-            label={`${t("假设权利金", "Assumed premium")} · ${currencyCode}`}
-            value={leg.premium ?? ""}
-            placeholder={t("请输入", "Enter premium")}
-            min={0}
-            onChange={(v) => edit(i, "premium", v === "" ? null : Number(v))}
-            w={150}
-          />
-          <NumberInput
-            label={t("每张费用", "Cost per contract")}
-            value={leg.fee}
-            min={0}
-            onChange={(v) => edit(i, "fee", Number(v))}
-            w={130}
-          />
+          <FormField label={t("数量（负数为卖出）", "Quantity (negative = short)")} fieldClassName="max-w-full w-[150px]">
+            {attributes => <NumericInput {...attributes}
+              value={leg.quantity}
+              min={-100}
+              max={100}
+              decimalScale={0}
+              onChange={(v) => edit(i, "quantity", Number(v))}
+            />}
+          </FormField>
+          <FormField label={`${t("假设权利金", "Assumed premium")} · ${currencyCode}`} fieldClassName="max-w-full w-[150px]">
+            {attributes => <NumericInput {...attributes}
+              value={leg.premium ?? ""}
+              placeholder={t("请输入", "Enter premium")}
+              min={0}
+              onChange={(v) => edit(i, "premium", v === "" ? null : Number(v))}
+            />}
+          </FormField>
+          <FormField label={t("每张费用", "Cost per contract")} fieldClassName="max-w-full w-[130px]">
+            {attributes => <NumericInput {...attributes}
+              value={leg.fee}
+              min={0}
+              onChange={(v) => edit(i, "fee", Number(v))}
+            />}
+          </FormField>
           <Button
             variant="ghost"
             onClick={() => setLegs(legs.filter((_, j) => i !== j))}

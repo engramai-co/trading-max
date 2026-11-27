@@ -1,9 +1,11 @@
 "use client";
+
+import { SearchInput } from "@/components/ui/search-input";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { MultiSelect, Select, TextInput } from "@mantine/core";
+import { MultiSelect, Select } from "@mantine/core";
 import { useState } from "react";
 import { Plot } from "./charts";
 import type { ChartReadout, ReadingItem } from "./chart-readout";
@@ -663,7 +665,8 @@ export function ResearchDocuments({
       }
       action={
         <div className="flex flex-wrap items-center gap-mx-xs">
-          <TextInput
+          <SearchInput
+          className="mx-research-filter"
             aria-label={t("查找研究材料", "Find research materials")}
             placeholder={t(
               "标题、财期或文件编号",

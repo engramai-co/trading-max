@@ -106,21 +106,51 @@ test.describe("reconstruction market data", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
 
   for (const scheme of ["dark", "light"] as const) {
-    test(`distinguishes the disabled connection test in ${scheme}`, async ({ page }) => {
+    test(`offers missing-key recovery and keeps Save gated in ${scheme}`, async ({ page }) => {
       await page.addInitScript((value) => localStorage.setItem("mantine-color-scheme-value", value), scheme);
-      const { panel } = await open(page, () => overview([]));
+      const { panel, unexpected } = await open(page, () => overview([]));
       await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
       await panel.getByRole("button", { name: "Connect Alpaca", exact: true }).click();
       const dialog = page.getByRole("dialog");
       const button = dialog.getByRole("button", { name: "Test connection", exact: true });
-      await expect(button).toBeDisabled();
-      await expect(button).toHaveCSS("opacity", "0.5");
-      await expect(button).toHaveCSS("cursor", "not-allowed");
-      await dialog.getByLabel("Alpaca API Key ID").fill("synthetic-key");
-      await dialog.getByLabel("Alpaca API Secret").fill("synthetic-secret");
+      const save = dialog.getByRole("button", { name: "Save and enable", exact: true });
+      const key = dialog.getByLabel("Alpaca API Key ID");
+      const secret = dialog.getByLabel("Alpaca API Secret");
+      const requirement = dialog.getByText("Test the connection before saving.", { exact: true });
+      await expect(save).toBeDisabled();
+      await expect(requirement).toBeVisible();
+      await expect(save).toHaveAccessibleDescription("Test the connection before saving.");
+      await expect(save).toHaveCSS("opacity", "0.5");
+      await expect(save).toHaveCSS("cursor", "not-allowed");
+      await expect(key).toHaveCSS("color-scheme", scheme);
+      await expect(key).toHaveAttribute("aria-invalid", "false");
       await expect(button).toBeEnabled();
-      await expect(button).toHaveCSS("opacity", "1");
-      await expect(button).toHaveCSS("cursor", "pointer");
+      await button.click();
+      await expect(key).toBeFocused();
+      await expect(key).toHaveAttribute("aria-invalid", "true");
+      await expect(key).toHaveAccessibleDescription("Enter the API key ID.");
+      await expect(secret).toHaveAccessibleDescription("Enter the API secret.");
+      // Hovering an invalid credential group keeps its destructive border colour.
+      const keyGroup = key.locator("..");
+      const invalidBorder = await keyGroup.evaluate((el) => {
+        const probe = document.createElement("div");
+        probe.style.borderColor = "var(--destructive)";
+        el.appendChild(probe);
+        const expected = getComputedStyle(probe).borderTopColor;
+        probe.remove();
+        return { actual: getComputedStyle(el).borderTopColor, expected };
+      });
+      expect(invalidBorder.actual).toBe(invalidBorder.expected);
+      await keyGroup.hover();
+      await expect(keyGroup).toHaveCSS("border-top-color", invalidBorder.expected);
+      expect((await new AxeBuilder({ page }).include('[role="dialog"] form').analyze()).violations).toEqual([]);
+      expect(unexpected).toEqual([]);
+      await key.fill("synthetic-key");
+      await secret.fill("synthetic-secret");
+      await expect(key).toHaveAttribute("aria-invalid", "false");
+      await expect(secret).toHaveAttribute("aria-invalid", "false");
+      await expect(save).toBeDisabled();
+      await expect(requirement).toBeVisible();
     });
   }
 
@@ -340,8 +370,11 @@ test.describe("reconstruction market data", () => {
     const dialog = page.getByRole("dialog", { name: "Connect Alpaca market data" });
     await dialog.getByLabel("Alpaca API Key ID").fill(keyId);
     await dialog.getByLabel("Alpaca API Secret").fill(secret);
+    const prerequisite = dialog.getByText("Test the connection before saving.", { exact: true });
+    await expect(prerequisite).toBeVisible();
     await dialog.getByRole("button", { name: "Test connection", exact: true }).click();
     await expect(dialog.getByText("SIP and overnight BOATS access verified.")).toBeVisible();
+    await expect(prerequisite).toHaveCount(0);
     // The test settles and leaves the cache; the token lives only in the dialog.
     await expect.poll(() => cacheText(page)).not.toMatch(leaked);
     await dialog.getByRole("button", { name: "Save and enable", exact: true }).click();
@@ -509,8 +542,11 @@ test.describe("CFD import", () => {
     const importLedger = drop.getByRole("button", { name: "Import ledger", exact: true });
     await expect(importLedger).toBeEnabled();
     expect(await axe(page)).toEqual([]);
-    await drop.getByRole("button", { name: "Clear file", exact: true }).click();
-    await expect(drop.getByRole("button", { name: "Choose CFD activity CSV file", exact: true })).toBeVisible();
+    await drop.getByRole("button", { name: "Clear file", exact: true }).press("Space");
+    const chooser = drop.getByRole("button", { name: "Choose CFD activity CSV file", exact: true });
+    await expect(chooser).toBeFocused();
+    await expect(chooser.locator("..")).toHaveCSS("outline-width", "2px");
+    await expect(chooser.locator("..")).toHaveCSS("outline-offset", "2px");
     await expect(importLedger).toBeDisabled();
     expect(unexpected).toEqual([]);
   });
@@ -581,8 +617,32 @@ test("an EODHD key is tested and saved with index history off by default", async
     await route.fulfill({ json: source });
   });
   await page.getByRole("button", { name: "Connect EODHD" }).click();
-  await page.getByRole("dialog").getByLabel(/API key/).fill("synthetic-secret");
-  await page.getByRole("button", { name: "Test and save" }).click();
+  const dialog = page.getByRole("dialog");
+  const key = dialog.getByLabel(/API key/);
+  const reveal = dialog.getByRole("button", { name: "Show or hide key" });
+  const submit = dialog.getByRole("button", { name: "Test and save" });
+  await expect(key).toHaveAttribute("aria-invalid", "false");
+  await expect(key).toHaveAttribute("type", "password");
+  await expect(key).toHaveAttribute("name", "eodhd-api-key");
+  await expect(key).toHaveAttribute("spellcheck", "false");
+  await key.fill("   ");
+  await submit.click();
+  await expect(key).toBeFocused();
+  await expect(key).toHaveAttribute("aria-invalid", "true");
+  await expect(key).toHaveAccessibleDescription("Enter the API key.");
+  expect(requests).toEqual([]);
+  await key.fill("synthetic-secret");
+  await expect(key).toHaveAttribute("aria-invalid", "false");
+  await key.press("Tab");
+  await expect(reveal).toBeFocused();
+  await reveal.press("Space");
+  await expect(reveal).toHaveAttribute("aria-pressed", "true");
+  await expect(key).toHaveAttribute("type", "text");
+  await expect(key).toHaveValue("synthetic-secret");
+  await reveal.press("Enter");
+  await expect(reveal).toHaveAttribute("aria-pressed", "false");
+  await expect(key).toHaveAttribute("type", "password");
+  await submit.click();
   const toggle = page.getByRole("switch", { name: "EODHD", exact: true });
   await expect(toggle).toBeVisible();
   await expect(toggle).not.toBeChecked();
@@ -622,7 +682,16 @@ test("Preferences can save the language selected from the shell", async ({ page,
   }
   await page.getByRole("tab", { name: "个人偏好", exact: true }).click();
   await expect(page.getByRole("combobox", { name: "界面语言" })).toHaveValue("简体中文");
-  await page.getByRole("button", { name: "保存偏好", exact: true }).click();
+  const name = page.getByRole("textbox", { name: "显示名称" });
+  const originalName = await name.inputValue();
+  const save = page.getByRole("button", { name: "保存偏好", exact: true });
+  await name.fill("  ");
+  await save.click();
+  await expect(name).toBeFocused();
+  await expect(name).toHaveAccessibleDescription("请输入显示名称。");
+  await name.fill(originalName);
+  await expect(name).toHaveAttribute("aria-invalid", "false");
+  await save.click();
   await expect(page.getByText("个人偏好已保存。", { exact: true })).toBeVisible();
   expect(unexpected).toEqual([]);
 });

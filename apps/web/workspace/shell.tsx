@@ -2,8 +2,8 @@
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { WorkspaceDialog } from "./overlay";
-import { TextInput,
-} from "@mantine/core";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { searchInputHints } from "@/components/ui/search-input";
 import { useColorScheme } from "@/components/color-scheme-provider";
 import { Button, CloseButton } from "@/components/ui/button";
 import { useBreakpoint, useOs } from "@/lib/hooks";
@@ -546,43 +546,47 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         className="mx-command-dialog" headerClassName="sr-only" bodyClassName="mx-search-body"
         width={600}
       >
-        <div className="mx-search-row">
-          <TextInput
-            data-autofocus
-            role="combobox"
-            aria-autocomplete="list"
-            aria-expanded={true}
-            aria-controls={searchId + "-results"}
-            aria-activedescendant={results[selectedIndex] ? searchId + "-" + selectedIndex : undefined}
-            aria-label={t("搜索", "Search")}
-            placeholder={t("页面、代码或名称", "Page, ticker or name")}
-            leftSection={<Search aria-hidden="true" size={20} />}
-            value={query}
-            maxLength={160}
-            onChange={(event) => {
-              setQuery(event.currentTarget.value);
-              setIndex(0);
-            }}
-            onKeyDown={(event) => {
-              if (isImeComposing(event)) return;
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                event.preventDefault();
-                setIndex((i) =>
-                  Math.max(
-                    0,
-                    Math.min(
-                      results.length - 1,
-                      Math.min(i, Math.max(0, results.length - 1)) + (event.key === "ArrowDown" ? 1 : -1),
+        <div className="mx-search-row" role="search" aria-label={t("搜索", "Search")}>
+          <InputGroup>
+            <InputGroupAddon aria-hidden="true"><Search size={20} /></InputGroupAddon>
+            <InputGroupInput
+              {...searchInputHints}
+              name="q"
+              data-autofocus
+              role="combobox"
+              aria-autocomplete="list"
+              aria-expanded={true}
+              aria-controls={searchId + "-results"}
+              aria-activedescendant={results[selectedIndex] ? searchId + "-" + selectedIndex : undefined}
+              aria-label={t("搜索", "Search")}
+              placeholder={t("页面、代码或名称", "Page, ticker or name")}
+              value={query}
+              maxLength={160}
+              onChange={(event) => {
+                setQuery(event.currentTarget.value);
+                setIndex(0);
+              }}
+              onKeyDown={(event) => {
+                if (isImeComposing(event)) return;
+                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                  event.preventDefault();
+                  setIndex((i) =>
+                    Math.max(
+                      0,
+                      Math.min(
+                        results.length - 1,
+                        Math.min(i, Math.max(0, results.length - 1)) + (event.key === "ArrowDown" ? 1 : -1),
+                      ),
                     ),
-                  ),
-                );
-              }
-              if (event.key === "Enter" && results[selectedIndex]) {
-                event.preventDefault();
-                navigate(results[selectedIndex].href, results[selectedIndex].replace);
-              }
-            }}
-          />
+                  );
+                }
+                if (event.key === "Enter" && results[selectedIndex]) {
+                  event.preventDefault();
+                  navigate(results[selectedIndex].href, results[selectedIndex].replace);
+                }
+              }}
+            />
+          </InputGroup>
           <CloseButton className="mx-search-close [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11" iconSize={18} aria-label={t("关闭", "Close")} onClick={closeSearch} />
         </div>
         <div className="mx-command-results" ref={resultsRef} id={searchId + "-results"} role="listbox" aria-label={t("搜索结果", "Search results")}>

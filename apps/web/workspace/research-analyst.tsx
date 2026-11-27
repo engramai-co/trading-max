@@ -1,10 +1,12 @@
 "use client";
+
+import { SearchInput } from "@/components/ui/search-input";
 import { quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatEventTime } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select, TextInput } from "@mantine/core";
+import { Select } from "@mantine/core";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -478,7 +480,8 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
         title={t("机构行动", "Institutional actions")}
         action={
           <div className="flex flex-wrap items-center gap-mx-xs">
-            <TextInput
+            <SearchInput
+              className="mx-research-filter"
               placeholder={t("筛选机构", "Filter firm")}
               aria-label={t("筛选机构", "Filter firm")}
               value={firm}

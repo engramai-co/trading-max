@@ -1,10 +1,11 @@
 "use client";
 
+import { FilePicker } from "@/components/ui/file-picker";
+import { TextField, useRequiredFields } from "@/components/ui/form-field";
+
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
-  FileInput,
   Select,
-  TextInput,
 } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { CircleCheck, Upload } from "lucide-react";
@@ -280,14 +281,12 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
             </ol>}
             <div className="mx-import-drop">
               <Upload size={20} className="m-[3px]" aria-hidden="true" />
-              <FileInput
-                // Empty, the button is named by its prompt; once a file is chosen, the name keeps the purpose beside the file.
-                aria-label={file ? t("CFD 活动 CSV 文件：", "CFD activity CSV file: ") + file.name : undefined}
+              <FilePicker
                 placeholder={t("选择 CFD 活动 CSV 文件", "Choose CFD activity CSV file")}
                 accept=".csv,text/csv"
+                chosenLabel={t("CFD 活动 CSV 文件：", "CFD activity CSV file: ")}
                 value={file}
-                clearable
-                clearButtonProps={{ "aria-label": t("清除文件", "Clear file") }}
+                clearLabel={t("清除文件", "Clear file")}
                 onChange={(value) => {
                   setFile(value);
                   setImported(null);
@@ -459,6 +458,7 @@ export function PersonalPreferences({
   const name = activeDraft?.name ?? committed.displayName ?? "";
   const zone = activeDraft?.zone ?? committedZone;
   const labels = { ...committed.accountLabels, ...activeDraft?.labels };
+  const required = useRequiredFields();
   const nameDirty = name !== (committed.displayName ?? "");
   const zoneDirty = zone !== committedZone;
   const languageDirty = locale !== committed.locale;
@@ -473,10 +473,10 @@ export function PersonalPreferences({
   }
   return (
     <Panel title={t("个人偏好", "Preferences")}>
-      <form
+      <form noValidate
         onSubmit={(e) => {
           e.preventDefault();
-          if (mutation.isPending || conflict) return;
+          if (mutation.isPending || conflict || !required.validate(e.currentTarget)) return;
           const values: PreferencesSubmission["values"] = {
             expectedRevision: activeDraft?.baseRevision ?? committed.revision,
           };
@@ -492,8 +492,11 @@ export function PersonalPreferences({
       >
         <div className="flex flex-col gap-mx-lg">
           <div className="mx-form-grid">
-            <TextInput
+            <TextField
               label={t("显示名称", "Display name")}
+              name="displayName"
+              autoComplete="nickname"
+              error={required.missing(name) ? t("请输入显示名称。", "Enter a display name.") : undefined}
               value={name}
               maxLength={80}
               required
@@ -535,8 +538,9 @@ export function PersonalPreferences({
                     : value,
               }))}
             />
-            <TextInput
+            <TextField
               label={t("组合记账货币", "Portfolio reporting currency")}
+              name="baseCurrency"
               value={committed.baseCurrency}
               readOnly
               description={t(
@@ -552,9 +556,10 @@ export function PersonalPreferences({
             <div className="mx-form-grid">
               {/* The default names are the ones every page shows when no name is set. */}
               {(["A", "B", "C"] as const).map((code) => ({ code, label: accountName(undefined, code) })).map((account) => (
-                <TextInput
+                <TextField
                   key={account.code}
                   label={account.label}
+                  name={`accountLabel-${account.code}`}
                   maxLength={60}
                   value={labels[account.code] ?? ""}
                   placeholder={account.label}
@@ -585,7 +590,7 @@ export function PersonalPreferences({
             <Button
               type="submit"
               disabled={
-                conflict || !name.trim() || (zone !== "browser" && !isValidTimeZone(zone))
+                conflict || (zone !== "browser" && !isValidTimeZone(zone))
               }
               loading={mutation.isPending}
               loadingLabel={t("保存中…", "Saving…")}

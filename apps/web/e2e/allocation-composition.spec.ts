@@ -193,7 +193,7 @@ test.describe("company composition", () => {
   test("keeps the complete paginated company table and leaves portfolio weights unchanged when filtering", async ({ page, isMobile }) => {
     await openCompanies(page, longTail);
     const details = page.getByRole("region", { name: "Selected category details" });
-    const search = page.getByRole("textbox", { name: "Search underlying holdings", exact: true });
+    const search = page.getByRole("searchbox", { name: "Search underlying holdings", exact: true });
     // Phones page above and below the list, and each pager names its place.
     const pages = page.getByLabel(isMobile ? "Underlying holding pages, below the list" : "Underlying holding pages", { exact: true });
     await expect(pages).toBeVisible();
