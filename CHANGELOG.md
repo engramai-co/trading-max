@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.73.3] - 2026-11-27
+
+### Fixed
+- On phones, the Holdings summary no longer splits a loss across two lines with its minus sign alone on the first. A figure too wide to share the line moves to the next line whole.
+
 ## [1.73.2] - 2026-11-27
 
 ### Changed

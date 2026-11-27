@@ -27,18 +27,72 @@ const lens = {
 const history = prepareHistory(lens, { range: "1D", scope: "total" }).chart;
 const accessible = "该上市交易所休市";
 
-async function syntheticHoldings(page: Page) {
+async function syntheticHoldings(page: Page, snapshot: typeof lens = lens) {
   await page.clock.setFixedTime(new Date(brokerAsOf));
   await page.route("**/api/backend/**", (route) => {
     const path = new URL(route.request().url()).pathname;
-    const json = path.includes("/dashboard/lens/") ? lens
+    const json = path.includes("/dashboard/lens/") ? snapshot
       : path.endsWith("/dashboard/history") ? history
-        : path.endsWith("/health") ? { service: "trading_max-api", status: "ok", latestRunId: lens.runId }
+        : path.endsWith("/health") ? { service: "trading_max-api", status: "ok", latestRunId: snapshot.runId }
           : path.endsWith("/profile") ? { accountLabels: {} }
             : path.endsWith("/refresh/attention") ? { checkedAt: brokerAsOf, issues: [] } : {};
     return route.fulfill({ json });
   });
 }
+
+/** A phone Holdings summary for one holding worth `value` with an unrealised result of `pnl`. */
+async function summaryOf(page: Page, value: number, pnl: number, width: number) {
+  const holding: Holding = { ...us, quantity: 200, currentValueGbp: value, costGbp: value - pnl, pnlGbp: pnl, pnlPct: pnl / (value - pnl), allocationPct: 1 };
+  await syntheticHoldings(page, {
+    ...lens, holdings: [holding], totalValueGbp: value, totalInvestedGbp: value, totalUnrealizedPnlGbp: pnl,
+    accounts: [{ code: "A", isInvestable: true, totalValueGbp: value, asOf: brokerAsOf }],
+  });
+  await page.setViewportSize({ width, height: 844 });
+  await page.goto("/holdings?account=A");
+  const grid = page.locator(".mx-holdings-summary > .mx-metric-grid");
+  const figures = grid.locator(".mx-number-value");
+  await expect(figures).toHaveCount(3);
+  return { grid, figures };
+}
+
+const lines = (node: Element) => {
+  const range = document.createRange();
+  range.selectNodeContents(node);
+  return new Set([...range.getClientRects()].map((rect) => Math.round(rect.top))).size;
+};
+
+test.describe("the phone Holdings summary", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local fixture.");
+  test.beforeEach(({ isMobile }) => test.skip(!isMobile, "The summary figures share one line only on phones."));
+
+  test("never splits a loss from its minus sign", async ({ page }) => {
+    const { figures } = await summaryOf(page, 24389.66, -2351.19, 390);
+    await expect(figures.nth(1)).toHaveText(/^[-\u2212]£2,351\.19$/);
+    for (const figure of await figures.all()) expect(await figure.evaluate(lines)).toBe(1);
+  });
+
+  test("moves a figure too wide to share the line below the others, whole", async ({ page }) => {
+    const { figures } = await summaryOf(page, 24389660, -12351119.19, 390);
+    await expect(figures.nth(1)).toHaveText(/^[-\u2212]£12,351,119\.19$/);
+    const invested = (await figures.nth(0).boundingBox())!;
+    const loss = (await figures.nth(1).boundingBox())!;
+    expect(loss.y).toBeGreaterThanOrEqual(invested.y + invested.height - 1);
+    for (const figure of await figures.all()) expect(await figure.evaluate(lines)).toBe(1);
+  });
+
+  test("keeps a figure wider than the whole line inside the summary", async ({ page }) => {
+    const { grid, figures } = await summaryOf(page, 24389660, -12351119.19, 320);
+    // Enlarged text on the narrowest phone: the figure wraps inside its box rather than running past the panel.
+    await page.addStyleTag({ content: ".mx-holdings-summary .mx-number { font-size: 40px !important; }" });
+    const bounds = (await grid.boundingBox())!;
+    for (const figure of await figures.all()) {
+      const box = (await figure.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(bounds.x - 1);
+      expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+});
 
 test("retained position prices and balances show their own observation times", async ({page,isMobile}) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local fixture.");
