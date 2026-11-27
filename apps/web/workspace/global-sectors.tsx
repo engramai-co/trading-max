@@ -8,7 +8,7 @@ import type { SectorGroup } from "@/lib/types";
 import { formatCalendarDate, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { api, currency, percent } from "./data";
 import { industryName } from "./exposure-names";
-import { Empty, Help, Pending, QueryError, Segments, Tag, useCopy } from "./foundation";
+import { Empty, Help, Pending, QueryError, QueryReadStatus, Segments, Tag, useCopy } from "./foundation";
 import { issuerName, strongestGroup } from "./sectors-data";
 import { SectorDetail, SectorList, type SectorDetailBoard } from "./sectors-detail";
 import { changeTone, SectorMap } from "./sectors-map";
@@ -105,12 +105,13 @@ export function GlobalSectors({ query, demo, phone, sector, onSelect, returnTo, 
   if (demo) return <section className="mx-panel">
     <Empty headingLevel={2} title={t("演示不包含全球板块行情", "Global sector quotes aren’t included in the demo")} />
   </section>;
-  if (query.isPending) return <Pending />;
-  if (!answer || !adapted) return <QueryError retry={query.refetch} />;
+  const status = <QueryReadStatus label={t("全球板块地图", "Global sector map")} failed={!query.isPending && !adapted} ready={!!adapted} error={query.error} />;
+  if (query.isPending) return <>{status}<Pending /></>;
+  if (!answer || !adapted) return <>{status}<QueryError retry={query.refetch} /></>;
   const { board, groups, strongest } = adapted;
-  if (!groups.length) return <section className="mx-panel">
+  if (!groups.length) return <>{status}<section className="mx-panel">
     <Empty headingLevel={2} title={t("暂无全球板块权重", "Global sector weights are unavailable")} />
-  </section>;
+  </section></>;
   const explicit = groups.find(({ key }) => key === sector);
   const group = explicit ?? groups.find(({ key }) => key === strongest);
   const selected = answer.sectors.find(({ gics }) => gics === group?.key);
@@ -120,6 +121,7 @@ export function GlobalSectors({ query, demo, phone, sector, onSelect, returnTo, 
     inspection={answer.asOf && !answer.pricesStale && !query.isError ? {market:"global",observed:answer.asOf,selected:Boolean(explicit)} : undefined}
     indexFacts={<WorldSectorFacts sector={selected} answer={answer} />} />;
   return <>
+    {status}
     {phone ? <div className="mx-sectors-phone">
       {explicit ? detail : <SectorList groups={groups} board={board} sessions={[]} kind="gics" indexOnly
         focusKey={returnTo} onFocused={onFocused} onOpen={onSelect} />}

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "stage": "SH-4",
+  "stage": "initial-bundle-baseline",
   "appVersion": "1.68.1",
   "toolchain": {
     "next": "16.4.6",

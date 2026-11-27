@@ -64,6 +64,50 @@ test.describe("workspace navigation refinements", () => {
     await expect(trigger).toBeFocused();
   });
 
+  test("paused directory reads announce offline and resume without moving search focus", async ({ page, context }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.route("**/api/backend/indices/catalog", (route) => route.fulfill({ json: [] }));
+    await page.goto("/");
+    await expect(page.getByRole("banner").getByRole("button", { name: searchName })).toBeEnabled();
+    await context.setOffline(true);
+    try {
+      const input = await openSearch(page);
+      const dialog = page.getByRole("dialog", { name: "Search" });
+      await expect(dialog.getByRole("status").filter({ hasText: "You’re offline." })).toHaveCount(1);
+      await expect(dialog.getByText("Loading research list…")).toHaveCount(0);
+      await input.fill("Holdings");
+      await expect(dialog.getByRole("option").first()).toContainText("Holdings");
+      await context.setOffline(false);
+      await expect(dialog.getByRole("status").filter({ hasText: "Research list available." })).toHaveCount(1);
+      await expect(input).toBeFocused();
+      await input.press("Escape");
+      await expect(dialog).toHaveCount(0);
+      await expect(page.getByRole("banner").getByRole("button", { name: searchName })).toBeFocused();
+    } finally {
+      await context.setOffline(false);
+    }
+  });
+
+  test("a failed index catalog keeps page commands and delays a definitive search result", async ({ page }) => {
+    let failing = true;
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.route("**/api/backend/indices/catalog", (route) => route.fulfill(failing
+      ? { status: 503, json: {} } : { json: [] }));
+    await page.goto("/");
+    const input = await openSearch(page);
+    const dialog = page.getByRole("dialog", { name: "Search" });
+    await expect(dialog.getByRole("status").filter({ hasText: "Index search unavailable." })).toHaveCount(1);
+    await input.fill("Holdings");
+    await expect(dialog.getByRole("option").first()).toContainText("Holdings");
+    await input.fill("Z");
+    await expect(dialog.getByText(/No results for/)).toHaveCount(0);
+    await expect(dialog.getByText("Research list available.")).toHaveCount(0);
+    failing = false;
+    await dialog.getByRole("button", { name: "Retry" }).click();
+    await expect(dialog.getByRole("status").filter({ hasText: "Research list available." })).toHaveCount(1);
+    await expect(dialog.getByText(/No results for/)).toBeVisible();
+  });
+
   test("composition Enter does not navigate and an unknown ticker is not guessed", async ({ page }) => {
     await page.goto("/");
     const input = await openSearch(page);

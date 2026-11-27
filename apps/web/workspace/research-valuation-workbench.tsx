@@ -46,6 +46,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   Segments,
   Tag,
   useCopy,
@@ -286,7 +287,8 @@ export function ValuationWorkbench({
           {editor && <a href="#valuation-results" data-slot="button"
             className={cn(buttonVariants({ variant: "ghost" }), "mx-model-jump hidden [@media(max-width:1100px)]:inline-flex px-1 text-xs")}>{t("查看结果", "View results")}</a>}
         </div>}>
-        {chooser}
+        <QueryReadStatus key={family} label={t("估值模型", "Valuation model")} failed={!reason && state.view === "error"} ready={!!preview && state.view !== "error"} error={query.error} />
+      {chooser}
         {editor ? <div className="mx-model-fields" inert={switching}>
           <ModelEditor key={reload + editorIdentity(editor)}
             requestedFamily={family} currentBasis={state.view === "editor" && !query.isError ? state.preview.id : null}

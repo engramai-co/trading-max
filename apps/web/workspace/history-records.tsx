@@ -2,13 +2,13 @@
 
 import { useReadingLock } from "@/ui/charts/reading";
 import { useState } from "react";
-import { Pagination } from "@mantine/core";
+import { Pagination } from "@/components/ui/pagination";
 import { useQuery } from "@tanstack/react-query";
 import { fetchHistory } from "@/lib/portfolio-history-query";
 import { currency, percent } from "@/workspace/data";
 import { navNumber } from "@/lib/portfolio/nav";
-import { EvidenceTable, usePaginationLabels } from "./evidence-table";
-import { Pending, QueryError, useCopy } from "./foundation";
+import { EvidenceTable } from "./evidence-table";
+import { Pending, QueryError, QueryReadStatus, useCopy } from "./foundation";
 import { valuationNote } from "@/lib/portfolio/history";
 import type { HistoryPage, HistorySelection } from "@/lib/portfolio/prepared";
 
@@ -18,7 +18,6 @@ export function HistoryRecords({ selection, label, retained = false }: { selecti
   const [open, setOpen] = useState(false);
   useReadingLock(open);
   const [page, setPage] = useState(1);
-  const labels = usePaginationLabels();
   const query = useQuery({
     queryKey: ["history-records", selection, page, retained], enabled: open,
     queryFn: ({ signal }) => fetchHistory<HistoryPage>(selection, signal, page, [], retained),
@@ -27,7 +26,8 @@ export function HistoryRecords({ selection, label, retained = false }: { selecti
   const data = query.data;
   return <details className="mx-chart-data" onToggle={(event) => setOpen(event.currentTarget.open)}>
     <summary>{t("查看精确记录", "View exact observations")}</summary>
-    {open && ((query.isPending || (retained && query.isFetching)) ? <Pending compact /> : query.isError ? <QueryError retry={query.refetch} /> : data && <>
+    {open && <QueryReadStatus key={selection.runId + selection.range + selection.scope + page} label={label} failed={query.isError} ready={!!data && !query.isError} error={query.error} />}
+      {open && ((query.isPending || (retained && query.isFetching)) ? <Pending compact /> : query.isError ? <QueryError retry={query.refetch} /> : data && <>
       <EvidenceTable label={label} totalRows={data.total}
         rows={data.points.map((point, index) => ({ point, index }))}
         columns={[
@@ -52,10 +52,8 @@ export function HistoryRecords({ selection, label, retained = false }: { selecti
             },
           }] : []),
         ]} />
-      {data.total > data.pageSize && <nav aria-label={t("记录分页", "Record pages")}>
-        <Pagination total={Math.ceil(data.total / data.pageSize)} value={page} onChange={setPage}
-          withEdges mt="md" getControlProps={labels} />
-      </nav>}
+      {data.total > data.pageSize && <Pagination label={t("记录分页", "Record pages")}
+        total={Math.ceil(data.total / data.pageSize)} value={page} onChange={setPage} className="mt-4" />}
     </>)}
   </details>;
 }

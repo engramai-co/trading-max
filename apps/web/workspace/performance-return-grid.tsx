@@ -9,7 +9,7 @@ import type { Scope } from "@/lib/portfolio/nav";
 import { returnPeriods, type ReturnPeriod } from "@/lib/portfolio/return-periods";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
 import { percent, tone } from "@/workspace/data";
-import { Empty, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { Empty, Panel, Pending, QueryError, QueryReadStatus, Segments, useCopy } from "./foundation";
 import { SelectPicker } from "./picker";
 
 export function ReturnGrid({ scope, onSelect, selected, runId }: {
@@ -60,7 +60,8 @@ export function ReturnGrid({ scope, onSelect, selected, runId }: {
           ]} />
           {phone && periods.years.length > 1 && <SelectPicker aria-label={t("年份", "Year")} value={year} options={periods.years} onChange={(value) => setYear(value ?? undefined)} />}
         </div>
-        {query.isPending ? <Pending compact /> : query.isError && !query.data ? <QueryError retry={query.refetch} />
+        <QueryReadStatus label={t("周期收益", "Periodic returns")} failed={query.isError && !query.data} ready={!!query.data} error={query.error} />
+      {query.isPending ? <Pending compact /> : query.isError && !query.data ? <QueryError retry={query.refetch} />
           : !year ? <Empty title={t("需要更多每日收益记录", "More daily return observations are needed")} />
           : <div className="mx-table-wrap mx-month-table-wrap">
             <table className="mx-table mx-month-table" aria-label={t("周期收益", "Periodic returns")}>

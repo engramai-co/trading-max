@@ -37,7 +37,7 @@ type OverlayProps = {
 };
 
 const OPEN_DIALOG_SELECTOR =
-  '[role="dialog"]:not([hidden]):not([data-closed]), [role="alertdialog"]:not([hidden]):not([data-closed]), [aria-modal="true"]:not([hidden]):not([data-closed])';
+  '[role="dialog"]:not([data-slot="toast"]):not([hidden]):not([data-closed]), [role="alertdialog"]:not([data-slot="toast"]):not([hidden]):not([data-closed]), [aria-modal="true"]:not([hidden]):not([data-closed])';
 
 /** True while any modal or dialog-role overlay is open and visible. */
 export function hasOpenDialog() {

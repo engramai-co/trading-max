@@ -21,7 +21,7 @@ import { EvidenceTable } from "./evidence-table";
 import { ChartRecords, ChartRecordsPanel, ChartRecordsTrigger } from "./chart-records";
 import { DataBasis } from "./reading-card";
 import { api, isReadTimeout, readApi } from "@/workspace/data";
-import { Empty, Help, Pending, QueryError, Segments, TextLink, useCopy } from "./foundation";
+import { Empty, Help, Pending, QueryError, QueryReadStatus, Segments, TextLink, useCopy } from "./foundation";
 import { useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { IndexBreadthPanel, IndexValuationPanel, IndexVixPanel } from "./market-index-depth";
@@ -383,14 +383,15 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     });
     return () => cancelAnimationFrame(frame);
   }, [id, index, hasHistory, query.isPending]);
+  const catalogStatus = <QueryReadStatus key={id} label={t("指数清单", "Index catalog")} failed={catalog.isError && !index} ready={!!index} error={catalog.error} />;
   if (!index) {
     if (catalog.isSuccess) return <Empty title={t("没有这个市场指数", "Index not found in this market")}
       description={t("从市场的全部指数中选择其他指数。", "Choose another index from the market’s index list.")} />;
-    return <div className="mx-index-detail"><section className="mx-panel mx-index-history">
+    return <>{catalogStatus}<div className="mx-index-detail"><section className="mx-panel mx-index-history">
       <div className="mx-index-title"><h2 ref={title} tabIndex={-1}>{id}</h2></div>
       {catalog.isError ? <QueryError retry={catalog.refetch} error={catalog.error} showDataStatusLink={false} />
         : <Pending label={t("正在加载指数", "Loading index")} />}
-    </section></div>;
+    </section></div></>;
   }
   // Keep the last reading for this index while the new basis loads. A chart
   // can only compare responses for the same range and currency.
@@ -491,7 +492,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
     if (peer) void peerQuery.refetch();
   };
   return (
-    <div className="mx-index-detail">
+    <>{catalogStatus}<div className="mx-index-detail">
       <ChartRecords>
       <section className="mx-panel mx-index-history">
         <div className="mx-index-title">
@@ -625,7 +626,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
       </section>
       </ChartRecords>
       <IndexContextPanels id={index.id} phone={phone} />
-    </div>
+    </div></>
   );
 }
 
@@ -639,12 +640,14 @@ function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
   });
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  if (query.isPending) return <Pending compact />;
-  if (query.isError) return <QueryError retry={query.refetch} error={query.error} showDataStatusLink={false} />;
+  const status = <QueryReadStatus key={id} label={t("指数资料", "Index data")} failed={query.isError} ready={!!query.data && !query.isError} error={query.error} />;
+  if (query.isPending) return <>{status}<Pending compact /></>;
+  if (query.isError) return <>{status}<QueryError retry={query.refetch} error={query.error} showDataStatusLink={false} /></>;
   const context = query.data;
   const basket = context.basket;
   return (
     <>
+      {status}
       {basket && <section className="mx-panel mx-index-basket">
         <div className="mx-index-title">
           <h3>{t("成分篮子", "Constituent basket")} · {basket.fund}</h3>

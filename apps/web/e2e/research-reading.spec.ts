@@ -46,6 +46,17 @@ test.describe("research section navigation", () => {
     await analystFixture(page);
   });
 
+  test("the research avatar contains a rectangular company logo", async ({ page }) => {
+    await page.route("**/api/logos/**", (route) => route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="24"><rect width="64" height="24" fill="navy"/></svg>',
+    }));
+    await page.goto("/research?ticker=AAPL");
+    const logo = page.locator(".mx-company-logo img");
+    await expect(logo).toBeVisible();
+    await expect(logo).toHaveCSS("object-fit", "contain");
+  });
+
   test("a London technical close keeps its pence unit and observation date", async ({ page }) => {
     await page.route("**/api/backend/research/shell*", async (route) => {
       const response = await route.fetch(), shell = await response.json();

@@ -740,7 +740,7 @@ export function Plot({
       </div>}
       {status !== "ready" && <div className="mx-plot-loading">
         {status === "loading" ? <Pending shape="chart" label={t("正在绘制图表…", "Preparing chart…")} />
-          : <button className="mx-inline-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</button>}
+          : <Button variant="outline" className="mx-plot-retry" type="button" onClick={retry}>{t("重试绘图", "Retry chart")}</Button>}
       </div>}
       <span id={description} className="sr-only">
         {keyboardPanes && t("上下方向键切换收益与回撤。", "Use the up and down arrows to switch between returns and drawdown.")}{" "}

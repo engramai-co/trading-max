@@ -453,10 +453,7 @@ test("keyboard range survives a failed reading, stop and retry", async ({
   test.skip(isMobile, "Keyboard brushing uses the desktop chart.");
   const calls = await setup(page, "en", false);
   let attempt = 0;
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/assistant/roles/attribution/reading", async (route) => {
     attempt++;
     if (attempt === 1)
@@ -575,8 +572,7 @@ test("an archived Money brush pins its plotted publication through handoff", asy
 
 test("sector follow-up waits for the pinned reading",async ({page})=>{
   await setup(page,"en",false);
-  let release!:()=>void;
-  const held = new Promise<void>(resolve=>{release=resolve;});
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/assistant/roles/market-sector/reading",async route=>{await held;return route.fallback();});
   try {
     await page.goto("/sectors?market=us&sector=2");
@@ -608,7 +604,7 @@ test("cited Returns and Holdings reopen their selection and disclose expiry",asy
     await expect.poll(()=>calls.at(-1)).toMatchObject({role,snapshotId:"older",context:selection});
     expired=true;
     await page.reload();
-    await expect(page.getByText("Cited publication unavailable",{exact:true})).toBeVisible();
+    await expect(page.getByText("Cited publication unavailable",{exact:true}).and(page.locator(":not(.sr-only)"))).toBeVisible();
   }
 });
 
@@ -661,7 +657,7 @@ test("Japan market citation reopens its observed inspection and discloses a repl
       : route.fallback());
   await page.goForward();
   await expect(page).toHaveURL(/region=jp/);
-  await expect(page.getByText("Cited publication unavailable",{exact:true})).toBeVisible();
+  await expect(page.getByText("Cited publication unavailable",{exact:true}).and(page.locator(":not(.sr-only)"))).toBeVisible();
   await page.goto(url.replace(encodeURIComponent(stamp),"2025-01-01T00%3A00%3A00Z"));
   await expect(page.getByText("Cited market observation unavailable",{exact:true})).toBeVisible();
 });

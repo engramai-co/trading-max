@@ -47,7 +47,7 @@ export function Coverage({ data }: { data: Json }) {
     />
   );
 }
-export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
+export function Attribution({ data, cfd, count }: { data: Json; cfd: boolean; count?: number | null }) {
   const t = useCopy();
   const [dimension, setDimension] = useState("instrument");
   const keys: Record<string, string> = cfd
@@ -97,9 +97,14 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
     month: t("月份", "Month"),
     components: t("费用组成", "P&L components"),
   };
+  const title = t("已实现盈亏归因 · GBP", "Realised P&L attribution · GBP");
+  if (data.status === "unavailable") return (
+    <Panel title={title}><UnavailableTrades data={data} count={count} /></Panel>
+  );
+  const evidence = cfd ? data : object(raw);
   return (
     <Panel
-      title={t("已实现盈亏归因 · GBP", "Realised P&L attribution · GBP")}
+      title={title}
       action={
         <SelectPicker
           aria-label={t("归因维度", "Attribution dimension")}
@@ -110,13 +115,13 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
         />
       }
     >
-      <Bars
+      {rows.length > 0 && <Bars
         label={t("已实现盈亏贡献", "Realised P&L contribution")}
         labels={rows.slice(0, 14).map(label)}
         values={rows.slice(0, 14).map(value)}
-      />
-      <Availability data={cfd ? data : object(raw)} />
-      <EvidenceTable
+      />}
+      <Availability data={evidence} />
+      {(!field(evidence, "unavailable_reason") || rows.length > 0) && <EvidenceTable
         key={dimension}
         rows={rows}
         label={t("归因明细", "Attribution detail")}
@@ -157,9 +162,30 @@ export function Attribution({ data, cfd }: { data: Json; cfd: boolean }) {
             numeric: true,
           },
         ]}
-      />
+      />}
     </Panel>
   );
+}
+function UnavailableTrades({ data, count, cfdDurations = false }: { data: Json; count: unknown; cfdDurations?: boolean }) {
+  const t = useCopy();
+  const reason = field(data, "unavailable_reason");
+  const sameDay = cfdDurations ? numeric(field(data, "same_day_count")) : null;
+  const underHour = cfdDurations ? numeric(field(data, "under_one_hour_count")) : null;
+  const median = cfdDurations ? numeric(field(data, "median_duration_hours")) : null;
+  const average = cfdDurations ? numeric(field(data, "average_duration_hours")) : null;
+  const duration = (value: number) => number(value, 1) + (value === 1 ? t(" 小时", " hour") : t(" 小时", " hours"));
+  const rows: Array<[string, string]> = [];
+  if (numeric(count) != null) rows.push([t("已结束交易", "Closed trades"), number(count, 0)]);
+  if (sameDay !== null) rows.push([t("同日完成", "Closed on the same day"), number(sameDay, 0)]);
+  if (underHour !== null) rows.push([t("一小时内结束", "Closed within one hour"), number(underHour, 0)]);
+  if (median !== null) rows.push([t("中位持有周期", "Median holding duration"), duration(median)]);
+  if (average !== null) rows.push([t("平均持有小时", "Average holding hours"), number(average, 1)]);
+  return <>
+    {!!rows.length && <Facts rows={rows} />}
+    <Availability data={data} />
+    {!reason && data.status !== "partial" && !data.partial &&
+      !Array.isArray(field(data, "partial_reasons")) && <Empty title={t("暂无记录", "No records")} />}
+  </>;
 }
 export function TradeQuality({
   data,
@@ -175,20 +201,25 @@ export function TradeQuality({
   const wins = data.win_count ?? data.wins,
     losses = data.loss_count ?? data.losses;
   const count = data.trade_count ?? data.tradeCount ?? fallback.trades;
+  const title = t("过程是否可持续", "Understand the trading process");
+  const help = t(
+    "观察已结束交易的分布与质量，不从记录推断投资动机。",
+    "Examine closed-trade distributions without inferring investment motives.",
+  );
   const best = objects(data.best_trades).filter(
       (trade) => (numeric(trade.netResultGbp) ?? 0) > 0,
     ),
     worst = objects(data.worst_trades).filter(
       (trade) => (numeric(trade.netResultGbp) ?? 0) < 0,
     );
+  if (data.status === "unavailable") return (
+    <Panel title={title} help={help}><UnavailableTrades data={data} count={count} cfdDurations={cfd} /></Panel>
+  );
   return (
     <div className="flex flex-col gap-mx-lg">
       <Panel
-        title={t("过程是否可持续", "Understand the trading process")}
-        help={t(
-          "观察已结束交易的分布与质量，不从记录推断投资动机。",
-          "Examine closed-trade distributions without inferring investment motives.",
-        )}
+        title={title}
+        help={help}
       >
         <div className="mx-metric-grid">
           <Metric

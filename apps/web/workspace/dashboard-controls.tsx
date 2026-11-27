@@ -1,6 +1,7 @@
 "use client";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useBreakpoint } from "@/lib/hooks";
@@ -57,7 +58,7 @@ export function WaitingAsOf({ label }: { label: string }) {
 export function InlineRetry({ label, retry }: { label: string; retry: () => unknown }) {
   const t = useCopy();
   return <div className="mx-retry-reading">
-    <span role="status">{label}</span>
-    <button className="mx-inline-retry" type="button" onClick={() => void retry()}>{t("重试", "Retry")}</button>
+    <span>{label}</span>
+    <Button variant="outline" type="button" aria-label={t("重试：", "Retry: ") + label} onClick={() => void retry()}>{t("重试", "Retry")}</Button>
   </div>;
 }

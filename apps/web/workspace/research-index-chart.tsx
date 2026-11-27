@@ -23,7 +23,7 @@ import { ChartRecords, ChartRecordsPanel, ChartRecordsTrigger } from "./chart-re
 import { EvidenceTable } from "./evidence-table";
 import { DataBasis } from "./reading-card";
 import { api } from "./data";
-import { Empty, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { Empty, Panel, Pending, QueryError, QueryReadStatus, Segments, useCopy } from "./foundation";
 import type { IndexHistory, IndexIdentity, IndexRange } from "./market-indices-data";
 import { SearchMultiPicker } from "./picker";
 
@@ -213,6 +213,7 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
               label={t("对数", "Log")} />}
         </div>
       </div>}
+      <QueryReadStatus key={period} label={label} failed={hasRange && query.isError} ready={!!history && !query.isError} error={query.error} />
       {hasRange && query.isPending ? <Pending label={t("正在加载走势", "Loading index history")} /> : query.isError
         ? <QueryError retry={query.refetch} showDataStatusLink={false} /> : dates.length < 2
           ? <Empty title={t("此范围没有走势", "No history for this range")} /> : <>

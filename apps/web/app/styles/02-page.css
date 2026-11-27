@@ -569,16 +569,6 @@ html[data-scrolled] .mx-topbar-title strong {
   padding: 28px 15px;
   text-align: center;
 }
-.mx-empty-mark {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
-  background: var(--mx-soft);
-  color: var(--mx-muted);
-  margin-bottom: 16px;
-}
 .mx-empty > :is(h2, h3) {
   font-size: 14px;
   font-weight: 600;

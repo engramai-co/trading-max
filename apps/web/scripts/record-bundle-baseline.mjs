@@ -95,7 +95,7 @@ export async function collectBundleBaseline() {
 
   return {
     schemaVersion: 1,
-    stage: "SH-4",
+    stage: "initial-bundle-baseline",
     appVersion: pkg.version,
     toolchain: {
       next: pkg.dependencies.next,

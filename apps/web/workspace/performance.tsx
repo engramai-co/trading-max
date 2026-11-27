@@ -1,5 +1,6 @@
 "use client";
 
+import { Skeleton } from "@/components/ui/skeleton";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
 import { deepestDrawdown } from "@/lib/portfolio/drawdown-episodes";
@@ -31,6 +32,7 @@ import {
   Page,
   Panel,
   Pending,
+  ReadStatus,
   Segments,
   TabPanel,
   Tabs,
@@ -211,6 +213,8 @@ export function PerformanceContent({
   const returnsPoints = comparison?.points;
   const points = returnsPoints ?? availablePoints;
   const plottedDates = useMemo(() => points.map((point) => point.date), [points]);
+  const readingReady = !!shown && runtime.status === "ready" && !unavailable;
+  const benchmarkUnavailable = t("所选基准缺少共同记录", "Selected benchmark lacks shared records");
   const plottedId = shown && publicationOf(shown);
   const brush = ready && plottedId && !rangeMismatch ? (a:string,b:string) => {
     setPhoneRange(null);
@@ -374,6 +378,13 @@ export function PerformanceContent({
         />
       </div>
       <TabPanel value={view}>
+      {!invalidScope && <>
+        <ReadStatus key={view + requestedScope} failure={unavailable?.label}
+          ready={readingReady} recovered={t("绩效记录已恢复。", "Performance records are available again.")} />
+        {comparison && <ReadStatus key={benchmark + requestedScope}
+          failure={readingReady && comparison.missing ? benchmarkUnavailable : undefined} ready={readingReady && !comparison.missing}
+          recovered={t("基准共同记录已恢复。", "Shared benchmark records are available again.")} />}
+      </>}
       {invalidScope ? (
         <Notice>
           {t(
@@ -472,7 +483,7 @@ export function PerformanceContent({
                   </>}
                 />
                 {comparison?.missing ? <InlineRetry
-                  label={t("所选基准缺少共同记录", "Selected benchmark lacks shared records")} retry={summary.refetch} />
+                  label={benchmarkUnavailable} retry={summary.refetch} />
                   : spread != null && <div className="mx-return-comparator">
                     <span>{returnLines[1].name} <strong>{percent(benchmarkEnd, true, 2)}</strong></span>
                     <span>{t("相差", "Difference")} <strong>{spread > 0 ? "+" : ""}{spread.toFixed(2)} {t("个百分点", "pp")}</strong></span>
@@ -592,9 +603,9 @@ function PerformancePending({ money }: { money: boolean }) {
   return <>
     <div className={money ? "mx-money-summary" : "mx-chart-metrics"}>
       <Metric large label={money ? t("区间净盈亏", "Period net P&L") : t("组合 TWR", "Portfolio TWR")}
-        value={<span className="mx-reading-placeholder" aria-hidden="true" />} />
+        value={<Skeleton as="span" className="mx-reading-placeholder" />} />
       {money && <div className="mx-money-equation mx-equation-placeholder" aria-hidden="true">
-        {Array.from({ length: 4 }, (_, index) => <span className="mx-reading-placeholder" key={index} />)}
+        {Array.from({ length: 4 }, (_, index) => <Skeleton as="span" className="mx-reading-placeholder" key={index} />)}
       </div>}
     </div>
     <div className="mx-plot-placeholder" aria-hidden="true" style={{ height: layout.height }}>
@@ -620,7 +631,7 @@ function RiskReadings({ rows, scope, pending }: { rows: NavPoint[]; scope: Scope
     }
   }
   const date = (point: NavPoint) => formatDate(point.date, locale, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  const placeholder = <span className="mx-reading-placeholder" aria-hidden="true" />;
+  const placeholder = <Skeleton as="span" className="mx-reading-placeholder" />;
   return <div className="mx-risk-readings">
     <Metric large label={t("当前回撤", "Current drawdown")}
       value={pending ? placeholder : percent(current, false, 2)} tone={tone(current)} />
@@ -718,9 +729,11 @@ function RiskCard({
 }) {
   const t = useCopy();
   const { data: profile } = useWorkspaceProfile();
+  const label = accountName(profile, code);
+  const unavailable = t("账户风险指标暂不可用", "Account risk metrics unavailable");
   return (
     <Panel
-      title={accountName(profile, code)}
+      title={label}
       help={t(
         "指标基于完整可用历史。Sharpe 同时考虑上下波动；Sortino 侧重下行风险。缺失指标表示数据不足，不等于零风险。",
         "Metrics use the full available history. Sharpe accounts for all volatility; Sortino focuses on downside risk. Missing metrics indicate insufficient data, not zero risk.",
@@ -731,6 +744,8 @@ function RiskCard({
         </TextLink>
       }
     >
+      <ReadStatus failure={!metrics && retry ? label + " · " + unavailable : undefined} ready={!!metrics}
+        recovered={label + " · " + t("账户风险指标已恢复。", "Account risk metrics are available again.")} />
       {metrics ? (
         <>
           <div
@@ -772,7 +787,7 @@ function RiskCard({
           />
         </>
       ) : retry ? (
-        <InlineRetry label={t("账户风险指标暂不可用", "Account risk metrics unavailable")} retry={retry} />
+        <InlineRetry label={unavailable} retry={retry} />
       ) : <Empty title={t("风险数据暂不可用", "Risk metrics unavailable")} />}
     </Panel>
   );

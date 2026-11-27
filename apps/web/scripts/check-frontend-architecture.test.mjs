@@ -139,7 +139,6 @@ test("validateGlobalsManifest enforces layer order, production sources, and opti
     '@import "tw-animate-css";',
     '@import "shadcn/tailwind.css";',
     '@import "@mantine/core/styles.layer.css";',
-    '@import "@mantine/notifications/styles.layer.css";',
     '@import "./styles/01-foundation.css" layer(mantine);',
     '@source "../{app,components,lib,ui,workspace}/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}";',
     '@source not "../**/*.{test,spec}.*";',

@@ -13,8 +13,8 @@
   <main>
     <div class="topline"><button id="back" type="button" class="text-button" hidden><span data-en="← Back">← 返回</span></button></div>
     <section class="intro"><h1 id="heading" tabindex="-1">工作区</h1></section>
-    <section id="status" class="status" aria-live="polite" hidden><span class="dot"></span><div><strong id="message"></strong><p id="detail"></p><p id="freshness" class="muted"></p></div></section>
-    <div id="progress" class="progress" hidden><span></span></div>
+    <section id="status" class="status" hidden><span class="dot"></span><div><strong id="message"></strong><p id="detail"></p><p id="freshness" class="muted"></p></div></section>
+    <progress id="progress" class="progress" aria-label="连接进度" data-en-aria-label="Connection progress" hidden></progress>
     <p id="retry-countdown" class="hint" aria-live="off" hidden></p>
     <div id="recovery" class="actions recovery" hidden><button id="retry" type="button">重新连接</button><button id="browser" class="secondary" type="button"><span data-en="Open in browser">在浏览器打开</span></button><button id="stop-retry" class="text-button" type="button"><span data-en="Cancel connection">取消连接</span></button></div>
     <details id="diagnostics" class="diagnostics" hidden><summary><span data-en="View diagnostics">查看诊断详情</span></summary><p id="diagnostic-detail"></p></details>
@@ -52,7 +52,8 @@
         <div class="actions"><button id="local-submit" type="submit">创建并连接账户 →</button></div>
       </form>
     </div>
-    <div id="feedback" role="status" aria-live="polite" hidden></div>
+    <div id="feedback" hidden></div>
+    <div id="announcement" class="sr-only" role="status" aria-atomic="true"></div>
     <div id="pending-actions" class="actions" hidden><button id="change" class="secondary" type="button"><span data-en="Change connection">修改连接</span></button><button id="cancel" class="text-button" type="button"><span data-en="Cancel">取消</span></button></div>
     <footer><span id="version"></span><button id="show-settings" class="text-button" type="button"><span data-en="App settings ">App 设置 </span><kbd>⌘ ,</kbd></button></footer>
   </main>

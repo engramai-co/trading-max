@@ -297,6 +297,15 @@
   }
 }
 
+:root {
+  --mx-placeholder: var(--border);
+}
+@supports (background: color-mix(in oklab, black, white)) {
+  :root {
+    --mx-placeholder: color-mix(in oklab, var(--border) 55%, var(--muted));
+  }
+}
+
 /* Shared graphic primitives: resolved fallbacks before OKLab color-mix() and border/outline focus states that survive forced colours. */
 @layer components {
   .tm-heat-surface {

@@ -6,7 +6,7 @@ import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatReadingTime, localeTag } from "@/ui/formatters";
 import { ApiError, compact, number } from "./data";
 import { periodText } from "./evidence-notices";
-import { Facts, Help, Pending, QueryError, Tag, useCopy } from "./foundation";
+import { Facts, Help, Pending, QueryError, QueryReadStatus, Tag, useCopy } from "./foundation";
 import { quoteValue } from "./financial-values";
 import { MINUS, readingTone } from "./reading-format";
 import type { Maintenance } from "./valuation-queries";
@@ -162,10 +162,13 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
       <X size={16} aria-hidden="true" />
     </button>
   </div>;
+  const code = error instanceof ApiError ? error.message : null;
+  const status = <QueryReadStatus label={t("新证据", "New evidence")}
+    failed={!review && !pending && !!error && code !== "valuation-currency-changed"} ready={!!review} error={error} />;
   if (!review) {
-    const code = error instanceof ApiError ? error.message : null;
     return <section id="valuation-evidence" className="mx-evidence" tabIndex={-1} aria-labelledby="valuation-evidence-title" aria-busy={pending}>
       {heading}
+      {status}
       {pending ? <Pending compact height={196} label={t("正在比较保存的版本…", "Comparing with the saved version…")} />
         : code === "valuation-currency-changed" ? <p role="alert" className="mx-evidence-empty">
           {t("报价币种已改变，无法与保存的版本比较。", "The quote currency changed, so the saved version cannot be compared.")}</p>
@@ -212,6 +215,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
   ];
   return <section id="valuation-evidence" className="mx-evidence" tabIndex={-1} aria-labelledby="valuation-evidence-title" aria-busy={pending}>
     {heading}
+    {status}
     <div className="mx-table-scroll" tabIndex={0} role="region" aria-label={t("情景价值的变化", "Change in scenario values")}>
       <table className="mx-evidence-walk">
         <thead><tr>

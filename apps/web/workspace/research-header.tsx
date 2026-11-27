@@ -2,7 +2,8 @@
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
-import { Avatar } from "@mantine/core";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, Ellipsis, RotateCw, Trash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -95,14 +96,11 @@ export function SecurityHeader({
         <div className="mx-security-name">
           <Avatar
             key={ticker + (selected.fundIsin ?? "")}
-            src={companyLogoSrc(ticker, selected.fundIsin)}
-            alt=""
             aria-hidden="true"
-            size={48}
-            radius="md"
-            className="mx-company-logo"
+            className="mx-company-logo size-12 rounded-[var(--radius-tooltip)] after:hidden"
           >
-            {ticker.slice(0, 2)}
+            <AvatarImage src={companyLogoSrc(ticker, selected.fundIsin)} alt="" className="rounded-none object-contain" />
+            <AvatarFallback className="rounded-[inherit] font-semibold">{ticker.slice(0, 2)}</AvatarFallback>
           </Avatar>
           <div>
             <h2>
@@ -145,7 +143,7 @@ export function SecurityHeader({
         </div>
         <div className="mx-security-price">
           {basis.price == null && quotePending ? (
-            <span aria-hidden="true" className="mx-quote-reserved" />
+            <Skeleton as="span" className="mx-quote-reserved" />
           ) : basis.price == null ? (
             <small>{t("暂无价格", "Price unavailable")}</small>
           ) : <strong>

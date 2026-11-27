@@ -9,6 +9,7 @@ const picker = new URLSearchParams(location.search).has("picker");
 let selectedWorkspace = null, localRecentsKey = "", createdWorkspace = false;
 let initialized = false, busy = false, savedProfile = null, current = null, view = "welcome";
 let lastReadyGeneration = null, languageRevision = 0, feedbackCopy, defaultServiceName;
+let announcedConnection = "", announceTimer;
 if (picker) document.body.classList.add("picker");
 
 function renderViewCopy() {
@@ -45,6 +46,11 @@ getCurrentWebviewWindow().listen("app-language-changed", ({ payload }) => {
   refresh();
 }).catch(() => { /* The status poll also carries the saved language. */ });
 function text(id, value) { if ($(id).textContent !== value) $(id).textContent = value; }
+function announce(message) {
+  clearTimeout(announceTimer);
+  text("announcement", "");
+  announceTimer = setTimeout(() => text("announcement", message), 100);
+}
 function showView(next, focus = true) {
   view = next;
   document.body.classList.toggle("welcome-view", view === "welcome");
@@ -62,7 +68,11 @@ function showView(next, focus = true) {
     $("workspace-summary").hidden = true;
   }
   renderViewCopy();
-  if (focus) $("heading").focus({ preventScroll: true });
+  if (focus) {
+    clearTimeout(announceTimer);
+    text("announcement", "");
+    $("heading").focus({ preventScroll: true });
+  }
   if (current) renderStatus(current);
 }
 function profile() { return { schema: 1, mode: "remote", name: $("name").value, url: $("url").value, auto_connect: $("auto").checked }; }
@@ -83,6 +93,7 @@ function feedback(message, tone = "") {
   text("feedback", feedbackCopy());
   $("feedback").className = tone;
   $("feedback").hidden = false;
+  announce(feedbackCopy());
 }
 function lock(value) {
   busy = value;
@@ -132,7 +143,13 @@ function renderStatus(state) {
   const localError = error && state.mode && state.mode !== "remote";
   $("status").hidden = (state.stage === "idle" && !state.detail) || (picker && connected && !warning);
   $("status").className = "status " + (error || warning ? "warn" : connected ? "good" : "working");
-  text("message", t(state.message, connectionMessage(state)));
+  const message = t(state.message, connectionMessage(state));
+  text("message", message);
+  const connectionKey = [state.stage, Boolean(warning), language.value].join(":");
+  if (!$("status").hidden && announcedConnection !== connectionKey) {
+    announcedConnection = connectionKey;
+    announce(warning ? t("主机可访问，后台更新状态需要检查。", "The service is reachable. Check background updates.") : message);
+  } else if ($("status").hidden) announcedConnection = "";
   text("detail", localError ? t("重新打开会继续使用这个工作区。已保存的数据和连接不会被清空。", "Reopen to keep using this workspace and its saved data and connections.") : state.detail || (warning ? t("主机可访问，后台更新状态需要检查。可在数据状态页查看。", "The service is reachable. See Data status to check background updates.") : ""));
   text("freshness", age(state.probe));
   $("diagnostics").hidden = !localError || !state.detail;
@@ -231,7 +248,12 @@ async function refresh() {
   } catch {
     $("status").hidden = false;
     $("status").className = "status error";
-    text("message", t("无法读取 App 连接状态。", "Could not read the connection status."));
+    const message = t("无法读取 App 连接状态。", "Could not read the connection status.");
+    text("message", message);
+    if (announcedConnection !== message) {
+      announcedConnection = message;
+      announce(message);
+    }
     text("detail", t("可以退出 App 后重新打开。", "Quit and reopen the app to try again."));
   } finally { refreshing = false; }
 }

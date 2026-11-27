@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import type { AssistantSettings, AssistantUpdate, UserProfile } from "@/lib/types";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import { api, ApiError, jsonRequest } from "./data";
-import { Notice, Panel, Pending, QueryError, useCopy } from "./foundation";
+import { Notice, Panel, Pending, QueryError, QueryReadStatus, useCopy } from "./foundation";
 import { workspaceProfileKey } from "./profile";
 import { ASSISTANT_NAME, assistantSettingsChange, assistantSettingsKey, conversationsErasedEvent, connectedAssistantModels, DISCLOSURE_REVISION } from "./assistant-settings";
 import { NativePicker } from "./picker";
@@ -26,12 +26,14 @@ export function AssistantPreferences({ openModels }: { openModels: () => void })
     staleTime: 0,
     retry: 1,
   });
-  if (!query.data) return query.isPending ? <Pending /> : <QueryError retry={query.refetch} />;
   return <>
+    <QueryReadStatus label={t("助手设置", "Assistant settings")} failed={query.isError && !query.data} ready={!!query.data} error={query.error} />
+    {!query.data ? (query.isPending ? <Pending /> : <QueryError retry={query.refetch} />) : <>
     {query.isError && <Notice tone="bad">{t("设置未能重新载入。", "Settings could not be reloaded.")}{" "}
       <button className="mx-text-link mx-reload-retry" onClick={() => void query.refetch()}>{t("重试", "Retry")}</button>
     </Notice>}
     <AssistantControls settings={query.data} openModels={openModels} />
+    </>}
   </>;
 }
 

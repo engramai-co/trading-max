@@ -7,7 +7,7 @@ import { useLocale } from "@/components/locale-provider";
 import { cn } from "@/lib/utils";
 import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
-import { Empty, Help, Pending, QueryError, Tag, useCopy, useEscapeLayer } from "./foundation";
+import { Empty, Help, Pending, QueryError, QueryReadStatus, Tag, useCopy, useEscapeLayer } from "./foundation";
 import { CHINA_MAP_INDEX, globalHeatStyle, globalMarketReading, useGlobalContribution, type GlobalMapMarket } from "./global-markets-data";
 import { MARKET_PATHS, WIDE_WORLD_VIEWBOX, WORLD_LAND, WORLD_VIEWBOX } from "./global-market-geometry";
 import { PageInspection } from "./assistant/inspection-entry";
@@ -395,7 +395,8 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
         </div>}
       </div>
       <div className="mx-global-ranking">
-        {query.isError && !answer ? <QueryError retry={query.refetch} showDataStatusLink={false} />
+        <QueryReadStatus label={t("全球行情", "Global quotes")} failed={query.isError && !answer} ready={!!answer} error={query.error} />
+      {query.isError && !answer ? <QueryError retry={query.refetch} showDataStatusLink={false} />
           : query.isPending ? <Pending label={t("正在加载贡献", "Loading contributions")} compact />
           : !priced ? <div className="mx-global-status" role="status">
             <div><strong>{t("暂无可用的贡献估算", "No contribution estimate available")}</strong>

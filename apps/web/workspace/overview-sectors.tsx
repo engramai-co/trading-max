@@ -16,7 +16,7 @@ import { formatCalendarDate, formatDate, formatDateTime, formatDeltaPercent } fr
 import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
 import { api, percent, tone } from "@/workspace/data";
-import { Empty, Panel, Pending, Tag, Tip, UpdateFailure, useCopy } from "./foundation";
+import { Empty, Panel, Pending, ReadStatus, Tag, Tip, UpdateFailure, useCopy } from "./foundation";
 import { globalMarketReading, useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { InlineRetry } from "./dashboard-controls";
@@ -138,7 +138,7 @@ function useOverviewSectors(market: SectorMarketCode | null) {
   });
 }
 
-export function OverviewSectors() {
+export function OverviewSectors({ online }: { online: boolean }) {
   const t = useCopy();
   const [market, choose] = useOverviewMarket();
   const restoreMarketFocus = useRef(false);
@@ -180,16 +180,19 @@ export function OverviewSectors() {
     </Panel>
   );
   return market === "global"
-    ? <GlobalPanel title={title} picker={picker} />
-    : <SectorPanel market={market} title={title} picker={picker} />;
+    ? <GlobalPanel title={title} picker={picker} online={online} />
+    : <SectorPanel market={market} title={title} picker={picker} online={online} />;
 }
 
-function SectorPanel({ market, title, picker }: { market: SectorMarketCode; title: string; picker: ReactNode }) {
+function SectorPanel({ market, title, picker, online }: { market: SectorMarketCode; title: string; picker: ReactNode; online: boolean }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const now = useMinute();
   const phaseName = usePhaseNames();
   const query = useOverviewSectors(market);
+  const offline = !online || query.fetchStatus === "paused";
+  const offlineLabel = t("网络已断开，板块行情将在重连后更新。", "You’re offline. Sector quotes will update when you reconnect.");
+  const unavailable = t("板块行情暂不可用", "Sector quotes unavailable");
   const data = query.data;
   const board = data?.board?.market === market ? data.board : null;
   // An answer missing its parts shows the empty board rather than breaking the overview.
@@ -207,10 +210,13 @@ function SectorPanel({ market, title, picker }: { market: SectorMarketCode; titl
       help={board ? <SectorSources source={board.source} /> : undefined}
       action={<span className="mx-freshness-group">{clock}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
     >
+      <ReadStatus failure={query.isError && !offline ? unavailable : undefined} ready={query.isSuccess && !offline}
+        recovered={t("板块行情已恢复。", "Sector quotes are available again.")} />
+      {offline && <p className="mx-waiting-as-of">{offlineLabel}</p>}
       {query.isPending ? (
-        <Pending shape="sectors" label={t("正在读取", "Loading ") + title + t("…", "…")} />
+        <Pending shape="sectors" quiet={offline} label={t("正在读取", "Loading ") + title + t("…", "…")} />
       ) : !board && query.isError ? (
-        <div className="mx-overview-unavailable"><InlineRetry label={t("板块行情暂不可用", "Sector quotes unavailable")} retry={query.refetch} /></div>
+        !offline && <div className="mx-overview-unavailable"><InlineRetry label={unavailable} retry={query.refetch} /></div>
       ) : !board || !groups.length ? (
         <Empty
           title={t("还没有板块数据", "No sector data yet")}
@@ -258,11 +264,14 @@ const WORLD_ORDER: WorldMarket[] = ["us", "ca", "uk", "eu", "ch", "cn", "in", "j
 type WorldMove = GlobalMarketContribution["markets"][number];
 type WorldKey = WorldMarket | "other";
 
-function GlobalPanel({ title, picker }: { title: string; picker: ReactNode }) {
+function GlobalPanel({ title, picker, online }: { title: string; picker: ReactNode; online: boolean }) {
   const t = useCopy();
   const fine = useFinePointer();
   const phone = useBreakpoint("phone");
   const query = useGlobalContribution(true);
+  const offline = !online || query.fetchStatus === "paused";
+  const offlineLabel = t("网络已断开，全球行情将在重连后更新。", "You’re offline. Global quotes will update when you reconnect.");
+  const unavailable = t("全球行情暂不可用", "Global quotes unavailable");
   const answer = query.data;
   const markets = (answer?.markets ?? []).filter((item) => item.market in WORLD);
   const weighted = markets.some((item) => (item.weight ?? 0) > 0);
@@ -289,10 +298,13 @@ function GlobalPanel({ title, picker }: { title: string; picker: ReactNode }) {
         {answer && <GlobalStamp answer={answer} />}
         {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
     >
+      <ReadStatus failure={query.isError && !offline ? unavailable : undefined} ready={query.isSuccess && !offline}
+        recovered={t("全球行情已恢复。", "Global quotes are available again.")} />
+      {offline && <p className="mx-waiting-as-of">{offlineLabel}</p>}
       {query.isPending ? (
-        <Pending shape="sectors" label={t("正在读取全球市场…", "Loading global markets…")} />
+        <Pending shape="sectors" quiet={offline} label={t("正在读取全球市场…", "Loading global markets…")} />
       ) : !answer && query.isError ? (
-        <div className="mx-overview-unavailable"><InlineRetry label={t("全球行情暂不可用", "Global quotes unavailable")} retry={query.refetch} /></div>
+        !offline && <div className="mx-overview-unavailable"><InlineRetry label={unavailable} retry={query.refetch} /></div>
       ) : !answer || !markets.length ? (
         <Empty title={t("还没有全球行情", "No global quotes yet")} />
       ) : (

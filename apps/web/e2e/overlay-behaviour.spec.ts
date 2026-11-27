@@ -36,7 +36,7 @@ test.describe("workspace overlays", () => {
       await route.continue();
     });
     const help = page.getByRole("dialog", { name: "Period net P&L" });
-    const reading = page.locator(".mx-overview-history .mx-period-figure");
+    const reading = page.locator(".mx-overview-history .mx-data-body .mx-period-figure");
     try {
       await page.goto("/");
       await page.getByRole("button", { name: "Period net P&L explained" }).first().click();

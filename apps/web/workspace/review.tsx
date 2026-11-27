@@ -7,6 +7,7 @@ import { useLocale } from "@/components/locale-provider";
 import { formatDateSpan } from "@/ui/formatters";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
+import { numeric } from "@/lib/numeric";
 import type { AccountCode, DashboardLens } from "@/lib/types";
 import { navNumber, observedNav, type Scope } from "@/lib/portfolio/nav";
 import { currency, object, percent, str, tone, type Json } from "@/workspace/data";
@@ -31,6 +32,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  ReadStatus,
   UpdateFailure,
   TabPanel,
   Tabs,
@@ -214,6 +216,9 @@ export function ReviewWorkspace() {
   const asOf = !data ? undefined : shown === "all"
     ? data.reviewAsOf ?? data.brokerAsOf
     : data.reviewAsOf ?? (str(field(object(object(shown === "C" ? data.selectedCfdReview : data.selectedAccountReview).coverage), "end_date")) || data.brokerAsOf);
+  const readFailure = failure?.updatedAt ? t("投资复盘更新失败", "Investment review update failed")
+    : !result && !pinned && !missingDecision && query.isError
+      ? t("暂时无法读取投资复盘", "Investment review unavailable") : undefined;
   return (
     <Page
       className="mx-review-page"
@@ -243,6 +248,8 @@ export function ReviewWorkspace() {
         </span>
       }
     >
+      <ReadStatus key={scope + ":" + (snapshotId ?? "live")} failure={readFailure}
+        ready={!!result} recovered={t("投资复盘已恢复。", "Investment review is available again.")} />
       {missingDecision ? (
         <Empty title={t("引用的交易决定暂不可用", "Cited decision unavailable")} />
       ) : !result && (query.isPending || query.isFetching) ? (
@@ -526,7 +533,9 @@ function AccountAnalysis({ data, code }: { data: DashboardLens; code: AccountCod
             </Panel>
           </>
         ) : tab === "attribution" ? (
-          <Attribution data={object(review.attribution)} cfd={cfd} />
+          <Attribution data={object(review.attribution)} cfd={cfd}
+            count={numeric(cfd ? field(object(review.tradeQuality), "trade_count")
+              : field(object(review.coverage), "closed_campaign_count"))} />
         ) : tab === "quality" ? (
           <>
             {!cfd && decisions?.status === "available" && (

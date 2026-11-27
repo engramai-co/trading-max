@@ -1,6 +1,5 @@
 "use client";
 
-import { Code } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ExternalLink } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -10,7 +9,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { TextLink } from "@/components/ui/text-link";
 import type { IntegrationSummary, LLMProviderDescriptor, OAuthLoginStatus } from "@/lib/types";
 import { api, jsonRequest } from "./data";
-import { Notice, useCopy } from "./foundation";
+import { Notice, StatusMessage, useCopy } from "./foundation";
 import { SelectPicker } from "./picker";
 
 const loginPath = "/settings/llm/oauth/openai";
@@ -75,7 +74,12 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
     onSuccess: () => onSaved("disconnected"),
   });
   const failed = start.isError || status.isError || cancel.isError || disconnect.isError || current?.state === "error" || current?.state === "expired";
+  const errorMessage = !failed ? undefined : current?.errorCode === "credential_store_unavailable"
+    ? t("设备的凭据存储不可用，连接未保存。请解锁系统钥匙串后重试。", "The device credential store is unavailable. Unlock the system keychain and try again.")
+    : t("本次登录未完成或已过期，请重试。若无法取得授权码，请检查 ChatGPT 安全设置中的设备码登录权限。", "Login did not complete or expired. Try again; if no code appears, check device-code login permissions in ChatGPT security settings.");
+  const codeReady = current?.state === "pending" && Boolean(current.userCode && current.verificationUrl);
   return <div className="flex flex-col gap-mx-lg">
+    <StatusMessage message={errorMessage ?? (codeReady ? t("在 OpenAI 完成授权", "Authorise with OpenAI") : undefined)} />
     <Notice>{t(
       "使用 ChatGPT 账户的 Codex 额度。授权保存在运行 Trading Max 的设备上；API Key 使用独立计费。",
       "Use your ChatGPT account’s Codex allowance. Authorisation stays on the device running Trading Max. API keys are billed separately.",
@@ -84,15 +88,16 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending}  />
     <Checkbox checked={defaultModel} onCheckedChange={(checked) => setDefaultModel(checked)}
       disabled={pending} label={t("设为默认模型", "Use as the default model")} />
-    {current?.state === "pending" && current.userCode && current.verificationUrl && <div className="flex flex-col gap-mx-md" aria-live="polite">
+    {current?.state === "pending" && current.userCode && current.verificationUrl && <div className="flex flex-col gap-mx-md">
       <p className="text-[0.9375rem] leading-[1.55] font-semibold">{t("在 OpenAI 完成授权", "Authorise with OpenAI")}</p>
       <p className="text-[0.8125rem] leading-[1.45]">{t("复制一次性代码，然后打开授权页面。完成后这里会自动连接。", "Copy the one-time code and open the authorisation page. This screen will connect automatically when you finish.")}</p>
-      <div className="flex flex-nowrap items-center justify-between gap-mx-md">
-        <Code id={codeId} fz="xl" p="sm">{current.userCode}</Code>
+      <div className="flex flex-wrap items-center justify-between gap-mx-md">
+        <code id={codeId} className="select-text rounded-[var(--radius-tooltip)] bg-muted p-3 font-mono text-xl [overflow-wrap:anywhere]">{current.userCode}</code>
         <CopyButton
           value={current.userCode}
           targetId={codeId}
           label={t("复制代码", "Copy code")}
+          aria-label={t("复制代码", "Copy code")}
           copiedLabel={t("已复制", "Copied")}
           failedLabel={t("复制失败", "Copy failed")}
           announcedCopied={t("一次性代码已复制", "One-time code copied")}
@@ -105,9 +110,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       </a>
       <p className="text-[0.8125rem] leading-[1.45] text-[var(--mx-muted)]">{t("代码约 15 分钟内有效。请仅在 OpenAI 官方页面登录并输入代码。", "The code is valid for about 15 minutes. Sign in and enter it only on the official OpenAI page.")}</p>
     </div>}
-    {failed && <Notice tone="warn">{current?.errorCode === "credential_store_unavailable"
-      ? t("设备的凭据存储不可用，连接未保存。请解锁系统钥匙串后重试。", "The device credential store is unavailable. Unlock the system keychain and try again.")
-      : t("本次登录未完成或已过期，请重试。若无法取得授权码，请检查 ChatGPT 安全设置中的设备码登录权限。", "Login did not complete or expired. Try again; if no code appears, check device-code login permissions in ChatGPT security settings.")}</Notice>}
+    {errorMessage && <Notice tone="warn">{errorMessage}</Notice>}
     {pending ? <div className="flex flex-wrap items-center gap-mx-md">
       <Button
         variant="secondary"

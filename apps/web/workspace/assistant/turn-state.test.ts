@@ -56,7 +56,7 @@ describe("recoverable interruption and per-turn terminal state", () => {
     expect(stopped.store.turns.u1.status).toBe("stopped");
     expect(stopped.store.turns.u1.frozenAssistant?.parts).toHaveLength(2);
     expect(stopped.announcement).toEqual({ kind: "stopped" });
-    expect(turnAnnouncementText(stopped.announcement!, "en", "Europe/London", en)).toBe(
+    expect(turnAnnouncementText(stopped.announcement!, en)).toBe(
       "Generation stopped.",
     );
     expect(turnStatusText("stopped", undefined, true, zh)).toBe("已停止 · 仅保留已核实内容");
@@ -161,7 +161,7 @@ describe("recoverable interruption and per-turn terminal state", () => {
       errorCode: "provider_rate_limited",
     });
     expect(rateLimited.store.turns.u1.status).toBe("rate_limited");
-    expect(turnAnnouncementText(rateLimited.announcement!, "zh", "Europe/London", zh)).toBe(
+    expect(turnAnnouncementText(rateLimited.announcement!, zh)).toBe(
       "服务繁忙，稍后重试。",
     );
 
@@ -178,8 +178,8 @@ describe("recoverable interruption and per-turn terminal state", () => {
     });
     expect(completed.store.turns.u1.status).toBe("completed");
     expect(completed.announcement?.kind).toBe("completed");
-    expect(turnAnnouncementText(completed.announcement!, "en", "Europe/London", en)).toContain(
-      "Period net P&L £21.50",
+    expect(turnAnnouncementText(completed.announcement!, en)).toBe(
+      "Response ready.",
     );
   });
 

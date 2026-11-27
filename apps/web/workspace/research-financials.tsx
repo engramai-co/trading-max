@@ -16,7 +16,7 @@ import { compact, compactTick, number, percent } from "@/workspace/data";
 import { useChartColours } from "@/ui/charts/palette";
 import { FONT_STACK } from "@/ui/theme";
 import type { ChartReadout, ReadingKey } from "./chart-readout";
-import { Empty, Metric, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
+import { Empty, Metric, Panel, Pending, QueryError, QueryReadStatus, Segments, useCopy } from "./foundation";
 import { minus } from "./reading-figures";
 import { readingTone } from "./reading-format";
 import { FinancialStatements } from "./research-company";
@@ -774,11 +774,12 @@ function CompleteStatements({ ticker, revision, preview, frequency }: {
   const title = t("完整报表", "All reported rows");
   return (
     <div id="research-full" ref={box}>
+      <QueryReadStatus key={ticker} label={title} failed={lens.isError && !lens.data} ready={!!lens.data} error={lens.error} />
       {lens.data ? (
         <FinancialStatements data={lens.data} controlledFrequency={frequency} title={title} />
       ) : (
         <Panel title={title}>
-          {lens.isError ? <QueryError retry={() => { void lens.refetch(); }} error={lens.error} /> : <Pending />}
+          {lens.isError ? <QueryError retry={lens.refetch} error={lens.error} /> : <Pending />}
         </Panel>
       )}
     </div>

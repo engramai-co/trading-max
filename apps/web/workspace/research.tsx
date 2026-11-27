@@ -32,6 +32,7 @@ import { Tip,
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   TabPanel,
   Tabs,
   TabsScope,
@@ -483,6 +484,7 @@ function SecurityResearchWorkspace() {
     >
       {(shell.isPending || Boolean(selected && waitingForResearch)) &&
         <LoadingStatus label={t("正在读取研究…", "Loading research…")} />}
+      <QueryReadStatus label={t("研究清单", "Research list")} failed={shell.isError && !shell.data} ready={!!shell.data} error={shell.error} />
       {!shell.data ? (
         <>
           {ticker && <section className="mx-panel"><h2>{ticker}</h2></section>}
@@ -621,6 +623,11 @@ function SecurityResearchWorkspace() {
                   }))}
                 />
                 <TabPanel value={tab === "financials" ? "fundamentals" : tab} className="mx-research-lens">
+                {tab === "overview" && <QueryReadStatus key={ticker} label={t("价格图表", "Price chart")}
+                  failed={runtime.status === "failed" && !!shown} ready={runtime.status === "ready" && !!shown} />}
+                <QueryReadStatus key={ticker + tab} label={titles[tab]}
+                  failed={lens.isError && !displayData && selected.status !== "failed" && !(displayTab === "technical" && (shown?.technicalPrice ?? technicalPrice))}
+                  ready={!!displayData && !lens.isError && displayTab === tab} error={lens.error} />
                 {failure && shown && isReadTimeout(failure.error) && <Notice tone="warn">
                   {t("研究请求超时，仍显示上一次资料。", "Research request timed out. Showing the previous reading.")}
                 </Notice>}

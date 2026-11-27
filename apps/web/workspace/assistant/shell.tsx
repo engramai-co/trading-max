@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useLayoutEffect, useRef, useState } from "react";
 import { X } from "lucide-react";
 import Link from "../link";
-import { useCopy } from "../foundation";
+import { StatusMessage, useCopy } from "../foundation";
 import { Dialog, DialogOverlay, DialogPortal, DialogSurface } from "@/components/ui/dialog";
 import { isImeComposing } from "../shortcut-platform";
 import { errorLabel } from "./status-label";
@@ -89,7 +89,7 @@ export function AssistantPanel({ page, scopeLabel, searchOpen, overlay }: { over
         {!showThread && <>
           <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button tabIndex={0} data-assistant-dismiss onClick={close}
             aria-label={t("关闭侧栏","Close sidebar")}><X size={18} aria-hidden="true" /></button></div>
-          <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
+          <div className="mx-assistant-opening"><p><StatusMessage className="" message={pending ? t("正在检查连接…", "Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)} /></p>
             {!pending && <Link tabIndex={0} href="/settings?tab=assistant" prefetch={false} onClick={close} className="mx-text-link">{t("打开设置","Open Settings")} →</Link>}
           </div>
         </>}

@@ -7,6 +7,7 @@ import { desktopSnapshotCache, snapshotCacheScope } from "@/lib/snapshot-cache-s
 import { PresentationShell } from "@/workspace/presentation-shell";
 import { LocaleProvider } from "@/components/locale-provider";
 import { TradingMaxProvider } from "@/ui/provider";
+import { Toaster } from "@/components/ui/toast";
 import { darkCanvas, tradingMaxTheme } from "@/ui/theme";
 
 import "./globals.css";
@@ -56,12 +57,14 @@ export default async function RootLayout({
         <noscript dangerouslySetInnerHTML={{
           __html: `<meta name="color-scheme" content="light dark"><meta name="theme-color" content="${darkCanvas}">`,
         }} />
-        <ColorSchemeScript defaultColorScheme={DEFAULT_COLOR_SCHEME} />
+        <ColorSchemeScript defaultColorScheme={DEFAULT_COLOR_SCHEME} overviewScope={scope} />
       </head>
       <body>
         <TradingMaxProvider key={scope} scope={scope} desktopCache={desktopCache}>
           <LocaleProvider>
-            <PresentationShell localWorkspace={Boolean(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID)} demonstration={process.env.TRADING_MAX_ENV === "desktop-preview"}>{children}</PresentationShell>
+            <Toaster>
+              <PresentationShell localWorkspace={Boolean(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID)} demonstration={process.env.TRADING_MAX_ENV === "desktop-preview"}>{children}</PresentationShell>
+            </Toaster>
           </LocaleProvider>
         </TradingMaxProvider>
       </body>

@@ -2,7 +2,6 @@
 
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { MantineProvider } from "@mantine/core";
-import { Notifications } from "@mantine/notifications";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -34,7 +33,6 @@ export function TradingMaxProvider({
         theme={tradingMaxTheme}
       >
         <QueryClientProvider client={queryClient}>
-          <Notifications position="top-right" zIndex="var(--z-toast)" />
           <SnapshotCacheProvider scope={scope} desktop={desktopCache}>
             <PublicationProvider><FinePointerProvider><TooltipProvider delay={250} closeDelay={100} timeout={100}>{children}</TooltipProvider></FinePointerProvider></PublicationProvider>
           </SnapshotCacheProvider>
