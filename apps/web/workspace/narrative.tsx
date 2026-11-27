@@ -1,5 +1,5 @@
 "use client";
-import { ArrowClockwise, Sparkle } from "@phosphor-icons/react";
+import { RotateCw, Sparkles } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
@@ -68,7 +68,7 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
     <Panel
       title={
         <div className="flex flex-wrap items-center gap-2">
-          <Sparkle size={18} />
+          <Sparkles aria-hidden="true" size={18} />
           {t("把数据串成观点", "Connect the evidence")}
         </div>
       }
@@ -159,7 +159,7 @@ function NarrativePanel({ lens, ticker, snapshot }: NarrativeProps) {
             loadingLabel={t("正在分析", "Analysing")}
             onClick={() => void startAnalysisRun({ lens, ticker })}
           >
-            <ArrowClockwise size={15} aria-hidden="true" />
+            <RotateCw size={16} aria-hidden="true" />
             {t("生成最新分析", "Generate analysis")}
           </Button>
         </div>

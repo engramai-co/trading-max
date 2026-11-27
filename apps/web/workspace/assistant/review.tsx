@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useBreakpoint } from "@/lib/hooks";
-import { CaretRight } from "@phosphor-icons/react";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
@@ -199,7 +199,7 @@ export function ReviewHabits({
               }}
             >
               {readerText(line, locale, timeZone)}
-              <CaretRight aria-hidden="true" size={14} />
+              <ChevronRight aria-hidden="true" size={16} />
             </button>
             <EvidenceLink evidence={line.evidence} onNavigate={phone ? event => {
               event.preventDefault();
@@ -227,7 +227,7 @@ export function ReviewHabits({
             <span><strong>{card.title}</strong> · {card.object}</span>
             <span className="mx-digest-summary">{reading?.lines[0] && readerText(reading.lines[0], locale, timeZone)}</span>
           </span>
-          <CaretRight aria-hidden="true" size={14} />
+          <ChevronRight aria-hidden="true" size={16} />
         </button>
         {sheet && (
           <InlineReading

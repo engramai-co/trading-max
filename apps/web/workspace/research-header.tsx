@@ -2,7 +2,7 @@
 
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
 import { Avatar, Menu } from "@mantine/core";
-import { ArrowClockwise, CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
+import { ChevronDown, Ellipsis, RotateCw, Trash } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { Button } from "@/components/ui/button";
@@ -113,7 +113,7 @@ export function SecurityHeader({
                 onClick={onSwitch}
               >
                 {name}
-                <CaretDown size={16} aria-hidden="true" />
+                <ChevronDown size={16} aria-hidden="true" />
               </button>
             </h2>
             <div className="mx-security-meta">
@@ -207,13 +207,13 @@ export function SecurityActions({
         loadingLabel={<span className="mx-research-refresh-label">{t("更新中…", "Updating…")}</span>}
         onClick={() => onRefresh()}
       >
-        <ArrowClockwise size={16} aria-hidden="true" />
+        <RotateCw size={16} aria-hidden="true" />
         <span className="mx-research-refresh-label">{t("更新研究", "Update research")}</span>
       </Button>}
       {watchlisted && <Menu shadow="md" position="bottom-end">
         <Menu.Target>
           <Button variant="ghost" size="icon" aria-label={t("更多操作", "More actions")}>
-            <DotsThree size={23} aria-hidden="true" />
+            <Ellipsis size={20} aria-hidden="true" />
           </Button>
         </Menu.Target>
         <Menu.Dropdown>
@@ -225,7 +225,7 @@ export function SecurityActions({
           {/* Holdings always stay in the list; the item says why it is unavailable. */}
           <Menu.Item
             disabled={held || pending}
-            leftSection={<Trash size={15} />}
+            leftSection={<Trash aria-hidden="true" size={16} />}
             rightSection={held ? <span className="mx-menu-note">{t("持仓中", "Held")}</span> : undefined}
             onClick={onRemove}
           >

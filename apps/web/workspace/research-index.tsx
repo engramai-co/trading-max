@@ -2,7 +2,7 @@
 
 import { useAssistant } from "./assistant/context";
 import { Drawer, Menu, Select } from "@mantine/core";
-import { CaretDown, DotsThree, Trash } from "@phosphor-icons/react";
+import { ChevronDown, Ellipsis, Trash } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { quoteUnit, quoteValue } from "./financial-values";
@@ -106,7 +106,7 @@ export function IndexResearchWorkspace() {
         {!index && <Button className="mx-universe-toggle" variant="secondary"
           aria-expanded={listOpen} onClick={() => setListOpen(true)}>
           {t("研究清单", "Research list")}
-          <CaretDown size={14} aria-hidden="true" />
+          <ChevronDown size={16} aria-hidden="true" />
         </Button>}
         {index && <IndexListActions id={index.id} />}
       </>
@@ -121,7 +121,7 @@ export function IndexResearchWorkspace() {
                     aria-label={name + t("，打开研究清单", ", open research list")}
                     aria-expanded={listOpen} onClick={() => setListOpen(true)}>
                     {name}
-                    <CaretDown size={16} aria-hidden="true" />
+                    <ChevronDown size={16} aria-hidden="true" />
                   </button>
                 </h2>
                 <div className="mx-index-research-basis">
@@ -198,11 +198,11 @@ function IndexListActions({ id }: { id: string }) {
       {listed.has(id) ? <Menu shadow="md" position="bottom-end">
         <Menu.Target>
           <Button variant="ghost" size="icon" aria-label={t("更多操作", "More actions")}>
-            <DotsThree size={23} aria-hidden="true" />
+            <Ellipsis size={20} aria-hidden="true" />
           </Button>
         </Menu.Target>
         <Menu.Dropdown>
-          <Menu.Item leftSection={<Trash size={15} />} onClick={() => listed.remove(id)}>
+          <Menu.Item leftSection={<Trash aria-hidden="true" size={16} />} onClick={() => listed.remove(id)}>
             {t("从研究清单移除", "Remove from research list")}
           </Menu.Item>
         </Menu.Dropdown>

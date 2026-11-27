@@ -3,7 +3,7 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage, type UIMessageChunk } from "ai";
 import { hashKey, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowUp, ClockCounterClockwise, Plus, Square, Trash, X } from "@phosphor-icons/react";
+import { ArrowUp, History as HistoryIcon, Plus, Square, Trash, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -422,9 +422,9 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
   const exchanges = pairConversationTurns(messages);
   return <>
     <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><div>
-      <button disabled={busy} onClick={onNew} aria-label={t("新对话", "New conversation")}><Plus /></button>
-      <button ref={historyButton} disabled={busy} onClick={onHistory} aria-label={t("历史对话", "Conversation history")}><ClockCounterClockwise /></button>
-      <button data-assistant-dismiss onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X /></button>
+      <button disabled={busy} onClick={onNew} aria-label={t("新对话", "New conversation")}><Plus size={18} aria-hidden="true" /></button>
+      <button ref={historyButton} disabled={busy} onClick={onHistory} aria-label={t("历史对话", "Conversation history")}><HistoryIcon size={18} aria-hidden="true" /></button>
+      <button data-assistant-dismiss onClick={close} aria-label={t("关闭侧栏", "Close sidebar")}><X size={18} aria-hidden="true" /></button>
     </div></div>
     <div className="mx-assistant-transcript" ref={scroller} aria-label={t("对话", "Conversation")}>
       {!messages.length && <div className="mx-assistant-opening"><CardTitle card={card} />{card.status && <p role="status" className="mx-assistant-note">{card.status}</p>}<ReadingLines card={card} />
@@ -521,8 +521,8 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
         }} maxLength={16000}
         aria-label={t("消息", "Message")} placeholder={t("给 {name} 发消息…", "Message {name}…").replace("{name}", ASSISTANT_NAME)}
         onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !isImeComposing(e)) { e.preventDefault(); e.currentTarget.form?.requestSubmit(); } }} />
-        {busy ? <button type="button" onClick={event => { event.preventDefault(); handleStop(); }} aria-label={t("停止", "Stop")}><Square weight="fill" /></button>
-          : <button type="submit" disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp weight="bold" /></button>}
+        {busy ? <button type="button" onClick={event => { event.preventDefault(); handleStop(); }} aria-label={t("停止", "Stop")}><Square size={18} aria-hidden="true" fill="currentColor" /></button>
+          : <button type="submit" disabled={sendingBlocked || !draft.trim()} aria-label={t("发送", "Send")}><ArrowUp size={18} aria-hidden="true" /></button>}
       </div>
     </form>
   </>;
@@ -551,10 +551,10 @@ function History({ select, back, removed }: { select: (id: string, messages: UIM
       else { const data = await api<{ messages: UIMessage[] }>(path, { signal }); select(id, data.messages); }
     } catch { if (!signal.aborted) setError(true); } finally { action.current = null; setBusy(false); }
   }
-  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button data-assistant-dismiss ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X /></button></div>
+  return <><div className="mx-assistant-heading"><strong>{t("历史对话", "Conversation history")}</strong><button data-assistant-dismiss ref={backButton} onClick={back} aria-label={t("返回对话", "Back to conversation")}><X size={18} aria-hidden="true" /></button></div>
     <div className="mx-assistant-transcript">{conversations.data?.map(c => <div className="mx-assistant-history" key={c.id}>
       <button disabled={busy} onClick={() => void act(c.id, false)}>{c.title || t("对话", "Conversation")}</button>
-      <button disabled={busy} onClick={() => void act(c.id, true)} aria-label={t("删除对话", "Delete conversation") + " · " + (c.title || "")}><Trash /></button>
+      <button disabled={busy} onClick={() => void act(c.id, true)} aria-label={t("删除对话", "Delete conversation") + " · " + (c.title || "")}><Trash size={18} aria-hidden="true" /></button>
     </div>)}{conversations.data?.length === 0 && <p>{t("暂无已保存的对话。", "No saved conversations yet.")}</p>}
     {(error || conversations.isError) && <p role="alert">{t("无法读取或更新对话。", "Could not read or update the conversation.")}</p>}</div></>;
 }

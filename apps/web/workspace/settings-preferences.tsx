@@ -7,7 +7,7 @@ import {
   Switch,
   TextInput,
 } from "@mantine/core";
-import { UploadSimple, CheckCircle } from "@phosphor-icons/react";
+import { CircleCheck, Upload } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import Link from "./link";
@@ -277,7 +277,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
               <li data-current={Boolean(imported)}>{t("3 · 更新复盘", "3 · Update review")}</li>
             </ol>}
             <div className="mx-import-drop">
-              <UploadSimple size={26} />
+              <Upload size={20} className="m-[3px]" aria-hidden="true" />
               <FileInput
                 // Empty, the button is named by its prompt; once a file is chosen, the name keeps the purpose beside the file.
                 aria-label={file ? t("CFD 活动 CSV 文件：", "CFD activity CSV file: ") + file.name : undefined}
@@ -299,7 +299,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
                 loadingLabel={t("导入中…", "Importing…")}
                 onClick={() => upload.mutate()}
               >
-                <UploadSimple size={16} aria-hidden="true" />
+                <Upload size={16} aria-hidden="true" />
                 {t("导入账本", "Import ledger")}
               </Button>
               {desktop && file && <p className="mx-form-help">{file.name} · {number(file.size / 1024, 1)} KB · {t("确认后写入当前工作区，重复文件会跳过。", "Import into this workspace; duplicate files will be skipped.")}</p>}
@@ -588,7 +588,7 @@ export function PersonalPreferences({
               loading={mutation.isPending}
               loadingLabel={t("保存中…", "Saving…")}
             >
-              <CheckCircle size={16} aria-hidden="true" />
+              <CircleCheck size={16} aria-hidden="true" />
               {t("保存偏好", "Save preferences")}
             </Button>
             {savedRevision && dirty && (

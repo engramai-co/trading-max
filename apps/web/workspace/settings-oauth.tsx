@@ -1,7 +1,7 @@
 "use client";
 
 import { Checkbox, Code, Select } from "@mantine/core";
-import { ArrowSquareOut } from "@phosphor-icons/react";
+import { ExternalLink } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -99,7 +99,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
       </div>
       <a href={current.verificationUrl} target="_blank" rel="noopener noreferrer" data-slot="button" className={buttonVariants()}>
         {t("打开 OpenAI 授权", "Open OpenAI authorisation")}
-        <ArrowSquareOut size={16} aria-hidden="true" />
+        <ExternalLink size={16} aria-hidden="true" />
       </a>
       <p className="text-[0.8125rem] leading-[1.45] text-[var(--mx-muted)]">{t("代码约 15 分钟内有效。请仅在 OpenAI 官方页面登录并输入代码。", "The code is valid for about 15 minutes. Sign in and enter it only on the official OpenAI page.")}</p>
     </div>}

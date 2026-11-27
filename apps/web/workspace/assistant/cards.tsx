@@ -2,7 +2,7 @@
 
 import "./readings.css";
 import { Drawer } from "@mantine/core";
-import { CaretDown, X } from "@phosphor-icons/react";
+import { ChevronDown, X } from "lucide-react";
 import { createContext, useContext, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
@@ -97,7 +97,7 @@ export function AnchoredReading({ card, onClose, children, closeOnCitation }: Re
   const phone = useBreakpoint("phone");
   if (!ready) return null;
   if (phone) return <ReadingSheet card={card} onClose={onClose} closeOnCitation={closeOnCitation}>{children}</ReadingSheet>;
-  return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X /></button>
+  return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X size={18} aria-hidden="true" /></button>
     <ReadingContent card={card}>{children}</ReadingContent></div>;
 }
 export function DigestRow({ storageKey, header, headline, summary, summarySource, children }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; summarySource?: ReactNode; children: ReactNode }) {
@@ -110,6 +110,6 @@ export function DigestRow({ storageKey, header, headline, summary, summarySource
     try { localStorage.setItem("tm-reading-" + storageKey, open ? "closed" : "open"); } catch {}
   }
   return <section className="mx-digest"><div className="mx-digest-head"><span aria-hidden="true">✦</span>{header}
-    <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><CaretDown size={16} /></button>{!open && summarySource}</div>
+    <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><ChevronDown aria-hidden="true" size={16} /></button>{!open && summarySource}</div>
     <div id={id} hidden={!open}>{children}</div></section>;
 }

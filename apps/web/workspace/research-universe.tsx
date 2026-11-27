@@ -2,7 +2,7 @@
 
 import type { ResearchShell } from "@/lib/types";
 import { Checkbox, Select, TextInput } from "@mantine/core";
-import { MagnifyingGlass, PushPin } from "@phosphor-icons/react";
+import { Pin, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -78,7 +78,7 @@ export function UniverseHeading({
             className={pinned ? "text-link" : undefined}
             onClick={onPin}
           >
-            <PushPin size={17} weight={pinned ? "fill" : "regular"} aria-hidden="true" />
+            <Pin size={18} fill={pinned ? "currentColor" : "none"} aria-hidden="true" />
           </Button>
         )}
         <Button
@@ -87,7 +87,7 @@ export function UniverseHeading({
           size="icon"
           onClick={onSearch}
         >
-          <MagnifyingGlass size={17} aria-hidden="true" />
+          <Search size={18} aria-hidden="true" />
         </Button>
       </span>
     </span>
@@ -145,7 +145,7 @@ export function UniverseList({
         placeholder={t("筛选", "Filter")}
         value={filter}
         onChange={(e) => setFilter(e.currentTarget.value)}
-        leftSection={<MagnifyingGlass size={15} />}
+        leftSection={<Search aria-hidden="true" size={16} />}
       />
       <Select
         mt="sm"

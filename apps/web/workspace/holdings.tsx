@@ -7,7 +7,7 @@ import {
   Select,
   TextInput,
 } from "@mantine/core";
-import { ArrowDown, MagnifyingGlass } from "@phosphor-icons/react";
+import { ArrowDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button, CloseButton } from "@/components/ui/button";
 import { useAllocationChartColours } from "@/ui/charts/palette";
@@ -157,8 +157,11 @@ function Positions() {
     >
       {label}
       {sort === key && (
+        // Keep the existing 12px slot in the auto-sized table header.
         <ArrowDown
-          size={12}
+          aria-hidden="true"
+          size={16}
+          className="-mx-[2px] shrink-0"
           style={{ transform: ascending ? "rotate(180deg)" : undefined }}
         />
       )}
@@ -214,7 +217,7 @@ function Positions() {
                 className="mx-search-input"
                 aria-label={t("筛选持仓", "Filter holdings")}
                 placeholder={t("筛选持仓…", "Filter holdings…")}
-                leftSection={<MagnifyingGlass size={17} />}
+                leftSection={<Search aria-hidden="true" size={18} />}
                 value={search}
                 onChange={(e) => {
                   setLimit(20);

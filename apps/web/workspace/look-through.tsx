@@ -6,7 +6,7 @@ import {
   Select,
   TextInput,
 } from "@mantine/core";
-import { FunnelSimple, MagnifyingGlass } from "@phosphor-icons/react";
+import { ListFilter, Search } from "lucide-react";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import Link from "./link";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -371,7 +371,7 @@ function CompanyToolbar({
           aria-controls={panel}
           onClick={() => setOpen(!open)}
         >
-          <FunnelSimple size={16} aria-hidden="true" />
+          <ListFilter size={16} aria-hidden="true" />
           {t("筛选", "Filters")}
           {active > 0 && (
             <>
@@ -683,7 +683,7 @@ function Exposure({
                     "公司、代码、ISIN 或行业…",
                     "Company, ticker, ISIN or industry…",
                   )}
-                  leftSection={<MagnifyingGlass size={17} />}
+                  leftSection={<Search aria-hidden="true" size={18} />}
                 />
               }
               filters={

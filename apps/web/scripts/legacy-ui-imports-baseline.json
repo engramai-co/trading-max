@@ -22,10 +22,6 @@
     "workspace/assistant/cards.tsx": {
       "@mantine/core": [
         "Drawer"
-      ],
-      "@phosphor-icons/react": [
-        "CaretDown",
-        "X"
       ]
     },
     "workspace/assistant/overview.test.ts": {
@@ -33,43 +29,9 @@
         "MantineProvider"
       ]
     },
-    "workspace/assistant/review.tsx": {
-      "@phosphor-icons/react": [
-        "CaretRight"
-      ]
-    },
-    "workspace/assistant/shell.tsx": {
-      "@phosphor-icons/react": [
-        "X"
-      ]
-    },
-    "workspace/assistant/sidebar.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowUp",
-        "ClockCounterClockwise",
-        "Plus",
-        "Square",
-        "Trash",
-        "X"
-      ]
-    },
     "workspace/dashboard-controls.tsx": {
       "@mantine/core": [
         "Menu"
-      ],
-      "@phosphor-icons/react": [
-        "CaretDown"
-      ]
-    },
-    "workspace/desktop-surfaces.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowRight",
-        "CloudCheck",
-        "GearSix",
-        "Info",
-        "Pulse",
-        "UploadSimple",
-        "WarningCircle"
       ]
     },
     "workspace/evidence-table.tsx": {
@@ -83,37 +45,17 @@
         "Popover",
         "Tooltip",
         "TooltipProps"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowClockwise",
-        "CheckCircle",
-        "Info",
-        "Question",
-        "WarningCircle"
       ]
     },
     "workspace/health.tsx": {
       "@mantine/core": [
         "Drawer",
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowClockwise",
-        "ArrowRight",
-        "CheckCircle",
-        "Clock",
-        "Pulse",
-        "WarningCircle"
       ]
     },
     "workspace/history-records.tsx": {
       "@mantine/core": [
         "Pagination"
-      ]
-    },
-    "workspace/holding-detail.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowRight"
       ]
     },
     "workspace/holding-market-closed.test.ts": {
@@ -128,10 +70,6 @@
         "Drawer",
         "Select",
         "TextInput"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowDown",
-        "MagnifyingGlass"
       ]
     },
     "workspace/local-onboarding.tsx": {
@@ -146,34 +84,16 @@
         "Pagination",
         "Select",
         "TextInput"
-      ],
-      "@phosphor-icons/react": [
-        "FunnelSimple",
-        "MagnifyingGlass"
       ]
     },
     "workspace/market-indices.tsx": {
       "@mantine/core": [
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowClockwise",
-        "CaretRight",
-        "ChartBar"
-      ]
-    },
-    "workspace/narrative.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowClockwise",
-        "Sparkle"
       ]
     },
     "workspace/navigation-group.tsx": {
       "@mantine/core": [
         "Tooltip"
-      ],
-      "@phosphor-icons/react": [
-        "Icon"
       ]
     },
     "workspace/overview-holdings.test.ts": {
@@ -184,9 +104,6 @@
     "workspace/overview-sectors.tsx": {
       "@mantine/core": [
         "Menu"
-      ],
-      "@phosphor-icons/react": [
-        "CaretDown"
       ]
     },
     "workspace/overview.test.ts": {
@@ -197,17 +114,11 @@
     "workspace/overview.tsx": {
       "@mantine/core": [
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "ChartLine"
       ]
     },
     "workspace/performance-return-grid.tsx": {
       "@mantine/core": [
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "CaretRight"
       ]
     },
     "workspace/performance.tsx": {
@@ -218,11 +129,6 @@
     "workspace/plot.tsx": {
       "@mantine/core": [
         "FocusTrap"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowsIn",
-        "ArrowsOut",
-        "X"
       ]
     },
     "workspace/research-analyst.tsx": {
@@ -263,21 +169,12 @@
       "@mantine/core": [
         "Modal",
         "TextInput"
-      ],
-      "@phosphor-icons/react": [
-        "MagnifyingGlass"
       ]
     },
     "workspace/research-header.tsx": {
       "@mantine/core": [
         "Avatar",
         "Menu"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowClockwise",
-        "CaretDown",
-        "DotsThree",
-        "Trash"
       ]
     },
     "workspace/research-index-chart.tsx": {
@@ -291,11 +188,6 @@
         "Drawer",
         "Menu",
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "CaretDown",
-        "DotsThree",
-        "Trash"
       ]
     },
     "workspace/research-notebook.tsx": {
@@ -318,21 +210,11 @@
         "Select"
       ]
     },
-    "workspace/research-overview.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowRight"
-      ]
-    },
     "workspace/research-price.tsx": {
       "@mantine/core": [
         "Checkbox",
         "Modal",
         "Select"
-      ]
-    },
-    "workspace/research-reading.tsx": {
-      "@phosphor-icons/react": [
-        "PushPin"
       ]
     },
     "workspace/research-seasonality.tsx": {
@@ -342,25 +224,11 @@
         "Select"
       ]
     },
-    "workspace/research-technical.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowRight",
-        "CaretDown",
-        "CaretRight",
-        "Minus",
-        "TrendDown",
-        "TrendUp"
-      ]
-    },
     "workspace/research-universe.tsx": {
       "@mantine/core": [
         "Checkbox",
         "Select",
         "TextInput"
-      ],
-      "@phosphor-icons/react": [
-        "MagnifyingGlass",
-        "PushPin"
       ]
     },
     "workspace/research-valuation-detail.tsx": {
@@ -374,11 +242,6 @@
         "NumberInput",
         "Select",
         "Textarea"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowClockwise",
-        "LockSimple",
-        "LockSimpleOpen"
       ]
     },
     "workspace/research.tsx": {
@@ -387,26 +250,11 @@
         "Modal",
         "Select",
         "Tooltip"
-      ],
-      "@phosphor-icons/react": [
-        "CaretDown",
-        "CaretLeft",
-        "CaretRight",
-        "MagnifyingGlass"
-      ]
-    },
-    "workspace/review-board.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowUpRight",
-        "CaretDown"
       ]
     },
     "workspace/review-decisions.tsx": {
       "@mantine/core": [
         "Popover"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowUpRight"
       ]
     },
     "workspace/review-evidence.tsx": {
@@ -417,33 +265,12 @@
     "workspace/review-perspectives.tsx": {
       "@mantine/core": [
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowUpRight"
-      ]
-    },
-    "workspace/review.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowRight"
-      ]
-    },
-    "workspace/sectors-detail.tsx": {
-      "@phosphor-icons/react": [
-        "CaretRight"
       ]
     },
     "workspace/sectors-market-switch.tsx": {
       "@mantine/core": [
         "Menu",
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "CaretDown"
-      ]
-    },
-    "workspace/sectors.tsx": {
-      "@phosphor-icons/react": [
-        "ArrowLeft"
       ]
     },
     "workspace/security-peek.tsx": {
@@ -478,9 +305,6 @@
         "Checkbox",
         "Code",
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowSquareOut"
       ]
     },
     "workspace/settings-preferences.tsx": {
@@ -489,10 +313,6 @@
         "Select",
         "Switch",
         "TextInput"
-      ],
-      "@phosphor-icons/react": [
-        "CheckCircle",
-        "UploadSimple"
       ]
     },
     "workspace/settings.tsx": {
@@ -503,11 +323,6 @@
         "PasswordInput",
         "SegmentedControl",
         "Select"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowRight",
-        "CheckCircle",
-        "LinkSimple"
       ]
     },
     "workspace/shell.tsx": {
@@ -516,36 +331,6 @@
         "Modal",
         "TextInput",
         "Tooltip"
-      ],
-      "@phosphor-icons/react": [
-        "ArrowRight",
-        "ChartBar",
-        "ChartLine",
-        "ChartPieSlice",
-        "Check",
-        "CircleHalf",
-        "ClockCounterClockwise",
-        "DotsThree",
-        "GearSix",
-        "Globe",
-        "Layout",
-        "MagnifyingGlass",
-        "Moon",
-        "SquaresFour",
-        "StackSimple",
-        "Sun"
-      ]
-    },
-    "workspace/valuation-draft-editor.tsx": {
-      "@phosphor-icons/react": [
-        "Check",
-        "X"
-      ]
-    },
-    "workspace/valuation-maintenance.tsx": {
-      "@phosphor-icons/react": [
-        "LockSimple",
-        "X"
       ]
     }
   }

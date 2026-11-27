@@ -43,10 +43,6 @@
     width: 32px;
     height: 32px;
   }
-  .mx-health-symbol > svg {
-    width: 23px;
-    height: 23px;
-  }
   /* The heading already says why the status needs attention. */
   .mx-health-hero > .mx-tag {
     display: none;

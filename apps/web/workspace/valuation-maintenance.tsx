@@ -1,6 +1,6 @@
 "use client";
 
-import { LockSimple, X } from "@phosphor-icons/react";
+import { Lock, X } from "lucide-react";
 import type { components } from "@/lib/api-schema";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatReadingTime, localeTag } from "@/ui/formatters";
@@ -159,7 +159,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
       )}</p>
     </Help>
     <button type="button" className="mx-evidence-close" aria-label={t("收起新证据", "Close new evidence")} onClick={close}>
-      <X size={14} aria-hidden="true" />
+      <X size={16} aria-hidden="true" />
     </button>
   </div>;
   if (!review) {
@@ -268,7 +268,7 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
     <details className="mx-evidence-detail">
       <summary>{t("明细", "Details")}</summary>
       <Facts rows={details.map(([label, value]) => [label, label === t("锁定的假设", "Locked assumptions")
-        ? <span className="mx-evidence-locks"><LockSimple size={12} aria-hidden="true" />{value}</span> : value])} />
+        ? <span className="mx-evidence-locks"><Lock size={16} aria-hidden="true" />{value}</span> : value])} />
     </details>
   </section>;
 }

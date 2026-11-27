@@ -1,7 +1,7 @@
 "use client";
 
 import { Tooltip } from "@mantine/core";
-import type { Icon } from "@phosphor-icons/react";
+import type { LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type ReactElement, type ReactNode } from "react";
 
 export function NavigationHint({ label, children, enabled = true }: { label: ReactNode; children: ReactElement; enabled?: boolean }) {
@@ -12,10 +12,9 @@ export function NavigationHint({ label, children, enabled = true }: { label: Rea
   </Tooltip>;
 }
 
-export function NavigationIcon({ icon: Glyph }: { icon: Icon }) {
-  return <span className="mx-nav-icon" aria-hidden="true">
-    <Glyph size={24} weight="regular" className="mx-nav-icon-outline" />
-    <Glyph size={24} weight="fill" className="mx-nav-icon-fill" />
+export function NavigationIcon({ icon: Glyph }: { icon: LucideIcon }) {
+  return <span className="mx-nav-icon">
+    <Glyph size={20} aria-hidden="true" />
   </span>;
 }
 
@@ -82,8 +81,8 @@ export function NavigationGroup({ activeHref, children }: { activeHref?: string;
   return <div className="mx-nav-group" ref={group}
     onClickCapture={(event) => {
       const link = (event.target as HTMLElement).closest("a");
-      // Reduced motion never arms the slide or the icon cross-fade. Deciding here,
-      // before the route renders, keeps the measurement below from starting either.
+      // Reduced motion never arms the slide. Deciding here, before the route
+      // renders, keeps the measurement below from starting it.
       pointerRoute.current = Boolean(link && !link.hasAttribute("aria-current") && event.detail > 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey)
         && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
       if (pointerRoute.current) event.currentTarget.dataset.motion = "pointer";

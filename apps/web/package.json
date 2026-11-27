@@ -1,6 +1,6 @@
 {
   "name": "trading-max-web",
-  "version": "1.73.1",
+  "version": "1.73.2",
   "private": true,
   "license": "Apache-2.0",
   "repository": {
@@ -39,7 +39,6 @@
     "@mantine/core": "^9.8.0",
     "@mantine/hooks": "^9.8.0",
     "@mantine/notifications": "^9.8.0",
-    "@phosphor-icons/react": "^2.1.10",
     "@tanstack/react-query": "^5.107.1",
     "ai": "^7.0.183",
     "class-variance-authority": "^0.7.1",
