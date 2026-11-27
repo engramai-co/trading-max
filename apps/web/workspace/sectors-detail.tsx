@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretRight } from "@phosphor-icons/react";
+import { ChevronRight } from "lucide-react";
 import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoard, SectorBreadth, SectorGroup, SectorGroupingKind, SectorMember, SectorSessionWindow } from "@/lib/types";
@@ -241,7 +241,7 @@ function Subgroups({ group, openSubgroup }: { group: SectorGroup; openSubgroup: 
           <li key={subgroup.key}>
             <button type="button" className="mx-sector-subgroup" aria-expanded={expanded}
               onClick={() => setOpen(expanded ? null : subgroup.key)}>
-              <CaretRight size={14} aria-hidden="true" />
+              <ChevronRight size={16} aria-hidden="true" />
               <span className="mx-sector-subgroup-name">{name}</span>
               {subgroup.exposureGbp > 0 && <span className="mx-sector-held">{currency(subgroup.exposureGbp, "GBP", 0)}</span>}
               <span className={"mx-sector-subgroup-change mx-" + changeTone(subgroup.change)}>
@@ -340,7 +340,7 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
                   </span>
                 )}
               </span>}
-              <CaretRight size={16} className="mx-sector-list-caret" aria-hidden="true" />
+              <ChevronRight size={16} className="mx-sector-list-caret" aria-hidden="true" />
             </button>
           </li>
         );

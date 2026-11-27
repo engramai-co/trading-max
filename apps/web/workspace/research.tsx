@@ -19,11 +19,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { useBreakpoint, useLocalStorage } from "@/lib/hooks";
 import {
-  CaretDown,
-  CaretLeft,
-  CaretRight,
-  MagnifyingGlass,
-} from "@phosphor-icons/react";
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useId, useState } from "react";
 import { isImeComposing } from "./shortcut-platform";
@@ -402,7 +402,7 @@ function SecurityResearchWorkspace() {
               onClick={openUniverse}
             >
               {t("研究清单", "Research list")}
-              <CaretDown size={14} aria-hidden="true" />
+              <ChevronDown size={16} aria-hidden="true" />
             </Button>
           )}
           {selected && (
@@ -416,7 +416,7 @@ function SecurityResearchWorkspace() {
                   disabled={!previous}
                   onClick={() => previous && selectTicker(previous.ticker)}
                 >
-                  <CaretLeft size={18} aria-hidden="true" />
+                  <ChevronLeft size={18} aria-hidden="true" />
                 </Button>
               </Tooltip>
               <Tooltip label={<>{t("下一个", "Next")} <kbd>J</kbd></>}>
@@ -428,7 +428,7 @@ function SecurityResearchWorkspace() {
                   disabled={!next}
                   onClick={() => next && selectTicker(next.ticker)}
                 >
-                  <CaretRight size={18} aria-hidden="true" />
+                  <ChevronRight size={18} aria-hidden="true" />
                 </Button>
               </Tooltip>
               {!isFund && <ResearchComparison ticker={ticker} instruments={instruments} />}
@@ -505,7 +505,7 @@ function SecurityResearchWorkspace() {
                           setFinder(true);
                         }}
                       >
-                        <MagnifyingGlass size={16} aria-hidden="true" />
+                        <Search size={16} aria-hidden="true" />
                         {t("搜索", "Search")}
                       </Button>
                     </div>
@@ -516,7 +516,7 @@ function SecurityResearchWorkspace() {
               <Panel>
                 <div className="mx-research-start">
                   <Button onClick={() => setFinder(true)}>
-                    <MagnifyingGlass size={16} aria-hidden="true" />
+                    <Search size={16} aria-hidden="true" />
                     {t("搜索", "Search")}
                   </Button>
                 </div>
@@ -533,7 +533,7 @@ function SecurityResearchWorkspace() {
                         setFinder(true);
                       }}
                     >
-                      <MagnifyingGlass size={16} aria-hidden="true" />
+                      <Search size={16} aria-hidden="true" />
                       {t("搜索", "Search")}
                     </Button>
                   }

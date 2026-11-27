@@ -11,9 +11,9 @@ import {
 } from "@mantine/core";
 import {
   ArrowRight,
-  CheckCircle,
-  LinkSimple,
-} from "@phosphor-icons/react";
+  CircleCheck,
+  Link2,
+} from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import Link from "./link";
@@ -395,7 +395,7 @@ function ConnectionCard({
         variant={connected ? "outline" : "default"}
         onClick={onOpen}
       >
-        <LinkSimple size={16} aria-hidden="true" />
+        <Link2 size={16} aria-hidden="true" />
         {connected
           ? t("管理连接", "Manage connection")
           : (connectLabel ?? t("连接账户", "Connect account"))}
@@ -633,7 +633,7 @@ function ConnectionForm({
               loading={save.isPending}
               loadingLabel={t("保存中…", "Saving…")}
             >
-              <CheckCircle size={17} aria-hidden="true" />
+              <CircleCheck size={18} aria-hidden="true" />
               {t("保存连接", "Save connection")}
             </Button>
           </div>

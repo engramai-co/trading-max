@@ -7,7 +7,7 @@
 // FORM: approved overview entry and merged 分项诊断 comps, 2026-10-06.
 // FINISH: bounded desktop/mobile comparison, fresh finish review, local surface record.
 import type { ResearchLensSnapshot, TechnicalScoreSummary } from "@/lib/types";
-import { ArrowRight, CaretDown, CaretRight, Minus, TrendDown, TrendUp } from "@phosphor-icons/react";
+import { ArrowRight, ChevronDown, ChevronRight, Minus, TrendingDown, TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -36,7 +36,7 @@ export function TechnicalScoreCard({ data, compact = false, pending = false }: {
   return <div className={`mx-tech-score ${compact ? "mx-tech-score-compact" : ""}`}>
     <div className="mx-tech-heading"><h2>{compact
       // On the overview the title opens the full diagnosis.
-      ? <button type="button" className="mx-ranking-link" onClick={() => update({ view: "technical", technicalView: "data" })}>{title}<ArrowRight size={14} aria-hidden="true" /></button>
+      ? <button type="button" className="mx-ranking-link" onClick={() => update({ view: "technical", technicalView: "data" })}>{title}<ArrowRight size={16} aria-hidden="true" /></button>
       : title}</h2>
       <Help label={title}>
         <p>{t("50 分为中性起点，现有日线规则按趋势、动量、相对表现与量能加减分，最终限制在 0–100。波动风险单独展示；分数不是上涨概率，也不是买卖建议。", "The existing daily-bar rules start at 50, then add trend, momentum, relative-performance and volume contributions, capped at 0–100. Volatility is separate. This is not an upside probability or a trade recommendation.")}</p>
@@ -79,11 +79,11 @@ function TechnicalDiagnosis({ data }: { data: ResearchLensSnapshot }) {
           <div><span className="mx-tech-group-name">{t(...technicalGroups[g.key])}</span>
             {!open && summary && <span className="mx-tech-reason">{factorMeaning(summary, t)}</span>}</div>
           <strong className={impactTone(g.contribution)}>{g.contribution == null ? "—" : `${g.contribution > 0 ? "+" : ""}${g.contribution}`}</strong>
-          {open ? <CaretDown size={18} /> : <CaretRight size={18} />}
+          {open ? <ChevronDown aria-hidden="true" size={18} /> : <ChevronRight aria-hidden="true" size={18} />}
         </button></h3>
         <div id={id} hidden={!open} className="mx-tech-evidence">{g.factors.map((f) => <div key={f.key}>
           <span>{factorMeaning(f, t)}</span><span className={impactTone(f.contribution)}>
-            {f.contribution == null ? "—" : f.contribution > 0 ? <TrendUp size={15} /> : f.contribution < 0 ? <TrendDown size={15} /> : <Minus size={15} />}
+            {f.contribution == null ? "—" : f.contribution > 0 ? <TrendingUp aria-hidden="true" size={16} /> : f.contribution < 0 ? <TrendingDown aria-hidden="true" size={16} /> : <Minus aria-hidden="true" size={16} />}
             {f.contribution == null ? t("缺失", "Missing") : `${f.contribution > 0 ? "+" : ""}${f.contribution}`}
           </span>
         </div>)}</div>

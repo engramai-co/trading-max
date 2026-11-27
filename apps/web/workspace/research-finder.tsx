@@ -2,7 +2,7 @@
 
 import type { SecuritySearchResponse, SecuritySearchResult } from "@/lib/types";
 import { Modal, TextInput } from "@mantine/core";
-import { MagnifyingGlass } from "@phosphor-icons/react";
+import { Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Button, CloseButton } from "@/components/ui/button";
@@ -104,7 +104,7 @@ export function SecurityFinder({
             value={text}
             maxLength={100}
             onChange={(e) => setText(e.currentTarget.value)}
-            leftSection={<MagnifyingGlass size={18} />}
+            leftSection={<Search aria-hidden="true" size={18} />}
           />
         </form>
         <CloseButton className="mx-search-close [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11" iconSize={18} aria-label={t("关闭", "Close")} onClick={onClose} />

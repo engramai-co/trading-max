@@ -2,7 +2,7 @@
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
-import { ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { compact, currency, object, objects, percent, safeUrl, str } from "@/workspace/data";
 import { nextEarningsDate } from "./analyst-data";
@@ -32,7 +32,7 @@ function LensTitle({ label, onOpen }: { label: string; onOpen: () => void }) {
   return (
     <button type="button" className="mx-ranking-link" onClick={onOpen}>
       {label}
-      <ArrowRight size={14} aria-hidden="true" />
+      <ArrowRight size={16} aria-hidden="true" />
     </button>
   );
 }
@@ -294,7 +294,7 @@ export function CompanyOverview({
           title={
             <Link className="mx-ranking-link" href={`/holdings?q=${encodeURIComponent(data.ticker)}`}>
               {t("我的敞口", "My exposure")}
-              <ArrowRight size={14} aria-hidden="true" />
+              <ArrowRight size={16} aria-hidden="true" />
             </Link>
           }
         >

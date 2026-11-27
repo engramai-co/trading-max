@@ -9,12 +9,12 @@ import {
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
 import {
-  ArrowClockwise,
-  CheckCircle,
+  CircleAlert,
+  CircleCheck,
+  CircleQuestionMark,
   Info,
-  Question,
-  WarningCircle,
-} from "@phosphor-icons/react";
+  RotateCw,
+} from "lucide-react";
 import Link from "./link";
 import { cloneElement, useCallback, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -214,7 +214,7 @@ export function Help({
         }
       }}
     >
-      {tag ? <>{tag}<span className="sr-only"> {explanation}</span></> : <Question size={16} aria-hidden="true" />}
+      {tag ? <>{tag}<span className="sr-only"> {explanation}</span></> : <CircleQuestionMark size={16} aria-hidden="true" />}
     </button>
   );
   const body = (
@@ -422,16 +422,16 @@ export function Notice({
 }) {
   const Icon =
     tone === "good"
-      ? CheckCircle
+      ? CircleCheck
       : tone === "warn" || tone === "bad"
-        ? WarningCircle
+        ? CircleAlert
         : Info;
   return (
     <div
       className={"mx-notice mx-notice-" + tone}
       role={tone === "bad" ? "alert" : tone === "good" ? "status" : "note"}
     >
-      <Icon size={18} />
+      <Icon aria-hidden="true" size={18} />
       <div>{children}</div>
     </div>
   );
@@ -451,7 +451,7 @@ export function Empty({
   return (
     <div className="mx-empty">
       <div className="mx-empty-mark">
-        <Info size={24} />
+        <Info aria-hidden="true" size={20} />
       </div>
       <Heading><CenteredCopy>{title}</CenteredCopy></Heading>
       {description && <p><CenteredCopy>{description}</CenteredCopy></p>}
@@ -543,7 +543,7 @@ export function QueryError({
           <div className="flex flex-wrap items-center gap-mx-md">
             {retry && (
               <Button onClick={() => void retry()}>
-                <ArrowClockwise size={16} aria-hidden="true" />
+                <RotateCw size={16} aria-hidden="true" />
                 {t("重新加载", "Try again")}
               </Button>
             )}

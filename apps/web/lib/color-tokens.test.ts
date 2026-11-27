@@ -198,6 +198,8 @@ describe("Palette A neutral-ink colour tokens and WCAG contrast contract", () =>
         ["--ring", "--card"],
         ["--ring", "--popover"],
         ["--sidebar-ring", "--sidebar"],
+        ["--sidebar-foreground", "--sidebar"],
+        ["--sidebar-accent-foreground", "--sidebar-accent"],
         ["--scrollbar-thumb", "--background"],
         ["--scrollbar-thumb", "--card"],
         ["--scrollbar-thumb", "--muted"],

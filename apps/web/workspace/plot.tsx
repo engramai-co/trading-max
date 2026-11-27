@@ -2,7 +2,7 @@
 
 import { FocusTrap } from "@mantine/core";
 import { useBreakpoint } from "@/lib/hooks";
-import { ArrowsOut, ArrowsIn, X } from "@phosphor-icons/react";
+import { Maximize2, Minimize2, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useLocale } from "@/components/locale-provider";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
@@ -461,11 +461,11 @@ export function Plot({
         </div>
       </details>}
       {fullscreen && (expanded
-        ? <button data-autofocus type="button" ref={closeTrigger} aria-label={t("退出全屏", "Exit fullscreen")} onClick={closeFullscreen}><ArrowsIn aria-hidden="true" size={17} /></button>
+        ? <button data-autofocus type="button" ref={closeTrigger} aria-label={t("退出全屏", "Exit fullscreen")} onClick={closeFullscreen}><Minimize2 aria-hidden="true" size={18} /></button>
         : <button type="button" ref={fullscreenTrigger} aria-label={t("全屏", "Fullscreen")} onClick={() => {
           setExpanded(true);
           requestAnimationFrame(() => closeTrigger.current?.focus());
-        }}><ArrowsOut aria-hidden="true" size={17} /></button>)}
+        }}><Maximize2 aria-hidden="true" size={18} /></button>)}
     </div>}
     {/* The reading is spoken here; it shows as a card beside the cursor, or a strip above the plot on phones. */}
     {readout && <div className="sr-only">

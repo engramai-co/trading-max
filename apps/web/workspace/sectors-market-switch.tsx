@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu, Select } from "@mantine/core";
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Segments, useCopy } from "./foundation";
 
@@ -79,7 +79,7 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
             data-selected-market={selected ? "" : undefined}
           >
             {selected?.label ?? t("更多", "More")}
-            <CaretDown size={14} aria-hidden="true" />
+            <ChevronDown size={16} aria-hidden="true" />
           </Button>
         </Menu.Target>
         <Menu.Dropdown>

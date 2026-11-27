@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { X } from "@phosphor-icons/react";
+import { X } from "lucide-react";
 import Link from "../link";
 import { useCopy } from "../foundation";
 import { isImeComposing } from "../shortcut-platform";
@@ -84,7 +84,7 @@ export function AssistantPanel({ page, scopeLabel, searchOpen, overlay }: { over
     {!showThread && <>
       <div className="mx-assistant-heading"><strong>{ASSISTANT_NAME}</strong><button data-assistant-dismiss onClick={close}
         onKeyDown={event => { if (pending && event.key === "Tab") event.preventDefault(); }}
-        aria-label={t("关闭侧栏","Close sidebar")}><X /></button></div>
+        aria-label={t("关闭侧栏","Close sidebar")}><X size={18} aria-hidden="true" /></button></div>
       <div className="mx-assistant-opening"><p>{pending ? t("正在检查连接…","Checking connection…") : errorLabel(code ?? "assistant_unavailable", t)}</p>
         {!pending && <Link href="/settings?tab=assistant" prefetch={false} onClick={close} className="mx-text-link">{t("打开设置","Open Settings")} →</Link>}
       </div>

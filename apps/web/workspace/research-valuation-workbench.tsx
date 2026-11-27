@@ -11,7 +11,7 @@ import {
 import { useDebouncedValue } from "@/lib/hooks";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { ArrowClockwise, LockSimple, LockSimpleOpen } from "@phosphor-icons/react";
+import { Lock, LockOpen, RotateCw } from "lucide-react";
 import {
   keepPreviousData,
   useMutation,
@@ -788,7 +788,7 @@ function ModelEditor({
                   variant="ghost"
                   onClick={onRetry}
                 >
-                  <ArrowClockwise size={12} aria-hidden="true" />
+                  <RotateCw size={16} aria-hidden="true" />
                   {t("重试", "Retry")}
                 </Button>
               </div>
@@ -953,7 +953,7 @@ function ModelEditor({
                   }} />;
               }
               const fieldLocked = isLocked(selected, field.key);
-              const lockMark = fieldLocked && <><LockSimple className="mx-lock-mark" size={12} aria-hidden="true" />
+              const lockMark = fieldLocked && <><Lock className="mx-lock-mark" size={16} aria-hidden="true" />
                 <span className="sr-only">{t("已锁定", "Locked")}</span></>;
               return field.key === activeField ? (
                 // The selected row is the input; its label names the field once.
@@ -998,7 +998,7 @@ function ModelEditor({
                     aria-label={t("锁定", "Lock")} aria-describedby={"assumption-label-" + field.key}
                     disabled={invalidInput}
                     onClick={() => toggleLock(selected, field.key)}>
-                    {fieldLocked ? <LockSimple size={14} aria-hidden="true" /> : <LockSimpleOpen size={14} aria-hidden="true" />}
+                    {fieldLocked ? <Lock size={16} aria-hidden="true" /> : <LockOpen size={16} aria-hidden="true" />}
                   </button>
                 </div>
               ) : (

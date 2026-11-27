@@ -30,8 +30,9 @@ dependencies include:
 
 | Package family | Licence |
 |---|---|
-| FastAPI, Keyring, Mantine, Phosphor Icons, TanStack Query, Next.js, React | MIT |
+| FastAPI, Keyring, Mantine, TanStack Query, Next.js, React | MIT |
 | httpx, Uvicorn | BSD-3-Clause |
+| Lucide | ISC, with Feather-derived icons under MIT |
 | yfinance, Apache ECharts | Apache-2.0 |
 | NumPy, pandas, Pydantic, pypdf, xlrd and their transitive dependencies | See the exact version metadata and release SBOM |
 

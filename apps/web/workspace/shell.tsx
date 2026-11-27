@@ -11,22 +11,23 @@ import { Button, CloseButton } from "@/components/ui/button";
 import { useBreakpoint, useOs } from "@/lib/hooks";
 import {
   ArrowRight,
-  ChartBar,
+  ChartColumnIncreasing,
   ChartLine,
-  ChartPieSlice,
+  ChartPie,
   Check,
-  CircleHalf,
-  ClockCounterClockwise,
-  DotsThree,
-  GearSix,
+  Contrast,
+  Ellipsis,
   Globe,
-  Layout,
-  MagnifyingGlass,
+  Grid2X2,
+  History,
+  Layers2,
   Moon,
-  SquaresFour,
-  StackSimple,
+  PanelsTopLeft,
+  Search,
+  Settings,
   Sun,
-} from "@phosphor-icons/react";
+  type LucideIcon,
+} from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "./link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -99,14 +100,14 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       // Six dock cells are about 47px wide on a 320px phone; every name, Research
       // and Holdings included, is checked to fit there.
       mobileLabel: t("总览", "Home"),
-      icon: SquaresFour,
+      icon: Grid2X2,
       group: 0,
     },
     {
       href: "/holdings",
       label: t("持仓与穿透", "Holdings"),
       mobileLabel: t("持仓", "Holdings"),
-      icon: ChartPieSlice,
+      icon: ChartPie,
       group: 0,
     },
     {
@@ -120,35 +121,35 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       href: "/sectors",
       label: t("市场", "Markets"),
       mobileLabel: t("市场", "Markets"),
-      icon: Layout,
+      icon: PanelsTopLeft,
       group: 1,
     },
     {
       href: "/research",
       label: t("研究", "Research"),
       mobileLabel: t("研究", "Research"),
-      icon: ChartBar,
+      icon: ChartColumnIncreasing,
       group: 1,
     },
     {
       href: "/review",
       label: t("投资复盘", "Review"),
       mobileLabel: t("复盘", "Review"),
-      icon: ClockCounterClockwise,
+      icon: History,
       group: 1,
     },
     {
       href: "/health",
       label: t("数据状态", "Data status"),
       mobileLabel: t("数据状态", "Data status"),
-      icon: StackSimple,
+      icon: Layers2,
       group: 2,
     },
     {
       href: "/settings",
       label: t("设置", "Settings"),
       mobileLabel: t("设置", "Settings"),
-      icon: GearSix,
+      icon: Settings,
       group: 2,
     },
   ];
@@ -252,7 +253,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     pathname === "/research" ? (onIndexPage ? indexName(params.get("index") ?? "") : params.get("ticker")) : null,
     active?.label,
   ));
-  const researchIcon = navigation.find((page) => page.href === "/research")?.icon ?? MagnifyingGlass;
+  const researchIcon = navigation.find((page) => page.href === "/research")?.icon ?? Search;
   const findText = query.trim();
   // On Research the address keeps its view, filters and everything else, and gains only the text
   // to find: the page opens its finder over itself and drops the text again, so closing the finder
@@ -263,11 +264,11 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   findQuery.set("find", findText);
   const results: Array<Omit<SearchResult, "group"> & {
     group: SearchResult["group"] | "holdings" | "securities";
-    Icon: typeof MagnifyingGlass;
+    Icon: LucideIcon;
     replace?: boolean;
   }> = [
     ...searchWorkspace({ query, pages, instruments: directory.data?.instruments ?? [], indices, recent, currentTicker, locale })
-      .map((item) => ({ ...item, Icon: navigation.find((page) => page.href === item.href.split("?")[0])?.icon ?? MagnifyingGlass })),
+      .map((item) => ({ ...item, Icon: navigation.find((page) => page.href === item.href.split("?")[0])?.icon ?? Search })),
     ...(match
       ? [
           {
@@ -276,7 +277,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               t("在持仓中搜索", "Search holdings") + " “" + query.trim() + "”",
             detail: undefined,
             group: "holdings" as const,
-            Icon: ChartPieSlice,
+            Icon: ChartPie,
           },
         ]
       : []),
@@ -335,15 +336,15 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     {
       value: "auto",
       label: systemResolved ? `${t("跟随系统", "System")} · ${systemResolved}` : t("跟随系统", "System"),
-      Icon: CircleHalf,
+      Icon: Contrast,
     },
   ] as const;
   const appearanceItems = appearances.map((item) => (
     <Menu.Item
       key={item.value}
       onClick={() => setColorScheme(item.value)}
-      leftSection={<item.Icon size={17} />}
-      rightSection={colorScheme === item.value && <Check size={15} />}
+      leftSection={<item.Icon aria-hidden="true" size={18} />}
+      rightSection={colorScheme === item.value && <Check aria-hidden="true" size={16} />}
     >
       {item.label}
     </Menu.Item>
@@ -362,7 +363,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           size="icon"
           aria-label={t("选择外观", "Choose appearance")}
         >
-          <CircleHalf size={20} aria-hidden="true" />
+          <Contrast size={20} aria-hidden="true" />
         </Button>
       </Menu.Target>
       <Menu.Dropdown>{appearanceItems}</Menu.Dropdown>
@@ -386,7 +387,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           size="icon"
           aria-label={t("更多", "More")}
         >
-          <DotsThree size={22} weight="bold" aria-hidden="true" />
+          <Ellipsis size={20} aria-hidden="true" />
         </Button>
       </Menu.Target>
       <Menu.Dropdown>
@@ -396,7 +397,8 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             component={Link}
             href={n.href}
             aria-current={active?.href === n.href ? "page" : undefined}
-            leftSection={<n.icon size={17} weight={active?.href === n.href ? "fill" : "regular"} />}
+            leftSection={<n.icon aria-hidden="true" size={18} />}
+            rightSection={active?.href === n.href && <Check aria-hidden="true" size={16} />}
           >
             {n.label}
           </Menu.Item>
@@ -405,7 +407,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           <>
             <Menu.Divider role="separator" />
             <Menu.Item
-              leftSection={<Globe size={17} />}
+              leftSection={<Globe aria-hidden="true" size={18} />}
               aria-label={nextLocale.action}
               onClick={() => setLocale(nextLocale.value)}
             >
@@ -432,7 +434,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         >
           {compact ? <NavigationIcon icon={n.icon} /> : <><n.icon
             size={20}
-            weight={active?.href === n.href ? "fill" : "regular"}
             aria-hidden="true"
           />
           <span>{n.label}</span></>}
@@ -463,7 +464,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           setSearchOpen(true);
         }}
       >
-        <MagnifyingGlass size={desktop && position === "right" ? 22 : 19} aria-hidden="true" />
+        <Search size={20} aria-hidden="true" />
       </Button>
     </Tooltip>
   );
@@ -515,7 +516,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               aria-label={nextLocale.action}
               onClick={() => setLocale(nextLocale.value)}
             >
-              <Globe size={19} aria-hidden="true" />
+              <Globe size={20} aria-hidden="true" />
             </Button>}
             {!desktop && theme}
             {more}
@@ -582,7 +583,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             aria-activedescendant={results[selectedIndex] ? searchId + "-" + selectedIndex : undefined}
             aria-label={t("搜索", "Search")}
             placeholder={t("页面、代码或名称", "Page, ticker or name")}
-            leftSection={<MagnifyingGlass size={20} />}
+            leftSection={<Search aria-hidden="true" size={20} />}
             value={query}
             maxLength={160}
             onChange={(event) => {

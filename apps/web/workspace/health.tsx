@@ -2,13 +2,13 @@
 
 import { Drawer, Select } from "@mantine/core";
 import {
-  ArrowClockwise,
+  Activity,
   ArrowRight,
-  CheckCircle,
+  CircleAlert,
+  CircleCheck,
   Clock,
-  Pulse,
-  WarningCircle,
-} from "@phosphor-icons/react";
+  RotateCw,
+} from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import Link from "./link";
 import { Fragment, useEffect, useRef, useState } from "react";
@@ -254,7 +254,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           focusableWhenDisabled
           onClick={() => void runManualCheck()}
         >
-          <ArrowClockwise size={16} aria-hidden="true" />
+          <RotateCw size={16} aria-hidden="true" />
           {t("重新检查", "Check now")}
         </Button></Actions>
       }
@@ -275,15 +275,15 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
           >
             <div className="mx-health-symbol">
               {tone === "running" ? (
-                <Pulse size={35} />
+                <Activity aria-hidden="true" size={20} />
               ) : showStaleHeadline ? (
-                <Clock size={35} />
+                <Clock aria-hidden="true" size={20} />
               ) : tone === "ready" ? (
-                <CheckCircle size={35} />
+                <CircleCheck aria-hidden="true" size={20} />
               ) : tone === "setup" ? (
-                <Clock size={35} />
+                <Clock aria-hidden="true" size={20} />
               ) : (
-                <WarningCircle size={35} />
+                <CircleAlert aria-hidden="true" size={20} />
               )}
             </div>
             <div>
@@ -384,7 +384,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     disabled={readOnly || !data.health || queued > 0 || running > 0}
                     onClick={() => start.mutate()}
                   >
-                    <ArrowClockwise size={16} aria-hidden="true" />
+                    <RotateCw size={16} aria-hidden="true" />
                     {queued > 0 || running > 0 ? t("更新进行中", "Update in progress") : t("开始更新", "Start update")}
                   </Button>
                   <Link
@@ -393,7 +393,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     className={buttonVariants({ variant: "ghost" })}
                   >
                     {t("管理更新计划", "Manage schedule")}
-                    <ArrowRight size={15} aria-hidden="true" />
+                    <ArrowRight size={16} aria-hidden="true" />
                   </Link>
                 </div>
                 </>}
@@ -493,11 +493,11 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                         }
                       >
                         {j.status === "succeeded" ? (
-                          <CheckCircle size={22} />
+                          <CircleCheck aria-hidden="true" size={20} />
                         ) : j.status === "failed" ? (
-                          <WarningCircle size={22} />
+                          <CircleAlert aria-hidden="true" size={20} />
                         ) : (
-                          <Clock size={22} />
+                          <Clock aria-hidden="true" size={20} />
                         )}
                       </span>
                       <span className="mx-job-name">
@@ -520,7 +520,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                           {statusText(j.status, t)}
                         </Tag>
                       )}
-                      <ArrowRight size={17} />
+                      <ArrowRight aria-hidden="true" size={18} />
                     </button>;
                   return assistantReady && !readOnly && ["failed","interrupted"].includes(j.status)
                     ? <div className="mx-job-with-why" key={j.jobId}>{row}{why(j.jobId,scopes.find(item=>item.value===j.scope)?.label ?? j.scope,"history:")}</div> : row;
@@ -608,7 +608,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     }
                   >
                     {stage.status === "succeeded" ? (
-                      <CheckCircle size={20} />
+                      <CircleCheck aria-hidden="true" size={20} />
                     ) : (
                       index + 1
                     )}

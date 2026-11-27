@@ -23,7 +23,7 @@
 
 import { useAssistantPageContext } from "./assistant/context";
 import { useBreakpoint } from "@/lib/hooks";
-import { ArrowLeft } from "@phosphor-icons/react";
+import { ArrowLeft } from "lucide-react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";

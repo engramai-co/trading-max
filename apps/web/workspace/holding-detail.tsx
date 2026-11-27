@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { ComponentProps } from "react";
 import { useLocale } from "@/components/locale-provider";

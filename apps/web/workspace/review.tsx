@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "lucide-react";
 import dynamic from "next/dynamic";
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -611,7 +611,7 @@ function ReviewHighlights({
                 <span className={"mx-highlight-value mx-" + (tone(card.value) ?? "neutral")}>
                   {currency(card.value, "GBP", 2)}
                 </span>
-                {card.available && <ArrowRight className="mx-highlight-go" size={14} aria-hidden="true" />}
+                {card.available && <ArrowRight className="mx-highlight-go" size={16} aria-hidden="true" />}
               </span>
               {card.partial && <Tag tone="warn">{t("覆盖不完整", "Partial coverage")}</Tag>}
             </>

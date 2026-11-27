@@ -1,7 +1,7 @@
 "use client";
 
 import { useLocalStorage } from "@/lib/hooks";
-import { PushPin } from "@phosphor-icons/react";
+import { Pin } from "lucide-react";
 import { useCallback, useEffect, useId, useRef, useState, type ComponentProps, type ReactNode } from "react";
 import { useCopy } from "./foundation";
 import { Plot } from "./plot";
@@ -216,7 +216,7 @@ export function ResearchReading({ sections, parameter, children, before, initial
           {indexOpen && <button type="button" className="mx-section-pin" aria-pressed={indexPinned}
             aria-label={t("固定本页分节", "Pin sections")} title={indexPinned ? t("取消固定", "Unpin") : t("固定", "Pin")}
             onClick={() => setIndexPinned((pinned) => !pinned)}>
-            <PushPin size={15} weight={indexPinned ? "fill" : "regular"} aria-hidden="true" />
+            <Pin size={16} fill={indexPinned ? "currentColor" : "none"} aria-hidden="true" />
           </button>}
         <button type="button" className="mx-section-toggle" aria-expanded={indexOpen} aria-controls={indexId}
           aria-label={t("本页分节", "Sections on this page")} title={indexOpen ? t("收起分节", "Hide sections") : t("展开分节", "Show sections")}

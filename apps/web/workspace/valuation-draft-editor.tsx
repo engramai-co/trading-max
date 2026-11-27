@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, X } from "@phosphor-icons/react";
+import { Check, X } from "lucide-react";
 import { useImperativeHandle, useLayoutEffect, useRef, useState, type Ref } from "react";
 import type { components } from "@/lib/api-schema";
 import { useLocale, type Locale } from "@/components/locale-provider";
@@ -159,8 +159,8 @@ export function ProposalRow({ draft, proposal, label, scale, suffix, decide, edi
       <del><span className="sr-only">{t("原值","Previous value")}</span> {format(old)}</del>
       <span className="mx-draft-candidate"><strong><span className="sr-only">{t("建议值","Proposed value")}</span> {format(p.value)}</strong><small>{t(cz,ce)}</small></span>
       <div className="mx-draft-actions">
-        <button type="button" disabled={disabled} aria-label={t("接受", "Accept") + " " + label} aria-pressed={decision === "accepted"} onClick={() => decide("accepted")}><Check aria-hidden /></button>
-        <button type="button" disabled={disabled} aria-label={t("拒绝", "Reject") + " " + label} onClick={() => decide("rejected")}><X aria-hidden /></button>
+        <button type="button" disabled={disabled} aria-label={t("接受", "Accept") + " " + label} aria-pressed={decision === "accepted"} onClick={() => decide("accepted")}><Check size={18} aria-hidden /></button>
+        <button type="button" disabled={disabled} aria-label={t("拒绝", "Reject") + " " + label} onClick={() => decide("rejected")}><X size={18} aria-hidden /></button>
       </div>
     </div>
     <div className="mx-draft-reason">{t(zh,en)}{" "}

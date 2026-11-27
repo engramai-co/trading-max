@@ -17,7 +17,7 @@
  */
 
 import { Select } from "@mantine/core";
-import { ChartLine } from "@phosphor-icons/react";
+import { ChartLine } from "lucide-react";
 import Link from "./link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -363,7 +363,7 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
       <div className="mx-overview-lead-head">
         <span className="mx-overview-lead-label">{label}</span>
         <TextLink href={portfolioPerformanceHref(scope, range)}>
-          <ChartLine size={14} />
+          <ChartLine aria-hidden="true" size={16} />
           {t("收益分析", "View performance")}
         </TextLink>
       </div>
@@ -457,7 +457,7 @@ function OverviewHistory({
               </span>
             )}
             <TextLink href={portfolioPerformanceHref(scope, range)}>
-              <ChartLine size={14} />
+              <ChartLine aria-hidden="true" size={16} />
               {t("收益分析", "View performance")}
             </TextLink>
           </div>

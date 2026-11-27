@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CloudCheck, GearSix, Info, Pulse, UploadSimple, WarningCircle } from "@phosphor-icons/react";
+import { Activity, ArrowRight, CircleAlert, CloudCheck, Info, Settings, Upload } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -30,11 +30,11 @@ export function DesktopStatus({ localWorkspace = false, demonstration = false }:
   return <nav className="mx-desktop-tools" aria-label={t("工作区管理", "Workspace management")}>
     <NavigationHint label={label}>
       <Link href="/health" aria-label={label} className={"mx-desktop-status" + (warning ? " mx-desktop-warning" : "")}>
-        {demonstration ? <Info size={24} aria-hidden="true" /> : warning ? <WarningCircle size={24} aria-hidden="true" /> : state.tone === "setup" ? <Info size={24} aria-hidden="true" /> : state.running ? <Pulse size={24} aria-hidden="true" /> : <CloudCheck size={24} aria-hidden="true" />}
+        {demonstration ? <Info size={20} aria-hidden="true" /> : warning ? <CircleAlert size={20} aria-hidden="true" /> : state.tone === "setup" ? <Info size={20} aria-hidden="true" /> : state.running ? <Activity size={20} aria-hidden="true" /> : <CloudCheck size={20} aria-hidden="true" />}
       </Link>
     </NavigationHint>
-    <NavigationHint label={t("导入记录", "Import records")}><Link href="/imports" aria-label={t("导入记录", "Import records")}><UploadSimple size={24} aria-hidden="true" /></Link></NavigationHint>
-    <NavigationHint label={t("工作区设置", "Workspace settings")}><Link href="/settings" aria-label={t("工作区设置", "Workspace settings")}><GearSix size={24} aria-hidden="true" /></Link></NavigationHint>
+    <NavigationHint label={t("导入记录", "Import records")}><Link href="/imports" aria-label={t("导入记录", "Import records")}><Upload size={20} aria-hidden="true" /></Link></NavigationHint>
+    <NavigationHint label={t("工作区设置", "Workspace settings")}><Link href="/settings" aria-label={t("工作区设置", "Workspace settings")}><Settings size={20} aria-hidden="true" /></Link></NavigationHint>
   </nav>;
 }
 
@@ -50,7 +50,7 @@ export function DesktopSurface({ children, localWorkspace, demonstration }: { ch
     <a className="mx-skip" href="#main-content">{t("跳到正文", "Skip to content")}</a>
     <header className="mx-desktop-source">
       <div><strong>{name}</strong><span>{demonstration ? t("演示数据 · 只读", "Demo data · Read-only") : localWorkspace ? t("本地工作区", "Local workspace") : t("当前服务", "Current service")}</span></div>
-      <Link href="/" className="mx-text-link">{t("回到工作区", "Back to workspace")}<ArrowRight size={16} /></Link>
+      <Link href="/" className="mx-text-link">{t("回到工作区", "Back to workspace")}<ArrowRight aria-hidden="true" size={16} /></Link>
     </header>
     <main id="main-content" tabIndex={-1}>{children}</main>
   </div>;

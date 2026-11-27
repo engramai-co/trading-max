@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu } from "@mantine/core";
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { buttonVariants } from "@/components/ui/button";
@@ -152,7 +152,7 @@ export function OverviewSectors() {
       <Menu.Target>
         <button type="button" className="mx-overview-market" aria-label={t("选择市场，当前：", "Choose market, now: ") + title}>
           {title}
-          <CaretDown size={14} aria-hidden="true" />
+          <ChevronDown size={16} aria-hidden="true" />
         </button>
       </Menu.Target>
       <Menu.Dropdown>

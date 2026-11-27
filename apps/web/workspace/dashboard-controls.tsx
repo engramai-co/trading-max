@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu } from "@mantine/core";
-import { CaretDown } from "@phosphor-icons/react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PORTFOLIO_RANGES } from "@/lib/portfolio/history";
 import type { Range } from "@/lib/portfolio/nav";
@@ -34,7 +34,7 @@ export function DashboardRanges({ value, onChange, label, intraday = true }: {
         <Menu.Target>
           <button className="mx-range-more" data-selected={Boolean(selected)} type="button"
             aria-label={moreLabel + (selected ? " · " + selected.label : "")}>
-            {selected?.label ?? t("更多", "More")} <CaretDown size={12} aria-hidden="true" />
+            {selected?.label ?? t("更多", "More")} <ChevronDown size={16} className="-mx-[2px] shrink-0" aria-hidden="true" />
           </button>
         </Menu.Target>
         <Menu.Dropdown aria-label={moreLabel}>

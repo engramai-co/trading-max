@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { ArrowClockwise, CaretRight, ChartBar } from "@phosphor-icons/react";
+import { ChartColumnIncreasing, ChevronRight, RotateCw } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
@@ -67,7 +67,7 @@ function RetryIndices({ retry, busy }: { retry: () => void; busy?: boolean }) {
   const t = useCopy();
   return (
     <button type="button" className="mx-index-retry" disabled={busy} onClick={retry}>
-      <ArrowClockwise size={14} aria-hidden="true" />{t("重试", "Retry")}
+      <RotateCw size={16} aria-hidden="true" />{t("重试", "Retry")}
     </button>
   );
 }
@@ -238,7 +238,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
         )}
       >
         {nameOverride ?? (index.basis === "total-return" ? `${name(index)} · ${basis(index)}` : name(index))}
-        {!globalBenchmark && <CaretRight size={13} className="flex-none opacity-65" aria-hidden="true" />}
+        {!globalBenchmark && <ChevronRight size={16} className="-mx-[1.5px] flex-none" aria-hidden="true" />}
       </span>
       <span
         className={cn(
@@ -513,7 +513,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           </Help>
           <div className="mx-index-title-action">
             <TextLink href={researchIndexHref(index)}>
-              <ChartBar size={14} aria-hidden="true" />
+              <ChartColumnIncreasing size={16} aria-hidden="true" />
               {t("查看研究", "View research")}
             </TextLink>
           </div>

@@ -206,33 +206,10 @@ p {
 }
 .mx-nav-icon {
   display: grid;
+  place-items: center;
   width: 24px;
   height: 24px;
   flex-shrink: 0;
-}
-.mx-nav-icon > svg {
-  grid-area: 1 / 1;
-}
-.mx-nav-icon-outline {
-  opacity: 1;
-  transform: scale(1);
-}
-.mx-nav-icon-fill {
-  opacity: 0;
-  transform: scale(0.86);
-}
-.mx-nav-group [aria-current="page"] .mx-nav-icon-outline {
-  opacity: 0;
-  transform: scale(0.86);
-}
-.mx-nav-group [aria-current="page"] .mx-nav-icon-fill {
-  opacity: 1;
-  transform: scale(1);
-}
-.mx-nav-group[data-motion="pointer"] .mx-nav-icon > svg {
-  transition:
-    opacity 150ms var(--mx-ease),
-    transform 150ms var(--mx-ease);
 }
 .mx-nav-group {
   position: relative;

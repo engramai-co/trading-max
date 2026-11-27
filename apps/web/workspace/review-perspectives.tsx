@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { ArrowUpRight } from "@phosphor-icons/react";
+import { ArrowUpRight } from "lucide-react";
 import { useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { Button } from "@/components/ui/button";
@@ -373,7 +373,7 @@ export function TradeQuality({
                       {numeric(r.feesGbp) ? " · " + t("费用 ", "Fees ") + currency(r.feesGbp, "GBP", 2) : ""}
                     </small>
                   </span>
-                  <ArrowUpRight size={15} />
+                  <ArrowUpRight aria-hidden="true" size={16} />
                 </Link>
               ))}
             </Panel>

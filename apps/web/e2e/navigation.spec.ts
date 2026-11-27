@@ -196,7 +196,7 @@ test.describe("workspace navigation refinements", () => {
     await settings.close();
   });
 
-  test("mobile navigation uses legible short labels without overflow", async ({ page }, testInfo) => {
+  test("mobile navigation uses legible short labels, visible selection and constant stroke across pointer and keyboard navigation", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile");
     await page.goto("/");
     const dock = page.locator(".mx-mobile-dock");
@@ -205,16 +205,116 @@ test.describe("workspace navigation refinements", () => {
     expect(await dock.getByRole("link").first().evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(12);
     expect(await dock.getByRole("link").evaluateAll((links) => links.every((link) => link.getBoundingClientRect().height >= 56))).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+    const expectDockSelection = async (name: string) => {
+      const active = dock.getByRole("link", { name, exact: true });
+      await expect(active).toHaveAttribute("aria-current", "page");
+      await expect.poll(() => dock.locator('[aria-current="page"]').evaluate((el) => {
+        const group = el.closest(".mx-nav-group")!;
+        const indicator = group.querySelector(".mx-nav-indicator")!;
+        const dockEl = el.closest(".mx-mobile-dock")!;
+        const inactive = Array.from(group.querySelectorAll("a")).find((a) => a !== el)!;
+        const a = el.getBoundingClientRect();
+        const b = indicator.getBoundingClientRect();
+        const indStyle = getComputedStyle(indicator);
+        return {
+          aligned: Math.abs(a.left - b.left) < 1 && Math.abs(a.width - b.width) < 1,
+          visible: indStyle.visibility === "visible" && indStyle.backgroundColor !== "rgba(0, 0, 0, 0)" && indStyle.backgroundColor !== getComputedStyle(dockEl).backgroundColor,
+          inkDistinct: getComputedStyle(el).color !== getComputedStyle(inactive).color,
+        };
+      })).toEqual({ aligned: true, visible: true, inkDistinct: true });
+      for (const icon of await dock.locator(".mx-nav-icon > svg").all()) {
+        await expect(icon).toHaveCSS("stroke-width", "2px");
+      }
+      expect(await dock.locator(".mx-nav-icon > svg").evaluateAll((icons) => icons.reduce((count, icon) => count + icon.getAnimations().length, 0))).toBe(0);
+    };
+
     await dock.getByRole("link", { name: "持仓", exact: true }).tap();
-    await expect(dock.getByRole("link", { name: "持仓", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(page).toHaveURL(/\/holdings$/);
     await expect(dock.locator(".mx-nav-group")).toHaveAttribute("data-motion", "pointer");
-    await expect(dock.getByRole("link", { name: "持仓", exact: true }).locator(".mx-nav-icon-fill")).toHaveCSS("opacity", "1");
-    await expect.poll(() => dock.locator('[aria-current="page"]').evaluate((active) => {
-      const indicator = active.parentElement!.querySelector(".mx-nav-indicator")!;
-      const a = active.getBoundingClientRect();
-      const b = indicator.getBoundingClientRect();
-      return Math.abs(a.left - b.left) < 1 && Math.abs(a.width - b.width) < 1;
-    })).toBe(true);
+    await expectDockSelection("持仓");
+
+    const research = dock.getByRole("link", { name: "研究", exact: true });
+    await research.focus();
+    await research.press("Enter");
+    await expect(page).toHaveURL(/\/research$/);
+    await expect(dock.locator(".mx-nav-group")).not.toHaveAttribute("data-motion", "pointer");
+    await expectDockSelection("研究");
+  });
+
+  test("mobile More menu keeps visible selection and constant stroke across pointer and keyboard navigation", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile");
+    await page.goto("/");
+    const more = page.getByRole("button", { name: /^(更多|More)$/ });
+    const menu = page.getByRole("menu");
+    const statusItem = menu.getByRole("menuitem", { name: /^(数据状态|Data status)$/ });
+    const settingsItem = menu.getByRole("menuitem", { name: /^(设置|Settings)$/ });
+
+    const expectMoreSelection = async (activeName: RegExp, inactiveName: RegExp) => {
+      const activeItem = menu.getByRole("menuitem", { name: activeName });
+      const inactiveItem = menu.getByRole("menuitem", { name: inactiveName });
+      await expect(activeItem).toHaveAttribute("aria-current", "page");
+      await expect(inactiveItem).not.toHaveAttribute("aria-current");
+      await expect(activeItem.locator('[data-position="right"] svg')).toHaveCount(1);
+      await expect(activeItem.locator('[data-position="right"] svg')).toBeVisible();
+      await expect(inactiveItem.locator('[data-position="right"] svg')).toHaveCount(0);
+      await expect.poll(async () => {
+        const [menuBg, activeBg] = await Promise.all([
+          menu.evaluate((el) => getComputedStyle(el).backgroundColor),
+          activeItem.evaluate((el) => getComputedStyle(el).backgroundColor),
+        ]);
+        return activeBg !== "rgba(0, 0, 0, 0)" && activeBg !== menuBg;
+      }).toBe(true);
+      for (const item of [activeItem, inactiveItem]) {
+        for (const svg of await item.locator("svg").all()) {
+          await expect(svg).toHaveCSS("stroke-width", "2px");
+        }
+        expect(await item.locator("svg").evaluateAll((icons) => icons.reduce((count, icon) => count + icon.getAnimations().length, 0))).toBe(0);
+      }
+    };
+
+    // Unselected on overview.
+    await more.tap();
+    await expect(menu).toHaveCSS("opacity", "1");
+    await expect(statusItem).not.toHaveAttribute("aria-current");
+    await expect(settingsItem).not.toHaveAttribute("aria-current");
+    await expect(statusItem.locator("svg")).toHaveCSS("stroke-width", "2px");
+    await expect(settingsItem.locator("svg")).toHaveCSS("stroke-width", "2px");
+
+    // Pointer navigation to Settings.
+    await settingsItem.tap();
+    await expect(page).toHaveURL(/\/settings$/);
+    await more.tap();
+    await expect(menu).toHaveCSS("opacity", "1");
+    await expectMoreSelection(/^(设置|Settings)$/, /^(数据状态|Data status)$/);
+    expect((await new AxeBuilder({ page }).include('[role="menu"]').analyze()).violations).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+
+    // Keyboard navigation from Settings to Data status.
+    await more.focus();
+    await more.press("Enter");
+    await expect(menu).toHaveCSS("opacity", "1");
+    await expectMoreSelection(/^(设置|Settings)$/, /^(数据状态|Data status)$/);
+    await expect(statusItem).toBeFocused();
+    await page.keyboard.press("ArrowDown");
+    await expect(settingsItem).toBeFocused();
+    await page.keyboard.press("ArrowUp");
+    await expect(statusItem).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/health$/);
+
+    // Re-open via keyboard and check visible selection in both dark and light schemes.
+    await more.focus();
+    await more.press("Enter");
+    await expect(menu).toHaveCSS("opacity", "1");
+    await expectMoreSelection(/^(数据状态|Data status)$/, /^(设置|Settings)$/);
+
+    await menu.getByRole("menuitem", { name: /^(浅色|Light)$/ }).tap();
+    await expect(menu).toHaveCount(0);
+    await more.tap();
+    await expect(menu).toHaveCSS("opacity", "1");
+    await expectMoreSelection(/^(数据状态|Data status)$/, /^(设置|Settings)$/);
   });
 
   for (const size of [{ width: 320, height: 640 }, { width: 844, height: 390 }]) {
@@ -297,9 +397,11 @@ test.describe("workspace navigation refinements", () => {
     expect(await nav.innerText()).toBe("");
     expect(await nav.getByRole("link").evaluateAll((links) => links.every((link) => link.getAttribute("aria-label") && link.getBoundingClientRect().height >= 44))).toBe(true);
     const research = nav.getByRole("link", { name: /^(研究|Research)$/ });
-    const researchShape = await research.locator(".mx-nav-icon-outline path").first().getAttribute("d");
-    expect(researchShape).not.toBe(await page.locator(".mx-topbar-search path").first().getAttribute("d"));
-    expect(researchShape).not.toBe(await nav.getByRole("link", { name: /收益与风险|Performance/ }).locator(".mx-nav-icon-outline path").first().getAttribute("d"));
+    await expect(nav.locator('.mx-nav-icon > svg[width="20"][stroke="currentColor"][aria-hidden="true"]')).toHaveCount(6);
+    await expect(nav.locator(".mx-nav-icon svg")).toHaveCount(6);
+    const researchShape = await research.locator(".mx-nav-icon svg").innerHTML();
+    expect(researchShape).not.toBe(await page.locator(".mx-topbar-search svg").innerHTML());
+    expect(researchShape).not.toBe(await nav.getByRole("link", { name: /收益与风险|Performance/ }).locator(".mx-nav-icon svg").innerHTML());
     await research.hover();
     await expect(page.getByRole("tooltip")).toHaveText(/^(研究|Research)$/);
     await page.mouse.move(300, 80);
@@ -311,23 +413,63 @@ test.describe("workspace navigation refinements", () => {
     await expect(research).toBeFocused();
   });
 
-  test("selection fills the icon across the former groups, without keyboard motion", async ({ page }, testInfo) => {
+  test("rail keeps a constant stroke width and visible selection across pointer and keyboard navigation", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "desktop");
     await page.goto("/analytics");
-    const nav = page.getByRole("navigation", { name: /主导航|Primary navigation/ });
+    const rail = page.locator(".mx-sidebar");
+    const nav = rail.getByRole("navigation", { name: /主导航|Primary navigation/ });
+    const utilityNav = rail.getByRole("navigation", { name: /工作区管理|Workspace management/ });
+
+    const expectRailSelection = async (scope: typeof nav, name: RegExp) => {
+      const active = scope.getByRole("link", { name });
+      await expect(active).toHaveAttribute("aria-current", "page");
+      await expect.poll(() => scope.locator('[aria-current="page"]').evaluate((el) => {
+        const group = el.closest(".mx-nav-group")!;
+        const indicator = group.querySelector(".mx-nav-indicator")!;
+        const sidebar = el.closest(".mx-sidebar")!;
+        const inactive = Array.from(group.querySelectorAll("a")).find((a) => a !== el)!;
+        const a = el.getBoundingClientRect();
+        const b = indicator.getBoundingClientRect();
+        const indStyle = getComputedStyle(indicator);
+        return {
+          aligned: Math.abs(a.top - b.top) < 1 && Math.abs(a.height - b.height) < 1,
+          visible: indStyle.visibility === "visible" && indStyle.backgroundColor !== "rgba(0, 0, 0, 0)" && indStyle.backgroundColor !== getComputedStyle(sidebar).backgroundColor,
+          inkDistinct: getComputedStyle(el).color !== getComputedStyle(inactive).color,
+        };
+      })).toEqual({ aligned: true, visible: true, inkDistinct: true });
+      for (const icon of await rail.locator(".mx-nav-icon > svg").all()) {
+        await expect(icon).toHaveCSS("stroke-width", "2px");
+      }
+      expect(await rail.locator(".mx-nav-icon > svg").evaluateAll((icons) => icons.reduce((count, icon) => count + icon.getAnimations().length, 0))).toBe(0);
+    };
+
+    await expectRailSelection(nav, /收益与风险|Performance/);
+
     const research = nav.getByRole("link", { name: /^(研究|Research)$/ });
     await research.click();
-    await expect(research).toHaveAttribute("aria-current", "page");
     await expect(nav.locator(".mx-nav-group")).toHaveAttribute("data-motion", "pointer");
-    await expect(research.locator(".mx-nav-icon-fill")).toHaveCSS("opacity", "1");
-    await expect(research.locator(".mx-nav-icon-outline")).toHaveCSS("opacity", "0");
+    await expectRailSelection(nav, /^(研究|Research)$/);
+
     const review = nav.getByRole("link", { name: /投资复盘|Review/ });
+    await page.mouse.move(300, 80);
     await review.focus();
     await review.press("Enter");
-    await expect(review).toHaveAttribute("aria-current", "page");
     await expect(nav.locator(".mx-nav-group")).not.toHaveAttribute("data-motion", "pointer");
-    expect(await nav.locator(".mx-nav-icon > svg").evaluateAll((icons) => icons.reduce((count, icon) => count + icon.getAnimations().length, 0))).toBe(0);
-    await expect(review.locator(".mx-nav-icon-fill")).toHaveCSS("opacity", "1");
+    await expectRailSelection(nav, /投资复盘|Review/);
+
+    const settings = utilityNav.getByRole("link", { name: /^(设置|Settings)$/ });
+    await settings.click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(utilityNav.locator(".mx-nav-group")).toHaveAttribute("data-motion", "pointer");
+    await expectRailSelection(utilityNav, /^(设置|Settings)$/);
+
+    const status = utilityNav.getByRole("link", { name: /数据状态|Data status/ });
+    await page.mouse.move(300, 80);
+    await status.focus();
+    await status.press("Enter");
+    await expect(page).toHaveURL(/\/health$/);
+    await expect(utilityNav.locator(".mx-nav-group")).not.toHaveAttribute("data-motion", "pointer");
+    await expectRailSelection(utilityNav, /数据状态|Data status/);
   });
 
   test("reduced-motion and back navigation leave the indicator at the active row", async ({ page }, testInfo) => {

@@ -3,7 +3,7 @@
 import { quoteValue } from "./financial-values";
 
 import { Popover } from "@mantine/core";
-import { ArrowUpRight } from "@phosphor-icons/react";
+import { ArrowUpRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { CloseButton } from "@/components/ui/button";
 import {
@@ -492,7 +492,7 @@ export function DecisionRow({ row, horizon, days = 20, sided = false }: { row: T
           {change != null && " · " + t("之后 ", "then ") + percent(change, true, 1)}
         </small>
       </span>
-      <ArrowUpRight size={15} aria-hidden="true" />
+      <ArrowUpRight size={16} aria-hidden="true" />
     </DecisionEntry>
   );
 }

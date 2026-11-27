@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, CaretDown } from "@phosphor-icons/react";
+import { ArrowUpRight, ChevronDown } from "lucide-react";
 import type { MouseEvent, ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
@@ -328,7 +328,7 @@ export function ReviewAccounts({ accounts, horizon, onOpen }: {
               <span><span className="sr-only">{columns[1]} </span>{verdict(rows, "sell")}</span>
               <span><span className="sr-only">{columns[2]} </span>{trips(review)}</span>
               <span><span className="sr-only">TWR </span><span className={twr == null ? "mx-muted" : "mx-" + tone(twr)}>{percent(twr, true)}</span></span>
-              <ArrowUpRight size={15} aria-hidden="true" />
+              <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
           </li>
         ))}
@@ -367,7 +367,7 @@ function DecisionLine({
     return (
       <Link className="mx-row-link mx-review-line" href={href}>
         {contents}
-        <ArrowUpRight size={15} aria-hidden="true" />
+        <ArrowUpRight size={16} aria-hidden="true" />
       </Link>
     );
   }
@@ -375,8 +375,8 @@ function DecisionLine({
   return <div className="mx-review-expandable" data-open={open || undefined}>
     <div className="mx-review-expand-head">
       <button type="button" className="mx-row-link mx-review-line" aria-expanded={open} aria-controls={open ? expansion.id : undefined}
-        onClick={event => expansion.toggle(row,"extremes",event.currentTarget)}>{contents}<CaretDown size={15} aria-hidden="true"/></button>
-      <Link href={href} aria-label={t("查看这笔决定", "View this decision") + " · " + row.ticker}><ArrowUpRight size={15} aria-hidden="true"/></Link>
+        onClick={event => expansion.toggle(row,"extremes",event.currentTarget)}>{contents}<ChevronDown size={16} aria-hidden="true"/></button>
+      <Link href={href} aria-label={t("查看这笔决定", "View this decision") + " · " + row.ticker}><ArrowUpRight size={16} aria-hidden="true"/></Link>
     </div>{open && expansion.reading}</div>;
 }
 
@@ -453,7 +453,7 @@ function JournalItem({
       }
       const open = expansion.selected === row && expansion.location === "recent";
       return <button type="button" className={className} aria-expanded={open} aria-controls={open ? expansion.id : undefined}
-        onClick={event => expansion.toggle(row,"recent",event.currentTarget)}>{content} <CaretDown size={12} aria-hidden="true"/></button>;
+        onClick={event => expansion.toggle(row,"recent",event.currentTarget)}>{content} <ChevronDown size={16} aria-hidden="true"/></button>;
     }
     body = (
       <>

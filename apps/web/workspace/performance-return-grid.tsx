@@ -1,7 +1,7 @@
 "use client";
 
 import { Select } from "@mantine/core";
-import { CaretRight } from "@phosphor-icons/react";
+import { ChevronRight } from "lucide-react";
 import { useMemo, useState, type CSSProperties } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { useBreakpoint } from "@/lib/hooks";
@@ -50,7 +50,7 @@ export function ReturnGrid({ scope, onSelect, selected, runId }: {
   };
   return <Panel>
     <details className="mx-monthly-returns" onToggle={(event) => setOpen(event.currentTarget.open)}>
-      <summary><CaretRight size={14} aria-hidden="true" />{t("周期收益（TWR）", "Periodic returns (TWR)")}</summary>
+      <summary><ChevronRight size={16} className="-mx-px shrink-0" aria-hidden="true" />{t("周期收益（TWR）", "Periodic returns (TWR)")}</summary>
       {open && <>
         <div className="mx-return-grid-tools">
           <Segments label={t("收益周期", "Return period")} value={kind} onChange={setKind} options={[
