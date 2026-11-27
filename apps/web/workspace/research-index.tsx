@@ -3,7 +3,6 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { WorkspaceSheet } from "./overlay";
 import { useAssistant } from "./assistant/context";
-import { Select } from "@mantine/core";
 import { ChevronDown, Ellipsis, Trash } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
@@ -33,6 +32,7 @@ import { useRouteState } from "./route-state";
 import { heatMix, neighbour, type Direction, type Tile } from "./sectors-data";
 import { changeTone } from "./sectors-map";
 import { fitTileLabel, scaleNormalisedTiles, TILE_TIER_PADDING, TILE_TIER_TEXT, useMeasuredBox } from "./tile-layout";
+import { SelectPicker } from "./picker";
 
 const views = ["overview", "price", "constituents", "tracking"] as const;
 type Copy = ReturnType<typeof useCopy>;
@@ -330,9 +330,10 @@ function IndexMembers({ index, basket }: { index: IndexIdentity; basket?: IndexC
   const weight = raw.reduce((sum, row) => sum + row.weight, 0);
   const effective = raw.length ? weight ** 2 / raw.reduce((sum, row) => sum + row.weight ** 2, 0) : undefined;
   return <>
-    <Panel title={t("成分与权重", "Constituents & weights")} action={basket && <Select size="xs"
+    <Panel title={t("成分与权重", "Constituents & weights")} action={basket && <SelectPicker
+      className="phone:w-[135px]"
       aria-label={t("成分排序", "Sort constituents")} value={sort} onChange={(next) => setSort(next ?? "weight")}
-      data={[{ value: "weight", label: t("按权重", "By weight") }, { value: "move", label: t("按涨跌", "By move") }, { value: "name", label: t("按代码", "By ticker") }]} />}>
+      options={[{ value: "weight", label: t("按权重", "By weight") }, { value: "move", label: t("按涨跌", "By move") }, { value: "name", label: t("按代码", "By ticker") }]} />}>
       {!basket ? <Empty title={index.id === "nikkei-225"
         ? t("日经 225 按价格加权，暂无已验证权重。", "Nikkei 225 is price weighted. Verified weights are unavailable.")
         : t("暂无已确认的成分篮子", "No verified constituent basket")} /> : <>

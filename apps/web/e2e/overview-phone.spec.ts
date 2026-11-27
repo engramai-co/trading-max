@@ -250,6 +250,126 @@ test.describe("overview on phones", () => {
   }
 
   for (const locale of ["zh", "en"] as const) {
+    test(`the account picker keeps a stable width and navigates by keyboard (${locale})`, async ({ page, isMobile }) => {
+      await page.emulateMedia({ colorScheme: locale === "en" ? "light" : "dark", reducedMotion: "reduce" });
+      if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
+      await prepare(page, locale);
+      await page.goto("/?scope=invest");
+      const account = page.getByRole("combobox", { name: locale === "zh" ? "组合账户" : "Portfolio account" });
+      const list = page.getByRole("listbox", { name: locale === "zh" ? "组合账户" : "Portfolio account" });
+      const invest = list.getByRole("option", { name: "Invest", exact: true });
+      const isa = list.getByRole("option", { name: "Stocks ISA", exact: true });
+      const width = (await account.boundingBox())!.width;
+
+      await account.press("Space");
+      await expect(invest).toHaveAttribute("aria-selected", "true");
+      if (isMobile) {
+        const heights = await list.getByRole("option").evaluateAll((items) => items.map((item) => item.getBoundingClientRect().height));
+        expect(heights.every((height) => height >= 44)).toBe(true);
+      }
+      await page.keyboard.press("Escape");
+      await expect(list).not.toBeVisible();
+      await expect(account).toBeFocused();
+      await page.keyboard.press("ArrowDown");
+      await expect(list).toBeVisible();
+      await page.keyboard.press("s");
+      await expect(isa).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(account).toHaveText("Stocks ISA");
+      await expect(account).toBeFocused();
+      expect((await account.boundingBox())!.width).toBe(width);
+      await page.keyboard.press("Tab");
+      await expect(account).not.toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(account).toBeFocused();
+      await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+    });
+  }
+
+  for (const locale of ["zh", "en"] as const) {
+    for (const width of [390, 501, 1440]) {
+      test(`delayed account names preserve the overview toolbar at ${width}px (${locale})`, async ({ page, isMobile }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await prepare(page, locale);
+        const label = locale === "zh"
+          ? "长期投资".repeat(14) + "甲"
+          : "Long synthetic investment account for retirement planning";
+        const { promise: gatedProfile, resolve: release } = Promise.withResolvers<void>();
+        await page.route("**/api/backend/profile", async route => {
+          await gatedProfile;
+          await route.fulfill({ json: { accountLabels: { A: label } } });
+        });
+        try {
+          await page.goto("/");
+          const toolbar = page.locator(".mx-summary-top");
+          const freshness = toolbar.locator(".mx-freshness-group:has(.mx-freshness)");
+          const account = toolbar.getByRole("combobox", { name: locale === "zh" ? "组合账户" : "Portfolio account" });
+          await expect(account).toHaveText(locale === "zh" ? "全部投资账户" : "All investment accounts");
+          await expect(freshness).toBeVisible();
+          await page.evaluate(() => document.fonts.ready);
+          const first = (await account.boundingBox())!;
+          const time = (await freshness.boundingBox())!;
+          const twoRows = locale === "en" && width === 390;
+          if (twoRows) {
+            expect(time.y).toBeGreaterThan(first.y + first.height);
+            const value = account.locator(".tm-select-value");
+            expect(await value.evaluate(element => element.scrollWidth <= element.clientWidth)).toBe(true);
+          } else {
+            expect(first.x + first.width).toBeLessThan(time.x);
+            expect(time.y).toBeLessThan(first.y + first.height);
+            expect((await toolbar.boundingBox())!.height).toBe(isMobile ? 44 : 40);
+          }
+          await account.click();
+          await page.getByRole("option", { name: "Invest", exact: true }).click();
+          await expect(page).toHaveURL(/scope=invest/);
+          await expect(account).toHaveText("Invest");
+          await expect(freshness).toBeVisible();
+          const before = {
+            account: await account.boundingBox(), toolbar: await toolbar.boundingBox(), time: await freshness.boundingBox(),
+          };
+          expect(before.account!.width).toBe(first.width);
+
+          release();
+          await expect(account).toHaveText(label);
+          await expect(page).toHaveURL(/scope=invest/);
+          expect(await account.boundingBox()).toEqual(before.account);
+          expect(await toolbar.boundingBox()).toEqual(before.toolbar);
+          expect(await freshness.boundingBox()).toEqual(before.time);
+          expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(1);
+
+          await account.click();
+          await expect(page.getByRole("option", { name: label, exact: true })).toHaveAttribute("aria-selected", "true");
+        } finally { release(); }
+      });
+    }
+  }
+
+  test("account picker keeps default names after a profile failure", async ({ page }) => {
+    await prepare(page, "en");
+    const { promise: gatedProfile, resolve: release } = Promise.withResolvers<void>();
+    await page.route("**/api/backend/profile", async route => {
+      await gatedProfile;
+      await route.fulfill({ status: 503, json: { detail: "Profile unavailable" } });
+    });
+    const profile = page.waitForResponse(response => new URL(response.url()).pathname === "/api/backend/profile");
+    try {
+      await page.goto("/");
+      const account = page.getByRole("combobox", { name: "Portfolio account" });
+      await account.click();
+      await page.getByRole("option", { name: "Stocks ISA", exact: true }).click();
+      await expect(account).toHaveText("Stocks ISA");
+
+      release();
+      expect((await profile).status()).toBe(503);
+      await expect(account).toHaveText("Stocks ISA");
+      await expect(page).toHaveURL(/scope=isa/);
+      await account.click();
+      await expect(page.getByRole("option", { name: "Invest", exact: true })).toBeVisible();
+      await expect(page.getByRole("option", { name: "Stocks ISA", exact: true })).toHaveAttribute("aria-selected", "true");
+    } finally { release(); }
+  });
+
+  for (const locale of ["zh", "en"] as const) {
     test(`each statistic keeps its figure in its own cell (${locale})`, async ({ page, isMobile }) => {
       test.skip(!isMobile, "The phone layout");
       await open(page, locale, { large: true });

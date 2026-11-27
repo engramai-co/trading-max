@@ -3,7 +3,6 @@
 import { SearchInput } from "@/components/ui/search-input";
 
 import type { ResearchShell } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Pin, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -16,6 +15,7 @@ import {
   indexDirectory, researchIndexHref, matchIndices, useIndexCatalog, type IndexIdentity,
 } from "./market-indices-data";
 import { useListedIndices } from "./listed-indices";
+import { SelectPicker } from "./picker";
 
 type ResearchInstrument = ResearchShell["instruments"][number];
 
@@ -151,13 +151,12 @@ export function UniverseList({
         onChange={(e) => setFilter(e.currentTarget.value)}
         leading={<Search aria-hidden="true" size={16} />}
       />
-      <Select
-        mt="sm"
-        size="xs"
+      <SelectPicker
+        style={{ marginTop: 10 }}
         aria-label={t("研究分类", "Research category")}
         value={category}
         onChange={(v) => setCategory(v ?? "all")}
-        data={[
+        options={[
           { value: "all", label: t("全部分类", "All categories") },
           { value: "indices", label: t("指数", "Indices") },
           ...(categories).map((c) => ({
@@ -169,13 +168,12 @@ export function UniverseList({
           })),
         ]}
       />
-      <Select
-        mt="sm"
-        size="xs"
+      <SelectPicker
+        style={{ marginTop: 10 }}
         aria-label={t("研究清单排序", "Research list order")}
         value={listSort}
         onChange={(v) => setListSort(v ?? "held")}
-        data={[
+        options={[
           { value: "held", label: t("持仓优先", "Held first") },
           { value: "az", label: t("代码 A–Z", "Ticker A–Z") },
         ]}

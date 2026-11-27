@@ -1,6 +1,5 @@
 "use client";
 
-import { Select } from "@mantine/core";
 import { ChartColumnIncreasing, ChevronRight, RotateCw } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
@@ -32,6 +31,7 @@ import {
   type IndexQuote, type IndexRange, type IndexScope,
 } from "./market-indices-data";
 import { heatMix, sparkline } from "./sectors-data";
+import { SearchPicker } from "./picker";
 
 const IndexDrawdownChart = dynamic(() => import("./index-drawdown-chart").then((module) => module.IndexDrawdownChart));
 const Plot = dynamic(() => import("./charts").then((module) => module.Plot));
@@ -528,16 +528,14 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           {index.currency && index.currency !== "GBP" && <Segments label={t("币种", "Currency")} value={gbp ? "GBP" : "local"}
             options={[{ value: "local", label: index.currency }, { value: "GBP", label: "GBP" }]}
             onChange={(value) => update({ currency: value === "GBP" ? "GBP" : null })} />}
-          {peers.length > 0 && <Select
-            size="xs"
+          {peers.length > 0 && <SearchPicker
             className="mx-index-compare"
             aria-label={t("比较指数", "Compare with index")}
             placeholder={t("比较指数", "Compare with index")}
-            data={peers.map((item) => ({ value: item.id, label: name(item) }))}
+            options={peers.map((item) => ({ value: item.id, label: name(item) }))}
             value={peer?.id ?? null}
             onChange={(value) => update({ compare: value })}
             clearable
-            searchable
           />}
         </div>}
         {!points.length && !hasHistory && index.rights === "licensed-source-required"

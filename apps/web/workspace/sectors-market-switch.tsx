@@ -1,10 +1,10 @@
 "use client";
 
-import { Select } from "@mantine/core";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Segments, useCopy } from "./foundation";
+import { SearchPicker } from "./picker";
 
 type MarketOption<T extends string> = {
   value: T;
@@ -44,22 +44,19 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
     if (next) onChange(next.value);
   };
   if (phone) return (
-    <Select
+    <SearchPicker
       className="mx-sector-market-picker"
-      styles={{ input: { minHeight: 44 } }}
       aria-label={label}
       value={value}
       onChange={pick}
-      searchable
-      allowDeselect={false}
       nothingFoundMessage={t("没有匹配的市场", "No matching market")}
-      data={[
+      options={[
         ...fixed.map(({ value, label }) => ({ value, label })),
         ...grouped.filter(({ options }) => options.length).map(({ group, options }) => ({
           group, items: options.map(({ value, label }) => ({ value, label })),
         })),
       ]}
-      renderOption={({ option }) => {
+      renderOption={(option) => {
         const marker = options.find(({ value }) => value === option.value)?.marker;
         return <span className="mx-segment-label">
           {marker && <span className="mx-segment-marker" aria-hidden="true" />}

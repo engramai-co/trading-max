@@ -1,4 +1,5 @@
 "use client";
+
 import { hasOpenDialog, WorkspaceAlertDialog, WorkspaceDialog, WorkspaceSheet } from "./overlay";
 import dynamic from "next/dynamic";
 import { useEarningsBrief, PositionReading } from "./assistant/research-entry";
@@ -11,7 +12,6 @@ import type {
   ResearchShell,
   SecuritySearchResponse,
 } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { Button } from "@/components/ui/button";
 import { useBreakpoint, useLocalStorage } from "@/lib/hooks";
 import {
@@ -64,6 +64,7 @@ import { useRetainedResult } from "./retained-result";
 import { useRouteState } from "./route-state";
 
 import { CitedResearchEvent } from "./research-cited-event";
+import { SelectPicker } from "./picker";
 
 export type ResearchTab =
   | "overview"
@@ -782,12 +783,11 @@ function SecurityResearchWorkspace() {
         title={t("研究分类", "Research category")}
         className="mx-category-dialog"
       >
-        <Select
-          comboboxProps={{ portalProps: { target: ".mx-category-dialog" } }}
+        <SelectPicker
           disabled={operation.isPending}
           label={t("选择分类", "Choose category")}
           value={selected?.categoryId}
-          data={(shell.data?.watchlistCategories ?? []).map((c) => ({
+          options={(shell.data?.watchlistCategories ?? []).map((c) => ({
             value: c.id,
             label: t(c.labelZh, c.labelEn),
           }))}

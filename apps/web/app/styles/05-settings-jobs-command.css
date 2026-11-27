@@ -270,42 +270,6 @@ details[open]:not(.mx-job-row) > :not(summary) {
   margin: 18px 0 8px;
   font-size: 13px;
 }
-.mantine-Input-input {
-  background-color: var(--field);
-  border-color: var(--input);
-  color: var(--foreground);
-}
-.mantine-Input-input:hover:not(:disabled, [data-disabled], :focus, :focus-within) {
-  border-color: var(--input-hover);
-}
-.mantine-Input-input:focus,
-.mantine-Input-input:focus-within {
-  border-color: var(--ring);
-}
-.mantine-Input-input::placeholder,
-.mantine-InputPlaceholder-placeholder {
-  color: var(--placeholder);
-  opacity: 1;
-}
-.mantine-InputWrapper-label {
-  font-size: 12px;
-  margin-bottom: 6px;
-  font-weight: 550;
-}
-.mantine-InputWrapper-description {
-  font-size: 12px;
-  line-height: 1.8;
-}
-.mantine-Combobox-dropdown {
-  background: var(--popover);
-  color: var(--popover-foreground);
-  border-color: var(--panel-edge);
-}
-.mantine-Combobox-option[data-combobox-selected],
-.mantine-Combobox-option:hover {
-  background: var(--accent);
-  color: var(--accent-foreground);
-}
 /* The current destination in the phone More menu reads at a glance: an accent row beside its check mark. */
 .mx-more-menu [data-slot="dropdown-menu-item"][aria-current] {
   background: var(--accent);

@@ -5,7 +5,6 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { compact, number, object, objects, percent, str, type Json } from "@/workspace/data";
@@ -25,6 +24,7 @@ import {
   statementOrder,
 } from "./research-display";
 import { useRouteState } from "./route-state";
+import { SelectPicker } from "./picker";
 
 export { AnalystView } from "./research-analyst";
 export { CompanyOverview } from "./research-overview";
@@ -220,11 +220,11 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
               ],
             ]}
           />
-          <Select
-            size="xs"
+          <SelectPicker
+            style={{ width: 135 }}
             aria-label={t("相对表现基准", "Relative performance benchmark")}
             value={benchmark}
-            data={[
+            options={[
               { value: "spy", label: "SPY · S&P 500" },
               { value: "qqq", label: "QQQ · Nasdaq 100" },
               { value: "soxx", label: "SOXX · Semiconductors" },
@@ -499,12 +499,12 @@ export function FinancialStatements({
             { value: "cashflow", label: t("现金流量表", "Cash flow") },
           ]}
         />
-        <Select
+        <SelectPicker
           aria-label={t("报表显示单位", "Statement display units")}
           value={unit}
           onChange={(v) => setUnit(v ?? "millions")}
-          w={210}
-          data={[
+          style={{ width: 210 }}
+          options={[
             { value: "millions", label: t("百万 ", "Millions · ") + unitLabel },
             {
               value: "original",

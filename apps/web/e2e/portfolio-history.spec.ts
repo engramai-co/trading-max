@@ -105,7 +105,7 @@ test.describe("overview to performance", () => {
       const coverage = await overview.locator(".mx-history-coverage").allTextContents();
       await periodMove(page, isMobile).getByRole("link", { name: "View performance" }).click();
       await expect(page).toHaveURL(new RegExp(`view=money&range=${range}&scope=isa`));
-      await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Stocks\u00a0ISA");
+      await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveText("Stocks\u00a0ISA");
       await selectedRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), rangeLabel, isMobile);
       await expect(page.locator("[data-tm-chart-ready=true]").first()).toBeVisible();
       const exact = await observations(page.locator(".mx-chart-data").first());
@@ -147,6 +147,6 @@ test.describe("overview to performance", () => {
     await chooseRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), "1M", isMobile);
     await page.reload();
     await selectedRange(page.locator(".mx-chart-toolbar .mx-dashboard-ranges"), "1M", isMobile);
-    await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveValue("Invest");
+    await expect(page.getByRole("combobox", { name: "Analysis account" })).toHaveText("Invest");
   });
 });

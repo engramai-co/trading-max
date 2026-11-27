@@ -134,10 +134,4 @@ export const tradingMaxTheme = createTheme({
     lg: "0 24px 64px rgba(17,24,39,.14)",
     xl: "0 32px 80px rgba(17,24,39,.18)",
   },
-  components: {
-    Select: {
-      defaultProps: { size: "sm", radius: "sm", allowDeselect: false },
-      styles: { input: { minHeight: 40 } },
-    },
-  },
 });

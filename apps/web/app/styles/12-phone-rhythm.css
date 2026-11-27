@@ -308,13 +308,6 @@
     align-items: center;
     gap: var(--mx-space-group);
   }
-  .mx-page :is(.mx-summary-top, .mx-holdings-summary > .mx-toolbar) > .mantine-Select-root {
-    flex: 0 1 156px;
-  }
-  /* English names the account in full, so its select keeps 200px and the freshness moves below it. */
-  .mx-page:lang(en) :is(.mx-summary-top, .mx-holdings-summary > .mx-toolbar) > .mantine-Select-root {
-    flex-basis: 200px;
-  }
   .mx-page :is(.mx-summary-top, .mx-holdings-summary > .mx-toolbar) > .mx-freshness {
     justify-content: flex-end;
   }
@@ -420,8 +413,7 @@
   .mx-command-result mark {
     font-weight: 600;
   }
-  .mx-command-group,
-  .mantine-InputWrapper-label {
+  .mx-command-group {
     font-weight: 500;
   }
   /* Headings and table headers that only carry the browser's bold; any authored weight still wins. */
@@ -435,9 +427,6 @@
 /* Touch on phones: every control offers 44 × 44px. Fields and buttons grow (a height wins over the theme's 40px
    minimum); small text targets keep their size and take a hit area centred on them. */
 @media (max-width: 767px) and (pointer: coarse) {
-  .mx-page .mantine-Select-input {
-    height: 44px;
-  }
   .mx-page :is(.mx-attention a, .mx-chart-data > summary, .mx-event-link) {
     min-height: 44px;
   }

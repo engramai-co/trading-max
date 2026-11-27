@@ -83,7 +83,7 @@
     min-width: 0;
   }
 }
-.mx-index-research-chart-tools .mantine-MultiSelect-root {
+.mx-index-research-chart-tools .tm-picker {
   min-width: 164px;
   max-width: 380px;
 }
@@ -177,7 +177,7 @@
   .mx-index-research-risk-chart + .mx-index-research-risk-chart {
     border-top: 1px solid var(--mx-border);
   }
-  .mx-index-research-chart-tools .mantine-MultiSelect-root {
+  .mx-index-research-chart-tools .tm-picker {
     max-width: min(310px, 100%);
   }
 }

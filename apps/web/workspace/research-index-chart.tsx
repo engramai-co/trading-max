@@ -1,6 +1,5 @@
 "use client";
 
-import { MultiSelect } from "@mantine/core";
 import { Switch } from "@/components/ui/switch";
 import { useBreakpoint } from "@/lib/hooks";
 import { useQueries, useQuery } from "@tanstack/react-query";
@@ -26,6 +25,7 @@ import { DataBasis } from "./reading-card";
 import { api } from "./data";
 import { Empty, Panel, Pending, QueryError, Segments, useCopy } from "./foundation";
 import type { IndexHistory, IndexIdentity, IndexRange } from "./market-indices-data";
+import { SearchMultiPicker } from "./picker";
 
 const Plot = dynamic(() => import("./charts").then((module) => module.Plot));
 
@@ -204,10 +204,10 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
           options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
           onChange={setRange} />
         <div>
-          {available.length > 0 && <MultiSelect searchable clearable maxValues={2}
+          {available.length > 0 && <SearchMultiPicker clearable maxValues={2}
             value={peers.map((item) => item.id)} onChange={setCompare}
-            aria-label={t("比较指数", "Compare with index")} placeholder={t("比较指数", "Compare with index")}
-            data={available.map((item) => ({ value: item.id, label: t(item.nameZh, item.name) }))} />}
+            label={t("比较指数", "Compare with index")}
+            options={available.map((item) => ({ value: item.id, label: t(item.nameZh, item.name) }))} />}
           {["1Y", "3Y", "5Y", "MAX"].includes(period) &&
             <Switch checked={logarithmic} onCheckedChange={(checked) => setLog(checked)}
               label={t("对数", "Log")} />}

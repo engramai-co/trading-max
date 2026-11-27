@@ -4,6 +4,33 @@
 .mx-overview-page > .mx-page-tools {
   display: contents;
 }
+/* Reserve a track for freshness so longer account labels do not wrap the toolbar. */
+.mx-overview-read .mx-summary-top {
+  container-type: inline-size;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.mx-overview-read .mx-summary-top > .mx-freshness-group {
+  max-inline-size: 60cqi;
+}
+
+/* The hidden option labels set the intrinsic width, so a renamed selection cannot resize it. */
+.mx-overview-read .mx-summary-top .tm-select-trigger {
+  contain: inline-size;
+}
+
+@media (max-width: 400px) {
+  .mx-overview-read .mx-summary-top:lang(en) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .mx-overview-read .mx-summary-top:lang(en) > .mx-freshness-group {
+    justify-self: start;
+    max-inline-size: 100%;
+  }
+}
+
 .mx-overview-row {
   display: grid;
   grid-template-columns: minmax(0, 1.6fr) minmax(320px, 1fr);
@@ -655,9 +682,6 @@
   .mx-page .mx-overview-statistics .mx-number {
     margin-top: 0;
     font-size: 16px;
-  }
-  .mx-page:lang(en) .mx-overview-read .mx-summary-top > .mantine-Select-root {
-    flex-basis: 175px;
   }
   .mx-page .mx-overview-history .mx-dashboard-ranges {
     grid-column: 1 / -1;

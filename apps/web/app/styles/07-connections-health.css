@@ -42,14 +42,6 @@
   flex-wrap: wrap;
   gap: 12px;
 }
-.mx-assistant-model .mantine-NativeSelect-root {
-  max-width: 100%;
-}
-@media (pointer: coarse) {
-  .mx-assistant-settings .mantine-NativeSelect-input {
-    height: 44px;
-  }
-}
 /* A free-form model identifier may be a single long word. */
 .mx-assistant-consent {
   overflow-wrap: anywhere;

@@ -3,7 +3,6 @@
 import { WorkspaceSheet } from "./overlay";
 import { SearchInput } from "@/components/ui/search-input";
 import { useAssistantPageContext } from "./assistant/context";
-import { Select } from "@mantine/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowDown, Search } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
@@ -43,6 +42,7 @@ import { holdingPeekQuote, holdingPositionAsOf } from "./holding-detail-data";
 import { useRouteState } from "./route-state";
 import { SecurityPeek } from "./security-peek";
 import { accountName, useWorkspaceProfile } from "./profile";
+import { SelectPicker } from "./picker";
 
 export function HoldingsWorkspace() {
   const t = useCopy();
@@ -171,16 +171,15 @@ function Positions() {
     <>
           <div className="mx-panel mx-holdings-summary">
             <div className="mx-toolbar">
-              <Select
-                classNames={{ input: "mx-holdings-account-select" }}
+              <SelectPicker
                 aria-label={t("选择账户", "Choose account")}
-                w={locale === "zh" ? 190 : 212}
+                intrinsic
                 value={account}
                 onChange={(v) => {
                   setLimit(20);
                   update({ account: v === "all" ? null : v });
                 }}
-                data={[
+                options={[
                   {
                     value: "all",
                     label: t("全部投资账户", "All investment accounts"),
@@ -245,11 +244,11 @@ function Positions() {
                   </span>
                 )}
                 {/* Phones sort here; the desktop table sorts from its headers. */}
-                <Select
+                <SelectPicker
                   className="mx-holdings-sort"
                   aria-label={t("持仓排序", "Sort holdings")}
-                  w={155}
-                  data={[
+                  style={{ width: 155 }}
+                  options={[
                     { value: "value", label: sort === "value" && ascending ? t("市值从小到大", "Smallest value") : t("市值从大到小", "Largest value") },
                     ...(hasDay ? [{ value: "day", label: sort === "day" && ascending ? columnLabel + t("跌幅最大", " · largest fall") : columnLabel + t("涨幅最大", " · largest rise") }] : []),
                     { value: "pnl", label: sort === "pnl" && ascending ? t("盈亏从低到高", "Lowest P&L") : t("盈亏从高到低", "Highest P&L") },

@@ -6,7 +6,6 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatEventTime } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,6 +33,7 @@ import { AnalystExpectations } from "./research-expectations";
 import { AnalystEstimates, forecastPeriodLabel } from "./research-forecasts";
 import type { ResearchPrice } from "./research-price-basis";
 import { useRouteState } from "./route-state";
+import { SelectPicker } from "./picker";
 
 export function AnalystView({
   data,
@@ -321,12 +321,12 @@ function EstimateRevisions({ data }: { data: ResearchLensSnapshot }) {
     <Panel
       title={t("盈利预期修订", "EPS estimate revisions")}
       action={
-        <Select
-          w={240}
+        <SelectPicker
+          style={{ width: 240 }}
           aria-label={t("修订对应的报告期", "Revision fiscal period")}
           value={key(selected)}
           onChange={(v) => update({ forecastPeriod: v }, { focusResearchSection: false })}
-          data={trend.map((r) => ({
+          options={trend.map((r) => ({
             value: key(r),
             label: forecastPeriodLabel(a, key(r), t),
           }))}
@@ -487,12 +487,12 @@ function InstitutionalActions({ data }: { data: ResearchLensSnapshot }) {
               value={firm}
               onChange={(e) => setFirm(e.target.value)}
             />
-            <Select
-              w={130}
+            <SelectPicker
+              style={{ width: 130 }}
               aria-label={t("评级动作", "Rating action")}
               value={action}
               onChange={(v) => setAction(v ?? "all")}
-              data={[
+              options={[
                 { value: "all", label: t("全部动作", "All actions") },
                 ...[...new Set(changes.map((r) => r.action))]
                   .filter(Boolean)

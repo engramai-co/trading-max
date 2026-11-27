@@ -2,7 +2,7 @@
 
 import { WorkspaceSheet } from "./overlay";
 import { SearchInput } from "@/components/ui/search-input";
-import { Pagination, Select } from "@mantine/core";
+import { Pagination } from "@mantine/core";
 import { ListFilter, Search } from "lucide-react";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
@@ -64,6 +64,7 @@ import { PageInspection } from "./assistant/inspection-entry";
 import { useAssistant, useAssistantPageContext } from "./assistant/context";
 import { useSearchParams } from "next/navigation";
 import { Narrative } from "./narrative";
+import { SearchPicker, SelectPicker } from "./picker";
 
 /** Coverage below this is named; above it the page stays quiet. */
 const COVERAGE_FLOOR = 0.98;
@@ -693,34 +694,32 @@ function Exposure({
               }
               filters={
                 <>
-                  <Select
+                  <SearchPicker
                     aria-label={t("国家筛选", "Filter country")}
                     value={country}
                     onChange={(v) => {
                       setCountry(v ?? "all");
                       setPage(1);
                     }}
-                    data={countryOptions}
-                    searchable
+                    options={countryOptions}
                   />
-                  <Select
+                  <SearchPicker
                     aria-label={t("板块筛选", "Filter sector")}
                     value={sector}
                     onChange={(v) => {
                       setSector(v ?? "all");
                       setPage(1);
                     }}
-                    data={sectorOptions}
-                    searchable
+                    options={sectorOptions}
                   />
-                  <Select
+                  <SelectPicker
                     aria-label={t("持有方式", "Ownership")}
                     value={ownership}
                     onChange={(v) => {
                       setOwnership((v as LookthroughOwnership | null) ?? "all");
                       setPage(1);
                     }}
-                    data={[
+                    options={[
                       { value: "all", label: t("全部持有方式", "All ownership") },
                       { value: "direct", label: t("仅直接持有", "Direct only") },
                       {
@@ -736,14 +735,14 @@ function Exposure({
                 </>
               }
               sort={
-                <Select
+                <SelectPicker
                   aria-label={t("敞口排序", "Sort exposure")}
                   value={sort}
                   onChange={(v) => {
                     setSort((v as LookthroughSort | null) ?? "total");
                     setPage(1);
                   }}
-                  data={[
+                  options={[
                     { value: "total", label: t("总敞口优先", "Largest total") },
                     {
                       value: "direct",

@@ -241,6 +241,11 @@ test.describe("workspace navigation refinements", () => {
     });
     expect(submitsAfterEnter).toBe(1);
     expect(searches).toHaveLength(2);
+    // Base UI lets the browser handle Escape until its composition-end cleanup runs.
+    await finderInput.evaluate(() => new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(finderInput).toBeFocused();
+    await expect(finderInput).toHaveValue("Another Synthetic Example");
     // Closing the finder leaves the page as it was, without a history entry, and returns to Search.
     await page.keyboard.press("Escape");
     await expect(finder).toHaveCount(0);

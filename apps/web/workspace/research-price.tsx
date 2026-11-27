@@ -1,4 +1,5 @@
 "use client";
+
 import { WorkspaceDialog } from "./overlay";
 import { useResearchChartWindow } from "./assistant/context";
 import { useBreakpoint } from "@/lib/hooks";
@@ -8,7 +9,6 @@ import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, Minus, Plus } from "lucide-react";
 import { Toolbar } from "@base-ui/react/toolbar";
 import { ChartToolbar } from "./chart-toolbar";
@@ -52,6 +52,7 @@ import {
   resolvePriceInterval,
   supportsPriceRange,
 } from "./research-price-settings";
+import { SelectPicker } from "./picker";
 
 const intervals = priceIntervals;
 const movingAverageStyles = {
@@ -60,24 +61,6 @@ const movingAverageStyles = {
   sma200: { colour: "text", dash: "dash-dot" },
 } as const satisfies Record<string, { colour: "text" | "axis"; dash: LineDash }>;
 const movingAverages = ["sma20", "sma50", "sma200"] as const;
-function PriceSelect({
-  label, width, value, onChange, options,
-}: {
-  label: string;
-  width: number;
-  value: string;
-  onChange: (value: string) => void;
-  options: { value: string; label: string; disabled?: boolean }[];
-}) {
-  const portal = useRef<HTMLDivElement>(null);
-  return <div ref={portal}><Select items={options} value={value} onValueChange={(next) => { if (next !== null) onChange(next); }}>
-    <SelectTrigger aria-label={label} style={{ width }}><SelectValue /></SelectTrigger>
-    <SelectContent align="start" portalContainer={portal}>
-      {options.map((option) => <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
-    </SelectContent>
-  </Select></div>;
-}
-
 export function PriceHistory({
   ticker,
   runId,
@@ -370,20 +353,20 @@ export function PriceHistory({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <div className="flex flex-wrap items-center gap-mx-sm pt-2.5">
-            <PriceSelect width={145} label={t("行情粒度", "Bar interval")} value={interval}
+            <SelectPicker style={{ width: 145 }} aria-label={t("行情粒度", "Bar interval")} value={interval}
               onChange={(v) => { update({ interval: v }); reset(); }}
               options={intervals.map((v, i) => ({
                 value: v,
                 label: [t("15 分钟", "15 min"), t("1 小时", "1 hour"), t("日线", "Daily"), t("周线", "Weekly")][i],
                 disabled: !supportsPriceRange(v, range),
               }))} />
-            <PriceSelect width={110} label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
+            <SelectPicker style={{ width: 110 }} aria-label={t("纵轴", "Price axis")} value={scale} onChange={(v) => update({ priceScale: v })}
               options={[
                 { value: "linear", label: t("线性", "Linear") },
                 { value: "log", label: t("对数", "Log") },
                 { value: "percent", label: t("涨跌幅", "Return %") },
               ]} />
-            <PriceSelect width={165} label={t("基准对比", "Benchmark comparison")} value={comparison}
+            <SelectPicker style={{ width: 165 }} aria-label={t("基准对比", "Benchmark comparison")} value={comparison}
               onChange={(v) => update({ benchmark: v === "none" ? null : v })}
               options={[
                 { value: "none", label: t("加入对比", "Compare with") },

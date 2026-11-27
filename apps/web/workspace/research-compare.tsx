@@ -1,9 +1,9 @@
 "use client";
+
 import { WorkspaceDialog } from "./overlay";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { useChartColours, type ChartColours } from "@/ui/charts/palette";
-import { MultiSelect, Pill, Select } from "@mantine/core";
 import { useQueries } from "@tanstack/react-query";
 import type { EChartsOption } from "echarts";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ import { researchLensQuery, researchPriceQuery } from "./research-queries";
 import { minus } from "./reading-figures";
 import { comparisonFigures, readingTone, signedPercent } from "./reading-format";
 import { useRouteState } from "./route-state";
+import { SearchMultiPicker, SelectPicker } from "./picker";
 
 /**
  * Up to four lines: the researched company in cobalt and solid, the others in ink and grey, dashed
@@ -250,22 +251,12 @@ export function ResearchComparison({
         width="min(1200px, 96vw)"
       >
         <div className="mx-toolbar">
-          <MultiSelect
-            comboboxProps={{ portalProps: { target: ".mx-research-compare-dialog" } }}
-            renderPill={({ option, onRemove }) => (
-              <Pill
-                withRemoveButton={option.value !== ticker}
-                onRemove={onRemove}
-                removeButtonProps={{
-                  "aria-label": t("移除 ", "Remove ") + option.label,
-                }}
-              >
-                {option.label}
-              </Pill>
-            )}
+          <SearchMultiPicker
+            revealLabels
+            canRemove={(option) => option.value !== ticker}
+            removeLabel={(option) => t("移除 ", "Remove ") + option.label}
             label={t("最多 4 家公司", "Up to 4 companies")}
-            searchable
-            data={instruments.filter((i) => !i.isFund).map((i) => ({
+            options={instruments.filter((i) => !i.isFund).map((i) => ({
               value: i.ticker,
               label: `${i.ticker} · ${i.name}`,
             }))}
@@ -279,15 +270,13 @@ export function ResearchComparison({
               })
             }
             maxValues={4}
-            w={600}
-            maw="100%"
+            style={{ width: 600 }}
           />
-          <Select
-            comboboxProps={{ portalProps: { target: ".mx-research-compare-dialog" } }}
+          <SelectPicker
             label={t("财务期间", "Financial period")}
             value={kind}
             onChange={(v) => update({ comparePeriod: v })}
-            data={[
+            options={[
               { value: "ttm", label: "TTM" },
               ...years.map((y) => ({ value: y, label: "FY" + y })),
             ]}

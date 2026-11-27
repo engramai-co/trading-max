@@ -11,7 +11,7 @@ test.describe("model connection setup", () => {
     await page.route("**/api/backend/settings/integrations", (route) => route.fulfill({ json: overview }));
     await page.goto("/settings?tab=models");
     let dialog = page.getByRole("dialog");
-    await expect(dialog.getByRole("combobox")).toHaveValue("OpenAI");
+    await expect(dialog.getByRole("combobox")).toHaveText("OpenAI");
     await dialog.getByRole("combobox").click();
     await page.getByRole("option", { name: "Anthropic", exact: true }).click();
     await dialog.getByRole("button", { name: /继续连接|Continue/ }).click();
@@ -82,7 +82,7 @@ test.describe("model connection setup", () => {
     await page.goto("/settings?tab=models");
     await page.getByRole("dialog").getByRole("button", { name: /继续连接|Continue/ }).click();
     const dialog = page.getByRole("dialog", { name: /连接 OpenAI|Connect OpenAI/ });
-    await expect(dialog.getByRole("combobox")).toHaveValue("gpt-5.6-luna");
+    await expect(dialog.getByRole("combobox")).toHaveText("gpt-5.6-luna");
     await expect(dialog.locator('input[type="password"]')).toHaveCount(0);
     const methodPicker = dialog.getByRole("radiogroup", { name: /OpenAI 连接方式|OpenAI connection method/ });
     const chatgpt = methodPicker.getByRole("radio", { name: /^(ChatGPT 登录|ChatGPT sign-in)$/ });

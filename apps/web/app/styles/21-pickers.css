@@ -1,0 +1,387 @@
+.tm-picker {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.tm-picker[data-intrinsic] {
+  inline-size: max-content;
+}
+
+.tm-select-control,
+.tm-native-select {
+  position: relative;
+  min-inline-size: 0;
+}
+
+.tm-select-trigger {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  inline-size: 100%;
+  text-align: start;
+  cursor: pointer;
+}
+
+.tm-select-trigger > .tm-picker-chevron {
+  grid-area: 1 / 2;
+}
+
+.tm-select-value {
+  min-inline-size: 0;
+}
+
+.tm-picker[data-intrinsic] .tm-select-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tm-picker[data-intrinsic] .tm-select-control > * {
+  grid-area: 1 / 1;
+}
+
+.tm-select-value,
+[data-slot="picker-chip-label"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-select-width {
+  display: grid;
+  visibility: hidden;
+  min-inline-size: 0;
+  overflow: clip;
+  padding-inline: 15px 39px;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
+.tm-select-width > span {
+  grid-area: 1 / 1;
+}
+
+.tm-picker-chevron {
+  flex: none;
+  color: var(--muted-foreground);
+  pointer-events: none;
+  transition: transform var(--motion-fast);
+}
+
+[data-popup-open] .tm-picker-chevron {
+  transform: rotate(180deg);
+}
+
+.tm-select-trigger[data-placeholder],
+.tm-select-value[data-empty],
+.tm-combobox-input::placeholder {
+  color: var(--placeholder);
+  opacity: 1;
+}
+
+.tm-select-control[data-clearable] .tm-picker-chevron {
+  visibility: hidden;
+}
+
+.tm-select-clear,
+.tm-native-select > .tm-picker-chevron {
+  position: absolute;
+  inset-inline-end: 12px;
+  inset-block-start: 50%;
+  translate: 0 -50%;
+}
+
+.tm-select-clear {
+  inset-inline-end: 8px;
+}
+
+.tm-native-select > select {
+  display: block;
+  inline-size: 100%;
+  min-inline-size: 0;
+  appearance: none;
+  padding-inline-end: 36px;
+  text-overflow: ellipsis;
+}
+
+.tm-picker-popup {
+  display: flex;
+  flex-direction: column;
+  inline-size: var(--anchor-width);
+  min-inline-size: min(8rem, var(--available-width, 8rem));
+  overflow: hidden;
+  border-radius: var(--radius-select);
+}
+
+.tm-picker-popup[data-intrinsic] {
+  /* Menu padding and the check column take more room than the trigger's chevron. */
+  inline-size: calc(var(--anchor-width) + 20px);
+}
+
+.tm-picker-list {
+  min-block-size: 0;
+  max-block-size: min(19rem, var(--available-height, 19rem));
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 8px;
+  scroll-padding: 8px;
+  outline: none;
+}
+
+.tm-picker-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-block-size: 36px;
+  min-inline-size: 0;
+  padding: 6px 34px 6px 12px;
+  border-radius: var(--radius-menu-item);
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.tm-picker-item-text {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+.tm-picker-item[data-selected] {
+  background: var(--selection);
+}
+
+.tm-picker-item[data-highlighted] {
+  background: var(--accent);
+}
+
+.tm-picker-item:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.tm-picker-item[data-disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tm-picker-check {
+  position: absolute;
+  inset-inline-end: 12px;
+  display: flex;
+  color: var(--link);
+}
+
+.tm-picker-group-label,
+.tm-picker-empty:not(:empty) {
+  padding: 8px 12px;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+}
+
+.tm-picker-popup[data-empty]:not(:has(.tm-picker-empty)),
+.tm-picker-list[data-empty] {
+  display: none;
+}
+
+.tm-combobox-field {
+  display: flex;
+  align-items: center;
+  min-inline-size: 0;
+  gap: 4px;
+  padding-inline: 14px 6px;
+}
+
+.tm-combobox-input {
+  flex: 1;
+  min-inline-size: 0;
+  min-block-size: 1.75rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-overflow: ellipsis;
+  outline: none;
+}
+
+.tm-combobox-field:not(.tm-picker-chips) > .tm-combobox-input {
+  min-block-size: calc(2.5rem - 2px);
+}
+
+.tm-combobox-field:has(.tm-combobox-input:focus-visible),
+.tm-multi-select:has(> .tm-select-trigger:focus-visible) {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tm-picker-action,
+.tm-picker-remove {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  inline-size: 28px;
+  min-block-size: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+
+.tm-picker-action:disabled {
+  cursor: default;
+}
+
+.tm-picker-action:hover:not(:disabled),
+.tm-picker-remove:hover:not(:disabled) {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+:is(.tm-picker-action, .tm-picker-remove, .tm-picker-chip):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.tm-picker-chips {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px 4px 8px;
+}
+
+.tm-picker-chip-area {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-inline-size: 0;
+}
+
+.tm-picker-chip-area > .tm-combobox-input {
+  flex-basis: 3ch;
+  min-inline-size: 3ch;
+}
+
+.tm-picker-chip-area > .tm-combobox-input:placeholder-shown {
+  flex-basis: 8ch;
+}
+
+.tm-picker-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  max-inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 26px;
+  padding-inline: 8px;
+  border-radius: var(--radius-control);
+  background: var(--secondary);
+  color: var(--foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.tm-picker-chip:has(.tm-picker-remove) {
+  padding-inline-end: 0;
+}
+
+.tm-picker-remove {
+  inline-size: 24px;
+  min-block-size: 26px;
+}
+
+.tm-multi-select {
+  padding-inline-end: 38px;
+}
+
+.tm-multi-select > .tm-select-trigger {
+  position: absolute;
+  inset: -1px;
+  inline-size: auto;
+  border: 0;
+  padding-inline: 12px;
+  background: transparent;
+  transition: none;
+}
+
+.tm-multi-select > .tm-select-trigger:focus-visible {
+  outline: none;
+}
+
+.tm-multi-select .tm-picker-chip {
+  pointer-events: none;
+}
+
+.tm-multi-select .tm-picker-remove {
+  z-index: 1;
+  pointer-events: auto;
+}
+
+@media (pointer: coarse) {
+  .tm-picker-item {
+    min-block-size: 44px;
+  }
+
+  .tm-picker-action[data-slot="combobox-clear"],
+  .tm-select-clear,
+  .tm-picker-remove {
+    inline-size: 44px;
+    min-block-size: 44px;
+  }
+
+  .tm-select-control[data-clearable] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .tm-select-control[data-clearable] .tm-picker-chevron {
+    visibility: visible;
+  }
+
+  .tm-select-clear {
+    position: static;
+    translate: none;
+  }
+
+  .tm-picker-action[data-slot="combobox-clear"] {
+    margin-block: -1px;
+  }
+
+  .tm-picker-chips[data-reveal-labels] [data-slot="picker-chip-label"] {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .tm-combobox-field:not(.tm-picker-chips) > .tm-combobox-input {
+    min-block-size: calc(2.75rem - 2px);
+  }
+
+  .tm-combobox-input,
+  .tm-native-select > select {
+    font-size: max(16px, 1rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tm-picker-chevron {
+    transition: none;
+  }
+}
+
+@media (forced-colors: active) {
+  .tm-picker-item[data-highlighted] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .tm-combobox-field:has(.tm-combobox-input:focus-visible),
+  .tm-multi-select:has(> .tm-select-trigger:focus-visible),
+  :is(.tm-picker-action, .tm-picker-remove, .tm-picker-chip):focus-visible {
+    outline-color: Highlight;
+  }
+}

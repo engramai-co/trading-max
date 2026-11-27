@@ -350,19 +350,12 @@ button.mx-text-link {
   gap: 10px 8px;
 }
 .mx-exposure-row > .mx-search-input,
-.mx-exposure-row > .mantine-Select-root {
+.mx-exposure-row > .tm-picker {
   flex: 1 1 120px;
   min-width: 0;
 }
-/* A narrow search clips its hint with an ellipsis rather than mid-word. */
-.mx-exposure-toolbar .mantine-Input-input {
-  text-overflow: ellipsis;
-}
 /* Touch: each control clears 44px and sits level with the view switch's cells. */
 @media (pointer: coarse) {
-  .mx-exposure-toolbar .mantine-Input-input {
-    height: 44px;
-  }
   /* 清除筛选 takes 44px of taps without moving the list. */
   .mx-exposure-result > [data-slot="button"] {
     min-height: 44px;
@@ -423,7 +416,7 @@ button.mx-text-link {
   gap: 12px;
   margin-top: 16px;
 }
-.mx-toolbar .mx-exposure-filters .mantine-Select-root {
+.mx-toolbar .mx-exposure-filters .tm-picker {
   width: 160px;
 }
 

@@ -1,7 +1,6 @@
 "use client";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
@@ -10,6 +9,7 @@ import { numeric } from "@/lib/numeric";
 import { Facts, Panel, useCopy } from "./foundation";
 import type { Preview } from "./research-facts";
 import { evidenceGroups, metricNames } from "./research-facts";
+import { SelectPicker } from "./picker";
 
 const keys = ["bear", "base", "bull"] as const;
 
@@ -96,11 +96,11 @@ export function ValuationWorksheet({
       <Panel
         title={t("年度计算底稿", "Annual projection")}
         action={
-          <Select
+          <SelectPicker
             aria-label={t("底稿情景", "Worksheet scenario")}
             value={worksheet}
             onChange={(v) => onWorksheet(v ?? "base")}
-            data={keys.map((k) => ({ value: k, label: scenarioNames[k] }))}
+            options={keys.map((k) => ({ value: k, label: scenarioNames[k] }))}
           />
         }
       >

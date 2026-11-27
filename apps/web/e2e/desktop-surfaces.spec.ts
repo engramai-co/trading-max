@@ -140,7 +140,7 @@ test.describe("desktop surfaces", () => {
     await capture(page, "activity-error");
     await page.getByRole("button", { name: /使用相同范围重新准备更新|Prepare another update with this scope/ }).click();
     await expect(page.locator(".mx-activity-controls")).toHaveAttribute("open", "");
-    await expect(page.getByRole("combobox", { name: /更新范围|Update scope/ })).toHaveValue(/账户与流水|Accounts & history/);
+    await expect(page.getByRole("combobox", { name: /更新范围|Update scope/ })).toHaveText(/账户与流水|Accounts & history/);
   });
 
   test("synthetic CSV import handles invalid files, duplicates, and the next update step", async ({ page }) => {
@@ -165,7 +165,7 @@ test.describe("desktop surfaces", () => {
     // A ready workspace can prepare CFD recomputation; an empty workspace must
     // retain the first-sync gate instead of manufacturing account NAV history.
     await page.goto("/desktop/activity?scope=cfd");
-    await expect(page.getByRole("combobox", { name: /更新范围|Update scope/ })).toHaveValue(/CFD/);
+    await expect(page.getByRole("combobox", { name: /更新范围|Update scope/ })).toHaveText(/CFD/);
   });
 });
 

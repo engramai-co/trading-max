@@ -5,7 +5,6 @@ import { FormField, TextareaField } from "@/components/ui/form-field";
 import { NumericInput } from "@/components/ui/numeric-input";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Select } from "@mantine/core";
 import { useDebouncedValue } from "@/lib/hooks";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -75,6 +74,7 @@ import {
   workbenchState,
   type LockedInput,
 } from "./valuation-queries";
+import { SelectPicker } from "./picker";
 
 type DraftModule = typeof import("./valuation-draft-editor");
 type EvidenceModule = typeof import("./valuation-maintenance");
@@ -185,7 +185,7 @@ export function ValuationWorkbench({
   const template = editor?.defaultSource === "sector-template"
     ? sectorTemplates[str(data.valuation?.assumptions?.profile)] : undefined;
   const source = editor && [assumptionSource(editor, t), template && t(...template)].filter(Boolean).join(" · ");
-  const selector = useRef<HTMLInputElement>(null);
+  const selector = useRef<HTMLButtonElement>(null);
   const position = useRef<{ selectorTop: number } | { scrollY: number } | null>(null);
   useLayoutEffect(() => {
     const input = selector.current;
@@ -215,18 +215,17 @@ export function ValuationWorkbench({
   const [reference, setReference] = useState<HTMLDivElement | null>(null);
   const currentReading = reading?.initial === preview ? reading : undefined;
   const chooser = (
-    <Select
+    <SelectPicker
       ref={selector}
       label={t("估值模型", "Valuation model")}
       value={family ?? preview?.basis.family ?? null}
       placeholder={t("自动选择", "Automatic")}
-      allowDeselect={false}
-      data={[
+      options={[
         { value: "cash-flow", label: t("股权现金流", "Equity cash flow") },
         { value: "net-income", label: t("净利润", "Net income") },
         { value: "residual-income", label: t("剩余收益", "Residual income") },
       ]}
-      onOptionSubmit={(value) => {
+      onSelect={(value) => {
         const choice = value as Preview["basis"]["family"];
         if (choice === family) return;
         if (choice === preview?.basis.family) {
