@@ -41,7 +41,8 @@ from .store import SqliteConversationStore
 from .tools import Lens, PageRange, Ticker
 
 LOGGER = logging.getLogger("trading_max.assistant")
-SDK_VERSION = 6
+# The browser runs AI SDK 7, whose UI message stream is the same wire as SDK 6.
+SDK_VERSION = 7
 RUN_TIMEOUT_SECONDS = 300.0
 CONVERSATION_SCOPE = "workspace"
 CONVERSATION_ID = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
