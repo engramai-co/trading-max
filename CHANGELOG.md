@@ -4,6 +4,15 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.73.2] - 2026-11-27
+
+### Changed
+- Icons across the web interface and the App use the Lucide set at 16, 18 and 20px with one stroke width, clear in both appearances. The MaxAI star and the Trading Max mark are unchanged.
+- In the **More** menu on phones, the current page shows a check mark.
+
+### Fixed
+- Each destination in the side rail and the phone tab bar draws a single icon, and the current one keeps a contrast of at least 3:1 in both appearances.
+
 ## [1.73.1] - 2026-11-27
 
 ### Changed
