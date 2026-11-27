@@ -64,17 +64,6 @@
   .mx-tabs {
     gap: 0;
   }
-  /* The pointer layout's 26px gap becomes padding; the outer labels keep their place. */
-  .mx-tabs button {
-    min-width: 44px;
-    padding-inline: 13px;
-  }
-  .mx-tabs button:first-of-type {
-    padding-left: 1px;
-  }
-  .mx-tabs button:last-of-type {
-    padding-right: 1px;
-  }
   .mx-segments {
     /* Equal cells as wide as the longest label (measured by Segments); a full row wraps and each row fills. */
     --mx-segment-cell: max(44px, calc(var(--mx-segment-label, 24px) + 20px));
@@ -88,70 +77,20 @@
     min-height: 44px;
     padding: 7px 10px;
   }
-  /* The pill keeps its inset inside the larger cell. */
-  .mx-segments > .mx-indicator {
-    background: transparent;
-    box-shadow: none;
-  }
-  .mx-segments > .mx-indicator::before {
-    content: "";
-    position: absolute;
-    inset: 3px;
-    border-radius: 6px;
-    background: var(--segment-indicator);
-    box-shadow: 0 1px 3px rgb(17 24 39 / 8%);
-  }
 }
-/* Phones: tabs share the row in equal cells. A row that cannot fit (zh below 360px, most English rows) keeps one
-   scrolling row with the edge fade and the selected tab revealed: wrapped rows would read as two levels of lenses. */
 @media (pointer: coarse) and (max-width: 767px) {
+  /* Keep the labels readable in a single horizontally scrollable row. */
   .mx-tabs {
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: minmax(max-content, 1fr);
+    padding-inline: 0;
   }
-  .mx-tabs button,
-  .mx-tabs button:first-of-type,
-  .mx-tabs button:last-of-type {
-    padding-inline: 8px;
+  .mx-tabs button {
+    padding-inline: 6px;
   }
-  /* The eight periods span the panel edge to edge, bleeding through its padding: 44px cells at 390px, no scrolling. */
   .mx-period-control {
     width: 100%;
-    container: mx-period / inline-size;
-  }
-  .mx-period-control > .mx-segments {
-    display: grid;
-    grid-auto-flow: column;
-    grid-auto-columns: minmax(0, 1fr);
-    width: calc(100% + 2 * var(--mx-space-panel));
-    max-width: none;
-    margin-inline: calc(-1 * var(--mx-space-panel));
-    border-inline: 0;
-    border-radius: 0;
-  }
-  .mx-period-control > .mx-segments > button {
-    min-width: 0;
-  }
-}
-/* The band is the control plus its 32px bleed. Narrower than eight 44px cells, the periods take two full rows of four. */
-@container mx-period (width < 320px) {
-  .mx-period-control > .mx-segments:has(> button:nth-of-type(8)) {
-    display: flex;
-    flex-wrap: wrap;
-  }
-  .mx-period-control > .mx-segments:has(> button:nth-of-type(8)) > button {
-    flex: 1 0 25%;
-  }
-}
-/* Seven periods (returns has no 1D) keep one row while seven 44px cells fit, then take rows of four and three. */
-@container mx-period (width < 276px) {
-  .mx-period-control > .mx-segments {
-    display: flex;
-    flex-wrap: wrap;
-  }
-  .mx-period-control > .mx-segments > button {
-    flex: 1 0 25%;
   }
 }
 /* The compact chart's seven price ranges follow the same rule: one row while seven 44px cells fit, else four and three. */

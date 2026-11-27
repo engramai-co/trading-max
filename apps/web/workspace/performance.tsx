@@ -33,7 +33,9 @@ import {
   Panel,
   Pending,
   Segments,
+  TabPanel,
   Tabs,
+  TabsScope,
   TextLink,
   UpdateFailure,
   useCopy,
@@ -332,11 +334,7 @@ export function PerformanceContent({
       });
   return (
     <ReadingBoundary.Provider value={reading.report}>
-      <div className="mx-toolbar mx-analytics-toolbar">
-        <Tabs
-          label={t("绩效分析方式", "Performance perspective")}
-          value={view}
-          onChange={(v) =>
+      <TabsScope value={view} onChange={(v) =>
             update({
               view: v === "money" ? null : v,
               scope:
@@ -346,7 +344,11 @@ export function PerformanceContent({
                     ? null
                     : requestedScope,
             })
-          }
+          }>
+      <div className="mx-toolbar mx-analytics-toolbar">
+        <Tabs
+          label={t("绩效分析方式", "Performance perspective")}
+          value={view}
           options={[
             { value: "money", label: t("资金与盈亏", "Money & P&L") },
             { value: "returns", label: t("收益对比", "Return comparison") },
@@ -366,6 +368,7 @@ export function PerformanceContent({
           w={locale === "zh" ? 200 : 212}
         />
       </div>
+      <TabPanel value={view}>
       {invalidScope ? (
         <Notice>
           {t(
@@ -564,6 +567,8 @@ export function PerformanceContent({
           )}
         </>
       )}
+      </TabPanel>
+      </TabsScope>
       {data && runtime.status === "ready" && <Narrative
         snapshot={data.runId}
         lens="return_attribution"

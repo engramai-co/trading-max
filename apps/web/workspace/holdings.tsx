@@ -2,11 +2,11 @@
 
 import { useAssistantPageContext } from "./assistant/context";
 import {
-  Checkbox,
   Drawer,
   Select,
   TextInput,
 } from "@mantine/core";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ArrowDown, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Button, CloseButton } from "@/components/ui/button";
@@ -32,7 +32,9 @@ import {
   Panel,
   Pending,
   QueryError,
+  TabPanel,
   Tabs,
+  TabsScope,
   Tag,
   UpdateFailure,
   useCopy,
@@ -51,10 +53,10 @@ export function HoldingsWorkspace() {
     params.get("view") === "lookthrough" ? "lookthrough" : "positions";
   return (
     <Page title={t("持仓", "Holdings")}>
+      <TabsScope value={view} onChange={(v) => update({ view: v === "positions" ? null : v })}>
       <Tabs
         label={t("持仓视图", "Holdings view")}
         value={view}
-        onChange={(v) => update({ view: v === "positions" ? null : v })}
         options={[
           { value: "positions", label: t("直接持仓", "Direct holdings") },
           {
@@ -63,7 +65,10 @@ export function HoldingsWorkspace() {
           },
         ]}
       />
+      <TabPanel value={view}>
       {view === "positions" ? <Positions /> : <Lookthrough />}
+      </TabPanel>
+      </TabsScope>
     </Page>
   );
 }
@@ -236,7 +241,7 @@ function Positions() {
                 <Checkbox
                   label={t("成本与汇率", "Cost & FX")}
                   checked={detailed}
-                  onChange={(e) => setDetailed(e.currentTarget.checked)}
+                  onCheckedChange={(checked) => setDetailed(checked)}
                 />
                 {search && (
                   <span className="mx-metric-note">

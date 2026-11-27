@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { mkdir, writeFile } from "node:fs/promises";
 import type { HealthDetails, RefreshJob } from "../lib/types";
 
@@ -87,6 +87,39 @@ test.describe("desktop surfaces", () => {
     await page.goto(new URL("/desktop/activity", demo).href);
     await page.getByRole("button", { name: /查看服务详情|Service details/, exact: true }).click();
     await expect(page.getByRole("button", { name: /开始更新|Start update/ })).toBeDisabled();
+  });
+
+  test("desktop settings uses the shared pill indicator without legacy tab overrides", async ({ page }) => {
+    const demo = process.env.DESKTOP_DEMO_QA_URL;
+    test.skip(!demo?.startsWith("http://127.0.0.1:"), "Set DESKTOP_DEMO_QA_URL to a local server started with TRADING_MAX_ENV=desktop-preview.");
+    await page.goto(new URL("/desktop/settings", demo).href);
+    const tabs = page.getByRole("tablist", { name: /设置分类|Settings sections/ });
+    const indicator = tabs.locator("> .mx-indicator");
+    await expect(tabs).toBeVisible();
+    await expect(indicator).toBeVisible();
+    const styles = await tabs.evaluate((list) => {
+      const tab = list.querySelector<HTMLElement>('[role="tab"]')!;
+      return {
+        paddingBottom: parseFloat(getComputedStyle(list).paddingBottom),
+        radius: parseFloat(getComputedStyle(tab).borderTopLeftRadius),
+      };
+    });
+    expect(styles.paddingBottom).toBeLessThanOrEqual(4);
+    expect(styles.radius).toBeGreaterThanOrEqual(999);
+
+    const alignedTo = (tab: Locator) => tab.evaluate((el) => {
+      const ind = el.parentElement!.querySelector(".mx-indicator")!;
+      const a = el.getBoundingClientRect();
+      const b = ind.getBoundingClientRect();
+      return Math.abs(a.left - b.left) < 1 && Math.abs(a.width - b.width) < 1;
+    });
+
+    const accounts = tabs.getByRole("tab", { name: /账户与数据|Accounts & data/ });
+    const preferences = tabs.getByRole("tab", { name: /个人偏好|Preferences/ });
+    await expect.poll(() => alignedTo(accounts)).toBe(true);
+    await preferences.click();
+    await expect(preferences).toHaveAttribute("aria-selected", "true");
+    await expect.poll(() => alignedTo(preferences)).toBe(true);
   });
 
   test("an older schedule failure remains visible after recent live successes", async ({ page, request }) => {

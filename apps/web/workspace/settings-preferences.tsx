@@ -4,9 +4,9 @@ import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
   FileInput,
   Select,
-  Switch,
   TextInput,
 } from "@mantine/core";
+import { Switch } from "@/components/ui/switch";
 import { CircleCheck, Upload } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -127,9 +127,10 @@ export function AutomationPreferences() {
                     : row.enabled
                 }
                 // Both panels save revisions of the same settings, one at a time.
+                saving={mutation.isPending && row.key in (mutation.variables ?? {})}
                 disabled={mutation.isPending || notices.isPending}
-                onChange={(event) =>
-                  mutation.mutate({ [row.key]: event.currentTarget.checked })
+                onCheckedChange={(checked) =>
+                  mutation.mutate({ [row.key]: checked })
                 }
               />
             </div>
@@ -169,8 +170,9 @@ export function AutomationPreferences() {
           <Switch
             aria-label={t("已存估值模型的新证据", "New evidence for saved valuation models")}
             checked={notices.isPending ? notices.variables : s.evidenceNoticesEnabled}
+            saving={notices.isPending}
             disabled={notices.isPending || mutation.isPending}
-            onChange={(event) => notices.mutate(event.currentTarget.checked)}
+            onCheckedChange={(checked) => notices.mutate(checked)}
           />
         </div>
         <div className="mx-form-help" role="status">

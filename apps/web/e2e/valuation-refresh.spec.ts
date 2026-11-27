@@ -1053,8 +1053,10 @@ for (const locale of ["en", "zh"] as const) {
           await expect(select).toBeInViewport();
         }
         await page.keyboard.press("Tab");
-        // WebKit on iOS tabs directly to the next editable field.
-        await expect(info.project.name === "mobile" ? roe : firstScenario).toBeFocused();
+        // The scenario selector is a single keyboard stop in both engines.
+        await expect(firstScenario).toBeFocused();
+        await page.keyboard.press("Tab");
+        await expect(roe).toBeFocused();
         if (!cached) {
           await choose("ArrowDown");
           await expect(select).toHaveValue(cash);

@@ -42,7 +42,9 @@ import {
   Pending,
   QueryError,
   Segments,
+  TabPanel,
   Tabs,
+  TabsScope,
   Tag,
   useCopy,
 } from "./foundation";
@@ -658,12 +660,13 @@ function Exposure({
         {failure && <UpdateFailure {...failure} />}
       </div>
       <Panel>
-        <Tabs
+        <TabsScope value={view} onChange={(value) => {setChoice(null); setView(value);}}>
+        <Tabs activation="automatic"
           label={t("穿透维度", "Exposure dimension")}
           value={view}
-          onChange={(value) => {setChoice(null); setView(value);}}
           options={dimensions}
         />
+        <TabPanel value={view}>
         {/* The open dimension heads its section, so the details below sit one level under it. */}
         <h2 className="sr-only">{dimensions.find((d) => d.value === view)?.label}</h2>
         {view === "companies" ? (
@@ -945,6 +948,8 @@ function Exposure({
             />
           </div>
         )}
+        </TabPanel>
+        </TabsScope>
       </Panel>
       <Narrative snapshot={snapshot} lens="hidden_exposure" page="holdings" />
       {view === "companies" && chart !== "pie" && (!selected || phone) && role}

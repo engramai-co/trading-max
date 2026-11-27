@@ -79,6 +79,7 @@ export function ResearchReading({ sections, parameter, children, before, initial
   const [indexPinned, setIndexPinned] = useLocalStorage({ key: "mx-research-index-pinned", defaultValue: false });
   const indexMode = !indexOpen ? "closed" : indexPinned ? "pin" : "float";
   const indexId = useId();
+  const settledScrollY = useRef(0);
   const visitSection = useCallback((id: string) => {
     const section = document.getElementById("research-" + id);
     const heading = section?.querySelector<HTMLElement>("h2");
@@ -87,6 +88,7 @@ export function ResearchReading({ sections, parameter, children, before, initial
     heading.tabIndex = -1;
     heading.focus({ preventScroll: true });
     section.scrollIntoView({ block: "start", behavior: "instant" });
+    settledScrollY.current = window.scrollY;
     pinned.current = id;
     setActive(id);
     return true;
@@ -106,12 +108,14 @@ export function ResearchReading({ sections, parameter, children, before, initial
     const sectionIds = ids.split(",");
     let frame = 0;
     let inputScrollY: number | null = null;
+    settledScrollY.current = window.scrollY;
     const measure = () => {
       frame = 0;
       if (pending.current && sectionIds.includes(pending.current) && visitSection(pending.current)) {
         pending.current = null;
       }
       if (pinned.current) {
+        settledScrollY.current = window.scrollY;
         // The first heading may be replaced or move behind the loaded results.
         // Follow it only if the reader still has focus on the original heading.
         const previous = focusedHeading.current;
@@ -132,6 +136,7 @@ export function ResearchReading({ sections, parameter, children, before, initial
       const reached = present.filter((target) => target.getBoundingClientRect().top <= threshold);
       const atEnd = window.scrollY > 0 && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
       const current = (atEnd ? present.at(-1) : reached.at(-1)) ?? present[0];
+      settledScrollY.current = window.scrollY;
       setActive(current.id.slice("research-".length));
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(measure); };
@@ -142,8 +147,20 @@ export function ResearchReading({ sections, parameter, children, before, initial
       focusedHeading.current = null;
       schedule();
     };
-    const noteInput = (direction: number) => {
+    const noteInput = (direction: number, fromCompositor = false) => {
       const y = window.scrollY;
+      // Compositor-threaded wheel or touch scrolling can update scrollY before the passive listener runs.
+      if (
+        fromCompositor &&
+        pinned.current &&
+        y !== settledScrollY.current &&
+        (direction === 0 || Math.sign(y - settledScrollY.current) === Math.sign(direction))
+      ) {
+        settledScrollY.current = y;
+        inputScrollY = null;
+        resumeTracking();
+        return;
+      }
       const max = document.documentElement.scrollHeight - window.innerHeight;
       // A gesture against the page boundary cannot cause a later layout scroll.
       inputScrollY = (direction < 0 && y <= 0) || (direction > 0 && y >= max - 1) ? null : y;
@@ -154,18 +171,19 @@ export function ResearchReading({ sections, parameter, children, before, initial
       else if (["ArrowDown", "End", "PageDown"].includes(event.key)) noteInput(1);
       else if (event.key === " ") noteInput(event.shiftKey ? -1 : 1);
     };
-    const wheelIntent = (event: WheelEvent) => { if (event.deltaY && !event.ctrlKey) noteInput(event.deltaY); };
+    const wheelIntent = (event: WheelEvent) => { if (event.deltaY && !event.ctrlKey) noteInput(event.deltaY, true); };
     let touchY = 0;
     const touchStart = (event: TouchEvent) => { touchY = event.touches[0].clientY; };
     const touchIntent = (event: TouchEvent) => {
       const y = event.touches[0].clientY;
-      if (y !== touchY) noteInput(touchY - y);
+      if (y !== touchY) noteInput(touchY - y, true);
       touchY = y;
     };
     const scrollbarIntent = (event: PointerEvent) => {
       if (event.target === document.documentElement) noteInput(0);
     };
     const onScroll = () => {
+      settledScrollY.current = window.scrollY;
       if (inputScrollY != null && inputScrollY !== window.scrollY) {
         inputScrollY = null;
         resumeTracking();

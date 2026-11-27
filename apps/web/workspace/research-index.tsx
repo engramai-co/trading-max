@@ -4,7 +4,7 @@ import { useAssistant } from "./assistant/context";
 import { Drawer, Menu, Select } from "@mantine/core";
 import { ChevronDown, Ellipsis, Trash } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { useId, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
+import { useMemo, useRef, useState, type CSSProperties, type KeyboardEvent } from "react";
 import { quoteUnit, quoteValue } from "./financial-values";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useLocale } from "@/components/locale-provider";
@@ -16,7 +16,7 @@ import { formatCalendarDate, formatCurrency, formatDateTime, formatDeltaPercent,
 import { api, readApi, safeUrl } from "./data";
 import { useDemonstration } from "./demonstration";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Help, Page, Panel, Pending, QueryError, Tabs, tabId, Tip, useCopy } from "./foundation";
+import { Empty, Facts, Help, Page, Panel, Pending, QueryError, TabPanel, Tabs, TabsScope, Tip, useCopy } from "./foundation";
 import Link from "./link";
 import {
   indexHref, researchIndexHref, useIndexCatalog,
@@ -60,7 +60,6 @@ export function IndexResearchWorkspace() {
     setFinder(true);
   });
   const [listOpen, setListOpen] = useState(false);
-  const lensPanel = useId();
   const catalog = useIndexCatalog();
   const catalogue = catalog.data ?? [];
   const id = params.get("index") ?? "";
@@ -141,11 +140,10 @@ export function IndexResearchWorkspace() {
                 </small>}
               </div> : !overview.isPending || demonstration ? <span>{t("无报价", "No quote")}</span> : null}
             </section>
-            <Tabs label={t("研究视角", "Research perspectives")} value={view}
-              activation="manual" panel={lensPanel}
-              options={views.map((value) => ({ value, ...tabLabels[value] }))}
-              onChange={(next) => update({ view: next === "overview" ? null : next })} />
-            <div className="mx-index-research-body" role="tabpanel" id={lensPanel} aria-labelledby={tabId(lensPanel, view)}>
+            <TabsScope value={view} onChange={(next) => update({ view: next === "overview" ? null : next })}>
+              <Tabs label={t("研究视角", "Research perspectives")} value={view}
+                options={views.map((value) => ({ value, ...tabLabels[value] }))} />
+              <TabPanel value={view} className="mx-index-research-body">
               {view === "price" ? <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} demonstration={demonstration} />
                 : view === "overview" ? <>
                   <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} preview demonstration={demonstration} />
@@ -155,7 +153,8 @@ export function IndexResearchWorkspace() {
                   : selected.isError ? <QueryError retry={selected.refetch} />
                     : view === "constituents" ? <IndexMembers index={index} basket={selected.data?.composition} />
                       : <TrackingProducts products={selected.data?.products ?? []} />}
-            </div>
+              </TabPanel>
+            </TabsScope>
             <Link className="mx-text-link mx-index-research-market" href={indexHref(index)}>
               {t("在市场页查看", "Open in Markets")}
             </Link>

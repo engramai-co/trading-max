@@ -284,15 +284,12 @@
   .mx-segments {
     flex-wrap: wrap;
   }
-  .mx-segments button {
-    min-height: 40px;
-    padding: 7px 9px;
-  }
   .mx-tabs {
-    gap: 22px;
+    gap: 12px;
+    padding-inline: 2px;
   }
-  .mx-tabs button {
-    font-size: 12px;
+  .mx-tabs > button {
+    padding-inline: 4px;
   }
   .mx-tabs .mx-tab-long {
     display: none;
@@ -400,8 +397,8 @@
     transition-property: opacity, color, background-color, border-color, outline-color, box-shadow,
       fill, stroke !important;
   }
-  :where(:not(.mx-settings-page)) > .mx-tabs ~ *,
-  :where(:not(.mx-settings-page)) > .mx-toolbar:has(> .mx-tabs) ~ *,
+  .mx-tab-scope:not(.mx-settings-page > *) > .mx-tabs ~ .mx-tab-content > *,
+  .mx-tab-scope > .mx-toolbar:has(> .mx-tabs) ~ .mx-tab-content > *,
   .mx-number-value[data-changed] {
     animation-name: mx-fade !important;
     animation-duration: 160ms !important;

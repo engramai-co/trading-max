@@ -25,7 +25,7 @@ import {
   Search,
 } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useState } from "react";
 import { isImeComposing } from "./shortcut-platform";
 import { api, isReadTimeout, jsonRequest, readApi } from "@/workspace/data";
 import {
@@ -36,8 +36,9 @@ import {
   Panel,
   Pending,
   QueryError,
+  TabPanel,
   Tabs,
-  tabId,
+  TabsScope,
   useCopy,
 } from "./foundation";
 import {
@@ -130,7 +131,6 @@ function SecurityResearchWorkspace() {
     setFinderQuery(text);
     setFinder(true);
   });
-  const lensPanel = useId();
   const [universeOpen, setUniverseOpen] = useState(false);
   const [manage, setManage] = useState(false);
   const [removeConfirm, setRemoveConfirm] = useState(false);
@@ -568,16 +568,15 @@ function SecurityResearchWorkspace() {
                   listOpen={listOpen}
                   onSwitch={openUniverse}
                 />
-                <Tabs
-                  label={t("研究视角", "Research perspectives")}
-                  value={tab === "financials" ? "fundamentals" : tab}
-                  activation="manual"
-                  panel={lensPanel}
-                  onChange={(v) => update({
+                <TabsScope value={tab === "financials" ? "fundamentals" : tab} onChange={(v) => update({
                     view: v === "overview" ? null : v,
                     fundMode: null, analystView: v === "analyst" ? "ratings" : null, valuationView: null, estimateRef: null,
                     technicalView: null, financialMode: null,
-                  }, { focusResearchSection: false })}
+                  }, { focusResearchSection: false })}>
+                <Tabs
+                  label={t("研究视角", "Research perspectives")}
+                  value={tab === "financials" ? "fundamentals" : tab}
+
                   options={(readOnly
                     ? (isFund ? ["overview", "technical", "tracking", "peers"] : ["overview", "technical"]) as ResearchTab[]
                     : isFund
@@ -591,8 +590,7 @@ function SecurityResearchWorkspace() {
                       : shortTitles[value],
                   }))}
                 />
-                <div className="mx-research-lens" role="tabpanel" id={lensPanel}
-                  aria-labelledby={tabId(lensPanel, tab === "financials" ? "fundamentals" : tab)}>
+                <TabPanel value={tab === "financials" ? "fundamentals" : tab} className="mx-research-lens">
                 {failure && shown && isReadTimeout(failure.error) && <Notice tone="warn">
                   {t("研究请求超时，仍显示上一次资料。", "Research request timed out. Showing the previous reading.")}
                 </Notice>}
@@ -729,7 +727,8 @@ function SecurityResearchWorkspace() {
                 )}
                 </div>
                 )}
-                </div>
+                </TabPanel>
+                </TabsScope>
               </>
             )}
           </div>

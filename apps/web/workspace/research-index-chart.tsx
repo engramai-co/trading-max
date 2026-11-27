@@ -1,6 +1,7 @@
 "use client";
 
-import { MultiSelect, Switch } from "@mantine/core";
+import { MultiSelect } from "@mantine/core";
+import { Switch } from "@/components/ui/switch";
 import { useBreakpoint } from "@/lib/hooks";
 import { useQueries, useQuery } from "@tanstack/react-query";
 import dynamic from "next/dynamic";
@@ -204,7 +205,7 @@ export function ResearchIndexChart({ index, catalogue, snapshotId, preview = fal
             aria-label={t("比较指数", "Compare with index")} placeholder={t("比较指数", "Compare with index")}
             data={available.map((item) => ({ value: item.id, label: t(item.nameZh, item.name) }))} />}
           {["1Y", "3Y", "5Y", "MAX"].includes(period) &&
-            <Switch checked={logarithmic} onChange={(event) => setLog(event.currentTarget.checked)}
+            <Switch checked={logarithmic} onCheckedChange={(checked) => setLog(checked)}
               label={t("对数", "Log")} />}
         </div>
       </div>}

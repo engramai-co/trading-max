@@ -1,6 +1,7 @@
 "use client";
 
-import { Checkbox, Code, Select } from "@mantine/core";
+import { Code, Select } from "@mantine/core";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ExternalLink } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useEffect, useId, useRef, useState } from "react";
@@ -80,7 +81,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
     )}</Notice>
     <Select label={t("模型", "Model")} data={provider.models} value={model}
       onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending} allowDeselect={false} />
-    <Checkbox checked={defaultModel} onChange={(event) => setDefaultModel(event.currentTarget.checked)}
+    <Checkbox checked={defaultModel} onCheckedChange={(checked) => setDefaultModel(checked)}
       disabled={pending} label={t("设为默认模型", "Use as the default model")} />
     {current?.state === "pending" && current.userCode && current.verificationUrl && <div className="flex flex-col gap-mx-md" aria-live="polite">
       <p className="text-[0.9375rem] leading-[1.55] font-semibold">{t("在 OpenAI 完成授权", "Authorise with OpenAI")}</p>

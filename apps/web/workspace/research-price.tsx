@@ -6,7 +6,8 @@ import { MomentOverlay, useKeyMoments } from "./assistant/moment-controls";
 import { researchLensQuery, researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Checkbox, Modal, Select } from "@mantine/core";
+import { Modal, Select } from "@mantine/core";
+import { Checkbox, CheckboxGroup } from "@/components/ui/checkbox";
 import { useQuery } from "@tanstack/react-query";
 import type { ECharts, SeriesOption } from "echarts";
 import { useRef, useState } from "react";
@@ -334,10 +335,10 @@ export function PriceHistory({
       <div className="mx-price-common flex flex-wrap items-center gap-mx-xs">
         <Segments label={t("价格样式", "Price style")} value={style} onChange={(v) => update({ priceStyle: v })}
           options={[{ value: "candles", label: t("K 线", "Candles") }, { value: "line", label: t("线", "Line") }]} />
-        <Checkbox size="xs" label="SMA" checked={averages}
-          onChange={(e) => update({ ma: e.currentTarget.checked ? "on" : null, highlightMa: null })} />
-        <Checkbox size="xs" label={t("事件", "Events")} checked={showEvents}
-          onChange={(e) => setEventTrack(e.currentTarget.checked)} />
+        <Checkbox label="SMA" checked={averages}
+          onCheckedChange={(checked) => update({ ma: checked ? "on" : null, highlightMa: null })} />
+        <Checkbox label={t("事件", "Events")} checked={showEvents}
+          onCheckedChange={(checked) => setEventTrack(checked)} />
       </div>
       {full && <details className="mx-price-advanced">
         <summary>{t("高级", "Advanced")}</summary>
@@ -363,14 +364,14 @@ export function PriceHistory({
               { value: "QQQ", label: "QQQ · Nasdaq 100 ETF" },
               { value: "VT", label: "VT · Global stocks" },
             ]} />
-          {averages && <Checkbox.Group aria-label={t("均线周期", "Average periods")}
-            value={averagePeriods} onChange={(v) => update({ maPeriods: v.join(","), highlightMa: null, ma: v.length ? "on" : null })}>
+          {averages && <CheckboxGroup aria-label={t("均线周期", "Average periods")}
+            value={averagePeriods} onValueChange={(v) => update({ maPeriods: v.join(","), highlightMa: null, ma: v.length ? "on" : null })}>
             <div className="flex flex-wrap items-center gap-mx-sm">
-              {["20", "50", "200"].map((v) => <Checkbox key={v} size="xs" value={v} label={`SMA ${v}`} />)}
+              {["20", "50", "200"].map((v) => <Checkbox key={v} value={v} label={`SMA ${v}`} />)}
             </div>
-          </Checkbox.Group>}
-          <Checkbox size="xs" label="RSI 14" checked={rsi} onChange={(e) => update({ rsi: e.currentTarget.checked ? "on" : null })} />
-          <Checkbox size="xs" label="MACD 12/26/9" checked={macd} onChange={(e) => update({ macd: e.currentTarget.checked ? "on" : null })} />
+          </CheckboxGroup>}
+          <Checkbox label="RSI 14" checked={rsi} onCheckedChange={(checked) => update({ rsi: checked ? "on" : null })} />
+          <Checkbox label="MACD 12/26/9" checked={macd} onCheckedChange={(checked) => update({ macd: checked ? "on" : null })} />
           <a href={`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(ticker)}`}
             target="_blank" rel="noreferrer" data-slot="button" className={buttonVariants({ variant: "ghost" })}>TradingView ↗</a>
         </div>

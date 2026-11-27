@@ -173,8 +173,7 @@
   translate: -50% -50%;
 }
 /* Loading regions have their own transition; skip the generic tab entrance. */
-.mx-tabs ~ :is(.mx-data-body, .mx-research-wait),
-.mx-toolbar:has(> .mx-tabs) ~ .mx-data-body {
+.mx-tab-content > .mx-data-body {
   animation: none !important;
 }
 /* Keep the panel's flex spacing between figures and touch targets. */

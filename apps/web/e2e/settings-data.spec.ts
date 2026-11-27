@@ -129,8 +129,8 @@ test.describe("reconstruction market data", () => {
     const { panel, unexpected } = await open(page, () => overview([server]));
     const toggle = panel.getByRole("switch", { name: "Alpaca enhancement", exact: true });
     await expect(toggle).not.toBeChecked();
-    // On touch the switch takes taps across a 44px band of its row.
-    if (isMobile) expect((await toggle.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    // The label owns the switch's 44px touch band.
+    if (isMobile) expect((await toggle.locator("..").boundingBox())!.height).toBeGreaterThanOrEqual(44);
     await expect(panel.getByRole("button", { name: "Update Alpaca keys", exact: true })).toBeHidden();
     await panel.getByText("Manage Alpaca keys", { exact: true }).click();
     await expect(panel.getByRole("button", { name: "Update Alpaca keys", exact: true })).toBeVisible();
@@ -372,10 +372,10 @@ test.describe("reconstruction market data", () => {
     await panel.getByText("Manage Alpaca keys", { exact: true }).click();
     await panel.getByRole("button", { name: "Remove keys", exact: true }).click();
     await page.getByRole("dialog", { name: "Remove Alpaca keys" }).getByRole("button", { name: "Remove keys", exact: true }).click();
-    await expect(panel.locator("input[role=switch]")).toBeDisabled();
+    await expect(panel.getByRole("switch", { includeHidden: true })).toBeDisabled();
     removing.release();
     await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(panel.locator("input[role=switch]")).toHaveCount(0);
+    await expect(panel.getByRole("switch", { includeHidden: true })).toHaveCount(0);
     // Without keys nothing switches: the row names the source in use and offers Alpaca beside it.
     await expect(panel.getByRole("heading", { name: "Alpaca", level: 3, exact: true })).toBeVisible();
     await expect(panel.getByRole("button", { name: "Connect Alpaca", exact: true })).toBeVisible();
@@ -421,7 +421,7 @@ test.describe("reconstruction market data", () => {
     await dialog.getByRole("button", { name: "Remove keys", exact: true }).click();
     // The removal supersedes the failed change: its alert goes at once, and nothing else can start.
     await expect(panel.locator(".mx-notice")).toHaveCount(0);
-    await expect(panel.locator("input[role=switch]")).toBeDisabled();
+    await expect(panel.getByRole("switch", { includeHidden: true })).toBeDisabled();
     await expect(update).toBeDisabled();
     // The dialog stays until its write settles, so the outcome shows where it was asked for.
     await page.keyboard.press("Escape");
@@ -483,7 +483,7 @@ test.describe("reconstruction market data", () => {
     await dialog.getByLabel("Alpaca API Secret").fill("synthetic-secret");
     await dialog.getByRole("button", { name: "Test connection", exact: true }).click();
     await pressTwice(dialog.getByRole("button", { name: "Save and enable", exact: true }));
-    await expect(panel.locator("input[role=switch]")).toBeChecked();
+    await expect(panel.getByRole("switch", { includeHidden: true })).toBeChecked();
     expect(writes).toEqual(["PATCH", "DELETE", "PUT"]);
     await expect(dialog).toHaveCount(0);
     await expect(panel.getByRole("status").filter({ hasText: "Saved." })).toBeVisible();
@@ -541,16 +541,11 @@ for (const scheme of ["dark", "light"] as const) {
     });
     for (const checked of [true, false]) {
       await checkbox.setChecked(checked);
-      const enabled = await checkbox.evaluate((node) => {
-        const style = getComputedStyle(node);
-        return { fill: style.backgroundColor, border: style.borderTopColor };
-      });
       try {
         await testConnection.click();
         await expect(checkbox).toBeDisabled();
         await expect(checkbox).toBeChecked({ checked });
-        await expect(checkbox).not.toHaveCSS("border-top-color", enabled.border);
-        if (checked) await expect(checkbox).not.toHaveCSS("background-color", enabled.fill);
+        await expect(checkbox.locator("..")).toHaveCSS("opacity", "0.5");
       } finally {
         pending.release();
       }

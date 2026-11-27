@@ -3,7 +3,8 @@ import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
-import { Checkbox, Select, TextInput } from "@mantine/core";
+import { Select, TextInput } from "@mantine/core";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { compact, number, object, objects, percent, str, type Json } from "@/workspace/data";
 import { numeric } from "@/lib/numeric";
@@ -514,7 +515,7 @@ export function FinancialStatements({
         <Checkbox
           checked={growth}
           label={t("显示同比变化", "Show year-over-year change")}
-          onChange={(e) => setGrowth(e.currentTarget.checked)}
+          onCheckedChange={(checked) => setGrowth(checked)}
         />
         {!controlledFrequency && (
           <Segments
@@ -537,7 +538,7 @@ export function FinancialStatements({
         />
         <Checkbox
           checked={allLines}
-          onChange={(e) => setAllLines(e.currentTarget.checked)}
+          onCheckedChange={(checked) => setAllLines(checked)}
           label={t("全部明细", "All line items")}
         />
       </div>

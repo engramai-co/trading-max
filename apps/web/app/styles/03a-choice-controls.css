@@ -1,0 +1,267 @@
+/* One interruptible pill indicator for tab lists and value selectors. */
+.mx-tab-scope {
+  display: contents;
+  gap: inherit;
+}
+.mx-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+  min-width: 0;
+}
+.mx-tab-panel:focus-visible,
+.tm-choice-label :is([data-slot="checkbox"], [data-slot="switch"]):focus-visible,
+.mx-segments > button:focus-visible,
+.mx-range-more:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+:is(.mx-tabs, .mx-segments) {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  background: var(--muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  padding: 3px;
+}
+.mx-segments {
+  width: fit-content;
+  gap: 2px;
+}
+.mx-segments[data-full-width] {
+  width: 100%;
+}
+.mx-segments[data-full-width] > button {
+  flex: 1 1 auto;
+  font-size: 0.875rem;
+}
+.mx-tabs {
+  gap: 10px;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+  scroll-padding-inline: 4px;
+}
+:is(.mx-tabs, .mx-segments) > button {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  min-height: 32px;
+  min-width: 32px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--motion-fast), background-color var(--motion-fast);
+}
+/* The inner pill stays 32px on desktop while its hit area covers the 40px track. */
+@media (pointer: fine) {
+  :is(.mx-tabs, .mx-segments) > button::before {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
+}
+.mx-tabs > button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+:is(.mx-tabs, .mx-segments) > button:is(:hover, :focus-visible, [aria-selected="true"], [aria-pressed="true"], [aria-checked="true"]) {
+  color: var(--foreground);
+}
+:is(.mx-tabs, .mx-segments):not([data-indicated]) > button:is([aria-selected="true"], [aria-pressed="true"], [aria-checked="true"]) {
+  background: var(--segment-indicator);
+}
+.mx-tab-label {
+  position: relative;
+}
+.mx-tabs > button[aria-selected="true"] .mx-tab-label::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 -2px;
+  border-block-end: var(--tm-tab-underline, 2px) solid currentColor;
+}
+.mx-tabs[data-indicated] {
+  --tm-tab-underline: 0px;
+}
+.mx-segment-label {
+  display: inline-block;
+}
+.mx-segment-marker {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  vertical-align: 1px;
+}
+.mx-segment-short,
+.mx-tabs .mx-tab-short {
+  display: none;
+}
+:is(.mx-tabs, .mx-segments) > .mx-indicator {
+  position: absolute;
+  inset: 0 auto auto 0;
+  transform-origin: 0 0;
+  border-radius: var(--radius-control);
+  pointer-events: none;
+  visibility: hidden;
+  background: var(--segment-indicator);
+}
+:is(.mx-tabs, .mx-segments)[data-indicated] > .mx-indicator {
+  visibility: visible;
+}
+.tm-choice-label {
+  --tm-choice-target: 40px;
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tm-choice-target);
+  min-width: min(var(--tm-choice-target), 100%);
+  gap: 8px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.tm-choice-label[data-disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.tm-choice-description {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+.tm-choice-label :is([data-slot="checkbox"], [data-slot="switch"]) {
+  position: relative;
+  flex: none;
+  display: inline-grid;
+  align-items: center;
+  padding: 0;
+  cursor: inherit;
+}
+.tm-choice-label [data-slot="checkbox"] {
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  background: var(--field);
+  border: 1px solid var(--input);
+  border-radius: var(--radius-checkbox);
+  color: var(--primary-foreground);
+  transition: background-color var(--motion-fast), border-color var(--motion-fast);
+}
+.tm-choice-label [data-slot="checkbox"]:is([data-checked], [data-indeterminate]) {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+.tm-choice-label [data-slot="checkbox-indicator"] {
+  display: grid;
+}
+.tm-choice-label [data-slot="switch"] {
+  width: 40px;
+  height: 22px;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
+  background: var(--switch-off);
+  transition: background-color var(--motion-fast);
+}
+.tm-choice-label[data-standalone] {
+  justify-content: center;
+}
+.tm-choice-label[data-standalone] [data-slot="switch"]::after {
+  content: "";
+  position: absolute;
+  inset-block: calc((20px - var(--tm-choice-target)) / 2);
+  inset-inline: calc((38px - var(--tm-choice-target)) / 2);
+}
+.tm-choice-label [data-slot="switch"][data-checked] {
+  background: var(--primary);
+}
+.tm-choice-label [data-slot="switch-thumb"] {
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--primary-foreground);
+  color: var(--primary-active);
+  transform: translateX(0);
+  pointer-events: none;
+}
+.tm-choice-label [data-slot="switch-thumb"][data-checked] {
+  transform: translateX(18px);
+}
+@media (hover: hover) {
+  .tm-choice-label:not([data-disabled]):hover [data-slot="checkbox"][data-unchecked] {
+    border-color: var(--input-hover);
+  }
+  .tm-choice-label:not([data-disabled]):hover [data-slot="switch"][data-unchecked] {
+    background: var(--switch-off-hover);
+  }
+  .tm-choice-label:not([data-disabled]):hover [data-slot="switch"][data-checked] {
+    background: var(--primary-hover);
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .tm-choice-label [data-slot="switch-thumb"] {
+    transition: transform var(--motion-fast);
+  }
+}
+@media (pointer: coarse) {
+  .tm-choice-label {
+    --tm-choice-target: 44px;
+  }
+  :is(.mx-tabs, .mx-segments) {
+    border-block: 0;
+    padding-block: 0;
+  }
+  :is(.mx-tabs, .mx-segments) > button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+@media (forced-colors: active) {
+  :is(.mx-tabs, .mx-segments) > .mx-indicator {
+    display: none;
+  }
+  .mx-tabs[data-indicated] {
+    --tm-tab-underline: 2px;
+  }
+  .mx-segments > button:is([aria-pressed="true"], [aria-checked="true"])::after {
+    content: "";
+    position: absolute;
+    inset: 2px;
+    border: 1px solid ButtonText;
+    border-radius: inherit;
+  }
+  .tm-choice-label [data-slot="switch"] {
+    border-color: ButtonText;
+  }
+  .tm-choice-label [data-slot="switch-thumb"] {
+    background: ButtonText;
+    forced-color-adjust: none;
+    color: ButtonFace;
+  }
+  .tm-choice-label [data-slot="checkbox-indicator"] {
+    color: ButtonText;
+  }
+  .mx-tab-panel:focus-visible,
+  .tm-choice-label :is([data-slot="checkbox"], [data-slot="switch"]):focus-visible,
+  .mx-tabs > button:focus-visible,
+  .mx-segments > button:focus-visible,
+  .mx-range-more:focus-visible {
+    outline-color: Highlight;
+  }
+}

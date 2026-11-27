@@ -738,17 +738,22 @@ test.describe("a link to one decision", () => {
     await expect(page.getByRole("table", { name: "少赚最多的已结束交易" })).toContainText("SYNA");
   });
 
-  test("the review's angles still open as the arrows reach them, and Tab leaves from the open one", async ({ page }) => {
+  test("arrows explore Review perspectives and Space commits one named panel", async ({ page }) => {
     await page.goto("/review?account=A");
     const angles = page.getByRole("tablist", { name: "复盘角度" });
     const outcomes = angles.getByRole("tab", { name: "投资结果" });
     const attribution = angles.getByRole("tab", { name: "盈亏归因" });
     await expect(outcomes).toHaveAttribute("aria-selected", "true");
     await outcomes.focus();
-    // These tabs keep automatic activation: an arrow opens the angle it reaches.
+    const entries = await page.evaluate(() => history.length);
     await page.keyboard.press("ArrowRight");
     await expect(attribution).toBeFocused();
+    await expect(outcomes).toHaveAttribute("aria-selected", "true");
+    expect(await page.evaluate(() => history.length)).toBe(entries);
+    await page.keyboard.press("Space");
     await expect(attribution).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tabpanel", { name: "盈亏归因" })).toBeVisible();
+    expect(await page.evaluate(() => history.length)).toBe(entries + 1);
     await expect(page).toHaveURL(/reviewView=attribution/);
     await expect(attribution).toHaveAttribute("tabindex", "0");
     await expect(outcomes).toHaveAttribute("tabindex", "-1");

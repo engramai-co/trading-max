@@ -1,7 +1,8 @@
 "use client";
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { Loader, Modal, PasswordInput, Switch } from "@mantine/core";
+import { Modal, PasswordInput } from "@mantine/core";
+import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -81,12 +82,11 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
             checked={enabled}
             // Key changes disable it; its own change only holds presses, so a focused switch keeps focus.
             disabled={busy && requested === undefined}
-            aria-busy={requested !== undefined || undefined}
-            thumbIcon={requested !== undefined ? <Loader size={10} /> : undefined}
-            onChange={(event) => {
+            saving={requested !== undefined}
+            onCheckedChange={(checked) => {
               if (writeInFlight(client)) return;
               begin();
-              toggle.mutate({ enabled: event.currentTarget.checked });
+              toggle.mutate({ enabled: checked });
             }}
           />
         ) : (

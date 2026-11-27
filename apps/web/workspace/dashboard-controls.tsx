@@ -3,6 +3,7 @@
 import { Menu } from "@mantine/core";
 import { ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useBreakpoint } from "@/lib/hooks";
 import { PORTFOLIO_RANGES } from "@/lib/portfolio/history";
 import type { Range } from "@/lib/portfolio/nav";
 import { Segments, useCopy } from "./foundation";
@@ -21,6 +22,7 @@ export function DashboardRanges({ value, onChange, label, intraday = true }: {
   intraday?: boolean;
 }) {
   const t = useCopy();
+  const phone = useBreakpoint("phone");
   const options = PORTFOLIO_RANGES.filter((range) => intraday || range !== "1D")
     .map((range) => ({ value: range, label: rangeName(range, t("全部", "All")), compact: phoneRanges.has(range) }));
   const more = options.filter((item) => !item.compact);
@@ -29,7 +31,7 @@ export function DashboardRanges({ value, onChange, label, intraday = true }: {
 
   return (
     <div className="mx-dashboard-ranges">
-      <Segments label={label} value={value} onChange={onChange} options={options} shortcuts />
+      <Segments label={label} value={value} onChange={onChange} options={options} shortcuts compact={phone} />
       <Menu position="bottom-end" withinPortal>
         <Menu.Target>
           <button className="mx-range-more" data-selected={Boolean(selected)} type="button"

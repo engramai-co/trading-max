@@ -70,20 +70,12 @@ for (const scheme of ["dark", "light"] as const) {
     await expect(unchecked).not.toBeChecked();
     await expect(unchecked).toBeEnabled();
 
-    const checkedThumb = checked.locator("xpath=following-sibling::*[1]").locator(".mantine-Switch-thumb");
+    const checkedThumb = checked.locator('[data-slot="switch-thumb"]');
     await expect(checkedThumb).toHaveCSS("transition-duration", "0s");
     await page.emulateMedia({ reducedMotion: "no-preference" });
-    await expect(checkedThumb).toHaveCSS("transition-duration", "0.15s");
+    await expect(checkedThumb).toHaveCSS("transition-duration", "0.12s");
     await page.emulateMedia({ reducedMotion: "reduce" });
     await expect(checkedThumb).toHaveCSS("transition-duration", "0s");
-
-    const enabled = await Promise.all([checked, unchecked].map(async (control) => {
-      const track = control.locator("xpath=following-sibling::*[1]");
-      const thumb = track.locator(".mantine-Switch-thumb");
-      const trackColour = await track.evaluate((node) => getComputedStyle(node).backgroundColor);
-      const thumbColour = await thumb.evaluate((node) => getComputedStyle(node).backgroundColor);
-      return { control, track, thumb, trackColour, thumbColour };
-    }));
 
     let releaseSave!: () => void;
     const saving = new Promise<void>((resolve) => { releaseSave = resolve; });
@@ -95,11 +87,12 @@ for (const scheme of ["dark", "light"] as const) {
       await checked.click();
       await expect(checked).toBeChecked();
       await expect(unchecked).not.toBeChecked();
-      for (const { control, track, thumb, trackColour, thumbColour } of enabled) {
+      for (const control of [checked, unchecked]) {
         await expect(control).toBeDisabled();
-        await expect(track).not.toHaveCSS("background-color", trackColour);
-        await expect(thumb).not.toHaveCSS("background-color", thumbColour);
+        await expect(control.locator("..")).toHaveCSS("opacity", "0.5");
       }
+      await expect(checked).toHaveAttribute("aria-busy", "true");
+      await expect(unchecked).not.toHaveAttribute("aria-busy", "true");
     } finally {
       releaseSave();
     }
@@ -208,15 +201,14 @@ for (const locale of ["en", "zh"] as const) {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       if (isMobile) {
         expect((await panel.getByRole("combobox").boundingBox())!.height).toBeGreaterThanOrEqual(44);
-        const contrast = await panel.locator(".mx-assistant-enable .mantine-Switch-track").evaluate((track) => {
+        const contrast = await panel.locator('.mx-assistant-enable [data-slot="switch"]').evaluate((track) => {
           const lum = (colour: string) => {
             const channels = colour.match(/\d+/g)!.slice(0, 3).map((c) => Number(c) / 255)
               .map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
             return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
           };
           const style = getComputedStyle(track);
-          if (style.outlineStyle === "none") return 1;
-          const outline = lum(style.outlineColor);
+          const outline = lum(style.backgroundColor);
           const ground = lum(getComputedStyle(track.closest(".mx-panel")!).backgroundColor);
           return (Math.max(outline, ground) + 0.05) / (Math.min(outline, ground) + 0.05);
         });

@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.74.0] - 2026-11-27
+
+### Changed
+- Checkboxes, switches, segmented choices, tabs and progress bars use the new design system. Tabs and segmented choices show the selection with a sliding highlight, and every control is at least 44px tall on touch screens.
+- In the desktop App, Settings sections use the same sliding highlight as the web interface.
+
+### Fixed
+- Tabs on Holdings, Returns, Review, Research and Settings each name the section they show, so screen readers announce it and keyboard users can move into it. On Returns and Settings, arrow keys move between tabs and Enter or Space opens one; on Review, only opening a tab adds a Back step, not moving across tabs.
+- The selected tab stays marked in high-contrast mode.
+- Tab strips too wide for the screen scroll with a visible scrollbar instead of fading out.
+
 ## [1.73.3] - 2026-11-27
 
 ### Fixed

@@ -1,6 +1,7 @@
 "use client";
 
-import { Checkbox, Progress } from "@mantine/core";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Progress } from "@/components/ui/progress";
 import { type QueryClient, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "./link";
 import { useState } from "react";
@@ -100,7 +101,7 @@ function BalanceConfirmation({ runId, onConfirm, busy }: { runId: string; onConf
     <p className="text-[0.8125rem] leading-[1.45]">{t("请对照 Trading 212，确认下面的账户价值合理。", "Compare these account values with Trading 212 before continuing.")}</p>
     {accounts.map((account) => <div key={account.code} className="flex flex-wrap items-center justify-between gap-mx-md"><p className="text-[0.9375rem] leading-[1.55]">{account.code === "A" ? "Invest" : "ISA"}</p><p className="text-[0.9375rem] leading-[1.55] font-semibold">{currency(account.totalValueGbp, "GBP", 2)}</p></div>)}
     <p className="text-xs leading-[1.4] text-[var(--mx-muted)]">{t("按 GBP 统一展示；外币账户需对照折算后的金额。", "Values are shown in GBP; compare converted values for foreign-currency accounts.")}</p>
-    <Checkbox label={t("我已核对，账户价值合理", "I have checked that the account values are plausible")} checked={checked} onChange={(e) => setChecked(e.currentTarget.checked)} />
+    <Checkbox label={t("我已核对，账户价值合理", "I have checked that the account values are plausible")} checked={checked} onCheckedChange={(checked) => setChecked(checked)} />
     <div className="flex flex-wrap items-center gap-mx-md"><Button loading={busy} loadingLabel={t("保存中…", "Saving…")} disabled={!checked || !accounts.length} onClick={() => onConfirm(runId)}>{t("完成设置", "Finish setup")}</Button></div>
   </div>;
 }
