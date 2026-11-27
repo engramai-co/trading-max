@@ -66,16 +66,9 @@
     },
     "workspace/holdings.tsx": {
       "@mantine/core": [
-        "Checkbox",
         "Drawer",
         "Select",
         "TextInput"
-      ]
-    },
-    "workspace/local-onboarding.tsx": {
-      "@mantine/core": [
-        "Checkbox",
-        "Progress"
       ]
     },
     "workspace/look-through.tsx": {
@@ -139,7 +132,6 @@
     },
     "workspace/research-company.tsx": {
       "@mantine/core": [
-        "Checkbox",
         "Select",
         "TextInput"
       ]
@@ -179,8 +171,7 @@
     },
     "workspace/research-index-chart.tsx": {
       "@mantine/core": [
-        "MultiSelect",
-        "Switch"
+        "MultiSelect"
       ]
     },
     "workspace/research-index.tsx": {
@@ -201,7 +192,6 @@
     "workspace/research-options.tsx": {
       "@mantine/core": [
         "CheckIcon",
-        "Checkbox",
         "Combobox",
         "Drawer",
         "MultiSelect",
@@ -212,7 +202,6 @@
     },
     "workspace/research-price.tsx": {
       "@mantine/core": [
-        "Checkbox",
         "Modal",
         "Select"
       ]
@@ -226,7 +215,6 @@
     },
     "workspace/research-universe.tsx": {
       "@mantine/core": [
-        "Checkbox",
         "Select",
         "TextInput"
       ]
@@ -281,28 +269,23 @@
     "workspace/settings-assistant.tsx": {
       "@mantine/core": [
         "Modal",
-        "NativeSelect",
-        "Switch"
+        "NativeSelect"
       ]
     },
     "workspace/settings-index-data.tsx": {
       "@mantine/core": [
         "Modal",
-        "PasswordInput",
-        "Switch"
+        "PasswordInput"
       ]
     },
     "workspace/settings-market-data.tsx": {
       "@mantine/core": [
-        "Loader",
         "Modal",
-        "PasswordInput",
-        "Switch"
+        "PasswordInput"
       ]
     },
     "workspace/settings-oauth.tsx": {
       "@mantine/core": [
-        "Checkbox",
         "Code",
         "Select"
       ]
@@ -311,17 +294,14 @@
       "@mantine/core": [
         "FileInput",
         "Select",
-        "Switch",
         "TextInput"
       ]
     },
     "workspace/settings.tsx": {
       "@mantine/core": [
-        "Checkbox",
         "Drawer",
         "Modal",
         "PasswordInput",
-        "SegmentedControl",
         "Select"
       ]
     },

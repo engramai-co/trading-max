@@ -16,13 +16,16 @@ import {
   RotateCw,
 } from "lucide-react";
 import Link from "./link";
-import { cloneElement, useCallback, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
+import { cloneElement, createContext, useCallback, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { Button, CloseButton, buttonVariants } from "@/components/ui/button";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Tabs as TabsRoot, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 import { isReadTimeout, type ChangeTone } from "./data";
-import { indicatorStart } from "./selection-indicator";
+import { indicatorStart, sameIndicatorTarget, type IndicatorTarget } from "./selection-indicator";
 import { isImeComposing, useAltDigitModifier } from "./shortcut-platform";
 import { LocalWorkspaceContext } from "./loading-context";
 import { scheduleLoadingStatus, updateFailureLabel } from "./loading-state";
@@ -33,70 +36,52 @@ export function useCopy() {
   // Stable for a locale, so memoised chart options do not rebuild on every render.
   return useCallback((zh: string, en: string) => (locale === "zh" ? zh : en), [locale]);
 }
-// One sliding indicator for tabs and segments. The first placement is instant.
-// A later move animates transform only: the indicator takes its new size at
-// once, then scales and slides from wherever it currently appears (FLIP), so a
-// quick second choice continues from mid-flight and layout never runs per frame.
-// A segment's pill covers its whole cell; a tab's underline follows its label,
-// so touch layouts can widen tabs into equal cells without stretching the line.
-function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector: string, selection: unknown) {
+// Continue from the indicator's rendered position when the selection changes mid-flight.
+function useSelectionIndicator(host: RefObject<HTMLDivElement | null>, selector: string, selection: string) {
+  const targetRef = useRef<IndicatorTarget | null>(null);
   useLayoutEffect(() => {
     const list = host.current;
     const indicator = list?.querySelector<HTMLElement>(":scope > .mx-indicator");
     if (!list || !indicator) return;
-    const segments = list.classList.contains("mx-segments");
-    // The FLIP start frame scales from the top-left corner it measures.
-    indicator.style.transformOrigin = "0 0";
-    let placed = "";
+    const active = list.querySelector<HTMLElement>(selector);
     const place = (animate: boolean) => {
-      const active = list.querySelector<HTMLElement>(selector);
-      const visible = active && active.getClientRects().length > 0;
-      indicator.style.opacity = visible ? "1" : "0";
-      if (!visible) { placed = ""; return; }
-      const label = segments ? null : active.querySelector<HTMLElement>(":scope > .mx-tab-label");
-      const anchor = label ?? active;
-      // Equal-width touch cells rarely fall on whole pixels and offset* rounds, so the
-      // box comes from the rendered rects. Under a scaled ancestor (an entry
-      // transition) those are scaled too, and the rounded layout offsets are used.
+      const visible = Boolean(active?.getClientRects().length);
+      list.toggleAttribute("data-indicated", visible);
+      if (!active || !visible) {
+        targetRef.current = null;
+        indicator.getAnimations().forEach((animation) => animation.cancel());
+        return;
+      }
       const box = list.getBoundingClientRect();
-      const rect = anchor.getBoundingClientRect();
+      const rect = active.getBoundingClientRect();
+      // Use unscaled layout offsets during a parent entrance transform.
       const exact = Math.abs(box.width - list.offsetWidth) < 1;
-      const x = exact
-        ? rect.left - box.left - list.clientLeft + list.scrollLeft
-        : active.offsetLeft + (label?.offsetLeft ?? 0);
-      const y = !segments ? 0 : exact ? rect.top - box.top - list.clientTop + list.scrollTop : active.offsetTop;
-      const width = exact ? rect.width : anchor.offsetWidth;
-      const height = !segments ? indicator.offsetHeight : exact ? rect.height : active.offsetHeight;
-      // A resize that moves nothing must not cut a running move short.
-      const key = [x, y, width, height].map((value) => value.toFixed(2)).join(" ");
-      if (key === placed) return;
-      placed = key;
+      const next: IndicatorTarget = {
+        x: exact ? rect.left - box.left - list.clientLeft + list.scrollLeft : active.offsetLeft,
+        y: exact ? rect.top - box.top - list.clientTop + list.scrollTop : active.offsetTop,
+        width: exact ? rect.width : active.offsetWidth,
+        height: exact ? rect.height : active.offsetHeight,
+      };
+      if (sameIndicatorTarget(targetRef.current, next)) return;
       const from = indicator.getBoundingClientRect();
       indicator.getAnimations().forEach((animation) => animation.cancel());
-      indicator.style.width = width + "px";
-      if (segments) indicator.style.height = height + "px";
-      const target = "translate(" + x + "px, " + y + "px)";
-      indicator.style.transform = target;
-      if (!animate || !from.width || !height || window.matchMedia(MEDIA_QUERIES.reducedMotion).matches) return;
-      const start = indicatorStart(from, indicator.getBoundingClientRect(), { x, y });
-      if (!start) return;
-      indicator.animate(
-        [{ transform: start }, { transform: target }],
-        { duration: 200, easing: getComputedStyle(list).getPropertyValue("--mx-ease").trim() || "ease-out" },
+      const transform = "translate(" + next.x + "px, " + next.y + "px)";
+      indicator.style.width = next.width + "px";
+      indicator.style.height = next.height + "px";
+      indicator.style.transform = transform;
+      targetRef.current = next;
+      if (!animate || window.matchMedia(MEDIA_QUERIES.reducedMotion).matches) return;
+      const start = indicatorStart(from, indicator.getBoundingClientRect(), { x: next.x, y: next.y });
+      if (start) indicator.animate(
+        [{ transform: start }, { transform }],
+        { duration: 180, easing: "cubic-bezier(0.16, 1, 0.3, 1)" },
       );
     };
-    place(list.dataset.indicator === "ready");
-    const frame = requestAnimationFrame(() => { list.dataset.indicator = "ready"; });
+    place(targetRef.current !== null);
     const observer = new ResizeObserver(() => place(false));
     observer.observe(list);
-    // A label can change width without the row resizing (a late web font, a phone label).
-    const active = list.querySelector<HTMLElement>(selector);
-    const measured = segments ? active : active?.querySelector<HTMLElement>(":scope > .mx-tab-label");
-    if (measured) observer.observe(measured);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
+    if (active) observer.observe(active);
+    return () => observer.disconnect();
   }, [host, selector, selection]);
 }
 /**
@@ -591,6 +576,9 @@ export function Segments<T extends string>({
   options,
   label,
   shortcuts = false,
+  compact = false,
+  fullWidth = false,
+  selection = "toggle",
 }: {
   value: T;
   onChange: (value: T) => void;
@@ -611,13 +599,19 @@ export function Segments<T extends string>({
    * hinted or announced.
    */
   shortcuts?: boolean;
+  compact?: boolean;
+  fullWidth?: boolean;
+  /** Radio-group semantics make arrow keys move selection immediately instead of needing a second press. */
+  selection?: "toggle" | "radio";
 }) {
   const listRef = useRef<HTMLDivElement>(null);
   const modifier = useAltDigitModifier();
   const bound = shortcuts && modifier != null;
-  const labels = options.map((option) => option.label).join("\u0000");
+  const radio = selection === "radio";
+  const visibleOptions = compact ? options.filter((option) => option.compact) : options;
+  const labels = visibleOptions.map((option) => option.label).join("\u0000");
   useSegmentCells(listRef, labels);
-  useSelectionIndicator(listRef, '[aria-pressed="true"]', value + labels);
+  useSelectionIndicator(listRef, radio ? '[aria-checked="true"]' : '[aria-pressed="true"]', value + labels);
   // A modifier keeps typing, speech input and screen-reader keys from switching
   // the view by accident (WCAG 2.1.4), and leaves fields and dialogs alone.
   const pick = useEffectEvent((event: KeyboardEvent) => {
@@ -637,158 +631,149 @@ export function Segments<T extends string>({
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, [bound]);
-  return (
-    <div ref={listRef} className="mx-segments" role="group" aria-label={label}>
-      {options.map((option, index) => {
-        const position = shortcuts && index < 9 ? index + 1 : null;
-        const shortcut = bound ? position : null;
-        const button = (
-          <button
-            type="button"
-            key={option.value}
-            aria-pressed={value === option.value}
-            data-compact-option={option.compact}
-            aria-keyshortcuts={shortcut ? "Alt+" + shortcut : undefined}
-            onClick={() => onChange(option.value)}
-          >
-            <span className="mx-segment-label">
-              {option.marker && <span className="mx-segment-marker" aria-hidden="true" />}
-              {option.short ? (
-                <>
-                  <span className="mx-segment-long">{option.label}</span>
-                  <span className="mx-segment-short">{option.short}</span>
-                </>
-              ) : (
-                option.label
-              )}
-              {option.marker && <span className="sr-only">{"，" + option.marker}</span>}
-            </span>
-          </button>
-        );
-        // A stable wrapper keeps the buttons mounted once the platform is known.
-        return position ? (
-          <Tip
-            key={option.value}
-            disabled={!shortcut}
-            label={<span className="mx-tooltip-keys">{option.label}<kbd>{(modifier === "⌥" ? "⌥" : "Alt ") + position}</kbd></span>}
-          >
-            {button}
-          </Tip>
-        ) : button;
-      })}
+  const items = visibleOptions.map((option) => {
+    const index = options.indexOf(option);
+    const position = shortcuts && index < 9 ? index + 1 : null;
+    const shortcut = bound ? position : null;
+    const itemProps = {
+      value: option.value,
+      "data-compact-option": option.compact,
+      "aria-keyshortcuts": shortcut ? "Alt+" + shortcut : undefined,
+    };
+    const labelContent = (
+      <span className="mx-segment-label">
+        {option.marker && <span className="mx-segment-marker" aria-hidden="true" />}
+        {option.short ? (
+          <>
+            <span className="mx-segment-long">{option.label}</span>
+            <span className="mx-segment-short">{option.short}</span>
+          </>
+        ) : (
+          option.label
+        )}
+        {option.marker && <span className="sr-only">{"，" + option.marker}</span>}
+      </span>
+    );
+    const button = radio ? (
+      <RadioGroupItem key={option.value} {...itemProps}>{labelContent}</RadioGroupItem>
+    ) : (
+      <ToggleGroupItem key={option.value} {...itemProps}>{labelContent}</ToggleGroupItem>
+    );
+    // A stable wrapper keeps the buttons mounted once the platform is known.
+    return position ? (
+      <Tip
+        key={option.value}
+        disabled={!shortcut}
+        label={<span className="mx-tooltip-keys">{option.label}<kbd>{(modifier === "⌥" ? "⌥" : "Alt ") + position}</kbd></span>}
+      >
+        {button}
+      </Tip>
+    ) : button;
+  });
+  const sharedProps = {
+    ref: listRef,
+    className: "mx-segments",
+    "aria-label": label,
+    "data-full-width": fullWidth || undefined,
+  };
+  return radio ? (
+    <RadioGroup {...sharedProps} value={value} onValueChange={onChange}>
+      {items}
       <span className="mx-indicator" aria-hidden="true" />
-    </div>
+    </RadioGroup>
+  ) : (
+    <ToggleGroup {...sharedProps} value={[value]} onValueChange={([next]) => onChange(next ?? value)}>
+      {items}
+      <span className="mx-indicator" aria-hidden="true" />
+    </ToggleGroup>
   );
 }
-/** The id of the tab that shows a value in a panel shared by its tablist. */
-export function tabId(panel: string, value: string) {
-  return panel + "-tab-" + value;
+const ReselectTab = createContext<(() => void) | undefined>(undefined);
+
+export function TabsScope<T extends string>({
+  value,
+  onChange,
+  children,
+}: {
+  value: T;
+  onChange: (value: T) => void;
+  children: ReactNode;
+}) {
+  return (
+    <TabsRoot className="mx-tab-scope" value={value} onValueChange={onChange}>
+      <ReselectTab.Provider value={() => onChange(value)}>{children}</ReselectTab.Provider>
+    </TabsRoot>
+  );
+}
+
+export function TabPanel({ value, children, className = "mx-tab-content" }: {
+  value: string;
+  children: ReactNode;
+  className?: string;
+}) {
+  return <TabsContent value={value} className={className + " mx-tab-panel"}>{children}</TabsContent>;
+}
+
+function revealTab(list: HTMLElement, tab: HTMLElement) {
+  const bounds = list.getBoundingClientRect();
+  const rect = tab.getBoundingClientRect();
+  const inset = 4;
+  // Retain page scroll, including when a different tab is selected by Back.
+  if (rect.left < bounds.left + inset) list.scrollLeft += rect.left - bounds.left - inset;
+  else if (rect.right > bounds.right - inset) list.scrollLeft += rect.right - bounds.right + inset;
 }
 
 export function Tabs<T extends string>({
   value,
-  onChange,
   options,
   label,
-  activation = "automatic",
-  panel,
+  activation = "manual",
 }: {
   value: T;
-  onChange: (value: T) => void;
-  /** `short` is the phone label, so a long tab row fits without scrolling. */
   options: Array<{ value: T; label: string; short?: string; ref?: RefObject<HTMLButtonElement | null> }>;
   label: string;
-  /**
-   * "manual" lets the arrow keys, Home and End move focus only, and Enter or Space choose the tab:
-   * for tabs whose panels load data or add a history entry, so passing over a tab does neither.
-   */
   activation?: "automatic" | "manual";
-  /** The id of the one panel the tabs share. Each tab then controls it, and the panel names its tab with tabId. */
-  panel?: string;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
-  const labelsKey = options.map((option) => option.label).join("\u0000");
-  // In manual mode the one tab stop follows focus, so Tab and Shift+Tab leave the list from the tab
-  // the arrows reached; once focus has left, the stop returns to the selected tab for re-entry.
-  const [focused, setFocused] = useState<T | null>(null);
-  const manual = activation === "manual";
-  const stop = manual && focused != null && options.some((option) => option.value === focused) ? focused : value;
-  useSelectionIndicator(listRef, '[aria-selected="true"]', value + labelsKey);
-  useEffect(() => {
+  const [focusedWithin, setFocusedWithin] = useState(false);
+  const reselect = useContext(ReselectTab);
+  const labels = options.map((option) => option.label).join("\u0000");
+  useSelectionIndicator(listRef, '[aria-selected="true"]', value + labels);
+  useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
-    const revealSelection = () => {
-      const selected = list.querySelector('[aria-selected="true"]');
-      if (!selected) return;
-      const bounds = list.getBoundingClientRect();
-      const tab = selected.getBoundingClientRect();
-      // Clear the 40px edge fade as well, so the selected tab is never half faded.
-      const fade = Math.min(40, bounds.width / 4);
-      if (tab.left < bounds.left + fade)
-        list.scrollLeft -= bounds.left + fade - tab.left;
-      else if (tab.right > bounds.right - fade)
-        list.scrollLeft += tab.right - (bounds.right - fade);
+    const reveal = () => {
+      const selected = list.querySelector<HTMLElement>('[aria-selected="true"]');
+      const focused = list.contains(document.activeElement) && document.activeElement instanceof HTMLElement ? document.activeElement : selected;
+      if (focused) revealTab(list, focused);
     };
-    const markEdges = () => {
-      const start = list.scrollLeft > 1;
-      const end = list.scrollLeft + list.clientWidth < list.scrollWidth - 1;
-      const edge = start && end ? "both" : start ? "start" : end ? "end" : "";
-      if (edge) list.dataset.edge = edge;
-      else delete list.dataset.edge;
-    };
-    revealSelection();
-    markEdges();
-    const observer = new ResizeObserver(() => {
-      revealSelection();
-      markEdges();
-    });
+    reveal();
+    const observer = new ResizeObserver(reveal);
     observer.observe(list);
-    list.addEventListener("scroll", markEdges, { passive: true });
-    return () => {
-      observer.disconnect();
-      list.removeEventListener("scroll", markEdges);
-    };
-  }, [value, labelsKey]);
+    return () => observer.disconnect();
+  }, [value, labels]);
   return (
-    <div ref={listRef} className="mx-tabs" role="tablist" aria-label={label} onBlur={manual ? (event) => {
-      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(null);
-    } : undefined}>
-      {options.map((option, index) => (
-        <button
-          type="button"
-          role="tab"
+    <TabsList
+      ref={listRef}
+      className="mx-tabs"
+      aria-label={label}
+      activateOnFocus={activation === "automatic"}
+      onFocus={(event) => {
+        setFocusedWithin(true);
+        if (event.target instanceof HTMLElement) revealTab(event.currentTarget, event.target);
+      }}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setFocusedWithin(false);
+      }}
+    >
+      {options.map((option) => (
+        <TabsTrigger
           key={option.value}
+          value={option.value}
           ref={option.ref}
-          id={panel ? tabId(panel, option.value) : undefined}
-          aria-controls={panel}
+          onClick={value === option.value ? reselect : undefined}
+          {...(!focusedWithin ? { tabIndex: option.value === value ? 0 : -1 } : {})}
           aria-label={option.short ? option.label : undefined}
-          aria-selected={value === option.value}
-          tabIndex={stop === option.value ? 0 : -1}
-          onFocus={manual ? () => setFocused(option.value) : undefined}
-          onClick={() => onChange(option.value)}
-          onKeyDown={(event) => {
-            const offset =
-              event.key === "ArrowRight"
-                ? 1
-                : event.key === "ArrowLeft"
-                  ? -1
-                  : 0;
-            const next =
-              event.key === "Home"
-                ? 0
-                : event.key === "End"
-                  ? options.length - 1
-                  : (index + offset + options.length) % options.length;
-            if (offset || event.key === "Home" || event.key === "End") {
-              event.preventDefault();
-              if (activation === "automatic") onChange(options[next].value);
-              (
-                event.currentTarget.parentElement?.children[
-                  next
-                ] as HTMLButtonElement
-              )?.focus();
-            }
-          }}
         >
           <span className="mx-tab-label">
             {option.short ? (
@@ -796,14 +781,12 @@ export function Tabs<T extends string>({
                 <span className="mx-tab-long">{option.label}</span>
                 <span className="mx-tab-short">{option.short}</span>
               </>
-            ) : (
-              option.label
-            )}
+            ) : option.label}
           </span>
-        </button>
+        </TabsTrigger>
       ))}
       <span className="mx-indicator" aria-hidden="true" />
-    </div>
+    </TabsList>
   );
 }
 export function Facts({ rows }: { rows: Array<[ReactNode, ReactNode]> }) {

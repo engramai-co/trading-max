@@ -69,7 +69,7 @@
   .mx-page .mx-chart-metrics > .mx-metric:has(.mx-tag-help) {
     flex-basis: 100%;
   }
-  /* Type roles: titles 15/600, body 13/400, labels 12/500. Tabs and segments read as labels. */
+  /* Type roles: titles 15/600, body 13/400, labels 12/500. */
   .mx-page :is(.mx-panel-heading h2, .mx-account-card h2, .mx-connection-card h3, .mx-setting-row h3, .mx-danger-zone h3,
     .mx-import-drop h3, .mx-section-label, .mx-sensitivity-heading h3) {
     font-size: var(--mx-text-title);
@@ -91,13 +91,6 @@
     font-size: var(--mx-text-label);
     font-weight: 500;
     line-height: 1.5;
-  }
-  .mx-page :is(.mx-tabs button, .mx-segments button) {
-    font-size: var(--mx-text-label);
-    font-weight: 500;
-  }
-  .mx-page :is(.mx-tabs button[aria-selected="true"], .mx-segments button[aria-pressed="true"]) {
-    font-weight: 600;
   }
   .mx-page :is(strong, b, .mx-attention strong, .mx-option-chain .mx-strike, .mx-decision-watching,
     .mx-document-feed a, .mx-job-name > strong, .mx-inline-control[aria-pressed="true"],
@@ -215,7 +208,7 @@
     gap: var(--mx-space-section);
   }
   .mx-research-content > .mx-security-panel,
-  .mx-research-content > .mx-tabs {
+  .mx-research-content > .mx-tab-scope > .mx-tabs {
     margin-bottom: calc(var(--mx-space-heading) - var(--mx-space-section));
   }
   .mx-page .mx-security-panel {
@@ -251,7 +244,7 @@
   .mx-page .mx-review-evidence {
     gap: var(--mx-space-section);
   }
-  .mx-page .mx-review-evidence > .mx-tabs {
+  .mx-page .mx-review-evidence > .mx-tab-scope > .mx-tabs {
     margin-bottom: calc(var(--mx-space-heading) - var(--mx-space-section));
   }
   .mx-page .mx-review-highlights {
@@ -455,14 +448,6 @@
   .mx-page .mantine-Pagination-root {
     --pagination-control-size: 44px;
   }
-  .mx-page .mantine-Checkbox-body {
-    align-items: center;
-  }
-  .mx-page .mantine-Checkbox-label {
-    display: flex;
-    align-items: center;
-    min-height: 44px;
-  }
   .mx-page :is(.mx-table tbody a, .mx-document-feed a, .mx-assumption-picker button) {
     position: relative;
   }
@@ -507,15 +492,6 @@
   /* A label that wraps its help under an estimate tag keeps their 44px hit areas apart. */
   .mx-page .mx-metric-label:has(.mx-tag-help) {
     row-gap: 20px;
-  }
-  /* A switch on its own in a settings row offers 44 × 44px: its input fills the padded box, and the row keeps its
-     height. */
-  .mx-page .mx-setting-row > .mantine-Switch-root:not(.mx-setting-switch) {
-    padding: 12px 3px;
-    margin: -12px -3px;
-  }
-  .mx-page .mx-setting-row > .mantine-Switch-root:not(.mx-setting-switch) .mantine-Switch-input {
-    inset: 0;
   }
   /* The estimate tag can wrap above the performance link; 12px rows keep their 44px hit areas apart. */
   .mx-page .mx-period-figure:has(.mx-tag-help) {

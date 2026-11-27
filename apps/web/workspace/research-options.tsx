@@ -3,7 +3,6 @@
 import type { ResearchLensSnapshot } from "@/lib/types";
 import {
   CheckIcon,
-  Checkbox,
   Combobox,
   Drawer,
   MultiSelect,
@@ -11,6 +10,7 @@ import {
   NumberInput,
   Select,
 } from "@mantine/core";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useLocalStorage } from "@/lib/hooks";
 import type { BarSeriesOption, EChartsOption, LineSeriesOption } from "echarts";
 import { useState } from "react";
@@ -503,7 +503,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                 <Checkbox
                   label={t("仅有效双边报价", "Valid two-sided quotes")}
                   checked={liquid}
-                  onChange={(e) => setLiquid(e.currentTarget.checked)}
+                  onCheckedChange={(checked) => setLiquid(checked)}
                 />
                 {selected.length > 1 && (
                   <Select
@@ -551,7 +551,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                   <Checkbox
                     label={t("所有行权价", "All strikes")}
                     checked={allStrikes}
-                    onChange={(e) => setAllStrikes(e.currentTarget.checked)}
+                    onCheckedChange={(checked) => setAllStrikes(checked)}
                   />
                   {strikes.length < all.length && (
                     <span className="mx-muted">

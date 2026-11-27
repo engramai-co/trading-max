@@ -291,45 +291,6 @@ details[open]:not(.mx-job-row) > :not(summary) {
   color: var(--placeholder);
   opacity: 1;
 }
-.mantine-Switch-input:not(:disabled, [data-disabled]) + .mantine-Switch-track {
-  background-color: var(--switch-off);
-  border-color: var(--switch-off);
-}
-.mantine-Switch-input:not(:checked, :disabled, [data-disabled]):hover + .mantine-Switch-track {
-  background-color: var(--switch-off-hover);
-  border-color: var(--switch-off-hover);
-}
-.mantine-Switch-input:checked:not(:disabled, [data-disabled]) + .mantine-Switch-track {
-  background-color: var(--primary);
-  border-color: var(--primary);
-}
-.mantine-Switch-input:checked:not(:disabled, [data-disabled]):hover + .mantine-Switch-track {
-  background-color: var(--primary-hover);
-  border-color: var(--primary-hover);
-}
-.mantine-Switch-input:not(:disabled, [data-disabled]) + .mantine-Switch-track > .mantine-Switch-thumb {
-  background-color: var(--primary-foreground);
-  border-color: transparent;
-}
-.mantine-Switch-input:not(:disabled, [data-disabled]):focus-visible + .mantine-Switch-track {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-.mantine-Checkbox-input:not(:disabled, [data-disabled]) {
-  background-color: var(--field);
-  border-color: var(--input);
-}
-.mantine-Checkbox-input:not(:disabled, [data-disabled]):hover {
-  border-color: var(--input-hover);
-}
-.mantine-Checkbox-input:checked:not(:disabled, [data-disabled]) {
-  background-color: var(--primary);
-  border-color: var(--primary);
-}
-.mantine-Checkbox-input:not(:disabled, [data-disabled]):focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
 .mantine-InputWrapper-label {
   font-size: 12px;
   margin-bottom: 6px;

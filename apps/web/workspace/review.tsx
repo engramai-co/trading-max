@@ -32,7 +32,9 @@ import {
   Pending,
   QueryError,
   UpdateFailure,
+  TabPanel,
   Tabs,
+  TabsScope,
   Tag,
   useCopy,
 } from "./foundation";
@@ -474,12 +476,13 @@ function AccountAnalysis({ data, code }: { data: DashboardLens; code: AccountCod
         className="mx-review-evidence"
         aria-label={t("账户分析", "Account analysis")}
       >
+        <TabsScope value={tab} onChange={(view) => update({ reviewView: view })}>
         <Tabs
           value={tab}
-          onChange={(view) => update({ reviewView: view })}
           label={t("复盘角度", "Review perspective")}
           options={views}
         />
+        <TabPanel value={tab}>
         {unavailable && tab !== "imports" ? (
           <ReviewPrerequisites cfd={cfd} onImports={() => update({ reviewView: "imports" })} />
         ) : tab === "imports" && cfd ? (
@@ -553,6 +556,8 @@ function AccountAnalysis({ data, code }: { data: DashboardLens; code: AccountCod
         {Array.isArray(review.warnings) && review.warnings.length > 0 && (
           <SystemNotes values={review.warnings.map(String)} />
         )}
+        </TabPanel>
+        </TabsScope>
       </section>
     </>
   );

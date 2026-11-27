@@ -1,6 +1,27 @@
 /** A box as getBoundingClientRect reports it. */
 export type IndicatorBox = Pick<DOMRectReadOnly, "left" | "top" | "width" | "height">;
 
+/** Numeric indicator placement relative to its host list. */
+export type IndicatorTarget = { x: number; y: number; width: number; height: number };
+
+/**
+ * True when a newly measured indicator box matches the cached numeric target within
+ * subpixel tolerance, avoiding CSSOM string-serialisation mismatches.
+ */
+export function sameIndicatorTarget(
+  previous: IndicatorTarget | null,
+  next: IndicatorTarget,
+  tolerance = 0.5,
+) {
+  return (
+    previous !== null &&
+    Math.abs(previous.x - next.x) < tolerance &&
+    Math.abs(previous.y - next.y) < tolerance &&
+    Math.abs(previous.width - next.width) < tolerance &&
+    Math.abs(previous.height - next.height) < tolerance
+  );
+}
+
 /**
  * The first frame of a sliding indicator's FLIP move: its target translation plus
  * the distance from the box it now has back to the box it had, scaled from its

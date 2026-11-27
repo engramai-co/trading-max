@@ -547,8 +547,8 @@ html[data-scrolled] .mx-topbar-title strong {
   display: inline-block;
   animation: mx-number-in 180ms var(--mx-ease);
 }
-:where(:not(.mx-settings-page)) > .mx-tabs ~ *,
-:where(:not(.mx-settings-page)) > .mx-toolbar:has(> .mx-tabs) ~ * {
+.mx-tab-scope:not(.mx-settings-page > *) > .mx-tabs ~ .mx-tab-content > *,
+.mx-tab-scope > .mx-toolbar:has(> .mx-tabs) ~ .mx-tab-content > * {
   animation: mx-fade 120ms ease-out;
 }
 .mx-tag {

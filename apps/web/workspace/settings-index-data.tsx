@@ -1,7 +1,8 @@
 "use client";
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
-import { Modal, PasswordInput, Switch } from "@mantine/core";
+import { Modal, PasswordInput } from "@mantine/core";
+import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { IntegrationSummary } from "@/lib/types";
 import { useState } from "react";
@@ -55,8 +56,9 @@ export function IndexMarketData({ integration }: { integration?: IntegrationSumm
   return <Panel title={t("指数日线", "Daily index history")}>
     <div className="mx-setting-row">
       {configured ? <Switch label={indexData.name} labelPosition="left"
+        saving={commit.isPending && (commit.variables === "enable" || commit.variables === "disable")}
         disabled={busy} checked={Boolean(integration?.enabled)}
-        onChange={(event) => submit(event.currentTarget.checked ? "enable" : "disable")} />
+        onCheckedChange={(checked) => submit(checked ? "enable" : "disable")} />
         : <h3>{indexData.name}</h3>}
       <div className="flex flex-wrap items-center gap-mx-xs">
         <Button variant="secondary" disabled={busy} onClick={() => open("keys")}>

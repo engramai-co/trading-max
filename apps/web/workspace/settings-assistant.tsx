@@ -1,6 +1,7 @@
 "use client";
 
-import { Modal, NativeSelect, Switch } from "@mantine/core";
+import { Modal, NativeSelect } from "@mantine/core";
+import { Switch } from "@/components/ui/switch";
 import { useIsMutating, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -109,8 +110,9 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
 
   return <Panel className="mx-assistant-settings" title={ASSISTANT_NAME} action={<Switch
     className="mx-assistant-enable" aria-label={t("启用 ", "Enable ") + ASSISTANT_NAME}
+    saving={save.isPending && save.variables.enabled != null}
     checked={enabled} disabled={busy || (!enabled && (!selected || !currentDisclosure))}
-    onChange={() => {
+    onCheckedChange={() => {
       if (inFlight()) return;
       if (enabled) update({ enabled: false });
       else if (selectedConsent) update({ enabled: true });
@@ -145,8 +147,9 @@ function AssistantControls({ settings, openModels }: { settings: AssistantSettin
       : t("工具测试失败。请检查模型连接后重试。", "Tool test failed. Check the model connection and try again.")}</Notice>}
     {preferences.map(({ key, label }) => <div key={key} className="mx-setting-row">
       <Switch className="mx-setting-switch" label={label} labelPosition="left"
+        saving={save.isPending && save.variables[key] != null}
         checked={settings[key]} disabled={busy || !currentDisclosure}
-        onChange={(event) => update({ [key]: event.currentTarget.checked })} />
+        onCheckedChange={(checked) => update({ [key]: checked })} />
     </div>)}
     <div className="mt-mx-md flex flex-wrap items-center gap-mx-md">
       <Button variant="secondary" disabled={busy || settings.acceptedConsentRevision === null}

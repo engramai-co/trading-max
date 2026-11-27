@@ -1,7 +1,8 @@
 "use client";
 
 import type { ResearchShell } from "@/lib/types";
-import { Checkbox, Select, TextInput } from "@mantine/core";
+import { Select, TextInput } from "@mantine/core";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Pin, Search } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -177,11 +178,10 @@ export function UniverseList({
         ]}
       />
       <Checkbox
-        mt="md"
-        size="xs"
+        className="mt-mx-md"
         checked={heldOnly}
         disabled={isIndexCategory}
-        onChange={(e) => setHeldOnly(e.currentTarget.checked)}
+        onCheckedChange={(checked) => setHeldOnly(checked)}
         label={t("仅看持仓", "Holdings only")}
       />
       <div className="mx-watchlist">

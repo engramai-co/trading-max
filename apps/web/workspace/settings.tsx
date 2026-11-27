@@ -2,13 +2,12 @@
 
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
 import {
-  Checkbox,
   Drawer,
   Modal,
   PasswordInput,
   Select,
-  SegmentedControl,
 } from "@mantine/core";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   ArrowRight,
   CircleCheck,
@@ -34,7 +33,10 @@ import {
   Panel,
   Pending,
   QueryError,
+  Segments,
+  TabPanel,
   Tabs,
+  TabsScope,
   Tag,
   useCopy,
 } from "./foundation";
@@ -130,12 +132,13 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
       title={desktop ? t("工作区设置", "Workspace settings") : t("设置", "Settings")}
       description={desktop ? t("账户连接与更新计划保存在当前服务；App 的启动与连接切换在 ⌘, 中管理。", "Accounts and schedules belong to the selected service. Manage App startup and workspace switching with ⌘,.") : undefined}
     >
+      <TabsScope value={view} onChange={(value) => update({ tab: value })}>
       <Tabs
         label={t("设置分类", "Settings sections")}
         value={view}
-        onChange={(value) => update({ tab: value })}
         options={tabs}
       />
+      <TabPanel value={view}>
       {saved && (
         <Notice tone="good">
           {saved === "disconnected"
@@ -280,6 +283,8 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
           />
         </div>
       )}
+      </TabPanel>
+      </TabsScope>
       <Modal
         opened={view === "models" && Boolean(data?.llmProviders.length) &&
           !hasModelConnection && offerModelConnection && !connection}
@@ -326,9 +331,9 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
       >
         {connection && <div className="flex flex-col gap-mx-lg">
           {connection.kind === "model" && ["openai", "openai-codex"].includes(connection.provider.provider) &&
-            <SegmentedControl fullWidth aria-label={t("OpenAI 连接方式", "OpenAI connection method")}
+            <Segments fullWidth selection="radio" label={t("OpenAI 连接方式", "OpenAI connection method")}
               value={connection.provider.provider}
-              data={[{ value: "openai-codex", label: t("ChatGPT 登录", "ChatGPT sign-in") }, { value: "openai", label: "API Key" }]}
+              options={[{ value: "openai-codex", label: t("ChatGPT 登录", "ChatGPT sign-in") }, { value: "openai", label: "API Key" }]}
               onChange={(value) => {
                 const provider = data?.llmProviders.find((item) => item.provider === value);
                 if (provider) setConnection({ ...connection, provider,
@@ -571,7 +576,7 @@ function ConnectionForm({
               label={t("设为默认模型", "Use as the default model")}
               description={t("用于未单独指定模型的代码识别。", "Used for ticker matching without a separate assignment.")}
               checked={useAsDefault}
-              onChange={(event) => setUseAsDefault(event.currentTarget.checked)}
+              onCheckedChange={(checked) => setUseAsDefault(checked)}
               disabled={busy}
             />
           )}

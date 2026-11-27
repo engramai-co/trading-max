@@ -36,18 +36,6 @@
   flex-direction: row;
   align-items: center;
 }
-.mx-assistant-enable {
-  padding: 12px 3px;
-  margin: -12px -3px;
-}
-.mx-assistant-enable .mantine-Switch-input {
-  inset: 0;
-  z-index: 1;
-  cursor: pointer;
-}
-.mx-assistant-enable .mantine-Switch-input:disabled {
-  cursor: not-allowed;
-}
 .mx-setting-row.mx-assistant-model {
   justify-content: flex-start;
   align-items: flex-end;
@@ -56,14 +44,6 @@
 }
 .mx-assistant-model .mantine-NativeSelect-root {
   max-width: 100%;
-}
-.mx-assistant-settings .mantine-Switch-input:not(:checked, :disabled, [data-disabled]) + .mantine-Switch-track {
-  outline: 1px solid var(--switch-off);
-  outline-offset: -1px;
-}
-.mx-assistant-settings .mantine-Switch-input:not(:disabled, [data-disabled]):focus-visible + .mantine-Switch-track {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
 }
 @media (pointer: coarse) {
   .mx-assistant-settings .mantine-NativeSelect-input {
@@ -109,20 +89,11 @@
   font-size: 12px;
   line-height: 1.8;
 }
-.mx-setting-row .mantine-Switch-root {
-  flex-shrink: 0;
-}
 /* A switch that carries its own label spans the row: the label on the left, the switch on the right. */
 .mx-setting-row > .mx-setting-switch {
   flex: 1;
   min-width: 0;
-}
-.mx-setting-switch .mantine-Switch-body {
-  align-items: center;
   justify-content: space-between;
-}
-.mx-setting-switch .mantine-Switch-label {
-  font-size: 14px;
   font-weight: 600;
 }
 /* The reload notice's retry: cobalt deepened toward the ink to stay legible on the tinted notice in both themes;
@@ -134,13 +105,6 @@
 @media (pointer: coarse) {
   .mx-notice .mx-reload-retry {
     min-height: 44px;
-    margin-block: -12px;
-  }
-}
-/* Touch: the switch's input spans a 44px band of its row; the 20px track and the row's height stay. */
-@media (pointer: coarse) {
-  .mx-setting-switch {
-    padding-block: 12px;
     margin-block: -12px;
   }
 }
@@ -428,4 +392,15 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   max-inline-size: 100%;
+}
+
+.mx-assistant-enable,
+.mx-setting-row > .tm-choice-label {
+  margin-block: -9px;
+}
+@media (pointer: coarse) {
+  .mx-assistant-enable,
+  .mx-setting-row > .tm-choice-label {
+    margin-block: -11px;
+  }
 }

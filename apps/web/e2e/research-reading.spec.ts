@@ -261,17 +261,23 @@ test.describe("research section navigation", () => {
     const nav = page.getByRole("navigation", { name: "On this page" });
     const events = nav.getByRole("link", { name: "Earnings events" });
     const ratings = page.locator("#research-ratings");
+    const atPageEnd = () => page.evaluate(() => Math.ceil(scrollY + innerHeight) >= document.documentElement.scrollHeight);
     // Model an earlier section shrinking after a clamped jump.
     await ratings.evaluate((section) => { section.style.paddingBottom = "80px"; });
     await events.click();
     await expect(page.locator("#research-events h2")).toBeFocused();
     await expect(events).toHaveAttribute("aria-current", "location");
+    await expect.poll(atPageEnd).toBe(true);
     await page.keyboard.press("End");
     release();
     await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
+    await expect(page.locator(".mx-target-chart").getByRole("group", { name: /^Historical prices/ })).toHaveAttribute("data-tm-chart-ready", "true");
     await ratings.evaluate((section) => { section.style.paddingBottom = ""; });
-    await expect.poll(() => page.evaluate(() => Math.ceil(scrollY + innerHeight) >= document.documentElement.scrollHeight)).toBe(true);
+    await expect.poll(atPageEnd).toBe(false);
     await expect(events).toHaveAttribute("aria-current", "location");
+    // A real reader gesture ends the pinned jump and resumes normal scroll tracking.
+    await page.mouse.wheel(0, -160);
+    await expect(events).not.toHaveAttribute("aria-current", "location");
     await page.keyboard.press("Home");
     await expect(nav.getByRole("link", { name: "Ratings & targets" })).toHaveAttribute("aria-current", "location");
   });

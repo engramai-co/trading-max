@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { indicatorStart } from "./selection-indicator";
+import { indicatorStart, sameIndicatorTarget } from "./selection-indicator";
 
 describe("selection indicator start frame", () => {
   it("starts a bottom-anchored tab underline level with the tabs", () => {
@@ -23,5 +23,14 @@ describe("selection indicator start frame", () => {
     expect(indicatorStart(midway, home, { x: 0, y: 0 })).toBe("translate(40px, 0px) scale(" + 64 / 56 + ", 1)");
     expect(indicatorStart(home, { ...home, left: 24.3 }, { x: 0, y: 0 })).toBeNull();
     expect(indicatorStart(home, { ...home, width: 0 }, { x: 0, y: 0 })).toBeNull();
+  });
+
+  it("matches cached numeric targets within subpixel tolerance", () => {
+    const target = { x: 49.328125, y: 3, width: 84.671875, height: 32 };
+    expect(sameIndicatorTarget(null, target)).toBe(false);
+    expect(sameIndicatorTarget(target, { x: 49.3281, y: 3, width: 84.6719, height: 32 })).toBe(true);
+    expect(sameIndicatorTarget(target, { ...target, x: 49.8 })).toBe(true);
+    expect(sameIndicatorTarget(target, { ...target, x: 49.83 })).toBe(false);
+    expect(sameIndicatorTarget(target, { ...target, width: 85.2 })).toBe(false);
   });
 });
