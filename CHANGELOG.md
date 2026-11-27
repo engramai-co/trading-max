@@ -4,6 +4,11 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.73.1] - 2026-11-27
+
+### Changed
+- MaxAI's browser chat now uses AI SDK 7. The stream format is unchanged, so conversations, work steps, stopping, retrying and saved history behave as before.
+
 ## [1.73.0] - 2026-11-26
 
 ### Changed

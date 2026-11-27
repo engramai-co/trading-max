@@ -12,7 +12,7 @@ model, snapshot and limits, and configuration.
 | --- | --- |
 | Agent loop, tool calls, retries, limits, cancellation | Pydantic AI `Agent`, `FunctionToolset`, `UsageLimits` |
 | Model requests for every provider | Pydantic AI native models, through `trading_max.llm` |
-| Stream to the browser | Pydantic AI `VercelAIAdapter` (AI SDK UI message stream, SDK 6) |
+| Stream to the browser | Pydantic AI `VercelAIAdapter` (AI SDK UI message stream, SDK 7) |
 | Conversation history | Pydantic AI `ConversationStore`; a SQLite backend implements its five storage primitives |
 | Approval before a write (future tools) | Pydantic AI deferred tools, carried by the same stream and store |
 
