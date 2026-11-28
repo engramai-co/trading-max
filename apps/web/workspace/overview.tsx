@@ -66,7 +66,7 @@ import {
   LocalOnboarding,
 } from "./local-onboarding";
 import { OverviewHoldings } from "./overview-holdings";
-import { useOverviewLayout, useSaveOverviewLayout } from "./overview-layout";
+import { hasOverviewAccountData, useOverviewLayout, useSaveOverviewLayout } from "./overview-layout";
 import { overviewLedgerRows, overviewScopedHoldings } from "./overview-holdings-data";
 import { OverviewSectors } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
@@ -87,7 +87,7 @@ export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?:
 function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
   const { locale } = useLocale();
-  const { ready: assistantReady } = useAssistant();
+  const { ready: assistantReady, pending: assistantPending } = useAssistant();
   const { data: profile } = useWorkspaceProfile();
   // A late profile can rename options while the reader is switching accounts.
   const [accountWidthLabels] = useState(() => ({
@@ -171,20 +171,28 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     [data, scope],
   );
   const counts = useMemo(() => holdings && overviewLedgerRows(holdings), [holdings]);
+  const confirmedEmpty = query.isSuccess && !!incoming && !hasOverviewAccountData(incoming);
   const overview = useRef<HTMLDivElement>(null);
-  const { key: layoutKey, layout, booting } = useOverviewLayout(requestedScope, locale);
-  useSaveOverviewLayout(overview, layoutKey, !history.isError && runtime.status === "ready" ? displayed : undefined,
-    !initialWaiting && !initialError && !!data, counts);
+  const { key: layoutKey, workspacePrefix, generation, layout, booting } = useOverviewLayout(requestedScope, locale, confirmedEmpty);
+  useSaveOverviewLayout(overview, layoutKey, workspacePrefix, generation, !history.isError && runtime.status === "ready" ? displayed : undefined,
+    !initialWaiting && !initialError && !confirmedEmpty && !!data, counts);
   const savedReading = layout?.reading;
   const savedRows = layout?.rows;
   const matchingRows = !counts || savedRows && counts.stocks === savedRows.stocks && counts.funds === savedRows.funds &&
     counts.dateTagged === savedRows.dateTagged;
   const reservedLayout = initialWaiting && !offline && savedReading?.range === range ? savedReading : undefined;
-  const pendingStyle = reservedLayout ? {
-    "--mx-overview-summary-size": reservedLayout.summary + "px",
-    "--mx-overview-history-size": reservedLayout.history + "px",
-    "--mx-overview-plot-top": reservedLayout.plotTop === undefined ? undefined : reservedLayout.plotTop + "px",
-  } as CSSProperties : undefined;
+  const px = (value?: number) => value === undefined ? undefined : value + "px";
+  const sectorsHeight = online ? layout?.sectors : undefined;
+  const briefHeight = online ? layout?.brief : undefined;
+  const briefWaiting = initialWaiting ? assistantReady || assistantPending : !!data && assistantPending;
+  const pendingStyle = {
+    "--mx-overview-summary-size": px(reservedLayout?.summary),
+    "--mx-overview-history-size": px(reservedLayout?.history),
+    "--mx-overview-plot-top": px(reservedLayout?.plotTop),
+    "--mx-overview-sectors-size": px(sectorsHeight),
+    "--mx-overview-brief-size": px(briefHeight),
+    "--mx-overview-brief-display": briefHeight === undefined ? undefined : "block",
+  } as CSSProperties;
   if (initialError && localWorkspace && localOnboarding.data && !localOnboarding.data.confirmed) {
     return <LocalOnboarding showAccountLink />;
   }
@@ -214,6 +222,8 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const attention = demonstration ? [] : attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
     <ReadingBoundary.Provider value={reading.report}><div ref={overview} className="mx-overview-read" style={pendingStyle}
+      data-summary-reserved={!!reservedLayout || undefined}
+      data-sectors-reserved={sectorsHeight !== undefined || undefined}
       data-layout-bootstrap={booting && initialWaiting || undefined}>
       <StatusMessage message={offline ? offlineLabel : undefined} />
       <div className="mx-panel mx-overview-portfolio" data-waiting={initialWaiting || undefined}>
@@ -323,7 +333,13 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         pendingRows={counts ?? savedRows}
         pendingHeight={matchingRows ? layout?.ledger : undefined}
         waiting={initialWaiting} failed={initialError} error={query.error} retry={query.refetch} />
-      {!initialWaiting && data && <><Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />{assistantReady && <OverviewBrief snapshot={data.runId} scope={scope} />}</>}
+      {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
+      {!initialWaiting && data && assistantReady
+        ? <div className="mx-overview-brief"><OverviewBrief snapshot={data.runId} scope={scope} /></div>
+        : briefWaiting &&
+          <div className="mx-overview-brief" aria-hidden="true">
+            <Skeleton className="mx-loading-shape" />
+          </div>}
     </div></ReadingBoundary.Provider>
   );
 }

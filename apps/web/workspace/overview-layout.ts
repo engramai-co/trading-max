@@ -1,27 +1,38 @@
 "use client";
 
-import { useCallback, useLayoutEffect, useMemo, useSyncExternalStore, type RefObject } from "react";
+import { hashKey, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore, type RefObject } from "react";
 import type { Locale } from "@/components/locale-provider";
+import { dashboardLensLatestKey } from "@/lib/dashboard-query";
 import { useMediaQuery } from "@/lib/hooks";
 import {
+  isActiveOverviewWorkspace,
+  OVERVIEW_LAYOUT_GENERATION_SUFFIX,
   OVERVIEW_LAYOUT_MEDIA,
-  OVERVIEW_LAYOUT_PREFIX,
   OVERVIEW_LAYOUT_VERSION_PREFIX,
   parseOverviewLayout,
+  prepareOverviewLayoutStorage,
   type LedgerRows,
   type OverviewLayout,
   type ReadingLayout,
 } from "@/lib/overview-layout-storage";
 import type { Range, Scope } from "@/lib/portfolio/nav";
+import type { DashboardLens } from "@/lib/types";
 import { useSnapshotCacheScope } from "@/ui/snapshot-cache-provider";
 
 const subscribe = () => () => {};
 const serverSnapshot = () => undefined;
 const dimension = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= 0;
+const overviewSummary = hashKey(dashboardLensLatestKey("overview", undefined, { detail: "summary" }));
 
-/** The tab remembers only row counts, geometry and range. The ledger still flows with the page. */
-export function useOverviewLayout(account: Scope, locale: Locale) {
+export function hasOverviewAccountData(data: DashboardLens) {
+  return data.totalValueGbp != null || (data.accounts ?? []).some(account => account.isInvestable);
+}
+
+/** The browser remembers only row counts, geometry and range. The ledger still flows with the page. */
+export function useOverviewLayout(account: Scope, locale: Locale, confirmedEmpty: boolean) {
   const workspace = useSnapshotCacheScope();
+  const client = useQueryClient();
   const phone = useMediaQuery(OVERVIEW_LAYOUT_MEDIA.phone);
   const narrow = useMediaQuery(OVERVIEW_LAYOUT_MEDIA.narrow);
   const singleColumn = useMediaQuery(OVERVIEW_LAYOUT_MEDIA.tablet);
@@ -30,40 +41,60 @@ export function useOverviewLayout(account: Scope, locale: Locale) {
   const workspacePrefix = workspace ? OVERVIEW_LAYOUT_VERSION_PREFIX + workspace + ":" : undefined;
   // Each workspace can write at most 3 accounts × 2 locales × 5 breakpoints.
   const key = workspacePrefix ? workspacePrefix + [account, locale, breakpoint].join(":") : undefined;
+  const generationKey = key && key + OVERVIEW_LAYOUT_GENERATION_SUFFIX;
+  const [read, setRead] = useState<{ workspace: string; generations?: Map<string, string | null> }>();
+  useLayoutEffect(() => {
+    if (!workspacePrefix) return;
+    // Only an actual successful response renews the write permission. Layout changes and restored snapshots do not.
+    return client.getQueryCache().subscribe(event => {
+      if (event.type !== "updated" || event.action.type !== "success" || event.action.manual ||
+          event.query.queryHash !== overviewSummary) return;
+      const data = event.query.state.data as DashboardLens;
+      try {
+        if (!isActiveOverviewWorkspace(workspacePrefix)) return;
+        const generations = hasOverviewAccountData(data) ? new Map(Object.keys(localStorage)
+          .filter(name => name.startsWith(workspacePrefix) && name.endsWith(OVERVIEW_LAYOUT_GENERATION_SUFFIX))
+          .map(name => [name, localStorage.getItem(name)] as const)) : undefined;
+        setRead({ workspace: workspacePrefix, generations });
+      } catch {}
+    });
+  }, [client, workspacePrefix]);
   const getSnapshot = useCallback(() => {
-    try { return key ? sessionStorage.getItem(key) : null; } catch { return null; }
-  }, [key]);
+    if (!key || !generationKey || !workspacePrefix || confirmedEmpty) return null;
+    try {
+      if (isActiveOverviewWorkspace(workspacePrefix)) {
+        return localStorage.getItem(key) ?? (localStorage.getItem(generationKey) === null ? sessionStorage.getItem(key) : null);
+      }
+    } catch {}
+    return null;
+  }, [workspacePrefix, key, generationKey, confirmedEmpty]);
   const raw = useSyncExternalStore(subscribe, getSnapshot, serverSnapshot);
   const layout = useMemo(() => parseOverviewLayout(raw), [raw]);
   useLayoutEffect(() => {
-    if (!workspacePrefix) return;
+    if (!workspacePrefix || !key || !generationKey) return;
     try {
-      for (const key of Object.keys(sessionStorage)) {
-        if (key.startsWith(OVERVIEW_LAYOUT_PREFIX) && !key.startsWith(workspacePrefix)) sessionStorage.removeItem(key);
+      if (confirmedEmpty) {
+        if (read?.workspace !== workspacePrefix || read.generations || !isActiveOverviewWorkspace(workspacePrefix)) return;
+        localStorage.setItem(generationKey, crypto.randomUUID());
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+      } else {
+        prepareOverviewLayoutStorage(workspacePrefix, key);
       }
     } catch {
       // The page also works with storage disabled.
     }
-  }, [workspacePrefix]);
-  useLayoutEffect(() => {
-    if (!key || raw == null) return;
-    try {
-      if (sessionStorage.getItem(key) !== raw) return;
-      if (!layout) sessionStorage.removeItem(key);
-      else {
-        const packed = JSON.stringify(layout);
-        if (packed !== raw) sessionStorage.setItem(key, packed);
-      }
-    } catch {
-      // Ignore storage failures and use the default placeholder.
-    }
-  }, [key, raw, layout]);
-  return { key, layout, booting: raw === undefined };
+  }, [workspacePrefix, key, generationKey, confirmedEmpty, read]);
+  const generation = generationKey && read?.workspace === workspacePrefix && read?.generations
+    ? read.generations.get(generationKey) ?? null : undefined;
+  return { key, workspacePrefix, generation, layout, booting: raw === undefined };
 }
 
 export function useSaveOverviewLayout(
   host: RefObject<HTMLDivElement | null>,
   key: string | undefined,
+  workspace: string | undefined,
+  generation: string | null | undefined,
   chart: { selection: { range: Range }; history?: object } | undefined,
   ready: boolean,
   rows: LedgerRows | undefined,
@@ -73,7 +104,7 @@ export function useSaveOverviewLayout(
   const dateTagged = rows?.dateTagged;
   useLayoutEffect(() => {
     const root = host.current;
-    if (!ready || !root || !key || stocks === undefined || funds === undefined) return;
+    if (!ready || !root || !key || !workspace || generation === undefined || stocks === undefined || funds === undefined) return;
     const summary = root.querySelector<HTMLElement>(".mx-overview-portfolio");
     const history = root.querySelector<HTMLElement>(".mx-overview-history");
     const plot = history?.querySelector<HTMLElement>(".mx-plot");
@@ -91,22 +122,33 @@ export function useSaveOverviewLayout(
           plotTop: dimension(plotTop) ? plotTop : undefined,
         };
       }
-      const layout: OverviewLayout = { rows: { stocks, funds, dateTagged }, ledger: ledgerHeight, reading };
       try {
+        const current = localStorage.getItem(key);
+        const prior = parseOverviewLayout(current);
+        const sectors = root.querySelector<HTMLElement>(".mx-overview-sectors");
+        const brief = root.querySelector<HTMLElement>(".mx-overview-brief");
+        const digest = brief?.querySelector<HTMLElement>(".mx-digest");
+        const digestHeight = digest?.getBoundingClientRect().height;
+        const layout: OverviewLayout = {
+          rows: { stocks, funds, dateTagged }, ledger: ledgerHeight, reading,
+          sectors: sectors?.classList.contains("mx-overview-sectors-pending") ? prior?.sectors : sectors?.getBoundingClientRect().height,
+          brief: brief && (!digest || digest.hasAttribute("data-waiting")) ? prior?.brief ?? digestHeight : digestHeight,
+        };
         const validated = parseOverviewLayout(JSON.stringify(layout));
+        if (!isActiveOverviewWorkspace(workspace) || localStorage.getItem(key + OVERVIEW_LAYOUT_GENERATION_SUFFIX) !== generation) return;
         if (!validated) {
-          sessionStorage.removeItem(key);
+          localStorage.removeItem(key);
           return;
         }
         const value = JSON.stringify(validated);
-        if (sessionStorage.getItem(key) !== value) sessionStorage.setItem(key, value);
+        if (current !== value) localStorage.setItem(key, value);
       } catch {
         // The live page and its count-based skeleton also work with storage disabled.
       }
     };
     const observer = new ResizeObserver(save);
-    [summary, history, plot, ledger].forEach((element) => { if (element) observer.observe(element); });
+    [root, summary, history, plot, ledger].forEach((element) => { if (element) observer.observe(element); });
     save();
     return () => observer.disconnect();
-  }, [host, key, chart, ready, stocks, funds, dateTagged]);
+  }, [host, key, workspace, generation, chart, ready, stocks, funds, dateTagged]);
 }

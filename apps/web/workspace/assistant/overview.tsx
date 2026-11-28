@@ -41,7 +41,7 @@ export function OverviewBrief({ snapshot, scope = "total" }: { snapshot: string;
   }), [role, title, t, benchmark, reading, snapshot]);
   usePageRole(card);
   const portfolio = reading?.lines.find(line => line.section === "portfolio");
-  return <DigestRow storageKey="overview" header={<div className="mx-brief-period" role="group" aria-label={t("简报周期", "Brief period")}>
+  return <DigestRow storageKey="overview" pending={query.isPending && query.fetchStatus !== "paused"} header={<div className="mx-brief-period" role="group" aria-label={t("简报周期", "Brief period")}>
     {(["daily", "weekly"] as const).map(v => <button key={v} aria-pressed={role === v} onClick={() => { if (role !== v) { generate.reset(); setRole(v); } }}>
       {v === "daily" ? t("日报", "Daily") : t("周报", "Weekly")}</button>)}</div>}
     summary={portfolio && readerText(portfolio, locale, timeZone)}

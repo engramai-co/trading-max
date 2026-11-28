@@ -175,7 +175,7 @@ export function OverviewSectors({ online }: { online: boolean }) {
     </DropdownMenu>
   );
   if (market === null) return (
-    <Panel className="mx-overview-sectors" title={picker}>
+    <Panel className="mx-overview-sectors mx-overview-sectors-pending" title={picker}>
       <Pending shape="sectors" quiet />
     </Panel>
   );
@@ -204,7 +204,7 @@ function SectorPanel({ market, title, picker, online }: { market: SectorMarketCo
   );
   return (
     <Panel
-      className="mx-overview-sectors"
+      className={"mx-overview-sectors" + (query.isPending && !offline ? " mx-overview-sectors-pending" : "")}
       title={picker}
       helpLabel={title}
       help={board ? <SectorSources source={board.source} /> : undefined}
@@ -279,7 +279,7 @@ function GlobalPanel({ title, picker, online }: { title: string; picker: ReactNo
   const mapped = Boolean(fine && !phone && weighted);
   return (
     <Panel
-      className="mx-overview-sectors"
+      className={"mx-overview-sectors" + (query.isPending && !offline ? " mx-overview-sectors-pending" : "")}
       title={picker}
       helpLabel={title}
       help={<p>{weighted ? t(
