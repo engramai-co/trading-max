@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.79.0] - 2026-11-28
+
+### Added
+- Screen readers announce when account value, P&L history, or look-through holdings fail to update and when those readings recover.
+- Search now reports index-list failures and lets you retry them in place. When offline, Search explains that page search is still available.
+
+### Changed
+- Loading placeholders, empty states and table pagination use the new design system. Overview’s P&L history now shows an explicit Retry label after a failed refresh.
+- Overview loading placeholders reserve space for the summary, chart and holdings. On reload, Overview reuses the last known holdings layout for that account and screen size.
+
+### Fixed
+- On phones, Overview keeps the session date and shows which range is still displayed if a new P&L range fails to load.
+- Data status shows a failed refresh beside the last known stages in an open task's details.
+- When CFD profit and loss figures are unavailable, Review explains why and still shows the available closed-trade counts and holding times.
+
 ## [1.78.0] - 2026-11-27
 
 ### Added
