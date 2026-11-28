@@ -580,6 +580,7 @@ function ConnectionCard({
   const action = connected
     ? t("管理连接", "Manage connection")
     : connectLabel ?? t("连接账户", "Connect account");
+  const testLabel = t("上次测试", "Last tested");
   return (
     <div className={settingsConnectionCardClass}>
       <div className="mx-toolbar">
@@ -595,13 +596,16 @@ function ConnectionCard({
         </Tag>
       </div>
       {subtitle && <p className={settingsConnectionCopyClass}>{subtitle}</p>}
-      <p className={settingsConnectionCopyClass}>{nextStep}</p>
-      {integration?.lastTestAt && (
-        <Freshness
-          date={integration.lastTestAt}
-          label={t("上次测试", "Last tested")}
-        />
-      )}
+      {!connected && <p className={settingsConnectionCopyClass}>{nextStep}</p>}
+      {/* A connected card keeps its test row, reading Not tested until one has run, so loading and loaded share one height. */}
+      {(connected || integration?.lastTestAt) && (integration?.lastTestAt ? (
+        <Freshness date={integration.lastTestAt} label={testLabel} />
+      ) : (
+        <span className="mx-freshness">
+          <span className="mx-status-dot" aria-hidden="true" />
+          {testLabel}{" "}{t("未测试", "Not tested")}
+        </span>
+      ))}
       <Button
         type="button"
         variant={connected ? "outline" : "default"}

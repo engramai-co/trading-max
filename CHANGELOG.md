@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.82.1] - 2026-11-28
+
+### Fixed
+- Connected accounts and model providers in Settings no longer show the "Once connected…" setup hint.
+- A connected account that has never been tested shows "Not tested" in place of its last test time, and Accounts & data no longer shifts when it finishes loading.
+
 ## [1.82.0] - 2026-11-28
 
 ### Changed

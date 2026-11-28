@@ -17,8 +17,9 @@ export function SettingsLoading({ section, desktop = false, onboarding = false }
     : t("正在读取数据…", "Loading data…");
   const chinese = useLocale().locale === "zh";
 
-  // Match the section heights of the unconfigured Settings layout. Connected providers,
-  // imported rows and other data-dependent states can add content after the first read.
+  // Match the section heights of the configured Settings layout: connected accounts keep a test row, so that panel
+  // reserves it and the not-yet-connected hint may grow it. Connected providers, imported rows and other
+  // data-dependent states can add content after the first read.
   function panel(height: string, children: React.ReactNode) {
     return (
       <Skeleton className={`mx-panel ${height}`}>
@@ -46,7 +47,7 @@ export function SettingsLoading({ section, desktop = false, onboarding = false }
     <div className="relative flex min-w-0 flex-col gap-[22px] max-[767px]:gap-6" data-settings-loading={section}>
       <LoadingStatus label={label} />
       {section === "accounts" && <>
-        {panel(`${desktop ? "min-h-[264px]" : "min-h-[265px]"} max-[767px]:min-h-[336px]`, (
+        {panel(`${desktop ? "min-h-[264px]" : "min-h-[265px]"} max-[767px]:min-h-[333px]`, (
           <div className="grid grid-cols-2 gap-[18px] max-[767px]:grid-cols-1 max-[767px]:gap-0">{connection}{connection}</div>
         ))}
         {!onboarding && <>

@@ -35,7 +35,7 @@ function overview(integrations: IntegrationSummary[]): IntegrationOverview {
 }
 
 /** Opens Settings with every backend request answered here; writes other than the ones a test routes fail it. */
-async function open(page: Page, settings: () => IntegrationOverview, publishedBuild?: string, cfdRecords = 0) {
+async function open(page: Page, settings: () => IntegrationOverview, publishedBuild?: string, cfdRecords = 0, locale = "en") {
   const unexpected: string[] = [];
   await page.route("**/*", (route) => {
     if (route.request().method() === "GET") return route.fallback();
@@ -61,9 +61,11 @@ async function open(page: Page, settings: () => IntegrationOverview, publishedBu
     return route.fulfill({ json: path.endsWith("/profile") ? settings().profile : {} });
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
   await page.goto("/settings");
-  const panel = page.locator("section.mx-panel").filter({ has: page.locator("h2").filter({ hasText: /^Market data$/ }) });
+  const panel = page.locator("section.mx-panel").filter({
+    has: page.locator("h2").filter({ hasText: locale === "zh" ? /^公开市场数据$/ : /^Market data$/ }),
+  });
   await expect(panel).toBeVisible();
   return { panel, unexpected };
 }
@@ -1244,4 +1246,97 @@ test.describe("Settings review", () => {
     await confirm.click();
     expect(writes).toBe(1);
   });
+});
+
+test.describe("Trading 212 account cards", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+
+  function trading212(profile: "invest" | "isa", overrides: Partial<IntegrationSummary> = {}): IntegrationSummary {
+    return { ...alpaca(true), integrationId: `synthetic-${profile}`, provider: "trading212", profile, ...overrides };
+  }
+
+  for (const locale of ["en", "zh"] as const) {
+    const copy = <T>(zh: T, en: T): T => (locale === "zh" ? zh : en);
+    const hint = copy("连接后，前往数据状态开始更新。", "Once connected, start an update in Data status.");
+
+    test(`a connected account names no next step, and an unconnected one does (${locale})`, async ({ page }) => {
+      const { unexpected } = await open(page, () => overview([trading212("invest")]), undefined, 0, locale);
+      const accounts = page.locator("section.mx-panel").filter({
+        has: page.getByRole("heading", { level: 2, name: copy(/^Trading.?212 账户$/, /^Trading.?212 accounts$/) }),
+      });
+      // The card is the heading's grandparent: the title sits inside the toolbar row.
+      const invest = accounts.getByRole("heading", { level: 3, name: "Invest", exact: true }).locator("xpath=../..");
+      const isa = accounts.getByRole("heading", { level: 3, name: /^Stocks.?ISA$/ }).locator("xpath=../..");
+
+      // Connected: the badge and the button say so, and no paragraph leaves a gap where the next step was.
+      await expect(invest).toContainText(copy("已连接", "Connected"));
+      await expect(invest).not.toContainText(hint);
+      await expect(invest.locator("p")).toHaveCount(0);
+      await expect(invest.getByRole("button", { name: copy(/^管理连接/, /^Manage connection/) })).toBeVisible();
+
+      // Not connected: the badge and the button say so, and the card names the next step.
+      await expect(isa).toContainText(copy("未连接", "Not connected"));
+      await expect(isa).toContainText(hint);
+      await expect(isa.getByRole("button", { name: copy(/^连接账户/, /^Connect account/) })).toBeVisible();
+      expect(unexpected).toEqual([]);
+    });
+
+    test(`a connected account that has not been tested keeps its test row (${locale})`, async ({ page }) => {
+      const { unexpected } = await open(page, () => overview([trading212("invest", { lastTestAt: null, lastTestStatus: "untested" })]), undefined, 0, locale);
+      const invest = page.getByRole("heading", { level: 3, name: "Invest", exact: true }).locator("xpath=../..");
+      await expect(invest).toContainText(copy("已连接", "Connected"));
+      await expect(invest).toContainText(copy("上次测试", "Last tested"));
+      await expect(invest).toContainText(copy("未测试", "Not tested"));
+      await expect(invest).not.toContainText(copy("尚未更新", "Awaiting update"));
+      await expect(invest).not.toContainText(hint);
+      await expect(invest.locator("p")).toHaveCount(0);
+      expect(unexpected).toEqual([]);
+    });
+  }
+
+  test("an account that needs reconnecting still names the next step", async ({ page }) => {
+    const { unexpected } = await open(page, () => overview([trading212("invest", { needsSecret: true })]));
+    const invest = page.getByRole("heading", { level: 3, name: "Invest", exact: true }).locator("xpath=../..");
+    await expect(invest).toContainText("Reconnect needed");
+    await expect(invest).toContainText("Once connected, start an update in Data status.");
+    await expect(invest.getByRole("button", { name: /^Connect account/ })).toBeVisible();
+    expect(unexpected).toEqual([]);
+  });
+});
+
+test.describe("Model provider cards", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+
+  for (const locale of ["en", "zh"] as const) {
+    const copy = <T>(zh: T, en: T): T => (locale === "zh" ? zh : en);
+    const hint = copy("连接后，在下方为研究用途选择模型。", "Once connected, choose a model for each research task below.");
+
+    test(`a connected provider names no next step, and an unconnected one does (${locale})`, async ({ page }) => {
+      const server = overview([{ ...alpaca(true), integrationId: "synthetic-openai", provider: "openai", model: "gpt-5" }]);
+      server.llmProviders = [
+        { provider: "openai", label: "OpenAI", adapter: "openai", baseUrl: "https://example.invalid", models: ["gpt-5"], defaultModel: "gpt-5", authMethod: "api_key" },
+        { provider: "deepseek", label: "DeepSeek", adapter: "deepseek", baseUrl: "https://example.invalid", models: ["deepseek-chat"], defaultModel: "deepseek-chat", authMethod: "api_key" },
+      ];
+      const { unexpected } = await open(page, () => server, undefined, 0, locale);
+      await page.getByRole("tab", { name: copy("模型连接", "Model connections"), exact: true }).click();
+      const providers = page.locator("section.mx-panel").filter({
+        has: page.getByRole("heading", { level: 2, name: copy(/^模型连接（可选）$/, /^Model connections \(optional\)$/) }),
+      });
+      const openai = providers.getByRole("heading", { level: 3, name: "OpenAI", exact: true }).locator("xpath=../..");
+      const deepseek = providers.getByRole("heading", { level: 3, name: "DeepSeek", exact: true }).locator("xpath=../..");
+
+      // Connected: the badge and the button say so, and the only paragraph is the model, with no gap for a next step.
+      await expect(openai).toContainText(copy("已连接", "Connected"));
+      await expect(openai).not.toContainText(hint);
+      await expect(openai.locator("p")).toHaveCount(1);
+      await expect(openai.locator("p")).toHaveText("gpt-5");
+      await expect(openai.getByRole("button", { name: copy(/^管理连接/, /^Manage connection/) })).toBeVisible();
+
+      // Not connected: the badge and the button say so, and the card names the next step.
+      await expect(deepseek).toContainText(copy("未连接", "Not connected"));
+      await expect(deepseek).toContainText(hint);
+      await expect(deepseek.getByRole("button", { name: copy(/^连接模型/, /^Connect model/) })).toBeVisible();
+      expect(unexpected).toEqual([]);
+    });
+  }
 });
