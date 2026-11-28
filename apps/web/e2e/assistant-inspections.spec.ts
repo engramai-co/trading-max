@@ -386,12 +386,12 @@ for (const locale of ["en", "zh"] as const) {
       await expect
         .poll(() => calls.filter((row) => row.role === "market-map").length)
         .toBe(1);
-      if (isMobile) await map.tap();
+      if (isMobile) await map.locator(".mx-global-label-phone .mx-global-hit").tap();
       else await map.focus();
       await expect(page.locator(".mx-map-reading")).toContainText("MSCI ACWI");
       await capture("map", ".mx-global-inspection");
       const us = page.locator(".mx-global-region[data-market=us]");
-      if (isMobile) await us.tap();
+      if (isMobile) await us.locator(".mx-global-label-phone .mx-global-hit").tap();
       else await us.focus();
       await expect(page.locator(".mx-map-reading")).toContainText("1.20%");
       expect(calls.filter((r) => r.role === "market-map")).toHaveLength(1);
@@ -683,7 +683,7 @@ test("Japan market citations focus the matching card and reject changed or expir
   await expect.poll(()=>calls.filter(c=>c.role==="market-map").length).toBe(1);
   const japan = page.locator(".mx-global-region[data-market=jp]");
   await expect(japan).toHaveAttribute("aria-label", /Move /);
-  if (isMobile) await japan.tap();
+  if (isMobile) await japan.locator(".mx-global-label-phone .mx-global-hit").tap();
   else await japan.focus();
   const source = page.locator(".mx-map-reading").getByRole("button",{name:/^Market /});
   const preview = page.locator(".mx-citation-preview[data-open]");

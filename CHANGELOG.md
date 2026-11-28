@@ -4,6 +4,20 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.87.0] - 2026-11-28
+
+### Changed
+
+- On phones, sector rows are links you can open in a new tab.
+- Review’s decision summary names the no-trade baseline and the comparison horizon. **Recently** labels trade results as **to date**, and **All investment accounts** names the combined scope, with CFD available separately.
+- Review phase shortcuts open the batch containing the selected phase. Decision timeline records link directly to each decision and show its account in single-account views.
+
+### Fixed
+
+- Browser history restores the originating map marker or contribution row and scroll position when you return to Global Markets. On phones, market details appear below the map when they would cover a marker.
+- On phones, the global contribution figure shows its coverage warning alongside it. Small moves are easier to see on the light map. On wider screens, global benchmark changes use distinct gain and loss colours in both themes.
+- Review rankings wrap long names and figures on narrow screens. On touch tablets, the Habits controls and **Import CFD history** are at least 44px tall.
+
 ## [1.86.0] - 2026-11-28
 
 ### Changed

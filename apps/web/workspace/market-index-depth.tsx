@@ -2,6 +2,7 @@
 
 import dynamic from "next/dynamic";
 import type { SeriesOption } from "echarts";
+import { Card } from "@/components/ui/card";
 import { useLocale } from "@/components/locale-provider";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { useChartColours } from "@/ui/charts/palette";
@@ -47,7 +48,7 @@ export function IndexBreadthPanel({ history, stale, phone }: {
   };
   const step = Math.max(1, Math.ceil((rows.length - 1) / (phone ? 3 : 6)));
   return (
-    <section className="mx-panel mx-index-depth">
+    <Card as="section" className="mx-index-depth grid min-w-0 gap-3">
       <div className="mx-index-title">
         <h3>{title} · {history.fund}</h3>
         <span><time dateTime={history.asOf}>{formatCalendarDate(history.asOf, locale)}</time>
@@ -60,7 +61,7 @@ export function IndexBreadthPanel({ history, stale, phone }: {
           <p>{t("以这期 ETF 成分篮子回算，不代表历史指数成分。成分等权；用最近 50 或 200 个实际日收盘价（含当日）算均线。历史不足、缺失过多或无当日收盘价的成分不计入；覆盖不足 80% 留空。", "Back-calculated with this ETF basket. It does not reconstruct historical index membership. Each holding counts once. Its average uses the latest 50 or 200 observed closes, including that day. Holdings with too little history, too many gaps or no close that day are excluded; coverage below 80% leaves a gap.")}</p>
         </Help>
       </div>
-      <dl className="mx-index-depth-metrics">
+      <dl className="mx-index-depth-metrics m-0 flex flex-wrap gap-x-[clamp(14px,4vw,38px)] gap-y-2">
         {lines.map(({ label, value, count }, i) => <div key={value}>
           <dt><i aria-hidden="true" data-dashed={i === 1} />{label}</dt>
           <dd>{formatPercent(latest?.[value], locale, 1)} {latest && <small>{latest[count]}/{history.members}</small>}</dd>
@@ -92,7 +93,7 @@ export function IndexBreadthPanel({ history, stale, phone }: {
           }] : [])];
         }),
       })} />
-    </section>
+    </Card>
   );
 }
 
@@ -101,7 +102,7 @@ export function IndexVixPanel({ vix, stale }: { vix: NonNullable<IndexContext["v
   const { locale, timeZone } = useLocale();
   const number = (value: number) => formatNumber(value, locale, { maximumFractionDigits: 2 });
   return (
-    <section className="mx-panel mx-index-depth">
+    <Card as="section" className="mx-index-depth grid min-w-0 gap-3">
       <div className="mx-index-title">
         <h3>{t("VIX 背景", "VIX context")}</h3>
         <span><time dateTime={vix.asOf}>{formatCalendarDate(vix.asOf, locale)}</time>
@@ -113,12 +114,12 @@ export function IndexVixPanel({ vix, stale }: { vix: NonNullable<IndexContext["v
           <p>{t("VIX 衡量标普 500 期权隐含的近 30 日波动率，单位为点。将最近一个已完成的收盘值与此前约 5 年的日收盘比较。常见区间取第 10 至第 90 百分位。", "VIX measures near-term (30-day) volatility implied by S&P 500 options, in points. The latest completed close is compared with about five years of earlier daily closes. The typical range runs from the 10th to the 90th percentile.")}</p>
         </Help>
       </div>
-      <dl className="mx-index-depth-metrics">
+      <dl className="mx-index-depth-metrics m-0 flex flex-wrap gap-x-[clamp(14px,4vw,38px)] gap-y-2">
         <div><dt>{t("收盘", "Close")}</dt><dd>{number(vix.close)} <small>{t("点", "pts")}</small></dd></div>
         <div><dt>{t("历史分位", "Historical percentile")}</dt><dd>{formatPercent(vix.percentile, locale, 0)}</dd></div>
         <div><dt>{t("常见区间", "Typical range")}</dt><dd>{number(vix.p10)}–{number(vix.p90)} <small>{t("点", "pts")}</small></dd></div>
       </dl>
-    </section>
+    </Card>
   );
 }
 
@@ -131,7 +132,7 @@ export function IndexValuationPanel({ snapshot, reference }: {
   const multiple = (value: number | null | undefined) => value == null ? "—"
     : `${formatNumber(value, locale, { maximumFractionDigits: 2 })}×`;
   return (
-    <section className="mx-panel mx-index-depth">
+    <Card as="section" className="mx-index-depth grid min-w-0 gap-3">
       <div className="mx-index-title">
         <h3>{reference.basis === "etf" ? t("跟踪 ETF 估值", "Tracking ETF valuation") : t("指数估值", "Index valuation")}</h3>
         {snapshot && <span><time dateTime={snapshot.asOf}>{formatCalendarDate(snapshot.asOf, locale)}</time></span>}
@@ -142,13 +143,13 @@ export function IndexValuationPanel({ snapshot, reference }: {
             : t("编制商公布的估值快照。", "A valuation snapshot published by the index provider.")}</p>
         </Help>}
       </div>
-      {snapshot ? <dl className="mx-index-depth-metrics">
+      {snapshot ? <dl className="mx-index-depth-metrics m-0 flex flex-wrap gap-x-[clamp(14px,4vw,38px)] gap-y-2">
         <div><dt>P/E</dt><dd>{multiple(snapshot.pe)}</dd></div>
         <div><dt>{t("远期 P/E", "Forward P/E")}</dt><dd>{multiple(snapshot.forwardPe)}</dd></div>
       </dl> : null}
-      <p className="mx-index-note">{!snapshot && <>{t("暂无快照", "No snapshot")} · </>}
+      <p className="mx-index-note m-0 text-[0.8125rem] text-muted-foreground">{!snapshot && <>{t("暂无快照", "No snapshot")} · </>}
         <a href={reference.sourceUrl} target="_blank" rel="noreferrer" className="mx-text-link">{reference.source}</a>
       </p>
-    </section>
+    </Card>
   );
 }

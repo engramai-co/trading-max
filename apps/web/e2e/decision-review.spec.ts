@@ -16,6 +16,9 @@ type Context = {
   namesake?: boolean;
   tradeCoverage?: { count: number; reason: string };
   cfdMissingFx?: boolean;
+  phaseRows?: number;
+  medianHoldingDays?: number;
+  singleEventTitle?: string;
 };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
@@ -56,7 +59,8 @@ function decisions(context: Context) {
     {
       ...scored, beforeEarnings:true, basketBuy:true, date: "2026-09-02", ticker: "SYNB", name: "Synthetic Beta", side: "buy", kind: "B", amountGbp: 800,
       effectHorizonGbp: 60, effectToDateGbp: 70, returnHorizon: 0.09, returnToDate: 0.1,
-      events: events ? [
+      ...(context.singleEventTitle ? { marketReturnHorizon: null, marketReturnToDate: null } : {}),
+      events: context.singleEventTitle ? [{ date: "2026-09-05", kind: "news", title: context.singleEventTitle }] : events ? [
         { date: "2026-09-05", kind: "news", title: "Synthetic Beta opens a second plant in a long-named industrial district" },
         { date: "2026-09-09", kind: "initiate", firm: "Example Securities International", toGrade: "buy" },
         { date: "2026-09-14", kind: "upgrade", firm: "Another Example Research Partners", toGrade: "outperform" },
@@ -120,6 +124,16 @@ async function serve(page: Page, context: () => Context) {
     const { pathname: path } = url;
     const current = context();
     const account = url.searchParams.get("account") ?? undefined;
+    const phaseRows = current.phaseRows ?? 0;
+    const phases = phaseRows ? {
+      items: Array.from({ length: phaseRows }, (_, index) => ({
+        phaseId: String(index + 1),
+        startDate: "2026-09-01",
+        endDate: "2026-09-02",
+        netPnlGbp: index === phaseRows - 1 ? 300 : index,
+        topContributors: index === 0 ? [{ label: "Synthetic phase contributor", netResultGbp: 11 }] : [],
+      })),
+    } : undefined;
     // Invest also made two same-day round trips, and sold one holding below its best close.
     const review = (rows: unknown[], trips = false) => ({
       status: "available", asOf, horizonDays: 20, observingCount: 1, decisions: rows,
@@ -145,7 +159,11 @@ async function serve(page: Page, context: () => Context) {
         coverage: { closedCampaignCount: current.tradeCoverage.count },
         attribution: { status: "unavailable", unavailableReason: current.tradeCoverage.reason },
         realisedTradeQuality: { status: "unavailable", unavailableReason: current.tradeCoverage.reason, tradeCount: current.tradeCoverage.count },
-      } : { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
+      } : {
+        attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } },
+        phases,
+        realisedTradeQuality: { median_holding_days: current.medianHoldingDays },
+      },
       selectedCfdReview: current.empty ? null : { moneyOutcome: {
         endingRealisedCashEquityProxyGbp: 1500, netRealisedPnlGbp: -200, maxRealisedPnlDrawdownGbp: -300, accountCashFlowGbp: 1700,
       }, ...(current.cfdMissingFx ? {
@@ -289,6 +307,21 @@ test.describe("decision review", () => {
     await reconnect(page);
     await expect(more).toBeHidden();
     await expect(entry.getByRole("link")).toBeFocused();
+  });
+
+  test("a lone clipped event opens its complete title and returns keyboard focus", async ({ page }) => {
+    const title = "Synthetic company event ".repeat(10).trim() + " — end of the source title";
+    context = { benchmark: 0, events: false, singleEventTitle: title };
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/review?account=A&decision=2026-09-02.buy.SYNB");
+    const entry = page.locator(".mx-decision-focus .mx-decision-entry");
+    const more = entry.getByRole("button", { name: /项/ });
+    await more.press("Space");
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText(title);
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(more).toBeFocused();
   });
 
   for (const locale of ["zh", "en"] as const) {
@@ -738,7 +771,7 @@ test.describe("a link to one decision", () => {
     await page.goto(sale);
     await pressed("至今");
     await horizon.getByRole("button", { name: "20 个交易日后" }).click();
-    await page.getByRole("group", { name: "复盘范围" }).getByRole("button", { name: "全部" }).click();
+    await page.getByRole("group", { name: "复盘范围" }).getByRole("button", { name: /^全部(?:投资账户)?$/ }).click();
     await expect(page).toHaveURL((url) => url.pathname + url.search === "/review");
     await expect(page.locator(".mx-review-accounts")).toBeVisible();
     // Every account has a horizon of its own.
@@ -847,7 +880,8 @@ test.describe("the review across accounts", () => {
     const scope = page.getByRole("group", { name: "复盘范围" });
     const lead = page.getByRole("region", { name: "复盘结论" });
     const verdict = (label: string) => lead.locator(".mx-metric").filter({ hasText: label }).locator(".mx-number-value");
-    await expect(scope.getByRole("button", { name: "全部" })).toHaveAttribute("aria-pressed", "true");
+    const combined = scope.getByRole("button", { name: /^全部(?:投资账户)?$/ });
+    await expect(combined).toHaveAttribute("aria-pressed", "true");
     // Every account: the verdicts across both, then each account's own.
     await expect(verdict("买入后")).toHaveText("赚 £150");
     await expect(verdict("卖出后")).toHaveText("少赚 £65");
@@ -874,7 +908,7 @@ test.describe("the review across accounts", () => {
     await expect(page.getByRole("group", { name: "对照时点" })).toHaveCount(0);
     await expect(page.getByRole("tab", { name: "导入记录" })).toBeVisible();
 
-    await scope.getByRole("button", { name: "全部" }).click();
+    await combined.click();
     await expect(page).toHaveURL((url) => url.pathname + url.search === "/review");
     await expect(lead.locator("a.mx-review-accounts-row")).toHaveCount(2);
     // Each scope is a place in history.
@@ -889,15 +923,9 @@ test.describe("the review across accounts", () => {
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toHaveAttribute("href", "/review?account=A");
     await expect(rows.nth(1)).toHaveAttribute("href", "/review?account=B");
-    // On a phone a row keeps the account, its two verdicts and its way in.
-    // The account's name keeps its words together with a no-break space.
-    if (isMobile) {
-      await expect(rows.nth(0)).toHaveAccessibleName(/^Invest 买入后 赚 £60 卖出后 少赚 £40$/);
-      await expect(rows.nth(1)).toHaveAccessibleName(/^Stocks\sISA 买入后 赚 £90 卖出后 少赚 £25$/);
-    } else {
-      await expect(rows.nth(0)).toHaveAccessibleName(/^Invest 买入后 赚 £60 卖出后 少赚 £40 日内往返 赚 £12 TWR \+8\.4%$/);
-      await expect(rows.nth(1)).toHaveAccessibleName(/^Stocks\sISA 买入后 赚 £90 卖出后 少赚 £25 日内往返 — TWR -1\.2%$/);
-    }
+    await expect(rows.nth(0)).toHaveAccessibleName(/^Invest 买入后 赚 £60 卖出后 少赚 £40 日内往返 赚 £12 TWR \+8\.4%$/);
+    await expect(rows.nth(1)).toHaveAccessibleName(/^Stocks\sISA 买入后 赚 £90 卖出后 少赚 £25 日内往返 — TWR -1\.2%$/);
+    if (isMobile) expect((await rows.nth(1).boundingBox())?.height).toBeGreaterThanOrEqual(44);
     await rows.nth(1).click();
     await expect(page).toHaveURL((url) => url.pathname + url.search === "/review?account=B");
     await expect(page.getByRole("group", { name: "复盘范围" }).getByRole("button", { name: "Stocks ISA" })).toHaveAttribute("aria-pressed", "true");
@@ -1247,7 +1275,7 @@ test("the recent record shows what fills moved, what was left alone and each acc
   await serve(page, () => ({ benchmark: 0.02, events: false, observations: true }));
   await page.goto("/review");
   // The decisions lead, then the ones that mattered most, then the record.
-  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["每笔决定 20 个交易日后的结果", "帮你最多", "代价最大", "最近"]);
+  await expect(page.getByRole("heading", { level: 2 })).toHaveText(["每笔决定 20 个交易日后的结果", "帮你最多", "代价最大", "最近 · 买卖结果至今"]);
   const journal = page.locator(".mx-review-journal-panel");
   await expect(journal).toContainText("覆盖不全");
   await expect(journal.locator(".mx-review-journal").first().locator(":scope > li")).toHaveCount(6);
@@ -1369,16 +1397,246 @@ test("the closed records disclosure preserves phone heading and plot geometry in
   expect(layout.withRecords).toEqual(layout.withoutRecords);
   expect(layout.targetGap).toBeGreaterThanOrEqual(0);
   await tapRecordsBottom(records);
-  await expect(timeline.getByRole("table")).toBeVisible();
+  const table = timeline.getByRole("table");
+  await expect(table).toBeVisible();
+  const decision = table.getByRole("link").first();
+  await expect(decision).toHaveAttribute("href", /reviewWindow=20_sessions/);
+  await decision.press("Enter");
+  await expect(page).toHaveURL(/decision=.*reviewWindow=20_sessions/);
+  await expect(timeline.locator(".mx-decision-focus")).toBeVisible();
 });
 
-test("CFD without history offers prerequisites and the import screen", async ({ page }) => {
+test("phase shortcuts mount the target batch and keyboard expansion retains reading focus", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await serve(page, () => ({ benchmark: 0, events: false, phaseRows: 18 }));
+  await page.goto("/review?account=A");
+  await page.getByRole("button", { name: /Largest P&L phase/ }).click();
+  const timeline = page.locator(".mx-timeline");
+  await expect(timeline.locator("article")).toHaveCount(2);
+  await expect(timeline.locator("#review-phase-18")).toBeFocused();
+  await timeline.getByRole("button", { name: /Show earlier phases/ }).press("Space");
+  await expect(timeline.locator("article")).toHaveCount(10);
+  await expect(timeline.locator("#review-phase-9")).toBeFocused();
+
+  await page.goto("/review?account=A&reviewView=phases");
+  await expect(timeline.locator("article")).toHaveCount(8);
+  await timeline.getByRole("button", { name: /Show more phases/ }).press("Enter");
+  await expect(timeline.locator("#review-phase-9")).toBeFocused();
+  await timeline.getByRole("button", { name: /Show more phases/ }).press("Space");
+  await expect(timeline.locator("#review-phase-17")).toBeFocused();
+  await expect(timeline.getByRole("status")).toHaveText("18 of 18 phases shown");
+});
+
+test.describe("review audit follow-up", () => {
+  test("names the comparison window and keeps Recent to date", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await serve(page, () => ({ benchmark: 0.02, events: false }));
+    await page.goto("/review?account=A");
+    const summary = page.getByRole("region", { name: "Review summary" });
+    const recent = page.getByRole("heading", { name: "Recently · Trade results to date" });
+    await expect(summary.getByText("Buys and sells vs no trade · after 20 trading days", { exact: true })).toBeVisible();
+    await expect(recent).toBeVisible();
+    const verdict = summary.locator(".mx-review-verdicts").getByText("gained £60", { exact: true });
+    await expect(verdict).toBeVisible();
+    await page.getByRole("group", { name: "Compare at" }).getByRole("button", { name: "To date" }).click();
+    await expect(summary.getByText("Buys and sells vs no trade · to date", { exact: true })).toBeVisible();
+    await expect(recent).toBeVisible();
+  });
+
+  for (const locale of ["en", "zh"] as const) {
+    test("names the combined investment scope in " + locale, async ({ page }) => {
+      await page.addInitScript((lang) => localStorage.setItem("trading_max-locale", lang), locale);
+      await page.setViewportSize({ width: 320, height: 720 });
+      await serve(page, () => ({ benchmark: 0.02, events: false, isa: true }));
+      await page.route("**/api/backend/profile", (route) => route.fulfill({
+        json: { accountLabels: { A: "Main", B: "Savings" }, assistantEnabled: true },
+      }));
+      await page.goto("/review");
+      const scope = page.getByRole("group", { name: locale === "en" ? "Review scope" : "复盘范围" });
+      await expect(scope.getByRole("button", { name: locale === "en" ? "All investment accounts" : "全部", exact: true }))
+        .toHaveAttribute("aria-pressed", "true");
+      const summary = page.getByRole("region", { name: locale === "en" ? "Review summary" : "复盘结论" });
+      const basis = locale === "en"
+        ? "Main + Savings · Buys and sells vs no trade · after 20 trading days"
+        : "Main + Savings · 买卖相对不交易 · 20 个交易日后";
+      await expect(summary.getByRole("group", { name: basis, exact: true })).toBeVisible();
+      await expect(scope.getByRole("button", { name: "CFD", exact: true })).toBeVisible();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
+    });
+  }
+
+  test("the Chinese title and scope selector share a phone header row", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await serve(page, () => ({ benchmark: 0.02, events: false, isa: true }));
+    await page.goto("/review");
+    const title = page.getByRole("heading", { level: 1, name: "投资复盘" });
+    const scope = page.getByRole("group", { name: "复盘范围" });
+    await expect(scope.getByRole("button", { name: "Stocks ISA" })).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const titleBox = (await title.boundingBox())!;
+    const scopeBox = (await scope.boundingBox())!;
+    expect(scopeBox.x).toBeGreaterThanOrEqual(titleBox.x + titleBox.width);
+    expect(Math.abs(titleBox.y + titleBox.height / 2 - scopeBox.y - scopeBox.height / 2)).toBeLessThan(2);
+    await expect(scope.getByRole("button", { name: "全部", exact: true })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  test("closed phase evidence stays searchable", async ({ page, browserName }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await serve(page, () => ({ benchmark: 0, events: false, phaseRows: 18 }));
+    await page.goto("/review?account=A&reviewView=phases");
+    const disclosure = page.locator("#review-phase-1 details");
+    const contributor = disclosure.getByText("Synthetic phase contributor", { exact: true });
+    await expect(disclosure).toHaveJSProperty("open", false);
+    await expect(contributor).toBeAttached();
+    await expect(contributor).toBeHidden();
+
+    if (browserName === "chromium") {
+      // Text-fragment navigation uses the browser's native reveal path for closed details.
+      await page.evaluate(() => {
+        const link = document.createElement("a");
+        link.href = "#:~:text=Synthetic%20phase%20contributor";
+        link.textContent = "Find phase contributor";
+        document.body.prepend(link);
+      });
+      await page.getByRole("link", { name: "Find phase contributor" }).click();
+      await expect(disclosure).toHaveJSProperty("open", true);
+    } else {
+      await disclosure.locator("summary").press("Space");
+    }
+    await expect(contributor).toBeVisible();
+  });
+
+  test("printing restores the phase prefix and leaves the bounded screen range intact", async ({ page, browserName }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await serve(page, () => ({ benchmark: 0, events: false, phaseRows: 18 }));
+    await page.goto("/review?account=A");
+    await page.getByRole("button", { name: /Largest P&L phase/ }).click();
+    const timeline = page.locator(".mx-timeline");
+    const articles = timeline.locator("article");
+    const last = articles.last();
+    await expect(articles).toHaveCount(2);
+    await expect(last).toBeFocused();
+    await page.emulateMedia({ media: "print" });
+    await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+    await expect(articles).toHaveCount(18);
+    await expect(articles.first()).toHaveAttribute("id", "review-phase-1");
+    await expect(last).toHaveAttribute("id", "review-phase-18");
+    await expect(articles.first()).toBeVisible();
+    await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+    await page.emulateMedia({ media: "screen" });
+    await expect(articles).toHaveCount(2);
+    await expect(last).toBeFocused();
+
+    if (browserName === "chromium") {
+      await page.evaluate(() => {
+        window.addEventListener("beforeprint", () => {
+          const timeline = document.querySelector(".mx-timeline");
+          timeline?.setAttribute("data-print-count", String(timeline.querySelectorAll("article").length));
+        }, { once: true });
+      });
+      await page.pdf();
+      await expect(timeline).toHaveAttribute("data-print-count", "18");
+      await expect(articles).toHaveCount(2);
+    }
+  });
+
+  test("printing and cancelling return focus to Show earlier phases", async ({ page, browserName }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await serve(page, () => ({ benchmark: 0, events: false, phaseRows: 18 }));
+    await page.goto("/review?account=A");
+    await page.getByRole("button", { name: /Largest P&L phase/ }).click();
+    const timeline = page.locator(".mx-timeline");
+    const articles = timeline.locator("article");
+    const earlier = timeline.getByText("Show earlier phases · 16", { exact: true });
+    await expect(articles).toHaveCount(2);
+    await earlier.focus();
+    await expect(earlier).toBeFocused();
+
+    await page.evaluate(() => window.dispatchEvent(new Event("beforeprint")));
+    await page.emulateMedia({ media: "print" });
+    await expect(articles).toHaveCount(18);
+    await expect(earlier).toBeAttached();
+    await expect(earlier).toBeHidden();
+    await page.evaluate(() => window.dispatchEvent(new Event("afterprint")));
+    await page.emulateMedia({ media: "screen" });
+    await expect(articles).toHaveCount(2);
+    await expect(earlier).toBeFocused();
+
+    if (browserName === "chromium") {
+      await page.pdf();
+      await expect(earlier).toBeFocused();
+    }
+  });
+
+  test("median duration pluralizes the displayed number and keeps missing values bare", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    let medianHoldingDays: number | undefined = 1.4;
+    await serve(page, () => ({ benchmark: 0, events: false, medianHoldingDays }));
+    const duration = page.getByText("Median holding duration", { exact: true }).locator("..").locator("dd");
+    await page.goto("/review?account=A&reviewView=quality");
+    await expect(duration).toHaveText("1 day");
+    medianHoldingDays = undefined;
+    await page.reload();
+    await expect(duration).toHaveText("—");
+  });
+
+  test.describe("coarse pointer", () => {
+    test.use({ hasTouch: true });
+    test("Habits keeps 44px tablet controls and the same loading reservation", async ({ page }) => {
+      await page.setViewportSize({ width: 900, height: 900 });
+      await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+      await serve(page, () => ({ benchmark: 0, events: false, habitsConsented: true }));
+      const { promise: status, resolve: ready } = Promise.withResolvers<void>();
+      await page.route("**/api/backend/assistant/status", async (route) => {
+        await status;
+        await route.fulfill({ json: { ready: true } });
+      });
+      await page.route("**/api/backend/assistant/roles/habits/reading", (route) => route.fulfill({
+        contentType: "application/x-ndjson",
+        body: JSON.stringify({ type: "result", reading: { role: "habits", asOf, lines: [
+          { section: "basket_buy", zh: "同一天买入多只", en: "Same-day basket buys",
+            evidence: { tool: "review_patterns", source: "review", evidenceId: "ev_brief", arguments: { habit: "basket_buy" } } },
+        ] } }) + "\n",
+      }));
+      await page.goto("/review");
+      const timeline = page.getByRole("heading", { name: /Each decision after/ });
+      await expect(timeline).toBeVisible();
+      expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+      const top = (await timeline.boundingBox())!.y;
+      ready();
+      const toggle = page.locator(".mx-digest-toggle");
+      await expect(toggle).toBeVisible();
+      expect(Math.abs((await timeline.boundingBox())!.y - top)).toBeLessThan(2);
+      expect.soft((await toggle.boundingBox())!.height, "Habits disclosure").toBeGreaterThanOrEqual(44);
+      await toggle.click();
+      const habit = page.getByRole("button", { name: "Same-day basket buys", exact: true });
+      await expect(habit).toBeVisible();
+      expect((await habit.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    });
+  });
+});
+
+test("CFD without history offers prerequisites and the import screen", async ({ page, isMobile }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   await serve(page, () => ({ benchmark: 0, events: false, empty: true }));
   await page.goto("/review?account=C");
   await expect(page.getByText(/CFD 已平仓交易及费用|Closed CFD trades and fees/)).toBeVisible();
   await expect(page.getByText(/入金、出金与转账|Deposits, withdrawals and transfers/)).toBeVisible();
-  await page.getByRole("button", { name: /导入 CFD 历史|Import CFD history/ }).click();
+  const importHistory = page.getByRole("button", { name: /导入 CFD 历史|Import CFD history/ });
+  if (isMobile) {
+    expect(await importHistory.evaluate((button) => button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  }
+  await expect(importHistory).toHaveCSS("color", await page.locator("html").evaluate((root) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--link)";
+    root.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }));
+  await importHistory.click();
   await expect(page).toHaveURL(/reviewView=imports/);
   await expect(page.getByRole("tab", { name: "导入记录" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "CFD 历史账本", level: 2 })).toBeVisible();

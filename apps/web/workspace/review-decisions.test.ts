@@ -155,7 +155,7 @@ describe("decision verdicts", () => {
     expect(eventLabel({ date: "2026-11-03", kind: "initiate", firm: "Citi", toGrade: "Buy" }, en)).toBe("Citi initiates Buy");
     expect(eventLabel({ date: "2026-10-09", kind: "filing", form: "8-K" }, zh)).toBe("重大事项公告");
     expect(eventLabel({ date: "2026-10-09", kind: "filing", form: "10-K" }, en)).toBe("10-K");
-    expect(eventLabel({ date: "2026-10-09", kind: "news", title: "x".repeat(80) }, en)).toHaveLength(60);
+    expect(eventLabel({ date: "2026-10-09", kind: "news", title: "x".repeat(80) }, en)).toBe("x".repeat(80));
   });
 
   it("treats a decision without a later close as observing, not as a £0 outcome", () => {

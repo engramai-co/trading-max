@@ -1,7 +1,10 @@
 "use client";
 
 import { ArrowUpRight, ChevronDown } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
+import { useId, type MouseEvent, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
 import type { AccountCode, DashboardLens } from "@/lib/types";
@@ -80,9 +83,13 @@ export function decisionSelectionParams(row: ScopedDecision, horizon: Horizon) {
 }
 
 /** More of a list, opened in place. */
-export function ReviewDisclosure({ label, children }: { label: string; children: ReactNode }) {
+export function ReviewDisclosure({ label, className, children }: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
-    <details className="mx-review-disclosure">
+    <details className={cn("mx-review-disclosure", className)}>
       <summary>{label}</summary>
       {children}
     </details>
@@ -165,9 +172,24 @@ const DAY = 86_400_000;
  */
 export function shareShifts(fills: FillEffect[]): ShareShift[] {
   if (!fills.length) return [];
-  const ordered = [...fills].sort((a, b) => Date.parse(a.filledAt) - Date.parse(b.filledAt));
-  const first = ordered[0].before;
-  const last = ordered[ordered.length - 1].after;
+  // Broker timestamps carry up to six fractional digits. Keep the sub-millisecond
+  // remainder separately so offsets still compare chronologically on older WebKit.
+  const ordered = fills.map((fill) => {
+    const [, seconds, fraction, zone] = /^(.*?)\.(\d+)(Z|[+-]\d{2}:?\d{2})$/i.exec(fill.filledAt) ?? [];
+    return {
+      fill,
+      time: Date.parse(seconds ? seconds + zone : fill.filledAt),
+      fraction: (fraction ?? "").padEnd(9, "0"),
+    };
+  }).sort((a, b) => a.time - b.time || (a.fraction < b.fraction ? -1 : a.fraction > b.fraction ? 1 : 0));
+  const firstEntry = ordered[0];
+  const lastEntry = ordered[ordered.length - 1];
+  const sameTime = (a: typeof firstEntry, b: typeof firstEntry) => a.time === b.time && a.fraction === b.fraction;
+  // Simultaneous boundary fills have no unique first or last allocation.
+  if (!Number.isFinite(firstEntry.time) || !Number.isFinite(lastEntry.time) ||
+      (ordered.length > 1 && (sameTime(firstEntry, ordered[1]) || sameTime(lastEntry, ordered[ordered.length - 2])))) return [];
+  const first = firstEntry.fill.before;
+  const last = lastEntry.fill.after;
   return SHARE_KEYS
     .map((key) => ({ key, before: first[key], after: last[key] }))
     .filter((shift) => Math.abs(shift.after - shift.before) >= NOTABLE_SHIFT)
@@ -262,16 +284,25 @@ function Verdict({ label, side, summary }: {
 }
 
 /** The review's lead: what buying, selling and round trips did, then where they happened. */
-export function ReviewLead({ rows, horizon, trips, children }: {
+export function ReviewLead({ rows, horizon, days, combinedScope, trips, children }: {
   rows: TradeDecision[];
   horizon: Horizon;
+  days: number;
+  combinedScope?: string;
   trips: { count: number; favourable: number; result: number };
   children?: ReactNode;
 }) {
   const t = useCopy();
+  const basisId = useId();
+  const windowLabel = horizon === "date" ? t("至今", "to date")
+    : t("{days} 个交易日后", "after {days} trading days").replace("{days}", String(days));
   return (
-    <section className="mx-panel mx-review-lead" aria-label={t("复盘结论", "Review summary")}>
-      <div className="mx-metric-grid mx-metric-grid-three mx-review-verdicts">
+    <Card as="section" className="mx-review-lead" aria-label={t("复盘结论", "Review summary")}>
+      <p id={basisId} className="mt-0 mb-2 break-words text-xs text-muted-foreground">
+        {combinedScope && <>{combinedScope} · </>}
+        {t("买卖相对不交易", "Buys and sells vs no trade")} · {windowLabel}
+      </p>
+      <div role="group" aria-labelledby={basisId} className="mx-metric-grid mx-metric-grid-three mx-review-verdicts">
         <Verdict label={t("买入后", "Buys")} side="buy" summary={sideVerdict(rows, "buy", horizon)} />
         <Verdict label={t("卖出后", "Sells")} side="sell" summary={sideVerdict(rows, "sell", horizon)} />
         {trips.count > 0 && (
@@ -279,7 +310,7 @@ export function ReviewLead({ rows, horizon, trips, children }: {
         )}
       </div>
       {children}
-    </section>
+    </Card>
   );
 }
 
@@ -315,7 +346,7 @@ export function ReviewAccounts({ accounts, horizon, onOpen }: {
         {accounts.map(({ code, rows, review, twr }) => (
           <li key={code}>
             <Link
-              className="mx-review-accounts-row"
+              className="mx-review-accounts-row focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight]"
               href={"/review?account=" + code}
               onClick={(event) => {
                 if (!isPlainClick(event)) return;
@@ -324,10 +355,10 @@ export function ReviewAccounts({ accounts, horizon, onOpen }: {
               }}
             >
               <strong>{accountName(profile, code)}</strong>
-              <span><span className="sr-only">{columns[0]} </span>{verdict(rows, "buy")}</span>
-              <span><span className="sr-only">{columns[1]} </span>{verdict(rows, "sell")}</span>
-              <span><span className="sr-only">{columns[2]} </span>{trips(review)}</span>
-              <span><span className="sr-only">TWR </span><span className={twr == null ? "mx-muted" : "mx-" + tone(twr)}>{percent(twr, true)}</span></span>
+              <span className="mx-review-account-stat"><span className="mx-review-account-stat-label">{columns[0]}</span>{" "}{verdict(rows, "buy")}</span>
+              <span className="mx-review-account-stat"><span className="mx-review-account-stat-label">{columns[1]}</span>{" "}{verdict(rows, "sell")}</span>
+              <span className="mx-review-account-stat"><span className="mx-review-account-stat-label">{columns[2]}</span>{" "}{trips(review)}</span>
+              <span className="mx-review-account-stat"><span className="mx-review-account-stat-label">TWR</span>{" "}<span className={twr == null ? "mx-muted" : "mx-" + tone(twr)}>{percent(twr, true)}</span></span>
               <ArrowUpRight size={16} aria-hidden="true" />
             </Link>
           </li>
@@ -355,9 +386,11 @@ function DecisionLine({
   const { locale } = useLocale();
   const effect = decisionEffect(row, horizon);
   const change = horizon === "horizon" ? row.returnHorizon : row.returnToDate;
-  const detail = [decisionAction(row, t).trim(), formatCalendarDate(row.date, locale), currency(row.amountGbp), account].filter(Boolean).join(" · ");
+  const detail = [decisionAction(row, t).trim(), formatCalendarDate(row.date, locale), currency(row.amountGbp), account].filter(Boolean);
   const contents = <>
-      <Instrument ticker={row.ticker} name={detail} small />
+      <Instrument ticker={row.ticker} small detail={<span className="mx-review-line-meta">
+        {detail.map((part, index) => <span key={index}>{index > 0 && " · "}{part}</span>)}
+      </span>} />
       <span className={"mx-row-value mx-" + effectTone(effect)}>
         <span>{signedMoney(effect)}</span>
         {change != null && <small>{t("之后 ", "then ") + percent(change, true, 1)}</small>}
@@ -374,9 +407,9 @@ function DecisionLine({
   const open = expansion.location === "extremes" && expansion.selected === row;
   return <div className="mx-review-expandable" data-open={open || undefined}>
     <div className="mx-review-expand-head">
-      <button type="button" className="mx-row-link mx-review-line" aria-expanded={open} aria-controls={open ? expansion.id : undefined}
-        onClick={event => expansion.toggle(row,"extremes",event.currentTarget)}>{contents}<ChevronDown size={16} aria-hidden="true"/></button>
-      <Link href={href} aria-label={t("查看这笔决定", "View this decision") + " · " + row.ticker}><ArrowUpRight size={16} aria-hidden="true"/></Link>
+      <Button variant={null} size={null} className="mx-row-link mx-review-line grid whitespace-normal border-0 font-[inherit] motion-safe:active:scale-100" aria-expanded={open} aria-controls={open ? expansion.id : undefined}
+        onClick={event => expansion.toggle(row,"extremes",event.currentTarget)}>{contents}<ChevronDown size={16} aria-hidden="true"/></Button>
+      <Link className={buttonVariants({ variant: "ghost", size: "icon" })} href={href} aria-label={t("查看这笔决定", "View this decision") + " · " + row.ticker}><ArrowUpRight size={16} aria-hidden="true"/></Link>
     </div>{open && expansion.reading}</div>;
 }
 
@@ -452,8 +485,9 @@ function JournalItem({
         return <Link className={className} href={decisionHref(row.account, row, { horizon: "date" })}>{content}</Link>;
       }
       const open = expansion.selected === row && expansion.location === "recent";
-      return <button type="button" className={className} aria-expanded={open} aria-controls={open ? expansion.id : undefined}
-        onClick={event => expansion.toggle(row,"recent",event.currentTarget)}>{content} <ChevronDown size={16} aria-hidden="true"/></button>;
+      return <Button variant="ghost" size={null} className={cn("mx-journal-trigger", className)} aria-expanded={open}
+        aria-controls={open ? expansion.id : undefined}
+        onClick={event => expansion.toggle(row, "recent", event.currentTarget)}>{content} <ChevronDown size={16} aria-hidden="true" /></Button>;
     }
     body = (
       <>
@@ -573,10 +607,11 @@ export function RecentJournal({ decisions, evidence, accounts, showAccount, expa
   const partial = accounts.some((code) => evidence?.accounts?.[code]?.coverage === "partial");
   const percentage = (value: number) => Number((value * 100).toFixed(4));
   const volatility = rules?.sessionMoveVolatility;
+  const hasTrades = entries.some((entry) => entry.kind === "trade");
   return (
     <Panel
       className="mx-review-journal-panel"
-      title={t("最近", "Recently")}
+      title={hasTrades ? t("最近 · 买卖结果至今", "Recently · Trade results to date") : t("最近", "Recently")}
       action={partial ? <Tag>{t("覆盖不全", "Partial coverage")}</Tag> : undefined}
       helpLabel={t("最近的记录", "Recent record")}
       help={rules && <>
@@ -618,6 +653,7 @@ export function RecentJournal({ decisions, evidence, accounts, showAccount, expa
 /** Every account, or one of them: the review's scope, as a switch beside its title. */
 export function ScopeSwitch({ value, onChange }: { value: ReviewScope; onChange: (value: ReviewScope) => void }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { data: profile } = useWorkspaceProfile();
   return (
     <Segments
@@ -625,7 +661,7 @@ export function ScopeSwitch({ value, onChange }: { value: ReviewScope; onChange:
       value={value}
       onChange={onChange}
       options={[
-        { value: "all" as const, label: t("全部", "All") },
+        { value: "all" as const, label: t("全部投资账户", "All investment accounts"), short: locale === "zh" ? t("全部", "All") : undefined },
         ...(["A", "B", "C"] as const).map((code) => ({ value: code, label: accountName(profile, code) })),
       ]}
     />

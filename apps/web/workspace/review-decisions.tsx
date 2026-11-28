@@ -5,7 +5,7 @@ import { quoteValue } from "./financial-values";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ArrowUpRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { CloseButton } from "@/components/ui/button";
+import { Button, CloseButton } from "@/components/ui/button";
 import {
   type Dispatch,
   type ReactNode,
@@ -252,8 +252,7 @@ export function eventLabel(event: DecisionEvent, t: Copy) {
   if (event.kind === "upgrade") return (firm + t(" 上调", " upgrade") + (to ? t("至", " to ") + to : "")).trim();
   if (event.kind === "initiate") return (firm + t(" 首次覆盖", " initiates") + (to ? t("：", " ") + to : "")).trim();
   if (event.kind === "filing") return event.form ? filingLabel(event.form, t) : t("监管披露", "Filing");
-  const title = event.title ?? "";
-  return title.length > 60 ? title.slice(0, 59) + "…" : title;
+  return event.title ?? "";
 }
 
 /** What the market did over the same window, and the company events within it. */
@@ -285,7 +284,7 @@ export function contextFit(widths: number[], room: number, gap: number, more: nu
   return { shown, at: Math.max(0, Math.min(used + gap, room - more)) };
 }
 
-type Placement = { items: string; shown: number; left?: number; top?: number; room?: number };
+type Placement = { items: string; shown: number; clipped?: boolean; left?: number; top?: number; room?: number };
 
 /**
  * One decision as a link over its whole row: the security, its effect and a line of
@@ -309,7 +308,7 @@ function DecisionEntry({
   const entry = useRef<HTMLDivElement>(null);
   const link = useRef<HTMLAnchorElement>(null);
   const line = useRef<HTMLSpanElement>(null);
-  const button = useRef<HTMLButtonElement>(null);
+  const button = useRef<HTMLElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const heading = useId();
   const items = context.join("\u0000");
@@ -336,17 +335,19 @@ function DecisionEntry({
     const width = more.getBoundingClientRect().width + parseFloat(margins.marginLeft) + parseFloat(margins.marginRight);
     const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
     const fit = () => {
-      const { shown, at } = contextFit(widths, element.clientWidth, gap, width);
+      const available = element.clientWidth;
+      const { shown, at } = contextFit(widths, available, gap, width);
+      const clipped = widths[0] > available;
       const origin = row.getBoundingClientRect();
       const box = element.getBoundingClientRect();
       const left = box.left - origin.left + at;
       const top = box.top - origin.top;
       setMeasured((current) =>
-        current.items === items && current.shown === shown && current.left === left && current.top === top
+        current.items === items && current.shown === shown && current.clipped === clipped && current.left === left && current.top === top
           ? current
-          : { items, shown, left, top, room: gap + width },
+          : { items, shown, clipped, left, top, room: gap + width },
       );
-      if (shown < widths.length) return;
+      if (shown < widths.length || clipped) return;
       // Everything fits, so the button hides: focus on it or in its list moves to the
       // row's link rather than falling to the page, and the list closes.
       const active = document.activeElement;
@@ -361,12 +362,13 @@ function DecisionEntry({
     return () => observer.disconnect();
   }, [items]);
   const hidden = context.length - place.shown;
+  const hasMore = hidden > 0 || place.clipped;
   return (
     <div ref={entry} className="mx-decision-entry">
       <Link ref={link} className="mx-row-link mx-decision-row" href={href}>
         {children}
         {context.length > 0 && (
-          <span ref={line} className="mx-decision-context" style={hidden ? { paddingInlineEnd: place.room } : undefined}>
+          <span ref={line} className="mx-decision-context" style={hasMore ? { paddingInlineEnd: place.room } : undefined}>
             {context.map((item, index) => (
               <span key={index} data-item="" hidden={index >= place.shown}>
                 {item}
@@ -378,18 +380,19 @@ function DecisionEntry({
       {context.length > 0 && (
         <Popover open={opened} onOpenChange={setOpened} modal="trap-focus">
           <PopoverTrigger render={
-            <button
+            <Button
               ref={button}
-              type="button"
-              className="mx-decision-more"
-              data-idle={hidden ? undefined : ""}
+              variant="ghost"
+              size={null}
+              className="mx-decision-more absolute border-0 text-xs leading-[inherit]"
+              data-idle={hasMore ? undefined : ""}
               aria-haspopup="dialog"
               aria-expanded={opened}
               style={{ left: place.left, top: place.top }}
             >
-              +{hidden || context.length}
+              +{hidden || (hasMore ? 1 : context.length)}
               <span className="sr-only">{t(" 项", " more")}</span>
-            </button>
+            </Button>
           } />
           <PopoverContent ref={list} className="mx-help-popover" aria-labelledby={heading}
             align="end" sideOffset={8} initialFocus={close} finalFocus={button}>
@@ -397,7 +400,7 @@ function DecisionEntry({
               <strong id={heading}>{label}</strong>
               <CloseButton ref={close} aria-label={t("关闭", "Close")} onClick={() => setOpened(false)} />
             </div>
-            <ul className="mx-help-body mx-decision-more-list">
+            <ul className="mx-help-body mx-decision-more-list [overflow-wrap:anywhere]">
               {context.map((item, index) => (
                 <li key={index}>{item}</li>
               ))}
@@ -532,13 +535,15 @@ export function timelinePoints(rows: TradeDecision[], focus?: TradeDecision) {
  * Picking a point, by pointer or with Enter, opens that decision; across accounts, each reading names
  * its account.
  */
-export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf }: {
+export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf, recordsAccountOf, decisionUrl }: {
   rows: TradeDecision[];
   horizon: Horizon;
   days: number;
   focus?: TradeDecision;
   onPick?: (row: TradeDecision) => void;
   accountOf?: (row: TradeDecision) => string | undefined;
+  recordsAccountOf?: (row: TradeDecision) => string | undefined;
+  decisionUrl?: (row: TradeDecision) => string;
 }) {
   const t = useCopy();
   const { locale } = useLocale();
@@ -765,8 +770,11 @@ export function DecisionTimeline({ rows, horizon, days, focus, onPick, accountOf
       {marks.length > 0 && <ChartRecordsPanel>
         <EvidenceTable chart label={t("买卖决定的时间线", "Timeline of buy and sell decisions")} rows={marks} columns={[
           { label: t("日期", "Date"), value: ({ row }) => formatCalendarDate(row.date, locale) },
-          { label: t("决定", "Decision"), value: ({ row }) => decisionName(row, t, locale) },
-          ...(accountOf ? [{ label: t("账户", "Account"), value: ({ row }: (typeof marks)[number]) => accountOf(row) }] : []),
+          { label: t("决定", "Decision"), value: ({ row }) => {
+            const name = decisionName(row, t, locale);
+            return decisionUrl ? <Link className="mx-text-link" href={decisionUrl(row)}>{name}</Link> : name;
+          } },
+          ...(recordsAccountOf ? [{ label: t("账户", "Account"), value: ({ row }: (typeof marks)[number]) => recordsAccountOf(row) }] : []),
           { label: t("结果 · GBP", "Outcome · GBP"), numeric: true, value: ({ row }) => signedMoney(decisionEffect(row, horizon), 2) },
         ]} />
       </ChartRecordsPanel>}
@@ -937,7 +945,7 @@ export function HorizonSwitch({ horizon, days, onChange }: { horizon: Horizon; d
   const { locale } = useLocale();
   const after = locale === "zh" ? `${days} 个交易日后` : `${days} trading days`;
   return (
-    <span className="mx-horizon-switch">
+    <span className="mx-horizon-switch inline-flex items-center gap-0.5">
       <Segments
         label={t("对照时点", "Compare at")}
         value={horizon}
@@ -1006,6 +1014,8 @@ export function DecisionTimelinePanel({
   onClear,
   onPick,
   accountOf,
+  recordsAccountOf,
+  decisionUrl,
   unpriced = [],
 }: {
   rows: TradeDecision[];
@@ -1015,8 +1025,10 @@ export function DecisionTimelinePanel({
   /** Lets go of the decision; the review stays as it is beneath it. */
   onClear?: () => void;
   onPick?: (row: TradeDecision) => void;
+  decisionUrl?: (row: TradeDecision) => string;
   /** Across accounts, the account each reading names. */
   accountOf?: (row: TradeDecision) => string | undefined;
+  recordsAccountOf?: (row: TradeDecision) => string | undefined;
   unpriced?: string[];
   action?: ReactNode;
 }) {
@@ -1087,7 +1099,7 @@ export function DecisionTimelinePanel({
           <ModelAtDecision row={focus} />
         </div>
       )}
-      <DecisionTimeline rows={rows} horizon={horizon} days={days} focus={focus} onPick={onPick} accountOf={accountOf} />
+      <DecisionTimeline rows={rows} horizon={horizon} days={days} focus={focus} onPick={onPick} accountOf={accountOf} recordsAccountOf={recordsAccountOf} decisionUrl={decisionUrl} />
       {unpriced.length > 0 && (
         <p className="mx-muted mx-decision-coverage">
           {locale === "zh"

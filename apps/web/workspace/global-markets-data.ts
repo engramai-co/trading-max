@@ -2,15 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import type { components } from "@/lib/api-schema";
 import { api } from "@/workspace/data";
 import type { CSSProperties } from "react";
-import { heat, heatMix } from "./sectors-data";
+import { FLAT_BAND, heat, HEAT_MIX, HEAT_SATURATION } from "./sectors-data";
 
 type HeatStyle = CSSProperties & Record<"--mx-world-heat-light" | "--mx-world-heat-dark" | "--mx-world-hue", string>;
 
 export function globalHeatStyle(change: number | null | undefined): HeatStyle {
   const value = heat(change);
+  const ratio = value === 0 ? 0 : Math.min(1, (Math.abs(change ?? 0) - FLAT_BAND) / (HEAT_SATURATION - FLAT_BAND));
+  const mix = (minimum: number, maximum: number) =>
+    value === 0 ? "0%" : Math.round(minimum + (maximum - minimum) * ratio) + "%";
   return {
-    "--mx-world-heat-light": heatMix(change, "light"),
-    "--mx-world-heat-dark": heatMix(change, "dark"),
+    "--mx-world-heat-light": mix(17, HEAT_MIX.light),
+    "--mx-world-heat-dark": mix(23, HEAT_MIX.dark),
     "--mx-world-hue": value > 0 ? "var(--heat-gain)" : value < 0 ? "var(--heat-loss)" : "var(--world-land)",
   };
 }

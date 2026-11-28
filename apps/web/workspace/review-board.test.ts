@@ -143,6 +143,13 @@ describe("the recent record", () => {
     expect(shareShifts([fill("2026-11-13T08:00:00Z", "A", shares(0.2, 0.006, 0.3), shares(0.2, 0.002, 0.3))])).toEqual([]);
   });
 
+  it("orders distinct sub-millisecond fills and leaves simultaneous endpoints ambiguous", () => {
+    const first = fill("2026-11-13T08:00:00.123001Z", "A", shares(0.24, 0.08, 0.33), shares(0.24, 0.05, 0.33));
+    const last = fill("2026-11-13T09:00:00.123002+01:00", "B", shares(0.24, 0.05, 0.33), shares(0.24, 0.03, 0.33));
+    expect(shareShifts([last, first])).toEqual([{ key: "cash", before: 0.08, after: 0.03 }]);
+    expect(shareShifts([{ ...last, filledAt: "2026-11-13T09:00:00.123001+01:00" }, first])).toEqual([]);
+  });
+
   it("gathers a day's decisions in one account, with the side effects of their own fills", () => {
     const evidence: Evidence = {
       rules,

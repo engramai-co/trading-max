@@ -40,7 +40,7 @@ const starter = ["nasdaq-100", "sp-500", "msci-world-ex-usa", "msci-usa-momentum
 export const savedIndexKey = "trading_max-research-indexes";
 
 export function indexDirectory(indices: IndexIdentity[] | undefined, saved: readonly string[] = []) {
-  return [...(indices ?? [])].sort((a, b) => {
+  return (indices ?? []).toSorted((a, b) => {
     const rank = (item: IndexIdentity) => { const i = starter.indexOf(item.id); return i < 0 ? starter.length : i; };
     return Number(saved.includes(b.id)) - Number(saved.includes(a.id)) || rank(a) - rank(b) || a.name.localeCompare(b.name);
   });

@@ -1,3 +1,4 @@
+import { portfolioCalendarDateKey } from "@/lib/chart-domain";
 import type { SectorGroup, SectorMarketCode, SectorSessionWindow } from "@/lib/types";
 
 /** Markets in the order the page lists them. */
@@ -133,20 +134,6 @@ export function neighbour(tiles: ReadonlyArray<Tile>, from: string, direction: D
 
 export type MarketPhase = "open" | "break" | "closed" | "pre-open" | "unknown";
 
-const zoneDates = new Map<string, Intl.DateTimeFormat>();
-function zoneDate(now: Date, timeZone: string) {
-  let format = zoneDates.get(timeZone);
-  if (!format) {
-    try {
-      format = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" });
-    } catch {
-      format = new Intl.DateTimeFormat("en-CA", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" });
-    }
-    zoneDates.set(timeZone, format);
-  }
-  return format.format(now);
-}
-
 /** Where an exchange's regular session stands at `now`, from its scheduled sessions. */
 export function marketPhase(
   sessions: ReadonlyArray<SectorSessionWindow>,
@@ -164,7 +151,13 @@ export function marketPhase(
   }
   if (!ordered.length) return { phase: "unknown", session: null, next: null };
   const last = ordered.findLast((session) => Date.parse(session.close) <= at) ?? null;
-  const today = zoneDate(now, timeZone);
+  if (!next) return { phase: "closed", session: last, next };
+  let today: string | null;
+  try {
+    today = portfolioCalendarDateKey(now.toISOString(), timeZone);
+  } catch {
+    today = portfolioCalendarDateKey(now.toISOString(), "UTC");
+  }
   if (next && next.date === today) return { phase: "pre-open", session: last, next };
   return { phase: "closed", session: last, next };
 }
@@ -225,10 +218,13 @@ export function sparkline(
   return { path, zero: y(0), peak, last };
 }
 
+export const FLAT_BAND = 0.0005 + 1e-9;
+export const HEAT_SATURATION = 0.03;
+
 /** Colour intensity in [-1, 1] for a session change; ±3% and beyond saturate. */
-export function heat(change: number | null | undefined, saturation = 0.03) {
+export function heat(change: number | null | undefined, saturation = HEAT_SATURATION) {
   // Inside the ±0.05% unchanged band (inclusive, as the server counts breadth) there is no colour.
-  if (change == null || !Number.isFinite(change) || Math.abs(change) <= 0.0005 + 1e-9) return 0;
+  if (change == null || !Number.isFinite(change) || Math.abs(change) <= FLAT_BAND) return 0;
   return Math.sign(change) * Math.min(1, Math.abs(change) / saturation) ** 0.7;
 }
 
@@ -237,8 +233,8 @@ export const HEAT_MIN = { light: 12, dark: 23 } as const;
 export const HEAT_MIX = { light: 55, dark: 70 } as const;
 
 /** A block's wash for a session change, as a CSS percentage: min + span × min(1, |change| / saturation). */
-export function heatMix(change: number | null | undefined, scheme: keyof typeof HEAT_MIX, saturation = 0.03) {
-  if (change == null || !Number.isFinite(change) || Math.abs(change) <= 0.0005 + 1e-9) return "0%";
+export function heatMix(change: number | null | undefined, scheme: keyof typeof HEAT_MIX, saturation = HEAT_SATURATION) {
+  if (change == null || !Number.isFinite(change) || Math.abs(change) <= FLAT_BAND) return "0%";
   const ratio = Math.min(1, Math.abs(change) / saturation);
   const minimum = HEAT_MIN[scheme];
   return Math.round(minimum + (HEAT_MIX[scheme] - minimum) * ratio) + "%";

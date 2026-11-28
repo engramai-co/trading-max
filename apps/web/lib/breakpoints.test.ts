@@ -60,7 +60,7 @@ describe("breakpoints single source of truth", () => {
   it("stays aligned with the matching shell, assistant, global-markets, and research-index CSS media queries", () => {
     const shellCss = readFileSync(resolve(__dirname, "../app/styles/23-workspace-shell.css"), "utf8");
     const assistantCss = readFileSync(resolve(__dirname, "../app/styles/19-assistant.css"), "utf8");
-    const globalMarketsCss = readFileSync(resolve(__dirname, "../app/styles/13a1-global-markets.css"), "utf8");
+    const globalMarketsCss = readFileSync(resolve(__dirname, "../app/styles/13-markets-layout.css"), "utf8");
     const researchIndexCss = readFileSync(resolve(__dirname, "../app/styles/13b-research-index.css"), "utf8");
     const researchIndexChartTsx = readFileSync(resolve(__dirname, "../workspace/research-index-chart.tsx"), "utf8");
 
@@ -70,7 +70,8 @@ describe("breakpoints single source of truth", () => {
     expect(shellCss).toContain(`@media ${MEDIA_QUERIES.phone}`);
     expect(assistantCss).toContain(`@media ${MEDIA_QUERIES.phoneDock}`);
     expect(assistantCss).toContain(`@media ${MEDIA_QUERIES.compactDesktop}`);
-    expect(globalMarketsCss).toContain(`(max-width: ${BREAKPOINTS.wideMapMin - 1}px)`);
+    expect(globalMarketsCss).toContain(`@media ${MEDIA_QUERIES.phone}`);
+    expect(globalMarketsCss).toContain("@container world-markets (min-width: 1052px)");
     expect(researchIndexCss).toContain(`@media ${MEDIA_QUERIES.researchIndexPhone}`);
     expect(researchIndexChartTsx).toContain('useBreakpoint("researchIndexPhone")');
   });

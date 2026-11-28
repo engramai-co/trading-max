@@ -10,6 +10,7 @@ import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useLocale } from "@/components/locale-provider";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
@@ -69,9 +70,9 @@ const GLOBAL_CARD_NAMES: Record<string, string> = {
 function RetryIndices({ retry, busy }: { retry: () => void; busy?: boolean }) {
   const t = useCopy();
   return (
-    <button type="button" className="mx-index-retry" disabled={busy} onClick={retry}>
+    <Button type="button" variant="link" className="mx-index-retry px-0" loading={busy} onClick={retry}>
       <RotateCw size={16} aria-hidden="true" />{t("重试", "Retry")}
-    </button>
+    </Button>
   );
 }
 
@@ -124,11 +125,11 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
         points: acwi.points?.filter(({ at }) => global.asOf != null && Date.parse(at) <= Date.parse(global.asOf)),
       });
     }
-    return <section className="mx-index-strip mx-index-global" aria-label={t("市场指数", "Market indices")}>
+    return <section className="mx-index-strip mx-index-global min-w-0 tabular-nums" aria-label={t("市场指数", "Market indices")}>
       {(stamp || error) && <div className="mx-index-stamp mx-sectors-clock">
         {stamp && <>
           <span>{phase}</span>
-          <span>{closedDay
+          <span data-quote-time="">{closedDay
             ? <time dateTime={closedDay}>{formatCalendarDate(closedDay, locale)}</time>
             : <time dateTime={stamp}>{t("截至 ", "As of ")}{global?.phase === "live" && !global.pricesStale
               ? time : formatDateTime(stamp, locale, timeZone)}</time>}</span>
@@ -154,8 +155,8 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
     </section>;
   }
   return (
-    <section className="mx-index-strip" aria-label={t("市场指数", "Market indices")}>
-      {marketName && <h2 className="mx-index-scope">{marketName}</h2>}
+    <section className="mx-index-strip min-w-0 tabular-nums" aria-label={t("市场指数", "Market indices")}>
+      <h2 className={marketName ? "mx-index-scope" : "sr-only"}>{marketName ?? t("市场指数", "Market indices")}</h2>
       {query.isPending ? <Pending label={t("正在加载指数", "Loading indices")} compact /> : null}
       {query.data && <details className="mx-index-directory" open={!marketName || undefined}>
         <summary>{t("全部指数", "All indices")}</summary>
@@ -167,7 +168,7 @@ export function IndexStrip({ market, open, selected, marketName, globalClock }: 
           </section>;
         })}
       </details>}
-      {(newest || error) && <div className="mx-index-stamp">
+      {(newest || error) && <div className="mx-index-stamp flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
         {newest && <time dateTime={newest}>{t("指数截至 ", "Indices as of ")}{formatDateTime(newest, locale, timeZone)}</time>}
         {error && <>
           <span>{newest ? t("部分报价未更新", "Some quotes haven’t updated") : t("暂时无法读取指数", "Indices are unavailable")}</span>
@@ -225,7 +226,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
           selected && "outline-2 -outline-offset-2 outline-link focus-visible:outline-offset-2 focus-visible:outline-ring",
           primaryBenchmark && "min-[768px]:border-border-strong",
           globalBenchmark
-            ? "grid-rows-[auto_auto_25px] gap-2 px-3 pb-2 pt-2.5 max-[1179px]:min-[768px]:px-2 max-[959px]:min-[768px]:grid-rows-[18px_auto_21px] max-[767px]:min-h-11 max-[767px]:grid-rows-[auto_auto] max-[767px]:content-center max-[767px]:gap-px max-[767px]:rounded-none max-[767px]:border-0 max-[767px]:border-b max-[767px]:border-border max-[767px]:bg-transparent max-[767px]:px-[5px] max-[767px]:py-[3px]"
+            ? "grid-rows-[auto_auto_25px] gap-2 px-3 pb-2 pt-2.5 max-[1179px]:min-[768px]:px-2 max-[959px]:min-[768px]:grid-rows-[auto_auto_21px] max-[767px]:min-h-11 max-[767px]:grid-rows-[auto_auto] max-[767px]:content-center max-[767px]:gap-px max-[767px]:rounded-none max-[767px]:border-0 max-[767px]:border-b max-[767px]:border-border max-[767px]:bg-transparent max-[767px]:px-[5px] max-[767px]:py-[3px]"
             : "grid-rows-[auto_auto_25px] gap-[7px] px-3 pb-[7px] pt-2.5",
         )}
         data-tone={tone}
@@ -235,9 +236,9 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
       >
         <span
           className={cn(
-            "mx-index-name flex min-w-0 items-center justify-between gap-1.5 font-semibold",
+            "mx-index-name grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-1.5 font-semibold [overflow-wrap:anywhere]",
             globalBenchmark
-              ? "text-[14px] max-[1179px]:min-[768px]:block max-[1179px]:min-[768px]:truncate max-[1179px]:min-[768px]:text-[12px] max-[767px]:text-[12px] max-[767px]:leading-[1.25]"
+              ? "text-[14px] max-[1179px]:min-[768px]:block max-[1179px]:max-[1179px]:min-[768px]:text-[12px] max-[767px]:text-[12px] max-[767px]:leading-[1.25]"
               : "text-[13px]",
           )}
         >
@@ -246,15 +247,15 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
         </span>
         <span
           className={cn(
-            "mx-index-figures flex items-baseline justify-between gap-1.5",
+            "mx-index-figures flex min-w-0 flex-wrap items-baseline justify-between gap-1.5",
             globalBenchmark
-              ? "flex-wrap max-[1179px]:min-[768px]:flex-nowrap max-[1179px]:min-[768px]:gap-[3px] max-[959px]:min-[768px]:flex-col max-[959px]:min-[768px]:gap-px max-[767px]:flex-nowrap"
+              ? "max-[1179px]:min-[768px]:gap-[3px] max-[959px]:min-[768px]:flex-col max-[959px]:min-[768px]:gap-px"
               : "flex-wrap",
           )}
         >
           <strong
             className={cn(
-              "font-[650] leading-[1.1] tabular-nums max-[767px]:font-semibold",
+              "min-w-0 max-w-full break-words font-[650] leading-[1.1] tabular-nums max-[767px]:font-semibold",
               globalBenchmark
                 ? "text-[22px] max-[1179px]:min-[768px]:text-[clamp(13px,1.65vw,19px)] max-[767px]:text-[15px]"
                 : "text-[21px] max-[767px]:text-[20px]",
@@ -265,7 +266,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
           <span
             className={cn(
               "tabular-nums",
-              globalBenchmark ? "text-[13px] max-[1179px]:min-[768px]:text-[12px]" : "text-[13px]",
+              globalBenchmark ? "mx-index-move text-[13px] max-[1179px]:min-[768px]:text-[12px]" : "text-[13px]",
             )}
           >
             {move}
@@ -286,7 +287,7 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
         {notice && (
           <small
             className={cn(
-              "mx-index-freshness rounded bg-muted px-1 text-[12px] text-foreground",
+              "mx-index-freshness rounded-full bg-muted px-1 text-[12px] text-foreground",
               globalBenchmark ? "absolute bottom-[7px] right-2 max-[767px]:static max-[767px]:justify-self-start" : "absolute bottom-[7px] right-2",
             )}
           >
@@ -390,11 +391,11 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   if (!index) {
     if (catalog.isSuccess) return <Empty headingLevel={2} title={t("没有这个市场指数", "Index not found in this market")}
       description={t("从市场的全部指数中选择其他指数。", "Choose another index from the market’s index list.")} />;
-    return <>{catalogStatus}<div className="mx-index-detail"><section className="mx-panel mx-index-history">
+    return <>{catalogStatus}<div className="mx-index-detail"><Card as="section" className="mx-index-history grid gap-3">
       <div className="mx-index-title"><h2 ref={title} tabIndex={-1}>{id}</h2></div>
       {catalog.isError ? <QueryError headingLevel={3} retry={catalog.refetch} error={catalog.error} showDataStatusLink={false} />
         : <Pending label={t("正在加载指数", "Loading index")} />}
-    </section></div></>;
+    </Card></div></>;
   }
   // Keep the last reading for this index while the new basis loads. A chart
   // can only compare responses for the same range and currency.
@@ -497,7 +498,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   return (
     <>{catalogStatus}<div className="mx-index-detail">
       <ChartRecords>
-      <section className="mx-panel mx-index-history">
+      <Card as="section" className="mx-index-history grid gap-3">
         <div className="mx-index-title">
           <h2 ref={title} tabIndex={-1}>{chartName}</h2>
           <Help label={t("指数数据与口径", "Index data and basis")}>
@@ -518,14 +519,14 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
                 : t("对比使用同一时间段内的读数。", "Comparison uses readings within the same time slot.")}</p>}
               <DataBasis>{basis(index)}{index.source ? ` · ${index.source}` : ""} · {index.compiler}</DataBasis>
           </Help>
-          <div className="mx-index-title-action">
+          <div className="mx-index-title-action ms-auto">
             <TextLink href={researchIndexHref(index)}>
               <ChartColumnIncreasing size={16} aria-hidden="true" />
               {t("查看研究", "View research")}
             </TextLink>
           </div>
         </div>
-        {hasHistory && <div className="mx-index-controls">
+        {hasHistory && <div className="mx-index-controls flex flex-wrap items-center gap-x-3 gap-y-2">
           {index.ranges.length > 1 && <Segments label={t("时间范围", "Range")} value={targetPeriod}
             options={index.ranges.map((value) => ({ value, label: value === "MAX" ? t("全部", "All") : value }))}
             onChange={(value) => update({ range: value === "1Y" ? null : value })} />}
@@ -533,7 +534,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             options={[{ value: "local", label: index.currency }, { value: "GBP", label: "GBP" }]}
             onChange={(value) => update({ currency: value === "GBP" ? "GBP" : null })} />}
           {peers.length > 0 && <SearchPicker
-            className="mx-index-compare"
+            className="mx-index-compare ms-auto min-w-[165px] max-[767px]:min-w-0 max-[767px]:flex-[1_1_150px]"
             aria-label={t("比较指数", "Compare with index")}
             placeholder={t("比较指数", "Compare with index")}
             options={peers.map((item) => ({ value: item.id, label: name(item) }))}
@@ -559,7 +560,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
             {history.sourceInterval ?? t("未知", "unknown")}</p>}
         {history?.coverageReason === "daily-coverage-incomplete" &&
           <p className="mx-form-help">{t("此区间的日线覆盖不完整。", "Daily history is incomplete for this range.")}</p>}
-        {incompatiblePeer && <p className="mx-index-note">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
+        {incompatiblePeer && <p className="mx-index-note m-0 text-[0.8125rem] text-muted-foreground">{name(incompatiblePeer)} · {t("当前币种或时段无法比较。切回共同口径可恢复对比。", "Unavailable for this currency or range. Switch back to a shared basis to restore the comparison.")}</p>}
         {points.length > 0 && <Plot fullscreen label={chartLabel} height={phone ? 235 : 300}
           inlineActions={<ChartRecordsTrigger label={t("查看精确读数", "View exact values")} placement="actions" />}
           readout={indexReadout}
@@ -594,13 +595,13 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               }),
             };
           }} />}
-        {matched.length > 0 && peer && <div className="mx-index-legend">
+        {matched.length > 0 && peer && <div className="mx-index-legend flex flex-wrap items-center gap-x-3 gap-y-2 text-xs">
           <span>{chartName} <strong>{seriesReturn(commonEnd?.left)}</strong></span>
           <span>{name(peer)} <strong>{seriesReturn(commonEnd?.right)}</strong></span>
           <span>{t("区间收益 · 起点归 100", "Period return · Rebased to 100")}</span>
         </div>}
-        {peer && !matched.length && !peerQuery.isPending && !peerQuery.isError && <p className="mx-index-note">{t("没有可比较的共同日期。请选择其他时间范围。", "No common observations to compare. Choose another range.")}</p>}
-        <div className="mx-index-stamp">
+        {peer && !matched.length && !peerQuery.isPending && !peerQuery.isError && <p className="mx-index-note m-0 text-[0.8125rem] text-muted-foreground">{t("没有可比较的共同日期。请选择其他时间范围。", "No common observations to compare. Choose another range.")}</p>}
+        <div className="mx-index-stamp flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-muted-foreground">
           {history?.asOf && <time dateTime={history.asOf}>{t("截至 ", "Through ")}{intraday
             ? formatDateTime(history.asOf, locale, timeZone)
             : formatDate(new Date(history.asOf), locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })}</time>}
@@ -611,7 +612,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
               ? t("走势请求超时", "History request timed out") : t("走势未能更新", "History did not update")}
               {showingPrevious && <> · {t("上一次走势", "Previous chart")} · {period}</>}</span><RetryIndices retry={retry} busy={query.isFetching || peerQuery.isFetching} /></>}
         </div>
-        <dl className="mx-index-metrics">
+        <dl className="mx-index-metrics m-0 flex flex-wrap gap-x-[26px] gap-y-2.5 border-t border-border pt-3 max-[767px]:grid max-[767px]:gap-2">
           <div><dt>{t("最大回撤", "Max drawdown")}</dt><dd>{formatPercent(history?.maxDrawdown, locale, 2)}</dd></div>
           <div><dt>{t("年化波动率", "Annualised volatility")}</dt><dd>{formatPercent(history?.volatility, locale, 2)}</dd></div>
         </dl>
@@ -626,7 +627,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           ]} />
         </ChartRecordsPanel>}
         {history && <IndexDrawdownChart history={history} />}
-      </section>
+      </Card>
       </ChartRecords>
       <IndexContextPanels id={index.id} phone={phone} />
     </div></>
@@ -651,7 +652,7 @@ function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
   return (
     <>
       {status}
-      {basket && <section className="mx-panel mx-index-basket">
+      {basket && <Card as="section" className="mx-index-basket grid gap-3">
         <div className="mx-index-title">
           <h3>{t("成分篮子", "Constituent basket")} · {basket.fund}</h3>
           <span>{basket.proxyUniverse && `${basket.proxyUniverse} · `}
@@ -670,7 +671,7 @@ function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
             {basket.estimatedMove != null && basket.fetchedAt && <p>{(basket.pricesSource ?? "Yahoo Finance").replace("IEX real-time / SIP", t("IEX 实时 / SIP", "IEX real-time / SIP"))} · {t("抓取于", "Retrieved")} {formatDateTime(basket.fetchedAt, locale, timeZone)}</p>}
           </Help>
         </div>
-        {!basket.proxyUniverse && basket.estimatedMove != null && <><dl className="mx-index-metrics">
+        {!basket.proxyUniverse && basket.estimatedMove != null && <><dl className="mx-index-metrics m-0 flex flex-wrap gap-x-[26px] gap-y-2.5 border-t border-border pt-3 max-[767px]:grid max-[767px]:gap-2">
           <div><dt>{t("上涨", "Up")}</dt><dd>{basket.coverage > 0 ? basket.breadth.up : "—"}</dd></div>
           <div><dt>{t("持平", "Flat")}</dt><dd>{basket.coverage > 0 ? basket.breadth.flat : "—"}</dd></div>
           <div><dt>{t("下跌", "Down")}</dt><dd>{basket.coverage > 0 ? basket.breadth.down : "—"}</dd></div>
@@ -678,7 +679,7 @@ function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
           <div><dt>{t("篮子涨跌", "Basket move")}</dt><dd>{formatDeltaPercent(basket.estimatedMove, locale, 2)}</dd></div>
           <div><dt>{t("残差", "Residual")}</dt><dd>{pointsText(basket.residual == null ? null : basket.residual * 100, locale, t("百分点", "pp"))}</dd></div>
         </dl>
-        <div className="mx-index-contributors">
+        <div className="mx-index-contributors grid grid-cols-2 gap-5 max-[767px]:grid-cols-1 max-[767px]:gap-3">
           <ContributionList title={t("正贡献", "Top contributors")} items={basket.leaders} />
           <ContributionList title={t("负贡献", "Top detractors")} items={basket.laggards} />
         </div></>}
@@ -689,17 +690,17 @@ function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
         <details className="mx-details"><summary>{t("前十大成分", "Top ten constituents")}</summary>
           <ContributionList items={basket.topHoldings} showWeight showContribution={basket.estimatedMove != null} />
         </details>
-      </section>}
+      </Card>}
       {context.breadthHistory && <IndexBreadthPanel history={context.breadthHistory} stale={!!context.breadthStale} phone={phone} />}
       {context.vix && <IndexVixPanel vix={context.vix} stale={!!context.vixStale} />}
       {context.valuationReference && <IndexValuationPanel snapshot={context.valuation} reference={context.valuationReference} />}
-      <section className="mx-panel mx-index-holdings">
+      <Card as="section" className="mx-index-holdings grid gap-3">
         <div className="mx-index-title">
           <h3>{t("我持有的跟踪 ETF", "Tracking ETFs I hold")}</h3>
           {context.portfolioAsOf && <span>{formatDateTime(context.portfolioAsOf, locale, timeZone)}</span>}
         </div>
         {context.funds?.length ? <>
-          <dl className="mx-index-metrics"><div><dt>{t("合并敞口", "Combined exposure")}</dt><dd>{formatCurrency(context.exposureGbp, locale)}</dd></div></dl>
+          <dl className="mx-index-metrics m-0 flex flex-wrap gap-x-[26px] gap-y-2.5 border-t border-border pt-3 max-[767px]:grid max-[767px]:gap-2"><div><dt>{t("合并敞口", "Combined exposure")}</dt><dd>{formatCurrency(context.exposureGbp, locale)}</dd></div></dl>
           <ul className="mx-index-funds">
             {context.funds.map((fund) => <li key={fund.isin}>
               <Link href={`/research?ticker=${encodeURIComponent(fund.ticker)}&view=tracking`} className="mx-text-link">{fund.ticker}</Link>
@@ -709,8 +710,8 @@ function IndexContextPanels({ id, phone }: { id: string; phone: boolean }) {
               <Link href={`/research?ticker=${encodeURIComponent(fund.ticker)}&view=fundamentals`} className="mx-text-link">{t("穿透持仓", "Look through")}</Link>
             </li>)}
           </ul>
-        </> : <p className="mx-index-note">{t("未找到基准已确认的持仓。", "No holdings with a confirmed benchmark.")}</p>}
-      </section>
+        </> : <p className="mx-index-note m-0 text-[0.8125rem] text-muted-foreground">{t("未找到基准已确认的持仓。", "No holdings with a confirmed benchmark.")}</p>}
+      </Card>
     </>
   );
 }
