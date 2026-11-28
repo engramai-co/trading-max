@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { portfolioRange } from "../lib/portfolio/history";
-import { prepareHistory } from "../lib/portfolio/prepared";
+import { pnlsAt, prepareHistory } from "../lib/portfolio/prepared";
 import { snapshotCacheStorageKey } from "../lib/snapshot-cache";
 import type { NavPoint } from "../lib/types";
 
@@ -34,11 +34,15 @@ async function mockOverview(page: Page, controls: {
   beforeHistory?: () => Promise<void>;
   beforeProfile?: () => Promise<void>;
   lensFails?: () => boolean;
+  noAccounts?: () => boolean;
+  assistantEnabled?: () => boolean;
   longRangeFails?: () => boolean;
   holdingCount?: () => number;
   mixedQuoteDates?: boolean;
   emptyHistory?: boolean;
   warning?: boolean;
+  fullPage?: boolean;
+  beforeSupportingReads?: () => Promise<void>;
 } = {}) {
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
   await page.clock.setFixedTime(new Date(saturday));
@@ -46,9 +50,18 @@ async function mockOverview(page: Page, controls: {
     const { pathname, searchParams } = new URL(route.request().url());
     if (pathname.endsWith("/dashboard/lens/overview")) {
       await controls.beforeLens?.();
+      if (controls.noAccounts?.()) return route.fulfill({ json: { ...lens, accounts: [], holdings: [], totalValueGbp: null } });
       const count = controls.holdingCount?.() ?? lens.holdings.length;
       return route.fulfill(controls.lensFails?.() ? { status: 503, json: {} } : { json: { ...lens,
-        holdings: count > lens.holdings.length ? holdings(count, controls.mixedQuoteDates) : lens.holdings.slice(0, count),
+        holdings: controls.fullPage ? holdings(13, true).map((row, index) => ({ ...row, dayChangeDate: friday, isFund: index >= 8 }))
+          : count > lens.holdings.length ? holdings(count, controls.mixedQuoteDates) : lens.holdings.slice(0, count),
+        ...(controls.fullPage && { dayAttribution: { day: friday, accounts: {
+          A: { since: lens.intradayNav[0].date, asOf: lens.brokerAsOf, contributions: [
+            { ticker: "SYN0", name: "Synthetic stock", contributionGbp: 12 },
+            { ticker: "SYN8", name: "Synthetic fund", contributionGbp: 8 },
+          ] },
+          B: { since: lens.intradayNav[0].date, asOf: lens.brokerAsOf, contributions: [] },
+        } } }),
       } });
     }
     if (pathname.endsWith("/dashboard/history")) {
@@ -56,11 +69,29 @@ async function mockOverview(page: Page, controls: {
       await controls.beforeHistory?.();
       if (range === "3M" && controls.longRangeFails?.()) return route.fulfill({ status: 503, json: {} });
       const input = controls.emptyHistory ? { ...lens, nav: [], intradayNav: [] } : lens;
-      return route.fulfill({ json: prepareHistory(input, { range, scope: "total" }).chart });
+      const history = prepareHistory(input, { range, scope: "total" });
+      const openings = searchParams.getAll("opening");
+      return route.fulfill({ json: openings.length ? { ...history.chart, openings: pnlsAt(history, openings) } : history.chart });
     }
     if (pathname.endsWith("/profile")) {
       await controls.beforeProfile?.();
-      return route.fulfill({ json: { profileId: "local", accountLabels: {} } });
+      return route.fulfill({ json: { profileId: "local", accountLabels: {}, assistantEnabled: controls.assistantEnabled?.() ?? controls.fullPage } });
+    }
+    if (controls.fullPage && pathname.endsWith("/sectors")) {
+      await controls.beforeSupportingReads?.();
+      return route.fulfill({ json: {
+        markets: [{ market: "us", timezone: "America/New_York", sessions: [], asOf: lens.brokerAsOf }],
+        board: { market: "us", asOf: lens.brokerAsOf, source: {}, groupings: [{ kind: "gics",
+          groups: Array.from({ length: 11 }, (_, i) => ({
+            key: String((i + 2) * 5), name: "Synthetic sector " + i, change: 0.01, weight: 0.15 - i * 0.01,
+          })),
+        }] },
+      } });
+    }
+    if (controls.fullPage && pathname.endsWith("/assistant/status")) return route.fulfill({ json: { ready: true, code: null } });
+    if (controls.fullPage && pathname.endsWith("/assistant/roles/daily/reading")) {
+      await controls.beforeSupportingReads?.();
+      return route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify({ type: "empty" }) + "\n" });
     }
     const json = pathname.endsWith("/health") ? { status: "ok", latestRunId: runId }
       : pathname.endsWith("/refresh/attention") && controls.warning !== false ? { issues: [{
@@ -72,7 +103,20 @@ async function mockOverview(page: Page, controls: {
 }
 
 function layoutKeys(page: Page) {
-  return page.evaluate(() => Object.keys(sessionStorage).filter(key => key.startsWith("mx-overview-layout-")));
+  return page.evaluate(() => Object.keys(localStorage)
+    .filter(key => key.startsWith("mx-overview-layout-") && !key.endsWith(":generation")));
+}
+
+async function mockWorkspaceScope(page: Page, workspace: string) {
+  await page.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
+  // Swap the server-delivered opaque scope, while keeping the same origin and profile response.
+  await page.route(url => url.pathname === "/", async (route) => {
+    const response = await route.fetch();
+    const body = await response.text();
+    const scope = /\\"scope\\":\\"([a-f0-9]{64})\\"/.exec(body)?.[1];
+    expect(scope, "server-delivered snapshot scope").toBeDefined();
+    await route.fulfill({ response, body: body.replaceAll(scope!, workspace.repeat(64)) });
+  });
 }
 
 async function holdHydration(page: Page) {
@@ -91,6 +135,102 @@ async function holdHydration(page: Page) {
 
 test.describe("Overview loading and recovery", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local build.");
+
+  test("the whole 1D Overview keeps its geometry on reload and in a fresh tab", async ({ page, context, isMobile }) => {
+    const viewport = isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+    const route = "/?range=1D";
+    const selectors = {
+      summary: ".mx-overview-portfolio",
+      history: ".mx-overview-history",
+      plot: ".mx-overview-history :is(.mx-plot, .mx-loading-chart)",
+      sectors: ".mx-overview-sectors",
+      holdings: ".mx-overview-holdings",
+      brief: ".mx-overview-brief, .mx-digest",
+    };
+    const measure = (tab: Page) => tab.evaluate(selectors => ({
+      panels: Object.fromEntries(Object.entries(selectors).map(([name, selector]) => {
+        const bounds = document.querySelector(selector)?.getBoundingClientRect();
+        return [name, bounds ? { top: bounds.top + scrollY, height: bounds.height } : { top: 0, height: 0 }];
+      })),
+      lead: document.querySelector(".mx-overview-lead")?.getBoundingClientRect().height,
+      balances: document.querySelector(".mx-overview-totals, .mx-loading-summary")?.getBoundingClientRect().height,
+      document: document.documentElement.scrollHeight,
+    }), selectors);
+    let supportingReads: ReturnType<typeof Promise.withResolvers<void>> | undefined;
+    const setup = async (tab: Page) => {
+      await tab.setViewportSize(viewport);
+      await tab.emulateMedia({ reducedMotion: "reduce" });
+      await mockOverview(tab, { fullPage: true, warning: false, beforeSupportingReads: async () => supportingReads?.promise });
+      await tab.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
+    };
+    const loaded = async (tab: Page) => {
+      await expect(tab.locator(".mx-ledger:not(.mx-ledger-pending)")).toBeVisible();
+      await expect(tab.locator(".mx-overview-history .mx-plot")).toBeVisible();
+      await expect(tab.locator(isMobile ? ".mx-overview-sector-grid a" : ".mx-overview-sector-map a")).toHaveCount(11);
+      await expect(tab.locator(".mx-digest:not([data-waiting])")).toBeVisible();
+      if (isMobile) await expect(tab.locator(".mx-overview-lead .mx-day-drivers a")).toHaveCount(2);
+      await tab.evaluate(() => document.fonts.ready);
+      await tab.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      return measure(tab);
+    };
+    const verify = async (tab: Page, visit: () => Promise<unknown>, label: string) => {
+      const warnings: string[] = [];
+      tab.on("pageerror", error => {
+        if (/hydrat|Minified React error #(418|423|425)/i.test(error.message)) warnings.push(error.message);
+      });
+      tab.on("console", message => {
+        if (/hydrat|Minified React error #(418|425)/i.test(message.text())) warnings.push(message.text());
+      });
+      const hydration = await holdHydration(tab);
+      supportingReads = Promise.withResolvers<void>();
+      let before;
+      let hydrated;
+      try {
+        try {
+          await visit();
+          await hydration.waitForScripts();
+          await expect(tab.locator(".mx-overview-read")).toHaveAttribute("data-layout-bootstrap", "true");
+          await expect(tab.locator(".mx-ledger-pending")).toHaveCSS("display", "grid");
+          before = await measure(tab);
+          await expect.soft(tab.locator(".mx-ledger-pending"), label).toHaveCSS("--mx-ledger-rows", "13", { timeout: 1_000 });
+        } finally {
+          hydration.release();
+        }
+        await expect(tab.locator(".mx-ledger:not(.mx-ledger-pending)")).toBeVisible();
+        await expect(tab.locator(".mx-overview-history .mx-plot")).toBeVisible();
+        await expect(tab.locator(".mx-overview-sectors .mx-loading")).toBeVisible();
+        await expect(tab.locator(".mx-digest")).toBeVisible();
+        hydrated = await measure(tab);
+      } finally {
+        supportingReads.resolve();
+      }
+      const after = await loaded(tab);
+      await test.info().attach(label + " geometry", { body: JSON.stringify({ before, hydrated, after }), contentType: "application/json" });
+      for (const [phase, snapshot] of [["pre-hydration", before], ["hydrated", hydrated]] as const) {
+        const measurement = label + " " + phase;
+        for (const [name, rect] of Object.entries(snapshot.panels)) {
+          const now = after.panels[name];
+          expect.soft(Math.abs(rect.top - now.top), measurement + " " + name + " top").toBeLessThanOrEqual(2);
+          expect.soft(Math.abs(rect.height - now.height), measurement + " " + name + " height").toBeLessThanOrEqual(2);
+        }
+        expect.soft(Math.abs(snapshot.document - after.document), measurement + " document height").toBeLessThanOrEqual(2);
+      }
+      expect(warnings).toEqual([]);
+    };
+    await setup(page);
+    await page.goto(route);
+    await loaded(page);
+    await expect.poll(() => layoutKeys(page)).toHaveLength(1);
+    await verify(page, () => page.reload({ waitUntil: "commit" }), "same-tab reload");
+
+    const fresh = await context.newPage();
+    try {
+      await setup(fresh);
+      await verify(fresh, () => fresh.goto(route, { waitUntil: "commit" }), "fresh tab");
+    } finally {
+      await fresh.close();
+    }
+  });
 
   test("known holdings reserve the same geometry and scroll with the page", async ({ page, isMobile }) => {
     await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
@@ -255,8 +395,8 @@ test.describe("Overview loading and recovery", () => {
         if (invalidHeight) {
           const [key] = await layoutKeys(page);
           const rows = await page.evaluate(key => {
-            const reservation = JSON.parse(sessionStorage.getItem(key)!);
-            sessionStorage.setItem(key, JSON.stringify({ ...reservation, ledger: 500_000 }));
+            const reservation = JSON.parse(localStorage.getItem(key)!);
+            localStorage.setItem(key, JSON.stringify({ ...reservation, ledger: 500_000 }));
             return reservation.rows;
           }, key);
           expect(rows).toEqual({ stocks: 240, funds: 0, dateTagged: 24 });
@@ -317,13 +457,13 @@ test.describe("Overview loading and recovery", () => {
     const [key] = await layoutKeys(page);
     const poison = (oversized: boolean) => page.evaluate(({ key, oversized }) => {
       const entry = { rows: { stocks: 20, funds: 0 }, ledger: 500_000 };
-      sessionStorage.setItem(key, JSON.stringify(oversized ? { ...entry, padding: "x".repeat(128 * 1024) } : entry));
+      localStorage.setItem(key, JSON.stringify(oversized ? { ...entry, padding: "x".repeat(128 * 1024) } : entry));
     }, { key, oversized });
     await poison(true);
     lensGate = reloaded.promise;
     const hydration = await holdHydration(page);
     const countsOnly = JSON.stringify({ rows: { stocks: 20, funds: 0 } });
-    const cached = () => page.evaluate(key => sessionStorage.getItem(key), key);
+    const cached = () => page.evaluate(key => localStorage.getItem(key), key);
     let unmeasuredHeight: number;
 
     try {
@@ -357,6 +497,7 @@ test.describe("Overview loading and recovery", () => {
     await expect.poll(async () => JSON.parse((await cached()) ?? "{}")).toEqual({
       rows: { stocks: 20, funds: 0 },
       reading: expect.objectContaining({ range: "1D" }),
+      sectors: expect.any(Number),
     });
     const later = Promise.withResolvers<void>();
     lensGate = later.promise;
@@ -373,44 +514,142 @@ test.describe("Overview loading and recovery", () => {
     await expect(last).toBeVisible();
   });
 
-  test("the same-origin workspace switch drops the other workspace’s reservations", async ({ page, isMobile }) => {
-    await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+  test("an older tab cannot restore reservations after a same-origin workspace switch", async ({ page, context, isMobile }) => {
+    const viewport = isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 };
+    await page.setViewportSize(viewport);
     const changedWorkspace = Promise.withResolvers<void>();
-    let workspace = "a";
-    await mockOverview(page, {
-      beforeLens: async () => { if (workspace === "b") await changedWorkspace.promise; },
-      holdingCount: () => workspace === "a" ? 20 : 4,
-    });
+    await mockOverview(page);
+    await mockWorkspaceScope(page, "a");
+    await page.goto("/");
+    const oldLedger = page.locator(".mx-overview-holdings");
+    await expect(oldLedger.getByRole("link", { name: /SYN19/ })).toBeVisible();
+    await expect.poll(() => layoutKeys(page)).toHaveLength(1);
+    const [oldKey] = await layoutKeys(page);
+
+    const next = await context.newPage();
+    try {
+      await next.setViewportSize(viewport);
+      await mockOverview(next, { beforeLens: () => changedWorkspace.promise, holdingCount: () => 4 });
+      await mockWorkspaceScope(next, "b");
+      await next.goto("/");
+      const newLedger = next.locator(".mx-overview-holdings");
+      await expect.poll(() => layoutKeys(next)).toEqual([]);
+      const pending = newLedger.locator(".mx-ledger-pending");
+      await expect(pending).toHaveCSS("--mx-ledger-rows", "5");
+      await expect(pending).not.toHaveAttribute("data-measured");
+      changedWorkspace.resolve();
+      await expect(newLedger.getByRole("link", { name: /SYN3/ })).toBeVisible();
+      await expect.poll(() => layoutKeys(next)).toHaveLength(1);
+      const [newKey] = await layoutKeys(next);
+      expect(newKey).not.toBe(oldKey);
+
+      await page.bringToFront();
+      const ledger = oldLedger.locator(".mx-ledger");
+      const height = await ledger.evaluate(node => node.getBoundingClientRect().height);
+      await ledger.evaluate((node, size) => { (node as HTMLElement).style.minHeight = (size + 64) + "px"; }, height);
+      await expect.poll(() => ledger.evaluate(node => node.getBoundingClientRect().height)).toBeGreaterThan(height);
+      const afterResize = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      await afterResize();
+      expect(await layoutKeys(next)).toEqual([newKey]);
+
+      await page.setViewportSize({ ...viewport, width: isMobile ? 320 : 1000 });
+      await afterResize();
+      expect(await layoutKeys(next)).toEqual([newKey]);
+    } finally {
+      changedWorkspace.resolve();
+      await next.close();
+    }
+  });
+
+  test("a successful empty account read clears all saved geometry for its key", async ({ page }) => {
+    let noAccounts = false;
+    await mockOverview(page, { noAccounts: () => noAccounts, fullPage: true });
     await page.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
-    // Swap the server-delivered opaque scope, while keeping the same origin and profile response.
-    await page.route(url => url.pathname === "/", async (route) => {
-      const response = await route.fetch();
-      const body = await response.text();
-      const scope = /\\"scope\\":\\"([a-f0-9]{64})\\"/.exec(body)?.[1];
-      expect(scope, "server-delivered snapshot scope").toBeDefined();
-      await route.fulfill({ response, body: body.replaceAll(scope!, workspace.repeat(64)) });
-    });
+    await page.goto("/");
+    await expect(page.locator(".mx-digest")).toBeVisible();
+    await expect.poll(async () => {
+      const [key] = await layoutKeys(page);
+      return page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? "{}"), key);
+    }).toMatchObject({ ledger: expect.any(Number), sectors: expect.any(Number), brief: expect.any(Number) });
+
+    noAccounts = true;
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "No account data" })).toBeVisible();
+    await expect.poll(() => layoutKeys(page)).toEqual([]);
+  });
+
+  test("an older same-workspace tab waits for a new nonempty read after the reservation is cleared", async ({ page, context, browserName }) => {
+    test.skip(browserName !== "webkit", "Covers the same-workspace race in WebKit.");
+    const viewport = { width: 390, height: 844 };
+    let count = 20;
+    await page.setViewportSize(viewport);
+    await mockOverview(page, { holdingCount: () => count });
+    await page.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
     await page.goto("/");
     const ledger = page.locator(".mx-overview-holdings");
     await expect(ledger.getByRole("link", { name: /SYN19/ })).toBeVisible();
-    await expect.poll(() => layoutKeys(page)).not.toHaveLength(0);
-    const previousKeys = await layoutKeys(page);
-
-    workspace = "b";
-    try {
-      await page.reload();
-      await expect.poll(() => layoutKeys(page)).toEqual([]);
-      const pending = ledger.locator(".mx-ledger-pending");
-      await expect(pending).toHaveCSS("--mx-ledger-rows", "5");
-      await expect(pending).not.toHaveAttribute("data-measured");
-    } finally {
-      changedWorkspace.resolve();
-    }
-    await expect(ledger.getByRole("link", { name: /SYN3/ })).toBeVisible();
-    await expect(ledger.getByRole("link", { name: /SYN19/ })).toHaveCount(0);
     await expect.poll(() => layoutKeys(page)).toHaveLength(1);
-    const [currentKey] = await layoutKeys(page);
-    expect(previousKeys).not.toContain(currentKey);
+    const [key] = await layoutKeys(page);
+
+    const next = await context.newPage();
+    try {
+      await next.setViewportSize(viewport);
+      await mockOverview(next, { noAccounts: () => true });
+      await next.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
+      await next.goto("/");
+      await expect(next.getByRole("heading", { name: "No account data" })).toBeVisible();
+      await expect.poll(() => layoutKeys(next)).toEqual([]);
+
+      await page.bringToFront();
+      const table = ledger.locator(".mx-ledger");
+      await table.evaluate(node => {
+        (node as HTMLElement).style.minHeight = (node.getBoundingClientRect().height + 64) + "px";
+      });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      expect(await layoutKeys(next)).toEqual([]);
+    } finally {
+      await next.close();
+    }
+
+    count = 4;
+    await page.clock.setFixedTime(new Date(Date.parse(saturday) + 60_000));
+    await context.setOffline(true);
+    await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
+    await context.setOffline(false);
+    await expect(ledger.getByRole("link", { name: /SYN19/ })).toHaveCount(0);
+    await expect.poll(() => page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? "{}").rows?.stocks, key)).toBe(4);
+  });
+
+  test("a disabled MaxAI brief releases its reservation while holdings are still loading", async ({ page }) => {
+    let assistantEnabled = true;
+    const portfolio = Promise.withResolvers<void>();
+    await mockOverview(page, { fullPage: true, assistantEnabled: () => assistantEnabled,
+      beforeLens: () => assistantEnabled ? Promise.resolve() : portfolio.promise });
+    await page.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
+    await page.goto("/");
+    await expect(page.locator(".mx-digest")).toBeVisible();
+    await expect.poll(async () => {
+      const [key] = await layoutKeys(page);
+      return page.evaluate(key => JSON.parse(localStorage.getItem(key) ?? "{}").brief ?? 0, key);
+    }).toBeGreaterThan(0);
+
+    assistantEnabled = false;
+    const hydration = await holdHydration(page);
+    const profile = page.waitForResponse(response => new URL(response.url()).pathname === "/api/backend/profile");
+    const brief = page.locator(".mx-overview-brief");
+    try {
+      await page.reload({ waitUntil: "commit" });
+      await hydration.waitForScripts();
+      await expect(brief).toBeVisible();
+      hydration.release();
+      expect((await (await profile).json()).assistantEnabled).toBe(false);
+      await expect(brief).toHaveCount(0);
+      await expect(page.locator(".mx-ledger-pending")).toBeVisible();
+    } finally {
+      hydration.release();
+      portfolio.resolve();
+    }
+    await expect(page.locator(".mx-ledger:not(.mx-ledger-pending)")).toBeVisible();
   });
 
   test("empty history preserves the twenty-holding ledger geometry on reload", async ({ page, isMobile }) => {

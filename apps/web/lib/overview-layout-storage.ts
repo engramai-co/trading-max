@@ -6,6 +6,8 @@ import { observeLedgerReservation } from "@/lib/overview-ledger-reservation";
 
 export const OVERVIEW_LAYOUT_PREFIX = "mx-overview-layout-";
 export const OVERVIEW_LAYOUT_VERSION_PREFIX = OVERVIEW_LAYOUT_PREFIX + "v2:";
+export const OVERVIEW_LAYOUT_ACTIVE_KEY = "mx-active-overview-workspace";
+export const OVERVIEW_LAYOUT_GENERATION_SUFFIX = ":generation";
 export const OVERVIEW_LAYOUT_MEDIA = {
   narrow: MEDIA_QUERIES.narrow,
   phone: MEDIA_QUERIES.phone,
@@ -15,7 +17,7 @@ export const OVERVIEW_LAYOUT_MEDIA = {
 
 export type LedgerRows = { stocks: number; funds: number; dateTagged?: number };
 export type ReadingLayout = { range: Range; summary: number; history: number; plotTop?: number };
-export type OverviewLayout = { rows: LedgerRows; ledger?: number; reading?: ReadingLayout };
+export type OverviewLayout = { rows: LedgerRows; ledger?: number; reading?: ReadingLayout; sectors?: number; brief?: number };
 
 const layoutBounds = {
   length: 512,
@@ -38,7 +40,7 @@ function validateLayout(raw: string | null | undefined, bounds: typeof layoutBou
     if (!Number.isSafeInteger(stocks) || !Number.isSafeInteger(funds) || stocks < 0 || funds < 0) return;
     const count = stocks + funds;
     if (count > bounds.rows) return;
-    const { ledger, reading } = layout;
+    const { ledger, reading, sectors, brief } = layout;
     const size = (value: number, max: number) => Number.isFinite(value) && value > 0 && value <= max;
     // Allow for wrapped rows at enlarged text sizes and a fixed amount for headings and the donut.
     const maxLedger = Math.min(bounds.ledgerCeiling, bounds.ledgerBase + bounds.ledgerPerRow * count);
@@ -47,6 +49,8 @@ function validateLayout(raw: string | null | undefined, bounds: typeof layoutBou
       valid.rows.dateTagged = dateTagged;
     }
     if (ledger !== undefined && size(ledger, maxLedger)) valid.ledger = ledger;
+    if (sectors !== undefined && size(sectors, bounds.panel)) valid.sectors = sectors;
+    if (brief !== undefined && size(brief, bounds.panel)) valid.brief = brief;
     if (!reading || !bounds.ranges.includes(reading.range) ||
         !size(reading.summary, bounds.panel) || !size(reading.history, bounds.panel)) return valid;
     const { range, summary, history, plotTop } = reading;
@@ -63,18 +67,78 @@ export function parseOverviewLayout(raw: string | null | undefined) {
   return validateLayout(raw, layoutBounds);
 }
 
-/** Apply the same tab-local layout the Overview will read after hydration. */
+/** Shared with the head script. Limit the cache to the current workspace's 30 supported keys. */
+function prepareStorage(
+  storage: Storage, legacy: Storage | undefined, prefix: string, workspace: string, key: string | undefined,
+  validate: typeof validateLayout, bounds: typeof layoutBounds, generationSuffix: string,
+) {
+  const belongs = (name: string) => name.startsWith(workspace) &&
+    /^(total|invest|isa):(zh|en):(narrow-phone|phone|tablet|compact|desktop)$/.test(name.slice(workspace.length));
+  for (const name of Object.keys(storage)) {
+    const layoutKey = name.endsWith(generationSuffix) ? name.slice(0, -generationSuffix.length) : name;
+    if (name.startsWith(prefix) && !belongs(layoutKey)) storage.removeItem(name);
+  }
+  if (legacy) {
+    try {
+      for (const name of Object.keys(legacy)) {
+        if (!name.startsWith(prefix)) continue;
+        if (belongs(name) && storage.getItem(name + generationSuffix) === null && !validate(storage.getItem(name), bounds)) {
+          const entry = validate(legacy.getItem(name), bounds);
+          if (entry) storage.setItem(name, JSON.stringify(entry));
+        }
+        legacy.removeItem(name);
+      }
+    } catch {
+      // Continue reading persisted entries if tab storage is unavailable.
+    }
+  }
+  if (key === undefined) return;
+  const raw = storage.getItem(key);
+  const entry = validate(raw, bounds);
+  if (entry) {
+    const packed = JSON.stringify(entry);
+    if (packed !== raw) {
+      try { storage.setItem(key, packed); } catch {}
+    }
+  } else if (raw !== null) storage.removeItem(key);
+  return entry;
+}
+
+export function isActiveOverviewWorkspace(workspace: string) {
+  return localStorage.getItem(OVERVIEW_LAYOUT_ACTIVE_KEY) === workspace;
+}
+
+export function prepareOverviewLayoutStorage(workspace: string, key: string) {
+  if (!isActiveOverviewWorkspace(workspace)) return;
+  let legacy: Storage | undefined;
+  try { legacy = window.sessionStorage; } catch {}
+  return prepareStorage(window.localStorage, legacy, OVERVIEW_LAYOUT_PREFIX, workspace, key, validateLayout, layoutBounds,
+    OVERVIEW_LAYOUT_GENERATION_SUFFIX);
+}
+
+/** Apply the same persistent layout the Overview will read after hydration. */
 export function overviewLayoutInitScript(scope: string) {
   if (!/^[a-f0-9]{64}$/.test(scope)) return "";
   const config = JSON.stringify({
-    prefix: OVERVIEW_LAYOUT_VERSION_PREFIX + scope + ":",
+    prefix: OVERVIEW_LAYOUT_PREFIX,
+    workspace: OVERVIEW_LAYOUT_VERSION_PREFIX + scope + ":",
+    activeKey: OVERVIEW_LAYOUT_ACTIVE_KEY,
+    generationSuffix: OVERVIEW_LAYOUT_GENERATION_SUFFIX,
     localeKey: DISPLAY_LOCALE_STORAGE_KEY,
     media: OVERVIEW_LAYOUT_MEDIA,
     bounds: layoutBounds,
   });
-  return `(function(config, validate, observeReservation) {
-  if (!/^\\/(?:desktop\\/?)?$/.test(location.pathname)) return;
+  return `(function(config, validate, observeReservation, prepare) {
   try {
+    // Only a newly loaded workspace document can claim the cache.
+    var changed = localStorage.getItem(config.activeKey) !== config.workspace;
+    if (changed) localStorage.setItem(config.activeKey, config.workspace);
+    var legacy;
+    try { legacy = sessionStorage; } catch (error) {}
+    if (!/^\\/(?:desktop\\/?)?$/.test(location.pathname)) {
+      if (changed) prepare(localStorage, legacy, config.prefix, config.workspace, undefined, validate, config.bounds, config.generationSuffix);
+      return;
+    }
     var params = new URLSearchParams(location.search);
     var account = params.get("scope");
     if (account !== "invest" && account !== "isa") account = "total";
@@ -97,11 +161,9 @@ export function overviewLayoutInitScript(scope: string) {
       findProbe.observe(document, { childList: true, subtree: true });
       document.addEventListener("DOMContentLoaded", function() { findProbe.disconnect(); }, { once: true });
     }
-    var key = config.prefix + [account, locale, breakpoint].join(":");
-    var raw = sessionStorage.getItem(key);
-    var entry = validate(raw, config.bounds);
+    var key = config.workspace + [account, locale, breakpoint].join(":");
+    var entry = prepare(localStorage, legacy, config.prefix, config.workspace, key, validate, config.bounds, config.generationSuffix);
     if (!entry) {
-      if (raw !== null) sessionStorage.removeItem(key);
       reserveRows({ stocks: 5, funds: 0 });
       return;
     }
@@ -123,8 +185,14 @@ export function overviewLayoutInitScript(scope: string) {
       if (plot) root.style.setProperty("--mx-boot-plot-top", reading.plotTop + "px");
       root.setAttribute("data-mx-boot-history", plot ? "plot" : "empty");
     }
-    var packed = JSON.stringify(entry);
-    if (packed !== raw) sessionStorage.setItem(key, packed);
+    if (navigator.onLine && entry.sectors !== undefined) {
+      root.style.setProperty("--mx-boot-sectors-size", entry.sectors + "px");
+      root.setAttribute("data-mx-boot-sectors", "");
+    }
+    if (navigator.onLine && entry.brief !== undefined) {
+      root.style.setProperty("--mx-boot-brief-size", entry.brief + "px");
+      root.style.setProperty("--mx-boot-brief-display", "block");
+    }
   } catch (error) {}
-})(${config}, ${validateLayout.toString()}, ${observeLedgerReservation.toString()});`;
+})(${config}, ${validateLayout.toString()}, ${observeLedgerReservation.toString()}, ${prepareStorage.toString()});`;
 }

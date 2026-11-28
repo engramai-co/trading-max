@@ -108,7 +108,7 @@ export function AnchoredReading({ card, onClose, children, closeOnCitation }: Re
   return <div className="mx-anchored-reading"><button className="mx-reading-close" onClick={onClose} aria-label={t("关闭", "Close")}><X size={18} aria-hidden="true" /></button>
     <ReadingContent card={card}>{children}</ReadingContent></div>;
 }
-export function DigestRow({ storageKey, header, headline, summary, summarySource, children }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; summarySource?: ReactNode; children: ReactNode }) {
+export function DigestRow({ storageKey, header, headline, summary, summarySource, children, pending }: { storageKey: string; header: ReactNode; headline: ReactNode; summary?: string; summarySource?: ReactNode; children: ReactNode; pending?: boolean }) {
   const { ready } = useAssistant();
   const id = useId();
   const [open, setOpen] = useState(() => { try { return localStorage.getItem("tm-reading-" + storageKey) === "open"; } catch { return false; } });
@@ -117,7 +117,7 @@ export function DigestRow({ storageKey, header, headline, summary, summarySource
     setOpen(!open);
     try { localStorage.setItem("tm-reading-" + storageKey, open ? "closed" : "open"); } catch {}
   }
-  return <section className="mx-digest"><div className="mx-digest-head"><span aria-hidden="true">✦</span>{header}
+  return <section className="mx-digest" data-waiting={pending || undefined}><div className="mx-digest-head"><span aria-hidden="true">✦</span>{header}
     <button aria-expanded={open} aria-controls={id} onClick={toggle}><span className="mx-digest-label">{headline}{!open && summary && <span className="mx-digest-summary">{summary}</span>}</span><ChevronDown aria-hidden="true" size={16} /></button>{!open && summarySource}</div>
     <div id={id} hidden={!open}>{children}</div></section>;
 }
