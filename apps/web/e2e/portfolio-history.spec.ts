@@ -23,6 +23,7 @@ const nav = intraday.slice(0, 3).map((point, i): NavPoint => ({
   ...point, date: ["2026-01-02", "2026-06-18", "2026-09-18"][i], intraday: false, flowStatus: "daily_official",
 }));
 const fixture = {
+  view: "overview", generatedAt: intraday.at(-1)!.date, researchAsOf: "",
   runId: "synthetic-overview-alignment", dataRevision: "synthetic", brokerAsOf: intraday.at(-1)!.date,
   totalValueGbp: 1500, nav, intradayNav: intraday, holdings: [],
   accounts: [

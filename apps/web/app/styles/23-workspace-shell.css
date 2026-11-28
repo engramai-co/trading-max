@@ -265,8 +265,7 @@ html[data-scrolled] .mx-topbar-title strong {
     display: none !important;
   }
   .mx-sidebar,
-  .mx-assistant-trigger kbd,
-  .mx-command-footer {
+  .mx-assistant-trigger kbd {
     display: none;
   }
   .mx-topbar .mx-topbar-more {
@@ -308,21 +307,6 @@ html[data-scrolled] .mx-topbar-title strong {
     line-height: 1rem !important;
     touch-action: manipulation;
   }
-  .tm-overlay-dialog.mx-command-dialog {
-    left: calc((100% + var(--shell-safe-left) - var(--shell-safe-right)) / 2);
-    top: calc((100% + var(--shell-safe-top) - var(--shell-safe-bottom)) / 2);
-    max-inline-size: calc(100vw - var(--shell-safe-left) - var(--shell-safe-right) - 16px);
-    max-block-size: min(90dvh, calc(100dvh - var(--shell-safe-top) - var(--shell-safe-bottom) - 16px));
-  }
-  .mx-command-dialog .mx-command-results {
-    max-height: min(370px, calc(100dvh - 240px - var(--shell-safe-top) - var(--shell-safe-bottom)));
-  }
-  .mx-command-dialog .mx-command-result strong {
-    font-size: 0.875rem;
-  }
-  .mx-command-dialog :is(.mx-command-result small, .mx-command-group, .mx-command-clear) {
-    font-size: 0.75rem;
-  }
 }
 @media (max-width: 767px) {
   .mx-app {
@@ -361,8 +345,7 @@ html[data-scrolled] .mx-topbar-title strong {
   }
 }
 @media (pointer: coarse) {
-  :is(.mx-appearance-menu, .mx-more-menu) [role^="menuitem"],
-  .mx-command-dialog .mx-command-clear {
+  :is(.mx-appearance-menu, .mx-more-menu) [role^="menuitem"] {
     min-block-size: 44px;
   }
 }

@@ -58,10 +58,10 @@ export function WaitingAsOf({ label }: { label: string }) {
   return <span className="mx-waiting-as-of" role="status">{visible ? label : ""}</span>;
 }
 
-export function InlineRetry({ label, retry }: { label: string; retry: () => unknown }) {
+export function InlineRetry({ label, retry }: { label: string; retry?: () => unknown }) {
   const t = useCopy();
   return <div className="mx-retry-reading">
     <span>{label}</span>
-    <Button variant="outline" type="button" aria-label={t("重试：", "Retry: ") + label} onClick={() => void retry()}>{t("重试", "Retry")}</Button>
+    {retry && <Button variant="outline" type="button" aria-label={t("重试：", "Retry: ") + label} onClick={() => void retry()}>{t("重试", "Retry")}</Button>}
   </div>;
 }

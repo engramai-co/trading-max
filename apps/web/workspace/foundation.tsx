@@ -548,7 +548,7 @@ function useReadErrorCopy() {
 
 export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
   updatedAt: number;
-  retry: () => unknown;
+  retry?: () => unknown;
   showRetry?: boolean;
 }) {
   const { locale, timeZone } = useLocale();
@@ -556,6 +556,7 @@ export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
   const detail = useReadErrorCopy();
   if (!updatedAt) return null;
   const label = updateFailureLabel(updatedAt, locale, timeZone);
+  if (!retry) return <Badge tone="warn">{label}</Badge>;
   const action = label + " · " + t("重试", "Retry");
   // The tooltip adds what to check, so it also describes the button.
   return <Tip label={detail}>

@@ -30,11 +30,6 @@
       "@mantine/core": [
         "MantineProvider"
       ]
-    },
-    "workspace/overview.test.ts": {
-      "@mantine/core": [
-        "MantineProvider"
-      ]
     }
   }
 }

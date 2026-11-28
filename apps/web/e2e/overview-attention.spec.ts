@@ -4,6 +4,7 @@ import { prepareHistory } from "../lib/portfolio/prepared";
 
 const checkedAt = "2026-10-09T12:00:00Z";
 const fixture = {
+  view: "overview", generatedAt: checkedAt, researchAsOf: "",
   runId: "synthetic-update-attention", brokerAsOf: checkedAt,
   totalValueGbp: 2000, totalCashGbp: 100, holdings: [],
   accounts: [{ code: "A", isInvestable: true, totalValueGbp: 2000 }],
@@ -42,6 +43,7 @@ test.describe("overview update attention", () => {
     const warning = page.locator(".mx-attention").getByRole("link", { name: /账户更新连续失败/ });
     await expect(warning).toHaveText("账户更新连续失败15 小时");
     await expect(warning).toHaveAttribute("href", "/health");
+    await expect(warning).not.toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
     expect((await new AxeBuilder({ page }).include(".mx-attention").analyze()).violations).toEqual([]);
     await switchToEnglish(page);
     await expect(page.locator(".mx-attention")).toContainText("Account updates failing15h");
@@ -68,8 +70,7 @@ test.describe("overview update attention", () => {
   });
 
   test("status latency never blocks the portfolio, and desktop links open activity", async ({ page }) => {
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     await page.route("**/api/backend/refresh/attention", async (route) => {
       await gate;
       await route.fulfill({ json: failing });

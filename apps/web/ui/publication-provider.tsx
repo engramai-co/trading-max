@@ -86,6 +86,11 @@ export function usePublicationFailure(updatedAt: number) {
   return status?.failed && updatedAt ? { updatedAt, retry: status.retry } : undefined;
 }
 
+export function useUnavailablePublicationRetry() {
+  const status = useContext(PublicationContext);
+  return status?.failed ? status.retry : undefined;
+}
+
 export function useBuildNavigation() {
   return useContext(PublicationContext)?.navigateBuild;
 }

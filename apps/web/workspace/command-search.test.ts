@@ -52,6 +52,18 @@ describe("workspace command search", () => {
   it("ranks an exact ticker above incidental page alias matches", () => {
     expect(search("BE")[0]?.href).toBe("/research?ticker=BE");
   });
+  it("ranks ticker and name prefixes ahead of weaker matches, with stable ties", () => {
+    const matches = searchWorkspace({
+      query: "nv", pages, recent: [], locale: "en", instruments: [
+        { ticker: "EQQQ.L", name: "Invesco Nasdaq ETF" },
+        { ticker: "NAME", name: "NV Systems" },
+        { ticker: "NVDA", name: "NVIDIA" },
+        { ticker: "NV2", name: "Synthetic" },
+        { ticker: "NV", name: "Another name" },
+      ],
+    });
+    expect(matches.filter(({ group }) => group === "research").map(({ label }) => label)).toEqual(["NV", "NVDA", "NV2", "NAME", "EQQQ.L"]);
+  });
   it("does not guess a ticker or turn unmatched input into research", () => {
     expect(search("DCF").filter((item) => item.group === "research")).toEqual([]);
     expect(needsSecurity("DCF")).toBe(true);
@@ -115,11 +127,26 @@ describe("workspace command search", () => {
     expect(recentVisit("/research", new URLSearchParams("type=index&index=../secret"), pages, "zh", name)).toBeNull();
     expect(recentVisit("/research", new URLSearchParams("type=index"), pages, "zh", name)).toBeNull();
   });
+  it.each([
+    ["ＡＲＭ Holdings", "ＡＲＭ", "ＡＲＭ", " Holdings"],
+    ["Arm Holdings", "ＡＲＭ", "Arm", " Holdings"],
+    ["ＡＲＭ Holdings", "ARM", "ＡＲＭ", " Holdings"],
+    ["ARM Holdings", "ARM", "ARM", " Holdings"],
+  ])("highlights %s for %s with the displayed spelling", (text, query, match, suffix) => {
+    expect(highlightParts(text, query)).toEqual([{ text: match, match: true }, { text: suffix, match: false }]);
+  });
+  it("highlights a full-width query echoed in a finder action", () => {
+    expect(highlightParts("Find in all securities “ＡＲＭ”", "ＡＲＭ")).toEqual([
+      { text: "Find in all securities “", match: false },
+      { text: "ＡＲＭ", match: true },
+      { text: "”", match: false },
+    ]);
+  });
   it("highlights literal text safely, including regex symbols and markup", () => {
     expect(highlightParts("SEMI.AS", "SEMI.AS")).toEqual([{ text: "SEMI.AS", match: true }]);
     expect(highlightParts("SEMIxAS", "SEMI.AS")).toEqual([{ text: "SEMIxAS", match: false }]);
     expect(highlightParts("<script>", "<script>")).toEqual([{ text: "<script>", match: true }]);
-    expect(highlightParts("Arm Holdings", "arm")[0]).toEqual({ text: "Arm", match: true });
+    expect(highlightParts("Arm Holdings", "ＡＲＭ")[0]).toEqual({ text: "Arm", match: true });
     expect(highlightParts("[A]+", "[A]+")[0].match).toBe(true);
   });
 });

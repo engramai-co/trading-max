@@ -19,12 +19,13 @@
 import { ChartLine } from "lucide-react";
 import Link from "./link";
 import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrowserOnline } from "@/ui/query-client";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, RefreshAttention } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { TimelineChart, timelinePlotHeight } from "./timeline-chart";
 import { readingTone, signedPercent, signedPounds } from "./reading-format";
 import { api, currency, percent, tone } from "@/workspace/data";
@@ -57,7 +58,7 @@ import { portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
 import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
-import { usePublicationFailure } from "@/ui/publication-provider";
+import { usePublicationFailure, useUnavailablePublicationRetry } from "@/ui/publication-provider";
 import { useCurrentDay } from "./current-day";
 import { DemoAsOf, useDemonstration } from "./demonstration";
 import {
@@ -68,7 +69,7 @@ import {
 import { OverviewHoldings } from "./overview-holdings";
 import { hasOverviewAccountData, useOverviewLayout, useSaveOverviewLayout } from "./overview-layout";
 import { overviewLedgerRows, overviewScopedHoldings } from "./overview-holdings-data";
-import { OverviewSectors } from "./overview-sectors";
+import { OverviewSectors, retryOverviewMarket } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
 import { DashboardRanges, InlineRetry, WaitingAsOf, rangeName } from "./dashboard-controls";
@@ -118,6 +119,7 @@ function CitedAccountBalances({ snapshotId, scope }: { snapshotId: string | null
 
 function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
+  const queryClient = useQueryClient();
   const { locale } = useLocale();
   const { ready: assistantReady, pending: assistantPending } = useAssistant();
   const { data: profile } = useWorkspaceProfile();
@@ -187,6 +189,8 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     snapshotId: displayed?.history?.runId ?? data?.runId,
   });
   const publicationFailure = usePublicationFailure(shown?.updatedAt ?? 0);
+  const retryWorkspace = useUnavailablePublicationRetry();
+  const sharedRecovery = initialError && !!retryWorkspace;
   const summaryFailure = query.isRefetchError
     ? { updatedAt: shown?.updatedAt ?? query.dataUpdatedAt, retry: query.refetch }
     : publicationFailure;
@@ -295,7 +299,13 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           </div>
           {initialError ? (
             <div className="mx-overview-summary-failure">
-              <InlineRetry label={accountUnavailable} retry={query.refetch} />
+              <InlineRetry label={accountUnavailable} retry={() => {
+                if (sharedRecovery) {
+                  retryWorkspace();
+                  void retryOverviewMarket(queryClient);
+                }
+                return query.refetch();
+              }} />
               <TextLink href="/health">{t("查看数据状态", "Data status")}</TextLink>
             </div>
           ) : <>
@@ -347,7 +357,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           selection={displayed?.selection ?? selection}
           data={displayed?.history}
           failed={history.isError || initialError}
-          retry={initialError ? query.refetch : history.refetch}
+          retry={sharedRecovery ? undefined : initialError ? query.refetch : history.refetch}
           failure={historyFailure}
           waiting={Boolean(shown && shown !== complete && !reading.active)}
           initialWaiting={initialWaiting}
@@ -358,7 +368,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           dayAttribution={data?.dayAttribution}
           windowAttribution={data?.windowAttribution}
         />
-        <OverviewSectors online={online} />
+        <OverviewSectors online={online} sharedRecovery={sharedRecovery} />
       </div>
       <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
         runId={!initialWaiting && data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
@@ -366,7 +376,8 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         pendingRows={counts ?? savedRows}
         pendingHeight={matchingRows ? layout?.ledger : undefined}
         pendingWidth={matchingRows ? layout?.ledgerWidth : undefined}
-        waiting={initialWaiting} failed={initialError} error={query.error} retry={query.refetch} />
+        waiting={initialWaiting} failed={initialError} error={query.error}
+        retry={sharedRecovery ? undefined : query.refetch} showDataStatusLink={!sharedRecovery} />
       {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
       {!initialWaiting && data && assistantReady
         ? <div className="mx-overview-brief"><OverviewBrief snapshot={data.runId} scope={scope} /></div>
@@ -382,6 +393,8 @@ function Attention({ items }: { items: AttentionItem[] }) {
   const { locale } = useLocale();
   const zh = locale === "zh";
   if (!items.length) return null;
+  const attentionButton = cn(buttonVariants({ variant: "outline" }), "text-[0.8125rem] font-normal");
+  const warningDot = <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-warning" />;
   const age = (hours: number) => {
     const days = Math.floor(hours / 24);
     if (days >= 2) return zh ? `账户数据 ${days} 天未更新` : `No account update for ${days} days`;
@@ -391,17 +404,19 @@ function Attention({ items }: { items: AttentionItem[] }) {
     <nav className="mx-attention" aria-label={t("需要关注", "Needs attention")}>
       {items.map((item) =>
         item.kind === "refresh" ? (
-          <Link key="refresh" href="/health" data-tone="warning">
+          <Link key="refresh" href="/health" data-slot="button" className={attentionButton}>
+            {warningDot}
             <strong>{item.scope === "accounts"
               ? t("账户更新连续失败", "Account updates failing")
               : t("收益更新连续失败", "Performance updates failing")}</strong>
-            <span>{item.minutes >= 60
+            <span className="text-muted-foreground">{item.minutes >= 60
               ? Math.floor(item.minutes / 60) + t(" 小时", "h")
               : item.minutes > 0 ? item.minutes + t(" 分钟", "m")
                 : item.failures + (item.failures === 1 ? t(" 次", " attempt") : t(" 次", " attempts"))}</span>
           </Link>
         ) : (
-          <Link key="stale" href="/health" data-tone="warning">
+          <Link key="stale" href="/health" data-slot="button" className={attentionButton}>
+            {warningDot}
             {age(item.hours)}
           </Link>
         ),
@@ -488,7 +503,7 @@ function OverviewHistory({
   selection: Parameters<typeof usePortfolioHistory>[0];
   data?: ReturnType<typeof usePortfolioHistory>["data"];
   failed: boolean;
-  retry: () => unknown;
+  retry?: () => unknown;
   failure?: { updatedAt: number; retry: () => unknown };
   waiting: boolean;
   initialWaiting: boolean;

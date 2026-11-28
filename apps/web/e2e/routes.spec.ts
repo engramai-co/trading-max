@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { prepareHistory } from "../lib/portfolio/prepared";
 
 const routes = [
   "/",
@@ -51,17 +52,74 @@ test.describe("portfolio workspace", () => {
   }
 
   test("fallback headings follow the page title", async ({ page }) => {
-    await page.goto("/this-page-does-not-exist");
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const notFound = await page.goto("/this-page-does-not-exist");
+    expect(notFound?.status()).toBe(404);
     const main = page.getByRole("main");
     await expect(main.getByRole("heading", { level: 1, name: /页面不存在|Page not found/ })).toBeVisible();
     await expect(main.getByRole("heading", { level: 2, name: /检查页面地址|Check the page address/ })).toBeVisible();
+    await expect(page).toHaveTitle("Page not found · Trading Max");
+    const documentReads: string[] = [];
+    page.on("request", (request) => {
+      if (request.isNavigationRequest()) documentReads.push(request.url());
+    });
     await main.getByRole("link", { name: /返回组合总览|Back to overview/ }).press("Enter");
     await expect(page).toHaveURL(/\/$/);
+    await expect(page).toHaveTitle("Overview · Trading Max");
+    // A missing path below the desktop catch-all is returned in the client navigation payload.
+    await page.evaluate(() => {
+      const { next } = window as unknown as { next: { router: { push: (href: string) => void } } };
+      next.router.push("/desktop/this-page-does-not-exist");
+    });
+    await expect(main.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
+    await expect(page).toHaveTitle("Page not found · Trading Max");
+    expect(documentReads).toEqual([]);
 
     await page.route("**/api/backend/indices/catalog", (route) => route.fulfill({ json: [] }));
     await page.goto("/research?type=index&index=missing");
     await expect(main.getByRole("heading", { level: 1, name: /研究|Research/ })).toHaveCount(1);
     await expect(main.getByRole("heading", { level: 2, name: /未找到此指数|Index not found/ })).toBeVisible();
+  });
+
+  test("a route render error names the tab, offers a safe route and reloads fresh reads", async ({ page, isMobile }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    let malformed = true;
+    const sectors = /\/api\/backend\/sectors(?:\?|$)/;
+    await page.route(sectors, (route) => malformed
+      ? route.fulfill({ json: { markets: {} } }) : route.fallback());
+    const main = page.getByRole("main");
+    const heading = main.getByRole("heading", { level: 1, name: "This page could not be displayed" });
+    const retry = main.getByRole("button", { name: "Reload page" });
+    const holdings = main.getByRole("link", { name: "Open holdings" });
+
+    await page.goto("/");
+    await expect(page).toHaveTitle("This page could not be displayed · Trading Max");
+    await expect(heading).toBeFocused();
+    await expect(main.getByRole("heading", { level: 2, name: "Try reloading" })).toBeVisible();
+    await page.keyboard.press("Tab");
+    await expect(retry).toBeFocused();
+    await expect(retry).toHaveCSS("outline-width", "2px");
+    await expect(retry).toHaveCSS("min-height", isMobile ? "44px" : "40px");
+    if (isMobile) {
+      await holdings.tap();
+    } else {
+      await page.keyboard.press("Tab");
+      await expect(holdings).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(retry).toBeFocused();
+      await holdings.press("Enter");
+    }
+    await expect(page).toHaveURL(/\/holdings$/);
+    await expect(heading).toHaveCount(0);
+
+    await page.goto("/");
+    await expect(retry).toBeVisible();
+    malformed = false;
+    const freshRead = page.waitForRequest(sectors);
+    await retry.press("Space");
+    await freshRead;
+    await expect(main.getByRole("heading", { level: 1, name: "Portfolio overview" })).toHaveCount(1);
+    await expect(page).toHaveTitle("Overview · Trading Max");
   });
 
   test("the phone return comparison keeps its lead percentage together", async ({ page }) => {
@@ -177,6 +235,88 @@ test.describe("portfolio workspace", () => {
     await expect(retry).toHaveCount(0);
     await expect(assets.locator(".mx-freshness")).toBeVisible();
   });
+
+  for (const mode of ["truncated", "malformed holding date", "invalid timestamp"] as const) {
+    test(`rejects the ${mode} Overview response and offers recovery`, async ({ page }) => {
+      let invalid = true;
+      const at = "2026-11-20T12:00:00Z";
+      const truncated = { runId: "synthetic-malformed", brokerAsOf: at };
+      const snapshot = { ...truncated, view: "overview", generatedAt: at, researchAsOf: "", totalValueGbp: 100 };
+      const responses = {
+        truncated,
+        "malformed holding date": {
+          ...snapshot, holdings: [{ account: "A", ticker: "SYN", name: "Synthetic holding", dayChangeClosedOn: 42 }],
+        },
+        "invalid timestamp": { ...snapshot, brokerAsOf: "not-a-timestamp" },
+      };
+      const overview = "**/api/backend/dashboard/lens/overview?**";
+      const history = prepareHistory({ ...truncated, dataRevision: "synthetic", nav: [], intradayNav: [] }, { range: "1D", scope: "total" }).chart;
+      await page.route("**/api/backend/dashboard/history?**", (route) =>
+        invalid ? route.fulfill({ json: history }) : route.fallback());
+      await page.route(overview, (route) => invalid
+        ? route.fulfill({ json: responses[mode] })
+        : route.fallback());
+      await page.goto("/");
+      const assets = page.getByRole("region", { name: /账户价值|Account value/ });
+      const holdings = page.locator(".mx-overview-holdings");
+      const retry = assets.getByRole("button", { name: /重试|Retry/ });
+      await expect(retry).toBeVisible();
+      await expect(page.getByRole("heading", { name: /暂无账户数据|No account data/ })).toHaveCount(0);
+      await expect(assets.locator(".mx-freshness")).toHaveCount(0);
+      await expect(holdings.getByRole("heading", { level: 3, name: /暂时无法读取数据|Data is temporarily unavailable/ })).toBeVisible();
+      await expect(holdings).not.toContainText(/还没有持仓|No holdings yet/);
+
+      invalid = false;
+      await retry.press("Enter");
+      await expect(assets.locator(".mx-freshness")).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: /组合总览|Portfolio overview/ })).toHaveCount(1);
+    });
+  }
+
+  for (const market of ["us", "global"] as const) {
+    test(`a full connection outage has one recovery action for Overview and ${market} quotes`, async ({ page }) => {
+      let disconnected = true;
+      let healthChecks = 0;
+      const marketPath = market === "us" ? "/api/backend/sectors" : "/api/backend/indices/global-contribution";
+      await page.addInitScript((selected) => {
+        localStorage.setItem("trading_max-locale", "en");
+        localStorage.setItem("mx-overview-market", selected);
+      }, market);
+      await page.clock.install();
+      await page.route("**/api/backend/**", (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname.endsWith("/health")) healthChecks++;
+        if (!disconnected && url.pathname === marketPath) {
+          return route.fulfill({ json: { markets: [] } });
+        }
+        return disconnected ? route.fulfill({ status: 503 }) : route.fallback();
+      });
+      await page.goto("/");
+      const main = page.getByRole("main");
+      const holdings = main.locator(".mx-overview-holdings");
+      const assets = main.getByRole("region", { name: /账户价值|Account value/ });
+      const retry = assets.getByRole("button", { name: /重试|Retry/ });
+      await expect(retry).toBeVisible();
+      const marketPanel = main.locator(".mx-overview-sectors");
+      const unavailable = market === "us" ? "Sector quotes unavailable" : "Global quotes unavailable";
+      await expect(marketPanel.getByRole("button", { name: "Retry: " + unavailable, exact: true })).toBeVisible();
+      await expect.poll(() => healthChecks).toBe(1);
+
+      await page.clock.fastForward(61_000);
+      await expect.poll(() => healthChecks).toBe(2);
+      await expect(marketPanel.locator(".mx-retry-reading > span")).toHaveText(unavailable);
+      await expect(holdings.getByRole("heading", { level: 3, name: /暂时无法读取数据|Data is temporarily unavailable/ })).toBeVisible();
+      await expect(main.getByRole("button", { name: /Retry|Try again/ })).toHaveCount(1);
+      await expect(main.getByRole("link", { name: /查看数据状态|Data status/ })).toHaveCount(1);
+
+      disconnected = false;
+      const marketResponse = page.waitForResponse(response => new URL(response.url()).pathname === marketPath && response.ok());
+      await retry.click();
+      await marketResponse;
+      await expect(marketPanel.getByRole("heading", { name: market === "us" ? "No sector data yet" : "No global quotes yet" })).toBeVisible();
+      await expect(assets.locator(".mx-freshness")).toBeVisible();
+    });
+  }
 
   test("timed-out overview reads show timeout guidance without Freshness or empty holdings", async ({ page }) => {
     await page.route("**/api/backend/dashboard/lens/overview?**", (route) =>

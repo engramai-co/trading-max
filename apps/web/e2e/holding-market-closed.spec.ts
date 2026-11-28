@@ -20,6 +20,7 @@ const uk: Holding = {
   priceCurrency: "GBP", fxImpactGbp: 0, dayChangeClosedOn: undefined, dayChangeDate: day, dayChangeGbp: 0, dayChangePct: 0,
 };
 const lens = {
+  view: "overview", generatedAt: brokerAsOf, researchAsOf: "",
   runId: "synthetic-closed-market", dataRevision: "synthetic", brokerAsOf, holdings: [us, uk],
   totalValueGbp: 80, totalInvestedGbp: 80, totalCashGbp: 0, totalUnrealizedPnlGbp: 10,
   accounts: [{ code: "A", isInvestable: true, totalValueGbp: 80, asOf: brokerAsOf }],

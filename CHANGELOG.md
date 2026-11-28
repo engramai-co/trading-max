@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.86.0] - 2026-11-28
+
+### Changed
+
+- Search opens full-screen on phones.
+- Page-not-found and error screens now show localised browser tab titles.
+
+### Fixed
+
+- Search ranks ticker prefixes above weaker name matches, keeps your selection when late results arrive if it’s still available, and highlights both full-width and regular-width matches. Holdings stays out of the default selection for ticker-like queries while the catalogues load.
+- **Reload page** starts a fresh load after a page error. If Overview fails, you can open Holdings directly.
+- Overview rejects malformed snapshots. If the workspace is unavailable on first load, one **Retry** button restarts account and market reads.
+
 ## [1.85.0] - 2026-11-28
 
 ### Changed

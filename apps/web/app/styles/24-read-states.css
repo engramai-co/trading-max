@@ -1,5 +1,5 @@
-/* Reserve the content's geometry from the first paint, but skip visible placeholders for fast reads. */
-@keyframes mx-show-loading {
+/* Shared read states. Keep geometry on first paint, with visual and spoken feedback delayed independently. */
+@keyframes tm-reveal-read-placeholder {
   to {
     visibility: visible;
   }
@@ -15,7 +15,7 @@
 }
 [data-slot="skeleton"] {
   visibility: hidden;
-  animation: mx-show-loading 0s 150ms forwards;
+  animation: tm-reveal-read-placeholder 0s 150ms forwards;
 }
 .mx-loading-status {
   position: absolute;
@@ -23,16 +23,16 @@
   inset: 0;
   display: grid;
   place-items: center;
-  color: var(--mx-muted);
-  font-size: 13px;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
   pointer-events: none;
 }
 .mx-loading-message {
   visibility: hidden;
-  animation: mx-show-loading 0s 800ms forwards;
+  animation: tm-reveal-read-placeholder 0s 800ms forwards;
   padding: 4px 10px;
   border-radius: 4px;
-  background: var(--mx-surface);
+  background: var(--card);
 }
 .mx-loading-compact {
   min-height: 100px;
@@ -64,6 +64,7 @@
 .mx-loading-holdings {
   min-height: 280px;
 }
+/* Bootstrap the previous Overview layout before the holdings request settles. */
 .mx-ledger-pending {
   --mx-ledger-rows: 5;
   --mx-ledger-groups: 1;
@@ -249,8 +250,8 @@ html[data-mx-boot-ledger="empty"] [data-layout-bootstrap] .mx-ledger-rows-placeh
 
 .mx-waiting-as-of {
   min-height: 1.5em;
-  color: var(--mx-muted);
-  font-size: 12px;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
 }
 .mx-reading-placeholder {
   display: block;
@@ -261,6 +262,7 @@ html[data-mx-boot-ledger="empty"] [data-layout-bootstrap] .mx-ledger-rows-placeh
   background: var(--mx-placeholder);
 }
 
+/* Native indeterminate first-sync progress keeps its own accessible name. */
 .tm-sync-progress {
   -webkit-appearance: none;
   appearance: none;

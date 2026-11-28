@@ -1,4 +1,5 @@
 import { hashKey, type QueryKey } from "@tanstack/react-query";
+import { isOverviewSnapshot } from "./overview-snapshot";
 
 export const snapshotCacheVersion = 1;
 export const snapshotCacheStorageKey = "trading_max-snapshot-cache";
@@ -22,6 +23,7 @@ export function isSnapshotEntry(value: unknown, now: number): value is SnapshotC
   const { key, data } = value;
   const [kind, group, view, detail, revision] = key;
   if (kind === "dashboard-lens" && key.length === 5 && group === "latest") {
+    if (view === "overview") return isOverviewSnapshot(data);
     return dashboardViews.includes(view) && run(data.runId) && date(data.brokerAsOf);
   }
   if (kind === "workspace-research-shell" && key.length === 1) {

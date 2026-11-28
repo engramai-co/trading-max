@@ -5,7 +5,7 @@ const now = Date.parse("2026-11-12T12:00:00Z");
 const brokerAsOf = "2026-11-10T15:00:00Z";
 const dashboard = {
   key: ["dashboard-lens", "latest", "overview", null, { detail: "summary" }],
-  data: { runId: "synthetic-run", brokerAsOf },
+  data: { view: "overview", runId: "synthetic-run", generatedAt: brokerAsOf, brokerAsOf, researchAsOf: "" },
   updatedAt: now - 1_000,
 };
 
@@ -44,6 +44,45 @@ describe("snapshot query persistence", () => {
     ];
     const raw = JSON.stringify({ version: 1, scope: "workspace-one", entries: [...rejected, dashboard] });
     expect(readSnapshotCache(raw, "workspace-one", now)).toEqual([dashboard]);
+  });
+
+  it("keeps valid cached reads when an Overview row cannot be rendered", () => {
+    const corrupt = {
+      ...dashboard,
+      key: ["dashboard-lens", "latest", "overview", null, { detail: "full" }],
+      data: { ...dashboard.data, holdings: [null] },
+    };
+    const raw = JSON.stringify({ version: 1, scope: "workspace-one", entries: [corrupt, dashboard] });
+    expect(readSnapshotCache(raw, "workspace-one", now)).toEqual([dashboard]);
+    expect(readSnapshotCache(packSnapshotCache([corrupt, dashboard], "workspace-one", now), "workspace-one", now)).toEqual([dashboard]);
+  });
+
+  it.each(["dayChangeClosedOn", "dayChangeDate"] as const)("excludes malformed holding %s from saved and restored snapshots", (field) => {
+    const corrupt = {
+      ...dashboard,
+      data: {
+        ...dashboard.data,
+        holdings: [{ account: "A", ticker: "SYN", name: "Synthetic holding", [field]: 42 }],
+      },
+    };
+    const raw = JSON.stringify({ version: 1, scope: "workspace-one", entries: [corrupt] });
+    expect(readSnapshotCache(raw, "workspace-one", now)).toEqual([]);
+    expect(JSON.parse(packSnapshotCache([corrupt], "workspace-one", now)).entries).toEqual([]);
+  });
+
+  it("rejects a truncated Overview snapshot while preserving valid empty snapshots", () => {
+    const truncated = { ...dashboard, data: { runId: dashboard.data.runId, brokerAsOf } };
+    const empty = { ...dashboard, data: { ...dashboard.data, brokerAsOf: "", generatedAt: "" } };
+    const saved = JSON.stringify({ version: 1, scope: "workspace-one", entries: [truncated, empty] });
+    expect(readSnapshotCache(saved, "workspace-one", now)).toEqual([empty]);
+    expect(readSnapshotCache(packSnapshotCache([truncated, empty], "workspace-one", now), "workspace-one", now)).toEqual([empty]);
+  });
+
+  it.each(["brokerAsOf", "generatedAt", "researchAsOf"] as const)("excludes invalid Overview %s from saved and restored snapshots", (field) => {
+    const corrupt = { ...dashboard, data: { ...dashboard.data, [field]: "not-a-timestamp" } };
+    const raw = JSON.stringify({ version: 1, scope: "workspace-one", entries: [corrupt, dashboard] });
+    expect(readSnapshotCache(raw, "workspace-one", now)).toEqual([dashboard]);
+    expect(JSON.parse(packSnapshotCache([corrupt, dashboard], "workspace-one", now)).entries).toEqual([dashboard]);
   });
 
   it("keeps only recent, unique keys within the byte budget and skips oversized responses", () => {

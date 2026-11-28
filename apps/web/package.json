@@ -1,6 +1,6 @@
 {
   "name": "trading-max-web",
-  "version": "1.85.0",
+  "version": "1.86.0",
   "private": true,
   "license": "Apache-2.0",
   "repository": {
@@ -44,6 +44,7 @@
     "ai": "^7.0.183",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
     "echarts": "^6.1.0",
     "lucide-react": "^1.78.0",
     "next": "16.4.6",

@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { buttonVariants } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -17,7 +17,7 @@ import { CenteredCopy } from "@/ui/centered-copy";
 import { useFinePointer } from "@/ui/pointer";
 import { api, percent, tone } from "@/workspace/data";
 import { Empty, Panel, Pending, ReadStatus, Tag, Tip, UpdateFailure, useCopy } from "./foundation";
-import { globalMarketReading, useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
+import { globalMarketContributionKey, globalMarketReading, useGlobalContribution, type GlobalMarketContribution } from "./global-markets-data";
 import Link from "./link";
 import { InlineRetry } from "./dashboard-controls";
 import { SectorSources, SessionClock, useMinute, usePhaseNames } from "./sectors-clock";
@@ -115,11 +115,22 @@ function chooseMarket(value: OverviewMarket) {
   }
   for (const listener of marketListeners) listener();
 }
+function selectedOverviewMarket(stored: string | null): OverviewMarket {
+  return stored === "global" ? "global" : sectorMarket(stored) ?? "us";
+}
+
+const overviewSectorsKey = (market: SectorMarketCode | null) => ["workspace-sectors", market] as const;
+
+export function retryOverviewMarket(client: QueryClient) {
+  const market = selectedOverviewMarket(readMarket());
+  const queryKey = market === "global" ? globalMarketContributionKey : overviewSectorsKey(market);
+  return client.refetchQueries({ queryKey, exact: true, type: "active" }, { cancelRefetch: false });
+}
+
 /** Null until the browser has been read, so the first request is already the chosen market's. */
 function useOverviewMarket() {
   const stored = useSyncExternalStore<string | null | undefined>(subscribeMarket, readMarket, () => undefined);
-  const market: OverviewMarket | null = stored === undefined ? null
-    : stored === "global" ? "global" : sectorMarket(stored) ?? "us";
+  const market = stored === undefined ? null : selectedOverviewMarket(stored);
   return [market, chooseMarket] as const;
 }
 
@@ -130,7 +141,7 @@ function useOverviewMarket() {
  */
 function useOverviewSectors(market: SectorMarketCode | null) {
   return useQuery({
-    queryKey: ["workspace-sectors", market],
+    queryKey: overviewSectorsKey(market),
     queryFn: ({ signal }) => api<SectorBoardResponse>("/sectors?market=" + market, { signal }),
     enabled: market !== null,
     refetchInterval: 60_000,
@@ -138,7 +149,7 @@ function useOverviewSectors(market: SectorMarketCode | null) {
   });
 }
 
-export function OverviewSectors({ online }: { online: boolean }) {
+export function OverviewSectors({ online, sharedRecovery = false }: { online: boolean; sharedRecovery?: boolean }) {
   const t = useCopy();
   const [market, choose] = useOverviewMarket();
   const restoreMarketFocus = useRef(false);
@@ -180,16 +191,19 @@ export function OverviewSectors({ online }: { online: boolean }) {
     </Panel>
   );
   return market === "global"
-    ? <GlobalPanel title={title} picker={picker} online={online} />
-    : <SectorPanel market={market} title={title} picker={picker} online={online} />;
+    ? <GlobalPanel title={title} picker={picker} online={online} sharedRecovery={sharedRecovery} />
+    : <SectorPanel market={market} title={title} picker={picker} online={online} sharedRecovery={sharedRecovery} />;
 }
 
-function SectorPanel({ market, title, picker, online }: { market: SectorMarketCode; title: string; picker: ReactNode; online: boolean }) {
+function SectorPanel({ market, title, picker, online, sharedRecovery }: {
+  market: SectorMarketCode; title: string; picker: ReactNode; online: boolean; sharedRecovery: boolean;
+}) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const now = useMinute();
   const phaseName = usePhaseNames();
   const query = useOverviewSectors(market);
+  const retry = sharedRecovery ? undefined : query.refetch;
   const offline = !online || query.fetchStatus === "paused";
   const offlineLabel = t("网络已断开，板块行情将在重连后更新。", "You’re offline. Sector quotes will update when you reconnect.");
   const unavailable = t("板块行情暂不可用", "Sector quotes unavailable");
@@ -208,7 +222,7 @@ function SectorPanel({ market, title, picker, online }: { market: SectorMarketCo
       title={picker}
       helpLabel={title}
       help={board ? <SectorSources source={board.source} /> : undefined}
-      action={<span className="mx-freshness-group">{clock}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
+      action={<span className="mx-freshness-group">{clock}{query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={retry} />}</span>}
     >
       <ReadStatus failure={query.isError && !offline ? unavailable : undefined} ready={query.isSuccess && !offline}
         recovered={t("板块行情已恢复。", "Sector quotes are available again.")} />
@@ -216,7 +230,7 @@ function SectorPanel({ market, title, picker, online }: { market: SectorMarketCo
       {query.isPending ? (
         <Pending shape="sectors" quiet={offline} label={t("正在读取", "Loading ") + title + t("…", "…")} />
       ) : !board && query.isError ? (
-        !offline && <div className="mx-overview-unavailable"><InlineRetry label={unavailable} retry={query.refetch} /></div>
+        !offline && <div className="mx-overview-unavailable"><InlineRetry label={unavailable} retry={retry} /></div>
       ) : !board || !groups.length ? (
         <Empty
           title={t("还没有板块数据", "No sector data yet")}
@@ -264,11 +278,14 @@ const WORLD_ORDER: WorldMarket[] = ["us", "ca", "uk", "eu", "ch", "cn", "in", "j
 type WorldMove = GlobalMarketContribution["markets"][number];
 type WorldKey = WorldMarket | "other";
 
-function GlobalPanel({ title, picker, online }: { title: string; picker: ReactNode; online: boolean }) {
+function GlobalPanel({ title, picker, online, sharedRecovery }: {
+  title: string; picker: ReactNode; online: boolean; sharedRecovery: boolean;
+}) {
   const t = useCopy();
   const fine = useFinePointer();
   const phone = useBreakpoint("phone");
   const query = useGlobalContribution(true);
+  const retry = sharedRecovery ? undefined : query.refetch;
   const offline = !online || query.fetchStatus === "paused";
   const offlineLabel = t("网络已断开，全球行情将在重连后更新。", "You’re offline. Global quotes will update when you reconnect.");
   const unavailable = t("全球行情暂不可用", "Global quotes unavailable");
@@ -296,7 +313,7 @@ function GlobalPanel({ title, picker, online }: { title: string; picker: ReactNo
       action={<span className="mx-freshness-group">
         {answer && mapped && <AcwiTotal move={answer.acwiMove} />}
         {answer && <GlobalStamp answer={answer} />}
-        {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={query.refetch} />}</span>}
+        {query.isRefetchError && <UpdateFailure updatedAt={query.dataUpdatedAt} retry={retry} />}</span>}
     >
       <ReadStatus failure={query.isError && !offline ? unavailable : undefined} ready={query.isSuccess && !offline}
         recovered={t("全球行情已恢复。", "Global quotes are available again.")} />
@@ -304,7 +321,7 @@ function GlobalPanel({ title, picker, online }: { title: string; picker: ReactNo
       {query.isPending ? (
         <Pending shape="sectors" quiet={offline} label={t("正在读取全球市场…", "Loading global markets…")} />
       ) : !answer && query.isError ? (
-        !offline && <div className="mx-overview-unavailable"><InlineRetry label={unavailable} retry={query.refetch} /></div>
+        !offline && <div className="mx-overview-unavailable"><InlineRetry label={unavailable} retry={retry} /></div>
       ) : !answer || !markets.length ? (
         <Empty title={t("还没有全球行情", "No global quotes yet")} />
       ) : (
