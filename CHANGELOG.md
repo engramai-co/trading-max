@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.88.0] - 2026-11-28
+
+### Changed
+
+- Overview labels reconstructed estimates beside the period P&L figure and in the chart’s accessible name. It also shows when holding-level attribution is unavailable for a material daily or five-day move.
+- The holdings panel shows a **Stale** badge when an ETF’s tracking difference is out of date or its date could not be verified.
+
+### Fixed
+
+- The holdings panel now shows a refresh warning beside the last result, even when it contained no holdings.
+- A 10-digit period loss stays on one line on 320px phones.
+- When you reopen Overview, the loading placeholder also reserves room for estimate and attribution notices shown on your previous visit.
+
 ## [1.87.0] - 2026-11-28
 
 ### Changed
