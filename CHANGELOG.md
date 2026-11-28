@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.83.0] - 2026-11-28
+
+### Changed
+- English navigation labels are larger on phones narrower than 360 pixels.
+
+### Fixed
+- In short landscape views on touchscreens, the top bar returns when you scroll up or a control in it receives keyboard focus.
+- On phones, tabbing through page controls keeps the focused control clear of the top bar and bottom dock.
+- Screen readers now identify the selected appearance in the appearance menu.
+
 ## [1.82.1] - 2026-11-28
 
 ### Fixed

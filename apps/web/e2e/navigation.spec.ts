@@ -58,6 +58,8 @@ test.describe("workspace navigation refinements", () => {
     await page.keyboard.press("ArrowDown");
     await expect(input).toBeFocused();
     await expect(page.getByRole("option").nth(1)).toHaveAttribute("aria-selected", "true");
+    // Measure contrast only after the dialog's entry fade has finished.
+    await expect(page.getByRole("dialog")).toHaveCSS("opacity", "1");
     expect((await new AxeBuilder({ page }).include('[role="dialog"]').analyze()).violations).toEqual([]);
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
