@@ -44,6 +44,9 @@
     min-height: 44px;
     padding: 7px 10px;
   }
+  .mx-segments[data-overlong-label] > button {
+    min-width: min(100%, var(--mx-segment-cell));
+  }
 }
 @media (pointer: coarse) and (max-width: 767px) {
   /* Keep the labels readable in a single horizontally scrollable row. */

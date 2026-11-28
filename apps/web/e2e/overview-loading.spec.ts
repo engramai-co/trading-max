@@ -230,6 +230,42 @@ test.describe("Overview loading and recovery", () => {
     } finally {
       await fresh.close();
     }
+
+    // Simulate the pre-1.82 record in an existing workspace. Only the wide chart row was shorter.
+    const [key] = await layoutKeys(page);
+    await page.evaluate(({ key, isMobile }) => {
+      const entry = JSON.parse(localStorage.getItem(key)!);
+      delete entry.reading.periodFigure;
+      if (!isMobile) {
+        entry.reading.history -= 3;
+        entry.reading.plotTop -= 3;
+        entry.sectors -= 3;
+      }
+      localStorage.setItem(key, JSON.stringify(entry));
+    }, { key, isMobile });
+    await verify(page, () => page.reload({ waitUntil: "commit" }), "1.81 cached layout");
+  });
+
+  test("cold Overview reserves the loaded period figure height without a saved layout", async ({ page, isMobile }) => {
+    test.skip(isMobile, "The period figure is displayed only in the wide layout.");
+    const history = Promise.withResolvers<void>();
+    await mockOverview(page, { beforeHistory: () => history.promise });
+    const panel = page.locator(".mx-overview-history");
+    const pending = panel.locator(".mx-overview-history-pending .mx-period-figure");
+    const loaded = panel.locator(".mx-data-body .mx-period-figure");
+    const height = (figure: typeof pending) => figure.evaluate(node => node.getBoundingClientRect().height);
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    let before;
+    try {
+      await expect(pending).toBeVisible();
+      expect(await layoutKeys(page)).toHaveLength(0);
+      await page.evaluate(() => document.fonts.ready);
+      before = await height(pending);
+    } finally {
+      history.resolve();
+    }
+    await expect(loaded.getByRole("link", { name: "View performance" })).toBeVisible();
+    expect(await height(loaded)).toBe(before);
   });
 
   test("known holdings reserve the same geometry and scroll with the page", async ({ page, isMobile }) => {

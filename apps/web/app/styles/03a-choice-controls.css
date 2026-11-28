@@ -97,6 +97,18 @@
 .mx-segment-label {
   display: inline-block;
 }
+.mx-segments[data-overlong-label] {
+  flex-wrap: wrap;
+}
+.mx-segments[data-overlong-label] > button {
+  max-inline-size: 100%;
+}
+.mx-segments[data-overlong-label] .mx-segment-label {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
 .mx-segment-marker {
   display: inline-block;
   width: 6px;

@@ -1731,13 +1731,14 @@ test.describe("frozen draft review", () => {
     await expect(editor.getByLabel("Revenue growth · years 1–5",{exact:true})).toBeFocused();
   });
 
-  test("proposal rows keep the grid stable and name the staged chart series", async ({page}) => {
+  test("proposal rows keep the grid stable and name the staged chart series", async ({page, isMobile}) => {
+    // At this width the short pending caption fits but the longer review caption can force a second line.
+    if (!isMobile) await page.setViewportSize({ width: 1424, height: 900 });
     const {editor, entry} = await reviewDraft(page);
     await page.emulateMedia({reducedMotion:"reduce"});
-    let release!: () => void;
-    const delivery = new Promise<void>(resolve => { release=resolve; });
+    const delivery = Promise.withResolvers<void>();
     await page.route("**/SYNT/valuation-draft", async route => {
-      await delivery;
+      await delivery.promise;
       await route.fulfill({contentType:"application/x-ndjson",body:JSON.stringify({
         ...draftResponse, result:{...draftResponse.result, proposals:[
           ...draftResponse.result.proposals,
@@ -1749,13 +1750,18 @@ test.describe("frozen draft review", () => {
       })+"\n"});
     });
     const width = (await editor.boundingBox())!.width;
+    if (page.viewportSize()!.width >= 1200) {
+      const title = editor.getByRole("heading", { name: "Adjust assumptions", exact: true });
+      await expect(title).toHaveCSS("font-size", "16px", { timeout: 1500 });
+      await expect(title).toHaveCSS("line-height", "24px");
+    }
     await entry.click();
     const top = () => page.locator("#research-sensitivity").evaluate(el => el.getBoundingClientRect().top + scrollY);
     const status = editor.locator('.mx-draft-status[role="status"]');
     await expect(status).toContainText("Reading valuation basis");
     await page.evaluate(() => document.fonts.ready.then(() => {}));
     const pending = await top();
-    release();
+    delivery.resolve();
     await expect(status).toContainText("proposed");
     expect(Math.abs(await top() - pending)).toBeLessThanOrEqual(1);
     if (page.viewportSize()!.width >= 1200) {

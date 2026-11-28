@@ -130,7 +130,7 @@ export function IndexResearchWorkspace() {
       <QueryReadStatus key={id} label={t("指数清单", "Index catalog")} failed={catalog.isError} ready={!!index && !catalog.isError} error={catalog.error} />
       {catalog.isPending ? <Pending shape="research" quiet /> : catalog.isError
         ? <QueryError retry={catalog.refetch} /> : !index
-          ? <Panel><Empty title={t("未找到此指数", "Index not found")} /></Panel> : <>
+          ? <Panel><Empty headingLevel={2} title={t("未找到此指数", "Index not found")} /></Panel> : <>
             <section className="mx-panel mx-index-research-hero">
               <div>
                 <h2>

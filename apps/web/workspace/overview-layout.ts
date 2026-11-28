@@ -108,6 +108,7 @@ export function useSaveOverviewLayout(
     const summary = root.querySelector<HTMLElement>(".mx-overview-portfolio");
     const history = root.querySelector<HTMLElement>(".mx-overview-history");
     const plot = history?.querySelector<HTMLElement>(".mx-plot");
+    const periodFigure = history?.querySelector<HTMLElement>(".mx-data-body .mx-period-figure");
     const ledger = root.querySelector<HTMLElement>(".mx-overview-holdings > :is(.mx-ledger, .mx-empty)");
     if (!ledger) return;
     const save = () => {
@@ -120,6 +121,7 @@ export function useSaveOverviewLayout(
         if (summaryHeight && panel.height) reading = {
           range: chart.selection.range, summary: summaryHeight, history: panel.height,
           plotTop: dimension(plotTop) ? plotTop : undefined,
+          periodFigure: periodFigure?.getBoundingClientRect().height,
         };
       }
       try {

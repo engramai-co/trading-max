@@ -46,13 +46,13 @@ export function SettingsLoading({ section, desktop = false, onboarding = false }
     <div className="relative flex min-w-0 flex-col gap-[22px] max-[767px]:gap-6" data-settings-loading={section}>
       <LoadingStatus label={label} />
       {section === "accounts" && <>
-        {panel("min-h-[265px] max-[767px]:min-h-[336px]", (
+        {panel(`${desktop ? "min-h-[264px]" : "min-h-[265px]"} max-[767px]:min-h-[336px]`, (
           <div className="grid grid-cols-2 gap-[18px] max-[767px]:grid-cols-1 max-[767px]:gap-0">{connection}{connection}</div>
         ))}
         {!onboarding && <>
-          {panel(chinese ? "min-h-[156px] max-[767px]:min-h-[133px]" : "min-h-[156px] max-[767px]:min-h-[136px]", row)}
-          {panel("min-h-[220px] max-[767px]:min-h-[206px]", row)}
-          {panel("min-h-[202px] max-[767px]:min-h-[181px]", row)}
+          {panel(`${desktop ? "min-h-[154px]" : "min-h-[156px]"} ${chinese ? "max-[767px]:min-h-[133px]" : "max-[767px]:min-h-[136px]"}`, row)}
+          {panel(`${desktop ? "min-h-[218px]" : "min-h-[220px]"} max-[767px]:min-h-[206px]`, row)}
+          {panel(`${desktop ? "min-h-[200px]" : "min-h-[202px]"} max-[767px]:min-h-[181px]`, row)}
           {!desktop && cfdPanel()}
         </>}
       </>}

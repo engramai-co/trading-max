@@ -1,4 +1,5 @@
 "use client";
+import { Card } from "@/components/ui/card";
 import type { ResearchLensSnapshot, ResearchShell } from "@/lib/types";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
@@ -223,12 +224,12 @@ export function CompanyOverview({
           )}
           <div className="mx-document-feed">
             {filings.map((f, i) => (
-              <article key={i}>
+              <Card key={i} appearance="plain">
                 <time dateTime={str(f.date).slice(0, 10)}>{formatCalendarDate(str(f.date), locale)}</time>
                 <a href={safeUrl(str(f.url))} target="_blank" rel="noreferrer">
                   {filingTitle(str(f.form), str(f.title), t)} ↗
                 </a>
-              </article>
+              </Card>
             ))}
           </div>
         </Panel>

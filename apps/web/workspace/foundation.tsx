@@ -15,6 +15,10 @@ import {
 import Link from "./link";
 import { cloneElement, createContext, useCallback, useContext, useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type ReactElement, type ReactNode, type RefObject } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Alert } from "@/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
 import { Button, CloseButton, buttonVariants } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs as TabsRoot, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -92,13 +96,21 @@ function useSegmentCells(host: RefObject<HTMLDivElement | null>, labels: string)
     const list = host.current;
     if (!list) return;
     const spans = [...list.querySelectorAll<HTMLElement>(":scope > button > .mx-segment-label")];
+    const firstButton = spans[0]?.parentElement;
+    if (!firstButton) return;
     const measure = () => {
-      const widest = Math.max(0, ...spans.map((span) => span.offsetWidth));
-      list.style.setProperty("--mx-segment-label", Math.ceil(widest) + "px");
+      const widest = Math.max(...spans.map((span) => span.scrollWidth));
+      const track = getComputedStyle(list);
+      const button = getComputedStyle(firstButton);
+      const padding = parseFloat(track.paddingLeft) + parseFloat(track.paddingRight)
+        + parseFloat(button.paddingLeft) + parseFloat(button.paddingRight);
+      list.style.setProperty("--mx-segment-label", widest + "px");
+      list.toggleAttribute("data-overlong-label", widest > list.clientWidth - padding + 1);
     };
     measure();
-    // A late web font changes the labels' width without changing the options.
+    // Fonts and window changes can affect the label or the space it may use.
     const observer = new ResizeObserver(measure);
+    observer.observe(list);
     spans.forEach((span) => observer.observe(span));
     return () => observer.disconnect();
   }, [host, labels]);
@@ -292,6 +304,8 @@ export function Page({
     </div>
   );
 }
+const PanelHeadingScope = createContext(false);
+
 export function Panel({
   title,
   description,
@@ -320,8 +334,9 @@ export function Panel({
   /** A cell inside a Bento surface: same heading, no box of its own. */
   bare?: boolean;
 }) {
+  const parentHasTitle = useContext(PanelHeadingScope);
   return (
-    <section className={(bare ? "mx-bento-cell " : "mx-panel ") + className} id={id}>
+    <Card as="section" appearance={bare ? "plain" : "panel"} className={(bare ? "mx-bento-cell " : "") + className} id={id}>
       {(title || action) && (
         <div className="mx-panel-heading">
           <div>
@@ -336,13 +351,15 @@ export function Panel({
           {action}
         </div>
       )}
-      <ReadScope scope={typeof title === "string" ? title : undefined}>{children}</ReadScope>
-    </section>
+      <PanelHeadingScope value={Boolean(title) || parentHasTitle}>
+        <ReadScope scope={typeof title === "string" ? title : undefined}>{children}</ReadScope>
+      </PanelHeadingScope>
+    </Card>
   );
 }
 /** One surface whose sections are separated by hairlines instead of separate boxes. */
 export function Bento({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <div className={"mx-panel mx-bento " + className}>{children}</div>;
+  return <Card as="div" className={"mx-bento " + className}>{children}</Card>;
 }
 export function Metric({
   label,
@@ -386,7 +403,7 @@ export function Tag({
   children: ReactNode;
   tone?: "neutral" | "good" | "warn" | "bad";
 }) {
-  return <span className={"mx-tag mx-tag-" + tone}>{children}</span>;
+  return <Badge tone={tone}>{children}</Badge>;
 }
 export function Notice({
   children,
@@ -402,29 +419,32 @@ export function Notice({
         ? CircleAlert
         : Info;
   return (
-    <div
-      className={"mx-notice mx-notice-" + tone}
+    <Alert
+      tone={tone}
       role={tone === "bad" ? "alert" : tone === "good" ? "status" : "note"}
     >
       <Icon aria-hidden="true" size={18} />
       <div>{children}</div>
-    </div>
+    </Alert>
   );
 }
 export function Empty({
   title,
-  headingLevel = 3,
+  headingLevel,
   description,
   action,
 }: {
   title: ReactNode;
+  /** Override the inferred level when the view supplies its own heading outside Panel. */
   headingLevel?: 2 | 3;
   description?: ReactNode;
   action?: ReactNode;
 }) {
+  const hasPanelHeading = useContext(PanelHeadingScope);
+  const level = headingLevel ?? (hasPanelHeading ? 3 : 2);
   return (
     <EmptyRoot>
-      <EmptyTitle as={headingLevel === 2 ? "h2" : "h3"}><CenteredCopy>{title}</CenteredCopy></EmptyTitle>
+      <EmptyTitle as={level === 2 ? "h2" : "h3"}><CenteredCopy>{title}</CenteredCopy></EmptyTitle>
       {description && <EmptyDescription><CenteredCopy>{description}</CenteredCopy></EmptyDescription>}
       {action}
     </EmptyRoot>
@@ -538,20 +558,22 @@ export function UpdateFailure({ updatedAt, retry, showRetry = false }: {
   const action = label + " · " + t("重试", "Retry");
   // The tooltip adds what to check, so it also describes the button.
   return <Tip label={detail}>
-    <button type="button" className="mx-tag mx-tag-warn mx-update-failure"
-      aria-label={action} onClick={() => void retry()}>{showRetry ? action : label}</button>
+    <Badge tone="warn" className="mx-update-failure" render={<button type="button" />}
+      aria-label={action} onClick={() => void retry()}>{showRetry ? action : label}</Badge>
   </Tip>;
 }
 
 export function QueryError({
   retry,
   showDataStatusLink = true,
+  headingLevel,
   title,
   error,
 }: {
   error?: unknown;
   retry?: () => unknown;
   showDataStatusLink?: boolean;
+  headingLevel?: 2 | 3;
   title?: string;
 }) {
   const t = useCopy();
@@ -561,6 +583,7 @@ export function QueryError({
   return (
     <Panel>
       <Empty
+        headingLevel={headingLevel}
         title={message}
         description={detail}
         action={(retry || showDataStatusLink) && (
@@ -591,22 +614,16 @@ export function Freshness({
 }) {
   const { locale, timeZone } = useLocale();
   const t = useCopy();
-  return (
-    <span className="mx-freshness">
-      <span className="mx-status-dot" />
-      {label ?? t("数据截至", "Data as of")}{" "}
-      {date
-        ? /^\d{4}-\d{2}-\d{2}$/.test(date)
-          ? formatDate(date, locale, {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-              timeZone: "UTC",
-            })
-          : formatDateTime(date, locale, timeZone)
-        : t("尚未更新", "Awaiting update")}
-    </span>
-  );
+  const copy = label ?? t("数据截至", "Data as of");
+  const displayDate = date
+    ? /^\d{4}-\d{2}-\d{2}$/.test(date)
+      ? formatDate(date, locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
+      : formatDateTime(date, locale, timeZone)
+    : t("尚未更新", "Awaiting update");
+  const content = <><span className="mx-status-dot" aria-hidden="true" />{copy}{" "}{displayDate}</>;
+  return date
+    ? <time className="mx-freshness" dateTime={date}>{content}</time>
+    : <span className="mx-freshness">{content}</span>;
 }
 export { TextLink } from "@/components/ui/text-link";
 export function Segments<T extends string>({
@@ -845,22 +862,20 @@ export function companyLogoSrc(ticker: string, isin?: string | null) {
   return "/api/company-logo/" + encodeURIComponent(ticker) + (isin ? "?isin=" + encodeURIComponent(isin) : "");
 }
 function SecurityMark({ ticker, isin }: { ticker: string; isin?: string | null }) {
-  const [failed, setFailed] = useState(false);
   return (
-    <span className="mx-monogram mx-company-logo" aria-hidden="true">
-      {!failed ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={companyLogoSrc(ticker, isin)}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          onError={() => setFailed(true)}
-        />
-      ) : (
-        ticker.slice(0, 2)
-      )}
-    </span>
+    <Avatar appearance="logo" className="mx-monogram mx-company-logo" aria-hidden="true">
+      <AvatarImage
+        className="rounded-none object-contain data-[error]:hidden data-[loading]:invisible"
+        src={companyLogoSrc(ticker, isin)}
+        alt=""
+        keepMounted
+        loading="lazy"
+        decoding="async"
+      />
+      <AvatarFallback className="hidden rounded-none bg-transparent p-0 text-inherit [font-size:inherit] group-has-[img[data-error]]/avatar:grid group-has-[img[data-error]]/avatar:place-items-center">
+        {ticker.slice(0, 2)}
+      </AvatarFallback>
+    </Avatar>
   );
 }
 

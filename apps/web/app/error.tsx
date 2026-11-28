@@ -19,6 +19,7 @@ export default function ErrorPage({
     >
       <Panel>
         <Empty
+          headingLevel={2}
           title={t(
             "尝试重新加载",
             "Try reloading",

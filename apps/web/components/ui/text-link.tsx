@@ -29,6 +29,7 @@ export const TextLink = React.forwardRef<HTMLAnchorElement, TextLinkProps>(funct
     return (
       <a
         ref={ref}
+        data-slot={inline ? undefined : "text-link"}
         href={href}
         target={target ?? "_blank"}
         rel={rel ?? "noopener noreferrer"}
@@ -42,7 +43,7 @@ export const TextLink = React.forwardRef<HTMLAnchorElement, TextLinkProps>(funct
   }
 
   return (
-    <Link ref={ref} href={href} target={target} rel={rel} className={classes} {...props}>
+    <Link ref={ref} data-slot={inline ? undefined : "text-link"} href={href} target={target} rel={rel} className={classes} {...props}>
       {children}
       {!inline && <ArrowRight size={15} strokeWidth={1.75} aria-hidden="true" />}
     </Link>

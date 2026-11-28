@@ -130,7 +130,14 @@
   flex-wrap: nowrap;
 }
 .mx-valuation-readout .mx-number {
-  font-size: clamp(18px, 2.3cqi, 28px);
+  font-size: 1.125rem;
+}
+@supports (font-size: 1cqi) {
+  @container research-reading (min-width: 39rem) {
+    .mx-valuation-readout .mx-number {
+      font-size: clamp(1.125rem, calc(0.625rem + 1.3cqi), 1.75rem);
+    }
+  }
 }
 .mx-valuation-readout .mx-metric-note {
   min-height: 1lh;
@@ -214,10 +221,28 @@
 .mx-reading-sections .mx-model-reference-grid {
   grid-template-columns: minmax(0, 1fr);
 }
+.mx-valuation-draft-reservation {
+  display: none;
+  visibility: hidden;
+}
 @container research-reading (min-width: 921px) {
   .mx-reading-sections > .mx-model-workbench[data-draft-enabled] {
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
     align-items: start;
+  }
+  .mx-model-workbench[data-draft-enabled] .mx-model-inputs > .mx-panel-heading {
+    column-gap: 4px;
+  }
+  /* Reserve both translated draft captions in the narrow column. */
+  .mx-valuation-draft-action {
+    display: inline-grid;
+    justify-items: end;
+  }
+  .mx-valuation-draft-reservation {
+    display: grid;
+  }
+  :is(.mx-valuation-draft-action, .mx-valuation-draft-reservation) > * {
+    grid-area: 1 / 1;
   }
   .mx-model-workbench[data-draft-enabled] .mx-model-output {
     grid-column: 1;
@@ -388,7 +413,7 @@
     text-align: end;
     overflow-wrap: anywhere;
     margin: 0;
-    font-size: 18px;
+    font-size: 1.125rem;
   }
 }
 @media (max-width: 767px) {

@@ -221,6 +221,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     "--mx-overview-summary-size": px(reservedLayout?.summary),
     "--mx-overview-history-size": px(reservedLayout?.history),
     "--mx-overview-plot-top": px(reservedLayout?.plotTop),
+    "--mx-overview-saved-period-figure": px(reservedLayout?.periodFigure),
     "--mx-overview-sectors-size": px(sectorsHeight),
     "--mx-overview-brief-size": px(briefHeight),
     "--mx-overview-brief-display": briefHeight === undefined ? undefined : "block",

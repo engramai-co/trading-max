@@ -1,0 +1,478 @@
+/* Shared page primitives. Route and viewport styles can refine their layout. */
+:root {
+  --mx-action-size: 40px;
+}
+@media (pointer: coarse) {
+  :root {
+    --mx-action-size: 44px;
+  }
+}
+
+.mx-page {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.mx-page-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px;
+  padding-bottom: 8px;
+}
+.mx-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  font-weight: 650;
+  line-height: 1.7;
+  color: var(--mx-brand);
+  margin-bottom: 9px;
+}
+.mx-page-heading h1 {
+  font-size: 1.75rem;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  line-height: 1.29;
+  overflow-wrap: anywhere;
+}
+/* A page's own scopes sit beside its title and wrap below it when the row is full. */
+.mx-page-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 22px;
+}
+.mx-page-heading p {
+  color: var(--mx-muted);
+  font-size: 0.75rem;
+  line-height: 1.8;
+  margin-top: 10px;
+}
+.mx-page-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+.mx-panel {
+  background: var(--card);
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-panel);
+  padding: 23px;
+  box-shadow: var(--shadow-panel);
+  min-width: 0;
+}
+.mx-panel-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.mx-panel-heading h2 {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.mx-panel-heading p {
+  margin-top: 5px;
+  color: var(--mx-muted);
+  font-size: 0.75rem;
+  line-height: 1.7;
+}
+.mx-panel-heading > div {
+  min-width: 0;
+}
+
+.mx-metric {
+  max-inline-size: 100%;
+}
+.mx-metric-label {
+  display: flex;
+  /* Help and caveats move down when the label fills the row. */
+  flex-wrap: wrap;
+  overflow-wrap: break-word;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.75rem;
+  color: var(--mx-muted);
+  line-height: 1.65;
+}
+.mx-number {
+  max-inline-size: 100%;
+  font-size: clamp(1.3125rem, 2vw, 1.8125rem);
+  /* Keep the full reading in intrinsic sizing, then contain exceptional values. */
+  overflow-wrap: break-word;
+  font-weight: 550;
+  letter-spacing: -0.9px;
+  line-height: 1.4;
+  margin-top: 7px;
+}
+.mx-metric-large .mx-number {
+  font-size: clamp(2.375rem, 4.6vw, 3.75rem);
+  letter-spacing: -2.3px;
+  line-height: 1.17;
+}
+.mx-metric-note {
+  font-size: 0.75rem;
+  color: var(--mx-muted);
+  line-height: 1.7;
+  margin-top: 6px;
+}
+
+.mx-info {
+  width: 40px;
+  min-height: 40px;
+  /* Grow the target without adding to the intrinsic width of table headings. */
+  margin: -9px -4px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--mx-muted);
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+}
+.mx-info:hover,
+.mx-info[aria-expanded="true"] {
+  color: var(--foreground);
+  background: var(--accent);
+}
+.mx-update-failure {
+  position: relative;
+}
+.mx-update-failure::after {
+  content: "";
+  position: absolute;
+  inset-block: min(0px, calc(50% - var(--mx-action-size) / 2));
+  inset-inline: min(0px, calc(50% - var(--mx-action-size) / 2));
+}
+.mx-info:focus-visible,
+.mx-tag-help:focus-visible,
+.mx-update-failure:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.mx-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+
+/* Help uses the shared overlay surface and a scrolling reading area. */
+.mx-help-popover.tm-floating-surface {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 12px 16px 16px;
+}
+.mx-help-heading {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+.mx-help-heading strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 600;
+}
+.mx-help-body {
+  min-height: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  line-height: 1.85;
+  max-height: min(420px, 60dvh);
+  overflow-y: auto;
+}
+.mx-help-body p + p {
+  margin-top: 10px;
+}
+/* The closing Data basis paragraph (DataBasis), alike in every help. */
+.mx-help-body .mx-help-basis {
+  margin-top: 12px;
+}
+.mx-help-basis strong {
+  font-weight: 600;
+}
+.tm-overlay-drawer.mx-help-sheet {
+  bottom: max(var(--tm-keyboard-inset, 0px), calc(var(--mx-mobile-dock-height, 68px) + env(safe-area-inset-bottom)));
+  max-height: min(60dvh, var(--tm-drawer-available, 100dvh));
+}
+.tm-overlay-header.mx-help-sheet-header {
+  padding: 0 6px 0 16px;
+}
+.tm-overlay-body.mx-help-sheet-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.mx-help-sheet-body .mx-help-body {
+  min-height: 0;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.mx-tooltip-keys {
+  display: inline-flex;
+  align-items: center;
+}
+/* A two-line tooltip: the name, then its figures. */
+.mx-tooltip-stack {
+  display: grid;
+  gap: 1px;
+}
+.mx-tooltip-stack > span:first-child {
+  font-weight: 600;
+}
+
+.mx-freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+  color: var(--mx-muted);
+  line-height: 1.7;
+}
+.mx-status-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.mx-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 7px;
+  border-radius: var(--radius-control);
+  background: var(--muted);
+  color: var(--mx-muted);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mx-tag-good {
+  color: var(--foreground);
+}
+.mx-tag-bad,
+.mx-tag-warn {
+  color: var(--warning);
+  background: var(--muted);
+  background: color-mix(in srgb, var(--warning) 10%, var(--card));
+}
+/* A caveat tag that opens its explanation; hover and open outline it in its own tone. */
+.mx-tag-help {
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: inherit;
+}
+.mx-tag-help:hover .mx-tag,
+.mx-tag-help[aria-expanded="true"] .mx-tag {
+  outline: 1px solid var(--border-strong);
+  outline-offset: -1px;
+}
+.mx-metric-label .mx-tag {
+  padding-block: 1px;
+}
+.mx-tag svg {
+  flex: none;
+}
+.mx-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border-radius: var(--radius-tooltip);
+  padding: 13px 15px;
+  font-size: 0.75rem;
+  line-height: 1.8;
+  color: var(--mx-muted);
+  background: var(--mx-soft);
+}
+.mx-notice svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.mx-notice-bad,
+.mx-notice-warn {
+  color: var(--warning);
+  background: var(--muted);
+  background: color-mix(in srgb, var(--warning) 8%, var(--card));
+}
+.mx-notice-good {
+  color: var(--foreground);
+}
+.mx-empty {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 200px;
+  padding: 28px 15px;
+  text-align: center;
+}
+.mx-empty > :is(h2, h3) {
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.8;
+}
+.mx-empty p {
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  line-height: 1.8;
+  max-width: 400px;
+  color: var(--mx-muted);
+  margin: 8px 0 17px;
+}
+.mx-empty > :is(h2, h3) {
+  text-wrap: balance;
+}
+/* At the narrowest phone widths keep ordinary wrapping for Chinese prose. */
+@media (min-width: 360px) {
+  .mx-empty p:lang(zh) {
+    text-wrap: pretty;
+  }
+}
+.mx-not-found .mx-empty p:lang(zh) {
+  text-wrap: balance;
+}
+
+.mx-text-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--mx-brand);
+  font-size: 0.75rem;
+  text-decoration: none;
+  font-weight: 600;
+  min-height: 32px;
+  white-space: nowrap;
+}
+.mx-text-link[data-slot="text-link"]:not(:is(td, th) *) {
+  min-block-size: var(--mx-action-size);
+}
+
+.mx-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.mx-toolbar .mx-tabs {
+  width: auto;
+}
+.mx-instrument {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.mx-monogram {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: var(--mx-soft);
+  border: 1px solid var(--mx-border);
+  border-radius: var(--radius-tooltip);
+  font-size: 0.75rem;
+  font-weight: 650;
+  letter-spacing: -0.5px;
+  color: var(--mx-ink);
+}
+.mx-monogram img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  padding: 5px;
+  background: var(--mx-surface);
+}
+.mx-instrument > span:last-child {
+  min-width: 0;
+}
+.mx-instrument strong {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  font-weight: 650;
+}
+.mx-instrument-name {
+  display: block;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--mx-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 230px;
+}
+.mx-instrument-small .mx-monogram {
+  width: 32px;
+  height: 32px;
+}
+.mx-instrument-small {
+  gap: 9px;
+}
+
+.mx-facts {
+  margin: 0;
+}
+.mx-facts > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid var(--mx-border);
+  padding: 13px 0;
+  align-items: baseline;
+  font-size: 0.75rem;
+}
+.mx-facts > div:last-child {
+  border: 0;
+}
+.mx-facts dt {
+  color: var(--mx-muted);
+}
+.mx-facts dd {
+  margin: 0;
+  font-weight: 550;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.mx-facts dd > .mx-muted {
+  font-weight: 400;
+}
+.mx-facts dd small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--mx-muted);
+}
+
+@media (forced-colors: active) {
+  :is(.mx-info, .mx-tag-help, .mx-update-failure):focus-visible {
+    outline-color: Highlight;
+  }
+}
