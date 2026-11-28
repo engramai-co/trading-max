@@ -43,6 +43,7 @@ const attribution = (range: "1D" | "1W") => {
  * holdings ledger without crossing an attention threshold.
  */
 const lens = (large: boolean) => ({
+  view: "overview", generatedAt: brokerAsOf, researchAsOf: "",
   runId: "synthetic-phone", brokerAsOf,
   holdings: [{
     ticker: "NVDA", name: "Synthetic Nvidia", account: "A",
@@ -521,6 +522,8 @@ test("publishes an Overview run only after its history arrives and the chart rea
   await chart.evaluate((element) => element.focus({ preventScroll: true }));
   await page.keyboard.press("End");
   await expect(chart).toBeFocused();
+  // The shell reveals the focused chart on the next animation frame.
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => resolve())));
   const scroll = await page.evaluate(() => scrollY);
   await page.clock.fastForward(60_000);
   await expect.poll(() => heldRangeLoaded).toBe(true);

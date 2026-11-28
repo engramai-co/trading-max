@@ -108,7 +108,7 @@ function LedgerColumns() {
   </colgroup>;
 }
 
-export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, pendingRows, pendingHeight, pendingWidth, waiting = false, failed = false, error, retry }: {
+export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, pendingRows, pendingHeight, pendingWidth, waiting = false, failed = false, error, retry, showDataStatusLink }: {
   holdings?: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
@@ -122,6 +122,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   failed?: boolean;
   error?: unknown;
   retry?: () => unknown;
+  showDataStatusLink?: boolean;
 }) {
   const t = useCopy();
   const when = useEvidenceTime();
@@ -179,7 +180,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
       {state === "pending" ? (
         <LedgerPlaceholder rows={pendingRows} savedHeight={pendingHeight} savedWidth={pendingWidth} />
       ) : state === "error" ? (
-        <QueryError error={error} retry={retry} />
+        <QueryError error={error} retry={retry} showDataStatusLink={showDataStatusLink} />
       ) : state === "empty" ? (
         <Empty title={t("还没有持仓", "No holdings yet")} />
       ) : (

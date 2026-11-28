@@ -90,7 +90,7 @@ const responses: Record<string, unknown> = {
   "/assistant/status": { ready: false, code: "assistant_disabled", provider: null, model: null },
   "/health/details": { health, checkedAt: asOf, readiness: { status: "ready" }, jobs: [], errors: [] },
   "/refresh/attention": { checkedAt: asOf, issues: [] },
-  "/dashboard/lens/overview": { ...summary, holdings },
+  "/dashboard/lens/overview": { ...summary, holdings, view: "overview", generatedAt: asOf, researchAsOf: asOf },
   "/dashboard/lens/holdings-positions": { ...summary, holdings },
   "/dashboard/lens/holdings-lookthrough": { runId, lookthrough },
   "/dashboard/lens/analytics": { ...summary, nav },

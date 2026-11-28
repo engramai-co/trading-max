@@ -1,6 +1,5 @@
 "use client";
 
-import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement as el, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -42,6 +41,7 @@ vi.mock("@/ui/charts/use-echarts", () => ({
 }));
 vi.mock("@/ui/publication-provider", () => ({
   usePublicationFailure: () => undefined,
+  useUnavailablePublicationRetry: () => undefined,
   useBuildNavigation: () => undefined,
 }));
 vi.mock("./route-state", () => ({
@@ -60,6 +60,7 @@ vi.mock("./current-day", () => ({
 }));
 vi.mock("./overview-sectors", () => ({
   OverviewSectors: () => null,
+  retryOverviewMarket: vi.fn(),
 }));
 vi.mock("./narrative", () => ({
   Narrative: () => null,
@@ -114,11 +115,7 @@ function render(child: ReactNode, setup?: (client: QueryClient) => void) {
   });
   setup?.(client);
   return renderToStaticMarkup(
-    el(
-      MantineProvider,
-      {},
-      el(QueryClientProvider, { client }, el(LocaleProvider, { children: child })),
-    ),
+    el(QueryClientProvider, { client }, el(LocaleProvider, { children: child })),
   );
 }
 
@@ -128,11 +125,7 @@ async function renderAsync(child: ReactNode, setup: (client: QueryClient) => Pro
   });
   await setup(client);
   return renderToStaticMarkup(
-    el(
-      MantineProvider,
-      {},
-      el(QueryClientProvider, { client }, el(LocaleProvider, { children: child })),
-    ),
+    el(QueryClientProvider, { client }, el(LocaleProvider, { children: child })),
   );
 }
 

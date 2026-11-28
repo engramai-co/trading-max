@@ -10,6 +10,7 @@ const points = [
   { date: at, total: 456, totalNetContributionsGbp: 100, intraday: true, valuationSource: "broker" as const },
 ] as NavPoint[];
 const lens = {
+  view: "overview", generatedAt: at, researchAsOf: "",
   brokerAsOf: at, runId, dataRevision: "synthetic", totalValueGbp: 456,
   accounts: [{ code: "A", isInvestable: true, totalValueGbp: 456 }], holdings: [],
 };

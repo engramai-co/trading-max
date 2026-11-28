@@ -27,9 +27,11 @@ export function globalMarketReading(
   return `${name} · ${CHINA_MAP_INDEX.name[locale === "zh" ? 0 : 1]}`;
 }
 
+export const globalMarketContributionKey = ["global-market-contribution"] as const;
+
 export function useGlobalContribution(enabled: boolean) {
   return useQuery({
-    queryKey: ["global-market-contribution"],
+    queryKey: globalMarketContributionKey,
     queryFn: ({ signal }) => api<GlobalMarketContribution>("/indices/global-contribution", { signal }),
     enabled,
     refetchInterval: enabled ? 60_000 : false,

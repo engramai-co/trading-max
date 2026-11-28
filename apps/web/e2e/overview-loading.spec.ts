@@ -20,6 +20,7 @@ const holdings = (count: number, mixedQuoteDates = false) => Array.from({ length
   ...(mixedQuoteDates && { dayChangeDate: index % 10 === 0 ? "2026-11-19" : friday, dayChangeGbp: 1, dayChangePct: 0.01 }),
 }));
 const lens = {
+  view: "overview", generatedAt: saturday, researchAsOf: "",
   runId, brokerAsOf: friday + "T21:00:00Z", dataRevision: runId, nav,
   intradayNav: ["19", "20", "21"].map((hour, index) => ({
     ...nav[1], date: `${friday}T${hour}:00:00Z`, total: 2030 + index * 10, intraday: true,
@@ -266,6 +267,27 @@ test.describe("Overview loading and recovery", () => {
     }
     await expect(loaded.getByRole("link", { name: "View performance" })).toBeVisible();
     expect(await height(loaded)).toBe(before);
+  });
+
+  test("cold Overview reserves the whole stale-data warning without a saved layout", async ({ page, isMobile }) => {
+    test.skip(isMobile, "The narrow layout has its own summary reservation.");
+    const lensRead = Promise.withResolvers<void>();
+    await mockOverview(page, { beforeLens: () => lensRead.promise, warning: false });
+    const placeholder = page.locator(".mx-overview-attention-placeholder");
+    const warning = page.locator(".mx-attention");
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    let reserved;
+    try {
+      await expect(placeholder).toBeVisible();
+      expect(await layoutKeys(page)).toHaveLength(0);
+      await page.evaluate(() => document.fonts.ready);
+      reserved = await placeholder.evaluate(node => node.getBoundingClientRect().height);
+    } finally {
+      lensRead.resolve();
+    }
+    await expect(warning.getByRole("link", { name: "No account update for 15 hours" })).toBeVisible();
+    const loaded = await warning.evaluate(node => node.getBoundingClientRect().height + parseFloat(getComputedStyle(node).marginTop));
+    expect(reserved).toBe(loaded);
   });
 
   test("known holdings reserve the same geometry and scroll with the page", async ({ page, isMobile }) => {

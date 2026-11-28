@@ -8,6 +8,7 @@ import {
   dashboardLensLatestKey,
   dashboardLensSnapshotKey,
 } from "@/lib/dashboard-query";
+import { isOverviewSnapshot } from "@/lib/overview-snapshot";
 import type { AccountCode, DashboardLens, DashboardLensName } from "@/lib/types";
 import { ApiError } from "@/workspace/data";
 
@@ -29,9 +30,10 @@ export async function fetchDashboardLens(
   if (!response.ok) {
     throw new ApiError(`dashboard lens returned ${response.status}`, response.status);
   }
-  const data = await response.json() as DashboardLens;
-  if (runId && data.runId !== runId) throw new Error("Cited publication unavailable");
-  return data;
+  const lens = await response.json() as DashboardLens;
+  if (runId && lens?.runId !== runId) throw new Error("Cited publication unavailable");
+  if (view === "overview" && !isOverviewSnapshot(lens)) throw new Error("Invalid Overview snapshot");
+  return lens;
 }
 
 export function useDashboardLens(

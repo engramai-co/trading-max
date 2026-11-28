@@ -416,7 +416,7 @@
 /* Touch on phones: every control offers 44 × 44px. Fields and buttons grow (a height wins over the theme's 40px
    minimum); small text targets keep their size and take a hit area centred on them. */
 @media (max-width: 767px) and (pointer: coarse) {
-  .mx-page :is(.mx-attention a, .mx-chart-data > summary, .mx-event-link) {
+  .mx-page :is(.mx-chart-data > summary, .mx-event-link) {
     min-height: 44px;
   }
   .mx-page .mx-security-switcher {

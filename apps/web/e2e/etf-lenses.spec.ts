@@ -106,6 +106,9 @@ async function synthetic(page: Page, late?: Promise<void>, fixture = summary, pu
     }
     if (path === "/dashboard/etfs/" + isin) return route.fulfill({ json: { runId, reading, holdings, matches } });
     if (path === "/dashboard/history") return route.fulfill({ json: history });
+    if (path === "/dashboard/lens/overview") {
+      return route.fulfill({ json: { ...fixture, view: "overview", generatedAt: stamp, researchAsOf: stamp } });
+    }
     if (path.startsWith("/dashboard/lens/")) return route.fulfill({ json: fixture });
     if (path === "/research/shell") return route.fulfill({ json: {
       status: { runId, overall: "fresh", artifacts: [] }, watchlistCategories: [],

@@ -1,14 +1,18 @@
 "use client";
 import Link from "next/link";
 import { buttonVariants } from "@/components/ui/button";
+import { documentTitle, useDocumentTitle } from "@/workspace/document-title";
 import { Empty, Page, Panel, useCopy } from "@/workspace/foundation";
+
 export default function NotFound() {
   const t = useCopy();
+  const title = t("页面不存在", "Page not found");
+  useDocumentTitle(documentTitle(title), "status");
   return (
     <Page
       className="mx-not-found"
       eyebrow="404"
-      title={t("页面不存在", "Page not found")}
+      title={title}
     >
       <Panel>
         <Empty

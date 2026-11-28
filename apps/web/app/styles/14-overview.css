@@ -719,7 +719,7 @@ html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history 
   display: none;
 }
 .mx-overview-attention-placeholder {
-  min-block-size: 58px;
+  min-block-size: calc(var(--mx-action-size) + 24px);
 }
 .mx-overview-sectors > :is(.mx-loading, .mx-empty) {
   min-height: 248px;
