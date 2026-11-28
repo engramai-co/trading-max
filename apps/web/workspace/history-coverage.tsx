@@ -133,8 +133,8 @@ export function HistoryHelp() {
         "Period net P&L is the change in account value less net deposits, starting from zero. It is an amount, not a return; \"vs opening\" divides it by the opening value.",
       )}</p>
       <p>{t(
-        "1D 的数字下方是今日变动最大的持仓，按全天持有的股数计算，与“其他”相加等于账户变化；持仓价格解释不了的变化标为“未归因”。5D 为最近 5 个工作日，月度区间按自然月，图中省略周末。",
-        "On 1D, the largest holding moves today sit under the figure, counting shares held all day; with \"Other\" they add up to the account change, and moves prices do not explain show as \"Unattributed\". 5D covers five weekdays; monthly ranges follow calendar months, with weekends omitted.",
+        "当持仓归因可用时，1D 的数字下方是当日变动最大的持仓，按全天持有的股数计算，与“其他”相加等于账户变化；持仓价格解释不了的变化标为“未归因”。5D 为最近 5 个工作日，月度区间按自然月，图中省略周末。",
+        "When attribution is available, the largest holding moves for the 1D session sit under the figure, counting shares held all day; with \"Other\" they add up to the account change, and moves prices do not explain show as \"Unattributed\". 5D covers five weekdays; monthly ranges follow calendar months, with weekends omitted.",
       )}</p>
       <HistoryBasis />
     </>

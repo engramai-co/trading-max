@@ -108,8 +108,8 @@ export function useSaveOverviewLayout(
     if (!ready || !root || !key || !workspace || generation === undefined || stocks === undefined || funds === undefined) return;
     const summary = root.querySelector<HTMLElement>(".mx-overview-portfolio");
     const history = root.querySelector<HTMLElement>(".mx-overview-history");
+    const details = history?.querySelector<HTMLElement>(".mx-data-body .mx-overview-history-details");
     const plot = history?.querySelector<HTMLElement>(".mx-plot");
-    const periodFigure = history?.querySelector<HTMLElement>(".mx-data-body .mx-period-figure");
     const ledger = root.querySelector<HTMLElement>(".mx-overview-holdings > :is(.mx-ledger, .mx-empty)");
     if (!ledger) return;
     const save = () => {
@@ -122,7 +122,10 @@ export function useSaveOverviewLayout(
         if (summaryHeight && panel.height) reading = {
           range: chart.selection.range, summary: summaryHeight, history: panel.height,
           plotTop: dimension(plotTop) ? plotTop : undefined,
-          periodFigure: periodFigure?.getBoundingClientRect().height,
+          disclosure: details ? {
+            estimated: !!details.querySelector(".mx-period-figure > .mx-tag-help"),
+            attribution: !!details.querySelector(".mx-overview-drivers-unavailable"),
+          } : undefined,
         };
       }
       try {

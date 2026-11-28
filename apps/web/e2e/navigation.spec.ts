@@ -824,8 +824,8 @@ test.describe("workspace navigation refinements", () => {
     await page.setViewportSize({ width: 844, height: 390 });
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
-    // Wait for the client workspace before sending a scroll from the top.
-    await expect(page.getByRole("combobox", { name: /Portfolio account|组合账户/ })).toBeEnabled();
+    // Scroll after Overview’s first chart has published, including any period caveats.
+    await expect(page.locator(".mx-overview-history [data-tm-chart-ready=true]")).toBeVisible();
     const header = page.getByRole("banner");
     const search = header.getByRole("button", { name: searchName });
     const more = header.getByRole("button", { name: /^(More|更多)$/ });
@@ -846,6 +846,41 @@ test.describe("workspace navigation refinements", () => {
     await page.evaluate(() => window.scrollTo(0, 750));
     await expect.soft(more).toBeInViewport({ ratio: 1, timeout: 1500 });
     expect(await page.evaluate(() => window.scrollY)).toBe(750);
+  });
+
+  test("short landscape retains Search focus through a delayed Overview chart publication", async ({ page, isMobile }) => {
+    test.skip(!isMobile);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const gate = Promise.withResolvers<void>();
+    await page.route("**/api/backend/dashboard/history?**", async route => {
+      await gate.promise;
+      await route.continue();
+    });
+    const pending = page.locator(".mx-overview-history .mx-loading-chart");
+    const chart = page.locator(".mx-overview-history [data-tm-chart-ready=true]");
+    const search = page.getByRole("banner").getByRole("button", { name: searchName });
+    try {
+      await page.goto("/");
+      await expect(pending).toBeVisible();
+      await expect(page.getByRole("combobox", { name: /Portfolio account|组合账户/ })).toBeEnabled();
+      await page.evaluate(() => window.scrollTo(0, 200));
+      await expect(search).not.toBeInViewport();
+      await page.keyboard.press("Meta+k");
+      const input = page.getByRole("combobox", { name: searchName });
+      await expect(input).toBeFocused();
+
+      gate.resolve();
+      await expect(chart).toBeVisible();
+      await expect(input).toBeFocused();
+      const beforeClose = await page.evaluate(() => scrollY);
+      await page.keyboard.press("Escape");
+      await expect(search).toBeFocused();
+      await expect(search).toBeInViewport({ ratio: 1 });
+      expect(await page.evaluate(() => scrollY)).toBe(beforeClose);
+    } finally {
+      gate.resolve();
+    }
   });
 
   test("the portrait Returns chart jump keeps its 80px landing", async ({ page, isMobile }) => {

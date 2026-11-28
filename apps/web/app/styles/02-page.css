@@ -54,16 +54,6 @@
   font-size: clamp(40px, 4vw, 54px);
   letter-spacing: -1.8px;
 }
-.mx-attention {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-top: 24px;
-}
-.mx-attention strong {
-  font-weight: 650;
-}
 .mx-overview-notice {
   padding: 0 28px 24px;
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useQuery } from "@tanstack/react-query";
 import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
@@ -12,7 +13,7 @@ import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./a
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Help, Empty, Instrument, Panel, QueryError, Tag, TextLink, useCopy } from "./foundation";
+import { Help, Empty, Instrument, Panel, QueryError, Tag, TextLink, UpdateFailure, useCopy } from "./foundation";
 import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy, type EvidenceTime } from "./etf-data";
 import { useEvidenceTime } from "./etf-reading";
 import Link from "./link";
@@ -60,13 +61,14 @@ function factText(fact: AttentionFact, zh: boolean) {
   return zh ? `浮亏 ${percent(Math.abs(fact.value), false, 0)}` : `${percent(fact.value, true, 0)} vs cost`;
 }
 
-function FlaggedReading({ facts, kinds, label, value, className, basis }: {
+function FlaggedReading({ facts, kinds, label, value, className, basis, status }: {
   facts: AttentionFact[];
   kinds: AttentionFact["kind"][];
   label: string;
   value: string;
   className?: string;
   basis?: string;
+  status?: string;
 }) {
   const { locale } = useLocale();
   const matched = facts.filter(fact => kinds.includes(fact.kind));
@@ -74,7 +76,8 @@ function FlaggedReading({ facts, kinds, label, value, className, basis }: {
     data-tone={matched.some(fact => fact.kind === "loss") ? "down" : "warning"} aria-hidden="true" />;
   const result = <span className={className}>{value}</span>;
   if (!matched.length && !basis) return result;
-  return <Help label={label} triggerLabel={label + " · " + value} triggerContent={<>{flag}{result}</>}>
+  return <Help label={label} triggerLabel={[label, value, status].filter(Boolean).join(" · ")}
+    triggerContent={<>{flag}{result}{status && <Badge tone="warn" className="mx-ledger-tracking-status">{status}</Badge>}</>}>
     {matched.length > 0 && <p>{matched.map(fact => factText(fact, locale === "zh")).join(" · ")}</p>}
     {basis && <p>{basis}</p>}
   </Help>;
@@ -89,9 +92,9 @@ function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
       value={percent(row.pnl, true, 1)} className={changeClass(row.pnl, 1)} />,
     score: <FlaggedReading facts={row.facts} kinds={["score", "rsi"]} label={t("技术评分", "Technical score")}
       value={String(row.score ?? "—")} />,
-    tracking: tracking && <span className="mx-ledger-etf" data-stale={tracking.status ? "" : undefined}>
+    tracking: tracking && <span className="mx-ledger-etf">
       <FlaggedReading facts={row.facts} kinds={["tracking"]} label={t("一年跟踪差", "1-year tracking difference")}
-        value={hasTracking ? tracking.display : "—"} basis={tracking.description} />
+        value={hasTracking ? tracking.display : "—"} basis={tracking.description} status={tracking.status} />
     </span>,
     upside: <FlaggedReading facts={row.facts} kinds={["upside"]} label={t("模型空间", "Model upside")}
       value={percent(row.upside, true, 0)}
@@ -108,7 +111,10 @@ function LedgerColumns() {
   </colgroup>;
 }
 
-export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, pendingRows, pendingHeight, pendingWidth, waiting = false, failed = false, error, retry, showDataStatusLink }: {
+export function OverviewHoldings({
+  holdings, technical, valuations, runId, brokerAsOf, account, pendingRows, pendingHeight, pendingWidth,
+  waiting = false, failed = false, error, retry, showDataStatusLink, refreshFailure,
+}: {
   holdings?: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
@@ -123,6 +129,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   error?: unknown;
   retry?: () => unknown;
   showDataStatusLink?: boolean;
+  refreshFailure?: { updatedAt: number; retry: () => unknown };
 }) {
   const t = useCopy();
   const when = useEvidenceTime();
@@ -156,7 +163,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   const rowFocus = (row: LedgerRow): Focus => ({ segment: segmentOf(row), label: row.ticker, weight: row.weight });
   const lit = (row: LedgerRow) => (focus?.segment === segmentOf(row) ? "" : undefined);
   const dot = (row: LedgerRow) => (
-    <i className="mx-ledger-dot" aria-hidden="true" data-rest={row.colour === null ? "" : undefined}
+    <i className="mx-ledger-dot size-2 shrink-0 rounded-full" aria-hidden="true" data-rest={row.colour === null ? "" : undefined}
       style={row.colour === null ? undefined : ({ "--mx-dot": palette[row.colour] } as CSSProperties)} />
   );
   const pointer = (next: Focus) => ({ onPointerEnter: () => setFocus(next), onPointerLeave: () => setFocus(null) });
@@ -173,9 +180,12 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
       className="mx-overview-holdings"
       title={holdingsLabel}
       help={locale === "zh"
-        ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术评分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。基金的一年跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记。黄色跟踪差数字表示已过期或日期未验证。`
-        : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. Amber also marks a fresh, comparable 1-year fund tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp. An amber tracking figure indicates stale data or unverified dates.`}
-      action={<TextLink href="/holdings?view=lookthrough" className={state === "pending" ? "invisible" : undefined}>{t("穿透", "Look-through")}</TextLink>}
+        ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术评分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。基金的一年跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记。“未更新”标记表示跟踪差已过期或日期未验证。`
+        : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. Amber also marks a fresh, comparable 1-year fund tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp. The Stale badge marks tracking figures with stale or unverified dates.`}
+      action={<div className="mx-freshness-group">
+        {(state === "ready" || state === "empty") && refreshFailure && <UpdateFailure {...refreshFailure} />}
+        <TextLink href="/holdings?view=lookthrough" className={state === "pending" ? "invisible" : undefined}>{t("穿透", "Look-through")}</TextLink>
+      </div>}
     >
       {state === "pending" ? (
         <LedgerPlaceholder rows={pendingRows} savedHeight={pendingHeight} savedWidth={pendingWidth} />
@@ -187,7 +197,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
         <div className="mx-ledger">
           <Donut ledger={ledger} palette={palette} focus={focus} setFocus={setFocus} restLabel={restLabel}
             countLabel={countLabel}
-            title={locale === "zh" ? countLabel : <>{ledger.count}<small>{ledger.count === 1 ? "holding" : "holdings"}</small></>} />
+            title={locale === "zh" ? countLabel : <>{ledger.count}<small className="ms-1 text-[13px] font-medium tracking-normal text-muted-foreground">{ledger.count === 1 ? "holding" : "holdings"}</small></>} />
           <Table label={t("持仓配置", "Holdings allocation")} className="mx-ledger-table" containerProps={{ className: "tm-table-wide" }}>
             <LedgerColumns />
             {ledger.groups.map(({ kind, rows }) => {
@@ -321,7 +331,7 @@ function LedgerSizingSample() {
       {kinds.slice(0, sample === "both" ? 2 : 1).map(kind => <TableBody key={kind}>
         <TableRow className="mx-ledger-head">{Array.from({ length: 6 }, (_, index) => <TableHead scope="row" key={index}>0</TableHead>)}</TableRow>
         {samples.map((tagged, index) => <TableRow key={index} className="mx-ledger-row" data-probe-tagged={tagged || undefined}>
-          <TableHead scope="row"><span className="mx-ledger-link"><i className="mx-ledger-dot" />{instrument}</span></TableHead>
+          <TableHead scope="row"><span className="mx-ledger-link"><i className="mx-ledger-dot size-2 shrink-0 rounded-full" />{instrument}</span></TableHead>
           <TableCell>0</TableCell>
           <TableCell className="mx-ledger-day">{tagged && <span className="mx-ledger-date"><Tag tone="warn">19 Nov</Tag></span>}<span>+1.00%</span></TableCell>
           {Array.from({ length: 3 }, (_, cell) => <TableCell key={cell}>0</TableCell>)}
@@ -340,7 +350,7 @@ function LedgerSizingSample() {
             {readingColumns(kind, t, t("今日", "Today")).map(column => <span key={column.key}>{column.short}</span>)}
           </div>
           <ol role="list">{samples.map((tagged, index) => <li key={index} className="mx-ledger-item" data-probe-tagged={tagged || undefined}>
-            <span className="mx-ledger-item-head"><i className="mx-ledger-dot" />{instrument}<strong>0</strong></span>
+            <span className="mx-ledger-item-head"><i className="mx-ledger-dot size-2 shrink-0 rounded-full" />{instrument}<strong>0</strong></span>
             <dl>
               <div><dt className="sr-only">0</dt><dd>
                 {tagged && <Tag tone="warn">{t("11月19日", "19 Nov")}</Tag>}<span>+1.00%</span>
@@ -394,9 +404,9 @@ function Donut({ ledger, palette, focus, setFocus, title, countLabel, restLabel 
               onPointerLeave={() => setFocus(null)} />
           ))}
         </svg>
-        <div className="mx-ledger-centre" aria-hidden="true">
-          <strong>{focus ? focus.label : title}</strong>
-          <span>{focus ? percent(focus.weight) : currency(ledger.total)}</span>
+        <div className="mx-ledger-centre pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-0.5 text-center" aria-hidden="true">
+          <strong className="max-w-[120px] truncate text-2xl leading-tight font-semibold tracking-[-0.02em]">{focus ? focus.label : title}</strong>
+          <span className="text-[13px] text-muted-foreground tabular-nums">{focus ? percent(focus.weight) : currency(ledger.total)}</span>
         </div>
       </div>
     </div>

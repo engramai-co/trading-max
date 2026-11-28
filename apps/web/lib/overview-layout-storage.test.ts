@@ -57,13 +57,67 @@ describe("Overview layout bootstrap", () => {
     expect(removeItem).not.toHaveBeenCalled();
   });
 
-  it("shares the measured period figure with pre-paint and keeps older reservations usable", () => {
-    const measured = { ...layout, reading: { ...layout.reading, periodFigure: 40 } };
-    expect(parseOverviewLayout(JSON.stringify(measured))).toEqual(measured);
-    expect(runBootstrap(JSON.stringify(measured)).properties.get("--mx-boot-period-figure")).toBe("40px");
-    expect(runBootstrap(JSON.stringify(layout)).properties.has("--mx-boot-period-figure")).toBe(false);
-    const invalid = { ...layout, reading: { ...layout.reading, periodFigure: 1000 } };
-    expect(parseOverviewLayout(JSON.stringify(invalid))).toEqual(layout);
+  it.each([
+    { estimated: false, attribution: false },
+    { estimated: true, attribution: false },
+    { estimated: false, attribution: true },
+    { estimated: true, attribution: true },
+  ])("applies only the saved disclosure placeholders at first paint (%j)", disclosure => {
+    const raw = JSON.stringify({ ...layout, reading: { ...layout.reading, disclosure } });
+    expect(parseOverviewLayout(raw)?.reading?.disclosure).toEqual(disclosure);
+    const { properties } = runBootstrap(raw);
+    expect(properties.get("--mx-boot-estimate-placeholder")).toBe(disclosure.estimated ? "block" : undefined);
+    expect(properties.get("--mx-boot-attribution-placeholder")).toBe(disclosure.attribution ? "block" : undefined);
+  });
+
+  it("keeps geometry while discarding malformed disclosure flags", () => {
+    const raw = JSON.stringify({
+      ...layout, reading: { ...layout.reading, disclosure: { estimated: "true", attribution: 1 } },
+    });
+    expect(parseOverviewLayout(raw)).toEqual(layout);
+    const { properties, persisted } = runBootstrap(raw);
+    expect(properties.has("--mx-boot-estimate-placeholder")).toBe(false);
+    expect(properties.has("--mx-boot-attribution-placeholder")).toBe(false);
+    expect(persisted.getItem(key)).toBe(JSON.stringify(layout));
+  });
+
+  it("keeps 1.84 counts from either storage area and recalculates all dimensions", () => {
+    const old = key.replace(/v\d+:/, "v2:");
+    const rows = { stocks: 238, funds: 2, dateTagged: 24 };
+    const raw = JSON.stringify({ ...layout, rows, ledger: 21_113.5, sectors: 391, brief: 72 });
+    for (const [tab, local] of [[{}, { [old]: raw }], [{ [old]: raw }, {}]]) {
+      const { attributes, properties, persisted, session } = runBootstrap(undefined, tab, local);
+      expect(attributes.has("data-mx-boot-history")).toBe(false);
+      expect(attributes.has("data-mx-boot-ledger-measured")).toBe(false);
+      expect(properties.get("--mx-boot-ledger-rows")).toBe("240");
+      expect(properties.get("--mx-boot-ledger-groups")).toBe("2");
+      expect(persisted.getItem(key)).toBe(JSON.stringify({ rows }));
+      expect(persisted.getItem(old)).toBeNull();
+      expect(session.getItem(old)).toBeNull();
+    }
+  });
+
+  it("keeps 1.84 counts in their own account and workspace without replacing current entries", () => {
+    const raw = JSON.stringify(layout);
+    const previous = prefix.replace(/v\d+:/, "v2:");
+    const generation = OVERVIEW_LAYOUT_GENERATION_SUFFIX;
+    const {
+      persisted,
+    } = runBootstrap(raw, { [previous + "isa:en:desktop"]: raw }, {
+      [previous + "total:en:desktop"]: JSON.stringify({ rows: { stocks: 240, funds: 0 } }),
+      [previous + "invest:en:desktop"]: raw,
+      [previous + "invest:en:desktop" + generation]: "repopulated-generation",
+      [previous + "isa:en:desktop" + generation]: "previous-generation",
+      [previous.replace("a".repeat(64), "b".repeat(64)) + "total:en:desktop"]: raw,
+      [previous + "total:en:phone"]: JSON.stringify({ rows: { stocks: 499, funds: 2 } }),
+    });
+    expect(persisted.getItem(key)).toBe(raw);
+    expect(persisted.getItem(prefix + "invest:en:desktop")).toBe(JSON.stringify({ rows: layout.rows }));
+    expect(persisted.getItem(prefix + "invest:en:desktop" + generation)).toBe("repopulated-generation");
+    expect(persisted.getItem(prefix + "isa:en:desktop")).toBeNull();
+    expect(persisted.getItem(prefix + "isa:en:desktop" + generation)).toBe("previous-generation");
+    expect(persisted.getItem(prefix + "total:en:phone")).toBeNull();
+    expect(Object.keys(persisted).filter(name => name.startsWith("mx-overview-layout-"))).toHaveLength(4);
   });
 
   it("applies validated sector and brief geometry independently", () => {

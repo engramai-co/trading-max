@@ -16,17 +16,7 @@
         "createTheme"
       ]
     },
-    "workspace/assistant/overview.test.ts": {
-      "@mantine/core": [
-        "MantineProvider"
-      ]
-    },
     "workspace/holding-market-closed.test.ts": {
-      "@mantine/core": [
-        "MantineProvider"
-      ]
-    },
-    "workspace/overview-holdings.test.ts": {
       "@mantine/core": [
         "MantineProvider"
       ]
