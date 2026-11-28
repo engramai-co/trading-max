@@ -5,6 +5,7 @@ import { colorSchemeHtmlProps, DEFAULT_COLOR_SCHEME } from "@/lib/color-scheme";
 import { desktopSnapshotCache, snapshotCacheScope } from "@/lib/snapshot-cache-server";
 
 import { PresentationShell } from "@/workspace/presentation-shell";
+import { SettingsDraftProvider } from "@/workspace/settings-draft-provider";
 import { LocaleProvider } from "@/components/locale-provider";
 import { TradingMaxProvider } from "@/ui/provider";
 import { Toaster } from "@/components/ui/toast";
@@ -63,7 +64,9 @@ export default async function RootLayout({
         <TradingMaxProvider key={scope} scope={scope} desktopCache={desktopCache}>
           <LocaleProvider>
             <Toaster>
-              <PresentationShell localWorkspace={Boolean(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID)} demonstration={process.env.TRADING_MAX_ENV === "desktop-preview"}>{children}</PresentationShell>
+              <SettingsDraftProvider>
+                <PresentationShell localWorkspace={Boolean(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID)} demonstration={process.env.TRADING_MAX_ENV === "desktop-preview"}>{children}</PresentationShell>
+              </SettingsDraftProvider>
             </Toaster>
           </LocaleProvider>
         </TradingMaxProvider>

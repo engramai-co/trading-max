@@ -59,9 +59,6 @@ test.describe("portfolio workspace", () => {
     ).toBeVisible();
     await page.getByRole("tab", { name: /模型连接|Model connections/ }).click();
     await expect(page).toHaveURL(/tab=models/);
-    // Synthetic workspaces have no model connection. Dismiss the optional
-    // first-connection offer before checking the next settings tab.
-    await page.getByRole("dialog").getByRole("button", { name: /稍后设置|Set up later/ }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await expect(
       page.getByRole("heading", {
@@ -83,15 +80,19 @@ test.describe("portfolio workspace", () => {
       return route.fulfill({ json: { status: "succeeded", validationToken: "synthetic-receipt" } });
     });
     await page.goto("/settings");
-    await page
-      .getByRole("button", { name: /连接账户|Connect account$/, exact: false })
-      .first()
-      .click();
+    const connect = page.getByRole("button", { name: /^(连接账户：|Connect account: )Invest$/ });
+    const connectIsa = page.getByRole("button", { name: /^(连接账户：|Connect account: )Stocks ISA$/ });
+    await expect(connectIsa).toBeVisible();
+    await connect.click();
     const dialog = page.getByRole("dialog");
     const testConnection = dialog.getByRole("button", { name: /测试连接|Test connection/ });
     const save = dialog.getByRole("button", { name: /保存连接|Save connection/ });
     const key = dialog.getByLabel(/^API Key ID/);
     const secret = dialog.getByLabel(/^API Secret/);
+    await expect(key).toHaveAttribute("autocomplete", "off");
+    await expect(key).toHaveAttribute("name", "trading212-invest-key-id");
+    await expect(secret).toHaveAttribute("autocomplete", "off");
+    await expect(secret).toHaveAttribute("name", "trading212-invest-secret");
     await expect(save).toBeDisabled();
     await expect(testConnection).toBeEnabled();
     await testConnection.click();
@@ -101,6 +102,7 @@ test.describe("portfolio workspace", () => {
     expect(requests).toBe(0);
     await key.fill("synthetic-id");
     await secret.fill("synthetic-secret");
+    await expect(dialog.getByText(/^(Closing this form clears unsaved keys\.|关闭此表单会清除未保存的密钥。)$/)).toHaveCount(0);
     await expect(key).toHaveAttribute("aria-invalid", "false");
     await expect(secret).toHaveAttribute("aria-invalid", "false");
     await expect(save).toBeDisabled();
@@ -111,6 +113,11 @@ test.describe("portfolio workspace", () => {
     await expect(save).toBeDisabled();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+    await expect(connect).toBeFocused();
+    await connectIsa.click();
+    await expect(dialog.getByLabel(/^API Key ID/)).toHaveValue("");
+    await expect(dialog.getByLabel(/^API Secret/)).toHaveValue("");
+    await expect(dialog.getByLabel(/^API Secret/)).toHaveAttribute("name", "trading212-isa-secret");
   });
 
   test("failed data requests offer a retry and recover", async ({ page }) => {

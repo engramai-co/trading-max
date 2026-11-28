@@ -24,7 +24,7 @@ test("desktop settings retain a draft through a publication outage and recovery"
   });
 
   await page.goto("/desktop/settings");
-  await page.getByRole("button", { name: "Connect account", exact: true }).first().click();
+  await page.getByRole("button", { name: "Connect account: Invest", exact: true }).click();
   const dialog = page.getByRole("dialog");
   const draft = dialog.getByLabel(/^API Key ID/);
   await draft.fill("synthetic-test-id");
@@ -104,7 +104,7 @@ test.describe("web build changes", () => {
     let checks = 0;
     let finishSave!: () => void;
     const pendingSave = new Promise<void>((resolve) => { finishSave = resolve; });
-    const profile = {
+    let profile = {
       profileId: "synthetic", displayName: "Synthetic", initials: "S", avatarColor: "blue", locale: "en",
       baseCurrency: "GBP", timezone: "Europe/London", accountLabels: {}, revision: 1, updatedAt: "2026-01-01T00:00:00Z",
     };
@@ -119,7 +119,11 @@ test.describe("web build changes", () => {
       }
       if (path.endsWith("/settings/integrations")) return route.fulfill({ json: { profile, integrations: [], llmProviders: [] } });
       if (path.endsWith("/profile")) {
-        if (route.request().method() === "PATCH") await pendingSave;
+        if (route.request().method() === "PATCH") {
+          const { displayName } = route.request().postDataJSON();
+          await pendingSave;
+          profile = { ...profile, displayName, revision: profile.revision + 1 };
+        }
         return route.fulfill({ json: profile });
       }
       return route.fulfill({ status: 404, json: {} });
@@ -135,7 +139,7 @@ test.describe("web build changes", () => {
     await expect(page.locator("body")).toHaveAttribute("data-old-document", "yes");
 
     await page.goBack();
-    await expect(page.getByRole("textbox", { name: "Display name" })).toHaveValue("Synthetic");
+    await expect(page.getByRole("textbox", { name: "Display name" })).toHaveValue("Synthetic draft");
     const saving = page.waitForRequest((request) => request.method() === "PATCH" && request.url().endsWith("/profile"));
     await page.getByRole("button", { name: "Save preferences" }).click();
     await saving;
@@ -149,6 +153,9 @@ test.describe("web build changes", () => {
       await saved;
     }
 
+    await expect.poll(() => page.evaluate(() =>
+      window.dispatchEvent(new Event("beforeunload", { cancelable: true })),
+    )).toBe(true);
     await page.getByRole("button", { name: "Search", exact: true }).click();
     const input = page.getByRole("combobox", { name: /Search/ });
     await input.fill("TWR");

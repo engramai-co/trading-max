@@ -66,7 +66,7 @@ test.describe("desktop surfaces", () => {
   test("settings reuses the broker validation gate and separates imports", async ({ page }) => {
     await page.goto("/desktop/settings");
     await expect(page.getByRole("heading", { name: /CFD 历史账本|CFD history ledger/ })).toHaveCount(0);
-    await page.getByRole("button", { name: /连接账户|Connect account$/, exact: false }).first().click();
+    await page.getByRole("button", { name: /^(连接账户：|Connect account: )Invest$/ }).click();
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByRole("button", { name: /保存连接|Save connection/ })).toBeDisabled();
     await dialog.getByLabel(/^API Key ID/).fill("synthetic-test-id");

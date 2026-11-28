@@ -8,6 +8,42 @@ const state = {
   readiness: { status: "ready", latestRunId: currentRun },
 };
 
+test("idle local setup announces a failed poll and successful retry with cached status", async ({ page }) => {
+  test.skip(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID !== "synthetic-onboarding",
+    "Requires the synthetic first-sync workspace preview.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const idle = { ...state, canConfirm: false, readiness: { status: "not_ready" } };
+  let available = true;
+  await page.route("**/api/backend/local-workspace", (route) => available
+    ? route.fulfill({ json: idle })
+    : route.fulfill({ status: 503 }));
+  await page.goto("/settings?tab=accounts&onboarding=1");
+  const panel = page.getByRole("tabpanel", { name: "Accounts & data" });
+  const start = panel.getByRole("button", { name: "Start first sync" });
+  const failure = panel.getByRole("status").filter({ hasText: "Workspace status could not be refreshed." });
+  const recovery = panel.getByRole("status").filter({ hasText: "Set up your local workspace · Data is available again." });
+  await expect(start).toBeEnabled();
+  await expect(recovery).toHaveCount(0);
+
+  available = false;
+  const warning = panel.getByRole("note").filter({ hasText: "Workspace status could not be refreshed." });
+  await expect(warning).toBeVisible();
+  await expect(start).toBeDisabled();
+  await expect(failure).toHaveCount(1);
+  const announcer = await failure.elementHandle();
+  await expect(recovery).toHaveCount(0);
+
+  const retry = warning.getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeEnabled();
+  available = true;
+  await retry.click();
+  await expect(start).toBeEnabled();
+  await expect(warning).toHaveCount(0);
+  await expect(recovery).toHaveCount(1);
+  await expect(failure).toHaveCount(0);
+  expect(await recovery.evaluate((element, original) => element === original, announcer)).toBe(true);
+});
+
 for (const trigger of ["retry", "reconnect"] as const) {
   test(`first-sync balance ${trigger} announces recovery only after validating the run`, async ({ page, context }) => {
     test.skip(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID !== "synthetic-onboarding",
