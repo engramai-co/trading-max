@@ -1,7 +1,8 @@
 "use client";
 
 import { ArrowUpRight } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useLocale } from "@/components/locale-provider";
 import { Button } from "@/components/ui/button";
 import { numeric } from "@/lib/numeric";
@@ -10,12 +11,13 @@ import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
 import { currency, number, object, objects, percent, str, tone, type Json } from "@/workspace/data";
 import { Bars } from "./charts";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Instrument, Metric, Notice, Panel, Tag, TextLink, useCopy } from "./foundation";
+import { Empty, Facts, Instrument, Metric, Notice, Panel, StatusMessage, Tag, TextLink, useCopy } from "./foundation";
 import Link from "./link";
 import { reviewLabel } from "./review-copy";
 import { Availability, DetailFacts, EndingEvidence, field } from "./review-evidence";
 import { SecurityPeek } from "./security-peek";
 import { SelectPicker } from "./picker";
+import { ReviewDisclosure } from "./review-board";
 
 export function Coverage({ data }: { data: Json }) {
   const t = useCopy();
@@ -121,7 +123,7 @@ export function Attribution({ data, cfd, count }: { data: Json; cfd: boolean; co
         values={rows.slice(0, 14).map(value)}
       />}
       <Availability data={evidence} />
-      {(!field(evidence, "unavailable_reason") || rows.length > 0) && <EvidenceTable
+      {(rows.length > 0 || !explainsCoverage(evidence)) && <EvidenceTable
         key={dimension}
         rows={rows}
         label={t("归因明细", "Attribution detail")}
@@ -166,25 +168,39 @@ export function Attribution({ data, cfd, count }: { data: Json; cfd: boolean; co
     </Panel>
   );
 }
+function explainsCoverage(data: Json) {
+  const reasons = field(data, "partial_reasons");
+  return Boolean(field(data, "unavailable_reason")) ||
+    (Array.isArray(reasons) && reasons.some(Boolean)) ||
+    data.status === "partial" || data.partial === true;
+}
+
+function holdingDuration(value: unknown, cfd: boolean, t: ReturnType<typeof useCopy>) {
+  const displayed = number(value, cfd ? 1 : 0);
+  if (displayed === "—") return displayed;
+  const singular = displayed === "1";
+  const unit = cfd
+    ? (singular ? t(" 小时", " hour") : t(" 小时", " hours"))
+    : (singular ? t(" 天", " day") : t(" 天", " days"));
+  return displayed + unit;
+}
+
 function UnavailableTrades({ data, count, cfdDurations = false }: { data: Json; count: unknown; cfdDurations?: boolean }) {
   const t = useCopy();
-  const reason = field(data, "unavailable_reason");
   const sameDay = cfdDurations ? numeric(field(data, "same_day_count")) : null;
   const underHour = cfdDurations ? numeric(field(data, "under_one_hour_count")) : null;
   const median = cfdDurations ? numeric(field(data, "median_duration_hours")) : null;
   const average = cfdDurations ? numeric(field(data, "average_duration_hours")) : null;
-  const duration = (value: number) => number(value, 1) + (value === 1 ? t(" 小时", " hour") : t(" 小时", " hours"));
   const rows: Array<[string, string]> = [];
   if (numeric(count) != null) rows.push([t("已结束交易", "Closed trades"), number(count, 0)]);
   if (sameDay !== null) rows.push([t("同日完成", "Closed on the same day"), number(sameDay, 0)]);
   if (underHour !== null) rows.push([t("一小时内结束", "Closed within one hour"), number(underHour, 0)]);
-  if (median !== null) rows.push([t("中位持有周期", "Median holding duration"), duration(median)]);
+  if (median !== null) rows.push([t("中位持有周期", "Median holding duration"), holdingDuration(median, true, t)]);
   if (average !== null) rows.push([t("平均持有小时", "Average holding hours"), number(average, 1)]);
   return <>
     {!!rows.length && <Facts rows={rows} />}
     <Availability data={data} />
-    {!reason && data.status !== "partial" && !data.partial &&
-      !Array.isArray(field(data, "partial_reasons")) && <Empty title={t("暂无记录", "No records")} />}
+    {!explainsCoverage(data) && <Empty title={t("暂无记录", "No records")} />}
   </>;
 }
 export function TradeQuality({
@@ -201,6 +217,7 @@ export function TradeQuality({
   const wins = data.win_count ?? data.wins,
     losses = data.loss_count ?? data.losses;
   const count = data.trade_count ?? data.tradeCount ?? fallback.trades;
+  const medianLabel = holdingDuration(data.median_holding_days ?? data.medianDurationHours, cfd, t);
   const title = t("过程是否可持续", "Understand the trading process");
   const help = t(
     "观察已结束交易的分布与质量，不从记录推断投资动机。",
@@ -221,6 +238,7 @@ export function TradeQuality({
         title={title}
         help={help}
       >
+        <Availability data={data} />
         <div className="mx-metric-grid">
           <Metric
             label={t("已结束交易", "Closed trades")}
@@ -307,10 +325,7 @@ export function TradeQuality({
               ],
               [
                 t("中位持有周期", "Median holding duration"),
-                number(data.median_holding_days ?? data.medianDurationHours, cfd ? 1 : 0) +
-                  (number(data.median_holding_days ?? data.medianDurationHours, cfd ? 1 : 0) === "1"
-                    ? cfd ? t(" 小时", " hour") : t(" 天", " day")
-                    : cfd ? t(" 小时", " hours") : t(" 天", " days")),
+                medianLabel,
               ],
             ]}
           />
@@ -458,13 +473,61 @@ export function TradeQuality({
     </div>
   );
 }
+const PHASE_BATCH = 8;
+
 export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }) {
   const t = useCopy();
   const { locale } = useLocale();
   const rows = objects(data.items);
-  const [phaseLimit, setPhaseLimit] = useState(() =>
-    Math.max(8, rows.findIndex((row) => row.phaseId === focusPhase) + 1),
-  );
+  const [visible, setVisible] = useState(() => {
+    const target = rows.findIndex((row) => row.phaseId === focusPhase);
+    const start = Math.floor(Math.max(0, target) / PHASE_BATCH) * PHASE_BATCH;
+    return { start, end: start + PHASE_BATCH };
+  });
+  const focusNext = useRef<number | null>(null);
+  const nextArticle = useRef<HTMLElement>(null);
+  const earlierButton = useRef<HTMLElement>(null);
+  const [loaded, setLoaded] = useState("");
+  const screenStart = Math.min(visible.start, Math.max(0, rows.length - 1));
+  const [printing, setPrinting] = useState(false);
+  const start = printing ? 0 : screenStart;
+  const end = Math.min(visible.end, rows.length);
+  useLayoutEffect(() => {
+    // The shortcut mounts only its batch on screen. Print includes the history leading to it.
+    let restoreEarlierFocus = false;
+    const beforePrint = () => {
+      restoreEarlierFocus ||= earlierButton.current === document.activeElement;
+      flushSync(() => setPrinting(true));
+    };
+    const afterPrint = () => {
+      flushSync(() => setPrinting(false));
+      if (restoreEarlierFocus && document.activeElement === document.body) {
+        earlierButton.current?.focus({ preventScroll: true });
+      }
+      restoreEarlierFocus = false;
+    };
+    window.addEventListener("beforeprint", beforePrint);
+    window.addEventListener("afterprint", afterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", beforePrint);
+      window.removeEventListener("afterprint", afterPrint);
+    };
+  }, []);
+  function reveal(direction: "before" | "after", keyboard: boolean) {
+    const next = direction === "before"
+      ? { start: Math.max(0, screenStart - PHASE_BATCH), end }
+      : { start: screenStart, end: Math.min(rows.length, end + PHASE_BATCH) };
+    focusNext.current = keyboard ? (direction === "before" ? next.start : end) : null;
+    const count = next.end - next.start;
+    setLoaded(t("已显示 {count} / {total} 个阶段", "{count} of {total} phases shown").replace("{count}", String(count)).replace("{total}", String(rows.length)));
+    setVisible(next);
+  }
+  useLayoutEffect(() => {
+    if (focusNext.current === null) return;
+    nextArticle.current?.focus({ preventScroll: true });
+    nextArticle.current?.scrollIntoView({ block: "start", behavior: "instant" });
+    focusNext.current = null;
+  }, [screenStart, end]);
   const classifications: Record<string, string> = {
     large_cash_flow: t("大额资金变动", "Significant cash movement"),
     drawdown_recovery: t("回撤修复", "Drawdown recovery"),
@@ -493,13 +556,23 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
     <Panel title={t("投资阶段", "Investment phases")}>
       {rows.length ? (
         <div className="mx-timeline">
-          {rows.slice(0, phaseLimit).map((row, index) => (
-            <article
-              className="mx-timeline-entry"
-              key={str(row.phaseId) || index}
+          <StatusMessage message={loaded} />
+          {screenStart > 0 && (
+            <Button ref={earlierButton} variant="secondary" className={printing ? "mb-4 print:hidden" : "mb-4"} onClick={(event) => reveal("before", event.detail === 0)}>
+              {t("查看更早的阶段", "Show earlier phases")} · {screenStart}
+            </Button>
+          )}
+          {rows.slice(start, end).map((row, index) => {
+            const pnl = row.netPnlGbp ?? row.realisedPnlGbp;
+            const phaseTone = tone(pnl);
+            return <article
+              ref={(article) => {
+                if (article && focusNext.current === start + index) nextArticle.current = article;
+              }}
+              key={str(row.phaseId) || start + index}
               id={`review-phase-${str(row.phaseId)}`}
               tabIndex={-1}
-              style={{ scrollMarginTop: 24 }}
+              className="mx-timeline-entry scroll-mt-[var(--shell-anchor-gap)]"
             >
               <time>
                 {formatDateSpan(str(row.startDate), str(row.endDate), locale)}
@@ -507,16 +580,10 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
               <div className="flex flex-wrap items-center justify-between gap-mx-md">
                 <h3>
                   {classifications[str(row.classification)] ??
-                    t("阶段 ", "Phase ") + (index + 1)}
+                    t("阶段 ", "Phase ") + (start + index + 1)}
                 </h3>
-                <Tag
-                  tone={
-                    (numeric(row.netPnlGbp ?? row.realisedPnlGbp) ?? 0) < 0
-                      ? "bad"
-                      : "good"
-                  }
-                >
-                  {currency(row.netPnlGbp ?? row.realisedPnlGbp, "GBP", 2)}
+                <Tag tone={phaseTone === "down" ? "bad" : phaseTone === "up" ? "good" : undefined}>
+                  {currency(pnl, "GBP", 2)}
                 </Tag>
               </div>
               <div className="mx-metric-grid" style={{ margin: "16px 0" }}>
@@ -557,10 +624,7 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
                   ],
                 ]}
               />
-              <details className="mx-chart-data">
-                <summary>
-                  {t("贡献与拖累", "Contributors and detractors")}
-                </summary>
+              <ReviewDisclosure label={t("贡献与拖累", "Contributors and detractors")} className="mx-chart-data">
                 <EvidenceTable
                   label={t("阶段收益来源", "Phase contribution")}
                   rows={[
@@ -580,7 +644,7 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
                     },
                   ]}
                 />
-              </details>
+              </ReviewDisclosure>
               {objects(row.evidenceEvents).map((event, i) => (
                 <p key={i}>
                   {formatCalendarDate(str(event.date ?? event.occurredAt), locale)} ·{" "}
@@ -588,15 +652,11 @@ export function Phases({ data, focusPhase }: { data: Json; focusPhase?: string }
                   {currency(event.amountGbp, "GBP", 2)}
                 </p>
               ))}
-            </article>
-          ))}
-          {rows.length > phaseLimit && (
-            <Button
-              variant="secondary"
-              onClick={() => setPhaseLimit((n) => n + 8)}
-            >
-              {t("查看更多阶段", "Show more phases")} · {phaseLimit} /{" "}
-              {rows.length}
+            </article>;
+          })}
+          {rows.length > end && (
+            <Button variant="secondary" onClick={(event) => reveal("after", event.detail === 0)}>
+              {t("查看更多阶段", "Show more phases")} · {end} / {rows.length}
             </Button>
           )}
         </div>

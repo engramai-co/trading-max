@@ -2,6 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useBreakpoint } from "@/lib/hooks";
+import { Button } from "@/components/ui/button";
 import { ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -103,13 +104,13 @@ function ReadingStatus({
   return (
     <div className="mx-brief-empty">
       <p role="status">{text}</p>
-      <button type="button" onClick={busy ? run.stop : run.start}>
+      <Button variant="secondary" onClick={busy ? run.stop : run.start}>
         {busy
           ? t("停止", "Stop")
           : digest && run.state === "idle"
             ? t("撰写习惯", "Write brief")
             : t("重试", "Retry")}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -139,7 +140,7 @@ export function ReviewHabits({
       localStorage.setItem("tm-reading-review-habits-phone", value ? "open" : "closed");
     } catch {}
   };
-  const opener = useRef<HTMLButtonElement>(null);
+  const opener = useRef<HTMLElement>(null);
   const request = useMemo(
     () => ({ role: "habits", context: { scope: toolScope(scope) }, snapshotId: snapshot }),
     [scope, snapshot],
@@ -188,8 +189,10 @@ export function ReviewHabits({
         if (!isHabit(key)) return null;
         return (
           <div key={key} className="mx-habit-line" data-selected={key === habit || undefined}>
-            <button
-              type="button"
+            <Button
+              variant={null}
+              size={null}
+              className="whitespace-normal font-[inherit] motion-safe:active:scale-100"
               aria-pressed={key === habit}
               onClick={() => {
                 showSheet(false);
@@ -200,7 +203,7 @@ export function ReviewHabits({
             >
               {readerText(line, locale, timeZone)}
               <ChevronRight aria-hidden="true" size={16} />
-            </button>
+            </Button>
             <EvidenceLink evidence={line.evidence} observation={readerText(line, locale, timeZone)} onNavigate={phone ? event => {
               event.preventDefault();
               showSheet(false);
@@ -216,8 +219,10 @@ export function ReviewHabits({
   if (phone)
     return (
       <>
-        <button
-          className="mx-digest mx-phone-habits"
+        <Button
+          variant={null}
+          size={null}
+          className="mx-digest mx-phone-habits grid rounded-[var(--radius-panel)] border-panel-edge whitespace-normal [font:inherit] leading-[inherit] motion-safe:active:scale-100"
           ref={opener}
           onClick={() => showSheet(true)}
           aria-expanded={sheet}
@@ -228,7 +233,7 @@ export function ReviewHabits({
             <span className="mx-digest-summary">{reading?.lines[0] && readerText(reading.lines[0], locale, timeZone)}</span>
           </span>
           <ChevronRight aria-hidden="true" size={16} />
-        </button>
+        </Button>
         {sheet && (
           <InlineReading
             card={card}

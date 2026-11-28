@@ -1,10 +1,11 @@
 "use client";
 
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, X } from "lucide-react";
 import dynamic from "next/dynamic";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { lazy, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
-import { Button } from "@/components/ui/button";
 import { formatDateSpan } from "@/ui/formatters";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -70,6 +71,7 @@ import {
   ScopeSwitch,
   allDecisions,
   combinedRoundTrips,
+  decisionHref,
   decisionSelectionParams,
   parseReviewWindow,
   reviewLoadingLabel,
@@ -95,13 +97,13 @@ function HabitsSpace({ unavailable = false }: { unavailable?: boolean }) {
     try { return localStorage.getItem("tm-reading-review-habits") === "open"; }
     catch { return false; }
   });
-  return <div className="mx-review-habits-space" data-expanded={expanded || undefined} aria-hidden={!unavailable || undefined}>
+  return <Card as="div" className="mx-review-habits-space px-[18px] py-2" data-expanded={expanded || undefined} aria-hidden={!unavailable || undefined}>
     <strong>{t("习惯", "Habits")}</strong>
     <p>{t("模型暂不可用。", "The model is unavailable.")} <Link href="/settings?tab=assistant" prefetch={false} tabIndex={unavailable ? undefined : -1}>{t("{name} 设置", "{name} settings").replace("{name}", ASSISTANT_NAME)}</Link></p>
-  </div>;
+  </Card>;
 }
 
-function focusHabitFilter(button: HTMLButtonElement | null) {
+function focusHabitFilter(button: HTMLElement | null) {
   button?.focus({ preventScroll: true });
   button?.scrollIntoView({ block: "center", behavior: "instant" });
 }
@@ -175,9 +177,9 @@ export function ReviewWorkspace() {
     reading:selected && <div id={readingId}><DecisionReading key={readingId + selected.location + horizonScope(selected.row.account, selected.row) + readingHorizon + data.runId}
       snapshot={data.runId} scope={shown} row={selected.row} horizon={readingHorizon} habit={habit} onClose={closeReading} onFollowCitation={() => setSelection(null)}/></div>,
   } : undefined;
-  const filterButton = useRef<HTMLButtonElement>(null);
+  const filterButton = useRef<HTMLElement>(null);
   const focusFilter = useRef<Habit | null>(null);
-  const attachFilter = useCallback((button: HTMLButtonElement | null) => {
+  const attachFilter = useCallback((button: HTMLElement | null) => {
     filterButton.current = button;
     if (button && habit && focusFilter.current === habit) {
       focusFilter.current = null;
@@ -185,8 +187,19 @@ export function ReviewWorkspace() {
     }
   }, [habit]);
   const focusAfterClear = useRef(false);
-  const filterChip = habit ? <button ref={attachFilter} type="button" className="mx-review-filter" onClick={() => {focusAfterClear.current = true; setSelection(null);update({habit:null, snapshotId: null});}}>
-    {t("只看","Only")} · {t(habitLabels[habit][0],habitLabels[habit][1])} <span aria-hidden="true">×</span><span className="sr-only">{t("清除筛选","Clear filter")}</span></button> : undefined;
+  const filterChip = habit ? (
+    <Button ref={attachFilter} variant="outline" className="mx-review-filter max-w-full whitespace-normal"
+      onClick={() => {
+        focusAfterClear.current = true;
+        setSelection(null);
+        update({ habit: null, snapshotId: null });
+      }}
+    >
+      {t("只看", "Only")} · {t(habitLabels[habit][0], habitLabels[habit][1])}
+      <X size={14} aria-hidden="true" />
+      <span className="sr-only">{t("清除筛选", "Clear filter")}</span>
+    </Button>
+  ) : undefined;
   const reviews = shown === "all"
     ? (["A", "B"] as const).map((code) => data?.decisionReviews?.[code])
     : shown === "C" ? [] : [data?.selectedAccountDecisions];
@@ -217,9 +230,12 @@ export function ReviewWorkspace() {
   const asOf = !data ? undefined : shown === "all"
     ? data.reviewAsOf ?? data.brokerAsOf
     : data.reviewAsOf ?? (str(field(object(object(shown === "C" ? data.selectedCfdReview : data.selectedAccountReview).coverage), "end_date")) || data.brokerAsOf);
+  const unavailableTitle = scope === "all"
+    ? t("暂时无法读取投资复盘", "Investment review unavailable")
+    : t("暂时无法读取 {account} 复盘", "{account} review unavailable").replace("{account}", scopeLabel);
   const readFailure = failure?.updatedAt ? t("投资复盘更新失败", "Investment review update failed")
     : !result && !pinned && !missingDecision && query.isError
-      ? t("暂时无法读取投资复盘", "Investment review unavailable") : undefined;
+      ? unavailableTitle : undefined;
   return (
     <Page
       className="mx-review-page"
@@ -259,10 +275,10 @@ export function ReviewWorkspace() {
         pinned ? (
           <Empty title={t("引用的数据版本暂不可用", "Cited publication unavailable")} />
         ) : (
-          <QueryError error={query.error} retry={query.refetch} />
+          <QueryError title={all ? undefined : unavailableTitle} error={query.error} retry={query.refetch} />
         )
       ) : (
-        <div className="mx-data-body mx-review-body">
+        <div className="mx-data-body mx-review-body grid grid-cols-[minmax(0,1fr)] gap-[22px] max-phone:gap-[var(--mx-space-section)] [&>*]:m-0">
           {shown === "C" ? (
             <AccountAnalysis key="C" data={data} code="C" />
           ) : (
@@ -270,6 +286,8 @@ export function ReviewWorkspace() {
               <ReviewLead
                 rows={rows}
                 horizon={horizon}
+                days={days}
+                combinedScope={shown === "all" ? `${accountName(profile, "A")} + ${accountName(profile, "B")}` : undefined}
                 trips={shown === "all" ? combinedRoundTrips(reviews) : roundTripVerdict(data.selectedAccountDecisions?.roundTripSummary)}
               >
                 {shown === "all" ? (
@@ -316,7 +334,9 @@ export function ReviewWorkspace() {
                       update({ decision: null, reviewOrdinal: null, snapshotId: null, reviewWindow: null });
                     }}
                     onPick={(row) => update(decisionSelectionParams(row as ScopedDecision, horizon))}
+                    decisionUrl={(row) => decisionHref((row as ScopedDecision).account, row, { horizon, habit, snapshot: snapshotId ?? undefined })}
                     accountOf={shown === "all" ? (row) => accountName(profile, (row as ScopedDecision).account) : undefined}
+                    recordsAccountOf={(row) => accountName(profile, (row as ScopedDecision).account)}
                     unpriced={[...new Set(reviews.flatMap((review) => review?.coverage?.unpricedTickers ?? []))]}
                   />}
                   {habit !== "untraded_fall" && (
@@ -373,11 +393,12 @@ function AccountMoney({ data }: { data: DashboardLens }) {
     ];
   return (
     <>
-      <dl className="mx-review-money">
+      <dl className="mx-review-money mt-[22px] mb-0 grid grid-cols-4 gap-x-7 gap-y-3 border-t border-border pt-[18px]
+        max-phone:mt-[var(--mx-space-items)] max-phone:grid-cols-2 max-phone:pt-[var(--mx-space-items)]">
         {rows.map(([label, value, tone]) => (
-          <div key={label}>
-            <dt>{label}</dt>
-            <dd className={tone ? "mx-" + tone : undefined}>{value}</dd>
+          <div key={label} className="grid min-w-0 gap-0.5">
+            <dt className="text-xs font-medium text-muted-foreground">{label}</dt>
+            <dd className={"m-0 text-[1.0625rem] font-semibold tabular-nums" + (tone ? " mx-" + tone : "")}>{value}</dd>
           </div>
         ))}
       </dl>
@@ -453,7 +474,7 @@ function AccountAnalysis({ data, code }: { data: DashboardLens; code: AccountCod
   return (
     <>
       {cfd && (
-        <section className="mx-panel mx-review-lead" aria-label={t("复盘结论", "Review summary")}>
+        <Card as="section" className="mx-review-lead" aria-label={t("复盘结论", "Review summary")}>
           <div className="mx-metric-grid mx-metric-lead">
             <Metric
               label={
@@ -475,7 +496,7 @@ function AccountAnalysis({ data, code }: { data: DashboardLens; code: AccountCod
             <Metric label={t("净入金", "Net deposits")} value={currency(money.accountCashFlowGbp)} />
           </div>
           {!unavailable && <Availability data={money} />}
-        </section>
+        </Card>
       )}
       {!unavailable && <ReviewHighlights review={review} cfd={cfd} onEvidence={openEvidence} />}
       <section
@@ -613,7 +634,7 @@ function ReviewHighlights({
     },
   ];
   return (
-    <section className="mx-panel mx-review-highlights-panel" aria-label={t("账户要点", "Account highlights")}>
+    <Card as="section" className="mx-review-highlights-panel" aria-label={t("账户要点", "Account highlights")}>
       <div className="mx-review-highlights">
         {cards.map((card) => {
           // The title, subject and amount stack on wider screens. On a phone the subject, amount and
@@ -633,14 +654,17 @@ function ReviewHighlights({
           );
           // The whole card opens the evidence behind it.
           return card.available ? (
-            <button
-              type="button"
-              className="mx-review-highlight"
+            <Button
+              variant={null}
+              size={null}
+              className="mx-review-highlight grid rounded-[var(--radius-heat-tile)] border-0 whitespace-normal
+                [font:inherit] leading-[inherit] text-start motion-safe:active:scale-100
+                not-first:border-l not-first:border-border max-phone:flex max-phone:justify-between max-phone:not-first:border-l-0 max-phone:not-first:border-t"
               key={card.title}
               onClick={() => onEvidence(card.target, card.target === "phases" ? summary.phase?.id : undefined)}
             >
               {body}
-            </button>
+            </Button>
           ) : (
             <div className="mx-review-highlight" key={card.title}>
               {body}
@@ -648,7 +672,7 @@ function ReviewHighlights({
           );
         })}
       </div>
-    </section>
+    </Card>
   );
 }
 

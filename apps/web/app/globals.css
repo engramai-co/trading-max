@@ -22,7 +22,7 @@
 @import "./styles/07-connections-health.css" layer(mantine);
 @import "./styles/08-detail-review-exposure.css" layer(mantine);
 @import "./styles/08a-status-readings.css" layer(mantine);
-@import "./styles/08b-review-board.css" layer(mantine);
+@import "./styles/08b-review.css" layer(mantine);
 @import "./styles/09-research.css" layer(mantine);
 @import "./styles/10-research-tasks.css" layer(mantine);
 @import "./styles/10a-valuation-maintenance.css" layer(mantine);

@@ -1,0 +1,614 @@
+/* Review-specific composition for the workspace and desktop preview. */
+.mx-review-page .mx-page-title > .mx-segments {
+  flex-wrap: wrap;
+}
+@media (pointer: coarse) {
+  /* Size each account to its label while keeping the four separate touch targets. */
+  .mx-review-page .mx-page-title > .mx-segments > button {
+    flex: 1 0 auto;
+    min-inline-size: 44px;
+  }
+}
+
+/* The lead: what buying, selling and round trips did, then where. */
+.mx-review-lead > .mx-review-verdicts .mx-number {
+  font-size: 30px;
+  letter-spacing: -0.02em;
+}
+.mx-review-accounts {
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+}
+.mx-review-accounts ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-review-accounts-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.3fr) repeat(4, minmax(0, 1fr)) 16px;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  color: inherit;
+  text-decoration: none;
+  font-variant-numeric: tabular-nums;
+}
+.mx-review-accounts li:last-child > .mx-review-accounts-row {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.mx-review-accounts-row > span {
+  text-align: right;
+  white-space: nowrap;
+}
+.mx-review-accounts-row > strong {
+  font-weight: 600;
+}
+.mx-review-accounts-head {
+  padding: 10px 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+.mx-review-accounts-head > span:first-child {
+  text-align: left;
+}
+a.mx-review-accounts-row > svg {
+  justify-self: end;
+  color: var(--muted-foreground);
+  transition: color var(--motion-fast);
+}
+@media (hover: hover) {
+  a.mx-review-accounts-row:hover > strong,
+  a.mx-review-accounts-row:hover > svg {
+    color: var(--link);
+  }
+}
+
+.mx-review-accounts {
+  container-type: inline-size;
+  container-name: review-accounts;
+}
+.mx-review-account-stat-label {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  clip-path: inset(50%);
+  overflow: hidden;
+}
+@container review-accounts (max-width: 570px) {
+  .mx-review-accounts-row {
+    grid-template-columns: minmax(0, 1fr) auto auto 14px;
+    gap: 4px 10px;
+  }
+  .mx-review-accounts-head > :nth-child(4),
+  .mx-review-accounts-head > :nth-child(5) {
+    display: none;
+  }
+  .mx-review-account-stat:nth-of-type(3),
+  .mx-review-account-stat:nth-of-type(4) {
+    grid-row: 2;
+  }
+  .mx-review-account-stat:nth-of-type(3) {
+    grid-column: 1 / 3;
+    text-align: start;
+  }
+  .mx-review-account-stat:nth-of-type(4) {
+    grid-column: 3;
+  }
+  .mx-review-account-stat:nth-of-type(n + 3) {
+    font-size: 0.75rem;
+  }
+  .mx-review-account-stat:nth-of-type(n + 3) .mx-review-account-stat-label {
+    position: static;
+    clip-path: none;
+    color: var(--muted-foreground);
+  }
+  .mx-review-accounts-row > svg {
+    grid-area: 1 / 4;
+  }
+}
+@media (pointer: coarse) {
+  a.mx-review-accounts-row {
+    min-block-size: 44px;
+  }
+}
+@media (max-width: 375px) {
+  .mx-review-accounts-row {
+    column-gap: 6px;
+  }
+}
+
+/* A decision in a short list: the security and what was done, then the effect over its change. */
+.mx-review-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 20px;
+  column-gap: 16px;
+}
+.mx-review-line > svg {
+  justify-self: end;
+  color: var(--muted-foreground);
+}
+
+.mx-review-line-meta {
+  display: block;
+  color: var(--muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  white-space: normal;
+}
+.mx-review-line-meta > span {
+  display: inline-block;
+  max-inline-size: 100%;
+  vertical-align: top;
+}
+.mx-review-line-meta > span:not(:last-child) {
+  margin-inline-end: 0.25em;
+}
+
+/* The record: one line per day and account, the date in its own column. */
+.mx-review-journal {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-journal-item {
+  display: grid;
+  grid-template-columns: 116px 10px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 13px 0;
+  border-top: 1px solid var(--border);
+}
+.mx-review-journal > .mx-journal-item:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+.mx-journal-date {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.mx-journal-mark {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--foreground);
+  justify-self: center;
+}
+.mx-journal-mark-sell {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.mx-journal-mark-none {
+  background: transparent;
+  border: 1.5px solid var(--muted-foreground);
+}
+.mx-journal-mark-mixed {
+  background: linear-gradient(90deg, var(--foreground) 50%, transparent 50%);
+  border: 1.5px solid var(--foreground);
+}
+.mx-journal-body {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+.mx-journal-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin: 0;
+}
+.mx-journal-act {
+  color: var(--foreground);
+  font-weight: 600;
+}
+a.mx-journal-act {
+  text-decoration: none;
+}
+.mx-journal-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.mx-journal-chips :is(a, button) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-block-size: 40px;
+  max-inline-size: 100%;
+  padding: 2px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-control);
+  color: var(--foreground);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: normal;
+  transition: border-color var(--motion-fast), color var(--motion-fast);
+}
+.mx-journal-chips .mx-journal-mark {
+  width: 6px;
+  height: 6px;
+}
+.mx-journal-shift {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 16px;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-journal-shift strong {
+  color: var(--foreground);
+  font-weight: 600;
+}
+.mx-journal-figure {
+  display: grid;
+  justify-items: end;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.mx-journal-figure small {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 400;
+}
+a.mx-journal-act:focus-visible,
+.mx-journal-chips :is(a, button):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 999px;
+}
+@media (hover: hover) {
+  a.mx-journal-act:hover {
+    color: var(--link);
+  }
+  .mx-journal-chips :is(a, button):hover {
+    border-color: var(--link);
+    color: var(--link);
+  }
+}
+
+@media (max-width: 767px) {
+  .mx-review-lead > .mx-review-verdicts .mx-number {
+    font-size: var(--mx-text-metric);
+  }
+  .mx-review-accounts {
+    margin-top: var(--mx-space-items);
+  }
+  .mx-journal-item {
+    grid-template-columns: 10px minmax(0, 1fr) auto;
+    gap: 6px 12px;
+    padding: var(--mx-space-items) 0;
+  }
+  .mx-journal-date {
+    grid-column: 1 / -1;
+  }
+}
+
+
+.mx-review-expand-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mx-review-expand-head > .mx-review-line {
+  flex: 1;
+  min-width: 0;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  border-inline: 0;
+  background: transparent;
+}
+.mx-review-expand-head > a {
+  color: var(--muted-foreground);
+}
+.mx-review-expandable[data-open] .mx-review-expand-head {
+  background: var(--selection);
+  border-radius: var(--radius-control);
+}
+.mx-review-expandable[data-open] .mx-review-expand-head small,
+.mx-review-expandable[data-open] .mx-review-expand-head .mx-muted {
+  color: var(--foreground);
+}
+.mx-review-expandable[data-open] .mx-review-line > svg {
+  transform: rotate(180deg);
+}
+.mx-journal-trigger,
+a.mx-journal-act {
+  min-block-size: 40px;
+}
+a.mx-journal-act {
+  display: inline-flex;
+  align-items: center;
+}
+.mx-journal-reading {
+  grid-column: 1 / -1;
+}
+.mx-habit-list {
+  padding-block: 6px;
+}
+.mx-habit-line {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+}
+.mx-habit-line > button[aria-pressed] {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 6px 4px;
+  text-align: start;
+}
+.mx-habit-line > button[aria-pressed] svg {
+  flex: none;
+}
+.mx-habit-line[data-selected] {
+  background: var(--selection);
+}
+.mx-habit-line[data-selected] .mx-muted {
+  color: var(--foreground);
+}
+/* The consented layout arrives with the review, independently of credential checks and the brief. */
+.mx-review-body {
+  --mx-habits-head-height: 66px;
+}
+.mx-review-habits-space[aria-hidden] {
+  visibility: hidden;
+}
+.mx-review-habits-space p {
+  margin: 0;
+}
+.mx-review-habits-space,
+.mx-review-body > .mx-digest {
+  min-block-size: var(--mx-habits-head-height);
+}
+.mx-review-body > .mx-digest {
+  border-color: var(--panel-edge);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+.mx-review-body .mx-digest-toggle {
+  min-block-size: 40px;
+}
+.mx-review-body .mx-digest-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-control);
+}
+@media (min-width: 768px) {
+  /* A 40px toggle fits the space already reserved before MaxAI becomes ready. */
+  .mx-review-body > .mx-digest {
+    padding-block: 12px;
+  }
+  .mx-review-habits-space[data-expanded] {
+    block-size: calc(var(--mx-habits-head-height) + 18rem);
+  }
+  .mx-review-body > .mx-digest > div:not(.mx-digest-head):not([hidden]) {
+    block-size: 18rem;
+    overflow: auto;
+  }
+}
+@media (max-width: 767px) {
+  .mx-review-body {
+    --mx-habits-head-height: max(70px, calc(2lh + 30px));
+  }
+}
+.mx-phone-habits {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  text-align: start;
+  min-height: 44px;
+}
+.mx-phone-habits-label {
+  display: grid;
+  min-width: 0;
+}
+/* Reserve the summary line while the cached brief is being read. */
+.mx-phone-habits-label .mx-digest-summary {
+  min-height: 1lh;
+}
+.mx-phone-habits > svg {
+  margin-inline-start: auto;
+}
+@media (min-width: 768px) and (pointer: coarse) {
+  .mx-review-body {
+    --mx-habits-head-height: 70px;
+  }
+}
+@media (pointer: coarse) {
+  .mx-habit-line > button[aria-pressed],
+  .mx-review-body .mx-digest-toggle,
+  .mx-journal-body :is(button, a) {
+    min-block-size: 44px;
+  }
+}
+.mx-review-expandable .mx-inline-reading,
+.mx-journal-reading .mx-inline-reading {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 12px 6px;
+}
+.mx-review-expandable .mx-reading-line + .mx-reading-line {
+  border-top: 1px solid var(--border);
+}
+
+/* Round trips and best closes: the metric strip leads into its largest rows. */
+.mx-decision-table .mx-metric-grid {
+  margin-bottom: 22px;
+}
+/* Dates and amounts stay on one line; a narrow screen scrolls the table instead. */
+.mx-decision-table td,
+.mx-decision-table tbody th {
+  white-space: nowrap;
+}
+.mx-review-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  scroll-margin-top: 20px;
+}
+.mx-review-highlights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+/* A highlight stacks its title (with the arrow when it opens evidence), its subject and its amount. */
+.mx-review-highlight {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-areas:
+    "title go"
+    "subject subject"
+    "value value";
+  align-content: start;
+  justify-items: start;
+  row-gap: 9px;
+  min-width: 0;
+}
+/* On wider screens the figure's parts take their places in the card's own grid. */
+.mx-highlight-figure {
+  display: contents;
+}
+.mx-review-highlight > .mx-tag {
+  grid-column: 1 / -1;
+}
+.mx-review-highlight + .mx-review-highlight {
+  border-left: 1px solid var(--border);
+  padding-left: 24px;
+}
+/* The whole card opens the evidence behind it; the sibling rule above keeps the dividers. */
+button.mx-review-highlight {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mx-highlight-title {
+  grid-area: title;
+  font-size: 12px;
+  line-height: 1.9;
+  color: var(--muted-foreground);
+}
+.mx-highlight-go {
+  grid-area: go;
+  align-self: center;
+  margin-left: 6px;
+  color: var(--muted-foreground);
+  transition: color var(--motion-fast);
+}
+@media (hover: hover) {
+  button.mx-review-highlight:hover .mx-highlight-subject,
+  button.mx-review-highlight:hover .mx-highlight-go {
+    color: var(--link);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mx-highlight-go {
+    transition: none;
+  }
+}
+.mx-highlight-subject {
+  grid-area: subject;
+  font-size: 13px;
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+.mx-highlight-value {
+  grid-area: value;
+  font-size: 24px;
+  letter-spacing: -0.6px;
+  line-height: 1.4;
+}
+@media (max-width: 767px) {
+  .mx-review-highlights {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-block: -9px;
+  }
+  /* Outranks the button reset above, so a row that opens evidence keeps its padding too. */
+  .mx-review-highlights > .mx-review-highlight {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    align-content: center;
+    justify-content: space-between;
+    gap: 2px 12px;
+    min-height: 44px;
+    padding-block: 9px;
+  }
+  .mx-review-highlight + .mx-review-highlight {
+    border-left: 0;
+    padding-left: 0;
+    border-top: 1px solid var(--border);
+  }
+  /* Subject, amount and arrow stay together: beside the title, or under it at the right. */
+  .mx-highlight-figure {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-left: auto;
+  }
+  .mx-highlight-subject {
+    text-align: right;
+  }
+  .mx-highlight-value {
+    font-size: 14px;
+    font-weight: 550;
+    letter-spacing: 0;
+  }
+  .mx-highlight-go {
+    margin-left: 0;
+  }
+}
+
+details.mx-review-disclosure > summary {
+  min-block-size: 40px;
+  cursor: pointer;
+}
+details.mx-review-disclosure:not(.mx-chart-data) > summary {
+  color: var(--link);
+  font-weight: 600;
+}
+details.mx-review-disclosure > summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.mx-review-empty {
+  margin: 0 0 12px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+@media (pointer: coarse) {
+  details.mx-review-disclosure > summary {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mx-review-accounts-row > svg,
+  .mx-journal-chips :is(a, button) {
+    transition: none;
+  }
+}
