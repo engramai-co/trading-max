@@ -10,7 +10,7 @@ import { auxiliaryPage } from "./desktop-routing";
 import { activityState } from "./desktop-status";
 import { documentTitle, useDocumentTitle } from "./document-title";
 import { useCopy } from "./foundation";
-import { NavigationHint } from "./navigation-group";
+import { NavigationHint, railLink } from "./navigation-group";
 import Link from "./link";
 import { useWorkspaceProfile } from "./profile";
 
@@ -29,12 +29,12 @@ export function DesktopStatus({ localWorkspace = false, demonstration = false }:
   const warning = !demonstration && (query.isError || state.tone === "degraded" || state.tone === "unavailable");
   return <nav className="mx-desktop-tools" aria-label={t("工作区管理", "Workspace management")}>
     <NavigationHint label={label}>
-      <Link href="/health" aria-label={label} className={"mx-desktop-status" + (warning ? " mx-desktop-warning" : "")}>
+      <Link href="/health" aria-label={label} className={railLink + (warning ? " mx-desktop-warning" : "")}>
         {demonstration ? <Info size={20} aria-hidden="true" /> : warning ? <CircleAlert size={20} aria-hidden="true" /> : state.tone === "setup" ? <Info size={20} aria-hidden="true" /> : state.running ? <Activity size={20} aria-hidden="true" /> : <CloudCheck size={20} aria-hidden="true" />}
       </Link>
     </NavigationHint>
-    <NavigationHint label={t("导入记录", "Import records")}><Link href="/imports" aria-label={t("导入记录", "Import records")}><Upload size={20} aria-hidden="true" /></Link></NavigationHint>
-    <NavigationHint label={t("工作区设置", "Workspace settings")}><Link href="/settings" aria-label={t("工作区设置", "Workspace settings")}><Settings size={20} aria-hidden="true" /></Link></NavigationHint>
+    <NavigationHint label={t("导入记录", "Import records")}><Link href="/imports" className={railLink} aria-label={t("导入记录", "Import records")}><Upload size={20} aria-hidden="true" /></Link></NavigationHint>
+    <NavigationHint label={t("工作区设置", "Workspace settings")}><Link href="/settings" className={railLink} aria-label={t("工作区设置", "Workspace settings")}><Settings size={20} aria-hidden="true" /></Link></NavigationHint>
   </nav>;
 }
 

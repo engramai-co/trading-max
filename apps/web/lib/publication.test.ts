@@ -8,7 +8,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(() => vi.useRealTimers());
 
 describe("publication watcher", () => {
-  function setup(read = vi.fn<(signal: AbortSignal) => Promise<Publication>>(async () => ({ runId: "one" }))) {
+  function setup(read = vi.fn<(signal: AbortSignal, explicit: boolean) => Promise<Publication>>(async () => ({ runId: "one" }))) {
     let visible = true;
     const success = vi.fn();
     const fail = vi.fn();
@@ -32,6 +32,18 @@ describe("publication watcher", () => {
     watcher.show(true);
     await vi.advanceTimersByTimeAsync(0);
     expect(watcher.read).toHaveBeenCalledTimes(3);
+    watcher.dispose();
+  });
+
+  it("carries an explicit retry through rate limiting and resumes background priority", async () => {
+    const read = vi.fn<(signal: AbortSignal, explicit: boolean) => Promise<Publication>>(async () => ({ runId: "one" }));
+    const watcher = setup(read);
+    await vi.advanceTimersByTimeAsync(1_000);
+    watcher.retry();
+    watcher.retry(false);
+    await vi.advanceTimersByTimeAsync(9_000);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(read.mock.calls.map(([, explicit]) => explicit)).toEqual([false, true, false]);
     watcher.dispose();
   });
 

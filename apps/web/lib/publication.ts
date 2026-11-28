@@ -17,7 +17,7 @@ export function publicationFromHealth(value: unknown): Publication {
 
 /** One scheduler per document. Failed probes don't release a stale in-flight result. */
 export function watchPublications(
-  read: (signal: AbortSignal) => Promise<Publication>,
+  read: (signal: AbortSignal, explicit: boolean) => Promise<Publication>,
   onResult: (value: Publication) => void,
   /** Receives the number of consecutive failed checks. */
   onFailure: (failures: number) => void,
@@ -30,6 +30,7 @@ export function watchPublications(
   let failures = 0;
   let active: AbortController | undefined;
   let resumeSoon = false;
+  let explicitRetry = false;
   const clear = () => clearTimeout(timer);
   const schedule = (at: number) => {
     clear();
@@ -45,6 +46,8 @@ export function watchPublications(
     }
     lastCheck = Date.now();
     const controller = new AbortController();
+    const explicit = explicitRetry;
+    explicitRetry = false;
     active = controller;
     let timedOut = false;
     const timeout = setTimeout(() => {
@@ -56,7 +59,7 @@ export function watchPublications(
       const aborted = new Promise<never>((_, reject) =>
         controller.signal.addEventListener("abort", () => reject(controller.signal.reason), { once: true }),
       );
-      const value = await Promise.race([aborted, read(controller.signal)]);
+      const value = await Promise.race([aborted, read(controller.signal, explicit)]);
       if (stopped || controller.signal.aborted || !visible()) return;
       failures = 0;
       retryAt = -Infinity;
@@ -87,7 +90,8 @@ export function watchPublications(
 
   return {
     wake,
-    retry() {
+    retry(explicit = true) {
+      explicitRetry ||= explicit;
       retryAt = -Infinity;
       wake();
     },

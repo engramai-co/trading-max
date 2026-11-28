@@ -46,6 +46,9 @@ describe("breakpoints single source of truth", () => {
     expect(MEDIA_QUERIES.phoneDock).toBe(
       "(max-width: 767px), (max-width: 959px) and (max-height: 500px) and (pointer: coarse)",
     );
+    expect(MEDIA_QUERIES.shortLandscapeDock).toBe(
+      "(max-width: 959px) and (max-height: 500px) and (orientation: landscape) and (pointer: coarse)",
+    );
     expect(MEDIA_QUERIES.touchLayout).toBe(
       "(max-width: 767px), (hover: none) and (pointer: coarse)",
     );
@@ -55,15 +58,16 @@ describe("breakpoints single source of truth", () => {
   });
 
   it("stays aligned with the matching shell, assistant, global-markets, and research-index CSS media queries", () => {
-    const responsiveCss = readFileSync(resolve(__dirname, "../app/styles/06-responsive.css"), "utf8");
+    const shellCss = readFileSync(resolve(__dirname, "../app/styles/23-workspace-shell.css"), "utf8");
     const assistantCss = readFileSync(resolve(__dirname, "../app/styles/19-assistant.css"), "utf8");
     const globalMarketsCss = readFileSync(resolve(__dirname, "../app/styles/13a1-global-markets.css"), "utf8");
     const researchIndexCss = readFileSync(resolve(__dirname, "../app/styles/13b-research-index.css"), "utf8");
     const researchIndexChartTsx = readFileSync(resolve(__dirname, "../workspace/research-index-chart.tsx"), "utf8");
 
-    expect(responsiveCss).toContain(`@media ${MEDIA_QUERIES.phoneDock}`);
-    expect(responsiveCss).toContain(`@media ${MEDIA_QUERIES.compactDesktop}`);
-    expect(responsiveCss).toContain(`@media ${MEDIA_QUERIES.phone}`);
+    expect(shellCss).toContain(`@media ${MEDIA_QUERIES.phoneDock}`);
+    expect(shellCss).toContain(`@media ${MEDIA_QUERIES.shortLandscapeDock}`);
+    expect(shellCss).toContain(`@media ${MEDIA_QUERIES.compactDesktop}`);
+    expect(shellCss).toContain(`@media ${MEDIA_QUERIES.phone}`);
     expect(assistantCss).toContain(`@media ${MEDIA_QUERIES.phoneDock}`);
     expect(assistantCss).toContain(`@media ${MEDIA_QUERIES.compactDesktop}`);
     expect(globalMarketsCss).toContain(`(max-width: ${BREAKPOINTS.wideMapMin - 1}px)`);

@@ -21,9 +21,9 @@ const isApplePlatform = () => /Macintosh|MacIntel|iPhone|iPad|iPod/i.test(naviga
 export function AssistantEntry() {
   const { open, toggle } = useAssistant();
   const apple = useSyncExternalStore(subscribePlatform, isApplePlatform, () => false);
-  return <button type="button" data-assistant-trigger className="mx-assistant-trigger" aria-expanded={open} aria-controls="mx-assistant-panel" aria-keyshortcuts={apple ? "Meta+J" : "Control+J"} onClick={toggle}>
+  return <Button variant="ghost" data-assistant-trigger className="mx-assistant-trigger" aria-expanded={open} aria-controls="mx-assistant-panel" aria-keyshortcuts={apple ? "Meta+J" : "Control+J"} onClick={toggle}>
     <span aria-hidden="true">✦</span> {ASSISTANT_NAME} <kbd>{apple ? "⌘J" : "Ctrl+J"}</kbd>
-  </button>;
+  </Button>;
 }
 export function AssistantPanel({ page, scopeLabel, searchOpen, overlay }: { overlay: boolean; page: string; scopeLabel: string; searchOpen: boolean }) {
   const { open, close, toggle, ready, pending, suspended, code, handoff, retryStatus, consumeCitationDismissal } = useAssistant();

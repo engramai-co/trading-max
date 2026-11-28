@@ -132,7 +132,8 @@ export function ResearchReading({ sections, parameter, children, before, initial
       }
       const present = sectionIds.map((id) => document.getElementById("research-" + id)).filter((target) => target !== null);
       if (!present.length) return;
-      const threshold = parseFloat(getComputedStyle(present[0]).scrollMarginTop) + Math.min(window.innerHeight * 0.1, 80);
+      const shellPadding = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+      const threshold = shellPadding + parseFloat(getComputedStyle(present[0]).scrollMarginTop) + Math.min(window.innerHeight * 0.1, 80);
       const reached = present.filter((target) => target.getBoundingClientRect().top <= threshold);
       const atEnd = window.scrollY > 0 && window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
       const current = (atEnd ? present.at(-1) : reached.at(-1)) ?? present[0];

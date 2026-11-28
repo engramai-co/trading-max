@@ -1,6 +1,5 @@
 /* These lenses can share a window with a pinned list and a side panel. */
 .mx-reading-container {
-  --mx-reading-top: 56px;
   container: research-reading / inline-size;
   min-width: 0;
 }
@@ -17,7 +16,7 @@
 }
 .mx-section-rail {
   position: sticky;
-  top: calc(var(--mx-reading-top) + 12px);
+  top: calc(var(--shell-sticky-height) + 12px);
   grid-column: 2;
   grid-row: 1;
   display: grid;
@@ -90,11 +89,11 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 16px;
-  scroll-margin-top: calc(var(--mx-reading-top) + 12px);
+  scroll-margin-top: 12px;
 }
 /* The chart and its diagnosis share the score rail's grid; each still lands below the bar. */
 .mx-reading-sections .mx-tech-workspace > [id] {
-  scroll-margin-top: calc(var(--mx-reading-top) + 12px);
+  scroll-margin-top: 12px;
 }
 .mx-reading-sections > section > h2 {
   font-size: 18px;
@@ -104,7 +103,7 @@
   min-width: 0;
 }
 .mx-reading-sections .mx-model-inputs {
-  scroll-margin-top: calc(var(--mx-reading-top) + 60px);
+  scroll-margin-top: 60px;
   position: static;
 }
 .mx-reading-sections .mx-forecast-table th:first-child {
@@ -299,7 +298,7 @@
   /* Narrow readings keep the index as the sticky strip, so the control is not needed. */
   .mx-section-rail {
     grid-area: 1 / 1;
-    top: var(--mx-reading-top);
+    top: var(--shell-sticky-height);
     display: block;
     background: var(--mx-canvas);
     border-bottom: 1px solid var(--mx-border);
@@ -328,16 +327,13 @@
   }
   .mx-reading-sections > [id], .mx-reading-sections #valuation-results,
   .mx-reading-sections .mx-tech-workspace > [id] {
-    scroll-margin-top: calc(var(--mx-reading-top) + 56px);
+    scroll-margin-top: 56px;
   }
   .mx-reading-sections .mx-model-workbench, .mx-reading-sections .mx-model-reference-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 767px) {
-  .mx-reading-container {
-    --mx-reading-top: calc(64px + env(safe-area-inset-top));
-  }
   .mx-wide-records {
     display: none;
   }

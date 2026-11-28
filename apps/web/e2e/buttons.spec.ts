@@ -277,7 +277,8 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
 
     await page.goto("/");
-    const market = page.locator(".mx-overview-market");
+    // The loading picker is replaced when the market data resolves.
+    const market = page.getByRole("button", { name: "Choose market, now: US sectors", exact: true });
     await expect(market).toBeVisible();
     const marketBox = (await market.boundingBox())!;
     expect(marketBox.width).toBeGreaterThanOrEqual(43.5);

@@ -89,6 +89,11 @@ test.describe("research section navigation", () => {
     const forecast = index.getByRole("link", { name: "Earnings estimates" });
     await expect(page.locator("#research-forecast h2").first()).toBeFocused();
     await expect(forecast).toHaveAttribute("aria-current", "location");
+    if (isMobile) {
+      // In 1.82.0 the phone bar and section index leave the section 120px from the top.
+      const section = page.locator("#research-forecast");
+      await expect.poll(async () => Math.round((await section.boundingBox())!.y)).toBe(120);
+    }
     const ratings = index.getByRole("link", { name: "Ratings & targets" });
     await ratings.focus();
     await ratings.press("Enter");
@@ -297,7 +302,8 @@ test.describe("research section navigation", () => {
       events.style.marginTop = "100vh";
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       const sections = Array.from(document.querySelectorAll<HTMLElement>(".mx-reading-sections [id^=research-]"));
-      const threshold = Number.parseFloat(getComputedStyle(sections[0]).scrollMarginTop) + Math.min(innerHeight / 10, 80);
+      const shellPadding = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0;
+      const threshold = shellPadding + parseFloat(getComputedStyle(sections[0]).scrollMarginTop) + Math.min(innerHeight / 10, 80);
       return sections.findLast((section) => section.getBoundingClientRect().top <= threshold)?.id ?? sections[0].id;
     });
     await expect.poll(atPageEnd).toBe(false);
