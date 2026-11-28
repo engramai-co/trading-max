@@ -149,27 +149,3 @@ html[data-mantine-color-scheme="light"] .tm-field-control {
     min-block-size: calc(2.75rem - 2px);
   }
 }
-
-.mx-assistant-composer {
-  margin: 10px;
-}
-
-.mx-assistant-composer-field[data-slot="input-group"] {
-  padding: 9px 10px;
-  border-radius: var(--radius-menu-item);
-}
-
-.mx-assistant-composer textarea[data-slot="input-group-control"] {
-  padding: 0;
-}
-
-.mx-assistant-composer-field:has(textarea:focus-visible) {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-
-@media (forced-colors: active) {
-  .mx-assistant-composer-field:has(textarea:focus-visible) {
-    outline-color: Highlight;
-  }
-}

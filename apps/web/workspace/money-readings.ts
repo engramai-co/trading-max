@@ -3,6 +3,14 @@ import type { ReadingItem } from "./chart-readout";
 import { pounds, readingTone, signedPercent, signedPounds } from "./reading-format";
 import type { TimelineReading } from "./timeline-reading";
 
+export const PERIOD_MONEY_LABELS: Readonly<Record<string, readonly [zh: string, en: string]>> = {
+  period_pnl_gbp: ["本期净盈亏", "Period net P&L"],
+  opening_value_gbp: ["期初市值", "Opening value"],
+  ending_value_gbp: ["期末市值", "Closing value"],
+  net_contributions_gbp: ["净流入", "Net contributions"],
+  max_money_drawdown_gbp: ["最大金额回撤", "Maximum money drawdown"],
+};
+
 const gbp = (value: number) => currency(value, "GBP", 2);
 const decimal = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2, useGrouping: false });
 const pence = (value: number) => Math.round(Number(decimal.format(value)) * 100);

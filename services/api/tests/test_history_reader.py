@@ -561,3 +561,55 @@ def test_retained_account_decisions_reopen_the_original_then_expire(
         monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
         assert old in store.prune_snapshots(keep_recent=1)
         assert client.get(path, params={**params, "run_id": old}).status_code == 404
+
+
+def test_retained_overview_serves_original_balances_and_rechecks_retention(
+    research_root, tmp_path, typed_fixture, monkeypatch
+):
+    store = ArtifactStore(tmp_path / "retained-balances")
+    saved = typed_fixture(research_root, store)
+    broker_path = next(research_root.rglob("broker_snapshot_metrics.json"))
+    broker = json.loads(broker_path.read_text())
+    broker["accounts"]["A"]["total_value_gbp"] = 3210.5
+    broker_path.write_text(json.dumps(broker))
+    current = typed_fixture(research_root, store)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    with TestClient(app) as client:
+        path = "/v1/dashboard/lens/overview"
+        live = client.get(path, params={"detail": "summary"}).json()
+        assert live["runId"] == current.run_id
+        assert (
+            next(account for account in live["accounts"] if account["code"] == "A")["totalValueGbp"]
+            == 3210.5
+        )
+        params = {"detail": "summary", "run_id": saved.run_id, "scope": "invest"}
+        result = client.get(path, params=params)
+        assert result.status_code == 200
+        retained = result.json()
+        assert retained["runId"] == saved.run_id
+        assert retained["citedAccount"]["scope"] == "invest"
+        assert retained["citedAccount"]["totalValueGbp"] == 1200
+        assert not ({"nav", "holdings", "technical", "valuations"} & retained.keys())
+        monkeypatch.setenv("TRADING_MAX_SNAPSHOT_KEEP_MONTHLY", "0")
+        assert saved.run_id in store.prune_snapshots(keep_recent=1)
+        assert client.get(path, params=params).status_code == 404
+
+
+def test_retained_overview_preserves_missing_amounts(research_root, tmp_path, typed_fixture):
+    store = ArtifactStore(tmp_path / "partial-balances")
+    broker_path = next(research_root.rglob("broker_snapshot_metrics.json"))
+    broker = json.loads(broker_path.read_text())
+    broker["accounts"]["A"].pop("realized_profit_loss_gbp")
+    broker["accounts"]["A"]["unrealized_profit_loss_gbp"] = 0
+    broker_path.write_text(json.dumps(broker))
+    saved = typed_fixture(research_root, store)
+    app = create_app(Settings(data_root=store.data_root, embedded_worker=True))
+    with TestClient(app) as client:
+        response = client.get(
+            "/v1/dashboard/lens/overview",
+            params={"detail": "summary", "run_id": saved.run_id, "scope": "invest"},
+        )
+        assert response.status_code == 200
+        account = response.json()["citedAccount"]
+        assert account.get("realizedPnlGbp") is None
+        assert account["unrealizedPnlGbp"] == 0

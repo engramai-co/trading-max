@@ -9,6 +9,7 @@ import {
   EvidenceLink,
   InlineReading,
   ReadingLines,
+  type LiveBoardRecord,
 } from "./cards";
 import { useAssistant, usePageRole, type RoleCard } from "./context";
 import type { Reading } from "./evidence";
@@ -96,9 +97,12 @@ export type InspectionProps = {
   context?: Record<string, string>;
   snapshotId?: string;
   onClose?: () => void;
+  onFollowCitation?: () => void;
+  showInline?: boolean;
   anchored?: boolean;
   market?: string;
   showMapLine?: boolean;
+  liveRecord?: LiveBoardRecord;
   portal?: HTMLElement | null;
   onUpdate?: () => void;
   unavailable?: boolean;
@@ -115,9 +119,12 @@ export function Inspection({
   context,
   snapshotId,
   onClose,
+  onFollowCitation,
+  showInline,
   anchored,
   market,
   showMapLine,
+  liveRecord,
   portal, onUpdate, unavailable, returnFocusRef, search, register = true,
 }: InspectionProps) {
   const t = useCopy();
@@ -207,7 +214,7 @@ export function Inspection({
           <div className="mx-map-reading">
             <p>
               <span aria-hidden="true">✦ </span>
-              {t(line.zh, line.en)} <EvidenceLink evidence={line.evidence} />
+              {t(line.zh, line.en)} <EvidenceLink evidence={line.evidence} observation={t(line.zh, line.en)} container={portal} liveRecord={liveRecord} />
             </p>
             <button type="button" onClick={() => continueInSidebar(card)}>
               {t("解读 →", "Read more →")}
@@ -249,13 +256,13 @@ export function Inspection({
     : t("可核实的记录不足。", "Too few verified observations.");
   const Container = anchored ? AnchoredReading : InlineReading;
   return (
-    <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef} closeOnCitation={role === "company-summary"}>
+    <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef} closeOnCitation onFollowCitation={onFollowCitation} showInline={showInline}>
       <StatusMessage message={readingStatus} />
       {onUpdate && <button type="button" className="mx-text-link" onClick={onUpdate}>{t("解读最新记录","Read updated records")}</button>}
       {unavailable ? <p>{readingStatus}</p> : !reading ? (
         <div className="mx-inspection-status">
           {query.isFetching && partial?.key === key && (
-            <ReadingLines card={card} lines={partial.lines} />
+            <ReadingLines card={card} lines={partial.lines} liveRecord={liveRecord} />
           )}
           <span>{readingStatus}</span>
           {query.isFetching ? (
@@ -282,7 +289,7 @@ export function Inspection({
             </button>
           )}
         </div>
-      ) : <ReadingLines card={card} />}
+      ) : <ReadingLines card={card} liveRecord={liveRecord} />}
     </Container>
   );
 }

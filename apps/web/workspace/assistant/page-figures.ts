@@ -1,6 +1,6 @@
 import type { Locale } from "@/components/locale-provider";
 import { formatDateTime, formatNumber } from "@/ui/formatters";
-import { currency, number, percent, str, type Json } from "../data";
+import { number, percent, signedCurrency, str, type Json } from "../data";
 
 export type ToolField = {
   data: Json;
@@ -73,7 +73,7 @@ export function formatPageField(
       ]
         .filter(Boolean)
         .join(" · "),
-      currency(value, "GBP", 2),
+      signedCurrency(value, "GBP", 2),
     ];
   }
   if (
@@ -142,12 +142,12 @@ export function formatPageField(
     if (field === "fx_effect_gbp")
       return [
         t("持股汇率影响", "Held-share currency effect"),
-        currency(value, "GBP", 2),
+        signedCurrency(value, "GBP", 2),
       ];
     if (field === "local_price_effect_gbp")
       return [
         t("持股价格影响", "Held-share price effect"),
-        currency(value, "GBP", 2),
+        signedCurrency(value, "GBP", 2),
       ];
   }
   if (tool === "market_sector" || tool === "global_map") {
@@ -172,7 +172,7 @@ export function formatPageField(
     if (tool === "market_sector" && field === "exposure")
       return [
         t("匹配的组合敞口", "Matched exposure"),
-        currency(value, "GBP", 2),
+        signedCurrency(value, "GBP", 2),
       ];
     if (tool === "market_sector" && field === "weight" && data.weights_as_of)
       return [

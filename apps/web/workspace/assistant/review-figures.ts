@@ -1,5 +1,6 @@
 import type { Locale } from "@/components/locale-provider";
-import { currency, number, object, percent, str, type Json } from "../data";
+import { number, object, percent, signedCurrency, str, type Json } from "../data";
+import { replyMove } from "./reply-move";
 
 type Copy = (zh: string, en: string) => string;
 const day = (value: unknown) => (/^\d{4}-\d{2}-\d{2}$/.test(str(value)) ? str(value) : "");
@@ -38,12 +39,12 @@ function habitField(key: string, field: string, group: Json, t: Copy) {
         : t("事后看，假设加仓的净亏损约", "In hindsight, net hypothetical loss of about");
     return [
       name,
-      label + " " + currency(Math.abs(value), "GBP", 2),
+      label + " " + signedCurrency(Math.abs(value), "GBP", 2),
       t("按各自平均买单", "At each security’s average purchase size"),
       subset,
     ];
   }
-  return [name, t("合计影响", "Total effect"), currency(value, "GBP", 2), subset];
+  return [name, t("合计影响", "Total effect"), signedCurrency(value, "GBP", 2), subset];
 }
 
 function decisionField(row: Json, field: string, hindsight: boolean, t: Copy): string[] | null {
@@ -68,7 +69,7 @@ function decisionField(row: Json, field: string, hindsight: boolean, t: Copy): s
       ? [
           prefix,
           labels[field],
-          currency(value, "GBP", field === "best_close_gbp" ? 4 : 2),
+          signedCurrency(value, "GBP", field === "best_close_gbp" ? 4 : 2),
           t("截至", "Through") + " " + end,
         ]
       : null;
@@ -80,18 +81,18 @@ function decisionField(row: Json, field: string, hindsight: boolean, t: Copy): s
       return day(row.prior_close_date)
         ? [
             t("此前复权收盘价（每股）", "Prior split-adjusted close per share"),
-            currency(value, "GBP", 4),
+            signedCurrency(value, "GBP", 4),
             day(row.prior_close_date),
           ]
         : null;
     case "settled_per_share_gbp":
-      return [t("每股结算金额", "Settlement per share"), currency(value, "GBP", 4)];
+      return [t("每股结算金额", "Settlement per share"), signedCurrency(value, "GBP", 4)];
     case "security_return":
-      return [t("标的回报", "Security return"), percent(value, true)];
+      return [t("以英镑计的总回报（含分红）", "GBP total return (incl. dividends)"), percent(value, true)];
     case "market_return":
       return [t("同期标普 500 回报（英镑）", "Matched S&P 500 return in GBP"), percent(value, true)];
     case "effect_gbp":
-      return [t("决策影响", "Decision effect"), currency(value, "GBP", 2)];
+      return [t("决策影响", "Decision effect"), signedCurrency(value, "GBP", 2)];
     case "observed_days":
       return count(value) ? [t("已观察交易日", "Observed trading days"), number(value, 0)] : null;
     default:
@@ -173,4 +174,35 @@ export function renderReviewField(tool: string, output: Json, pointer: string, l
   ]
     .filter(Boolean)
     .join(" · ");
+}
+
+
+/** A chat sentence about the same verified review row, with its account and date window. */
+export function reviewReturnReply(output: Json, pointer: string, locale: Locale) {
+  const match = /^\/data\/items\/(0|[1-9]\d{0,4})\/security_return$/.exec(pointer);
+  const data = object(output.data);
+  if (!match || !Array.isArray(data.items)) return undefined;
+  const row = object(data.items[Number(match[1])]);
+  const ticker = str(row.ticker);
+  const date = day(row.date);
+  const t: Copy = (zh, en) => locale === "zh" ? zh : en;
+  const scope = account(row.scope, t);
+  const signed = row.security_return;
+  if (!ticker || !date || !scope || !finite(signed)) return undefined;
+  const move = replyMove(signed, locale, 1);
+  const asOf = day(object(data.as_of)[str(row.scope)]);
+  if (!asOf || asOf < date) return undefined;
+  const direction = row.side === "buy" ? t("买入", "purchase") : t("卖出", "sale");
+  const window = row.horizon === "20_sessions"
+    ? t("随后 20 个交易日", "in the next 20 trading days")
+    : t("截至 {end}", "through {end}").replace("{end}", asOf);
+  const text = (move
+    ? t("{scope}于 {date} {direction} {ticker} 后，{window}以英镑计的总回报（含分红）{move}。",
+      "After the {date} {direction} of {ticker} in {scope}, its GBP total return (incl. dividends) was {move} {window}.").replace("{move}", move.text)
+    : t("{scope}于 {date} {direction} {ticker} 后，{window}以英镑计的总回报（含分红）为 0%。",
+      "After the {date} {direction} of {ticker} in {scope}, its GBP total return (incl. dividends) was 0% {window}."))
+    .replace("{scope}", scope).replace("{date}", date).replace("{direction}", direction).replace("{ticker}", ticker).replace("{window}", window);
+  const issues = object(output.quality).issues;
+  const limited = output.status === "partial" || (Array.isArray(issues) && issues.length > 0);
+  return {text: limited ? text + " " + t("覆盖不完整。", "Coverage was limited.") : text, move};
 }

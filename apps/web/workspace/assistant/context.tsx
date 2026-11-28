@@ -8,7 +8,6 @@ import { withTimeoutSignal } from "../abort";
 import { assistantSettingsChange, assistantSettingsKey, assistantStatusKey } from "../assistant-settings";
 import type { AssistantSettings } from "@/lib/types";
 import { desktopPage } from "../desktop-routing";
-import { isImeComposing } from "../shortcut-platform";
 import type { Reading } from "./evidence";
 
 export type TurnObservation = {
@@ -50,9 +49,10 @@ export type RoleCard = {
   origin?: { page: string; search: string; snapshotId?: string; research?: ResearchTurnContext };
 };
 const statusFreshFor = 30_000;
-type Handoff = { card: RoleCard; draft: string; sequence: number };
+type Handoff = { card: RoleCard; draft: string; sequence: number; touch: boolean };
 type AssistantState = {
-  open: boolean; ready: boolean; pending: boolean; suspended: boolean; consented: boolean; code: string | null; toggle: () => void; close: () => void;
+  open: boolean; ready: boolean; pending: boolean; suspended: boolean; consented: boolean; code: string | null; retryStatus: () => void; model: string | null; toggle: () => void; close: () => void;
+  closeForCitation: () => void; consumeCitationDismissal: () => boolean;
   pageCard: RoleCard | null; setPageCard: (card: RoleCard | null) => void;
   pageContext: PageTurnContext | null;
   setPageContext: Dispatch<SetStateAction<PageTurnContext | null>>;
@@ -116,6 +116,17 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [pageContext, setPageContext] = useState<PageTurnContext | null>(null);
   const [researchChartWindows, setResearchChartWindows] = useState<ResearchChartWindows>({});
   const [handoff, setHandoff] = useState<Handoff | null>(null);
+  const touchInput = useRef(false);
+  useEffect(() => {
+    const pointerdown = (event: PointerEvent) => { touchInput.current = event.pointerType === "touch"; };
+    const keydown = () => { touchInput.current = false; };
+    window.addEventListener("pointerdown", pointerdown, true);
+    window.addEventListener("keydown", keydown, true);
+    return () => {
+      window.removeEventListener("pointerdown", pointerdown, true);
+      window.removeEventListener("keydown", keydown, true);
+    };
+  }, []);
   // Settings writes through this shared query key. A new revision immediately
   // gates visible content and requests a fresh readiness check.
   const settings = useQuery<AssistantSettings>({
@@ -133,7 +144,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     (externalRevision === 0 && optedIn === undefined && open && !profile.isPending));
   const status = useQuery({ queryKey: [...assistantStatusKey, settings.data?.revision ?? null, externalRevision],
     queryFn: ({ signal }) => withTimeoutSignal(signal, 4000, (combined) =>
-      api<{ ready: boolean; code: string | null }>("/assistant/status", { signal: combined, priority: "low" })),
+      api<{ ready: boolean; code: string | null; model?: string | null }>("/assistant/status", { signal: combined, priority: "low" })),
     enabled: checkStatus, staleTime: statusFreshFor, retry: false, networkMode: "always",
   });
   const ready = checkStatus && !status.isError && Boolean(status.data?.ready);
@@ -182,27 +193,30 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", visible);
     };
   }, [revalidate, confirmConsent]);
-  const close = useCallback(() => setOpen(false), []);
+  const citationDismissed = useRef(false);
+  const close = useCallback(() => { citationDismissed.current = false; setOpen(false); }, []);
+  const closeForCitation = useCallback(() => { citationDismissed.current = true; setOpen(false); }, []);
+  const consumeCitationDismissal = useCallback(() => {
+    const dismissed = citationDismissed.current;
+    citationDismissed.current = false;
+    return dismissed;
+  }, []);
   const toggle = useCallback(() => { if (open) close(); else { revalidate(); setOpen(true); } }, [open, close, revalidate]);
-  useEffect(() => {
-    const keys = (event: KeyboardEvent) => {
-      if (!isImeComposing(event) && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "j") {
-        event.preventDefault();
-        if (!event.repeat) toggle();
-      }
-    };
-    window.addEventListener("keydown", keys);
-    return () => window.removeEventListener("keydown", keys);
-  }, [toggle]);
+  function retryStatus() {
+    if (waitingForConsent) void confirmConsent();
+    else if (checkStatus) void status.refetch();
+    else void profile.refetch();
+  }
   function continueInSidebar(card: RoleCard, draft = "") {
     if (!ready) return;
     revalidate();
     const page = (desktopPage(location.pathname) ?? location.pathname.slice(1)) || "overview";
     const origin = card.origin ?? {page, search: location.search, snapshotId: card.reading?.snapshotId ?? undefined};
-    setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1 }));
+    const touch = touchInput.current;
+    setHandoff(previous => ({ card: {...card, origin}, draft, sequence: (previous?.sequence ?? 0) + 1, touch }));
     setOpen(true);
   }
-  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && !consentDenied, pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, pageCard, setPageCard, pageContext, setPageContext, researchChartWindows, setResearchChartWindows, continueInSidebar, handoff }}>
+  return <Context.Provider value={{ open, ready, suspended, consented: !waitingForConsent && optedIn === true && !consentDenied, retryStatus, pending: (waitingForConsent && !profile.isError) || profile.isPending || (checkStatus && (status.isPending || status.isFetching)), model: ready ? status.data?.model ?? null : null, code: optedIn === false ? "assistant_disabled" : status.data?.code ?? null, toggle, close, closeForCitation, consumeCitationDismissal, pageCard, setPageCard, pageContext, setPageContext, researchChartWindows, setResearchChartWindows, continueInSidebar, handoff }}>
     {children}
   </Context.Provider>;
 }

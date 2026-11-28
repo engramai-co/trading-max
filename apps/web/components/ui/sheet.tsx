@@ -82,6 +82,8 @@ function SheetContent({
   )
 }
 
+const SheetSurface = SheetPrimitive.Popup
+
 function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
@@ -131,8 +133,11 @@ function SheetDescription({
 export {
   Sheet,
   SheetTrigger,
+  SheetPortal,
+  SheetOverlay,
   SheetClose,
   SheetContent,
+  SheetSurface,
   SheetHeader,
   SheetFooter,
   SheetTitle,

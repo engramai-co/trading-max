@@ -1,12 +1,18 @@
 import type { UIMessage } from "ai";
 import type { Locale } from "@/components/locale-provider";
 import { object, objects, str } from "../data";
-import { completedEvidence, evidenceArguments, type Evidence } from "./evidence";
+import { completedEvidence, evidenceArguments, readableDates, sourceLabel, verifiedCitationLine, type Evidence } from "./evidence";
 import { researchFigure } from "./research-figures";
+import type { ReplyMove } from "./reply-move";
 import { calendarObservation, inferenceText, renderToolField } from "./figures";
-import { reviewFieldLocation } from "./review-figures";
+import { reviewFieldLocation, reviewReturnReply } from "./review-figures";
 
-type VerifiedLine = { text: string; evidence: Evidence | null };
+type ReplySubject = { subject: string; day?: string };
+type VerifiedLine = { text: string; evidence: Evidence | null; move?: ReplyMove; datedSubject?: ReplySubject };
+
+export function replyText(line: VerifiedLine, locale: Locale, timeZone: string, t: (zh: string, en: string) => string) {
+  return readableDates(line.text, locale, timeZone) + " " + sourceLabel(line.evidence, t);
+}
 
 function replyLines(message: UIMessage) {
   return message.parts.filter(p => p.type === "text").map(p => p.text).join("")
@@ -20,7 +26,7 @@ export function verifiedLines(message: UIMessage, locale: Locale = "en", timeZon
   const references = completedEvidence(message);
   const result: VerifiedLine[] = [];
   for (const line of lines) {
-    const verified = verifyLine(line, references, locale, timeZone);
+    const verified = verifyLine(line, references, locale, timeZone, result.at(-1)?.datedSubject);
     if (!verified) return [];
     result.push(verified);
   }
@@ -41,6 +47,7 @@ function verifyLine(
   references: ReturnType<typeof completedEvidence>,
   locale: Locale,
   timeZone: string,
+  previous?: ReplySubject,
 ): VerifiedLine | null {
   const match = /^\{\{([^{}\s]{1,160})\}\}\s+\[(inference|ev_[a-zA-Z0-9_-]+)\]$/.exec(line);
   if (!match) return null;
@@ -52,25 +59,32 @@ function verifyLine(
   const source = references.get(id);
   if (!source) return null;
   if (["upcoming_events","news_and_events"].includes(source.ref.tool) && pointer.startsWith("/data/items/")) {
-    return calendarObservation(source.ref, source.output, pointer, locale, timeZone);
+    const observation = calendarObservation(source.ref, source.output, pointer, locale, timeZone);
+    return observation && verifiedCitationLine(observation, source.output, pointer);
   }
   const research = researchFigure(source.ref, source.output, pointer, locale, timeZone);
-  const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone, research);
+  const sentence = research?.reply;
+  const datedSubject = sentence?.subject ? {day: sentence.day, subject: sentence.subject} : undefined;
+  const sameSubjectAndDay = datedSubject?.day && datedSubject.day === previous?.day && datedSubject.subject === previous.subject;
+  const reply = (sameSubjectAndDay ? sentence?.sameDayText : undefined) ?? sentence?.text;
+  // Keep the same verification, coverage suffix and source even when chat uses a sentence.
+  const text = renderToolField(source.ref.tool, source.output, pointer, locale, timeZone,
+    research && reply ? {...research, text: reply} : research);
   if (!text) return null;
   let evidence = research?.evidence ?? source.ref;
   const review = reviewFieldLocation(evidence.tool, source.output, pointer);
   if (review) {
     evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, ...review, snapshotId:str(source.output.snapshot_id) || evidence.arguments?.snapshotId}, source.output)};
-  } else if (evidence.tool === "period_performance" && pointer === "/data/period_pnl_gbp") {
+  } else if (evidence.tool === "period_performance") {
     const data = object(source.output.data);
-    evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, metric:"period_pnl_gbp",
-      start:str(data.window_start), end:str(data.window_end), snapshotId:str(source.output.snapshot_id)}, source.output)};
+    evidence = {...evidence, arguments:{...evidence.arguments, range:str(data.range) || str(evidence.arguments?.range),
+      start:str(data.window_start), end:str(data.window_end)}};
   } else if (evidence.tool === "compare_benchmarks") {
     const data = object(source.output.data);
     evidence = {...evidence, arguments:evidenceArguments({...evidence.arguments, start:str(data.start), end:str(data.end), snapshotId:str(source.output.snapshot_id) || evidence.arguments?.snapshotId}, source.output)};
   }
   if (["list_holdings","position_detail","lookthrough_exposure","dated_exposure","selected_exposure","selected_daily","selected_fx","sector_headline","selected_money","daily_returns","holding_fx_split","exposure_benchmark","market_sector","global_map","update_issue"].includes(evidence.tool)) {
-    evidence = {...evidence,arguments:{...evidence.arguments,metric:pointer,snapshotId:str(source.output.snapshot_id)}};
+    evidence = {...evidence,arguments:{...evidence.arguments,metric:pointer}};
   }
   if (evidence.tool === "exposure_benchmark") {
     const data = object(source.output.data);
@@ -85,5 +99,12 @@ function verifyLine(
     const item = match && objects(object(source.output.data).items)[Number(match[1])];
     if (item) evidence={...evidence,source:"publisher",publisher:str(item.publisher),arguments:{...evidence.arguments,url:str(item.source_url)}};
   }
-  return { text, evidence };
+  const reviewReply = evidence.tool === "decision_timing_and_habits" ? reviewReturnReply(source.output, pointer, locale) : undefined;
+  const move = sentence?.move ?? reviewReply?.move;
+  const previewText = sentence ? renderToolField(source.ref.tool, source.output, pointer, locale, timeZone, research) : null;
+  return {
+    ...verifiedCitationLine({text: reviewReply?.text ?? text, evidence}, source.output, pointer, previewText ?? reviewReply?.text ?? text),
+    ...(move && {move}),
+    ...(datedSubject && {datedSubject}),
+  };
 }

@@ -35,7 +35,7 @@ export type TurnStore = {
 };
 
 export type TurnAnnouncement =
-  | { kind: "completed" }
+  | { kind: "completed"; subjects?: readonly string[] }
   | { kind: "stopped" }
   | { kind: "failed"; status: "failed" | "disconnected" | "rate_limited"; errorCode?: string };
 
@@ -189,11 +189,14 @@ export function settleTurnAttempt(
   } else if (isError || finishReason === "error" || finishReason === "length" || finishReason === "content-filter") {
     const status = errorCode === "provider_rate_limited" || errorCode === "assistant_busy" ? "rate_limited" : "failed";
     announcement = { kind: "failed", status, errorCode };
-  } else if (!assistantMessage || !verifiedLines(assistantMessage, locale, timeZone).length) {
-    return finishTurn(store, attemptId, { kind: "failed", status: "failed", errorCode: "assistant_reply_unverified" },
-      null, snapshotId);
   } else {
-    announcement = { kind: "completed" };
+    const lines = assistantMessage ? verifiedLines(assistantMessage, locale, timeZone) : [];
+    if (!lines.length) {
+      return finishTurn(store, attemptId, { kind: "failed", status: "failed", errorCode: "assistant_reply_unverified" },
+        null, snapshotId);
+    }
+    const subjects = [...new Set(lines.flatMap(line => line.datedSubject ? [line.datedSubject.subject] : []))];
+    announcement = { kind: "completed", ...(subjects.length > 0 && {subjects}) };
   }
   return finishTurn(store, attemptId, announcement, assistantMessage, snapshotId);
 }
@@ -250,6 +253,9 @@ export function turnStatusText(
   if (errorCode === "assistant_snapshot_missing") {
     return t("原始数据已不可用。", "The original data is no longer available.");
   }
+  if (errorCode === "assistant_approval_expired") {
+    return t("工具确认已过期。", "Tool approval expired.");
+  }
   if (errorCode === "assistant_reply_unverified") {
     return t("无法核实这次回复。", "This reply could not be verified.");
   }
@@ -259,5 +265,7 @@ export function turnStatusText(
 export function turnAnnouncementText(event: TurnAnnouncement, t: ReturnType<typeof useCopy>): string {
   if (event.kind === "stopped") return t("已停止生成。", "Generation stopped.");
   if (event.kind === "failed") return turnStatusText(event.status, event.errorCode, false, t);
+  if (event.subjects?.length) return t("{subjects} 的回复已就绪。", "Response ready for {subjects}.")
+    .replace("{subjects}", event.subjects.join(t("、", ", ")));
   return t("回复已就绪。", "Response ready.");
 }

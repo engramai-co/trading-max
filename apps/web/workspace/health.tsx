@@ -62,7 +62,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const [scope, setScope] = useState<RefreshJob["scope"]>(initialScope);
   const assistantReady = useOptionalAssistant()?.ready ?? false;
   const params=useSearchParams();
-  const [selected, setSelected] = useState<string | null>(()=>params?.get("job") ?? null);
+  const linkedJob = params?.get("job") ?? null;
+  const [selected, setSelected] = useState<string | null>(linkedJob);
+  const [lastLinkedJob, setLastLinkedJob] = useState(linkedJob);
+  if (lastLinkedJob !== linkedJob) {
+    setLastLinkedJob(linkedJob);
+    setSelected(linkedJob);
+  }
   const [diagnosis, setDiagnosis] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
   const [everyRun, setEveryRun] = useState(false);
@@ -577,6 +583,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       >
         <StatusMessage message={drawerStatus ?? undefined} />
         {query.isError && <Notice tone="warn">{liveMessage}</Notice>}
+        {!query.isPending && !job && linkedJob && <p data-cited-missing="">{t("引用的更新任务暂不可用", "Cited update task unavailable")}</p>}
         {job && (
           <div className="mx-health-drawer-body flex flex-col gap-mx-lg">
             <div className="flex flex-wrap items-center justify-between gap-mx-md">

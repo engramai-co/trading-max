@@ -8,6 +8,30 @@ import { EstimateTag, HistoryBasis, estimateCoverage } from "./history-coverage"
 import { Metric, Tag, useCopy } from "./foundation";
 import { moneyEquation, signedPnl } from "./money-readings";
 
+export function citedMoneyAmount(money: Money, field: string | null) {
+  switch (field) {
+    case "/data/opening_value_gbp": return money.opening;
+    case "/data/ending_value_gbp": return money.ending;
+    case "/data/net_contributions_gbp": return money.contributions;
+    case "/data/max_money_drawdown_gbp": return money.maxDrawdown;
+    case "/data/period_pnl_gbp": return money.pnl;
+    default: return null;
+  }
+}
+
+export function CitedMoneyAmount({ money, field }: { money: Money; field: string }) {
+  const t = useCopy();
+  const value = citedMoneyAmount(money, field);
+  if (value == null || field === "/data/period_pnl_gbp") return null;
+  const labels: Record<string, string> = {
+    "/data/opening_value_gbp": t("期初价值", "Opening value"),
+    "/data/ending_value_gbp": t("期末价值", "Ending value"),
+    "/data/net_contributions_gbp": t("净入金", "Net deposits"),
+    "/data/max_money_drawdown_gbp": t("最大盈亏回撤", "Max P&L drawdown"),
+  };
+  return <div data-cited-money=""><Metric label={labels[field]} value={signedPnl(value).amount} /></div>;
+}
+
 export function MoneySummary({ money, points }: { money: Money; points: NavPoint[] }) {
   const t = useCopy();
   const pnl = signedPnl(money.pnl);

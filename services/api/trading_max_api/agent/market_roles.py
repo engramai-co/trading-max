@@ -1,5 +1,6 @@
 """Select observations from the same sector board or regional map that was inspected."""
 
+import json
 from datetime import datetime
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -142,6 +143,20 @@ def sector_headline(ctx: tools.Context, args: SectorContext):
 def sector_facts(read: RoleTools, context: SectorContext):
     result = read.read(market_sector, {})
     data = result.get("data") or {}
+    if not data:
+        return []
+    day = data["day"]
+    if context.market == "global":
+        figures = [
+            data["weight"],
+            data["weights_as_of"],
+            data["weight_stale"],
+            data["contribution"],
+        ]
+    else:
+        breadth = data["breadth"]
+        figures = [breadth["up"], breadth["flat"], breadth["down"], data["exposure"]]
+    board_record = json.dumps([day, data["name"], data["move"], *figures])
     facts = []
 
     def add(section, zh, en, source="market"):
@@ -154,13 +169,11 @@ def sector_facts(read: RoleTools, context: SectorContext):
                 source,
                 "market_sector",
                 metric=section,
+                boardRecord=board_record,
                 **context.model_dump(exclude_none=True),
             )
         )
 
-    if not data:
-        return []
-    day = data["day"]
     if (move := data.get("move")) is not None:
         add(
             "move",
@@ -278,7 +291,7 @@ def map_facts(read: RoleTools, context: RegionalMapContext):
             **context.model_dump(exclude_none=True),
         )
         for m, variant in variants.values():
-            day = data["day"]
+            day = variant["data"]["day"]
             if m["not_open"]:
                 zh, en = (
                     f"{day} 参考时段内本地市场尚未开盘。",
@@ -305,7 +318,13 @@ def map_facts(read: RoleTools, context: RegionalMapContext):
                 evidence=item.evidence.model_copy(
                     update={
                         "evidence_id": variant["evidence_id"],
-                        "arguments": {**item.evidence.arguments, "market": m["market"]},
+                        "arguments": {
+                            **item.evidence.arguments,
+                            "market": m["market"],
+                            "boardRecord": json.dumps(
+                                [day, m["move"], m["not_open"], m["contribution"]]
+                            ),
+                        },
                     }
                 ),
             )
@@ -317,8 +336,14 @@ def map_facts(read: RoleTools, context: RegionalMapContext):
     return facts
 
 
+class MarketRole(PageRole):
+    @property
+    def cache_id(self) -> str:
+        return "board-record:" + super().cache_id
+
+
 MARKET_ROLES = (
-    PageRole(
+    MarketRole(
         "market-sector",
         "sectors",
         frozenset({"market_sector", "sector_headline"}),
@@ -328,7 +353,7 @@ MARKET_ROLES = (
         data_version=lambda reader, _: "exchange-session-v2:" + reader.deps.snapshot_id,
         tool_bindings=bind_selection("market_sector", "sector_headline"),
     ),
-    PageRole(
+    MarketRole(
         "market-map",
         "sectors",
         frozenset({"global_map"}),

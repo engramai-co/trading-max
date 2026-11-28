@@ -110,7 +110,7 @@ export function ResearchWorkspace() {
   if (["read_research_lens", "upcoming_events", "news_and_events"].includes(params.get("evidence") ?? "") && citedEventKind(params.get("event"))) {
     return <CitedResearchEvent />;
   }
-  if ((params.has("snapshotId") || params.has("unavailable")) && params.has("evidenceId")) return <CitedResearch/>;
+  if (params.get("evidence") === "company_profile" || ((params.has("snapshotId") || params.has("unavailable")) && params.has("evidenceId"))) return <CitedResearch/>;
   return params.get("type") === "index" ? <IndexResearchWorkspace /> : <SecurityResearchWorkspace />;
 }
 

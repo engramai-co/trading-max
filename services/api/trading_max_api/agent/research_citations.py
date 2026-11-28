@@ -21,6 +21,7 @@ class CitationQuery(BaseModel):
         "research_position",
         "research_earnings",
         "research_headline",
+        "company_profile",
         "news_and_events",
         "upcoming_events",
     ]
@@ -63,7 +64,11 @@ def resolve_citation(request: Request, ticker: Ticker, query: CitationQuery) -> 
                     request.app.state.research.retained_price_series, query.series
                 ),
             )
-        if query.tool in {"news_and_events", "upcoming_events"}:
+        if query.tool == "company_profile":
+            reader = RoleTools.pinned(deps, frozenset({"company_profile"}))
+            output = reader.read(research_tools.company_profile, {"ticker": ticker})
+            lines = []
+        elif query.tool in {"news_and_events", "upcoming_events"}:
             args = EventArgs(
                 scope=query.scope,
                 start=query.start,

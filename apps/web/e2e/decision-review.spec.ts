@@ -1,3 +1,4 @@
+import { captureCitation, previewCitation } from "./citation-preview";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
@@ -1473,6 +1474,7 @@ test.describe("review assistant", () => {
               evidenceId: "ev_synthetic",
               arguments: {
                 ...(digest ? { habit: section } : {}),
+                snapshotId: body.snapshotId,
                 scope: digest ? "broker_total" : "invest",
                 horizon: digest ? "20_sessions" : "to_date",
                 ticker: digest ? "" : "SYNB",
@@ -1519,9 +1521,17 @@ test.describe("review assistant", () => {
         await page.goto("/review");
         await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
         const openHabits = () =>
-          (mobile ? page.locator(".mx-phone-habits") : page.locator(".mx-digest-head > button")).click();
+          (mobile ? page.locator(".mx-phone-habits") : page.locator(".mx-digest-toggle")).click();
         await openHabits();
-        const chooseHabit = page.locator(".mx-habit-line > button").first();
+        const sourceName = zh ? "复盘" : "Review";
+        const expectedHabits = zh ? ["财报前一周买入", "持仓大跌当天没加仓", "同一天买入多只"]
+          : ["Buys before earnings", "Large falls without a trade", "Same-day basket buys"];
+        const habitSources = page.locator(".mx-habit-line .mx-reading-source");
+        await expect(habitSources).toHaveCount(expectedHabits.length);
+        for (const [index, habit] of expectedHabits.entries()) {
+          await expect(habitSources.nth(index)).toHaveAccessibleName(new RegExp("^" + sourceName + ".*" + habit), {timeout:3000});
+        }
+        const chooseHabit = page.locator(".mx-habit-line > button[aria-pressed]").first();
         await expect(chooseHabit).toContainText("£60");
         const shots = process.env.REVIEW_SCREENSHOTS;
         async function capture(name: string) {
@@ -1532,7 +1542,7 @@ test.describe("review assistant", () => {
         }
         await capture("habits");
         if (mobile) {
-          await page.locator(".mx-habit-line .mx-reading-source").first().click();
+          await (await previewCitation(page, page.locator(".mx-habit-line .mx-reading-source").first())).click();
           await expect(page.getByRole("dialog")).toHaveCount(0);
           await expect(page.locator(".mx-review-filter")).toBeFocused();
           await expect(page.locator(".mx-review-filter")).toBeInViewport({ ratio: 1 });
@@ -1545,18 +1555,23 @@ test.describe("review assistant", () => {
         await page.getByRole("button", { name: zh ? "至今" : "To date", exact: true }).click();
         if (mobile) await openHabits();
         await expect(chooseHabit).toContainText("£70");
-        if (mobile) await page.getByRole("button", { name: zh ? "关闭解读" : "Close reading" }).click();
+        if (mobile) {
+          await page.getByRole("button", { name: zh ? "关闭解读" : "Close reading" }).click();
+          await expect(page.getByRole("dialog")).toHaveCount(0);
+        }
         const row = page.locator(".mx-review-expand-head > button").first();
-        await row.focus();
-        await row.press("Enter");
+        if (mobile) await row.tap();
+        else await row.press("Enter");
         const reading = mobile ? page.getByRole("dialog") : page.locator(".mx-inline-reading");
         await expect(reading.locator(".mx-reading-line")).toHaveCount(2);
-        await expect(reading.locator(".mx-reading-source").last()).toHaveAttribute(
+        await expect(await previewCitation(page, reading.locator(".mx-reading-source").last())).toHaveAttribute(
           "href",
           /decision=2026-09-02.buy.SYNB/,
         );
+        await page.keyboard.press("Escape");
         if (!mobile)
           await reading.evaluate((el) => el.scrollIntoView({ block: "center", behavior: "instant" }));
+        await captureCitation(page, reading.locator("button.mx-reading-source").last(), ["review",info.project.name,locale,theme].join("-"));
         await capture("decision");
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
         expect(
@@ -1734,7 +1749,7 @@ for (const expanded of [false, true]) {
     expect(Math.abs((await timeline.boundingBox())!.y - top)).toBeLessThan(2);
     publish();
     const displayedLine = expanded && page.viewportSize()!.width >= 768
-      ? page.locator(".mx-habit-line > button") : page.locator(".mx-digest-summary");
+      ? page.locator(".mx-habit-line > button[aria-pressed]") : page.locator(".mx-digest-summary");
     await expect(displayedLine).toHaveText("同一天买入多只");
     expect(Math.abs((await timeline.boundingBox())!.y - top)).toBeLessThan(2);
   });
@@ -1802,15 +1817,17 @@ test("a phone citation focuses a newly loaded fall timeline", async ({ page }, i
   await serve(page, () => ({ benchmark: 0.02, events: false, observations: true }));
   await page.route("**/api/backend/assistant/status", route => route.fulfill({ json: { ready: true } }));
   await page.route("**/api/backend/assistant/roles/habits/reading", route => {
+    const {snapshotId} = route.request().postDataJSON();
     const line = {section: "untraded_fall", zh: "持仓大跌当天没加仓", en: "Large falls without a trade",
-      evidence: {tool: "review_patterns", source: "review", evidenceId: "ev_falls", arguments: {habitSection: "untraded_fall"}}};
+      evidence: {tool: "review_patterns", source: "review", evidenceId: "ev_falls",
+        arguments: {habitSection: "untraded_fall", snapshotId}}};
     return route.fulfill({contentType: "application/x-ndjson", body: JSON.stringify({
       type: "result", reading: {role: "habits", asOf, lines: [line]},
     }) + "\n"});
   });
   await page.goto("/review");
   await page.locator(".mx-phone-habits").click();
-  await page.getByRole("dialog").getByRole("link", {name: "复盘"}).click();
+  await (await previewCitation(page, page.getByRole("dialog").getByRole("button", {name:/^复盘 /}))).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator(".mx-review-filter")).toBeFocused();
   await expect(page.locator(".mx-review-filter")).toBeInViewport({ratio: 1});
@@ -1872,8 +1889,9 @@ test("earnings and rating source words open their own research sections", async 
   for (const [word, section, heading] of [["财报", "events", "财报事件"], ["分析师", "actions", "机构行动"]]) {
     await page.goto("/review?account=A");
     await panel(page, "帮你最多").getByRole("button", {name:/SYNB/}).click();
-    await expect(page.getByRole("link", {name:"Synthetic Wire"})).toHaveAttribute("href", "https://example.org/synthetic");
-    await page.getByRole("link", {name:word, exact:true}).click();
+    await expect(await previewCitation(page, page.getByRole("button", {name:/^Synthetic Wire /}))).toHaveAttribute("href", "https://example.org/synthetic");
+    await page.keyboard.press("Escape");
+    await (await previewCitation(page, page.getByRole("button", {name:new RegExp("^" + word + " ")}))).click();
     await expect(page).toHaveURL(new RegExp("ticker=SYNT.*analystView=" + section + ".*#research-" + section));
     await expect(page).toHaveURL(/snapshotId=older-publication/);
     await expect(page).toHaveURL(/calendarEventId=ev_000000000000000/);

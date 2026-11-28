@@ -1,3 +1,7 @@
+import { createContext } from "react";
+
+export const CitationReturnFocus = createContext<(source: HTMLElement | null, touch: boolean) => HTMLElement | null>(source => source);
+
 export function canFocusAssistantControl(control: HTMLElement | null | undefined): control is HTMLElement {
   return Boolean(control?.isConnected && !control.matches(":disabled") && !control.closest("[hidden], [inert], [aria-hidden=true]") &&
     control.getClientRects().length && getComputedStyle(control).visibility === "visible");

@@ -46,6 +46,7 @@ export interface CopyButtonProps
   /** Optional id of the element showing the text; enables native command="--copy" / commandfor when supported. */
   targetId?: string;
   label: string;
+  iconOnly?: boolean;
   copiedLabel: string;
   failedLabel: string;
   announcedCopied?: string;
@@ -57,6 +58,7 @@ export function CopyButton({
   value,
   targetId,
   label,
+  iconOnly = false,
   copiedLabel,
   failedLabel,
   announcedCopied,
@@ -162,7 +164,7 @@ export function CopyButton({
             aria-hidden={state !== "idle" ? true : undefined}
           >
             <Copy size={16} strokeWidth={1.75} aria-hidden="true" />
-            {label}
+            {iconOnly ? <span className="sr-only">{label}</span> : label}
           </span>
           <span
             className={cn(
@@ -172,7 +174,7 @@ export function CopyButton({
             aria-hidden={state !== "copied" ? true : undefined}
           >
             <Check size={16} strokeWidth={1.75} aria-hidden="true" />
-            {copiedLabel}
+            {iconOnly ? <span className="sr-only">{copiedLabel}</span> : copiedLabel}
           </span>
           <span
             className={cn(
@@ -182,7 +184,7 @@ export function CopyButton({
             aria-hidden={state !== "failed" ? true : undefined}
           >
             <AlertCircle size={16} strokeWidth={1.75} aria-hidden="true" />
-            {failedLabel}
+            {iconOnly ? <span className="sr-only">{failedLabel}</span> : failedLabel}
           </span>
         </span>
       </Button>

@@ -3,6 +3,9 @@
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip"
 import { cn } from "@/lib/utils"
 
+export const overlayHoverDelay = 250
+export const overlayCloseDelay = 100
+
 function TooltipProvider({
   delay = 0,
   ...props

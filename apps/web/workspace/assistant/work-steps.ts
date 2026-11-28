@@ -1,6 +1,8 @@
 import type { UIMessage } from "ai";
 import type { Locale } from "@/components/locale-provider";
 import { object, str } from "../data";
+import { readableDates } from "./evidence";
+import { formatTurnContext } from "./turn-context";
 
 type Words = readonly [zh: string, en: string];
 
@@ -9,6 +11,8 @@ export type WorkStepStatus = "running" | "complete" | "unavailable";
 export type WorkStep = {
   id: string;
   label: string;
+  source?: string;
+  detail?: string;
   status: WorkStepStatus;
 };
 
@@ -48,11 +52,23 @@ const TOOL_STEP_LABELS: Record<string, Words> = {
   update_issue: ["检查更新记录", "Check update record"],
 };
 
+const STEP_SOURCES: Record<string, Words> = {
+  research_position: ["行情", "Prices"],
+  price_key_moments: ["技术", "Technicals"],
+  research_headline: ["新闻", "News"],
+  news_and_events: ["新闻", "News"],
+  decision_timing_and_habits: ["复盘", "Review"],
+  recent_decisions: ["复盘", "Review"],
+  research_earnings: ["财报", "Financials"],
+};
+
 const STATUS_LABELS: Record<WorkStepStatus, Words> = {
   running: ["进行中", "Running"],
   complete: ["已完成", "Complete"],
   unavailable: ["暂不可用", "Unavailable"],
 };
+
+export const WORK_TOOL_NAMES = Object.keys(TOOL_STEP_LABELS);
 
 export function toolStepLabel(toolName: string, locale: Locale): string {
   const words = Object.hasOwn(TOOL_STEP_LABELS, toolName)
@@ -66,6 +82,27 @@ export function stepStatusLabel(status: WorkStepStatus, locale: Locale): string 
   return locale === "en" ? words[1] : words[0];
 }
 
+/** Only the recorded work item contributes its displayed scope. */
+export function toolStepDetail(args: unknown, result: unknown, locale: Locale, timeZone: string) {
+  const output = object(result);
+  const data = object(output.data);
+  const target = {...object(object(args).args ?? args), ...object(output.bound_arguments)};
+  const ticker = str(target.ticker) || str(data.ticker);
+  const range = str(target.range) || str(data.range);
+  const date = (value: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(str(value)) ? str(value) : "";
+  const day = date(target.date);
+  const start = date(target.start) || date(data.window_start) || date(data.start);
+  const end = date(target.end) || date(data.window_end) || date(data.end);
+  const window = day || (start && end && start !== end ? start + " – " + end : end || start);
+  const scope = formatTurnContext({scope: str(output.scope) || str(target.scope)}, locale, timeZone);
+  return [
+    /^[\p{L}\p{N}^=._-]{1,32}$/u.test(ticker) && ticker,
+    /^(?:[1-9]\d?[DWMY]|YTD|ALL|MAX)$/.test(range) && range,
+    window && readableDates(window, locale, timeZone),
+    scope,
+  ].filter(Boolean).join(" · ");
+}
+
 /**
  * Map stream or persisted tool parts into user-facing work steps.
  * Raw tool names, inputs, payloads, and provider internals never enter the result.
@@ -74,6 +111,7 @@ export function extractWorkSteps(
   message: UIMessage | null | undefined,
   streaming: boolean,
   locale: Locale,
+  timeZone = "Europe/London",
 ): WorkStep[] {
   if (!message) return [];
   const steps: WorkStep[] = [];
@@ -106,7 +144,11 @@ export function extractWorkSteps(
       status = streaming ? "running" : "unavailable";
     }
 
+    const source = Object.hasOwn(STEP_SOURCES, toolName) ? STEP_SOURCES[toolName][locale === "en" ? 1 : 0] : undefined;
+    const detail = toolStepDetail("input" in part ? part.input : undefined, "output" in part ? part.output : undefined, locale, timeZone);
     const step: WorkStep = {
+      ...(source && { source }),
+      ...(detail && { detail }),
       id: callId,
       label: toolStepLabel(toolName, locale),
       status,

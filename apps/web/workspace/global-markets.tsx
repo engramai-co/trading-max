@@ -1,7 +1,7 @@
 "use client";
 
 import { useBreakpoint } from "@/lib/hooks";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { cn } from "@/lib/utils";
@@ -107,11 +107,6 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const pathname = usePathname();
-  const params = useSearchParams();
-  const cited = params?.get("evidence") === "global_map";
-  const region = cited ? params?.get("region") : null;
-  const observed = cited ? params?.get("observed") : null;
-  const citedId = cited ? params?.get("snapshotId") ?? undefined : undefined;
   const wide = useBreakpoint("wideMap");
   const [hovered, setHovered] = useState<Market | null>(null);
   const [focused, setFocused] = useState<Market | null>(null);
@@ -119,6 +114,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const [placement, setPlacement] = useState<{ x: number; y: number } | null>(null);
   const mapHost = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
+  const inspectionHeading = useRef<HTMLDivElement>(null);
   const detailLink = useRef<HTMLAnchorElement>(null);
   const trigger = useRef<MapAnchor | null>(null);
   const pinned = useRef(false);
@@ -194,13 +190,6 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       },
     });
   }, [cancelDismiss]);
-  const matchesCitation = !!observed && !!answer?.asOf && Date.parse(observed) === Date.parse(answer.asOf)
-    && !answer.pricesStale && !query.isError;
-  useEffect(() => {
-    if (!matchesCitation || !region || !Object.hasOwn(MAP,region)) return;
-    const node = mapHost.current?.querySelector<MapAnchor>(`.mx-global-region[data-market="${region}"]`);
-    if (node) inspect(region as MapMarket,node,true);
-  }, [matchesCitation,region,inspect]);
   useEscapeLayer(inspection != null, mapHost, () => {
     // Focus inside the card goes back to the market that opened it.
     if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
@@ -233,7 +222,8 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const deferDismiss = () => {
     cancelDismiss();
     if (!pinned.current) closeTimer.current = setTimeout(() => {
-      if (document.activeElement !== trigger.current && !popover.current?.contains(document.activeElement)) close();
+      if (document.activeElement !== trigger.current && !popover.current?.contains(document.activeElement) &&
+        !popover.current?.querySelector('.mx-reading-source[aria-expanded="true"]')) close();
     }, 240);
   };
   const bindings = (market: Market) => ({
@@ -248,9 +238,6 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     event.preventDefault();
     onMarket(market);
   };
-  if (cited && !query.isPending && (!matchesCitation || !region || !answer?.markets.some(row => row.market === region))) {
-    return <Empty title={t("引用的行情记录暂不可用","Cited market observation unavailable")} />;
-  }
   if (demo) return <section className="mx-panel">
     <Empty headingLevel={2} title={t("演示不包含全球行情", "Global quotes aren’t included in the demo")} />
   </section>;
@@ -267,7 +254,8 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       ? t("行情源未返回同一时段的 MSCI ACWI 比较价格。请在下一交易时段重试。", "The source returned no comparable MSCI ACWI prices for this session. Retry in the next session.")
       : t("成分报价尚不足以估算贡献。请稍后重试。", "There are too few constituent quotes to estimate contribution. Retry later.");
   const inspectedMove = answer?.markets.find(({ market }) => market === inspection?.market);
-  const inspectedContribution = rows.find(({ market }) => market === inspection?.market)?.contribution;
+  const inspectedRow = rows.find(({ market }) => market === inspection?.market);
+  const inspectedContribution = inspectedRow?.contribution;
   const inspectedStatus = quoteStatus(inspectedMove?.move, inspectedMove?.notOpen);
   return (
     <section className="mx-global-panel" aria-labelledby="mx-global-title"
@@ -278,10 +266,15 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           trigger.current?.focus();
         }
       }}>
-      <PageInspection key={cited ? JSON.stringify([citedId, observed]) : "latest"} role="market-map" snapshotId={citedId} object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
-        context={cited && matchesCitation ? {observed:observed!} : openingObservation && !cited ? {observed:openingObservation} : undefined} market={inspection?.market}
-        showMapLine={cited ? matchesCitation : answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
-        portal={readingSlot}/>
+      <PageInspection role="market-map" object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
+        context={openingObservation ? {observed:openingObservation} : undefined} market={inspection?.market}
+        showMapLine={answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
+        portal={readingSlot}
+        liveRecord={answer?.asOf && !answer.pricesStale && !query.isError && inspectedMove ? {
+          observed:answer.asOf, heading:inspectionHeading,
+          figures:[answer.referenceDate, inspectedMove.move, inspectedMove.notOpen,
+            !inspectedRow?.notOpen && !answer.weightsStale ? inspectedContribution ?? null : null],
+        } : undefined}/>
       <header className="mx-global-lead">
         <div className="mx-global-heading">
           <h2 id="mx-global-title">{title}</h2>
@@ -363,10 +356,10 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           }}
           onFocus={cancelDismiss} onBlur={(event) => {
             if (event.relatedTarget instanceof Element &&
-              (event.currentTarget.contains(event.relatedTarget) || event.relatedTarget.matches(".mx-global-region"))) return;
+              (event.currentTarget.contains(event.relatedTarget) || event.relatedTarget.closest(".mx-global-region, .mx-citation-preview"))) return;
             close();
           }}>
-          <div className="mx-global-inspect-head">{name(inspection.market)} · {t(...INDEX_NAMES[MAP_INDEX[inspection.market]])}</div>
+          <div ref={inspectionHeading} tabIndex={-1} className="mx-global-inspect-head">{name(inspection.market)} · {t(...INDEX_NAMES[MAP_INDEX[inspection.market]])}</div>
           {/* Not open hides the move, flat keeps it in ink, no quote shows none. */}
           <div className="mx-global-inspect-move"
             data-tone={inspectedMove?.move != null && !inspectedMove.notOpen && !inspectedStatus ? tone(inspectedMove.move) : undefined}>

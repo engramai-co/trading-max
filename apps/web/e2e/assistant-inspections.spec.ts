@@ -1,3 +1,4 @@
+import { captureCitation, previewCitation } from "./citation-preview";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
@@ -60,6 +61,7 @@ async function setup(
   locale: "en" | "zh",
   dark: boolean,
   ready = true,
+  marketFigures = { japanMove: 0.01, sectorMove: -0.005 },
 ) {
   await page.emulateMedia({
     colorScheme: dark ? "dark" : "light",
@@ -128,6 +130,11 @@ async function setup(
         },
       });
     }
+    if (path === "/sectors") {
+      const data = structuredClone(fixture) as {board:{groupings:{groups:{change:number}[]}[]}};
+      data.board.groupings[0].groups[1].change = marketFigures.sectorMove;
+      return route.fulfill({json:data});
+    }
     if (path === "/indices/global-contribution")
       return route.fulfill({
         json: {
@@ -142,7 +149,7 @@ async function setup(
           state: "partial",
           residual: 0.001,
           markets: [
-            { market: "jp", move: 0.01, notOpen: false },
+            { market: "jp", move: marketFigures.japanMove, notOpen: false },
             { market: "us", move: 0.012, notOpen: false },
           ],
           rows: [
@@ -150,8 +157,8 @@ async function setup(
               market: "jp",
               indexId: "nikkei-225",
               weight: 0.05,
-              move: 0.01,
-              contribution: 0.0005,
+              move: marketFigures.japanMove,
+              contribution: 0.05 * marketFigures.japanMove,
               notOpen: false,
             },
           ],
@@ -186,7 +193,11 @@ async function setup(
                         m === "jp"
                           ? "Japan contributed an estimated +0.05 pp to MSCI ACWI."
                           : "The US index moved +1.20%.",
-                      evidence: evidence("market", "global_map", {market:m}),
+                      evidence: evidence("market", "global_map", {
+                        market:m, boardRecord:JSON.stringify(m === "jp"
+                          ? ["2026-01-30", 0.01, false, 0.0005]
+                          : ["2026-01-30", 0.012, false, null]),
+                      }),
                     },
                   ]),
                 ),
@@ -219,7 +230,9 @@ async function setup(
               en,
               evidence: evidence(word, tool, tool === "exposure_benchmark" ? {
                 benchmarkSource: "SWDA", benchmarkAsOf: "2026-01-29", benchmarkObservation: "bw_1234567890abcdef",
-              } : {}),
+              } : role === "diagnosis" ? {observed:stamp} : role === "market-sector" ? {
+                date:stamp.slice(0, 10), boardRecord:JSON.stringify(["2026-01-30", "Financials", -0.005, 6, 1, 3, 0]),
+              } : {date:stamp.slice(0, 10)}),
             }));
       return route.fulfill({
         contentType: "application/x-ndjson",
@@ -312,6 +325,7 @@ for (const locale of ["en", "zh"] as const) {
         context: { dimension: "sector", category: "Information Technology" },
       });
       await surface.scrollIntoViewIfNeeded();
+      await captureCitation(page, surface.locator("button.mx-reading-source").first(), ["holdings",isMobile ? "mobile" : "desktop",locale,dark ? "dark" : "light"].join("-"));
       await capture(
         "holdings",
         isMobile ? ".mx-reading-sheet" : ".mx-inline-reading",
@@ -391,6 +405,7 @@ for (const locale of ["en", "zh"] as const) {
       await expect(surface.locator(".mx-reading-line").last()).toContainText(
         t("推断", "Inference"),
       );
+      await captureCitation(page, surface.locator("button.mx-reading-source").first(), ["health",isMobile ? "mobile" : "desktop",locale,dark ? "dark" : "light"].join("-"));
       await capture(
         "health",
         isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading",
@@ -541,10 +556,16 @@ test("map card tabs back to the inspected market and forward to its neighbour", 
   await page.keyboard.press("Shift+Tab");
   await expect(region).toBeFocused();
   await region.press("Tab");
-  for (let i=0;i<await controls.count();i++){
-    await expect(controls.nth(i)).toBeFocused();
-    await page.keyboard.press("Tab");
-  }
+  await expect(controls.first()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(card.getByRole("button", {name:/^Open record/})).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(controls.first()).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(card.getByRole("button", {name:"Read more →"})).toBeFocused();
+  await page.keyboard.press("Tab");
+  await expect(card.getByRole("link", {name:/^Open market/})).toBeFocused();
+  await page.keyboard.press("Tab");
   await expect(page.locator(".mx-global-region[data-market=jp] + .mx-global-region")).toBeFocused();
 });
 
@@ -608,12 +629,17 @@ test("cited Returns and Holdings reopen their selection and disclose expiry",asy
   }
 });
 
-test("a Holdings benchmark citation reopens the dated fund observation", async ({page}) => {
+test("a Holdings benchmark citation reopens the dated fund observation", async ({page, isMobile}) => {
   const calls = await setup(page, "en", false);
   await page.goto("/holdings?view=lookthrough&dimension=sector&category=Information%20Technology");
   const reading = page.locator(".mx-inline-reading:visible, .mx-reading-sheet:visible");
-  const citation = reading.locator('a[href*="evidence=exposure_benchmark"]');
+  const citation = await previewCitation(page, reading.getByRole("button", {name:/^Exposure Benchmark weight/}));
+  await expect(citation).toHaveAttribute("href", /evidence=exposure_benchmark/);
   await citation.click();
+  if (isMobile) {
+    await expect(page.locator(".mx-reading-sheet")).toBeHidden();
+    await expect(page.locator(".mx-inline-reading")).toContainText("28.00%");
+  }
   await expect.poll(() => calls.at(-1)).toMatchObject({
     role: "exposure", snapshotId: runId,
     context: {dimension: "sector", category: "Information Technology", citedBenchmark: "SWDA",
@@ -621,45 +647,62 @@ test("a Holdings benchmark citation reopens the dated fund observation", async (
   });
 });
 
-test("a sector citation reopens the selected sector in its publication", async ({page}) => {
-  const calls = await setup(page, "en", false);
+test("a selected sector citation focuses its board only while timestamp and figures match", async ({page, isMobile}) => {
+  const figures = {japanMove:0.01, sectorMove:-0.005};
+  await setup(page, "en", false, true, figures);
+  await page.clock.install();
   await page.goto("/sectors?market=us&sector=2");
-  const link = page.locator(".mx-inline-reading:visible, .mx-reading-sheet:visible").getByRole("link", {name:"Market"}).first();
-  await link.click();
-  await expect.poll(() => calls.at(-1)).toMatchObject({
-    role:"market-sector", snapshotId:runId, context:{market:"us",sector:"2",observed:stamp},
-  });
-  await expect(page.getByRole("button",{name:"What is my exposure?"})).toBeEnabled();
+  const source = page.locator(".mx-inline-reading:visible, .mx-reading-sheet:visible").getByRole("button", {name:/^Market /}).first();
+  const preview = page.locator(".mx-citation-preview[data-open]");
+  await source.click();
+  await preview.getByRole("button", {name:/^Open record/}).click();
+  const record = page.locator(".mx-sector-detail:visible h2");
+  await expect(record).toBeFocused();
+  await expect(page).toHaveURL(/sectors\?market=us&sector=2$/);
+
+  // Reopen to restore the reading drawer on phones before the same-timestamp update.
+  if (isMobile) {
+    await page.reload();
+    await expect(source).toBeVisible();
+  }
+  figures.sectorMove = -0.025;
+  const changed = page.waitForResponse(r => r.url().includes("/api/backend/sectors?"));
+  await page.clock.fastForward(65_000);
+  expect((await (await changed).json()).board.fetchedAt).toBe(stamp);
+  await expect(page.locator(".mx-sector-detail:visible .mx-sector-detail-change")).toHaveText("-2.5%");
+  await source.click();
+  await preview.getByRole("button", {name:/^Open record/}).click();
+  await expect(preview.getByRole("status")).toHaveText("Cited record unavailable");
 });
 
-test("Japan market citation reopens its observed inspection and discloses a replaced board",async ({page,isMobile})=>{
-  const calls = await setup(page,"en",false);
+test("Japan market citations focus the matching card and reject changed or expired records", async ({page,isMobile}) => {
+  const figures = {japanMove:0.01, sectorMove:-0.005};
+  const calls = await setup(page,"en",false,true,figures);
+  await page.clock.install();
   await page.goto("/sectors?market=global");
   await expect.poll(()=>calls.filter(c=>c.role==="market-map").length).toBe(1);
   const japan = page.locator(".mx-global-region[data-market=jp]");
   await expect(japan).toHaveAttribute("aria-label", /Move /);
   if (isMobile) await japan.tap();
   else await japan.focus();
-  const link = page.locator(".mx-map-reading").getByRole("link",{name:"Market"});
-  const url = (await link.getAttribute("href"))!;
-  expect(Object.fromEntries(new URL(url,"http://localhost").searchParams)).toMatchObject({region:"jp", observed:stamp, snapshotId:runId});
-  await link.click();
-  await expect(page).toHaveURL(new RegExp("region=jp"));
-  await expect.poll(()=>calls.at(-1)).toMatchObject({role:"market-map",snapshotId:runId});
-  await expect(page.locator(".mx-global-inspection")).toContainText("Japan");
-  await expect(page.locator(".mx-map-reading")).toContainText("MSCI ACWI");
-  // Re-enter the citation through browser history while the market board is still available.
-  await page.goBack();
+  const source = page.locator(".mx-map-reading").getByRole("button",{name:/^Market /});
+  const preview = page.locator(".mx-citation-preview[data-open]");
+  await source.click();
+  await preview.getByRole("button", {name:/^Open record/}).click();
+  await expect(page.locator(".mx-global-inspect-head")).toBeFocused();
   await expect(page).toHaveURL(/sectors\?market=global$/);
-  await page.route("**/assistant/roles/market-map/reading", route =>
-    route.request().postDataJSON().snapshotId === runId
-      ? route.fulfill({status:404,json:{detail:{code:"assistant_snapshot_missing"}}})
-      : route.fallback());
-  await page.goForward();
-  await expect(page).toHaveURL(/region=jp/);
-  await expect(page.getByText("Cited publication unavailable",{exact:true}).and(page.locator(":not(.sr-only)"))).toBeVisible();
-  await page.goto(url.replace(encodeURIComponent(stamp),"2025-01-01T00%3A00%3A00Z"));
+
+  figures.japanMove = 0.010001;
+  const changed = page.waitForResponse(r => r.url().includes("/indices/global-contribution"));
+  await page.clock.fastForward(65_000);
+  expect((await (await changed).json()).asOf).toBe(stamp);
+  await source.click();
+  await preview.getByRole("button", {name:/^Open record/}).click();
+  await expect(preview.getByRole("status")).toHaveText("Cited record unavailable");
+  await expect(page).toHaveURL(/sectors\?market=global$/);
+  await page.goto("/sectors?" + new URLSearchParams({market:"global",region:"jp",observed:stamp,snapshotId:"expired",evidence:"global_map"}));
   await expect(page.getByText("Cited market observation unavailable",{exact:true})).toBeVisible();
+  await expect(page.locator(".mx-global-panel")).toHaveCount(0);
 });
 
 test("a new publication preserves the selected phone reading until explicitly updated", async ({page,isMobile})=>{
@@ -890,4 +933,36 @@ test("archived ISA Money charts and exact rows survive an unavailable Invest led
   query.set("scope","total");
   expect((await request.get(path + query)).status()).toBe(404);
   expect((await request.get(path + query + "&page=1")).status()).toBe(404);
+});
+
+test("opening a holdings citation record on a phone leaves the MaxAI sheet closed", async ({page, isMobile}) => {
+  test.skip(!isMobile);
+  await setup(page, "en", false);
+  await page.goto("/holdings?view=lookthrough&dimension=sector&category=Information%20Technology");
+  const reading = page.locator(".mx-reading-sheet");
+  const source = reading.locator(".mx-reading-source").first();
+  await source.tap();
+  const preview = page.getByRole("dialog", {name:/Exposure allocation/});
+  await expect(preview).toBeVisible({timeout:3000});
+  await expect(reading).toBeVisible();
+  await preview.getByRole("link", {name:/Open record/}).tap();
+  await expect(page).toHaveURL(/snapshotId=synthetic-loading.*record=1/);
+  await expect(reading).toBeHidden();
+  await expect(page.getByRole("button", {name:"Information Technology", exact:true})).toBeFocused();
+});
+
+test("opening a Returns citation record on a phone dismisses its MaxAI sheet and focuses the chart heading", async ({page, isMobile}) => {
+  test.skip(!isMobile);
+  await setup(page, "en", false);
+  await page.goto("/analytics?view=returns&range=1M&benchmark=VOO&snapshotId="+runId+"&evidence=selected_daily&inspectFrom=2026-01-06&inspectTo=2026-01-20");
+  const reading = page.locator(".mx-reading-sheet");
+  const source = reading.locator(".mx-reading-source").first();
+  await source.tap();
+  const preview = page.getByRole("dialog", {name:/Daily returns/});
+  await expect(preview).toBeVisible({timeout:3000});
+  await expect(reading).toBeVisible();
+  await preview.getByRole("link", {name:/Open record/}).tap();
+  await expect(page).toHaveURL(/snapshotId=synthetic-loading.*record=1/);
+  await expect(reading).toBeHidden();
+  await expect(page.locator(".mx-performance-chart h2").first()).toBeFocused();
 });

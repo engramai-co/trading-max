@@ -201,7 +201,7 @@ export function ReviewHabits({
               {readerText(line, locale, timeZone)}
               <ChevronRight aria-hidden="true" size={16} />
             </button>
-            <EvidenceLink evidence={line.evidence} onNavigate={phone ? event => {
+            <EvidenceLink evidence={line.evidence} observation={readerText(line, locale, timeZone)} onNavigate={phone ? event => {
               event.preventDefault();
               showSheet(false);
               onSelect(key, { focusFilter: true, citation: true });
@@ -262,7 +262,8 @@ export function DecisionReading({
   habit,
   row,
   onClose,
-}: Common & { row: ScopedDecision; onClose: () => void }) {
+  onFollowCitation,
+}: Common & { row: ScopedDecision; onClose: () => void; onFollowCitation?: () => void }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const context = useMemo(
@@ -299,14 +300,14 @@ export function DecisionReading({
   );
   usePageRole(card);
   return (
-    <InlineReading card={card} onClose={onClose}>
+    <InlineReading card={card} onClose={onClose} closeOnCitation onFollowCitation={onFollowCitation}>
       {run.reading ? (
         <ReadingLines card={card} />
       ) : (
         <>
           {run.lines.map((line) => (
             <p key={line.section} className="mx-reading-line">
-              {readerText(line, locale, timeZone)} <EvidenceLink evidence={line.evidence} />
+              {readerText(line, locale, timeZone)} <EvidenceLink evidence={line.evidence} observation={readerText(line, locale, timeZone)} />
             </p>
           ))}
           <ReadingStatus run={run} />

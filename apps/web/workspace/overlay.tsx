@@ -1,9 +1,9 @@
 "use client";
 
-import { createContext, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
+import { createContext, useEffect, useRef, type CSSProperties, type ReactNode, type RefObject } from "react";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogClose, AlertDialogContent, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetClose, SheetContent, SheetOverlay, SheetPortal, SheetSurface, SheetTitle } from "@/components/ui/sheet";
 import { Drawer, DrawerClose, DrawerContent, DrawerTitle } from "@/components/ui/drawer";
 import { CloseButton } from "@/components/ui/button";
 import { useLocale } from "@/components/locale-provider";
@@ -60,6 +60,51 @@ export function WorkspaceSheet(props: OverlayProps) {
 
 export function WorkspaceDrawer(props: OverlayProps) {
   return <Overlay {...props} kind="drawer" />;
+}
+
+/** Keep one sheet subtree while its role changes between a dock and a modal. */
+export function WorkspacePersistentSheet({
+  open, modal, onClose, label, children, finalFocus, initialFocus,
+}: {
+  open: boolean; modal: boolean; onClose: () => void; label: string;
+  children: ReactNode; finalFocus: PopupProps["finalFocus"]; initialFocus: PopupProps["initialFocus"];
+}) {
+  const popup = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = popup.current;
+    const viewport = window.visualViewport;
+    if (!open || !modal || !node || !viewport) return;
+    function size() {
+      if (!node || !viewport) return;
+      node.style.setProperty("--assistant-keyboard-inset", Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop) + "px");
+    }
+    size();
+    viewport.addEventListener("resize", size);
+    viewport.addEventListener("scroll", size);
+    return () => {
+      viewport.removeEventListener("resize", size);
+      viewport.removeEventListener("scroll", size);
+      node.style.removeProperty("--assistant-keyboard-inset");
+    };
+  }, [open, modal]);
+  return <Sheet open={open} modal={modal} disablePointerDismissal onOpenChange={(next, {event, cancel}) => {
+    if (next) return;
+    if (event instanceof KeyboardEvent && (event.defaultPrevented || isImeComposing(event)
+      || (!modal && !popup.current?.contains(document.activeElement)))) {
+      cancel();
+      return;
+    }
+    onClose();
+  }}>
+    <SheetPortal keepMounted>
+      {modal && <SheetOverlay className="mx-assistant-backdrop" />}
+      <SheetSurface ref={popup} id="mx-assistant-panel" className="mx-assistant-panel"
+        role={modal ? "dialog" : "complementary"} aria-modal={modal || undefined} aria-label={label}
+        initialFocus={initialFocus} finalFocus={finalFocus}>
+        <OverlayPopupContainer.Provider value={popup}>{children}</OverlayPopupContainer.Provider>
+      </SheetSurface>
+    </SheetPortal>
+  </Sheet>;
 }
 
 function Overlay({

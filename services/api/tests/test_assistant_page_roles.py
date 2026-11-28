@@ -1,6 +1,7 @@
 """Selection readings use one observed object and only evidence the server can verify."""
 
 import asyncio
+import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
 
@@ -133,7 +134,29 @@ def test_verified_selections_are_cached_in_both_languages(
     assert expected in " ".join(row.en for row in result.reading.lines)
     assert all(row.zh and row.en and row.evidence.evidence_id for row in result.reading.lines)
     assert "PRIVATE-MESSAGE" not in result.model_dump_json()
+    if name == "market-sector":
+        assert all(
+            json.loads(row.evidence.arguments["boardRecord"])
+            == ["2026-02-03", "Information Technology", 0.02, 0.15, "2026-02-02", False, 0.003]
+            for row in result.reading.lines
+        )
     if name == "market-map":
+        assert json.loads(
+            result.reading.lines[0].variants["uk"].evidence.arguments["boardRecord"]
+        ) == [
+            "2026-02-03",
+            0.0,
+            True,
+            None,
+        ]
+        assert json.loads(
+            result.reading.lines[1].variants["us"].evidence.arguments["boardRecord"]
+        ) == [
+            "2026-02-03",
+            -0.01,
+            False,
+            None,
+        ]
         assert "not opened" in result.reading.lines[0].variants["uk"].en
         assert "-1.00%" in result.reading.lines[1].variants["us"].en
     if name == "diagnosis":

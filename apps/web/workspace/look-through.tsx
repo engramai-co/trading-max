@@ -416,7 +416,7 @@ export function Lookthrough() {
     {query.isPending ? (
     <Pending shape="holdings" label={t("正在读取穿透持仓…", "Loading look-through holdings…")} />
   ) : cited && query.isError ? (
-    <Empty title={t("引用的数据版本暂不可用","Cited publication unavailable")} />
+    <div data-cited-missing=""><Empty title={t("引用的数据版本暂不可用","Cited publication unavailable")} /></div>
   ) : query.isError && !query.data ? (
     <QueryError retry={query.refetch} />
   ) : query.data && exposure ? (
@@ -441,6 +441,7 @@ function Exposure({
   const compactDesktop = useBreakpoint("compactDesktop");
   const dockedAssistant = sidebarOpen && !compactDesktop;
   const params = useSearchParams();
+  const recordOnly = params?.get("record") === "1";
   const dimensionsByKey = {company: "companies", country:"countries", sector:"sectors", gics:"gics"} as const;
   const linkedDimension = params?.get("dimension") as keyof typeof dimensionsByKey;
   const linkedCompany = useMemo(() => {
@@ -459,6 +460,7 @@ function Exposure({
     return {category,name,entityId:params?.get("entityId") ?? undefined, snapshotId: linkedCompany ? snapshot : undefined,
       ...(group==="tail" || group==="unresolved" ? {group} : {})};
   });
+  const [initialChoice] = useState(choice);
   const [view, setView] = useState<
     "companies" | "countries" | "sectors" | "gics" | "sources"
   >(dimensionsByKey[linkedDimension] ?? "companies");
@@ -619,14 +621,16 @@ function Exposure({
   const citedWeight = params?.get("evidence") === "exposure_benchmark" && choice?.category === params.get("category") && dimension === linkedDimension;
   const source = params?.get("benchmarkSource"), asOf = params?.get("benchmarkAsOf"), observation = params?.get("benchmarkObservation");
   if (citedWeight && (source !== (dimension === "sector" ? "SWDA" : "SSAC") || !asOf || !/^\d{4}-\d{2}-\d{2}$/.test(asOf) || !observation || !/^bw_[0-9a-f]{16}$/.test(observation))) {
-    return <Empty title={t("引用的基准权重记录暂不可用","Cited benchmark weight unavailable")} />;
+    return <div data-cited-missing=""><Empty title={t("引用的基准权重记录暂不可用","Cited benchmark weight unavailable")} /></div>;
   }
-  const role = <PageInspection role="exposure" object={choice?.name ?? t("穿透配置","Look-through allocation")}
-    context={choice ? {dimension,category:choice.category,...(citedWeight && source && asOf && observation ? {citedBenchmark:source,citedBenchmarkAsOf:asOf,citedBenchmarkObservation:observation} : {}),...(choice.entityId ? {entityId:choice.entityId} : {}),...(choice.group ? {group:choice.group} : {})} : undefined} snapshotId={choice?.snapshotId ?? snapshot} onClose={() => setChoice(null)} />;
+  const showBenchmarkRecord = Boolean(recordOnly && choice === initialChoice && citedWeight);
+  const readingChoice = recordOnly && choice === initialChoice && !showBenchmarkRecord ? null : choice;
+  const role = <PageInspection role="exposure" showInline={showBenchmarkRecord} object={choice?.name ?? t("穿透配置","Look-through allocation")}
+    context={readingChoice ? {dimension,category:readingChoice.category,...(citedWeight && source && asOf && observation ? {citedBenchmark:source,citedBenchmarkAsOf:asOf,citedBenchmarkObservation:observation} : {}),...(readingChoice.entityId ? {entityId:readingChoice.entityId} : {}),...(readingChoice.group ? {group:readingChoice.group} : {})} : undefined} snapshotId={choice?.snapshotId ?? snapshot} onClose={() => setChoice(null)} />;
   if (params?.get("snapshotId") && choice && !choice.group) {
     const hasRecord = dimension === "company" ? !!linkedCompany || !params.get("category") || choice.category !== params.get("category")
       : allocations.some(row => dimension === "country" ? place(categoryKey(row)) === place(choice.category) : categoryKey(row) === choice.category);
-    if (!hasRecord) return <Empty title={t("引用的配置记录暂不可用","Cited allocation unavailable")} />;
+    if (!hasRecord) return <div data-cited-missing=""><Empty title={t("引用的配置记录暂不可用","Cited allocation unavailable")} /></div>;
   }
   const changeChart = (value: string) => {setChoice(null); setChart(value);};
   const top = companyComposition.rows.slice(0, 3);
@@ -928,7 +932,7 @@ function Exposure({
               label={t("完整配置明细", "Complete allocation details")}
               rows={allocations}
               columns={[
-                { label: t("分类", "Category"), value: row => ready ? <button type="button" className="mx-text-link" onClick={() => inspect({name:allocationLabel(row),category:categoryKey(row)})}>{allocationLabel(row)}</button> : allocationLabel(row) },
+                { label: t("分类", "Category"), value: row => ready ? <button type="button" className="mx-text-link" data-cited-allocation={params?.has("evidence") && (dimension === "country" ? place(categoryKey(row)) === place(params.get("category") ?? "") : categoryKey(row) === params.get("category")) || undefined} onClick={() => inspect({name:allocationLabel(row),category:categoryKey(row)})}>{allocationLabel(row)}</button> : allocationLabel(row) },
                 {
                   label: t("金额 · GBP", "Value · GBP"),
                   value: (r) => currency(r.valueGbp),
@@ -952,13 +956,13 @@ function Exposure({
         modal={!dockedAssistant}
         preventOutsideDismiss={dockedAssistant}
         className={dockedAssistant ? "mx-exposure-sheet-docked" : undefined}
-        open={Boolean(selection) && !(phone && (sidebarOpen || (ready && choice)))}
+        open={Boolean(selection) && !(phone && (sidebarOpen || (ready && readingChoice)))}
         onClose={() => {setSelection(null); setChoice(null);}}
         title={t("穿透后的真实敞口", "Underlying exposure")}
         closeLabel={t("关闭底层敞口", "Close underlying exposure")}
       >
         {selection && selected && (
-          <div className="flex flex-col gap-mx-lg">
+          <div className="mx-cited-holding-details flex flex-col gap-mx-lg">
             <Instrument ticker={selected.ticker ?? "—"} name={selected.name} />
             <Metric
               large

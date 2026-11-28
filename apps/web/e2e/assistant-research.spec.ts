@@ -1,3 +1,4 @@
+import { previewCitation } from "./citation-preview";
 import earlyClose from "../tests/fixtures/market-early-close.json";
 import listingRefusal from "../tests/fixtures/listing-prices-unavailable.json";
 import AxeBuilder from "@axe-core/playwright";
@@ -279,7 +280,7 @@ test("Research index uses page context unless a key moment is handed off", async
     if (view === "price") {
       await page.locator(".mx-track-moment").click();
       await expect(card.locator(".mx-reading-line")).toContainText("指数收盘上涨。");
-      await page.keyboard.press("Control+j");
+      await page.keyboard.press((await page.locator("[data-assistant-trigger]").getAttribute("aria-keyshortcuts")) === "Meta+J" ? "Meta+j" : "Control+j");
     } else {
       await page.locator("[data-assistant-trigger]").click();
       await expect(page.locator(".mx-assistant-opening .mx-reading-line")).toContainText("指数收盘上涨。");
@@ -292,7 +293,7 @@ test("Research index uses page context unless a key moment is handed off", async
     expect((await sent).postDataJSON().context).toEqual({page:"research", timezone:expect.any(String)});
     if (view === "price") {
       await expect(page.getByRole("button", {name:"重试", exact:true})).toBeVisible();
-      await page.keyboard.press("Control+j");
+      await page.keyboard.press((await page.locator("[data-assistant-trigger]").getAttribute("aria-keyshortcuts")) === "Meta+J" ? "Meta+j" : "Control+j");
       await card.locator(".mx-reading-actions button").first().click();
       await expect(composer).not.toHaveValue("");
       const handoff = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
@@ -321,7 +322,7 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     expect(reads).not.toContain("your-position");
     await page.locator("[data-assistant-trigger]").click();
     const panel = page.locator(".mx-assistant-opening");
-    await expect(panel.locator(".mx-reading-line a")).toHaveCount(2);
+    await expect(panel.locator(".mx-reading-line button.mx-reading-source")).toHaveCount(2);
     await expect(panel.locator("h3")).toContainText("SYNT");
     await shot("position");
     await page.goto("/research?ticker=SYNT&view=technical");
@@ -334,7 +335,7 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     if (isMobile) { await expect(marker).toBeHidden(); await track.click(); }
     else { await expect(marker).toHaveText("1"); await expect(marker).toHaveCSS("width","18px"); await marker.focus(); await marker.press("Enter"); }
     const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
-    await expect(card.locator(".mx-reading-line a")).toHaveCount(2);
+    await expect(card.locator(".mx-reading-line button.mx-reading-source")).toHaveCount(2);
     expect((await new AxeBuilder({page}).include(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading").analyze()).violations).toEqual([]);
     await shot("moment");
     await card.getByRole("button").first().click();
@@ -350,8 +351,14 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
       const chunks = [{type:"start",messageId:"reply"}, {type:"start-step"},
         {type:"tool-input-available",toolCallId:"moment",toolName:"price_key_moments",input:{}},
         {type:"tool-output-available",toolCallId:"moment",output:{status:"ok",evidence_id:"ev_moment",snapshot_id:snapshot,
-          data:{ticker:"SYNT",items:[{date:day,move_fraction:0.032} ]}}},
-        {type:"text-start",id:"body"}, {type:"text-delta",id:"body",delta:"{{/data/items/0/move_fraction}} [ev_moment]\n{{attribution}} [inference]"},
+          data:{ticker:"SYNT",items:[{date:day,move_fraction:0.032},
+            {date:"2026-01-21",move_fraction:-0.000001}, {date:"2026-01-20",move_fraction:0.000001}]}}},
+        {type:"text-start",id:"body"}, {type:"text-delta",id:"body",delta:[
+          "{{/data/items/0/move_fraction}} [ev_moment]",
+          "{{/data/items/1/move_fraction}} [ev_moment]",
+          "{{/data/items/2/move_fraction}} [ev_moment]",
+          "{{attribution}} [inference]",
+        ].join("\n")},
         {type:"text-end",id:"body"},{type:"finish-step"},{type:"finish",finishReason:"stop"}];
       return route.fulfill({headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
         body:chunks.map(c=>"data: "+JSON.stringify(c)+"\n\n").join("")+"data: [DONE]\n\n"});
@@ -364,7 +371,17 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     expect(handoff).toMatchObject({page:"research", role:"key-moment", scope:"broker_total", ticker:"SYNT", lens:"technical",
       snapshotId:snapshot, object:{ticker:"SYNT", published_series_id:series, date:day}});
     expect(handoff.object.start <= day && day <= handoff.object.end).toBe(true);
-    await expect(page.locator(".mx-turn-assistant")).toContainText("3.20%");
+    await expect(page.locator(".mx-turn-assistant")).toContainText("3.2%");
+    const moves = language === "zh" ? ["下跌不到 0.1%", "上涨不到 0.1%"] : ["down less than 0.1%", "up less than 0.1%"];
+    const preview = page.locator(".mx-citation-preview[data-open]");
+    for (const [index, phrase] of moves.entries()) {
+      const line = page.locator(".mx-turn-assistant .mx-reading-line").nth(index + 1);
+      await expect(line).toContainText(phrase);
+      await previewCitation(page, line.getByRole("button"));
+      await expect(preview.locator(".mx-citation-fact")).toContainText(phrase);
+      await page.keyboard.press("Escape");
+      await expect(preview).toBeHidden();
+    }
     await composer.fill("Which sessions followed?");
     const next = page.waitForRequest(r => new URL(r.url()).pathname.endsWith("/assistant/chat"));
     await composer.press("Enter");
@@ -372,17 +389,17 @@ for (const language of ["zh","en"]) for (const theme of ["light","dark"] as cons
     await page.getByRole("button",{name:language === "zh" ? "关闭侧栏" : "Close sidebar"}).click();
     await page.getByRole("tab",{name:language === "zh" ? /预期/ : /Estimates/}).click();
     const digest=page.locator(".mx-earnings-brief");
-    await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
+    await expect(digest.locator(".mx-digest-toggle")).toHaveAttribute("aria-expanded","false");
     expect(await digest.evaluate(el=>!!el.parentElement?.querySelector("#research-ratings") && el===el.parentElement.firstElementChild)).toBe(true);
     await expect(digest.locator("time")).toHaveAttribute("datetime","2026-01-20");
     await expect(digest).toContainText("FY2025 Q4");
     await shot("earnings-collapsed");
-    await digest.locator("[aria-expanded]").click();
-    await expect(digest.locator(".mx-reading-line a")).toHaveCount(2);
+    await digest.locator(".mx-digest-toggle").click();
+    await expect(digest.locator(".mx-reading-line button.mx-reading-source")).toHaveCount(2);
     expect((await new AxeBuilder({page}).include(".mx-earnings-brief").analyze()).violations).toEqual([]);
     await shot("earnings");
     await page.goto("/research?ticker=SYNT&view=fundamentals");
-    await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","true");
+    await expect(digest.locator(".mx-digest-toggle")).toHaveAttribute("aria-expanded","true");
     await expect(digest).toBeVisible();
     // Without statements the brief still opens the lens, above its empty state.
     expect(await digest.evaluate(el => el === el.parentElement?.firstElementChild)).toBe(true);
@@ -550,7 +567,7 @@ test("a saved index field reopens its exact series and discloses expiry", async 
     const query = new URL(route.request().url()).searchParams;
     expect(Object.fromEntries(query)).toMatchObject({index:"example",series,snapshotId:snapshot,date:day,tool:"price_key_moments"});
     return expired ? route.fulfill({status:404,json:{detail:"cited-research-unavailable"}}) :
-      route.fulfill({json:{output:{status:"ok",snapshot_id:snapshot,data:{ticker:"^SYNT",items:[{date:day,move_fraction:.041}]}},lines:[]}});
+      route.fulfill({json:{output:{status:"ok",snapshot_id:snapshot,evidence_id:"ev_saved",data:{ticker:"^SYNT",items:[{date:day,move_fraction:.041}]}},lines:[]}});
   });
   const url = "/research?" + new URLSearchParams({type:"index",index:"example",ticker:"^SYNT",date:day,start:day,end:day,series,snapshotId:snapshot,
     evidence:"price_key_moments",evidenceId:"ev_saved",field:"/data/items/0/move_fraction"});
@@ -805,6 +822,14 @@ const profile = async (page: Page, ready = true) => {
     const overview = backendFixture(new URL(base + "/lens/overview", route.request().url())) as Record<string, unknown>;
     return route.fulfill({json:{...overview, fundamentals:{metrics:{quoteType:"EQUITY", longBusinessSummary:description}}}});
   });
+  await page.route("**/api/backend/research/SYNT/citation?**", route => {
+    const params = new URL(route.request().url()).searchParams;
+    if (params.get("snapshotId") !== snapshot || params.get("evidenceId") !== "ev_profile" || params.get("tool") !== "company_profile") {
+      return route.fulfill({status:404,json:{detail:"cited-research-unavailable"}});
+    }
+    return route.fulfill({json:{output:{status:"ok",evidence_id:"ev_profile",snapshot_id:snapshot,
+      data:{ticker:"SYNT",sentences:restated.map(([,sentence]) => sentence)}},lines:[]}});
+  });
   await page.route("**/api/backend/assistant/roles/company-summary/reading", route => {
     summaries.push(route.request().postDataJSON());
     return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result", reading:{
@@ -870,9 +895,13 @@ for (const theme of ["light", "dark"] as const) {
     await expect(reading.locator(".mx-reading-line")).toHaveCount(3);
     await expect(reading.locator(".mx-reading-line").first()).toContainText("在 12 个市场设计并销售");
     const sources = reading.locator(".mx-reading-source");
-    await expect(sources).toHaveText(["披露", "披露", "披露"]);
-    await expect(sources.first()).toHaveAttribute("href",
-      "/research?ticker=SYNT&sentence=0&sentenceId=cfac2b85&snapshotId=synthetic-loading&view=overview&evidence=company_profile");
+    await expect(sources).toHaveText([/^披露/, /^披露/, /^披露/]);
+    for (const [i, source] of (await sources.all()).entries()) {
+      await expect(source).toHaveAccessibleName(new RegExp("披露 SYNT 公司资料.*第 " + (i + 1) + " 句"));
+    }
+    await expect(await previewCitation(page, sources.first())).toHaveAttribute("href",
+      "/research?ticker=SYNT&sentence=0&sentenceId=cfac2b85&snapshotId=synthetic-loading&evidenceId=ev_profile&field=%2Fdata%2Fsentences%2F0&view=overview&evidence=company_profile");
+    await page.keyboard.press("Escape");
     await expect(reading.getByRole("button", {name:"主要产品和服务有哪些？"})).toBeVisible();
     expect(summaries).toEqual([{context:{ticker:"SYNT"}, snapshotId:snapshot}]);
     expect((await new AxeBuilder({page}).include(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading").analyze()).violations).toEqual([]);
@@ -901,20 +930,20 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.locator(".mx-business-excerpt")).not.toContainText("Exampleton");
     await page.getByRole("button", {name:"✦ 中文摘要"}).click();
     const reading = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-inline-reading");
-    await reading.locator(".mx-reading-source").nth(2).click();
-    await expect(page).toHaveURL(/sentence=2&sentenceId=919014b5&snapshotId=synthetic-loading&view=overview&evidence=company_profile/);
+    await (await previewCitation(page, reading.locator(".mx-reading-source").nth(2))).click();
+    await expect(page).toHaveURL(/sentence=2&sentenceId=919014b5&snapshotId=synthetic-loading&evidenceId=ev_profile/);
     const sentence = page.locator('[data-profile-sentence="2"]');
     await expect(sentence).toHaveText("It was founded in 1999 and is headquartered in Exampleton.");
     await expect(sentence).toBeFocused();
     await expect(sentence).toHaveAttribute("data-assistant-evidence", "");
     await expect(sentence).toBeInViewport();
-    await expect(page.locator(".mx-business-description")).toContainText("12 markets");
+    await expect(page.locator("#main-content")).not.toContainText("12 markets");
     if (isMobile) {
       // Following the citation leaves the sheet, its backdrop and its focus trap.
       await expect(page.locator(".mx-reading-sheet")).toHaveCount(0);
       await expect(page.locator(".tm-drawer-backdrop")).toHaveCount(0);
     }
-    expect((await new AxeBuilder({page}).include(".mx-overview-bento").analyze()).violations).toEqual([]);
+    expect((await new AxeBuilder({page}).include("#main-content").analyze()).violations).toEqual([]);
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, [info.project.name, "zh", theme, "company-summary-citation"].join("-") + ".png")});
   });
 }
@@ -923,26 +952,22 @@ test("a citation whose sentence has left the description says so in place", asyn
   if (isMobile) await page.setViewportSize({width:390, height:844});
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
   await profile(page);
-  await page.goto("/research?" + new URLSearchParams({ticker:"SYNT", sentence:"2", sentenceId:"00000000", snapshotId:snapshot,
+  await page.goto("/research?" + new URLSearchParams({ticker:"SYNT", sentence:"2", sentenceId:"00000000", snapshotId:snapshot,evidenceId:"ev_profile",
     view:"overview", evidence:"company_profile"}));
-  const note = page.getByRole("status").filter({hasText:"引用的句子已不在当前公司介绍中。"});
+  const note = page.getByRole("status").filter({hasText:"引用的研究记录已不可用。"});
   await expect(note).toBeVisible();
-  await expect(note).toBeFocused();
-  await expect(page.locator(".mx-business-excerpt")).toBeVisible();
+  await expect(page.locator(".mx-business-excerpt")).toHaveCount(0);
   await expect(page.locator("[data-profile-sentence]")).toHaveCount(0);
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-zh-light-citation-missing.png")});
 });
 
-test("a citation without a sentence fingerprint opens and outlines the whole description", async ({page, isMobile}) => {
+test("a company citation without a fingerprint withholds the description", async ({page, isMobile}) => {
   if (isMobile) await page.setViewportSize({width:390, height:844});
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "zh"));
   await profile(page);
   await page.goto("/research?" + new URLSearchParams({ticker:"SYNT", sentence:"1", snapshotId:snapshot, view:"overview", evidence:"company_profile"}));
-  const whole = page.locator(".mx-business-description");
-  await expect(whole).toContainText("headquartered in Exampleton");
-  await expect(whole).toBeFocused();
-  await expect(whole).toHaveAttribute("data-assistant-evidence", "");
-  await expect(whole).toHaveCSS("outline-style", "solid");
+  await expect(page.locator("#main-content").getByRole("status")).toHaveText("引用的研究记录已不可用。");
+  await expect(page.locator("#main-content")).not.toContainText("headquartered in Exampleton");
 });
 
 test("the overview offers no summary in English", async ({page}, info) => {
@@ -956,6 +981,21 @@ test("the overview offers no summary in English", async ({page}, info) => {
     await page.locator(".mx-business-excerpt").scrollIntoViewIfNeeded();
     await page.screenshot({scale:"css", path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-en-light-company-description.png")});
   }
+});
+
+test("an expired company citation cannot show figures from today's matching description", async ({page}) => {
+  await profile(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.route("**/api/backend/research/SYNT/citation?**", route => route.fulfill({status:404,json:{detail:"cited-research-unavailable"}}));
+  await page.goto("/research?" + new URLSearchParams({ticker:"SYNT",sentence:"0",sentenceId:sentenceId(restated[0][1]),
+    snapshotId:"expired-publication",view:"overview",evidence:"company_profile"}));
+  const main = page.locator("#main-content");
+  await expect(main.getByRole("status")).toHaveText("Cited research observation unavailable.", {timeout:3000});
+  await expect(main).not.toContainText("12 markets");
+  await page.goto("/research?" + new URLSearchParams({ticker:"SYNT",sentence:"0",sentenceId:sentenceId(restated[0][1]),
+    snapshotId:"expired-publication",evidenceId:"ev_company",view:"overview",evidence:"company_profile"}));
+  await expect(main.getByRole("status")).toHaveText("Cited research observation unavailable.", {timeout:3000});
+  await expect(main).not.toContainText("12 markets");
 });
 
 test("with MaxAI off the overview is unchanged and loads no summary", async ({page}, info) => {
@@ -979,3 +1019,57 @@ test("with MaxAI off the overview is unchanged and loads no summary", async ({pa
   }
 });
 
+
+test("a retained chart dividend renders the matched event", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  const id = "synthetic-dividend";
+  const field = "/data/items/0/events/0/date";
+  await page.route("**/api/backend/research/SYNT/citation?**", route => {
+    expect(Object.fromEntries(new URL(route.request().url()).searchParams)).toMatchObject({
+      snapshotId:snapshot,evidenceId:"ev_event",eventId:id,event:"dividend",
+    });
+    return route.fulfill({json:{output:{
+      status:"ok",snapshot_id:snapshot,evidence_id:"ev_event",scope:"broker_total",
+      data:{ticker:"SYNT",items:[{date:day,events:[
+        {kind:"dividend",date:"2026-01-20",reference:"different-event"},
+        {kind:"dividend",date:day,reference:id},
+      ]}]},
+    },lines:[]}});
+  });
+  await page.goto("/research?" + new URLSearchParams({
+    ticker:"SYNT",snapshotId:snapshot,evidence:"price_key_moments",evidenceId:"ev_event",
+    eventId:id,event:"dividend",field,
+  }));
+  const record = page.locator("[data-cited-research]");
+  await expect(record).toContainText("SYNT · " + day + " · Reported dividend", {timeout:3000});
+  await expect(record).not.toContainText("2026-01-20");
+});
+
+test("opening a saved research observation moves focus to its rendered row", async ({page}) => {
+  await fixtures(page);
+  const observation = "1".repeat(20);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
+  const line = {zh:"收盘 USD 21.50",en:"Closing price USD 21.50",
+    evidence:{tool:"research_position",source:"market",evidenceId:"ev_position",arguments:{
+      ticker:"SYNT",lens:"technical",snapshotId:snapshot,published_series_id:series,observation,
+    }}};
+  await page.route("**/api/backend/assistant/roles/your-position/reading", route => route.fulfill({
+    contentType:"application/x-ndjson",body:JSON.stringify({type:"result",reading:{
+      role:"your-position",snapshotId:snapshot,version:snapshot,asOf:"2026-01-30T20:00:00Z",lines:[line],
+    }})+"\n",
+  }));
+  await page.route("**/api/backend/research/SYNT/citation?**", route => {
+    expect(Object.fromEntries(new URL(route.request().url()).searchParams)).toMatchObject({
+      snapshotId:snapshot,evidenceId:"ev_position",observation,
+    });
+    return route.fulfill({json:{output:{status:"ok",snapshot_id:snapshot,evidence_id:"ev_position",data:{ticker:"SYNT"}},lines:[line]}});
+  });
+  await page.goto("/research?ticker=SYNT");
+  await page.locator("[data-assistant-trigger]").click();
+  const source = page.locator(".mx-assistant-opening").getByRole("button",{name:/^Market .*SYNT/});
+  await (await previewCitation(page, source)).click();
+  const record = page.locator("[data-cited-research]");
+  await expect(record).toContainText("Closing price USD 21.50");
+  await expect(record).toBeFocused({timeout:3000});
+});

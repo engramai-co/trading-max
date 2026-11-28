@@ -518,7 +518,11 @@ def portfolio_overview(ctx: Context, args: Scoped) -> Json:
     Household includes imported CFD cash-equity (no open CFD mark-to-market).
     For interval P&L use period_performance.
     """
-    read = _Read(ctx.deps, "portfolio_overview", args, args.scope)
+    return read_portfolio_overview(ctx.deps, args)
+
+
+def read_portfolio_overview(deps: AssistantDeps, args: Scoped) -> Json:
+    read = _Read(deps, "portfolio_overview", args, args.scope)
     codes = read.account_codes(args.scope)
     if read.deps.manifest is None:
         return read.missing()

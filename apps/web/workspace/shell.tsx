@@ -69,7 +69,8 @@ function SearchRouteObserver({ onChange }: { onChange: (search: string) => void 
 export function WorkspaceShell({ children, desktop = false, localWorkspace = false, demonstration = false }: { children: React.ReactNode; desktop?: boolean; localWorkspace?: boolean; demonstration?: boolean }) {
   const t = useCopy();
   const assistant = useAssistant();
-  const assistantOverlay = useBreakpoint("compactDesktop") && assistant.open;
+  const compactAssistant = useBreakpoint("compactDesktop");
+  const assistantOverlay = compactAssistant && assistant.open;
   // Search names each page as the visible navigation does: the dock's short names wherever the dock shows.
   const dock = useBreakpoint("phoneDock");
   const actualPathname = usePathname();
@@ -530,7 +531,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           {children}
         </main>
       </div>
-      <AssistantPanel overlay={assistantOverlay} page={active?.href.slice(1) || "overview"} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
+      <AssistantPanel overlay={compactAssistant} page={active?.href.slice(1) || "overview"} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
       <nav inert={assistantOverlay || undefined}
         className="mx-mobile-dock"
         aria-label={t("快捷导航", "Quick navigation")}

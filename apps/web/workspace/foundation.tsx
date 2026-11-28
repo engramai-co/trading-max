@@ -120,6 +120,7 @@ const escapeLayers: Array<{ dismiss(): void; scope: RefObject<Element | null> }>
 let escapeListening = false;
 function closeTopLayer(event: KeyboardEvent) {
   if (event.key !== "Escape" || isImeComposing(event) || event.defaultPrevented) return;
+  if ((event.target as Element | null)?.closest?.('.mx-reading-source[aria-expanded="true"]')) return;
   const focusLayer = (event.target as Element | null)?.closest?.('[role="menu"], [role="dialog"], [role="alertdialog"]');
   const layer = escapeLayers.findLast(({ scope }) => !focusLayer || focusLayer.contains(scope.current));
   if (!layer) return;

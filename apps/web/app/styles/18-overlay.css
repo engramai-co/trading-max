@@ -5,7 +5,7 @@
   --mx-overlay-elevation: var(--shadow-popover);
   --mx-overlay-edge: 1px solid var(--panel-edge);
   --mx-overlay-z: var(--z-popover);
-  --mx-assistant-dock-width: 400px;
+  --mx-assistant-dock-width: 426px;
 }
 
 .tm-modal-layer {
