@@ -14,6 +14,7 @@
 @import "./styles/01a-workspace-primitives.css" layer(mantine);
 @import "./styles/02-page.css" layer(mantine);
 @import "./styles/03-components.css" layer(mantine);
+@import "./styles/03-table.css" layer(mantine);
 @import "./styles/03a-choice-controls.css" layer(mantine);
 @import "./styles/04-research-workbench.css" layer(mantine);
 @import "./styles/05-settings-jobs-command.css" layer(mantine);

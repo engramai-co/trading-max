@@ -246,12 +246,13 @@
     padding-inline: 0;
   }
 }
-
 /* Holdings: the donut keys the ledger; each row's dot is its segment. */
 .mx-overview-holdings {
   --mx-ledger-rule: color-mix(in oklab, var(--mx-border) 62%, var(--mx-surface));
+  container: holdings-ledger / inline-size;
 }
 .mx-ledger {
+  --mx-ledger-width-class: wide;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: start;
@@ -264,7 +265,6 @@
   padding: 10px 32px 0 4px;
   border-right: 1px solid var(--mx-border);
 }
-/* The donut stays beside the rows it keys while a long ledger scrolls. */
 .mx-ledger-donut {
   position: sticky;
   top: 88px;
@@ -327,6 +327,7 @@
   /* Fixed layout: the figures keep their widths and the name takes the rest, truncating if it must. */
   table-layout: fixed;
   border-collapse: collapse;
+  --mx-ledger-figure-width: 104px;
   font-variant-numeric: tabular-nums;
 }
 .mx-ledger-table :is(th, td) {
@@ -340,9 +341,11 @@
   padding-left: 0;
   text-align: left;
 }
-/* The figures share the width the names leave rather than crowding the right edge. */
-.mx-ledger-table :is(th, td):not(:first-child) {
-  width: 104px;
+.mx-ledger-figure-column {
+  width: var(--mx-ledger-figure-width);
+}
+.mx-ledger-day-column {
+  width: calc(var(--mx-ledger-figure-width) + var(--mx-ledger-day-extra, 12px));
 }
 .mx-ledger-table .mx-ledger-head th {
   padding-top: 0;
@@ -430,11 +433,24 @@
 .mx-ledger-flag[data-tone="warning"] {
   background: var(--warning);
 }
-.mx-ledger-table .mx-tag {
-  margin-right: 6px;
+.mx-ledger-table .mx-ledger-day {
+  padding-inline-start: 0;
+  white-space: normal;
 }
-.mx-ledger-list {
-  display: none;
+.mx-ledger-day > span {
+  white-space: nowrap;
+}
+.mx-ledger-date {
+  display: var(--mx-ledger-date-display, inline-block);
+  margin-inline-end: var(--mx-ledger-date-gap, 6px);
+}
+@container holdings-ledger (max-width: 1190px) {
+  .mx-ledger {
+    --mx-ledger-width-class: stacked;
+    --mx-ledger-date-display: block;
+    --mx-ledger-date-gap: 0;
+    --mx-ledger-day-extra: 0px;
+  }
 }
 @media (max-width: 1199px) {
   .mx-ledger-chart {
@@ -444,8 +460,8 @@
   .mx-ledger-donut {
     width: 184px;
   }
-  .mx-ledger-table :is(th, td):not(:first-child) {
-    width: 84px;
+  .mx-ledger-table {
+    --mx-ledger-figure-width: 84px;
   }
 }
 @media (max-width: 959px) {
@@ -491,12 +507,6 @@
   }
   .mx-ledger-donut {
     width: 184px;
-  }
-  .mx-ledger-table {
-    display: none;
-  }
-  .mx-ledger-list {
-    display: block;
   }
   .mx-ledger-list ol {
     margin: 0;

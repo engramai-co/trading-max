@@ -16,6 +16,7 @@ import {
   type OverviewLayout,
   type ReadingLayout,
 } from "@/lib/overview-layout-storage";
+import { ledgerWidthClass } from "@/lib/overview-ledger-reservation";
 import type { Range, Scope } from "@/lib/portfolio/nav";
 import type { DashboardLens } from "@/lib/types";
 import { useSnapshotCacheScope } from "@/ui/snapshot-cache-provider";
@@ -133,6 +134,7 @@ export function useSaveOverviewLayout(
         const digestHeight = digest?.getBoundingClientRect().height;
         const layout: OverviewLayout = {
           rows: { stocks, funds, dateTagged }, ledger: ledgerHeight, reading,
+          ledgerWidth: dateTagged ? ledgerWidthClass(ledger) : undefined,
           sectors: sectors?.classList.contains("mx-overview-sectors-pending") ? prior?.sectors : sectors?.getBoundingClientRect().height,
           brief: brief && (!digest || digest.hasAttribute("data-waiting")) ? prior?.brief ?? digestHeight : digestHeight,
         };

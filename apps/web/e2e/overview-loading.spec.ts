@@ -469,6 +469,50 @@ test.describe("Overview loading and recovery", () => {
     });
   }
 
+  test("a dated ledger remeasures its reservation at a narrower width", async ({ page, isMobile }) => {
+    test.skip(isMobile, "Two widths in the desktop cache bucket");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    let hold = false;
+    const waiting = Promise.withResolvers<void>();
+    await mockOverview(page, { holdingCount: () => 40, mixedQuoteDates: true,
+      beforeLens: () => hold ? waiting.promise : Promise.resolve() });
+    await page.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
+    await page.goto("/");
+    const loaded = page.locator(".mx-overview-holdings .mx-ledger:not(.mx-ledger-pending)");
+    await expect(loaded.getByRole("link", { name: /SYN39/ })).toBeVisible();
+    await expect.poll(() => layoutKeys(page)).toHaveLength(1);
+    const wide = await loaded.evaluate(node => node.getBoundingClientRect().height);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    const narrow = await loaded.evaluate(node => node.getBoundingClientRect().height);
+    expect(narrow - wide).toBeGreaterThan(20);
+    // Preserve the first visit's measurement while the window changes.
+    await page.goto("/holdings");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/");
+    await expect(loaded.getByRole("link", { name: /SYN39/ })).toBeVisible();
+    const [key] = await layoutKeys(page);
+    await expect.poll(() => page.evaluate(name => JSON.parse(localStorage.getItem(name) ?? "{}").ledger, key)).toBe(wide);
+    hold = true;
+    const hydration = await holdHydration(page);
+    try {
+      // Change the viewport when no Overview layout writer is mounted.
+      await page.goto("/holdings", { waitUntil: "commit" });
+      await page.setViewportSize({ width: 1280, height: 900 });
+      await page.goto("/", { waitUntil: "commit" });
+      await hydration.waitForScripts();
+      const pending = page.locator(".mx-overview-holdings .mx-ledger-pending");
+      const height = () => pending.evaluate(node => node.getBoundingClientRect().height);
+      await expect(pending).toHaveCSS("--mx-ledger-rows", "40");
+      await expect.poll(async () => Math.abs(await height() - narrow)).toBeLessThanOrEqual(2);
+      hydration.release();
+      await expect(page.locator(".mx-overview-read")).not.toHaveAttribute("data-layout-bootstrap");
+      await expect.poll(async () => Math.abs(await height() - narrow)).toBeLessThanOrEqual(2);
+    } finally {
+      hydration.release();
+      waiting.resolve();
+    }
+  });
+
   test("oversized entries fall back to defaults and invalid heights keep valid counts", async ({ page, isMobile }) => {
     await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     await page.emulateMedia({ reducedMotion: "reduce" });

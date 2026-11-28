@@ -199,9 +199,6 @@
 .mx-reading-detail {
   margin: 0;
 }
-.mx-compact-records {
-  display: none;
-}
 .mx-reading-sections > .mx-model-workbench {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
@@ -325,6 +322,9 @@
   .mx-reading-sections {
     grid-area: 2 / 1;
   }
+  .mx-reading-sections [data-sticky-header] {
+    --tm-table-rail-height: 45px;
+  }
   .mx-reading-sections > [id], .mx-reading-sections #valuation-results,
   .mx-reading-sections .mx-tech-workspace > [id] {
     scroll-margin-top: 56px;
@@ -333,43 +333,41 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
-@media (max-width: 767px) {
-  .mx-wide-records {
-    display: none;
-  }
-  .mx-compact-records {
-    display: block;
-  }
-  .mx-compact-records :is(dl, dd) {
-    margin: 0;
-  }
-  .mx-compact-records dl + dl, .mx-compact-records section + section {
-    border-top: 1px solid var(--mx-border);
-    margin-top: 12px;
-    padding-top: 12px;
-  }
-  .mx-compact-records dl > div {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    padding-block: 4px;
-  }
-  .mx-compact-records dt {
-    white-space: nowrap;
-    color: var(--mx-muted);
-  }
-  .mx-compact-records dd {
-    text-align: end;
-    font-variant-numeric: tabular-nums;
-  }
-  .mx-compact-records h4 {
-    margin: 0 0 6px;
-  }
-  .mx-compact-records abbr {
-    text-decoration: none;
-  }
+.mx-compact-records :is(dl, dd) {
+  margin: 0;
 }
+.mx-compact-records dl + dl, .mx-compact-records section + section {
+  border-top: 1px solid var(--mx-border);
+  margin-top: 12px;
+  padding-top: 12px;
+}
+.mx-compact-records dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 4px;
+}
+.mx-compact-records dt {
+  flex-shrink: 1;
+  color: var(--mx-muted);
+}
+.mx-compact-records dd {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.mx-compact-records .mx-text-link {
+  white-space: normal;
+}
+.mx-compact-records h4 {
+  margin: 0 0 6px;
+}
+.mx-compact-records abbr {
+  text-decoration: none;
+}
+
 /* A side panel can leave the readout as little room as a phone viewport. */
 @container research-reading (max-width: 39rem) {
   .mx-valuation-readout {
@@ -412,7 +410,7 @@
     font-size: 1.125rem;
   }
 }
-@media (max-width: 767px) {
+@media screen and (max-width: 767px) {
   .mx-reading-sections .mx-table {
     width: max-content;
     min-width: 100%;

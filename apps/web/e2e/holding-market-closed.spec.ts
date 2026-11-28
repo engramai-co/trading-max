@@ -142,6 +142,14 @@ test("an undated ISA quote shows the price and its missing time on both position
   }
 });
 
+test("desktop holdings use 12px cell padding", async ({ page, isMobile }) => {
+  test.skip(isMobile || !process.env.PLAYWRIGHT_BASE_URL, "Requires a wide table on the preview");
+  await syntheticHoldings(page);
+  await page.goto("/holdings");
+  const cell = page.getByRole("row").filter({ hasText: "SYNUS" }).getByRole("cell").first();
+  await expect(cell).toHaveCSS("padding", "12px");
+});
+
 test("a closed listing replaces the day figure on each position surface", async ({ page }, info) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires an isolated local web build.");
   const phone = info.project.name === "mobile";
@@ -402,4 +410,57 @@ test("retained ISA peek isolates same-ETF quotes across accounts and publication
   await expect(retainedIsaRows).toHaveCount(1);
   await expect(retainedIsaRows).toContainText("£115.50");
   await expect(retainedIsaRows.locator(".mx-holding-quote-basis time")).toHaveAttribute("datetime", isaRetainedAt);
+});
+
+test("holdings keep their sort direction accessible on desktop and phone", async ({ page, isMobile }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local fixture.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await syntheticHoldings(page, {
+    ...lens,
+    holdings: [{ ...us, pnlGbp: 500_000_000_000 }, { ...uk, pnlGbp: -3 }],
+  });
+  await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 768, height: 900 });
+  await page.goto("/holdings");
+
+  if (isMobile) {
+    const sort = page.getByRole("combobox", { name: "Sort holdings" });
+    await sort.click();
+    await page.getByRole("option", { name: "Lowest P&L" }).click();
+    await expect(page).toHaveURL(/positionSort=pnl&direction=asc/);
+    await expect(page.locator(".mx-mobile-holdings button").first()).toContainText("SYNUK");
+    await expect(sort).toContainText("Lowest P&L");
+  } else {
+    const region = page.getByRole("region", { name: "Direct holdings", exact: true });
+    const table = region.getByRole("table", { name: "Direct holdings" });
+    const sort = table.getByRole("button", { name: "Unrealised P&L" });
+    await expect(table.locator('th[aria-sort="descending"]')).toHaveText("Market value");
+    await expect(region).toHaveAttribute("tabindex", "0");
+    await region.focus();
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => region.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+    await sort.press("Enter");
+    await expect(sort).toBeFocused();
+    await expect(table.locator('th[aria-sort="descending"]')).toHaveText("Unrealised P&L");
+    await expect(table.getByRole("rowheader").first()).toContainText("SYNUS");
+    await sort.press("Space");
+    await expect(sort).toBeFocused();
+    await expect(table.locator('th[aria-sort="ascending"]')).toHaveText("Unrealised P&L");
+    await expect(table.locator("th[aria-sort]")).toHaveCount(1);
+    await expect(table.getByRole("rowheader").first()).toContainText("SYNUK");
+  }
+
+  await expect(page.getByRole("status").filter({ hasText: "Sorted by Lowest P&L, 2 holdings" })).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(isMobile ? 391 : 769);
+});
+
+test("WebKit landscape confines direct holdings to their own scroll region", async ({ page, isMobile }) => {
+  test.skip(!isMobile || !process.env.PLAYWRIGHT_BASE_URL, "Requires a touch fixture.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await syntheticHoldings(page, { ...lens, holdings: [{ ...uk, currentValueGbp: 100_000_000_000_000 }] });
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.goto("/holdings");
+  const region = page.getByRole("region", { name: "Direct holdings", exact: true });
+  await expect(region).toBeVisible();
+  expect(await region.evaluate((node) => node.scrollWidth)).toBeGreaterThan(await region.evaluate((node) => node.clientWidth));
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(845);
 });

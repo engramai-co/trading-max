@@ -2,6 +2,7 @@ import { expect, test, webkit, type Page } from "@playwright/test";
 import { mkdir } from "node:fs/promises";
 import { formatCalendarDate } from "../ui/formatters";
 import { tapRecordsBottom } from "./chart-records";
+import type { IndexConstituent } from "../workspace/market-indices-data";
 
 const index = {
   id: "synthetic-index", name: "Synthetic broad market", nameZh: "合成宽基指数", scope: "us",
@@ -41,7 +42,7 @@ const shell = {
 };
 
 const publishedSeriesId = "f".repeat(20);
-async function indexFixture(page: Page, baseURL: string, locale: "zh" | "en" = "zh", unconfirmedTracking = false) {
+async function indexFixture(page: Page, baseURL: string, locale: "zh" | "en" = "zh", unconfirmedTracking = false, constituentRows: IndexConstituent[] = members) {
   const origin = new URL(baseURL).origin;
   await page.clock.install({ time: new Date(stamp) });
   await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
@@ -77,7 +78,7 @@ async function indexFixture(page: Page, baseURL: string, locale: "zh" | "en" = "
       index, depth: "L2", quote: { level: 612, change: .009, asOf: stamp, state: "closed" },
       technical: { ticker: index.id, score: 68, asOf: stamp, state: "偏强", scoreExplanationState: "unavailable" },
       exposure: { totalGbp: privateValue, directGbp: 21, lookThroughGbp: 50, matchedIsins: 2, asOf: stamp },
-      composition,
+      composition: { ...composition, members: constituentRows },
       products: [
         product, { ...product, isin: "ZZ0000000101", ticker: "SYN2", valueGbp: null,
           group: "similar", relationship: "similar-exposure" },
@@ -379,3 +380,36 @@ for (const [locale, expected] of [
     }
   });
 }
+
+
+test("constituent sorting returns to page one and keeps instrument identity", async ({ page, baseURL, isMobile }) => {
+  const manyMembers = Array.from({ length: 24 }, (_, index) => ({
+    ...members[0],
+    ticker: `SYN${String(index).padStart(2, "0")}`,
+    isin: `ZZ${String(index).padStart(10, "0")}`,
+    weight: (24 - index) / 300,
+    move: index * 0.001,
+  }));
+  await indexFixture(page, baseURL!, "en", false, manyMembers);
+  await page.goto("/research?type=index&index=synthetic-index&view=constituents");
+  const region = page.getByRole("region", { name: "Constituent weights", exact: true });
+  const sort = page.getByRole("combobox", { name: "Sort constituents" });
+  await expect(region.getByRole("link").first()).toContainText("SYN00");
+  await page.getByRole("button", { name: "Next page" }).click();
+  await expect(region.getByRole("link").first()).toContainText("SYN20");
+  // SYN20 appears on both sides of the page reset. React must retain that node.
+  const retained = await region.getByRole("link", { name: /SYN20/ }).elementHandle();
+  await sort.click();
+  await page.getByRole("option", { name: "By move" }).click();
+  await expect(sort).toBeFocused();
+  await expect(region.getByRole("link").first()).toContainText("SYN23");
+  expect(await region.getByRole("link", { name: /SYN20/ }).evaluate((node, original) => node === original, retained)).toBe(true);
+  await expect(page.getByRole("status").filter({ hasText: "Sorted by move, 24 constituents" })).toHaveCount(1);
+  if (isMobile) {
+    await expect(region.getByRole("table")).toHaveCount(0);
+    await expect(region.getByText("Weight", { exact: true }).first()).toBeVisible();
+    await expect(region.getByText("Move", { exact: true }).first()).toBeVisible();
+  } else {
+    await expect(region.locator('th[aria-sort="descending"]')).toHaveText("Move");
+  }
+});

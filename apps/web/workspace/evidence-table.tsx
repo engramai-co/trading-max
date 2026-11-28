@@ -1,11 +1,11 @@
 "use client";
 
 import { Pagination } from "@/components/ui/pagination";
-import { Table } from "@/components/ui/table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState, type ReactNode } from "react";
+import { useState, type Key, type ReactNode } from "react";
 import { Empty, useCopy } from "./foundation";
 
 export type EvidenceColumn<T> = {
@@ -25,6 +25,9 @@ export function EvidenceTable<T>({
   showCount = true,
   compactRecords = false,
   chart = false,
+  rowKey,
+  sort,
+  className,
 }: {
   rows: T[];
   columns: EvidenceColumn<T>[];
@@ -36,9 +39,16 @@ export function EvidenceTable<T>({
   showCount?: boolean;
   compactRecords?: boolean;
   chart?: boolean;
+  rowKey?: (row: T) => Key;
+  sort?: { column: number; direction: "ascending" | "descending" };
+  className?: string;
 }) {
   const t = useCopy();
-  const [page, setPage] = useState(1);
+  const [paging, setPaging] = useState({ column: sort?.column, direction: sort?.direction, page: 1 });
+  const sortChanged = paging.column !== sort?.column || paging.direction !== sort?.direction;
+  const setPage = (page: number) => setPaging({ column: sort?.column, direction: sort?.direction, page });
+  if (sortChanged) setPage(1);
+  const page = sortChanged ? 1 : paging.page;
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages);
   const paginationLabels = {
@@ -50,68 +60,51 @@ export function EvidenceTable<T>({
   if (!rows.length)
     return <Empty title={t("没有符合条件的记录", "No matching records")} />;
   const pageRows = rows.slice((current - 1) * pageSize, current * pageSize);
-  const region = {
-    className: cn("mx-table-wrap", compactRecords && "mx-wide-records"),
-    tabIndex: 0,
-    role: "region",
-    "aria-label": label,
-  };
-  const contents = <>
-    {/* A single page shows its rows; the count only helps when paging. */}
-    <caption className={"mx-table-caption" + (showCount && rows.length > pageSize ? "" : " sr-only")}>
-      {label} · {totalRows ?? rows.length} {(totalRows ?? rows.length) === 1 ? t("条记录", "record") : t("条记录", "records")}
-    </caption>
-    <thead>
-      <tr>
-        {columns.map((c) => (
-          <th
-            scope="col"
-            key={c.label}
-            className={c.numeric ? "mx-align-right" : undefined}
-          >
-            {c.label}
-          </th>
+  const rowId = (row: T, index: number) => rowKey ? rowKey(row) : (current - 1) * pageSize + index;
+  const count = totalRows ?? rows.length;
+  const caption = `${label} · ${count} ${count === 1 ? t("条记录", "record") : t("条记录", "records")}`;
+  const table = <>
+    <Table
+      label={label}
+      caption={caption}
+      showCaption={showCount && pages > 1}
+      className={cn("mx-table", chart && "mx-chart-records-table", className)}
+      containerProps={{ className: cn("mx-table-wrap", compactRecords && "tm-table-wide") }}
+    >
+      <TableHeader>
+        <TableRow>
+          {columns.map((column, index) => (
+            <TableHead scope="col" key={column.label}
+              aria-sort={sort?.column === index ? sort.direction : undefined}
+              className={column.numeric ? "mx-align-right" : undefined}>
+              {column.label}
+            </TableHead>
+          ))}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {pageRows.map((row, index) => (
+          <TableRow key={rowId(row, index)}>
+            {columns.map((column, columnIndex) => {
+              const value = column.value(row, { compact: false });
+              const alignment = column.numeric ? "mx-align-right" : undefined;
+              return columnIndex === rowHeaderIndex
+                ? <TableHead scope="row" key={column.label} className={alignment}>{value}</TableHead>
+                : <TableCell key={column.label} className={alignment}>{value}</TableCell>;
+            })}
+          </TableRow>
         ))}
-      </tr>
-    </thead>
-    <tbody>
-      {pageRows
-        .map((row, i) => (
-          <tr key={(current - 1) * pageSize + i}>
-            {columns.map((c, j) =>
-              j === rowHeaderIndex ? (
-                <th
-                  scope="row"
-                  key={c.label}
-                  className={c.numeric ? "mx-align-right" : undefined}
-                >
-                  {c.value(row, { compact: false })}
-                </th>
-              ) : (
-                <td
-                  key={c.label}
-                  className={c.numeric ? "mx-align-right" : undefined}
-                >
-                  {c.value(row, { compact: false })}
-                </td>
-              ),
-            )}
-          </tr>
-        ))}
-    </tbody>
+      </TableBody>
+    </Table>
+    {compactRecords && <div className="mx-compact-records tm-table-compact" aria-label={label} role="region">
+      {pageRows.map((row, index) => <dl key={rowId(row, index)}>{columns.map((column) => <div key={column.label}>
+        <dt>{column.label}</dt><dd>{column.value(row, { compact: true })}</dd>
+      </div>)}</dl>)}
+    </div>}
   </>;
   return (
     <>
-      {chart ? (
-        <Table containerProps={region} className="mx-table caption-top tabular-nums [&_td]:p-3 [&_th]:bg-transparent [&_th]:p-3 [&_td]:whitespace-nowrap">
-          {contents}
-        </Table>
-      ) : <div {...region}><table className="mx-table">{contents}</table></div>}
-      {compactRecords && <div className="mx-compact-records" aria-label={label} role="region">
-        {pageRows.map((row, i) => <dl key={i}>{columns.map((col) => <div key={col.label}>
-          <dt>{col.label}</dt><dd>{col.value(row, { compact: true })}</dd>
-        </div>)}</dl>)}
-      </div>}
+      {compactRecords ? <div className="tm-table-variants">{table}</div> : table}
       {pages > 1 && (
         chart ? <nav aria-label={t("记录分页", "Record pages")}>
           <div className="mt-4 flex flex-wrap items-center gap-1">

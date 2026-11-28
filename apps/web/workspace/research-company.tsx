@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { SearchInput } from "@/components/ui/search-input";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate } from "@/ui/formatters";
@@ -103,33 +104,33 @@ export function TechnicalView({ data, embedded = false }: { data: ResearchLensSn
               ],
             ]}
           />
-          <table className="mx-technical-ma">
-            <thead>
-              <tr>
-                <th>{t("日均线", "Daily SMA")}</th>
-                <th>{quoteUnit(tech.currency).currency}</th>
-                <th>{t("价格偏离", "Distance")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table label={t("日均线", "Daily SMA")} className="mx-technical-ma">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{t("日均线", "Daily SMA")}</TableHead>
+                <TableHead scope="col">{quoteUnit(tech.currency).currency}</TableHead>
+                <TableHead scope="col">{t("价格偏离", "Distance")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {(["sma20", "sma50", "sma200"] as const).map((key) => (
-                <tr key={key}>
-                  <th>
+                <TableRow key={key}>
+                  <TableHead scope="row">
                     <button
                       className="mx-text-link"
                       onClick={() => showAverage(key)}
                     >
                       {key.toUpperCase()}
                     </button>
-                  </th>
-                  <td>{priceFigure(tech[key], 2)}</td>
-                  <td>
+                  </TableHead>
+                  <TableCell>{priceFigure(tech[key], 2)}</TableCell>
+                  <TableCell>
                     {percent(relativeToPrice(tech.price, tech[key]), true, 2)}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
           {more(t("更多价格位置", "More price levels"), [
             [t("日线收盘", "Daily close"), priceFigure(tech.price, 2)],
             [
@@ -547,80 +548,73 @@ export function FinancialStatements({
       </div>
       {rows.length && dates.length ? (
         <>
-          <div
-            className="mx-table-wrap"
-            tabIndex={0}
-            role="region"
-            aria-label={t("数据表格", "Data table")}
-          >
-            <table className="mx-table mx-statements">
-              <thead>
-                <tr>
-                  <th>{t("会计科目", "Line item")}</th>
-                  <th className="mx-spark-cell">
-                    <span className="sr-only">{t("趋势", "Trend")}</span>
-                  </th>
-                  {dates.map((date) => (
-                    <th className="mx-align-right" key={date}>
-                      {periodFor(date)?.label ?? formatCalendarDate(date, locale)}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {!visibleRows.length && (
-                  <tr>
-                    <td colSpan={dates.length + 2}>
-                      {t("没有匹配的科目", "No matching line items")}
-                    </td>
-                  </tr>
-                )}
-                {visibleRows.map((row, i) => (
-                  <tr key={i}>
-                    <th scope="row" title={str(row.index ?? row.name)}>
-                      {label(row)}
-                    </th>
-                    <td className="mx-spark-cell">
-                      <Sparkbars values={[...dates].reverse().map((date) => numeric(row[date]))} />
-                    </td>
-                    {dates.map((date) => {
-                      const currentPeriod = periodFor(date);
-                      const priorPeriod = currentPeriod
-                        ? data.financialFacts?.periods?.find(
-                            (p) =>
-                              p.kind === currentPeriod.kind &&
-                              p.fiscalYear ===
-                                (currentPeriod.fiscalYear ?? 0) - 1 &&
-                              p.fiscalQuarter === currentPeriod.fiscalQuarter,
-                          )
-                        : undefined;
-                      const priorDate = priorPeriod
-                        ? dates.find(
-                            (d) => d.slice(0, 10) === priorPeriod.providerEnd,
-                          )
-                        : undefined;
-                      const previous = priorDate
-                        ? numeric(row[priorDate])
-                        : null;
-                      const current = numeric(row[date]);
-                      const change =
-                        previous != null && previous > 0 && current != null
-                          ? current / previous - 1
-                          : null;
-                      return (
-                        <td key={date} className="mx-align-right">
-                          {format(row[date], str(row.index ?? row.name))}
-                          {growth && change != null && (
-                            <small>{percent(change, true, 1)}</small>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
+          <Table containerProps={{ className: "mx-table-wrap" }} label={t("数据表格", "Data table")} className="mx-table mx-statements">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{t("会计科目", "Line item")}</TableHead>
+                <TableHead scope="col" className="mx-spark-cell">
+                  <span className="sr-only">{t("趋势", "Trend")}</span>
+                </TableHead>
+                {dates.map((date) => (
+                  <TableHead scope="col" className="mx-align-right" key={date}>
+                    {periodFor(date)?.label ?? formatCalendarDate(date, locale)}
+                  </TableHead>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {!visibleRows.length && (
+                <TableRow>
+                  <TableCell colSpan={dates.length + 2}>
+                    {t("没有匹配的科目", "No matching line items")}
+                  </TableCell>
+                </TableRow>
+              )}
+              {visibleRows.map((row, i) => (
+                <TableRow key={i}>
+                  <TableHead scope="row" title={str(row.index ?? row.name)}>
+                    {label(row)}
+                  </TableHead>
+                  <TableCell className="mx-spark-cell">
+                    <Sparkbars values={dates.map((_, index) => numeric(row[dates[dates.length - 1 - index]]))} />
+                  </TableCell>
+                  {dates.map((date) => {
+                    const currentPeriod = periodFor(date);
+                    const priorPeriod = currentPeriod
+                      ? data.financialFacts?.periods?.find(
+                          (p) =>
+                            p.kind === currentPeriod.kind &&
+                            p.fiscalYear ===
+                              (currentPeriod.fiscalYear ?? 0) - 1 &&
+                            p.fiscalQuarter === currentPeriod.fiscalQuarter,
+                        )
+                      : undefined;
+                    const priorDate = priorPeriod
+                      ? dates.find(
+                          (d) => d.slice(0, 10) === priorPeriod.providerEnd,
+                        )
+                      : undefined;
+                    const previous = priorDate
+                      ? numeric(row[priorDate])
+                      : null;
+                    const current = numeric(row[date]);
+                    const change =
+                      previous != null && previous > 0 && current != null
+                        ? current / previous - 1
+                        : null;
+                    return (
+                      <TableCell key={date} className="mx-align-right">
+                        {format(row[date], str(row.index ?? row.name))}
+                        {growth && change != null && (
+                          <small>{percent(change, true, 1)}</small>
+                        )}
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </>
       ) : (
         <Empty

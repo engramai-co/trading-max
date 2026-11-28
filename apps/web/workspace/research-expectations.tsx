@@ -1,4 +1,5 @@
 "use client";
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { researchPriceQuery } from "./research-queries";
 
 import type { ResearchLensSnapshot } from "@/lib/types";
@@ -468,61 +469,54 @@ export function AnalystExpectations({
           </div>
           <details className="mx-chart-data">
             <summary>{t("目标价明细", "Price target details")}</summary>
-          <div
-            className="mx-target-values"
-            role="region"
-            aria-label={t("目标价明细", "Price target details")}
-            tabIndex={0}
-          >
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">{code}</th>
-                  {targets.rows.map((row) => (
-                    <th
-                      scope="col"
-                      key={row.key}
-                      className={
-                        row.key === "median" ? "mx-target-primary" : undefined
-                      }
-                    >
-                      {targetLabels[row.key]}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th scope="row">{t("目标价", "Target")}</th>
-                  {targets.rows.map((row) => (
-                    <td
-                      key={row.key}
-                      className={
-                        row.key === "median" ? "mx-target-primary" : undefined
-                      }
-                    >
-                      {quoteValue(row.value, code, { style: "number" })}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th scope="row">{t("相对现价", "vs current price")}</th>
-                  {targets.rows.map((row) => (
-                    <td
-                      key={row.key}
-                      className={
-                        row.change == null
-                          ? "mx-muted"
-                          : "mx-" + tone(row.change)
-                      }
-                    >
-                      {percent(row.change, true)}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+          <Table containerProps={{ className: "mx-target-values" }} label={t("目标价明细", "Price target details")}>
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{code}</TableHead>
+                {targets.rows.map((row) => (
+                  <TableHead
+                    scope="col"
+                    key={row.key}
+                    className={
+                      row.key === "median" ? "mx-target-primary" : undefined
+                    }
+                  >
+                    {targetLabels[row.key]}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableHead scope="row">{t("目标价", "Target")}</TableHead>
+                {targets.rows.map((row) => (
+                  <TableCell
+                    key={row.key}
+                    className={
+                      row.key === "median" ? "mx-target-primary" : undefined
+                    }
+                  >
+                    {quoteValue(row.value, code, { style: "number" })}
+                  </TableCell>
+                ))}
+              </TableRow>
+              <TableRow>
+                <TableHead scope="row">{t("相对现价", "vs current price")}</TableHead>
+                {targets.rows.map((row) => (
+                  <TableCell
+                    key={row.key}
+                    className={
+                      row.change == null
+                        ? "mx-muted"
+                        : "mx-" + tone(row.change)
+                    }
+                  >
+                    {percent(row.change, true)}
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableBody>
+          </Table>
           </details>
           {targets.rows.some((row) => row.value == null) && (
             <p className="mx-target-availability">

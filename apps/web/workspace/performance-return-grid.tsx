@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { ChevronRight } from "lucide-react";
 import { useMemo, useState, type CSSProperties } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -63,15 +64,13 @@ export function ReturnGrid({ scope, onSelect, selected, runId }: {
         <QueryReadStatus label={t("周期收益", "Periodic returns")} failed={query.isError && !query.data} ready={!!query.data} error={query.error} />
       {query.isPending ? <Pending compact /> : query.isError && !query.data ? <QueryError retry={query.refetch} />
           : !year ? <Empty title={t("需要更多每日收益记录", "More daily return observations are needed")} />
-          : <div className="mx-table-wrap mx-month-table-wrap">
-            <table className="mx-table mx-month-table" aria-label={t("周期收益", "Periodic returns")}>
-              <thead><tr><th>{t("年份", "Year")}</th>{columns(year).map((key) => <th key={key}>{kind === "year" ? t("收益", "Return") : label(key)}</th>)}</tr></thead>
-              <tbody>{(phone ? [year] : periods.years).map((item) => <tr key={item}>
-                <th scope="row">{item}</th>
-                {columns(item).map((key) => <td key={key} className="mx-month-return">{render(key, !!phone)}</td>)}
-              </tr>)}</tbody>
-            </table>
-          </div>}
+          : <Table containerProps={{ className: "mx-table-wrap mx-month-table-wrap" }} label={t("周期收益", "Periodic returns")} className="mx-table mx-month-table">
+              <TableHeader><TableRow><TableHead scope="col">{t("年份", "Year")}</TableHead>{columns(year).map((key) => <TableHead scope="col" key={key}>{kind === "year" ? t("收益", "Return") : label(key)}</TableHead>)}</TableRow></TableHeader>
+              <TableBody>{(phone ? [year] : periods.years).map((item) => <TableRow key={item}>
+                <TableHead scope="row">{item}</TableHead>
+                {columns(item).map((key) => <TableCell key={key} className="mx-month-return">{render(key, !!phone)}</TableCell>)}
+              </TableRow>)}</TableBody>
+            </Table>}
         {cards.some((period) => period.value != null && period.partial) && <span className="mx-muted">* {t("部分覆盖", "Partial coverage")}</span>}
       </>}
     </details>

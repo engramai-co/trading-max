@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { FilePicker } from "@/components/ui/file-picker";
 import { TextField, useRequiredFields } from "@/components/ui/form-field";
 
@@ -486,35 +487,28 @@ export function CfdImports({
                     ]}
                   />
                   {data.files.length ? (
-                    <div
-                      className="mx-table-wrap"
-                      tabIndex={0}
-                      role="region"
-                      aria-label={t("数据表格", "Data table")}
-                    >
-                      <table className="mx-table">
-                        <thead>
-                          <tr>
-                            <th scope="col">{t("文件", "File")}</th>
-                            <th scope="col">{t("导入时间", "Imported")}</th>
-                            <th scope="col" className="mx-align-right">
-                              {t("记录", "Records")}
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {data.files.map((f) => (
-                            <tr key={f.sha256}>
-                              <td>{displayFilename(f.filename)}</td>
-                              <td>
-                                <Freshness date={f.importedAt} label="" />
-                              </td>
-                              <td className="mx-align-right">{number(f.rawRows, 0)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                    <Table containerProps={{ className: "mx-table-wrap" }} label={t("数据表格", "Data table")} className="mx-table">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead scope="col">{t("文件", "File")}</TableHead>
+                          <TableHead scope="col">{t("导入时间", "Imported")}</TableHead>
+                          <TableHead scope="col" className="mx-align-right">
+                            {t("记录", "Records")}
+                          </TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {data.files.map((f) => (
+                          <TableRow key={f.sha256}>
+                            <TableCell>{displayFilename(f.filename)}</TableCell>
+                            <TableCell>
+                              <Freshness date={f.importedAt} label="" />
+                            </TableCell>
+                            <TableCell className="mx-align-right">{number(f.rawRows, 0)}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
                   ) : (
                     <p className="mt-3 border-t border-border pt-3 text-xs leading-[1.6] text-muted-foreground">
                       {t("尚未导入任何文件", "No imports yet")}

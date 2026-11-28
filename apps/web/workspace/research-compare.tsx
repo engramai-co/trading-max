@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { WorkspaceDialog } from "./overlay";
 import { useLocale, type Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateSpan } from "@/ui/formatters";
@@ -285,44 +286,37 @@ export function ResearchComparison({
         {requests.some((q) => q.isPending) ? (
           <Pending />
         ) : (
-          <div
-            className="mx-table-scroll"
-            tabIndex={0}
-            role="region"
-            aria-label={t("财务指标比较", "Financial comparison")}
-          >
-            <table className="mx-financial-table">
-              <thead>
-                <tr>
-                  <th>{t("指标", "Metric")}</th>
-                  {cols.map((col) => (
-                    <th key={col.symbol}>
-                      {col.symbol}
-                      <small>
-                        {col.error
-                          ? t("载入失败", "Load failed")
-                          : (col.period?.label ??
-                            t("无匹配财报", "No matching financials"))}
-                      </small>
-                      <small>
-                        {col.period ? formatCalendarDate(col.period.actualEnd ?? col.period.providerEnd, locale) : ""}
-                      </small>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {metrics.map((key) => (
-                  <tr key={key}>
-                    <th>{t(...(metricNames[key] ?? extra[key]))}</th>
-                    {cols.map((col) => (
-                      <td key={col.symbol}>{read(col, key)}</td>
-                    ))}
-                  </tr>
+          <Table containerProps={{ className: "mx-table-scroll" }} label={t("财务指标比较", "Financial comparison")} className="mx-financial-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{t("指标", "Metric")}</TableHead>
+                {cols.map((col) => (
+                  <TableHead scope="col" key={col.symbol}>
+                    {col.symbol}
+                    <small>
+                      {col.error
+                        ? t("载入失败", "Load failed")
+                        : (col.period?.label ??
+                          t("无匹配财报", "No matching financials"))}
+                    </small>
+                    <small>
+                      {col.period ? formatCalendarDate(col.period.actualEnd ?? col.period.providerEnd, locale) : ""}
+                    </small>
+                  </TableHead>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {metrics.map((key) => (
+                <TableRow key={key}>
+                  <TableHead scope="row">{t(...(metricNames[key] ?? extra[key]))}</TableHead>
+                  {cols.map((col) => (
+                    <TableCell key={col.symbol}>{read(col, key)}</TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
         {cols.length > 1 &&
           cols.some((col) => typeof readValue(col, multiple) === "number") && (

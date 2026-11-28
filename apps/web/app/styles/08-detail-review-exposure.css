@@ -156,9 +156,6 @@
   padding: 12px 0;
   font-size: 12px;
 }
-.mx-table th[scope="row"] {
-  font-weight: 500;
-}
 .mx-review-evidence {
   display: flex;
   flex-direction: column;

@@ -1,0 +1,243 @@
+.tm-table-scrollport {
+  position: relative;
+  isolation: isolate;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  overflow: auto;
+  scroll-padding-inline-end: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tm-table-scrollport:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+:where([data-slot="table"]) {
+  --tm-table-cell-inline: 12px;
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  caption-side: top;
+  font-size: var(--mx-text-body, 0.875rem);
+  font-variant-numeric: tabular-nums;
+}
+
+:where([data-slot="table"] :is(th, td)) {
+  padding: 12px var(--tm-table-cell-inline);
+  vertical-align: middle;
+  border-block-end: 1px solid var(--border);
+  text-align: start;
+}
+
+:where([data-slot="table"] thead th) {
+  color: var(--muted-foreground);
+  font-size: var(--mx-text-label, 0.75rem);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+:where([data-slot="table"] tbody th) {
+  font-weight: 500;
+}
+
+:where([data-slot="table"] tbody:last-of-type tr:last-child) :where(th, td) {
+  border-block-end-color: transparent;
+}
+
+:where([data-slot="table"]) .mx-align-right {
+  text-align: end;
+  white-space: nowrap;
+}
+
+:where(.tm-table-scrollport[data-pin-first]) :where(
+  thead > tr > th:first-child:not([colspan]),
+  tbody > tr > th:first-child[scope="row"],
+  tfoot > tr > th:first-child[scope="row"]:not([colspan])
+) {
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 1;
+  background-color: var(--tm-table-row, var(--card));
+}
+
+:where([data-slot="table"] tr[data-active], .mx-ledger-row[data-focus]) {
+  --tm-table-row: var(--mx-soft);
+}
+@media (hover: hover) {
+  :where(.mx-table tbody tr, .mx-ledger-row):hover {
+    --tm-table-row: var(--mx-soft);
+  }
+}
+
+:where([data-slot="table"] tr[data-state="selected"]) {
+  --tm-table-row: var(--selection);
+  background-color: var(--selection);
+}
+
+/* Keep the original header in the horizontal scroller while it follows page
+   scroll. The transform is limited to the table's own block extent. */
+:where([data-sticky-header]) :where(thead) {
+  position: relative;
+  z-index: var(--z-sticky);
+  background-color: var(--card);
+  translate: 0 clamp(
+    0px,
+    calc(var(--tm-table-page-offset, -100vh) + var(--shell-sticky-height, 56px) + var(--tm-table-rail-height, 0px)),
+    var(--tm-table-header-travel, 0px)
+  );
+}
+:where([data-sticky-header]) :where(tbody) :is(button, a, input) {
+  /* The document scroll padding already clears the shell top bar. */
+  scroll-margin-block-start: calc(var(--tm-table-rail-height, 0px) + var(--tm-table-header-size, 0px));
+}
+
+/* Overlay the native scrollport edges without participating in table sizing. */
+.tm-table-scrollport > table,
+.tm-table-scrollport::before,
+.tm-table-scrollport::after {
+  grid-area: 1 / 1;
+}
+.tm-table-scrollport::before,
+.tm-table-scrollport::after {
+  content: "";
+  position: sticky;
+  inline-size: 6px;
+  pointer-events: none;
+  z-index: calc(var(--z-sticky) + 1);
+  opacity: 0;
+}
+.tm-table-scrollport::before {
+  inset-inline-start: 0;
+  justify-self: start;
+  background: linear-gradient(to right, var(--border-strong), transparent);
+}
+.tm-table-scrollport::after {
+  inset-inline-start: calc(100% - 6px);
+  justify-self: end;
+  background: linear-gradient(to left, var(--border-strong), transparent);
+}
+.tm-table-scrollport[data-more-start]::before,
+.tm-table-scrollport[data-more-end]::after {
+  opacity: 1;
+}
+@supports (container-type: scroll-state) {
+  .tm-table-scrollport {
+    container-name: table-scrollport;
+    container-type: scroll-state;
+  }
+  @container table-scrollport scroll-state(scrollable: inline-start) {
+    .tm-table-scrollport::before {
+      opacity: 1;
+    }
+  }
+  @container table-scrollport scroll-state(scrollable: inline-end) {
+    .tm-table-scrollport::after {
+      opacity: 1;
+    }
+  }
+}
+
+/* Restore print flow before the responsive rules select a representation. */
+@media print {
+  .tm-table-scrollport {
+    display: block;
+    overflow: visible;
+    container-type: normal;
+  }
+  .tm-table-scrollport :is(thead, th) {
+    position: static;
+    translate: none;
+  }
+  .tm-table-scrollport::before,
+  .tm-table-scrollport::after {
+    content: none;
+  }
+}
+
+.tm-table-variants {
+  container: record-table / inline-size;
+  min-inline-size: 0;
+  position: relative;
+}
+.tm-table-compact,
+.tm-table-mode-probe {
+  display: none;
+}
+.tm-table-mode-probe {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  visibility: hidden;
+}
+.mx-mobile-holdings {
+  --tm-compact-layout: flex;
+  flex-direction: column;
+}
+.mx-exposure-active.mx-mobile-holdings {
+  display: flex;
+}
+@media (max-width: 767px) {
+  .tm-table-wide {
+    display: none;
+  }
+  .tm-table-mode-probe {
+    display: block;
+  }
+  .tm-table-compact {
+    display: var(--tm-compact-layout, block);
+  }
+}
+@container record-table (max-width: 32rem) {
+  .tm-table-wide {
+    display: none;
+  }
+  .tm-table-mode-probe {
+    display: block;
+  }
+  .tm-table-compact {
+    display: var(--tm-compact-layout, block);
+  }
+  .tm-table-variants .mx-holdings-sort {
+    display: block;
+  }
+}
+.mx-holdings-list th:has(> .tm-table-sort) {
+  padding: 4px;
+}
+[aria-sort="ascending"] > .tm-table-sort svg {
+  rotate: 180deg;
+}
+/* Secondary dates and basis labels can wrap without splitting a signed figure. */
+.mx-holdings-list .mx-table :is(.mx-holding-quote-basis, .tm-holding-day-detail) {
+  white-space: normal;
+}
+.tm-holding-day-detail > span {
+  white-space: nowrap;
+}
+.mx-return-table tbody th {
+  white-space: nowrap;
+}
+
+
+.mx-chart-records-table :is(th, td) {
+  padding: 12px;
+  white-space: nowrap;
+}
+:where(.tm-constituent-table) th:first-child .mx-text-link,
+:where(.tm-allocation-table) :is(th, td):first-child .mx-text-link {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
+}
+@media (max-width: 767px) {
+  :where(.tm-allocation-table) :is(th, td) {
+    --tm-table-cell-inline: 8px;
+  }
+}
+@media (forced-colors: active) {
+  .tm-table-scrollport:focus-visible {
+    outline-color: Highlight;
+  }
+}

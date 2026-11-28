@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import type { ReactNode } from "react";
 import { useLocale, type Locale } from "@/components/locale-provider";
@@ -122,24 +123,22 @@ export function AnalystEstimates({ data }: { data: ResearchLensSnapshot }) {
           return (
             <section key={measure.title}>
               <h3>{measure.title}</h3>
-              {rows.length ? <>
-                <div className="mx-table-wrap mx-wide-records" tabIndex={0} role="region" aria-label={measure.title + t("预期", " estimates")}>
-                  <table className="mx-table mx-forecast-table">
-                    <thead><tr><th scope="col">{t("报告期", "Period")}</th>
-                      {rows.map((row, i) => <th scope="col" key={i}>{label(row.period ?? row.index)}{unit(row)}</th>)}
-                    </tr></thead>
-                    <tbody>{fields.map((field, index) => <tr key={field.label} className={index === 0 ? "mx-forecast-average" : undefined}>
-                      <th scope="row">{field.label}</th>{rows.map((row, i) => <td key={i}>{field.read(row, false)}</td>)}
-                    </tr>)}</tbody>
-                  </table>
-                </div>
-                <div className="mx-compact-records">
+              {rows.length ? <div className="tm-table-variants">
+                <Table containerProps={{ className: "mx-table-wrap tm-table-wide" }} label={measure.title + t("预期", " estimates")} className="mx-table mx-forecast-table">
+                  <TableHeader><TableRow><TableHead scope="col">{t("报告期", "Period")}</TableHead>
+                    {rows.map((row, i) => <TableHead scope="col" key={i}>{label(row.period ?? row.index)}{unit(row)}</TableHead>)}
+                  </TableRow></TableHeader>
+                  <TableBody>{fields.map((field, index) => <TableRow key={field.label} className={index === 0 ? "mx-forecast-average" : undefined}>
+                    <TableHead scope="row">{field.label}</TableHead>{rows.map((row, i) => <TableCell key={i}>{field.read(row, false)}</TableCell>)}
+                  </TableRow>)}</TableBody>
+                </Table>
+                <div className="mx-compact-records tm-table-compact">
                   {rows.map((row, i) => <section key={i}>
                     <h4><abbr title={label(row.period ?? row.index)}>{shortForecastPeriod(analyst, row.period ?? row.index) ?? label(row.period ?? row.index)}</abbr> {unit(row)}</h4>
                     <dl>{fields.map((field) => <div key={field.label}><dt>{field.label}</dt><dd>{field.read(row, true)}</dd></div>)}</dl>
                   </section>)}
                 </div>
-              </> : (
+              </div> : (
                 <Empty
                   title={t("这个周期暂无预期", "No estimates for this period")}
                 />

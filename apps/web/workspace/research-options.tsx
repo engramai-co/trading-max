@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { WorkspaceSheet } from "./overlay";
 import { FormField } from "@/components/ui/form-field";
 import { NumericInput } from "@/components/ui/numeric-input";
@@ -337,6 +338,7 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
   const nearest = nearMoneyStrikes(all, options.spot, 1)[0];
   const activeSummary = options.expiries.find((e) => e.expiry === active);
   const activeCols = columns.length ? columns : baseColumns;
+  const callCols = [...activeCols].reverse();
   const sideNames: Record<Side, string> = { call: t("看涨", "Calls"), put: t("看跌", "Puts") };
   // Open interest by strike across the selected expirations; a reading names the strike as the axis does.
   const interest = interestByStrike(filtered);
@@ -525,114 +527,105 @@ export function OptionsView({ data }: { data: ResearchLensSnapshot }) {
                     </span>
                   )}
                 </div>
-                <div
-                  key={active + "|" + activeCols.join(",") + "|" + allStrikes}
-                  ref={centreChain}
-                  className="mx-table-wrap mx-option-chain"
-                  role="region"
-                  tabIndex={0}
-                  aria-label={t("看涨与看跌配对链", "Paired calls and puts")}
-                >
-                  <table className="mx-table">
-                    <thead>
-                      <tr>
-                        <th colSpan={activeCols.length}>{t("看涨", "Calls")}</th>
-                        <th className="mx-strike">
-                          {t("行权价", "Strike")} · {displayCurrency}
-                        </th>
-                        <th colSpan={activeCols.length}>{t("看跌", "Puts")}</th>
-                      </tr>
-                      <tr>
-                        {activeCols.toReversed().map((k) => (
-                          <th scope="col" key={k}>
-                            {columnNames[k]}
-                          </th>
-                        ))}
-                        <th scope="col" className="mx-strike">
-                          {formatCalendarDate(active, locale)}
-                        </th>
-                        {activeCols.map((k) => (
-                          <th scope="col" key={k}>
-                            {columnNames[k]}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {strikes.map((strike) => {
-                        const call = oneExpiry.find(
-                            (c) => c.strike === strike && c.side === "call",
-                          ),
-                          put = oneExpiry.find(
-                            (c) => c.strike === strike && c.side === "put",
-                          );
-                        return (
-                          <tr
-                            key={strike}
-                            className={
-                              strike === nearest ? "mx-near-spot" : undefined
-                            }
-                          >
-                            {activeCols.toReversed().map((k) => {
-                              const primary = k === activeCols[0];
-                              return (
-                                <td
-                                  key={k}
-                                  className={
-                                    call?.inTheMoney ? "mx-option-itm" : undefined
-                                  }
-                                >
-                                  {primary && call ? (
-                                    <button
-                                      type="button"
-                                      className="mx-cell-button"
-                                      onClick={() => setDetail(call)}
-                                      aria-label={`${t("看涨", "Call")} ${value(strike)} ${columnNames[k]} ${cell(call, k, cc)}`}
-                                    >
-                                      {cell(call, k, cc)}
-                                    </button>
-                                  ) : (
-                                    cell(call, k, cc)
-                                  )}
-                                </td>
-                              );
-                            })}
-                            <th scope="row" className="mx-strike">
-                              {quoteValue(strike, cc, { style: "figure" })}
-                              {strike === nearest && (
-                                <small>{t("近现价", "Nearest spot")}</small>
-                              )}
-                            </th>
-                            {activeCols.map((k) => {
-                              const primary = k === activeCols[0];
-                              return (
-                                <td
-                                  key={k}
-                                  className={
-                                    put?.inTheMoney ? "mx-option-itm" : undefined
-                                  }
-                                >
-                                  {primary && put ? (
-                                    <button
-                                      type="button"
-                                      className="mx-cell-button"
-                                      onClick={() => setDetail(put)}
-                                      aria-label={`${t("看跌", "Put")} ${value(strike)} ${columnNames[k]} ${cell(put, k, cc)}`}
-                                    >
-                                      {cell(put, k, cc)}
-                                    </button>
-                                  ) : (
-                                    cell(put, k, cc)
-                                  )}
-                                </td>
-                              );
-                            })}
-                          </tr>
+                <Table containerProps={{ className: "mx-table-wrap mx-option-chain", ref: centreChain }} label={t("看涨与看跌配对链", "Paired calls and puts")} key={active + "|" + activeCols.join(",") + "|" + allStrikes} pinFirst={false} stickyHeader className="mx-table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="colgroup" colSpan={activeCols.length}>{t("看涨", "Calls")}</TableHead>
+                      <TableHead scope="col" className="mx-strike">
+                        {t("行权价", "Strike")} · {displayCurrency}
+                      </TableHead>
+                      <TableHead scope="colgroup" colSpan={activeCols.length}>{t("看跌", "Puts")}</TableHead>
+                    </TableRow>
+                    <TableRow>
+                      {callCols.map((k) => (
+                        <TableHead scope="col" key={k}>
+                          {columnNames[k]}
+                        </TableHead>
+                      ))}
+                      <TableHead scope="col" className="mx-strike">
+                        {formatCalendarDate(active, locale)}
+                      </TableHead>
+                      {activeCols.map((k) => (
+                        <TableHead scope="col" key={k}>
+                          {columnNames[k]}
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {strikes.map((strike) => {
+                      const call = oneExpiry.find(
+                          (c) => c.strike === strike && c.side === "call",
+                        ),
+                        put = oneExpiry.find(
+                          (c) => c.strike === strike && c.side === "put",
                         );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                      return (
+                        <TableRow
+                          key={strike}
+                          className={
+                            strike === nearest ? "mx-near-spot" : undefined
+                          }
+                        >
+                          {callCols.map((k) => {
+                            const primary = k === activeCols[0];
+                            return (
+                              <TableCell
+                                key={k}
+                                className={
+                                  call?.inTheMoney ? "mx-option-itm" : undefined
+                                }
+                              >
+                                {primary && call ? (
+                                  <button
+                                    type="button"
+                                    className="mx-cell-button"
+                                    onClick={() => setDetail(call)}
+                                    aria-label={`${t("看涨", "Call")} ${value(strike)} ${columnNames[k]} ${cell(call, k, cc)}`}
+                                  >
+                                    {cell(call, k, cc)}
+                                  </button>
+                                ) : (
+                                  cell(call, k, cc)
+                                )}
+                              </TableCell>
+                            );
+                          })}
+                          <TableHead scope="row" className="mx-strike">
+                            {quoteValue(strike, cc, { style: "figure" })}
+                            {strike === nearest && (
+                              <small>{t("近现价", "Nearest spot")}</small>
+                            )}
+                          </TableHead>
+                          {activeCols.map((k) => {
+                            const primary = k === activeCols[0];
+                            return (
+                              <TableCell
+                                key={k}
+                                className={
+                                  put?.inTheMoney ? "mx-option-itm" : undefined
+                                }
+                              >
+                                {primary && put ? (
+                                  <button
+                                    type="button"
+                                    className="mx-cell-button"
+                                    onClick={() => setDetail(put)}
+                                    aria-label={`${t("看跌", "Put")} ${value(strike)} ${columnNames[k]} ${cell(put, k, cc)}`}
+                                  >
+                                    {cell(put, k, cc)}
+                                  </button>
+                                ) : (
+                                  cell(put, k, cc)
+                                )}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
               </>
             )}
             {mode === "iv" && (

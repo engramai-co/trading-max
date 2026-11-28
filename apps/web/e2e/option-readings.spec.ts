@@ -387,6 +387,28 @@ test.describe("option and rating charts read through the reading card", () => {
     await chart.press("Escape");
   });
 
+  test("a long options chain scrolls with the page and retains the heading", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "Narrow paired matrix");
+    await page.route("**/api/backend/research/AAPL/lens/options?**", async route => {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: { ...(await response.json()), options: {
+        ...chain, contracts: Array.from({ length: 60 }, (_, i) =>
+          contracts.map(contract => ({ ...contract, strike: 70 + i, contractSymbol: contract.contractSymbol + "-" + i }))).flat(),
+      } } });
+    });
+    await page.goto("/research?ticker=AAPL&view=options");
+    const region = page.getByRole("region", { name: "Paired calls and puts" });
+    await expect(region).toBeVisible();
+    const size = await region.evaluate(node => ({ horizontal: node.scrollWidth - node.clientWidth, vertical: node.scrollHeight - node.clientHeight }));
+    expect(size.horizontal).toBeGreaterThan(0);
+    expect(size.vertical).toBeLessThanOrEqual(1);
+    await region.evaluate(node => window.scrollBy(0, node.getBoundingClientRect().top + 120));
+    await expect.poll(() => region.evaluate(node => {
+      const header = node.querySelector("thead")!.getBoundingClientRect();
+      return header.top >= 0 && header.top > node.getBoundingClientRect().top && header.bottom < node.getBoundingClientRect().bottom;
+    })).toBe(true);
+  });
+
   test("expirations read as dates in pickers, tables and chart names", async ({ page }) => {
     await page.goto("/research?ticker=AAPL&view=options&expiries=" + expiries.join(","));
     const content = page.locator(".mx-research-content");

@@ -272,6 +272,47 @@ test.describe("valuation refresh", () => {
     await expect(page.getByRole("link", { name: "Historical valuation" })).toHaveAttribute("aria-current", "location");
   });
 
+  test("worksheet totals keep labels and values together after panning", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "Narrow worksheet");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await synthetic(page, false);
+    await page.goto("/research?ticker=SYNT&view=valuation&valuationView=worksheet");
+    const region = page.getByRole("region", { name: "Cash-flow projection details" });
+    await expect(region.getByRole("rowheader", { name: "Value per share" })).toBeVisible();
+    const labelLines = await region.locator("tfoot th").evaluateAll(headers => headers.map(header => {
+      const text = document.createRange();
+      const lines = new Set<number>();
+      const words = document.createTreeWalker(header, NodeFilter.SHOW_TEXT);
+      while (words.nextNode()) {
+        text.selectNodeContents(words.currentNode);
+        for (const rect of text.getClientRects()) if (rect.width > 0) lines.add(Math.round(rect.top));
+      }
+      return lines.size;
+    }));
+    expect(labelLines).toEqual(labelLines.map(() => 1));
+    await region.evaluate(node => { node.scrollLeft = node.scrollWidth; });
+    const measure = () => region.evaluate(node => {
+      const viewport = node.getBoundingClientRect();
+      return [...node.querySelectorAll("tfoot tr")].map(row => {
+        const label = row.querySelector("th")!;
+        const range = document.createRange();
+        range.selectNodeContents(label);
+        const text = range.getBoundingClientRect();
+        range.selectNodeContents(row.querySelector("td:last-child")!);
+        const value = range.getBoundingClientRect();
+        const labelText = label.querySelector("span")?.firstChild ?? label.firstChild!;
+        const firstWord = labelText.textContent!.match(/^\S+/)![0];
+        range.setStart(labelText, 0);
+        range.setEnd(labelText, firstWord.length);
+        return { label: label.textContent, visible: text.left >= viewport.left && text.right < value.left &&
+          value.right <= viewport.right + 1, wholeWord: range.getClientRects().length === 1 };
+      });
+    });
+    expect((await measure()).length).toBeGreaterThanOrEqual(3);
+    await expect.poll(async () => (await measure()).filter(row => !row.visible || !row.wholeWord)).toEqual([]);
+  });
+
   test("a worksheet bookmark waits for its heading to mount", async ({ page }) => {
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await synthetic(page, false);

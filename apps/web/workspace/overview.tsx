@@ -365,6 +365,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         brokerAsOf={data?.brokerAsOf} account={requestedScope}
         pendingRows={counts ?? savedRows}
         pendingHeight={matchingRows ? layout?.ledger : undefined}
+        pendingWidth={matchingRows ? layout?.ledgerWidth : undefined}
         waiting={initialWaiting} failed={initialError} error={query.error} retry={query.refetch} />
       {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
       {!initialWaiting && data && assistantReady

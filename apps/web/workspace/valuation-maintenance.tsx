@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Lock, X } from "lucide-react";
 import type { components } from "@/lib/api-schema";
 import { useLocale, type Locale } from "@/components/locale-provider";
@@ -216,24 +217,22 @@ export function EvidenceReview({ review, error, pending, retry, selected, curren
   return <section id="valuation-evidence" className="mx-evidence" tabIndex={-1} aria-labelledby="valuation-evidence-title" aria-busy={pending}>
     {heading}
     {status}
-    <div className="mx-table-scroll" tabIndex={0} role="region" aria-label={t("情景价值的变化", "Change in scenario values")}>
-      <table className="mx-evidence-walk">
-        <thead><tr>
-          <td />
-          {keys.map((key) => <th scope="col" key={key} data-selected={selected === key || undefined}>{name(key)}</th>)}
-        </tr></thead>
-        <tbody>{rows.map(({ label, value, kind }) => <tr key={label} data-kind={kind}>
-          <th scope="row">{label}</th>
-          {keys.map((key) => {
-            const walk = review.scenarios[key];
-            const figure = walk ? value(walk) : null;
-            return <td key={key} data-selected={selected === key || undefined}>
-              {kind === "value" || kind === "total" ? quoteValue(figure, currency) : signedValue(figure, currency)}
-            </td>;
-          })}
-        </tr>)}</tbody>
-      </table>
-    </div>
+    <Table containerProps={{ className: "mx-table-scroll" }} label={t("情景价值的变化", "Change in scenario values")} className="mx-evidence-walk">
+      <TableHeader><TableRow>
+        <TableCell />
+        {keys.map((key) => <TableHead scope="col" key={key} data-selected={selected === key || undefined}>{name(key)}</TableHead>)}
+      </TableRow></TableHeader>
+      <TableBody>{rows.map(({ label, value, kind }) => <TableRow key={label} data-kind={kind}>
+        <TableHead scope="row">{label}</TableHead>
+        {keys.map((key) => {
+          const walk = review.scenarios[key];
+          const figure = walk ? value(walk) : null;
+          return <TableCell key={key} data-selected={selected === key || undefined}>
+            {kind === "value" || kind === "total" ? quoteValue(figure, currency) : signedValue(figure, currency)}
+          </TableCell>;
+        })}
+      </TableRow>)}</TableBody>
+    </Table>
     <ul className="mx-evidence-notes">
       {review.restatements.map((r) => <li key={"r" + r.periodId + r.metric}>
         <Help label={t("重述", "Restated")} tag={<Tag tone="warn">{t("重述", "Restated")}</Tag>}>
