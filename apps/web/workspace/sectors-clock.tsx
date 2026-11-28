@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoard, SectorBoardResponse, SectorMarketStatus } from "@/lib/types";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
@@ -118,13 +119,13 @@ export function SessionClock({ status, board, phase, phaseName, monitorOn, refre
       <div role="status" className="sr-only">{announcement}</div>
       {status.calendarKnown === false ? <Tag tone="warn">{t("日历未知", "Calendar unknown")}</Tag>
         : phaseName[phase] && <span>{phaseName[phase]}</span>}
-      {asOf && <span>{t("截至 ", "As of ") + formatDateTime(asOf, locale, timeZone, now)}</span>}
-      {retry ? <button type="button" className="mx-tag mx-tag-warn mx-sectors-retry" aria-disabled={retry.busy || undefined}
-        onClick={retry.busy ? undefined : retry.run}>{retry.label}</button>
+      {asOf && <span data-quote-time=""><time dateTime={asOf}>{t("截至 ", "As of ") + formatDateTime(asOf, locale, timeZone, now)}</time></span>}
+      {retry ? <Button type="button" variant="ghost" className="mx-sectors-retry max-w-full whitespace-normal text-warning" loading={retry.busy}
+        onClick={retry.run}>{retry.label}</Button>
         : refreshFailed ? <Tag tone="warn">{t("刷新失败", "Refresh failed")}</Tag>
         : unsettled && failed ? <Tag tone="warn">{t("收盘价未齐", "Closing prices incomplete")}</Tag>
         : failed ? <Tag tone="warn">{t("更新失败", "Update failed")}</Tag>
-        : !monitorOn && phase === "open" ? <Tag tone="warn">{t("自动更新已关闭", "Updates off")}</Tag>
+        : !monitorOn && phase === "open" ? <Tag tone="warn">{t("板块自动更新已关闭", "Sector updates off")}</Tag>
           : lagging ? <Tag tone="warn">{t("延迟", "Delayed")}</Tag> : null}
       {sources && source && (
         <Help label={t("板块数据来源", "Sector data sources")}>

@@ -25,8 +25,9 @@ import { useAssistantPageContext } from "./assistant/context";
 import { useBreakpoint } from "@/lib/hooks";
 import { ArrowLeft } from "lucide-react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
+import { Card } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import type { SectorBoardResponse, SectorGroupingKind, SectorMarketCode } from "@/lib/types";
 import { formatDateTime } from "@/ui/formatters";
@@ -45,6 +46,8 @@ import { SectorMap } from "./sectors-map";
 import { SectorMarketSwitch } from "./sectors-market-switch";
 import { SECTOR_MARKETS, marketPhase, sectorMarket, strongestGroup } from "./sectors-data";
 
+type GlobalMarketReturn = { market: IndexScope; trigger: "map" | "row"; scroll: number };
+
 export function SectorsWorkspace() {
   const {params} = useRouteState();
   const t = useCopy();
@@ -61,6 +64,7 @@ function CurrentSectors() {
   const demonstration = useDemonstration();
   const { locale, timeZone } = useLocale();
   const { params, update: updateRoute } = useRouteState();
+  const { update: pushRoute } = useRouteState("push");
   const update = (values: Record<string,string|null>, state?: Record<string,unknown> | null) =>
     updateRoute({region:null,observed:null,snapshotId:null,evidence:null,...values},state);
   const phone = useBreakpoint("phone");
@@ -73,6 +77,7 @@ function CurrentSectors() {
   const requested: IndexScope = (demonstration
     ? demoMarket
     : indexMarket(params.get("market"))) ?? "global";
+  const previousMarket = useRef(requested);
   const requestedBoard = sectorMarket(requested);
   const indicesOnly = requestedBoard === null;
   const view = globalView(params.get("view"));
@@ -146,29 +151,35 @@ function CurrentSectors() {
   const select = (key: string, opened?: string) => {
     // An "Other" tile opens with the empty key, so only a missing one means none.
     setSubgroup(opened !== undefined ? { group: key, key: opened } : null);
-    if (!phone) {
-      // The market rides along, so a shared link always names the board it came from.
-      update({ market, sector: key });
-      return;
-    }
-    // A phone opens a sector as its own history entry, marked so the page's Back
-    // returns to the list (also after browser Back and Forward); a shared link
-    // opened directly has no list behind it and closes in place instead.
-    const next = new URLSearchParams(window.location.search);
+    // The market rides along, so a shared link always names the board it came from.
+    update({ market, sector: key });
+  };
+  const sectorHref = (key: string) => {
+    const next = new URLSearchParams(params.toString());
     next.set("market", market);
     next.set("sector", key);
+    return "/sectors?" + next.toString();
+  };
+  // The row's link can open in a new tab. In-place activation marks the drill for Back.
+  const openSector = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
     listScroll.current = window.scrollY;
-    window.history.pushState({ sectorDrill: true }, "", window.location.pathname + "?" + next.toString());
+    const url = new URL(event.currentTarget.href);
+    window.history.pushState({ sectorDrill: true }, "", url.pathname + url.search);
   };
   const marketSwitch = (
     <SectorMarketSwitch
       value={market}
       phone={phone}
+      alongsideView={market === "global" && !openedIndex}
       onChange={(value) => {
         // Asking again for the market that just failed retries it, once at a time.
         if (value === requested && (query.isError || rejected)) {
           if (!query.isFetching) void query.refetch();
-        } else update({ market: value, view: null, sector: null, index: null, range: null, currency: null, compare: null });
+        } else {
+          update({ market: value, view: null, sector: null, index: null, range: null, currency: null, compare: null });
+        }
       }}
       options={(demonstration ? ["global" as const, ...demoMarkets] : INDEX_MARKETS).map((value) => {
         const boardMarket = sectorMarket(value);
@@ -218,24 +229,41 @@ function CurrentSectors() {
   }
   useEffect(() => {
     // Open at the top, with Back and the sector's name in view; return to the same place in the list.
-    if (openedKey) window.scrollTo({ top: 0 });
-    else if (listScroll.current) window.scrollTo({ top: listScroll.current });
+    if (openedKey) window.scrollTo({ top: 0, behavior: "instant" });
+    else if (listScroll.current) window.scrollTo({ top: listScroll.current, behavior: "instant" });
   }, [openedKey]);
   useEffect(() => {
-    if (openedIndex) window.scrollTo({ top: 0 });
+    if (openedIndex) window.scrollTo({ top: 0, behavior: "instant" });
     else if (indexReturn.current) {
       const { id, scroll, left } = indexReturn.current;
       const frame = requestAnimationFrame(() => {
         const card = document.getElementById(`index-card-${id}`);
         if (!card) return;
-        if (card.parentElement) card.parentElement.scrollLeft = left;
+        card.closest(".mx-index-cards")?.scrollTo({ left, behavior: "instant" });
+        window.scrollTo({ top: scroll, behavior: "instant" });
         card.focus({ preventScroll: true });
-        window.scrollTo({ top: scroll });
         indexReturn.current = null;
       });
       return () => cancelAnimationFrame(frame);
     }
   }, [openedIndex]);
+  useEffect(() => {
+    const returningFromRegion = previousMarket.current !== "global" && requested === "global";
+    previousMarket.current = requested;
+    if (!returningFromRegion || view !== "regions" || openedIndex) return;
+    const origin = (window.history.state as { globalMarketReturn?: GlobalMarketReturn } | null)?.globalMarketReturn;
+    if (!origin) return;
+    // The browser restores scroll during traversal. Apply the recorded offset after
+    // that turn, after the source has been remounted by the query change.
+    const frame = requestAnimationFrame(() => {
+      const source = origin.trigger === "map"
+        ? document.querySelector<SVGAElement>(`[data-testid="global-map"] a[data-market="${origin.market}"]`)
+        : document.querySelector<HTMLAnchorElement>(`.mx-global-row[data-market="${origin.market}"]`);
+      window.scrollTo({ top: origin.scroll, behavior: "instant" });
+      source?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [openedIndex, requested, view]);
   const updateIndex = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(window.location.search);
     for (const [key, value] of Object.entries(changes)) {
@@ -247,22 +275,22 @@ function CurrentSectors() {
     window.history.replaceState(drill ? { indexDrill: true } : null, "", window.location.pathname + suffix);
   };
   const indexBack = (
-    <button type="button" className="mx-sector-back" onClick={() => {
+    <Button type="button" variant="link" className="mx-sector-back self-start px-0" onClick={() => {
       if ((window.history.state as { indexDrill?: boolean } | null)?.indexDrill) window.history.back();
       else update({ index: null, range: null, currency: null, compare: null });
     }}>
       <ArrowLeft size={18} aria-hidden="true" />
       {names[wanted]}
-    </button>
+    </Button>
   );
   const back = (
-    <button type="button" className="mx-sector-back" onClick={() => {
+    <Button type="button" variant="link" className="mx-sector-back self-start px-0" onClick={() => {
       if ((window.history.state as { sectorDrill?: boolean } | null)?.sectorDrill) window.history.back();
       else update({ sector: null });
     }}>
       <ArrowLeft size={18} aria-hidden="true" />
       {names[market]}
-    </button>
+    </Button>
   );
   // A retry behind a fallback board is pending too, but the fallback stays on screen.
   const boardIssue = indicesOnly || status?.calendarKnown === false ? "no_coverage"
@@ -274,11 +302,11 @@ function CurrentSectors() {
     ? t("下一次采集：", "Next collection: ") + formatDateTime(nextRun, locale, timeZone)
     : t("请在数据状态查看板块行情的更新计划。", "Check the sector quote schedule in Data status.");
   const body = indicesOnly
-    ? <p className="mx-index-note">{t("本市场仅有指数覆盖。可切换市场查看板块。", "Only index quotes are covered here. Switch markets to see sector boards.")}</p>
+    ? <p className="mx-index-note m-0 text-[0.8125rem] text-muted-foreground">{t("本市场仅有指数覆盖。可切换市场查看板块。", "Only index quotes are covered here. Switch markets to see sector boards.")}</p>
     : !rejected && (query.isPending || switching) ? (
     <Pending />
   ) : !board || !groups.length ? (
-    <section className="mx-panel">
+    <Card as="section">
       <Empty
         headingLevel={2}
         title={locale === "zh" ? `还没有${names[market]}板块数据` : `No ${names[market]} sector data yet`}
@@ -299,7 +327,7 @@ function CurrentSectors() {
               ? <Link href="/health" data-slot="button" className={buttonVariants({ variant: "secondary" })}>{t("查看数据状态", "Data status")}</Link>
               : undefined}
       />
-    </section>
+    </Card>
   ) : (
     <>
       {/* Stylesheets choose between the map and the phone list, so neither flashes before the width is known. */}
@@ -313,15 +341,15 @@ function CurrentSectors() {
             openSubgroup={subgroup?.group === detail.key ? subgroup.key : null} />}
         </div>
       )}
-      <div className="mx-sectors-phone" data-fetching={query.isPlaceholderData ? "" : undefined}>
+      {phone && <div className="mx-sectors-phone" data-fetching={query.isPlaceholderData ? "" : undefined}>
         {phoneDetail ? (
           <SectorDetail key={phoneDetail.key} group={phoneDetail} board={board} inspection={demonstration || refreshFailed ? undefined : {market,observed:board.fetchedAt,selected:true}} sessions={status?.sessions ?? []}
             kind={kind} openSubgroup={null} focusOnOpen />
         ) : (
           <SectorList groups={groups} board={board} sessions={status?.sessions ?? []} kind={kind}
-            focusKey={returnTo} onFocused={() => setReturnTo(null)} onOpen={(key) => select(key)} />
+            focusKey={returnTo} onFocused={() => setReturnTo(null)} hrefFor={sectorHref} onOpen={openSector} />
         )}
-      </div>
+      </div>}
     </>
   );
   return (
@@ -331,19 +359,19 @@ function CurrentSectors() {
       className={`mx-sectors-page${market === "global" && !openedIndex ? " mx-global-page" : ""}`}
       actions={
         openedIndex && phone ? (
-          <div className="mx-sectors-bar">{indexBack}</div>
+          <div className="mx-sectors-bar flex w-full flex-wrap items-center gap-x-[18px] gap-y-3 max-[767px]:gap-2">{indexBack}</div>
         ) : drilled ? (
-          <div className="mx-sectors-bar">
+          <div className="mx-sectors-bar flex w-full flex-wrap items-center gap-x-[18px] gap-y-3 max-[767px]:gap-2">
             {back}
             {clock}
           </div>
         ) : (
-          <div className="mx-sectors-bar">
+          <div className="mx-sectors-bar flex w-full flex-wrap items-center gap-x-[18px] gap-y-3 max-[767px]:gap-2">
             {marketSwitch}
             {!openedIndex && market === "global" && <GlobalViewSwitch value={view} query={world}
               onChange={(value) => update({ view: value === "sectors" ? value : null, sector: null })} />}
             {!openedIndex && clock}
-            {!openedIndex && groupingSwitch && <div className="mx-sectors-grouping">{groupingSwitch}</div>}
+            {!openedIndex && groupingSwitch && <div className="mx-sectors-grouping ml-auto max-[767px]:ml-0">{groupingSwitch}</div>}
           </div>
         )
       }
@@ -358,7 +386,7 @@ function CurrentSectors() {
             indexReturn.current = {
               id: index.id,
               scroll: window.scrollY,
-              left: event.currentTarget.parentElement?.scrollLeft ?? 0,
+              left: event.currentTarget.closest(".mx-index-cards")?.scrollLeft ?? 0,
             };
             window.history.pushState({ indexDrill: true }, "", window.location.pathname + href.slice(href.indexOf("?")));
           } else {
@@ -382,13 +410,20 @@ function CurrentSectors() {
       ) : (
         <>
           {board && !phoneDetail && (market === "jp" || market === "hk" || market === "kr") && (
-            <p className="mx-index-note">{t("板块篮子：", "Sector basket: ")}{board.source.universe}</p>
+            <p className="mx-index-note m-0 text-[0.8125rem] text-muted-foreground">{t("板块篮子：", "Sector basket: ")}{board.source.universe}</p>
           )}
           {market === "global" ? (view === "sectors"
             ? <GlobalSectors query={world} demo={demonstration} phone={phone} sector={globalSector}
-                onSelect={select} returnTo={returnTo} onFocused={() => setReturnTo(null)} />
-            : <GlobalMarkets demo={demonstration} onMarket={(value) =>
-                update({ market: value, view: null, sector: null, index: null, range: null, currency: null, compare: null })} />) : body}
+                onSelect={select} hrefFor={sectorHref} onOpen={openSector} returnTo={returnTo} onFocused={() => setReturnTo(null)} />
+            : <GlobalMarkets demo={demonstration} onMarket={(value, fromMap) => {
+                const globalMarketReturn: GlobalMarketReturn = {
+                  market: value, trigger: fromMap ? "map" : "row", scroll: window.scrollY,
+                };
+                // Keep the return point on the Global entry for every traversal.
+                window.history.replaceState({ ...window.history.state, globalMarketReturn }, "");
+                pushRoute({ market: value, view: null, sector: null, index: null, range: null, currency: null, compare: null });
+                window.scrollTo({ top: 0, behavior: "instant" });
+              }} />) : body}
         </>
       )}
     </Page>

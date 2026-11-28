@@ -3,7 +3,7 @@ import type { GlobalSectorBoard } from "../workspace/global-sectors";
 import type { GlobalMarketContribution } from "../workspace/global-markets-data";
 import type { IndexContext, IndexIdentity } from "../workspace/market-indices-data";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page } from "@playwright/test";
+import { devices, expect, test, webkit, type Locator, type Page } from "@playwright/test";
 
 // Entirely synthetic market data: invented tickers, weights and moves.
 const SECTORS: Array<[string, string, number, number]> = [
@@ -167,6 +167,29 @@ async function settle(page: Page) {
   });
 }
 
+function heatContrast(surface: Locator, textSelector?: string) {
+  return surface.evaluate((element, selector) => {
+    const text = selector ? element.querySelector(selector)! : element;
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const context = canvas.getContext("2d")!;
+    const channels = (color: string) => {
+      context.fillStyle = color;
+      context.fillRect(0, 0, 1, 1);
+      return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
+    };
+    const luminance = (rgb: number[]) => {
+      const [r, g, b] = rgb.map((channel) => channel / 255)
+        .map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+      return r * 0.2126 + g * 0.7152 + b * 0.0722;
+    };
+    const rgb = channels(getComputedStyle(text).color);
+    const ink = luminance(rgb);
+    const wash = luminance(channels(getComputedStyle(element).backgroundColor));
+    return { rgb, ratio: (Math.max(ink, wash) + 0.05) / (Math.min(ink, wash) + 0.05) };
+  }, textSelector);
+}
+
 test.describe("sector map", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to a synthetic local deployment.");
 
@@ -306,12 +329,14 @@ test.describe("sector map", () => {
     const rows = page.locator(".mx-sector-list > li");
     await expect(rows).toHaveCount(11);
     await expect(rows.first()).toContainText(/信息技术|Information Technology/);
-    await rows.first().getByRole("button").tap();
+    await expect(rows.first().getByRole("link")).toHaveAttribute("href", /sector=45/);
+    await expect(rows.first().getByRole("link")).toHaveCSS("display", "grid");
+    await rows.first().getByRole("link").tap();
     await expect(page.locator(".mx-sector-detail h2")).toHaveText(/信息技术|Information Technology/);
     await expect(page.locator(".mx-sector-detail h2")).toBeFocused();
     await page.locator(".mx-sector-back").tap();
     await expect(rows).toHaveCount(11);
-    await expect(rows.first().getByRole("button")).toBeFocused();
+    await expect(rows.first().getByRole("link")).toBeFocused();
     // Forward reopens the sector, and the page's Back still returns to the list behind it.
     await page.goForward();
     await expect(page.locator(".mx-sector-detail h2")).toHaveText(/信息技术|Information Technology/);
@@ -319,16 +344,16 @@ test.describe("sector map", () => {
     await expect(rows).toHaveCount(11);
     await expect(page).not.toHaveURL(/sector=/);
     // The browser's Back also returns focus to the row that opened the sector.
-    await rows.nth(2).getByRole("button").tap();
+    await rows.nth(2).getByRole("link").tap();
     await expect(page.locator(".mx-sector-detail h2")).toBeFocused();
     await page.goBack();
-    await expect(rows.nth(2).getByRole("button")).toBeFocused();
+    await expect(rows.nth(2).getByRole("link")).toBeFocused();
     // The focus target is spent: switching markets afterwards moves focus nowhere.
     await selectMarket(page, /英股|UK/);
-    await expect(page.locator(".mx-sector-list button:focus")).toHaveCount(0);
+    await expect(page.locator(".mx-sector-list a:focus")).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
-    expect(await page.locator(".mx-sector-list button").evaluateAll((buttons) =>
-      buttons.every((button) => button.getBoundingClientRect().height >= 44))).toBe(true);
+    expect(await page.locator(".mx-sector-list a").evaluateAll((buttons) =>
+      buttons.every((button) => button.getBoundingClientRect().height >= 64))).toBe(true);
   });
 
   test("a focused sector tile keeps focus when a resize toggles its tooltip", async ({ page }, testInfo) => {
@@ -596,23 +621,34 @@ test.describe("market index layer", () => {
         ];
         for (const surface of surfaces) {
           await expect(surface).toHaveCSS("--mx-heat-mix", mix);
-          const ratio = await surface.evaluate((element) => {
-            const style = getComputedStyle(element);
-            const canvas = document.createElement("canvas");
-            const ctx = canvas.getContext("2d")!;
-            const luminance = (colour: string) => {
-              ctx.clearRect(0, 0, 1, 1);
-              ctx.fillStyle = colour;
-              ctx.fillRect(0, 0, 1, 1);
-              const rgb = [...ctx.getImageData(0, 0, 1, 1).data].slice(0, 3).map((c) => c / 255)
-                .map((c) => c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
-              return rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
-            };
-            const [ink, wash] = [luminance(style.color), luminance(style.backgroundColor)];
-            return (Math.max(ink, wash) + 0.05) / (Math.min(ink, wash) + 0.05);
-          });
+          const { ratio } = await heatContrast(surface);
           expect(ratio).toBeGreaterThanOrEqual(4.5);
         }
+      }
+    });
+
+    test(`Global benchmark moves have signed ink on the saturated wash in ${scheme}`, async ({ page, isMobile }) => {
+      test.skip(isMobile, "Measures the heat-washed desktop cards.");
+      await page.addInitScript((value) => localStorage.setItem("mantine-color-scheme-value", value), scheme);
+      await mockIndices(page, { global: { ...globalFixture, acwiMove: 0.05 } });
+      await page.route("**/api/backend/indices?scope=global", (route) => route.fulfill({ json: {
+        scope: "global", refreshFailed: false,
+        quotes: indices.filter((index) => ["msci-acwi", "msci-world"].includes(index.id)).map((index) => ({
+          index, asOf: globalFixture.asOf, sessionDate: globalFixture.referenceDate, level: 100,
+          change: index.id === "msci-acwi" ? 0.05 : -0.05, state: "live", points: [],
+        })),
+      } }));
+      await page.goto("/sectors?market=global");
+      await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
+      for (const [id, direction] of [["msci-acwi", "up"], ["msci-world", "down"]]) {
+        const card = page.locator("#index-card-" + id);
+        await expect(card).toHaveAttribute("data-tone", direction);
+        await expect(card).toHaveCSS("--mx-heat-mix", mix);
+        const ink = await card.evaluate((element) => getComputedStyle(element).color);
+        await expect(card.locator(".mx-index-figures strong")).toHaveCSS("color", ink);
+        const { rgb, ratio } = await heatContrast(card, ".mx-index-figures span");
+        expect(direction === "up" ? rgb[1] - rgb[0] : rgb[0] - rgb[1]).toBeGreaterThan(0);
+        expect(ratio).toBeGreaterThanOrEqual(4.5);
       }
     });
   }
@@ -774,7 +810,7 @@ test.describe("market index layer", () => {
     const rows = page.locator(".mx-sector-list > li");
     if (testInfo.project.name === "mobile") {
       await expect(rows).toHaveCount(11);
-      await rows.first().getByRole("button").tap();
+      await rows.first().getByRole("link").tap();
       await expect(page).toHaveURL(/market=eu&sector=45/);
       await expect(detail.getByRole("heading", { level: 2 })).toBeFocused();
       await expect(page.locator(".mx-index-cards")).toHaveCount(0);
@@ -789,11 +825,12 @@ test.describe("market index layer", () => {
     await expect(detail.locator(".mx-sector-breadth-detail")).toBeVisible();
     await expect(detail.locator(".mx-sector-leader")).toContainText("SYN455");
     await expect(detail.locator(".mx-sector-ranks li")).toHaveCount(5);
+    await expect(detail.locator(".mx-sector-ranks time[datetime]")).toHaveCount(5);
     await expect(detail).toContainText("£1,200");
     if (testInfo.project.name === "mobile") {
       await page.locator(".mx-sector-back").tap();
       await expect(page).toHaveURL(/market=eu$/);
-      await expect(rows.first().getByRole("button")).toBeFocused();
+      await expect(rows.first().getByRole("link")).toBeFocused();
     }
   });
 
@@ -813,7 +850,8 @@ test.describe("market index layer", () => {
     await mockIndices(page, { fail: true });
     await page.goto("/sectors?market=us");
     await expect(page.locator(".mx-index-strip")).toContainText(/暂时无法读取指数|Indices are unavailable/);
-    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: /市场指数|Market indices/ })).toHaveCount(1);
+    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list a:visible").first()).toBeVisible();
     await page.goto("/sectors?market=us&index=sp-500&range=MAX&compare=nasdaq-100");
     await expect(page.getByRole("heading", { name: /标普 500|S&P 500/ })).toBeVisible();
     const legend = page.locator(".mx-index-legend");
@@ -958,7 +996,7 @@ test.describe("market index layer", () => {
     const panel = page.getByRole("region", { name: /对 MSCI 全球的贡献|Contribution to MSCI ACWI/ });
     const ranking = panel.locator(".mx-global-ranking");
     const row = ranking.getByRole("link", { name: /日本.*0.7.*0.04 pp|Japan.*0.7.*0.04 pp/ });
-    await expect(ranking).toContainText(/部分报价不可用|Partial quote coverage/);
+    await expect(panel.locator(".mx-global-lead")).toContainText(/部分报价不可用|Partial quote coverage/);
     await expect(ranking).toContainText(/汇率与其他|Currency and other/);
     await expect(page.locator(".mx-index-global .mx-index-stamp")).toContainText(/已收盘|Closed/);
     // A finished day is named by its MSCI date alone; the publication clock is another day's in London.
@@ -982,9 +1020,14 @@ test.describe("market index layer", () => {
       const mapBox = await map.boundingBox();
       const rankingBox = await ranking.boundingBox();
       const leadBox = await panel.locator(".mx-global-lead").boundingBox();
+      const keyBox = await panel.locator(".mx-global-colour-key").boundingBox();
       const dockBox = await page.locator(".mx-mobile-dock").boundingBox();
+      const figureBox = await panel.locator(".mx-global-move").boundingBox();
+      const caveatBox = await panel.locator(".mx-global-caveats").boundingBox();
       expect(mapBox && rankingBox && mapBox.y + mapBox.height <= rankingBox.y + 1).toBe(true);
-      expect(leadBox && dockBox && leadBox.y + leadBox.height < dockBox.y).toBe(true);
+      expect(leadBox!.y + leadBox!.height).toBeLessThan(dockBox!.y);
+      expect(keyBox!.y + keyBox!.height).toBeLessThan(dockBox!.y);
+      expect(caveatBox!.x).toBeGreaterThanOrEqual(figureBox!.x + figureBox!.width);
       expect(await row.evaluate((node) => node.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
       await expect(page.locator("#index-card-msci-em-imi .mx-index-freshness")).toBeVisible();
       await page.locator(".mx-global-proxy summary").click();
@@ -1016,6 +1059,142 @@ test.describe("market index layer", () => {
     await expect(page).toHaveURL(/market=global/);
     await inspection.getByRole("link", { name: /打开市场|Open market/ }).click();
     await expect(page).toHaveURL(/market=jp/);
+    await expect(page.locator("#index-card-nikkei-225")).toBeVisible();
+    await page.goBack();
+    await expect(page).toHaveURL(/market=global/);
+    await expect(shape).toBeFocused();
+  });
+
+  test("Global market history repeatedly restores the trigger and scroll in phone WebKit", async ({ baseURL }, { project }) => {
+    test.skip(project.name !== "desktop", "Run the phone WebKit context once.");
+    const browser = await webkit.launch();
+    try {
+      const { viewport, userAgent, deviceScaleFactor, isMobile, hasTouch } = devices["iPhone 15 Pro"];
+      const page = await browser.newPage({ viewport, userAgent, deviceScaleFactor, isMobile, hasTouch, baseURL });
+      await mockIndices(page);
+      await page.goto("/sectors?market=global");
+      const japan = page.getByTestId("global-map").locator('a[data-market="jp"]');
+      await japan.locator(".mx-global-label-phone .mx-global-hit").tap();
+      const openJapan = page.locator("#mx-global-inspection a");
+      await expect(openJapan).toBeVisible();
+      const scroll = await openJapan.evaluate((link: HTMLAnchorElement) => {
+        window.scrollTo({ top: 120, behavior: "instant" });
+        const beforeDrill = window.scrollY;
+        link.click();
+        return beforeDrill;
+      });
+      expect(scroll).toBeGreaterThan(0);
+      await expect(page).toHaveURL(/market=jp/);
+      await expect(page.locator("#index-card-nikkei-225")).toBeVisible();
+      for (const traversal of [0, 1]) {
+        if (traversal) {
+          await page.goForward();
+          await expect(page).toHaveURL(/market=jp/);
+          await expect(page.locator("#index-card-nikkei-225")).toBeVisible();
+        }
+        await test.step(traversal ? "Back again" : "First Back", async () => {
+          await page.goBack();
+          await expect(page).toHaveURL(/market=global/);
+          await expect(japan).toBeFocused();
+          await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(scroll);
+        });
+      }
+      await test.step("One tap on Japan's contribution row opens the market", async () => {
+        const inspection = page.locator("#mx-global-inspection");
+        const row = page.locator('.mx-global-row[data-market="jp"]');
+        await expect(inspection).toHaveAttribute("data-below-map", "true");
+        await row.scrollIntoViewIfNeeded();
+        const documentTop = () => row.evaluate((link) => link.getBoundingClientRect().top + window.scrollY);
+        const beforePress = await documentTop();
+        // Give WebKit a render between the start of the touch and the tap.
+        await row.dispatchEvent("pointerdown", { pointerType: "touch", isPrimary: true, bubbles: true });
+        await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        expect(await documentTop()).toBeCloseTo(beforePress, 0);
+        await expect(inspection).toHaveAttribute("data-below-map", "true");
+        await row.tap();
+        await expect(page).toHaveURL(/market=jp/);
+        await expect(page.locator("#index-card-nikkei-225")).toBeVisible();
+      });
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test("Global inspection tracks resize and a docked map stacks", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "desktop");
+    await mockIndices(page);
+    await page.goto("/sectors");
+    const map = page.getByTestId("global-map");
+    const hongKong = map.locator('[data-market="hk"]');
+    await hongKong.focus();
+    const inspection = page.locator("#mx-global-inspection");
+    await expect(inspection).toBeVisible();
+    await page.setViewportSize({ width: 800, height: 900 });
+    await expect.poll(async () => {
+      const host = await map.boundingBox();
+      const popup = await inspection.boundingBox();
+      return Boolean(host && popup && popup.x + popup.width <= host.x + host.width);
+    }).toBe(true);
+    await page.keyboard.press("Tab");
+    await expect(inspection.getByRole("link")).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(hongKong).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(inspection).toBeHidden();
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const panel = page.locator(".mx-global-panel");
+    await expect(panel).toHaveCSS("grid-template-areas", '"map lead" "map ranking"');
+    await page.setViewportSize({ width: 1200, height: 900 });
+    await expect(panel).toHaveCSS("grid-template-areas", '"map lead" "map ranking"');
+    await page.locator(".mx-app").evaluate((node) => { node.setAttribute("data-assistant-open", ""); });
+    await expect(panel).toHaveCSS("grid-template-areas", '"lead" "map" "ranking"');
+    await expect(map.locator("svg").first()).toHaveAttribute("viewBox", "12 8 774 348");
+  });
+
+  test("phone map labels own their complete touch targets at 320 and 390px", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== "mobile");
+    await mockIndices(page);
+    await page.goto("/sectors");
+    const map = page.getByTestId("global-map");
+    const proxy = page.locator(".mx-global-proxy > summary");
+    await expect(proxy).toBeVisible();
+    expect((await proxy.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 844 });
+      await map.scrollIntoViewIfNeeded();
+      await expect.poll(() => map.locator(".mx-global-label-phone .mx-global-hit").evaluateAll((hits) => {
+        const failures: string[] = [];
+        for (const node of hits) {
+          const owner = node.closest(".mx-global-region");
+          const market = owner?.getAttribute("data-market");
+          const box = node.getBoundingClientRect();
+          if (box.width < 43.9 || box.height < 43.9) failures.push(`${market} is ${box.width}×${box.height}`);
+          for (const x of [box.left + 3, box.x + box.width / 2, box.right - 3]) {
+            for (const y of [box.top + 3, box.y + box.height / 2, box.bottom - 3]) {
+              const target = document.elementFromPoint(x, y)?.closest(".mx-global-region");
+              if (target !== owner) failures.push(`${market} at (${Math.round(x)}, ${Math.round(y)}) hits ${target?.getAttribute("data-market") ?? "outside"}`);
+            }
+          }
+        }
+        return failures;
+      }), { message: `Phone map at ${width}px` }).toEqual([]);
+    }
+    const landPoint = await map.locator('[data-market="us"] .mx-global-shape').evaluate((shape: SVGGeometryElement) => {
+      const box = shape.getBoundingClientRect();
+      const transform = shape.getScreenCTM()!.inverse();
+      for (let y = box.top; y < box.bottom; y += 4) {
+        for (let x = box.left; x < box.right; x += 4) {
+          const hit = document.elementFromPoint(x, y);
+          if (hit?.closest("svg") === shape.ownerSVGElement && !hit?.closest(".mx-global-region")
+            && shape.isPointInFill(new DOMPoint(x, y).matrixTransform(transform))) return { x, y };
+        }
+      }
+      return null;
+    });
+    if (!landPoint) throw new Error("No unobstructed point inside the US geography.");
+    await page.touchscreen.tap(landPoint.x, landPoint.y);
+    await expect(page.locator("#mx-global-inspection-title")).toContainText(/美国|US/);
   });
 
   test("Global labels retained quotes and distinguishes missing data from pre-open", async ({ page }) => {
@@ -1040,7 +1219,7 @@ test.describe("market index layer", () => {
     // The portable seed is tested separately; this isolates the demo presentation.
     await page.route("**/api/backend/sectors?market=eu", (route) => route.fulfill({ json: fixture("eu") }));
     await page.goto(new URL("/desktop/sectors?market=eu", demo).href);
-    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list a:visible").first()).toBeVisible();
     await expect(page.locator(".mx-index-cards")).toHaveCount(0);
     await page.getByRole("button", { name: /板块数据来源|Sector data sources/ }).click();
     await expect(page.getByText(/均为演示数据|are synthetic/)).toBeVisible();
@@ -1078,9 +1257,11 @@ test.describe("market index layer", () => {
       await expect(active).not.toHaveAttribute("data-key", "45");
       await expect(active).toBeFocused();
     } else {
-      const rows = page.locator(".mx-sector-list button");
+      const rows = page.locator(".mx-sector-list a");
       await expect(rows).toHaveCount(11);
-      const row = page.locator('.mx-sector-list button[data-key="60"]');
+      const row = page.locator('.mx-sector-list a[data-key="60"]');
+      await expect(row).toHaveCSS("display", "grid");
+      expect((await row.boundingBox())?.height).toBeGreaterThanOrEqual(52);
       await row.scrollIntoViewIfNeeded();
       const scroll = await page.evaluate(() => window.scrollY);
       expect(scroll).toBeGreaterThan(0);
@@ -1105,7 +1286,7 @@ test.describe("market index layer", () => {
       await expect(page).toHaveURL(direct);
       await expect(view).toHaveCount(0);
       await expect(page.locator(`#index-card-${indexCard}`)).toBeVisible();
-      await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible")).toHaveCount(11);
+      await expect(page.locator(".mx-sector-block:visible, .mx-sector-list a:visible")).toHaveCount(11);
     }
   });
 
@@ -1175,7 +1356,7 @@ test.describe("market index layer", () => {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
         await page.screenshot({ path: path.join(folder, `market-${market.code}-${mobile ? 390 : 1440}.png`) });
       }
-      if (mobile) await rows.first().getByRole("button").tap();
+      if (mobile) await rows.first().getByRole("link").tap();
       else await page.locator('[data-key="45"] [data-subgroup="4510"]').click();
       const detail = page.locator(".mx-sector-detail");
       await expect(detail.getByRole("heading", { level: 2 })).toHaveText(/信息技术|Information Technology/);
@@ -1184,7 +1365,7 @@ test.describe("market index layer", () => {
       await expect(detail).toContainText("£1,200");
       if (mobile) {
         await page.locator(".mx-sector-back").tap();
-        await expect(rows.first().getByRole("button")).toBeFocused();
+        await expect(rows.first().getByRole("link")).toBeFocused();
       }
       await card.click();
       await expect(page).toHaveURL(new RegExp(`market=${market.code}&index=${market.ids[0]}`));
@@ -1241,7 +1422,7 @@ test.describe("market index layer", () => {
     const clock = page.locator(".mx-sectors-clock");
     await expect(clock).toContainText(/日历未知|Calendar unknown/);
     await expect(clock).not.toContainText(/已收盘|Closed/);
-    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+    await expect(page.locator(".mx-sector-block:visible, .mx-sector-list a:visible").first()).toBeVisible();
   });
 
   test("capture synthetic Europe board screenshots", async ({ browser }, testInfo) => {
@@ -1257,7 +1438,7 @@ test.describe("market index layer", () => {
       const capture = async (market: string, step = "") => {
         await page.goto(`/sectors?market=${market}`);
         await expect(page.locator(".mx-index-cards a.mx-index-card").first()).toBeVisible();
-        await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+        await expect(page.locator(".mx-sector-block:visible, .mx-sector-list a:visible").first()).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", colorScheme);
         await page.evaluate(() => document.fonts.ready);
         await settle(page);
@@ -1266,7 +1447,7 @@ test.describe("market index layer", () => {
       };
       await capture("eu", width === 390 ? "-list" : "");
       if (width === 390) {
-        await page.locator(".mx-sector-list button").first().click();
+        await page.locator(".mx-sector-list a").first().click();
         await expect(page.locator(".mx-sector-detail h2")).toBeFocused();
         await settle(page);
         await page.screenshot({ path: path.join(folder!, "synthetic-eu-390x844-light-detail.png") });
@@ -1293,7 +1474,7 @@ test.describe("market index layer", () => {
         await page.goto("/sectors?market=us");
         await expect(page.getByRole("link", { name: /标普 500|S&P 500/ })
           .and(page.locator('a[href*="/sectors"]'))).toBeVisible();
-        await expect(page.locator(".mx-sector-block:visible, .mx-sector-list button:visible").first()).toBeVisible();
+        await expect(page.locator(".mx-sector-block:visible, .mx-sector-list a:visible").first()).toBeVisible();
         await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
         await settle(page);
         await page.screenshot({ path: path.join(folder!, `market-${width}-${scheme}.png`), fullPage: true });

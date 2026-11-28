@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { formatDeltaPercent } from "@/ui/formatters";
 import { industryName } from "./exposure-names";
 import { Tip, useCopy } from "./foundation";
-import { displaySymbol, heatMix, issuerName, neighbour, squarify, type Direction, type Tile } from "./sectors-data";
+import { displaySymbol, FLAT_BAND, heatMix, issuerName, neighbour, squarify, type Direction, type Tile } from "./sectors-data";
 import {
   estimateTextWidth,
   fitRoomySectorHeader,
@@ -31,8 +31,6 @@ export function groupName(group: Pick<SectorGroup, "name" | "nameZh">, kind: Sec
 }
 
 /** ±0.05% counts as unchanged, inclusive, with room for floating-point error — the server's band. */
-export const FLAT_BAND = 0.0005 + 1e-9;
-
 export function changeTone(change: number | null | undefined) {
   return change == null || Math.abs(change) <= FLAT_BAND ? "flat" : change > 0 ? "up" : "down";
 }
@@ -200,7 +198,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, measure
       <button
         type="button"
         className={cn(
-          "mx-sector-block tm-tile-interactive absolute m-0 flex flex-col overflow-clip rounded-[6px] border-0 p-0 text-left text-foreground transition-colors duration-150 motion-reduce:transition-none",
+          "mx-sector-block tm-tile-interactive absolute m-0 flex flex-col overflow-clip rounded-[var(--radius-heat-tile)] border-0 p-0 text-left text-foreground transition-colors duration-150 motion-reduce:transition-none",
           surfaceOnBlock ? "tm-heat-surface" : "bg-heat-base",
         )}
         data-key={group.key}
@@ -266,7 +264,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, measure
                   {visibleChange}
                 </span>
                 {showChip && (
-                  <span className="mx-sector-streak rounded bg-card px-1.5 text-xs font-semibold leading-4 text-foreground" aria-hidden="true">
+                  <span className="mx-sector-streak rounded-full bg-card px-1.5 text-xs font-semibold leading-4 text-foreground" aria-hidden="true">
                     {chip}
                   </span>
                 )}
@@ -318,7 +316,7 @@ function SectorBlock({ tile, group, kind, selected, onSelect, onKeyDown, measure
                 >
                   <span
                     className={cn(
-                      "mx-sector-tile tm-heat-surface absolute flex flex-col gap-px overflow-clip rounded-[3px] text-foreground",
+                      "mx-sector-tile tm-heat-surface absolute flex flex-col gap-px overflow-clip rounded-[6px] text-foreground",
                       TILE_TIER_PADDING[cellFit.tier],
                       TILE_TIER_TEXT[cellFit.tier],
                     )}

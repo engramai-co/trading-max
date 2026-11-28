@@ -29,9 +29,7 @@
 @import "./styles/10b-evidence-notices.css" layer(mantine);
 @import "./styles/11-touch-bento.css" layer(mantine);
 @import "./styles/12-phone-rhythm.css" layer(mantine);
-@import "./styles/13-sectors.css" layer(mantine);
-@import "./styles/13a-market-indices.css" layer(mantine);
-@import "./styles/13a1-global-markets.css" layer(mantine);
+@import "./styles/13-markets-layout.css" layer(mantine);
 @import "./styles/13b-research-index.css" layer(mantine);
 @import "./styles/14-overview.css" layer(mantine);
 @import "./styles/18-overlay.css" layer(mantine);

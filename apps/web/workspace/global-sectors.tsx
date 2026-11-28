@@ -1,16 +1,17 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useMemo, type MouseEvent } from "react";
+import { Card } from "@/components/ui/card";
 import { useLocale } from "@/components/locale-provider";
 import type { components } from "@/lib/api-schema";
 import type { SectorGroup } from "@/lib/types";
-import { formatCalendarDate, formatDeltaPercent, formatNumber } from "@/ui/formatters";
+import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { api, currency, percent } from "./data";
 import { industryName } from "./exposure-names";
 import { Empty, Help, Pending, QueryError, QueryReadStatus, Segments, Tag, useCopy } from "./foundation";
 import { issuerName, strongestGroup } from "./sectors-data";
-import { SectorDetail, SectorList, type SectorDetailBoard } from "./sectors-detail";
+import { SectorDetail, SectorList, SectorRanks, type SectorDetailBoard } from "./sectors-detail";
 import { changeTone, SectorMap } from "./sectors-map";
 
 export type GlobalSectorBoard = components["schemas"]["GlobalSectorBoard"];
@@ -38,22 +39,27 @@ export function GlobalViewSwitch({ value, onChange, query }: {
   query: ReturnType<typeof useGlobalSectors>;
 }) {
   const t = useCopy();
-  const { locale } = useLocale();
   const answer = query.data;
-  const help = answer && value === "sectors";
-  const warning = query.isError ? t("板块报价更新失败", "Sector quotes couldn’t refresh")
-    : answer?.weightsStale ? t("权重待更新", "Weights stale") : null;
-  return <div className="mx-global-view-switch"><Segments label={t("全球视图", "Global view")} value={value}
+  return <div className="mx-global-view-switch ms-auto flex flex-wrap items-center gap-x-2 gap-y-1"><Segments label={t("全球视图", "Global view")} value={value}
     onChange={onChange} options={[
       { value: "regions", label: t("地区", "Regions") },
       { value: "sectors", label: t("板块", "Sectors") },
     ]} />
-    {help && <Help label={t("全球板块地图", "Global sector map")} tag={warning ? <Tag tone="warn">{warning}</Tag> : undefined}>
-      <p>{t("涨跌来自 MSCI World 的美元价格指数。面积按 iShares SWDA 持仓汇总的板块权重绘制。贡献以板块权重乘以涨跌幅估算。",
-        "Moves use MSCI World USD price indices. Tile area follows sector weights from iShares SWDA holdings. Estimated contribution is the sector weight multiplied by its move.")}</p>
-      {answer.weightsAsOf && <p>{t("权重截至 ", "Weights as of ") + formatCalendarDate(answer.weightsAsOf, locale)}</p>}
-    </Help>}
+    {answer && value === "sectors" && <WorldSectorHelp answer={answer} failed={query.isError} />}
   </div>;
+}
+
+function WorldSectorHelp({ answer, failed }: { answer: GlobalSectorBoard; failed: boolean }) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  const warning = failed ? t("板块报价更新失败", "Sector quotes couldn’t refresh")
+    : answer.weightsStale ? t("权重待更新", "Weights stale") : null;
+  return <Help label={t("全球板块地图", "Global sector map")} tag={warning ? <Tag tone="warn">{warning}</Tag> : undefined}
+    basis={answer.weightsAsOf && t("权重截至 ", "Weights as of ") + formatCalendarDate(answer.weightsAsOf, locale)}>
+    <p>{t("涨跌来自 MSCI World 的美元价格指数。面积按 iShares SWDA 持仓汇总的板块权重绘制。贡献以板块权重乘以涨跌幅估算。",
+      "Moves use MSCI World USD price indices. Tile area follows sector weights from iShares SWDA holdings. Estimated contribution is the sector weight multiplied by its move.")}</p>
+    <p>{t("你的持仓百分比按所有账户穿透后已投资总额计算。", "Your exposure is shown as a share of total look-through invested value across all accounts.")}</p>
+  </Help>;
 }
 
 const BAR = 5 * 60_000;
@@ -90,28 +96,31 @@ export function adaptWorldSectors(answer: GlobalSectorBoard) {
   return { board, groups, strongest };
 }
 
-export function GlobalSectors({ query, demo, phone, sector, onSelect, returnTo, onFocused }: {
+export function GlobalSectors({ query, demo, phone, sector, onSelect, hrefFor, onOpen, returnTo, onFocused }: {
   query: ReturnType<typeof useGlobalSectors>;
   demo: boolean;
   phone: boolean;
   sector: string | null;
   onSelect: (key: string) => void;
+  hrefFor: (key: string) => string;
+  onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
   returnTo: string | null;
   onFocused: () => void;
 }) {
   const t = useCopy();
+  const { locale, timeZone } = useLocale();
   const answer = query.data;
   const adapted = useMemo(() => answer ? adaptWorldSectors(answer) : null, [answer]);
-  if (demo) return <section className="mx-panel">
+  if (demo) return <Card as="section">
     <Empty headingLevel={2} title={t("演示不包含全球板块行情", "Global sector quotes aren’t included in the demo")} />
-  </section>;
+  </Card>;
   const status = <QueryReadStatus label={t("全球板块地图", "Global sector map")} failed={!query.isPending && !adapted} ready={!!adapted} error={query.error} />;
   if (query.isPending) return <>{status}<Pending /></>;
   if (!answer || !adapted) return <>{status}<QueryError retry={query.refetch} /></>;
   const { board, groups, strongest } = adapted;
-  if (!groups.length) return <>{status}<section className="mx-panel">
+  if (!groups.length) return <>{status}<Card as="section">
     <Empty headingLevel={2} title={t("暂无全球板块权重", "Global sector weights are unavailable")} />
-  </section></>;
+  </Card></>;
   const explicit = groups.find(({ key }) => key === sector);
   const group = explicit ?? groups.find(({ key }) => key === strongest);
   const selected = answer.sectors.find(({ gics }) => gics === group?.key);
@@ -122,12 +131,17 @@ export function GlobalSectors({ query, demo, phone, sector, onSelect, returnTo, 
       market:"global",observed:answer.asOf,selected:Boolean(explicit),
       worldFigures:[selected.weight, answer.weightsAsOf, answer.weightsStale, selected.contribution],
     } : undefined}
+    context={phone && explicit && <div className="mx-sectors-clock w-full">
+      {answer.asOf && <time dateTime={answer.asOf}>{t("截至 ", "As of ")}{formatDateTime(answer.asOf, locale, timeZone)}</time>}
+      {answer.pricesStale && <Tag tone="warn">{t("全球报价未更新", "Global quotes haven’t updated")}</Tag>}
+      <WorldSectorHelp answer={answer} failed={query.isError} />
+    </div>}
     indexFacts={<WorldSectorFacts sector={selected} answer={answer} />} />;
   return <>
     {status}
     {phone ? <div className="mx-sectors-phone">
       {explicit ? detail : <SectorList groups={groups} board={board} sessions={[]} kind="gics" indexOnly
-        focusKey={returnTo} onFocused={onFocused} onOpen={onSelect} />}
+        focusKey={returnTo} onFocused={onFocused} hrefFor={hrefFor} onOpen={onOpen} />}
     </div> : <div className="mx-sectors-body mx-global-sectors-body">
       <SectorMap groups={groups} kind="gics" selected={group?.key ?? null} onSelect={onSelect} label={heading} flat />
       {detail}
@@ -143,35 +157,19 @@ function WorldSectorFacts({ sector, answer }: { sector: Sector; answer: GlobalSe
   const t = useCopy();
   const { locale } = useLocale();
   const groups = worldIndustryRows(sector.groups, locale).filter(({ move }) => move != null);
-  const ranks = sector.ranks.flatMap((rank, index) =>
-    rank == null ? [] : [{ rank, day: answer.rankSessions[index] }]);
+  const hasRanks = sector.ranks.length > 0 || answer.rankSessions.length > 0;
   const basis = answer.exposureBasisGbp;
   const exposure = sector.exposureGbp;
   const contribution = sector.contribution;
   return <>
-    {(contribution != null || ranks.length > 0 || (basis && exposure != null)) && <dl className="mx-sector-facts">
+    {(contribution != null || hasRanks || (basis && exposure != null)) && <dl className="mx-sector-facts">
       {contribution != null && <div>
-        <dt>{t("对 MSCI 世界的贡献", "Contribution to MSCI World")}</dt>
+        <dt>{t("对 MSCI 世界的估算贡献", "Estimated contribution to MSCI World")}</dt>
         <dd>{formatNumber(contribution * 100, locale, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" })} pp</dd>
       </div>}
-      {ranks.length > 0 && <div>
+      {hasRanks && <div>
         <dt>{t("近 5 日排名", "Last 5 sessions")}</dt>
-        <dd className="mx-sector-ranks-cell"><ol className="mx-sector-ranks m-0 flex list-none gap-1 p-0">
-          {ranks.map(({ rank, day }) => (
-            <li
-              key={day}
-              className={
-                rank <= 3
-                  ? "grid size-6 place-items-center rounded-[5px] bg-foreground text-xs font-semibold tabular-nums text-card"
-                  : "grid size-6 place-items-center rounded-[5px] bg-muted text-xs font-semibold tabular-nums text-muted-foreground"
-              }
-              data-top={rank <= 3 || undefined}
-              title={formatCalendarDate(day, locale)}
-            >
-              {rank}
-            </li>
-          ))}
-        </ol></dd>
+        <dd className="mx-sector-ranks-cell"><SectorRanks ranks={sector.ranks} days={answer.rankSessions} /></dd>
       </div>}
       {basis != null && basis > 0 && exposure != null && <div>
         <dt>{t("你的持仓", "Your exposure")}</dt>
@@ -184,7 +182,7 @@ function WorldSectorFacts({ sector, answer }: { sector: Sector; answer: GlobalSe
       <ol className="mx-sector-subgroups">
         {groups.map(({ gics, label, move }) => <li key={gics} className="mx-sector-subgroup">
           <span className="mx-sector-subgroup-name">{label}</span>
-          <span className={"mx-sector-subgroup-change mx-" + changeTone(move)}>{formatDeltaPercent(move, locale, 2)}</span>
+          <span className={"mx-sector-subgroup-change min-w-16 text-right font-semibold mx-" + changeTone(move)}>{formatDeltaPercent(move, locale, 2)}</span>
         </li>)}
       </ol>
     </div>}
@@ -193,7 +191,7 @@ function WorldSectorFacts({ sector, answer }: { sector: Sector; answer: GlobalSe
       <ul>
         {sector.holdings.map(({ name, weight }, index) => <li key={name + index}>
           <span className="mx-sector-member-name" title={issuerName(name)}>{issuerName(name)}</span>
-          <span className="mx-sector-member-change">{percent(weight, false, 2)}</span>
+          <span className="mx-sector-member-change min-w-16 text-right font-semibold">{percent(weight, false, 2)}</span>
         </li>)}
       </ul>
     </div>}

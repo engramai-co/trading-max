@@ -441,14 +441,6 @@
     stroke: transparent;
     vector-effect: non-scaling-stroke;
   }
-  .tm-world-touch {
-    display: none;
-    fill: none;
-    stroke: transparent;
-    stroke-linejoin: round;
-    vector-effect: non-scaling-stroke;
-    pointer-events: stroke;
-  }
   .tm-world-region:focus-visible .tm-world-hit,
   .tm-world-region[data-market="jp"][data-linked] .tm-world-hit {
     stroke: var(--ring);
@@ -476,9 +468,6 @@
       font-size: 25px;
     }
     .tm-world-label-phone {
-      display: block;
-    }
-    .tm-world-touch {
       display: block;
     }
     .tm-world-label-desktop {

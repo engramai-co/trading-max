@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -20,11 +21,12 @@ const regions = [
   { markets: ["ca"], zh: "美洲", en: "Americas" },
 ];
 
-export function SectorMarketSwitch<T extends string>({ value, onChange, options, phone }: {
+export function SectorMarketSwitch<T extends string>({ value, onChange, options, phone, alongsideView }: {
   value: T;
   onChange: (value: T) => void;
   options: MarketOption<T>[];
   phone: boolean;
+  alongsideView: boolean;
 }) {
   const t = useCopy();
   const label = t("市场", "Market");
@@ -45,7 +47,7 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
   };
   if (phone) return (
     <SearchPicker
-      className="mx-sector-market-picker"
+      className={cn("mx-sector-market-picker", alongsideView ? "min-w-0 flex-1" : "w-full")}
       aria-label={label}
       value={value}
       onChange={pick}
@@ -67,7 +69,7 @@ export function SectorMarketSwitch<T extends string>({ value, onChange, options,
     />
   );
   return (
-    <div className="mx-sector-market-overflow">
+    <div className="mx-sector-market-overflow flex items-center gap-2">
       <Segments label={label} value={value} onChange={onChange} options={fixed} shortcuts />
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger render={

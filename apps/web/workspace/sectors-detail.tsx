@@ -1,7 +1,9 @@
 "use client";
 
 import { ChevronRight } from "lucide-react";
-import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type MouseEvent, type ReactNode } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useLocale } from "@/components/locale-provider";
 import type { SectorBoard, SectorBreadth, SectorGroup, SectorGroupingKind, SectorMember, SectorSessionWindow } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -48,7 +50,7 @@ function SymbolLink({ member, symbol }: { member?: SectorMember; symbol: string 
     : <span className="mx-sector-symbol">{label}</span>;
 }
 
-export function SectorDetail({ group, board, sessions, kind, openSubgroup, focusOnOpen = false, indexFacts, inspection }: {
+export function SectorDetail({ group, board, sessions, kind, openSubgroup, focusOnOpen = false, indexFacts, context, inspection }: {
   group: SectorGroup;
   board: SectorDetailBoard;
   sessions: ReadonlyArray<SectorSessionWindow>;
@@ -57,6 +59,7 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
   /** A phone step takes focus, since the row that opened it is gone. */
   focusOnOpen?: boolean;
   indexFacts?: ReactNode;
+  context?: ReactNode;
   inspection?: { market:string; observed:string; selected:boolean; worldFigures?: readonly (number | string | boolean | null)[] };
 }) {
   const t = useCopy();
@@ -72,10 +75,11 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
   const share = board.exposureBasisGbp ? group.exposureGbp / board.exposureBasisGbp : null;
   const { up, flat, down } = group.breadth;
   return (
-    <section className="mx-panel mx-sector-detail" aria-label={name}>
-      <header className="mx-sector-detail-head">
+    <Card as="section" className="mx-sector-detail flex flex-col gap-[18px] max-[767px]:gap-3" aria-label={name}>
+      <header className="mx-sector-detail-head flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 ref={heading} tabIndex={-1}>{name}</h2>
-        <strong className={"mx-sector-detail-change mx-" + tone}>{indexFacts && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</strong>
+        <strong className={"mx-sector-detail-change text-[1.75rem] leading-[1.2] font-semibold tracking-[-0.02em] max-[767px]:text-2xl mx-" + tone}>{indexFacts && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</strong>
+        {context}
       </header>
       {inspection && <PageInspection role="market-sector" object={name}
         context={inspection.selected ? {market:inspection.market,observed:inspection.observed,grouping:kind,sector:group.key} : undefined}
@@ -104,7 +108,7 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
               <>
                 <SymbolLink member={leaderMember} symbol={leader.symbol} />
                 <span className={"mx-" + changeTone(leader.change)}>{formatDeltaPercent(leader.change, locale, 2)}</span>
-                <span className="mx-sector-leader-name">{issuerName(leader.name)}</span>
+                <span className="mx-sector-leader-name min-w-0 basis-full truncate text-muted-foreground">{issuerName(leader.name)}</span>
               </>
             ) : "—"}
           </dd>
@@ -112,22 +116,7 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
         <div>
           <dt>{t("近 5 日排名", "Last 5 sessions")}</dt>
           <dd className="mx-sector-ranks-cell">
-            <ol className="mx-sector-ranks m-0 flex list-none gap-1 p-0">
-              {group.ranks.map((rank, index) => (
-                <li
-                  key={index}
-                  className={cn(
-                    "grid size-6 place-items-center rounded-[5px] text-xs font-semibold tabular-nums",
-                    rank != null && rank <= 3 ? "bg-foreground text-card" : "bg-muted text-muted-foreground",
-                  )}
-                  data-top={rank != null && rank <= 3 ? "" : undefined}
-                  data-today={index === group.ranks.length - 1 ? "" : undefined}
-                  title={board.rankSessions[index] ? formatCalendarDate(board.rankSessions[index], locale) : undefined}
-                >
-                  {rank ?? "–"}
-                </li>
-              ))}
-            </ol>
+            <SectorRanks ranks={group.ranks} days={board.rankSessions} markLast />
             {group.streak >= 2 && (
               <span className="text-[12px] text-muted-foreground">{locale === "zh" ? `连续 ${group.streak} 日前三` : `Top three ${group.streak} sessions running`}</span>
             )}
@@ -146,8 +135,32 @@ export function SectorDetail({ group, board, sessions, kind, openSubgroup, focus
         ? <Subgroups key={openSubgroup === null ? "closed" : "open:" + openSubgroup} group={group} openSubgroup={openSubgroup} />
         : <Members members={group.members} />}
       </>}
-    </section>
+    </Card>
   );
+}
+
+export function SectorRanks({ ranks, days, markLast }: {
+  ranks: Array<number | null>;
+  days: string[];
+  markLast?: boolean;
+}) {
+  const t = useCopy();
+  const { locale } = useLocale();
+  return <ol className="mx-sector-ranks flex w-full list-none flex-wrap gap-1 p-0">
+    {Array.from({ length: Math.max(ranks.length, days.length) }, (_, index) => {
+      const rank = ranks[index];
+      const day = days[index];
+      const top = rank != null && rank <= 3;
+      return <li key={day ?? index} className="grid justify-items-center text-xs tabular-nums"
+        data-top={top || undefined} data-today={markLast && index === ranks.length - 1 ? "" : undefined}>
+        {day && <time className="text-muted-foreground" dateTime={day} aria-label={formatCalendarDate(day, locale)}>{formatDate(day, locale, { month: "numeric", day: "numeric", timeZone: "UTC" })}</time>}
+        <span className={cn("grid min-h-6 min-w-6 place-items-center rounded-full px-1 font-semibold",
+          top ? "bg-foreground text-card" : "bg-muted text-muted-foreground")}>
+          {rank ?? <><span aria-hidden="true">–</span><span className="sr-only">{t("暂无排名", "No rank")}</span></>}
+        </span>
+      </li>;
+    })}
+  </ol>;
 }
 
 function SectorSpark({ group, board, session, omitEmpty }: { group: SectorGroup; board: SectorDetailBoard; session: SectorSessionWindow | null; omitEmpty: boolean }) {
@@ -240,15 +253,15 @@ function Subgroups({ group, openSubgroup }: { group: SectorGroup; openSubgroup: 
         const expanded = open === subgroup.key;
         return (
           <li key={subgroup.key}>
-            <button type="button" className="mx-sector-subgroup" aria-expanded={expanded}
+            <Button variant="ghost" type="button" className="mx-sector-subgroup w-full justify-start px-0 text-left" aria-expanded={expanded}
               onClick={() => setOpen(expanded ? null : subgroup.key)}>
               <ChevronRight size={16} aria-hidden="true" />
               <span className="mx-sector-subgroup-name">{name}</span>
-              {subgroup.exposureGbp > 0 && <span className="mx-sector-held">{currency(subgroup.exposureGbp, "GBP", 0)}</span>}
-              <span className={"mx-sector-subgroup-change mx-" + changeTone(subgroup.change)}>
+              {subgroup.exposureGbp > 0 && <span className="mx-sector-held text-xs text-muted-foreground">{currency(subgroup.exposureGbp, "GBP", 0)}</span>}
+              <span className={"mx-sector-subgroup-change min-w-16 text-right font-semibold mx-" + changeTone(subgroup.change)}>
                 {formatDeltaPercent(subgroup.change, locale, 2)}
               </span>
-            </button>
+            </Button>
             {expanded && <Members members={group.members.filter((member) => member.subgroup === subgroup.key)} />}
           </li>
         );
@@ -270,23 +283,23 @@ function Members({ members }: { members: SectorMember[] }) {
           <li key={member.symbol}>
             <SymbolLink member={member} symbol={member.symbol} />
             <span className="mx-sector-member-name">{issuerName(member.name)}</span>
-            {member.exposureGbp > 0 && <span className="mx-sector-held">{currency(member.exposureGbp, "GBP", 0)}</span>}
-            <span className={"mx-sector-member-change mx-" + changeTone(member.change)}>
+            {member.exposureGbp > 0 && <span className="mx-sector-held text-xs text-muted-foreground">{currency(member.exposureGbp, "GBP", 0)}</span>}
+            <span className={"mx-sector-member-change min-w-16 text-right font-semibold mx-" + changeTone(member.change)}>
               {formatDeltaPercent(member.change, locale, 2)}
             </span>
           </li>
         ))}
       </ul>
       {sorted.length > MEMBERS_SHOWN && (
-        <button type="button" className="mx-sector-more" onClick={() => setAll(!all)}>
+        <Button variant="link" type="button" className="mx-sector-more px-0" onClick={() => setAll(!all)}>
           {all ? t("收起", "Show fewer") : locale === "zh" ? `显示全部 ${sorted.length} 只` : `Show all ${sorted.length}`}
-        </button>
+        </Button>
       )}
     </div>
   );
 }
 
-export function SectorList({ groups, board, sessions, kind, focusKey, onFocused, onOpen, indexOnly = false }: {
+export function SectorList({ groups, board, sessions, kind, focusKey, onFocused, hrefFor, onOpen, indexOnly = false }: {
   groups: SectorGroup[];
   board: SectorDetailBoard;
   sessions: ReadonlyArray<SectorSessionWindow>;
@@ -295,7 +308,8 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
   focusKey: string | null;
   /** The return target is spent once focus lands, so a later market switch moves nothing. */
   onFocused: () => void;
-  onOpen: (key: string) => void;
+  hrefFor: (key: string) => string;
+  onOpen: (event: MouseEvent<HTMLAnchorElement>) => void;
   indexOnly?: boolean;
 }) {
   const t = useCopy();
@@ -304,7 +318,7 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
   const focused = useEffectEvent(() => onFocused());
   useEffect(() => {
     if (!focusKey) return;
-    list.current?.querySelector<HTMLButtonElement>('[data-key="' + CSS.escape(focusKey) + '"]')?.focus({ preventScroll: true });
+    list.current?.querySelector<HTMLAnchorElement>('[data-key="' + CSS.escape(focusKey) + '"]')?.focus({ preventScroll: true });
     focused();
   }, [focusKey]);
   const session = sessionFor(board, sessions);
@@ -318,16 +332,21 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
         const { up, down } = group.breadth;
         return (
           <li key={group.key}>
-            <button type="button" data-key={group.key} onClick={() => onOpen(group.key)}>
-              <span className="mx-sector-list-name">{name}</span>
+            <Link href={hrefFor(group.key)} prefetch={false} data-key={group.key} onClick={onOpen} data-slot="button"
+              className={cn(
+                buttonVariants({ variant: "ghost" }),
+                "mx-sector-list-link grid w-full justify-normal gap-x-3 gap-y-1.5 rounded-[var(--radius-heat-tile)] px-0 py-3 text-left whitespace-normal",
+                indexOnly ? "min-h-[52px] pointer-coarse:min-h-[52px]" : "min-h-16 pointer-coarse:min-h-16",
+              )}>
+              <span className="mx-sector-list-name line-clamp-2 min-w-0 text-[0.9375rem] leading-[1.3] font-semibold [grid-area:name]">{name}</span>
               {(!indexOnly || line.path) && (
                 <svg className="mx-sector-list-spark h-[26px] w-[72px] overflow-visible [grid-area:spark] max-[359px]:hidden" viewBox="0 0 72 26" aria-hidden="true">
                   <line x1={0} x2={72} y1={line.zero} y2={line.zero} className="mx-sector-spark-zero stroke-border [stroke-dasharray:3_3] [stroke-width:1]" />
                   <path d={line.path} className={cn("mx-sector-spark-line fill-none stroke-current [stroke-linecap:round] [stroke-linejoin:round] [stroke-width:1.75]", "mx-" + tone)} />
                 </svg>
               )}
-              <span className={"mx-sector-list-change mx-" + tone}>{indexOnly && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</span>
-              {!indexOnly && <span className="mx-sector-list-meta">
+              <span className={"mx-sector-list-change text-right text-[0.9375rem] font-semibold [overflow-wrap:anywhere] [grid-area:change] mx-" + tone}>{indexOnly && group.change == null ? t("无报价", "No quote") : formatDeltaPercent(group.change, locale, 2)}</span>
+              {!indexOnly && <span className="mx-sector-list-meta flex min-w-0 items-center gap-2.5 overflow-hidden text-xs whitespace-nowrap text-muted-foreground [grid-area:meta]">
                 <BreadthBar breadth={group.breadth} className="h-1 w-12 flex-none" />
                 <span>{t("涨", "Up")} {up} · {t("跌", "Down")} {down}</span>
                 {group.streak >= 2 && (
@@ -336,13 +355,13 @@ export function SectorList({ groups, board, sessions, kind, focusKey, onFocused,
                   </span>
                 )}
                 {group.leader && (
-                  <span className="mx-sector-list-leader">
+                  <span className="mx-sector-list-leader min-w-0 truncate max-[359px]:hidden">
                     {displaySymbol(group.leader.symbol) + " " + formatDeltaPercent(group.leader.change, locale, 2)}
                   </span>
                 )}
               </span>}
               <ChevronRight size={16} className="mx-sector-list-caret" aria-hidden="true" />
-            </button>
+            </Link>
           </li>
         );
       })}

@@ -7,8 +7,10 @@ test("world map mixes into neutral land, respects the flat band and saturates at
       "--mx-world-heat-light": "0%", "--mx-world-heat-dark": "0%", "--mx-world-hue": "var(--world-land)",
     });
   }
-  expect(globalHeatStyle(0.00051)["--mx-world-heat-light"]).toBe("13%");
-  expect(globalHeatStyle(0.00051)["--mx-world-heat-dark"]).toBe("24%");
+  for (const value of [0.00051, -0.00051]) {
+    expect(globalHeatStyle(value)["--mx-world-heat-light"]).toBe("17%");
+    expect(globalHeatStyle(value)["--mx-world-heat-dark"]).toBe("23%");
+  }
   expect(globalHeatStyle(-0.03)).toEqual(globalHeatStyle(-0.07));
   expect(globalHeatStyle(0.03)).toEqual(globalHeatStyle(0.07));
   expect(globalHeatStyle(-0.03)["--mx-world-heat-dark"]).toBe("70%");

@@ -1372,13 +1372,25 @@ test("the closed records disclosure preserves phone heading and plot geometry in
   await expect(timeline.getByRole("table")).toBeVisible();
 });
 
-test("CFD without history offers prerequisites and the import screen", async ({ page }) => {
+test("CFD without history offers prerequisites and the import screen", async ({ page, isMobile }) => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a local preview.");
   await serve(page, () => ({ benchmark: 0, events: false, empty: true }));
   await page.goto("/review?account=C");
   await expect(page.getByText(/CFD 已平仓交易及费用|Closed CFD trades and fees/)).toBeVisible();
   await expect(page.getByText(/入金、出金与转账|Deposits, withdrawals and transfers/)).toBeVisible();
-  await page.getByRole("button", { name: /导入 CFD 历史|Import CFD history/ }).click();
+  const importHistory = page.getByRole("button", { name: /导入 CFD 历史|Import CFD history/ });
+  if (isMobile) {
+    expect(await importHistory.evaluate((button) => button.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+  }
+  await expect(importHistory).toHaveCSS("color", await page.locator("html").evaluate((root) => {
+    const probe = document.createElement("span");
+    probe.style.color = "var(--link)";
+    root.append(probe);
+    const color = getComputedStyle(probe).color;
+    probe.remove();
+    return color;
+  }));
+  await importHistory.click();
   await expect(page).toHaveURL(/reviewView=imports/);
   await expect(page.getByRole("tab", { name: "导入记录" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "CFD 历史账本", level: 2 })).toBeVisible();

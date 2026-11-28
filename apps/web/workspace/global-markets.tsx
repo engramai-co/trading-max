@@ -1,9 +1,11 @@
 "use client";
 
-import { useBreakpoint } from "@/lib/hooks";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { useLocale } from "@/components/locale-provider";
+import { useMediaQuery } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { formatCalendarDate, formatDateTime, formatDeltaPercent, formatNumber } from "@/ui/formatters";
 import { presentationLink } from "./desktop-routing";
@@ -24,21 +26,22 @@ type Label = {
   label: [number, number];
   point?: [number, number];
   phone: [number, number];
+  compact: [number, number];
 };
 const MAP: Record<MapMarket, Label> = {
-  ca: { name: ["加拿大", "Canada"], label: [227, 56], phone: [221, 42] },
-  us: { name: ["美国", "US"], label: [209, 100], phone: [194, 135] },
-  uk: { name: ["英国", "UK"], label: [365, 34], point: [397, 61], phone: [334, 34] },
-  eu: { name: ["欧洲", "Europe"], label: [439, 57], phone: [450, 78] },
-  ch: { name: ["瑞士", "Switzerland"], label: [451, 115], point: [415, 75], phone: [459, 171] },
-  jp: { name: ["日本", "Japan"], label: [718, 68], point: [671, 101], phone: [723, 35] },
+  ca: { name: ["加拿大", "Canada"], label: [227, 56], phone: [221, 60], compact: [205, 62] },
+  us: { name: ["美国", "US"], label: [209, 100], phone: [194, 164], compact: [194, 186] },
+  uk: { name: ["英国", "UK"], label: [365, 34], point: [397, 61], phone: [334, 60], compact: [330, 62] },
+  eu: { name: ["欧洲", "Europe"], label: [439, 57], phone: [452, 65], compact: [455, 62] },
+  ch: { name: ["瑞士", "Switzerland"], label: [451, 115], point: [415, 75], phone: [440, 174], compact: [420, 186] },
+  jp: { name: ["日本", "Japan"], label: [718, 68], point: [671, 101], phone: [723, 60], compact: [723, 62] },
   // China's phone label sits west of the coast, so its target stops short of Korea and Japan.
-  cn: { name: ["中国", "China"], label: [600, 112], phone: [585, 93] },
-  kr: { name: ["韩国", "Korea"], label: [727, 109], point: [650, 101], phone: [723, 127] },
-  hk: { name: ["香港", "Hong Kong"], label: [719, 156], point: [637, 138], phone: [723, 218] },
-  tw: { name: ["台湾", "Taiwan"], label: [720, 202], point: [654, 139], phone: [723, 307] },
-  in: { name: ["印度", "India"], label: [558, 142], phone: [574, 158] },
-  au: { name: ["澳洲", "Australia"], label: [683, 279], phone: [596, 280] },
+  cn: { name: ["中国", "China"], label: [600, 112], phone: [585, 80], compact: [580, 62] },
+  kr: { name: ["韩国", "Korea"], label: [727, 109], point: [650, 101], phone: [723, 164], compact: [723, 186] },
+  hk: { name: ["香港", "Hong Kong"], label: [707, 156], point: [637, 138], phone: [723, 268], compact: [723, 310] },
+  tw: { name: ["台湾", "Taiwan"], label: [720, 202], point: [654, 139], phone: [610, 298], compact: [599, 310] },
+  in: { name: ["印度", "India"], label: [558, 142], phone: [545, 186], compact: [548, 186] },
+  au: { name: ["澳洲", "Australia"], label: [683, 279], phone: [498, 294], compact: [474, 310] },
 };
 
 const INDEX_NAMES: Record<string, readonly [string, string]> = {
@@ -66,17 +69,19 @@ const EM_MARKETS = new Set<Market>(["cn", "kr", "tw", "in"]);
 
 type MapAnchor = HTMLAnchorElement | SVGAElement;
 
-/** Islands too small to tap on a phone get a wider, invisible target around their outline. */
-const TOUCH_OUTLINE: Partial<Record<MapMarket, number>> = { jp: 16, kr: 12 };
-
 type Box = { left: number; top: number; right: number; bottom: number };
-type Inspection = { market: MapMarket; anchor: Box };
+type InspectionPlacement = { x: number; y: number } | "below-map";
+const PHONE_HIT_SIZE = 44;
+const WORLD_VIEWBOX_WIDTH = 774;
+// The tighter label positions accommodate 44 CSS px targets on the narrowest phones.
+const COMPACT_LABEL_TARGET = 103;
+const COMPACT_WORLD_VIEWBOX = "12 0 774 372";
 
 /**
  * Where the inspection card sits: above, below, right or left of the market, inside the
  * map, covering the fewest other market labels. Ties keep that order.
  */
-export function placeInspection(anchor: Box, size: { width: number; height: number }, bounds: { width: number; height: number }, labels: Box[]) {
+export function placeInspection(anchor: Box, size: { width: number; height: number }, bounds: { width: number; height: number }, labels: Box[], keepTargetsClear = false) {
   const gap = 8, pad = 8;
   const { width, height } = size;
   const clampX = (x: number) => Math.max(pad, Math.min(x, bounds.width - width - pad));
@@ -96,6 +101,7 @@ export function placeInspection(anchor: Box, size: { width: number; height: numb
   const cost = (c: { x: number; y: number }) => labels.reduce((sum, box) => sum + overlap(c, box), 0) + overlap(c, anchor) * 4;
   const fitting = candidates.filter(inside);
   const best = fitting.reduce<{ x: number; y: number } | null>((chosen, c) => !chosen || cost(c) < cost(chosen) ? c : chosen, null);
+  if (keepTargetsClear && (!best || cost(best) > 0)) return "below-map";
   return best ?? { x: clampX(centreX - width / 2), y: clampY(anchor.bottom + gap) };
 }
 
@@ -103,15 +109,18 @@ function tone(value: number) {
   return value < 0 ? "down" : value > 0 ? "up" : "flat";
 }
 
-export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (market: MapMarket) => void }) {
+export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (market: MapMarket, fromMap: boolean) => void }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
   const pathname = usePathname();
-  const wide = useBreakpoint("wideMap");
+  const touchMap = useMediaQuery("(max-width: 767px) and (pointer: coarse)");
+  const [wide, setWide] = useState(false);
+  const [phoneHit, setPhoneHit] = useState(100);
+  const worldSvg = useRef<SVGSVGElement>(null);
   const [hovered, setHovered] = useState<Market | null>(null);
   const [focused, setFocused] = useState<Market | null>(null);
-  const [inspection, setInspection] = useState<Inspection | null>(null);
-  const [placement, setPlacement] = useState<{ x: number; y: number } | null>(null);
+  const [inspection, setInspection] = useState<MapMarket | null>(null);
+  const [placement, setPlacement] = useState<InspectionPlacement | null>(null);
   const mapHost = useRef<HTMLDivElement>(null);
   const popover = useRef<HTMLDivElement>(null);
   const inspectionHeading = useRef<HTMLDivElement>(null);
@@ -119,30 +128,29 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
   const trigger = useRef<MapAnchor | null>(null);
   const pinned = useRef(false);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const active = hovered ?? inspection?.market ?? focused;
+  const active = hovered ?? inspection ?? focused;
+  const compact = phoneHit > COMPACT_LABEL_TARGET;
   const cancelDismiss = useCallback(() => {
     if (closeTimer.current != null) clearTimeout(closeTimer.current);
     closeTimer.current = null;
   }, []);
-  const close = () => {
+  const close = useCallback(() => {
     cancelDismiss();
     pinned.current = false;
     setInspection(null);
-  };
+  }, [cancelDismiss]);
   useEffect(() => () => {
     if (closeTimer.current != null) clearTimeout(closeTimer.current);
   }, []);
   useEffect(() => {
     if (!inspection) return;
-    const outside = (event: PointerEvent) => {
-      if (event.target instanceof Node && !mapHost.current?.contains(event.target)) {
-        pinned.current = false;
-        setInspection(null);
-      }
+    const outside = (event: Event) => {
+      if (event.target instanceof Node && !mapHost.current?.contains(event.target)) close();
     };
-    document.addEventListener("pointerdown", outside);
-    return () => document.removeEventListener("pointerdown", outside);
-  }, [inspection]);
+    // Keep the contribution rows in place until an outside tap has activated its target.
+    document.addEventListener("click", outside);
+    return () => document.removeEventListener("click", outside);
+  }, [close, inspection]);
   const title = t("对 MSCI 全球的贡献", "Contribution to MSCI ACWI");
   const query = useGlobalContribution(!demo);
   const answer = query.data;
@@ -171,25 +179,41 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     ];
     return parts.join(t("，", ", "));
   };
-  const inspect = useCallback((market: MapMarket, node: MapAnchor, pin = false) => {
-    const host = mapHost.current?.getBoundingClientRect();
-    // The card keeps clear of the market's visible label and pin.
-    const parts = Array.from(node.querySelectorAll<SVGGraphicsElement>(".mx-global-hit, .mx-global-pin"))
-      .map((item) => item.getBoundingClientRect()).filter((box) => box.width > 0);
-    if (!host || !parts.length) return;
+  const inspect = (market: MapMarket, node: MapAnchor, pin = false) => {
     cancelDismiss();
     pinned.current = pin;
     trigger.current = node;
-    setInspection({
-      market,
-      anchor: {
-        left: Math.min(...parts.map((box) => box.left)) - host.left,
-        top: Math.min(...parts.map((box) => box.top)) - host.top,
-        right: Math.max(...parts.map((box) => box.right)) - host.left,
-        bottom: Math.max(...parts.map((box) => box.bottom)) - host.top,
-      },
-    });
-  }, [cancelDismiss]);
+    setInspection(market);
+  };
+  const inspectShape = (event: MouseEvent<SVGSVGElement>) => {
+    if (!touchMap || event.defaultPrevented || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (event.target instanceof Element && event.target.closest(".mx-global-region")) return;
+    const svg = event.currentTarget;
+    const transform = svg.getScreenCTM();
+    if (!transform) return;
+    const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(transform.inverse());
+    // Phone label rectangles get first refusal. Bare geography still opens its own region.
+    const shapes = [...svg.querySelectorAll<SVGGeometryElement>(".mx-global-shape, .mx-global-pin")];
+    const node = shapes.findLast((shape) => shape.isPointInFill?.(point))?.closest<SVGAElement>(".mx-global-region");
+    const market = node?.dataset.market as MapMarket | undefined;
+    if (market && node) inspect(market, node, true);
+  };
+  useLayoutEffect(() => {
+    const svg = worldSvg.current;
+    const host = mapHost.current;
+    if (!svg || !host) return;
+    const measure = () => {
+      const mapWidth = svg.getBoundingClientRect().width;
+      if (mapWidth) setPhoneHit(PHONE_HIT_SIZE * WORLD_VIEWBOX_WIDTH / mapWidth);
+      const wideLayout = getComputedStyle(host).getPropertyValue("--world-map-wide").trim() === "1";
+      setWide(wideLayout);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    observer.observe(svg);
+    return () => observer.disconnect();
+  }, [demo]);
   useEscapeLayer(inspection != null, mapHost, () => {
     // Focus inside the card goes back to the market that opened it.
     if (popover.current?.contains(document.activeElement)) trigger.current?.focus();
@@ -202,23 +226,44 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       return;
     }
     const place = () => {
-    const bounds = host.getBoundingClientRect();
-    const labels = Array.from(host.querySelectorAll<SVGTextElement>(".mx-global-region text"))
-      .filter((text) => text.closest(".mx-global-region")?.getAttribute("data-market") !== inspection.market)
-      .map((text) => text.getBoundingClientRect()).filter((box) => box.width > 0)
-      .map((box) => ({ left: box.left - bounds.left, top: box.top - bounds.top, right: box.right - bounds.left, bottom: box.bottom - bounds.top }));
-    setPlacement(placeInspection(inspection.anchor, { width: card.offsetWidth, height: card.offsetHeight },
-      { width: bounds.width, height: bounds.height }, labels));
+      const bounds = host.getBoundingClientRect();
+      const relative = (nodes: Iterable<Element>) => Array.from(nodes)
+        .map((node) => node.getBoundingClientRect()).filter((box) => box.width > 0)
+        .map((box) => ({ left: box.left - bounds.left, top: box.top - bounds.top,
+          right: box.right - bounds.left, bottom: box.bottom - bounds.top }));
+      const parts = relative(trigger.current?.querySelectorAll(".mx-global-hit, .mx-global-pin") ?? []);
+      if (!parts.length) return;
+      const anchor = {
+        left: Math.min(...parts.map((box) => box.left)),
+        top: Math.min(...parts.map((box) => box.top)),
+        right: Math.max(...parts.map((box) => box.right)),
+        bottom: Math.max(...parts.map((box) => box.bottom)),
+      };
+      const labels = relative(host.querySelectorAll(touchMap
+        ? '.mx-global-label-phone .mx-global-hit'
+        : `[data-label-market]:not([data-label-market="${inspection}"])`));
+      // When the reading follows the map, measure the SVG rather than including the reading again.
+      const svg = worldSvg.current?.getBoundingClientRect();
+      const mapHeight = touchMap && svg
+        ? svg.bottom - bounds.top + parseFloat(getComputedStyle(host).paddingBottom)
+        : bounds.height;
+      card.style.setProperty("--market-inspection-height", `${Math.max(0, mapHeight - 16)}px`);
+      const height = touchMap ? Math.max(card.offsetHeight, card.scrollHeight + 2) : card.offsetHeight;
+      const next = placeInspection(anchor, { width: card.offsetWidth, height },
+        { width: bounds.width, height: mapHeight }, labels, touchMap);
+      setPlacement((previous) => previous && previous !== "below-map" && next !== "below-map"
+        && previous.x === next.x && previous.y === next.y ? previous : next);
     };
     place();
     const observer = new ResizeObserver(place);
+    observer.observe(host);
     observer.observe(card);
     return () => observer.disconnect();
-  }, [inspection]);
+  }, [inspection, phoneHit, wide, locale, touchMap]);
   useEffect(() => {
     // A card opened by a tap or click stays in view, above the phone dock.
     if (placement && pinned.current) popover.current?.scrollIntoView({ block: "nearest", inline: "nearest" });
-  }, [placement]);
+  }, [inspection, placement]);
   const deferDismiss = () => {
     cancelDismiss();
     if (!pinned.current) closeTimer.current = setTimeout(() => {
@@ -233,14 +278,14 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     onBlur: () => setFocused((value) => value === market ? null : value),
   });
   const url = (market: MapMarket) => `/sectors?market=${market}`;
-  const open = (event: MouseEvent, market: MapMarket) => {
+  const open = (event: MouseEvent<HTMLAnchorElement>, market: MapMarket, fromMap = false) => {
     if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
-    onMarket(market);
+    onMarket(market, fromMap);
   };
-  if (demo) return <section className="mx-panel">
+  if (demo) return <Card as="section">
     <Empty headingLevel={2} title={t("演示不包含全球行情", "Global quotes aren’t included in the demo")} />
-  </section>;
+  </Card>;
   const rows = answer?.rows ?? [];
   const total = answer?.acwiMove;
   const residual = answer?.residual;
@@ -253,8 +298,8 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
     : total == null
       ? t("行情源未返回同一时段的 MSCI ACWI 比较价格。请在下一交易时段重试。", "The source returned no comparable MSCI ACWI prices for this session. Retry in the next session.")
       : t("成分报价尚不足以估算贡献。请稍后重试。", "There are too few constituent quotes to estimate contribution. Retry later.");
-  const inspectedMove = answer?.markets.find(({ market }) => market === inspection?.market);
-  const inspectedRow = rows.find(({ market }) => market === inspection?.market);
+  const inspectedMove = answer?.markets.find(({ market }) => market === inspection);
+  const inspectedRow = rows.find(({ market }) => market === inspection);
   const inspectedContribution = inspectedRow?.contribution;
   const inspectedStatus = quoteStatus(inspectedMove?.move, inspectedMove?.notOpen);
   return (
@@ -266,8 +311,8 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
           trigger.current?.focus();
         }
       }}>
-      <PageInspection role="market-map" object={inspection ? name(inspection.market) : t("全球市场","Global markets")}
-        context={openingObservation ? {observed:openingObservation} : undefined} market={inspection?.market}
+      <PageInspection role="market-map" object={inspection ? name(inspection) : t("全球市场","Global markets")}
+        context={openingObservation ? {observed:openingObservation} : undefined} market={inspection ?? undefined}
         showMapLine={answer?.asOf===openingObservation && !answer?.pricesStale && !query.isError}
         portal={readingSlot}
         liveRecord={answer?.asOf && !answer.pricesStale && !query.isError && inspectedMove ? {
@@ -276,7 +321,7 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             !inspectedRow?.notOpen && !answer.weightsStale ? inspectedContribution ?? null : null],
         } : undefined}/>
       <header className="mx-global-lead">
-        <div className="mx-global-heading">
+        <div className="mx-global-heading flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <h2 id="mx-global-title">{title}</h2>
           <Help label={title} tag={<Tag tone="warn">{t("估算", "Estimate")}</Tag>}
             basis={<>{t("权重来自 iShares MSCI ACWI UCITS ETF（SSAC）持仓，按所在地汇总", "Weights come from iShares MSCI ACWI UCITS ETF (SSAC) holdings, grouped by location")}
@@ -286,23 +331,34 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             <p>{t("汇率与其他 = MSCI 全球涨跌减去已列贡献，包含汇率、未覆盖市场和估算误差。", "Currency and other is the MSCI ACWI move less the listed contributions. It includes currency effects, markets outside the estimate and approximation error.")}</p>
           </Help>
         </div>
-        {total != null && <div className="mx-global-move" data-tone={tone(total)}>{change(total)}</div>}
-        <p className="mx-global-colour-key">{t("地图颜色：各市场指数的本币涨跌", "Map colours: local index moves")}</p>
+        <div className="mx-global-summary">
+          {total != null && <div className="mx-global-move" data-tone={tone(total)}>{change(total)}</div>}
+          {(query.isError && answer || answer?.weightsStale || answer?.pricesStale || answer?.state === "partial") && <div className="mx-global-caveats flex flex-wrap items-center gap-x-2.5 gap-y-1 text-muted-foreground" role="status">
+            {query.isError && answer && <Tag tone="warn">{t("刷新失败", "Refresh failed")}</Tag>}
+            {answer?.pricesStale && <Tag tone="warn">{answer.asOf
+              ? t("报价未更新 · ", "Quotes haven’t updated · ") + formatDateTime(answer.asOf, locale, timeZone)
+              : t("报价暂不可用", "Quotes temporarily unavailable")}</Tag>}
+            {answer?.weightsStale && <Tag tone="warn">{t("权重未更新", "Weights haven’t updated")}</Tag>}
+            {answer?.state === "partial" && <Tag tone="warn">{t("部分报价不可用", "Partial quote coverage")}</Tag>}
+          </div>}
+        </div>
+        <p className="mx-global-colour-key my-[5px] text-xs text-muted-foreground">{t("地图颜色：各市场指数的本币涨跌", "Map colours: local index moves")}</p>
       </header>
       <div
         ref={mapHost}
-        className="mx-global-map relative grid min-w-0 place-items-center rounded-[14px] border border-border bg-card px-[5px] pb-2 pt-5 [grid-area:map] max-[1179px]:rounded-none max-[1179px]:border-y-0 max-[1179px]:px-3.5 max-[1179px]:py-2 max-[767px]:px-1 max-[767px]:py-2"
+        className="mx-global-map"
         data-testid="global-map"
       >
         <svg
-          className="block h-auto w-full max-w-[980px] max-[1179px]:max-w-[820px]"
-          viewBox={wide ? WIDE_WORLD_VIEWBOX : WORLD_VIEWBOX}
+          ref={worldSvg}
+          onClick={inspectShape}
+          viewBox={wide ? WIDE_WORLD_VIEWBOX : compact ? COMPACT_WORLD_VIEWBOX : WORLD_VIEWBOX}
           preserveAspectRatio="xMidYMid meet"
           role="group"
           aria-label={t("全球市场地图", "World market map")}
         >
           <path className="mx-global-land fill-world-land" d={WORLD_LAND} fillRule="evenodd" />
-          {(Object.entries(MAP) as [MapMarket, Label][]).map(([market, { label, phone, point }]) => {
+          {(Object.entries(MAP) as [MapMarket, Label][]).map(([market, { label, phone, compact: compactLabel, point }]) => {
             const reading = answer?.markets.find((item) => item.market === market);
             const move = reading?.move;
             const row = rows.find((item) => item.market === market);
@@ -312,13 +368,15 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             const regionTone = reading?.notOpen || move == null ? undefined : changeTone(move);
             return <a key={market} href={presentationLink(pathname, url(market)).href}
               className="mx-global-region tm-world-region"
+              tabIndex={0}
               data-market={market}
               data-tone={regionTone}
-              data-neutral={style["--mx-world-heat-light"] === "0%" || undefined}
+              data-neutral={reading?.notOpen || style["--mx-world-heat-light"] === "0%" || undefined}
               data-linked={selected || undefined}
               aria-label={accessible(market, move, row?.contribution, reading?.notOpen)} style={style}
-              aria-expanded={inspection?.market === market}
-              aria-controls={inspection?.market === market ? "mx-global-inspection" : undefined}
+              aria-expanded={inspection === market}
+              aria-controls={inspection === market ? "mx-global-inspection" : undefined}
+              aria-details={inspection === market ? "mx-global-inspection" : undefined}
               onPointerEnter={(event) => {
                 if (event.pointerType !== "touch") inspect(market, event.currentTarget);
               }}
@@ -335,22 +393,30 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
                 if (event.detail === 0) requestAnimationFrame(() => detailLink.current?.focus());
               }}
               onKeyDown={(event) => {
-                if ((event.key === "Tab" && !event.shiftKey) && inspection?.market === market) {
+                if ((event.key === "Tab" && !event.shiftKey) && inspection === market) {
                   event.preventDefault();
                   (popover.current?.querySelector<HTMLElement>("button, a") ?? detailLink.current)?.focus();
                 }
               }}>
               {market !== "hk" && <path className="mx-global-shape tm-world-shape" d={MARKET_PATHS[market]} fillRule="evenodd" />}
-              {market !== "hk" && TOUCH_OUTLINE[market] && <path className="mx-global-touch tm-world-touch" d={MARKET_PATHS[market]} style={{ strokeWidth: TOUCH_OUTLINE[market] }} />}
               {point && <circle className="mx-global-pin tm-world-pin" cx={point[0]} cy={point[1]} r={market === "hk" ? 4.5 : 3.4} />}
-              <MapLabel name={name(market)} position={label} point={point} />
-              <MapLabel name={name(market)} position={phone} point={point ?? label} phone />
+              <MapLabel market={market} label={name(market)} position={label} point={point} />
+              <MapLabel position={compact ? compactLabel : phone} point={point ?? label} phone hitSize={phoneHit} />
             </a>;
           })}
+          {/* Paint phone names above every geography shape while the links own the hit targets. */}
+          <g className="tm-world-region tm-world-label-phone pointer-events-none" aria-hidden="true">
+            {(Object.entries(MAP) as [MapMarket, Label][]).map(([market, { phone, compact: compactLabel }]) => {
+              const [x, y] = compact ? compactLabel : phone;
+              return <text key={market} data-label-market={market} x={x} y={y}
+                textAnchor="middle" dominantBaseline="central">{name(market)}</text>;
+            })}
+          </g>
         </svg>
         {inspection && <div
-          ref={popover} id="mx-global-inspection" className="mx-global-inspection"
-          style={placement ? { left: placement.x, top: placement.y } : { visibility: "hidden" }}
+          ref={popover} id="mx-global-inspection" className="mx-global-inspection tm-floating-surface" role="group" aria-labelledby="mx-global-inspection-title"
+          data-below-map={placement === "below-map" || undefined}
+          style={placement === "below-map" ? undefined : placement ? { left: placement.x, top: placement.y } : { visibility: "hidden" }}
           onPointerEnter={cancelDismiss} onPointerLeave={() => {
             if (!popover.current?.contains(document.activeElement)) deferDismiss();
           }}
@@ -359,20 +425,21 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
               (event.currentTarget.contains(event.relatedTarget) || event.relatedTarget.closest(".mx-global-region, .mx-citation-preview"))) return;
             close();
           }}>
-          <div ref={inspectionHeading} tabIndex={-1} className="mx-global-inspect-head">{name(inspection.market)} · {t(...INDEX_NAMES[MAP_INDEX[inspection.market]])}</div>
+          <div id="mx-global-inspection-title" ref={inspectionHeading} tabIndex={-1} className="mx-global-inspect-head font-medium text-muted-foreground">{name(inspection)} · {t(...INDEX_NAMES[MAP_INDEX[inspection]])}</div>
           {/* Not open hides the move, flat keeps it in ink, no quote shows none. */}
           <div className="mx-global-inspect-move"
             data-tone={inspectedMove?.move != null && !inspectedMove.notOpen && !inspectedStatus ? tone(inspectedMove.move) : undefined}>
             {inspectedMove?.move == null || inspectedMove.notOpen ? <span data-status="">{inspectedStatus}</span>
               : <>{change(inspectedMove.move)}{inspectedStatus && <span data-status="">{inspectedStatus}</span>}</>}
           </div>
-          <dl className="mx-global-inspect-rows">
+          <dl className="mx-global-inspect-rows m-0">
             <div><dt>{t("贡献", "Contribution")}</dt>
-              <dd>{inspectedContribution == null ? contributionText(inspection.market) : pp(inspectedContribution)}</dd></div>
+              <dd>{inspectedContribution == null ? contributionText(inspection) : pp(inspectedContribution)}</dd></div>
           </dl>
           {ready && <div ref={setReadingSlot}/>}
-          <Link ref={detailLink} href={url(inspection.market)} prefetch={false}
-            onClick={(event) => open(event, inspection.market)} onKeyDown={(event) => {
+          <Link ref={detailLink} href={url(inspection)} prefetch={false} data-slot="button"
+            className={buttonVariants({ variant: "link", className: "justify-self-start px-0" })}
+            onClick={(event) => open(event, inspection, true)} onKeyDown={(event) => {
               if (event.key !== "Tab" || event.shiftKey) return;
               const regions = Array.from(mapHost.current?.querySelectorAll<MapAnchor>(".mx-global-region") ?? []);
               const source = trigger.current;
@@ -389,41 +456,33 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
       </div>
       <div className="mx-global-ranking">
         <QueryReadStatus label={t("全球行情", "Global quotes")} failed={query.isError && !answer} ready={!!answer} error={query.error} />
-      {query.isError && !answer ? <QueryError retry={query.refetch} showDataStatusLink={false} />
+        {query.isError && !answer ? <QueryError retry={query.refetch} showDataStatusLink={false} />
           : query.isPending ? <Pending label={t("正在加载贡献", "Loading contributions")} compact />
-          : !priced ? <div className="mx-global-status" role="status">
+          : !priced ? <div className="mx-global-status my-2 flex items-center gap-2 text-muted-foreground" role="status">
             <div><strong>{t("暂无可用的贡献估算", "No contribution estimate available")}</strong>
               <p>{noContribution}</p>
               {answer && <p>{t("本地行情覆盖", "Local quote coverage")} · {coveredMarkets} / {answer.markets.length}
                 {answer.asOf && <> · <time dateTime={answer.asOf}>{formatDateTime(answer.asOf, locale, timeZone)}</time></>}</p>}
             </div>
-            <button className="mx-index-retry" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>
+            <Button variant="link" className="mx-index-retry px-0" type="button" disabled={query.isFetching} onClick={() => void query.refetch()}>
               {t("重试", "Retry")}
-            </button>
+            </Button>
           </div> : null}
-        {(query.isError && answer || answer?.weightsStale || answer?.pricesStale || answer?.state === "partial") && <div className="mx-global-caveats" role="status">
-          {query.isError && answer && <Tag tone="warn">{t("刷新失败", "Refresh failed")}</Tag>}
-          {answer?.pricesStale && <Tag tone="warn">{answer.asOf
-            ? t("报价未更新 · ", "Quotes haven’t updated · ") + formatDateTime(answer.asOf, locale, timeZone)
-            : t("报价暂不可用", "Quotes temporarily unavailable")}</Tag>}
-          {answer?.weightsStale && <Tag tone="warn">{t("权重未更新", "Weights haven’t updated")}</Tag>}
-          {answer?.state === "partial" && <Tag tone="warn">{t("部分报价不可用", "Partial quote coverage")}</Tag>}
-        </div>}
         {priced && <>
-          <ul className="mx-global-rows">
+          <ul className="mx-global-rows m-0 list-none p-0">
             {rows.map(({ market, indexId, move, contribution, notOpen }) => {
               const selected = active === market || (market === "em" && active != null && EM_MARKETS.has(active));
               const index = INDEX_NAMES[indexId];
               const status = quoteStatus(move, notOpen);
-              const label = <span className="mx-global-row-label">
+              const label = <span className="mx-global-row-label self-center py-1 pr-[3px]">
                 <strong>{name(market)} · {index ? t(...index) : indexId}</strong>
                 <small>{notOpen ? preOpen : <><span className="sr-only">{status ? status + t("，", ", ") : ""}{t("涨跌 ", "Move ")}</span>{change(move)}</>}</small>
               </span>;
-              const content = <>{label}<ContributionBar value={contribution} limit={limit} /><span className="mx-global-pp"><span className="sr-only">{t("贡献 ", "Contribution ")}</span>{pp(contribution)}</span></>;
+              const content = <>{label}<ContributionBar value={contribution} limit={limit} /><span className="mx-global-pp self-center text-right [overflow-wrap:anywhere]"><span className="sr-only">{t("贡献 ", "Contribution ")}</span>{pp(contribution)}</span></>;
               return <li key={market}>
                 {market === "em" ? <Link className="mx-global-row" href="/sectors?market=global&index=msci-em" prefetch={false}
                   data-linked={selected || undefined} {...bindings(market)}>{content}</Link>
-                : <Link className="mx-global-row" href={url(market)} prefetch={false} data-linked={selected || undefined}
+                : <Link className="mx-global-row" href={url(market)} prefetch={false} data-market={market} data-linked={selected || undefined}
                   onClick={(event) => open(event, market)} {...bindings(market)}>
                   {content}
                 </Link>}
@@ -431,21 +490,26 @@ export function GlobalMarkets({ demo, onMarket }: { demo: boolean; onMarket: (ma
             })}
             <li className="mx-global-row mx-global-residual">
               <strong>{t("汇率与其他", "Currency and other")}</strong>
-              <ContributionBar value={residual} limit={limit} /><span className="mx-global-pp">{pp(residual)}</span>
+              <ContributionBar value={residual} limit={limit} /><span className="mx-global-pp self-center text-right [overflow-wrap:anywhere]">{pp(residual)}</span>
             </li>
           </ul>
-          <div className="mx-global-total"><strong>{t("合计", "Total")}</strong><strong data-tone={tone(total)}>{change(total)}</strong></div>
+          <div className="mx-global-total flex items-center justify-between gap-3 border-t border-border px-[5px] pt-1.5 text-base"><strong>{t("合计", "Total")}</strong><strong data-tone={tone(total)}>{change(total)}</strong></div>
         </>}
       </div>
     </section>
   );
 }
 
-function MapLabel({ name, position: [x, y], point, phone }: {
-  name: string; position: [number, number]; point?: [number, number]; phone?: boolean;
+function MapLabel({ market, label, position: [x, y], point, phone, hitSize = 100 }: {
+  market?: MapMarket;
+  label?: string;
+  position: [number, number];
+  point?: [number, number];
+  phone?: boolean;
+  hitSize?: number;
 }) {
-  const width = phone ? 100 : 50;
-  const height = phone ? 100 : 34;
+  const width = phone ? hitSize : 50;
+  const height = phone ? hitSize : 34;
   return (
     <g
       className={phone ? "mx-global-label-phone tm-world-label-phone" : "mx-global-label-desktop tm-world-label-desktop"}
@@ -453,7 +517,7 @@ function MapLabel({ name, position: [x, y], point, phone }: {
     >
       {point && <path className="mx-global-leader tm-world-leader" d={`M${point.join(",")} L${x},${y}`} />}
       <rect className="mx-global-hit tm-world-hit" x={x - width / 2} y={y - height / 2} width={width} height={height} rx="4" />
-      <text x={x} y={y} textAnchor="middle" dominantBaseline="central">{name}</text>
+      {label && <text data-label-market={market} x={x} y={y} textAnchor="middle" dominantBaseline="central">{label}</text>}
     </g>
   );
 }
