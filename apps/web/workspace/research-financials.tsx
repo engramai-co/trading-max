@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { WorkspaceSheet } from "./overlay";
 import { useBreakpoint } from "@/lib/hooks";
 import { useLocale } from "@/components/locale-provider";
@@ -447,50 +448,43 @@ export function FinancialWorkbench({
                 />
                 <details className="mx-chart-data">
                 <summary>{t("各期数值", "Values by period")}</summary>
-                <div
-                  className="mx-table-scroll"
-                  role="region"
-                  aria-label={t("图表数据", "Chart data")}
-                  tabIndex={0}
-                >
-                  <table className="mx-financial-table">
-                    <thead>
-                      <tr>
-                        <th>{t("报告期", "Period")}</th>
-                        {chartMetrics.map((key) => (
-                          <th key={key}>{label(key)}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {periods.toReversed().map((p) => (
-                        <tr
-                          key={p.id}
-                          data-active={p.id === period.id || undefined}
-                        >
-                          <th>
-                            <button onClick={() => update({ period: p.id })}>
-                              {p.label}
-                            </button>
-                          </th>
-                          {chartMetrics.map((key) => (
-                            <td key={key}>
-                              <button
-                                type="button"
-                                aria-label={`${label(key)} · ${p.label} · ${format(get(p.id, key))}`}
-                                onClick={() =>
-                                  setDetail(get(p.id, key) ?? null)
-                                }
-                              >
-                                {format(get(p.id, key))}
-                              </button>
-                            </td>
-                          ))}
-                        </tr>
+                <Table containerProps={{ className: "mx-table-scroll" }} label={t("图表数据", "Chart data")} className="mx-financial-table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead scope="col">{t("报告期", "Period")}</TableHead>
+                      {chartMetrics.map((key) => (
+                        <TableHead scope="col" key={key}>{label(key)}</TableHead>
                       ))}
-                    </tbody>
-                  </table>
-                </div>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {periods.toReversed().map((p) => (
+                      <TableRow
+                        key={p.id}
+                        data-active={p.id === period.id || undefined}
+                      >
+                        <TableHead scope="row">
+                          <button onClick={() => update({ period: p.id })}>
+                            {p.label}
+                          </button>
+                        </TableHead>
+                        {chartMetrics.map((key) => (
+                          <TableCell key={key}>
+                            <button
+                              type="button"
+                              aria-label={`${label(key)} · ${p.label} · ${format(get(p.id, key))}`}
+                              onClick={() =>
+                                setDetail(get(p.id, key) ?? null)
+                              }
+                            >
+                              {format(get(p.id, key))}
+                            </button>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
                 </details>
               </Panel>
               {bridge.length > 0 && (
@@ -594,61 +588,54 @@ export function FinancialWorkbench({
           {(["income", "balance", "cash"] as const).map((section) => (
             <div id={"research-" + section} key={section}>
             <Panel title={statementTitles[section]}>
-              <div
-                className="mx-table-scroll"
-                role="region"
-                aria-label={statementTitles[section]}
-                tabIndex={0}
-              >
-                <table className="mx-financial-table">
-                  <thead>
-                    <tr>
-                      <th>{facts.currency}</th>
-                      <th className="mx-spark-cell">
-                        <span className="sr-only">{t("趋势", "Trend")}</span>
-                      </th>
-                      {periods.toReversed().map((p) => (
-                        <th key={p.id}>
-                          {p.label}
-                          {p.actualEnd && <small>{formatCalendarDate(p.actualEnd, locale)}</small>}
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {statementRows[section]
-                      .filter((key) =>
-                        periods.some((p) => get(p.id, key)?.value != null),
-                      )
-                      .map((key) => (
-                        <tr
-                          key={key}
-                          className={
-                            /Margin|Growth/.test(key) ? "mx-submetric" : ""
-                          }
-                        >
-                          <th>{label(key)}</th>
-                          <td className="mx-spark-cell">
-                            <Sparkbars values={periods.map((p) => get(p.id, key)?.value)} />
-                          </td>
-                          {periods.toReversed().map((p) => (
-                            <td key={p.id}>
-                              <button
-                                type="button"
-                                aria-label={`${label(key)} · ${p.label} · ${format(get(p.id, key))}`}
-                                onClick={() =>
-                                  setDetail(get(p.id, key) ?? null)
-                                }
-                              >
-                                {format(get(p.id, key))}
-                              </button>
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
+              <Table containerProps={{ className: "mx-table-scroll" }} stickyHeader label={statementTitles[section]} className="mx-financial-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">{facts.currency}</TableHead>
+                    <TableHead scope="col" className="mx-spark-cell">
+                      <span className="sr-only">{t("趋势", "Trend")}</span>
+                    </TableHead>
+                    {periods.toReversed().map((p) => (
+                      <TableHead scope="col" key={p.id}>
+                        {p.label}
+                        {p.actualEnd && <small>{formatCalendarDate(p.actualEnd, locale)}</small>}
+                      </TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {statementRows[section]
+                    .filter((key) =>
+                      periods.some((p) => get(p.id, key)?.value != null),
+                    )
+                    .map((key) => (
+                      <TableRow
+                        key={key}
+                        className={
+                          /Margin|Growth/.test(key) ? "mx-submetric" : ""
+                        }
+                      >
+                        <TableHead scope="row">{label(key)}</TableHead>
+                        <TableCell className="mx-spark-cell">
+                          <Sparkbars values={periods.map((p) => get(p.id, key)?.value)} />
+                        </TableCell>
+                        {periods.toReversed().map((p) => (
+                          <TableCell key={p.id}>
+                            <button
+                              type="button"
+                              aria-label={`${label(key)} · ${p.label} · ${format(get(p.id, key))}`}
+                              onClick={() =>
+                                setDetail(get(p.id, key) ?? null)
+                              }
+                            >
+                              {format(get(p.id, key))}
+                            </button>
+                          </TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                </TableBody>
+              </Table>
             </Panel>
             </div>
           ))}

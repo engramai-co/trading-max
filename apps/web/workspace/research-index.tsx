@@ -329,6 +329,8 @@ function IndexMembers({ index, basket }: { index: IndexIdentity; basket?: IndexC
   const t = useCopy();
   const { locale } = useLocale();
   const [sort, setSort] = useState("weight");
+  const [sortStatus, setSortStatus] = useState("");
+  const sortOptions = [{ value: "weight", label: t("按权重", "By weight") }, { value: "move", label: t("按涨跌", "By move") }, { value: "name", label: t("按代码", "By ticker") }];
   const rows = (basket?.members ?? []).toSorted((a, b) => sort === "name"
     ? a.ticker.localeCompare(b.ticker) : sort === "move" ? (b.move ?? -Infinity) - (a.move ?? -Infinity) : b.weight - a.weight);
   const raw = basket?.members ?? [];
@@ -338,8 +340,15 @@ function IndexMembers({ index, basket }: { index: IndexIdentity; basket?: IndexC
   return <>
     <Panel title={t("成分与权重", "Constituents & weights")} action={basket && <SelectPicker
       className="phone:w-[135px]"
-      aria-label={t("成分排序", "Sort constituents")} value={sort} onChange={(next) => setSort(next ?? "weight")}
-      options={[{ value: "weight", label: t("按权重", "By weight") }, { value: "move", label: t("按涨跌", "By move") }, { value: "name", label: t("按代码", "By ticker") }]} />}>
+      aria-label={t("成分排序", "Sort constituents")} value={sort} onChange={(next) => {
+        const criterion = next ?? "weight";
+        const label = sortOptions.find((option) => option.value === criterion)?.label;
+        if (criterion === sort || !label) return;
+        setSort(criterion);
+        setSortStatus(t("已排序：", "Sorted ") + label.toLocaleLowerCase(locale) + t("，", ", ") + rows.length + t(" 个成分", " constituents"));
+      }}
+      options={sortOptions} />}>
+      <p role="status" className="sr-only">{sortStatus}</p>
       {!basket ? <Empty title={index.id === "nikkei-225"
         ? t("日经 225 按价格加权，暂无已验证权重。", "Nikkei 225 is price weighted. Verified weights are unavailable.")
         : t("暂无已确认的成分篮子", "No verified constituent basket")} /> : <>
@@ -359,7 +368,8 @@ function IndexMembers({ index, basket }: { index: IndexIdentity; basket?: IndexC
           [t("有效成分数", "Effective constituents"), formatNumber(effective, locale, { maximumFractionDigits: 1 })],
         ]} />
         {rows.length > 0 && <Heatmap rows={raw} />}
-        <EvidenceTable label={t("成分权重", "Constituent weights")} rows={rows} columns={[
+        <EvidenceTable label={t("成分权重", "Constituent weights")} rows={rows} rowKey={(row) => row.ticker + ":" + (row.isin ?? "")} className="tm-constituent-table" compactRecords
+          sort={{ column: sort === "name" ? 0 : sort === "move" ? 2 : 1, direction: sort === "name" ? "ascending" : "descending" }} columns={[
           { label: t("名称", "Name"), value: (row) => <Link className="mx-text-link" href={`/research?ticker=${encodeURIComponent(row.ticker)}`}>
             {row.ticker}{row.ticker !== row.name ? " · " + row.name : ""}
           </Link> },

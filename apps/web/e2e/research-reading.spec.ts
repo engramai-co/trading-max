@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
@@ -35,6 +36,23 @@ async function openSectionIndex(page: Page) {
     localStorage.setItem("mx-research-index-open", "true");
     localStorage.setItem("mx-research-index-pinned", "true");
   });
+}
+
+function requirePdfTextExtraction(browserName: string) {
+  test.skip(browserName !== "chromium", "PDF generation requires Chromium");
+  try {
+    execFileSync("pdftotext", ["-v"], { stdio: "ignore" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    test.skip(true, "Install Poppler to extract A4 PDF text");
+  }
+}
+
+async function readA4PdfText(page: Page, filename: string) {
+  const path = test.info().outputPath(filename);
+  const pdf = await page.pdf({ format: "A4", path });
+  await test.info().attach(filename, { path, contentType: "application/pdf" });
+  return execFileSync("pdftotext", ["-layout", "-", "-"], { input: pdf, encoding: "utf8" });
 }
 
 test.describe("research section navigation", () => {
@@ -277,13 +295,13 @@ test.describe("research section navigation", () => {
     const nav = page.getByRole("navigation", { name: "On this page" });
     const events = nav.getByRole("link", { name: "Earnings events" });
     const ratings = page.locator("#research-ratings");
-    const atPageEnd = () => page.evaluate(() => Math.ceil(scrollY + innerHeight) >= document.documentElement.scrollHeight);
+    const pageEndGap = () => page.evaluate(() => document.documentElement.scrollHeight - scrollY - innerHeight);
     // Model an earlier section shrinking after a clamped jump.
     await ratings.evaluate((section) => { section.style.paddingBottom = "80px"; });
     await events.click();
     await expect(page.locator("#research-events h2")).toBeFocused();
     await expect(events).toHaveAttribute("aria-current", "location");
-    await expect.poll(atPageEnd).toBe(true);
+    await expect.poll(pageEndGap).toBeLessThanOrEqual(1);
     await page.keyboard.press("End");
     release();
     await expect(page.locator(".mx-price-context-status")).toHaveCount(0);
@@ -292,7 +310,7 @@ test.describe("research section navigation", () => {
     await ratings.evaluate((section) => { section.style.paddingBottom = ""; });
     await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(beforeResize);
     // The browser clamps scrollY to the new bottom when the earlier section shrinks.
-    await expect.poll(atPageEnd).toBe(true);
+    await expect.poll(pageEndGap).toBeLessThanOrEqual(1);
     // Grow the final section so the same viewport is above the bottom and above the Events
     // scroll-tracking threshold. A cleared pin would now select an earlier section.
     const unpinnedSection = await page.evaluate(async () => {
@@ -306,7 +324,7 @@ test.describe("research section navigation", () => {
       const threshold = shellPadding + parseFloat(getComputedStyle(sections[0]).scrollMarginTop) + Math.min(innerHeight / 10, 80);
       return sections.findLast((section) => section.getBoundingClientRect().top <= threshold)?.id ?? sections[0].id;
     });
-    await expect.poll(atPageEnd).toBe(false);
+    await expect.poll(pageEndGap).toBeGreaterThan(1);
     expect(unpinnedSection).toBeDefined();
     expect(unpinnedSection).not.toBe("research-events");
     await expect(events).toHaveAttribute("aria-current", "location");
@@ -561,6 +579,116 @@ test.describe("research section navigation", () => {
     await expect(page.getByRole("tab", { name: "Seasonality" })).toHaveCount(0);
   });
 
+  test("a long income statement pans sideways in page flow with period context", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "Narrow matrix");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/research?ticker=NVDA&view=fundamentals");
+    const statement = page.getByRole("region", { name: "Income statement" });
+    await expect(statement).toBeVisible();
+    const position = () => statement.evaluate(node => {
+      const table = node.querySelector("table")!;
+      const head = table.tHead!.getBoundingClientRect();
+      const body = table.tBodies[0].getBoundingClientRect();
+      const rail = node.closest(".mx-reading-container")!.querySelector(".mx-section-rail")!;
+      return { headTop: head.top, headBottom: head.bottom, tableTop: table.getBoundingClientRect().top, bodyBottom: body.bottom,
+        railBottom: rail.getBoundingClientRect().bottom,
+        verticalOverflow: node.scrollHeight - node.clientHeight, horizontalOverflow: node.scrollWidth - node.clientWidth };
+    });
+    const before = await position();
+    expect(before.verticalOverflow).toBeLessThanOrEqual(1);
+    expect(before.horizontalOverflow).toBeGreaterThan(0);
+    await statement.evaluate(node => {
+      node.scrollLeft = 50;
+      window.scrollBy(0, node.getBoundingClientRect().top + 140);
+    });
+    await expect.poll(async () => {
+      const { headTop, headBottom, tableTop, bodyBottom, railBottom } = await position();
+      return Math.abs(headTop - railBottom) < 2 && headTop > tableTop && headBottom < bodyBottom;
+    }).toBe(true);
+  });
+
+  test("an A4 PDF includes every printed statement reading", async ({ page, browserName }) => {
+    requirePdfTextExtraction(browserName);
+    await page.goto("/research?ticker=NVDA&view=fundamentals");
+    const statement = page.getByRole("table", { name: "Income statement" });
+    await expect(statement.getByRole("rowheader", { name: "Diluted weighted shares" })).toBeVisible();
+    const matrices = page.getByRole("table", { name: /^(Income statement|Balance sheet|Cash flow statement)$/ });
+    await expect(matrices).toHaveCount(3);
+    const compact = (text: string) => text.replace(/\s+/g, " ").trim();
+    const rows = await matrices.locator("tbody tr").evaluateAll(nodes => nodes.map(node => ({
+      label: node.querySelector("th")!.textContent!,
+      values: [...node.querySelectorAll("button")].map(button => button.textContent!),
+    })));
+    const printed = await readA4PdfText(page, "nvda-financial-statements.pdf");
+    const lines = printed.split("\n").map(compact);
+    for (const row of rows) {
+      const expected = compact([row.label, ...row.values].join(" "));
+      expect.soft(lines, row.label).toContain(expected);
+    }
+  });
+
+  test("a compact Analyst panel prints each forecast once in an A4 PDF", async ({ page, browserName }) => {
+    requirePdfTextExtraction(browserName);
+    await page.route("**/api/backend/research/NVDA/lens/analyst?**", async route => {
+      const response = await route.fetch();
+      const snapshot = await response.json();
+      const quarter = { period: "0q", currency: "USD", numberOfAnalysts: 13 };
+      await route.fulfill({ response, json: { ...snapshot, analyst: {
+        ...snapshot.analyst,
+        earningsEstimate: [{ ...quarter, avg: 17.43, low: 16.02, high: 18.11, yearAgoEps: 15.1 }],
+        revenueEstimate: [{ ...quarter, avg: 271.9e9, low: 269e9, high: 275e9, yearAgoRevenue: 260e9 }],
+      } } });
+    });
+    await page.goto("/research?ticker=NVDA&view=analyst");
+    const panel = page.locator(".mx-panel").filter({ has: page.getByRole("heading", { name: "Earnings & revenue estimates" }) });
+    const averageValues = panel.locator(".tm-table-compact dt").filter({ hasText: /^Average$/ }).locator("xpath=following-sibling::dd");
+    await expect(averageValues).toHaveText(["US$17.43", "US$271.9bn"]);
+    const printed = await readA4PdfText(page, "nvda-analyst-estimates.pdf");
+    for (const value of await averageValues.allTextContents()) {
+      expect.soft(printed.split(value).length - 1, value).toBe(1);
+    }
+  });
+
+  test("reverse keyboard traversal clears the pinned statement label after panning", async ({ page, browserName }) => {
+    test.skip(browserName !== "chromium", "Narrow table with desktop keyboard navigation");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/research?ticker=NVDA&view=fundamentals");
+    const statement = page.getByRole("region", { name: "Income statement" });
+    const start = statement.getByRole("button", { name: /^Gross margin · FY2026/ });
+    await start.focus();
+    const readings = statement.locator("tbody button");
+    const startIndex = await start.evaluate(node =>
+      [...node.closest("tbody")!.querySelectorAll("button")].indexOf(node as HTMLButtonElement));
+    await statement.evaluate(node => { node.scrollLeft = node.scrollWidth; });
+    const remaining = new Set(["FY2025", "FY2026"]);
+    for (let index = startIndex - 1; index >= 0 && remaining.size; index--) {
+      await page.keyboard.press("Shift+Tab");
+      const target = readings.nth(index);
+      await expect(target).toBeFocused();
+      const year = (await target.getAttribute("aria-label"))?.match(/^Gross profit · (FY20(?:25|26)) ·/)?.[1];
+      if (!year) continue;
+      remaining.delete(year);
+      await expect.poll(() => target.evaluate(node => {
+        const focus = node.getBoundingClientRect();
+        const label = node.closest("tr")!.querySelector("th")!.getBoundingClientRect();
+        const region = node.closest("[data-slot=table-container]")!.getBoundingClientRect();
+        return focus.left >= label.right - 1 && focus.right <= region.right + 1;
+      })).toBe(true);
+    }
+    expect([...remaining]).toEqual([]);
+  });
+
+  test("single-page chart records retain the count in their accessible caption", async ({ page }) => {
+    await page.goto("/research?ticker=AAPL&view=fundamentals");
+    await page.getByRole("button", { name: "Values by step" }).click();
+    const table = page.getByRole("region", { name: "Income bridge" }).getByRole("table");
+    await expect(table).toBeVisible();
+    const rows = await table.locator("tbody tr").count();
+    expect(rows).toBeGreaterThan(0);
+    await expect(table).toHaveAccessibleName(new RegExp(String(rows) + " records?"));
+    await expect(table.locator("caption")).toHaveClass("sr-only");
+  });
+
   test("financial sections read as one page and load every reported row on approach", async ({ page, isMobile }) => {
     let full = 0;
     page.on("request", (request) => {
@@ -577,6 +705,19 @@ test.describe("research section navigation", () => {
     expect(full).toBe(0);
     if (isMobile) {
       await page.setViewportSize({ width: 390, height: 844 });
+      const statement = page.getByRole("region", { name: "Income statement" });
+      const table = statement.getByRole("table", { name: "Income statement" });
+      const rowHeader = table.getByRole("rowheader").first();
+      await expect(table.getByRole("columnheader").first()).toBeVisible();
+      await expect(rowHeader).toHaveCSS("position", "sticky");
+      await expect(statement).toHaveAttribute("tabindex", "0");
+      const before = await rowHeader.evaluate((node) => node.getBoundingClientRect().left);
+      await statement.evaluate((node) => { node.scrollLeft = 40; });
+      await expect.poll(() => statement.evaluate((node) => node.scrollLeft)).toBeGreaterThan(0);
+      expect(Math.abs(await rowHeader.evaluate((node) => node.getBoundingClientRect().left) - before)).toBeLessThan(2);
+      await expect.poll(() => statement.evaluate((node) => getComputedStyle(node, "::before").opacity)).toBe("1");
+      await statement.evaluate((node) => { node.scrollLeft = node.scrollWidth; });
+      await expect.poll(() => statement.evaluate((node) => getComputedStyle(node, "::after").opacity)).toBe("0");
       await expect(page.getByRole("group", { name: "Income bridge" })).toHaveAttribute("data-tm-chart-ready", "true");
       const records = page.getByRole("button", { name: "Values by step" });
       await tapRecordsBottom(records);

@@ -81,6 +81,25 @@ test.describe("look-through companies", () => {
     await expect(failure).toHaveCount(0);
   });
 
+  test("narrow panels mount 25 cards and preserve them in print", async ({ page, isMobile }) => {
+    test.skip(isMobile, "A narrow panel in a wide window");
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await open(page);
+    const wide = page.getByRole("region", { name: "Underlying holdings", exact: true });
+    const panel = page.getByRole("tablist", { name: "Exposure dimension" }).locator("xpath=ancestor::section[contains(@class, 'mx-panel')][1]");
+    await expect(wide.getByRole("row")).toHaveCount(61);
+    await panel.evaluate(node => { node.style.inlineSize = "458px"; });
+    const results = page.locator(".mx-exposure-active");
+    await expect(results).toHaveClass(/mx-mobile-holdings/);
+    await expect(results.getByRole("button", { name: /SYN/ })).toHaveCount(25);
+    await expect(wide).toHaveCount(0);
+    await page.emulateMedia({ media: "print" });
+    await expect(results).toHaveClass(/mx-mobile-holdings/);
+    await page.emulateMedia({ media: "screen" });
+    await panel.evaluate(node => { node.style.inlineSize = ""; });
+    await expect(wide.getByRole("row")).toHaveCount(61);
+  });
+
   test("phones lead with the companies and fold country, sector and ownership under one counted control", async ({ page, isMobile }) => {
     test.skip(!isMobile, "The phone layout");
     await open(page);

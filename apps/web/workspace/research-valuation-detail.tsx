@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableFooter, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { quoteUnit, quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
@@ -27,48 +28,39 @@ export function ValuationSensitivity({ result }: { result: Preview }) {
           </span>
         }
       >
-        <div
-          className="mx-table-scroll"
-          tabIndex={0}
-          role="region"
-          aria-label={t(
-            "二维敏感性矩阵",
-            "Two-dimensional sensitivity matrix",
-          )}
-        >
-          <table className="mx-sensitivity-matrix">
-            <thead>
-              <tr>
-                <th>{residual ? t("折现率 / ROE","Discount / ROE") : t("折现率 / 增长", "Discount / growth")}</th>
-                {result.sensitivity.slice(0, 5).map((cell, i) => (
-                  <th key={i}>{percent(cell.growth)}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {[0, 1, 2, 3, 4].map((row) => (
-                <tr key={row}>
-                  <th>{percent(result.sensitivity[row * 5].discountRate)}</th>
-                  {result.sensitivity
-                    .slice(row * 5, row * 5 + 5)
-                    .map((cell, col) => (
-                      <td
-                        key={col}
-                        data-base={(row === 2 && col === 2) || undefined}
-                        data-direction={
-                          cell.upside >= 0 ? "positive" : "negative"
-                        }
-                        data-tone={cell.upside >= 0 ? "up" : "down"}
-                      >
-                        <strong>{quoteValue(cell.value, result.basis.currency, { style: "figure" })}</strong>
-                        <span>{percent(cell.upside, true, 1)}</span>
-                      </td>
-                    ))}
-                </tr>
+        <Table containerProps={{ className: "mx-table-scroll" }} label={t("二维敏感性矩阵", "Two-dimensional sensitivity matrix")} className="mx-sensitivity-matrix">
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">{residual ? t("折现率 / ROE","Discount / ROE") : t("折现率 / 增长", "Discount / growth")}</TableHead>
+              {result.sensitivity.slice(0, 5).map((cell, i) => (
+                <TableHead scope="col" key={i}>{percent(cell.growth)}</TableHead>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {[0, 1, 2, 3, 4].map((row) => (
+              <TableRow key={row}>
+                <TableHead scope="row">{percent(result.sensitivity[row * 5].discountRate)}</TableHead>
+                {result.sensitivity
+                  .slice(row * 5, row * 5 + 5)
+                  .map((cell, col) => (
+                    <TableCell
+                      key={col}
+                      data-base={(row === 2 && col === 2) || undefined}
+                      data-direction={
+                        cell.upside >= 0 ? "positive" : "negative"
+                      }
+                      data-tone={cell.upside >= 0 ? "up" : "down"}
+                    >
+                      {row === 2 && col === 2 && <span className="sr-only">{t("基准假设", "Base assumptions")} </span>}
+                      <strong>{quoteValue(cell.value, result.basis.currency, { style: "figure" })}</strong>
+                      <span>{percent(cell.upside, true, 1)}</span>
+                    </TableCell>
+                  ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </Panel>
   );
 }
@@ -92,6 +84,7 @@ export function ValuationWorksheet({
   const residual = result.basis.family === "residual-income";
   const earnings = result.basis.family === "net-income";
   const financed = projection.years.some(year => year.financing != null);
+  const totalsLabelColumns = residual ? 4 : financed ? 7 : 6;
   return (
       <Panel
         title={t("年度计算底稿", "Annual projection")}
@@ -104,99 +97,90 @@ export function ValuationWorksheet({
           />
         }
       >
-        <div
-          className="mx-table-scroll"
-          tabIndex={0}
-          role="region"
-          aria-label={t("现金流预测明细", "Cash-flow projection details")}
-        >
-          <table className="mx-financial-table">
-            <thead>
-              <tr>
-                <th>{t("年份", "Year")}</th>
+        <Table containerProps={{ className: "mx-table-scroll" }} label={t("现金流预测明细", "Cash-flow projection details")} className="mx-financial-table" pinFooter>
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col">{t("年份", "Year")}</TableHead>
+              {residual ? (
+                <>
+                  <TableHead scope="col">ROE</TableHead>
+                  <TableHead scope="col">{t("期末每股净资产", "Closing book / share")}</TableHead>
+                  <TableHead scope="col">{t("每股盈利", "Earnings / share")}</TableHead>
+                  <TableHead scope="col">{t("每股剩余收益", "Residual income / share")}</TableHead>
+                </>
+              ) : (
+                <>
+                  <TableHead scope="col">{t("增长", "Growth")}</TableHead>
+                  <TableHead scope="col">{t("营收", "Revenue")}</TableHead>
+                  <TableHead scope="col">{earnings ? t("净利率", "Net margin") : t("现金流率", "FCF margin")}</TableHead>
+                  <TableHead scope="col">{earnings ? t("净利润", "Net income") : t("现金流", "Cash flow")}</TableHead>
+                  {financed && <TableHead scope="col">{t("股权融资", "Equity issued")}</TableHead>}
+                  <TableHead scope="col">{t("股数", "Shares")}</TableHead>
+                  <TableHead scope="col">{earnings ? t("每股盈利", "Earnings / share") : t("每股净流量", "Net flow / share")}</TableHead>
+                </>
+              )}
+              <TableHead scope="col">{t("折现后每股值", "PV / share")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {projection.years.map((y) => (
+              <TableRow key={y.year}>
+                <TableHead scope="row">{y.year}</TableHead>
                 {residual ? (
                   <>
-                    <th>ROE</th>
-                    <th>{t("期末每股净资产", "Closing book / share")}</th>
-                    <th>{t("每股盈利", "Earnings / share")}</th>
-                    <th>{t("每股剩余收益", "Residual income / share")}</th>
+                    <TableCell>{percent(y.roe)}</TableCell>
+                    <TableCell>{quoteValue(y.closingBook, result.basis.currency)}</TableCell>
+                    <TableCell>{quoteValue(y.earningsPerShare, result.basis.currency)}</TableCell>
                   </>
                 ) : (
                   <>
-                    <th>{t("增长", "Growth")}</th>
-                    <th>{t("营收", "Revenue")}</th>
-                    <th>{earnings ? t("净利率", "Net margin") : t("现金流率", "FCF margin")}</th>
-                    <th>{earnings ? t("净利润", "Net income") : t("现金流", "Cash flow")}</th>
-                    {financed && <th>{t("股权融资", "Equity issued")}</th>}
-                    <th>{t("股数", "Shares")}</th>
-                    <th>{earnings ? t("每股盈利", "Earnings / share") : t("每股净流量", "Net flow / share")}</th>
+                    <TableCell>{percent(y.growth)}</TableCell>
+                    <TableCell>{quoteValue(y.revenue, result.basis.currency, { style: "compact", locale })}</TableCell>
+                    <TableCell>{percent(y.fcfMargin)}</TableCell>
+                    <TableCell>{quoteValue(y.freeCashflow, result.basis.currency, { style: "compact", locale })}</TableCell>
+                    {financed && <TableCell>{quoteValue(y.financing ?? 0, result.basis.currency, { style: "compact", locale })}</TableCell>}
+                    <TableCell>{compact(y.shares, locale)}</TableCell>
                   </>
                 )}
-                <th>{t("折现后每股值", "PV / share")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projection.years.map((y) => (
-                <tr key={y.year}>
-                  <th>{y.year}</th>
-                  {residual ? (
-                    <>
-                      <td>{percent(y.roe)}</td>
-                      <td>{quoteValue(y.closingBook, result.basis.currency)}</td>
-                      <td>{quoteValue(y.earningsPerShare, result.basis.currency)}</td>
-                    </>
-                  ) : (
-                    <>
-                      <td>{percent(y.growth)}</td>
-                      <td>{quoteValue(y.revenue, result.basis.currency, { style: "compact", locale })}</td>
-                      <td>{percent(y.fcfMargin)}</td>
-                      <td>{quoteValue(y.freeCashflow, result.basis.currency, { style: "compact", locale })}</td>
-                      {financed && <td>{quoteValue(y.financing ?? 0, result.basis.currency, { style: "compact", locale })}</td>}
-                      <td>{compact(y.shares, locale)}</td>
-                    </>
-                  )}
-                  <td>{quoteValue(y.cashflowPerShare, result.basis.currency)}</td>
-                  <td>{quoteValue(y.presentValue, result.basis.currency)}</td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <th colSpan={residual ? 4 : financed ? 7 : 6}>
-                  {residual
-                    ? t("期初净资产 + 剩余收益现值", "Opening book + PV of residual earnings")
-                    : earnings
-                      ? t("净利润现值", "Present value of earnings")
-                      : t("预测现金流现值", "Projected cash-flow present value")}
-                </th>
-                <td colSpan={2}>{quoteValue(projection.operatingValue, result.basis.currency)}</td>
-              </tr>
-              <tr>
-                <th colSpan={residual ? 4 : financed ? 7 : 6}>
-                  {residual ? t("期末溢价现值", "Discounted terminal premium") :
-                    <>{t("终值现值", "Terminal present value")} · {percent(projection.terminalContribution)}</>}
-                </th>
-                <td colSpan={2}>{quoteValue(residual ? projection.terminalPremiumPresentValue : projection.terminalPresentValue, result.basis.currency)}</td>
-              </tr>
-              <tr>
-                <th colSpan={residual ? 4 : financed ? 7 : 6}>{t("每股价值", "Value per share")}</th>
-                <td colSpan={2}>{quoteValue(projection.value, result.basis.currency)}</td>
-              </tr>
-              {residual && <tr>
-                <th colSpan={4}>{t("期末卖出价现值占每股价值", "Discounted exit price / value")}</th>
-                <td colSpan={2}>{percent(projection.terminalContribution)}</td>
-              </tr>}
-              {projection.equityFloorAdjustment > 0 && (
-                <tr>
-                  <th colSpan={residual ? 4 : financed ? 7 : 6}>
-                    {t("股权零下限调整", "Equity zero-floor adjustment")}
-                  </th>
-                  <td colSpan={2}>{quoteValue(projection.equityFloorAdjustment, result.basis.currency)}</td>
-                </tr>
-              )}
-            </tfoot>
-          </table>
-        </div>
+                <TableCell>{quoteValue(y.cashflowPerShare, result.basis.currency)}</TableCell>
+                <TableCell>{quoteValue(y.presentValue, result.basis.currency)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+          <TableFooter>
+            <TableRow>
+              <TableHead scope="row" colSpan={totalsLabelColumns}>
+                <span className="mx-worksheet-total-label">{residual
+                  ? t("期初净资产 + 剩余收益现值", "Opening book + PV of residual earnings")
+                  : earnings
+                    ? t("净利润现值", "Present value of earnings")
+                    : t("预测现金流现值", "Projected cash-flow present value")}</span>
+              </TableHead>
+              <TableCell colSpan={2}>{quoteValue(projection.operatingValue, result.basis.currency)}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableHead scope="row" colSpan={totalsLabelColumns}>
+                <span className="mx-worksheet-total-label">{residual ? t("期末溢价现值", "Discounted terminal premium") :
+                  <>{t("终值现值", "Terminal present value")} · {percent(projection.terminalContribution)}</>}</span>
+              </TableHead>
+              <TableCell colSpan={2}>{quoteValue(residual ? projection.terminalPremiumPresentValue : projection.terminalPresentValue, result.basis.currency)}</TableCell>
+            </TableRow>
+            <TableRow>
+              <TableHead scope="row" colSpan={totalsLabelColumns}><span className="mx-worksheet-total-label">{t("每股价值", "Value per share")}</span></TableHead>
+              <TableCell colSpan={2}>{quoteValue(projection.value, result.basis.currency)}</TableCell>
+            </TableRow>
+            {residual && <TableRow>
+              <TableHead scope="row" colSpan={totalsLabelColumns}><span className="mx-worksheet-total-label">{t("期末卖出价现值占每股价值", "Discounted exit price / value")}</span></TableHead>
+              <TableCell colSpan={2}>{percent(projection.terminalContribution)}</TableCell>
+            </TableRow>}
+            {projection.equityFloorAdjustment > 0 && (
+              <TableRow>
+                <TableHead scope="row" colSpan={totalsLabelColumns}><span className="mx-worksheet-total-label">{t("股权零下限调整", "Equity zero-floor adjustment")}</span></TableHead>
+                <TableCell colSpan={2}>{quoteValue(projection.equityFloorAdjustment, result.basis.currency)}</TableCell>
+              </TableRow>
+            )}
+          </TableFooter>
+        </Table>
         <details className="mx-chart-data">
           <summary>{t("输入与来源", "Inputs & sources")}</summary>
           <dl className="mx-evidence-inputs">

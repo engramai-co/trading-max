@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { WorkspaceSheet } from "./overlay";
 import { SearchInput } from "@/components/ui/search-input";
 import { useAssistantPageContext } from "./assistant/context";
@@ -14,7 +15,7 @@ import type { Holding } from "@/lib/types";
 import { quoteValue } from "./financial-values";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
-import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection } from "./holdings-data";
+import { compareHoldings, dayChangeColumn, holdingSort, holdingSortDirection, type HoldingSort } from "./holdings-data";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
 import { currency, number, percent, tone } from "@/workspace/data";
@@ -100,6 +101,7 @@ function Positions() {
   });
   const [limit, setLimit] = useState(20);
   const [detailed, setDetailed] = useState(true);
+  const [sortStatus, setSortStatus] = useState("");
   const { today, now } = useCurrentDay();
   const scoped = useMemo(
     () =>
@@ -145,28 +147,45 @@ function Positions() {
   const columnLabel = dayLabel(columnDay);
   const otherDay = (h: Holding) =>
     earlier(h) ? dayLabel(earlier(h)) : null;
-  const sortButton = (label: string, key: string) => (
-    <button
-      className="mx-sort"
-      onClick={() =>
-        update({
-          positionSort: key,
-          direction: sort === key ? (ascending ? "desc" : "asc") : key === "ticker" ? "asc" : "desc",
-        })
-      }
-    >
-      {label}
-      {sort === key && (
-        // Keep the existing 12px slot in the auto-sized table header.
-        <ArrowDown
-          aria-hidden="true"
-          size={16}
-          className="-mx-[2px] shrink-0"
-          style={{ transform: ascending ? "rotate(180deg)" : undefined }}
-        />
-      )}
-    </button>
-  );
+  const sortLabels: Record<HoldingSort, string> = {
+    ticker: t("名称", "Name"),
+    value: t("市值", "Market value"),
+    day: columnLabel,
+    pnl: t("浮动盈亏", "Unrealised P&L"),
+    allocation: t("占比", "Weight"),
+  };
+  const sortChoices = {
+    value: [t("市值从大到小", "Largest value"), t("市值从小到大", "Smallest value")],
+    day: [columnLabel + t("涨幅最大", " · largest rise"), columnLabel + t("跌幅最大", " · largest fall")],
+    pnl: [t("盈亏从高到低", "Highest P&L"), t("盈亏从低到高", "Lowest P&L")],
+    allocation: [t("权重从大到小", "Largest weight"), t("权重从小到大", "Smallest weight")],
+    ticker: [t("代码 Z–A", "Ticker Z–A"), t("代码 A–Z", "Ticker A–Z")],
+  };
+  const phoneSortChoices = (["value", ...(hasDay ? ["day"] : []), "pnl", "allocation", "ticker"] as HoldingSort[])
+    .flatMap((key) => {
+      const [descendingLabel, ascendingLabel] = sortChoices[key];
+      const descendingOption = { value: key + ":desc", label: descendingLabel };
+      const ascendingOption = { value: key + ":asc", label: ascendingLabel };
+      return key === "ticker" ? [ascendingOption, descendingOption] : [descendingOption, ascendingOption];
+    });
+
+  function changeSort(key: HoldingSort, nextDirection: "asc" | "desc") {
+    if (sort === key && direction === nextDirection) return;
+    update({ positionSort: key, direction: nextDirection });
+    const order = sortChoices[key][nextDirection === "asc" ? 1 : 0];
+    setSortStatus(t("已排序：", "Sorted by ") + order + t("，", ", ") + rows.length + t(" 条持仓", " holdings"));
+  }
+
+  function sortHeading(key: HoldingSort, numeric = false) {
+    return <TableHead scope="col" className={numeric ? "mx-align-right" : undefined}
+      aria-sort={sort === key ? (ascending ? "ascending" : "descending") : undefined}>
+      <Button type="button" className={`tm-table-sort w-full px-2 text-muted-foreground ${numeric ? "justify-end" : "justify-start"}`} variant="ghost" size="table"
+        onClick={() => changeSort(key, sort === key ? (ascending ? "desc" : "asc") : holdingSortDirection(key, null))}>
+        {sortLabels[key]}
+        {sort === key && <ArrowDown aria-hidden="true" size={16} className="-mx-[2px] shrink-0" />}
+      </Button>
+    </TableHead>;
+  }
   if (cited && query.isError) return <Empty title={t("引用的数据版本暂不可用","Cited publication unavailable")} />;
   return (
     <>
@@ -211,7 +230,7 @@ function Positions() {
               />
             </div>}
           </div>
-          <Panel className="mx-holdings-list">
+          <Panel className="mx-holdings-list tm-table-variants">
             <div className="mx-toolbar">
               <SearchInput
                 className="mx-search-input"
@@ -249,21 +268,17 @@ function Positions() {
                   className="mx-holdings-sort"
                   aria-label={t("持仓排序", "Sort holdings")}
                   style={{ width: 155 }}
-                  options={[
-                    { value: "value", label: sort === "value" && ascending ? t("市值从小到大", "Smallest value") : t("市值从大到小", "Largest value") },
-                    ...(hasDay ? [{ value: "day", label: sort === "day" && ascending ? columnLabel + t("跌幅最大", " · largest fall") : columnLabel + t("涨幅最大", " · largest rise") }] : []),
-                    { value: "pnl", label: sort === "pnl" && ascending ? t("盈亏从低到高", "Lowest P&L") : t("盈亏从高到低", "Highest P&L") },
-                    {
-                      value: "allocation",
-                      label: sort === "allocation" && ascending ? t("权重从小到大", "Smallest weight") : t("权重从大到小", "Largest weight"),
-                    },
-                    { value: "ticker", label: sort === "ticker" && !ascending ? t("代码 Z–A", "Ticker Z–A") : t("代码 A–Z", "Ticker A–Z") },
-                  ]}
-                  value={sort}
-                  onChange={(v) => update({ positionSort: v, direction: v === "ticker" ? "asc" : "desc" })}
+                  options={phoneSortChoices}
+                  value={sort + ":" + direction}
+                  onChange={(value) => {
+                    if (!value) return;
+                    const [key, order] = value.split(":");
+                    changeSort(holdingSort(key), order === "asc" ? "asc" : "desc");
+                  }}
                 />
               </div>
             </div>
+            <p role="status" className="sr-only">{sortStatus}</p>
             <QueryReadStatus key={cited ?? "live"} failed={!positionData && query.isError}
               refreshFailed={!!failure?.updatedAt} ready={!!positionData} error={query.error} />
             {query.isPending ? (
@@ -272,159 +287,144 @@ function Positions() {
               <QueryError retry={query.refetch} error={query.error} />
             ) : rows.length ? (
               <>
-                <div className="mx-table-wrap mx-desktop-holdings">
-                  <table className="mx-table">
-                    <thead>
-                      <tr>
-                        <th>{sortButton(t("名称", "Name"), "ticker")}</th>
+                <Table containerProps={{ className: "mx-table-wrap mx-desktop-holdings tm-table-wide" }} label={t("直接持仓", "Direct holdings")} className="mx-table">
+                  <TableHeader>
+                    <TableRow>
+                      {sortHeading("ticker")}
+                      {detailed && (
+                        <>
+                          <TableHead scope="col" className="mx-align-right">
+                            <span className="mx-th-help">
+                              {t("买入成本", "Purchase cost")}
+                              <Help label={t("买入成本", "Purchase cost")}>
+                                {t(
+                                  "下方是每股摊薄成本：计入已实现交易与回收资金，可能不同于券商买入均价。",
+                                  "The figure below is the diluted cost per share. It includes realised trades and recovered capital, so it may differ from the broker's average purchase price.",
+                                )}
+                              </Help>
+                            </span>
+                          </TableHead>
+                          <TableHead scope="col" className="mx-align-right">
+                            {t("现价", "Current price")}
+                          </TableHead>
+                          <TableHead scope="col" className="mx-align-right">
+                            {t("汇率影响", "FX impact")}
+                          </TableHead>
+                        </>
+                      )}
+                      <TableHead scope="col">{t("账户", "Account")}</TableHead>
+                      {sortHeading("value", true)}
+                      {hasDay && sortHeading("day", true)}
+                      {sortHeading("pnl", true)}
+                      {sortHeading("allocation", true)}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.slice(0, limit).map((h) => (
+                      <TableRow key={h.account + ":" + h.ticker}>
+                        <TableHead scope="row">
+                          <button
+                            className="mx-table-button"
+                            onClick={(event) => selectHolding(h, event.currentTarget)}
+                          >
+                            <span className="sr-only">{t("查看持仓 ", "View holding ")}</span>
+                            <SecurityPeek
+                              ticker={h.ticker}
+                              priceTicker={h.researchTicker ?? undefined}
+                              range="1D"
+                              position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}
+                              quote={holdingPeekQuote(h, positionData, accountName(profile, h.account), Boolean(cited))}
+                            >
+                              <Instrument ticker={h.ticker} name={h.name} isin={h.fundIsin} />
+                            </SecurityPeek>
+                          </button>
+                        </TableHead>
                         {detailed && (
                           <>
-                            <th className="mx-align-right">
-                              <span className="mx-th-help">
-                                {t("买入成本", "Purchase cost")}
-                                <Help label={t("买入成本", "Purchase cost")}>
-                                  {t(
-                                    "下方是每股摊薄成本：计入已实现交易与回收资金，可能不同于券商买入均价。",
-                                    "The figure below is the diluted cost per share. It includes realised trades and recovered capital, so it may differ from the broker's average purchase price.",
-                                  )}
-                                </Help>
-                              </span>
-                            </th>
-                            <th className="mx-align-right">
-                              {t("现价", "Current price")}
-                            </th>
-                            <th className="mx-align-right">
-                              {t("汇率影响", "FX impact")}
-                            </th>
+                            <TableCell className="mx-align-right">
+                              {currency(h.costGbp, "GBP", 2)}
+                              <small>
+                                {quoteValue(h.dilutedCostPerShareNative, h.dilutedCostCurrency)}
+                              </small>
+                            </TableCell>
+                            <TableCell className="mx-align-right">
+                              {quoteValue(h.currentPrice, h.priceCurrency)}
+                              {snapshotBasis(h)}
+                            </TableCell>
+                            <TableCell className="mx-align-right">
+                              {currency(h.fxImpactGbp, "GBP", 2)}
+                            </TableCell>
                           </>
                         )}
-                        <th>{t("账户", "Account")}</th>
-                        <th className="mx-align-right">
-                          {sortButton(t("市值", "Market value"), "value")}
-                        </th>
+                        <TableCell>
+                          <Tag>{accountName(profile, h.account)}</Tag>
+                        </TableCell>
+                        <TableCell className="mx-align-right">
+                          <strong>
+                            {currency(h.currentValueGbp, "GBP", 2)}
+                          </strong>
+                          <small>
+                            {number(h.quantity, 4)} {number(h.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}
+                          </small>
+                        </TableCell>
                         {hasDay && (
-                          <th className="mx-align-right">
-                            {sortButton(columnLabel, "day")}
-                          </th>
+                          <TableCell className="mx-align-right">
+                            {h.dayChangeClosedOn ? (
+                              <>
+                                <ClosedMarket />
+                                {otherDay(h) && <small><Tag tone="warn">{otherDay(h)}</Tag></small>}
+                              </>
+                            ) : h.dayChangeGbp == null ? "—" : (
+                              <>
+                                <strong className={"mx-" + tone(h.dayChangeGbp)}>
+                                  {signedPounds(h.dayChangeGbp)}
+                                </strong>
+                                {(h.dayChangePct != null || otherDay(h)) && (
+                                  <small className="tm-holding-day-detail">
+                                    {h.dayChangePct != null && (
+                                      <span className={"mx-" + tone(h.dayChangePct)}>
+                                        {percent(h.dayChangePct, true, 2)}
+                                      </span>
+                                    )}{" "}
+                                    {otherDay(h) && <Tag tone="warn">{otherDay(h)}</Tag>}
+                                  </small>
+                                )}
+                              </>
+                            )}
+                          </TableCell>
                         )}
-                        <th className="mx-align-right">
-                          {sortButton(t("浮动盈亏", "Unrealised P&L"), "pnl")}
-                        </th>
-                        <th className="mx-align-right">
-                          {sortButton(
-                            t("占比", "Weight"),
-                            "allocation",
-                          )}
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.slice(0, limit).map((h) => (
-                        <tr key={h.account + h.ticker}>
-                          <td>
-                            <button
-                              className="mx-table-button"
-                              onClick={(event) => selectHolding(h, event.currentTarget)}
-                            >
-                              <span className="sr-only">{t("查看持仓 ", "View holding ")}</span>
-                              <SecurityPeek
-                                ticker={h.ticker}
-                                priceTicker={h.researchTicker ?? undefined}
-                                range="1D"
-                                position={{ valueGbp: h.currentValueGbp, weightPct: h.allocationPct }}
-                                quote={holdingPeekQuote(h, positionData, accountName(profile, h.account), Boolean(cited))}
-                              >
-                                <Instrument ticker={h.ticker} name={h.name} isin={h.fundIsin} />
-                              </SecurityPeek>
-                            </button>
-                          </td>
-                          {detailed && (
-                            <>
-                              <td className="mx-align-right">
-                                {currency(h.costGbp, "GBP", 2)}
-                                <small>
-                                  {quoteValue(h.dilutedCostPerShareNative, h.dilutedCostCurrency)}
-                                </small>
-                              </td>
-                              <td className="mx-align-right">
-                                {quoteValue(h.currentPrice, h.priceCurrency)}
-                                {snapshotBasis(h)}
-                              </td>
-                              <td className="mx-align-right">
-                                {currency(h.fxImpactGbp, "GBP", 2)}
-                              </td>
-                            </>
-                          )}
-                          <td>
-                            <Tag>{accountName(profile, h.account)}</Tag>
-                          </td>
-                          <td className="mx-align-right">
-                            <strong>
-                              {currency(h.currentValueGbp, "GBP", 2)}
-                            </strong>
-                            <small>
-                              {number(h.quantity, 4)} {number(h.quantity, 4) === "1" ? t("股", "share") : t("股", "shares")}
-                            </small>
-                          </td>
-                          {hasDay && (
-                            <td className="mx-align-right">
-                              {h.dayChangeClosedOn ? (
-                                <>
-                                  <ClosedMarket />
-                                  {otherDay(h) && <small><Tag tone="warn">{otherDay(h)}</Tag></small>}
-                                </>
-                              ) : h.dayChangeGbp == null ? "—" : (
-                                <>
-                                  <strong className={"mx-" + tone(h.dayChangeGbp)}>
-                                    {signedPounds(h.dayChangeGbp)}
-                                  </strong>
-                                  {(h.dayChangePct != null || otherDay(h)) && (
-                                    <small>
-                                      {h.dayChangePct != null && (
-                                        <span className={"mx-" + tone(h.dayChangePct)}>
-                                          {percent(h.dayChangePct, true, 2)}
-                                        </span>
-                                      )}{" "}
-                                      {otherDay(h) && <Tag tone="warn">{otherDay(h)}</Tag>}
-                                    </small>
-                                  )}
-                                </>
-                              )}
-                            </td>
-                          )}
-                          <td className="mx-align-right">
-                            <strong className={"mx-" + tone(h.pnlGbp)}>
-                              {currency(h.pnlGbp, "GBP", 2)}
-                            </strong>
-                            <small>
-                              <span className={"mx-" + tone(h.pnlPct)}>
-                                {percent(h.pnlPct, true, 2)}
-                              </span>
-                            </small>
-                          </td>
-                          <td className="mx-align-right">
-                            <div className="flex flex-wrap items-center justify-end gap-mx-sm">
-                              <div className="mx-mini-bar" aria-hidden="true">
-                                <i
-                                  style={{
-                                    backgroundColor: barColour,
-                                    width: percent(
-                                      largestAllocation > 0
-                                        ? Math.min(1, Math.max(0, h.allocationPct / largestAllocation))
-                                        : 0,
-                                    ),
-                                  }}
-                                />
-                              </div>
-                              {percent(h.allocationPct)}
+                        <TableCell className="mx-align-right">
+                          <strong className={"mx-" + tone(h.pnlGbp)}>
+                            {currency(h.pnlGbp, "GBP", 2)}
+                          </strong>
+                          <small>
+                            <span className={"mx-" + tone(h.pnlPct)}>
+                              {percent(h.pnlPct, true, 2)}
+                            </span>
+                          </small>
+                        </TableCell>
+                        <TableCell className="mx-align-right">
+                          <div className="flex flex-wrap items-center justify-end gap-mx-sm">
+                            <div className="mx-mini-bar" aria-hidden="true">
+                              <i
+                                style={{
+                                  backgroundColor: barColour,
+                                  width: percent(
+                                    largestAllocation > 0
+                                      ? Math.min(1, Math.max(0, h.allocationPct / largestAllocation))
+                                      : 0,
+                                  ),
+                                }}
+                              />
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="mx-mobile-holdings">
+                            {percent(h.allocationPct)}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="mx-mobile-holdings tm-table-compact">
                   {rows.slice(0, limit).map((h) => (
                     <button
                       key={h.account + h.ticker}

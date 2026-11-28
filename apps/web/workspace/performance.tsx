@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
@@ -547,33 +548,31 @@ export function PerformanceContent({
             {inspection}
             {view === "returns" && <DrawdownReading episode={returnEpisode} dates={returnDates} basis="selected" />}
             {view === "returns" && (
-              <div className="mx-table-wrap mx-return-table" tabIndex={0} role="region" aria-label={t("收益与回撤对比", "Return and drawdown comparison")}>
-                <table className="mx-table">
-                  <thead>
-                    <tr>
-                      <th><span className="sr-only">{t("曲线", "Series")}</span></th>
-                      <th className="mx-align-right">{t("区间收益", "Period return")}</th>
-                      <th className="mx-align-right">{t("最大回撤", "Max drawdown")}</th>
-                      <th className="mx-align-right">{t("期末回撤", "Ending drawdown")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {returnLines.map((line, index) => {
-                      const end = line.values.findLast((value) => value != null);
-                      const drawdown = returnDrawdowns[index]?.values ?? [];
-                      const maximumDrawdown = minimumObserved(drawdown);
-                      return (
-                        <tr key={line.name}>
-                          <th>{line.name}</th>
-                          <td className={"mx-align-right mx-" + tone(end)}>{percent(end, true, 2)}</td>
-                          <td className={"mx-align-right mx-" + tone(maximumDrawdown)}>{percent(maximumDrawdown, false, 2)}</td>
-                          <td className="mx-align-right">{percent(drawdown.findLast((value) => value != null), false, 2)}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <Table containerProps={{ className: "mx-table-wrap mx-return-table" }} label={t("收益与回撤对比", "Return and drawdown comparison")} className="mx-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col"><span className="sr-only">{t("曲线", "Series")}</span></TableHead>
+                    <TableHead scope="col" className="mx-align-right">{t("区间收益", "Period return")}</TableHead>
+                    <TableHead scope="col" className="mx-align-right">{t("最大回撤", "Max drawdown")}</TableHead>
+                    <TableHead scope="col" className="mx-align-right">{t("期末回撤", "Ending drawdown")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {returnLines.map((line, index) => {
+                    const end = line.values.findLast((value) => value != null);
+                    const drawdown = returnDrawdowns[index]?.values ?? [];
+                    const maximumDrawdown = minimumObserved(drawdown);
+                    return (
+                      <TableRow key={line.name}>
+                        <TableHead scope="row">{line.name}</TableHead>
+                        <TableCell className={"mx-align-right mx-" + tone(end)}>{percent(end, true, 2)}</TableCell>
+                        <TableCell className={"mx-align-right mx-" + tone(maximumDrawdown)}>{percent(maximumDrawdown, false, 2)}</TableCell>
+                        <TableCell className="mx-align-right">{percent(drawdown.findLast((value) => value != null), false, 2)}</TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
             )}
             {(scope === "cfd" || scope === "household") && (
               <Notice tone="warn">

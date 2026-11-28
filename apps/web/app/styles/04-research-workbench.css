@@ -45,34 +45,11 @@
 .mx-fact-button:hover .mx-metric-value {
   color: var(--mx-brand);
 }
-.mx-table-scroll {
-  overflow: auto;
-  max-width: 100%;
-  border-radius: 6px;
-}
-.mx-financial-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-}
-.mx-financial-table th,
-.mx-financial-table td {
-  padding: 13px 12px;
-  border-bottom: 1px solid var(--mx-border);
-  text-align: right;
+.mx-financial-table :is(th, td) {
   white-space: nowrap;
 }
-.mx-financial-table th:first-child {
-  text-align: left;
-  position: sticky;
-  left: 0;
-  background: var(--mx-surface);
-  z-index: 1;
-}
-.mx-financial-table thead th {
-  font-weight: 500;
-  color: var(--mx-muted);
+.mx-financial-table :is(th, td):not(:first-child) {
+  text-align: end;
 }
 .mx-financial-table th small {
   display: block;
@@ -120,6 +97,19 @@
 }
 .mx-financial-table tfoot {
   font-weight: 600;
+}
+/* Pin the label inside its spanning header so it cannot widen the year column. */
+.mx-worksheet-total-label {
+  display: block;
+  inline-size: max-content;
+  max-inline-size: var(--tm-table-footer-label-width, 100%);
+  white-space: normal;
+  overflow-wrap: break-word;
+}
+@media screen {
+  .mx-worksheet-total-label {
+    translate: var(--tm-table-inline-shift, 0px);
+  }
 }
 .mx-financial-table .mx-submetric {
   color: var(--mx-muted);
@@ -251,10 +241,13 @@
   font-weight: 500;
   white-space: nowrap;
 }
+.mx-sensitivity-matrix th:not(:first-child) {
+  text-align: end;
+}
 .mx-sensitivity-matrix td {
   min-width: 100px;
   padding: 15px 12px;
-  text-align: center;
+  text-align: end;
   border-radius: 5px;
 }
 .mx-sensitivity-matrix td strong {

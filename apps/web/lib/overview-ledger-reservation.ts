@@ -1,4 +1,9 @@
-import type { LedgerRows } from "./overview-layout-storage";
+import type { LedgerRows, LedgerWidth } from "./overview-layout-storage";
+
+export function ledgerWidthClass(node: HTMLElement): LedgerWidth | undefined {
+  const width = getComputedStyle(node).getPropertyValue("--mx-ledger-width-class").trim();
+  return width === "wide" || width === "stacked" ? width : undefined;
+}
 
 /** Measure the real row styles, including the browser's table-border rounding. */
 export function observeLedgerReservation(
@@ -8,6 +13,7 @@ export function observeLedgerReservation(
   { stocks, funds, dateTagged = 0 }: LedgerRows,
   locale: string,
   active = () => true,
+  hasMeasuredHeight?: () => boolean,
 ) {
   const groups = Number(stocks > 0) + Number(funds > 0);
   const table = probe.querySelector<HTMLElement>(groups === 2 ? "[data-probe-table=both]" : "[data-probe-table=single]");
@@ -23,6 +29,7 @@ export function observeLedgerReservation(
       observer.disconnect();
       return;
     }
+    if (hasMeasuredHeight?.()) return;
     const tableHeight = table?.getBoundingClientRect().height ?? 0;
     const row = tableHeight ? desktopRow : phoneRow;
     const step = row?.getBoundingClientRect().height;

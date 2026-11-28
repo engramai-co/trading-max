@@ -154,19 +154,6 @@
     align-self: stretch;
   }
 }
-.mx-research-page .mx-table tbody th {
-  background: transparent;
-  border-bottom: 1px solid var(--mx-border);
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0;
-  color: var(--mx-ink);
-  white-space: normal;
-  border-radius: 0;
-}
-.mx-research-page .mx-table tbody tr:last-child th {
-  border-bottom: 0;
-}
 .mx-us-fund-peers .mx-table :is(th, td) {
   white-space: normal;
 }
@@ -388,7 +375,6 @@
 .mx-option-chain {
   min-width: 0;
   max-width: 100%;
-  max-height: min(680px, 70dvh);
   font-variant-numeric: tabular-nums;
 }
 .mx-option-chain table {
@@ -738,9 +724,6 @@ html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-str
   z-index: 3;
 }
 .mx-option-chain thead {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   background: var(--mx-surface);
 }
 .mx-option-itm {

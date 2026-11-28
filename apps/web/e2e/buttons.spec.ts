@@ -396,8 +396,8 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     }
 
     // Desktop width (1440x900, fine pointer): buttons live inside table rows and stay 32px.
-    const wideForecastBtn = forecasts.locator(".mx-wide-records").getByRole("button", { name: "Use as model reference" }).first();
-    const wideEventBtn = events.locator(".mx-wide-records").getByRole("button", { name: "View price" }).first();
+    const wideForecastBtn = forecasts.getByRole("table").getByRole("button", { name: "Use as model reference" }).first();
+    const wideEventBtn = events.getByRole("table").getByRole("button", { name: "View price" }).first();
     await expect(wideForecastBtn).toBeVisible();
     await expect(wideEventBtn).toBeVisible();
     await expect(wideForecastBtn).toHaveAttribute("data-size", "table");

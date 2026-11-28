@@ -2,7 +2,7 @@ import { BREAKPOINTS, MEDIA_QUERIES } from "@/lib/breakpoints";
 import { DISPLAY_LOCALE_STORAGE_KEY } from "@/lib/display-preferences";
 import { PORTFOLIO_RANGES } from "@/lib/portfolio/history";
 import type { Range } from "@/lib/portfolio/nav";
-import { observeLedgerReservation } from "@/lib/overview-ledger-reservation";
+import { ledgerWidthClass, observeLedgerReservation } from "@/lib/overview-ledger-reservation";
 
 export const OVERVIEW_LAYOUT_PREFIX = "mx-overview-layout-";
 export const OVERVIEW_LAYOUT_VERSION_PREFIX = OVERVIEW_LAYOUT_PREFIX + "v2:";
@@ -17,7 +17,8 @@ export const OVERVIEW_LAYOUT_MEDIA = {
 
 export type LedgerRows = { stocks: number; funds: number; dateTagged?: number };
 export type ReadingLayout = { range: Range; summary: number; history: number; plotTop?: number; periodFigure?: number };
-export type OverviewLayout = { rows: LedgerRows; ledger?: number; reading?: ReadingLayout; sectors?: number; brief?: number };
+export type LedgerWidth = "wide" | "stacked";
+export type OverviewLayout = { rows: LedgerRows; ledger?: number; ledgerWidth?: LedgerWidth; reading?: ReadingLayout; sectors?: number; brief?: number };
 
 const layoutBounds = {
   length: 512,
@@ -40,7 +41,7 @@ function validateLayout(raw: string | null | undefined, bounds: typeof layoutBou
     if (!Number.isSafeInteger(stocks) || !Number.isSafeInteger(funds) || stocks < 0 || funds < 0) return;
     const count = stocks + funds;
     if (count > bounds.rows) return;
-    const { ledger, reading, sectors, brief } = layout;
+    const { ledger, ledgerWidth, reading, sectors, brief } = layout;
     const size = (value: number, max: number) => Number.isFinite(value) && value > 0 && value <= max;
     // Allow for wrapped rows at enlarged text sizes and a fixed amount for headings and the donut.
     const maxLedger = Math.min(bounds.ledgerCeiling, bounds.ledgerBase + bounds.ledgerPerRow * count);
@@ -48,7 +49,10 @@ function validateLayout(raw: string | null | undefined, bounds: typeof layoutBou
     if (dateTagged !== undefined && Number.isSafeInteger(dateTagged) && dateTagged > 0 && dateTagged <= count) {
       valid.rows.dateTagged = dateTagged;
     }
-    if (ledger !== undefined && size(ledger, maxLedger)) valid.ledger = ledger;
+    if (ledger !== undefined && size(ledger, maxLedger)) {
+      valid.ledger = ledger;
+      if (valid.rows.dateTagged && (ledgerWidth === "wide" || ledgerWidth === "stacked")) valid.ledgerWidth = ledgerWidth;
+    }
     if (sectors !== undefined && size(sectors, bounds.panel)) valid.sectors = sectors;
     if (brief !== undefined && size(brief, bounds.panel)) valid.brief = brief;
     if (!reading || !bounds.ranges.includes(reading.range) ||
@@ -131,7 +135,7 @@ export function overviewLayoutInitScript(scope: string) {
     media: OVERVIEW_LAYOUT_MEDIA,
     bounds: layoutBounds,
   });
-  return `(function(config, validate, observeReservation, prepare) {
+  return `(function(config, validate, observeReservation, prepare, widthClass) {
   try {
     // Only a newly loaded workspace document can claim the cache.
     var changed = localStorage.getItem(config.activeKey) !== config.workspace;
@@ -152,14 +156,28 @@ export function overviewLayoutInitScript(scope: string) {
       ? matchMedia(media.narrow).matches ? "narrow-phone" : "phone"
       : matchMedia(media.tablet).matches ? "tablet" : matchMedia(media.compact).matches ? "compact" : "desktop";
     var root = document.documentElement;
-    function reserveRows(rows) {
+    function applyMeasuredHeight(height) {
+      if (height === undefined) {
+        root.style.removeProperty("--mx-boot-ledger-height");
+        root.removeAttribute("data-mx-boot-ledger-measured");
+        return false;
+      }
+      root.style.setProperty("--mx-boot-ledger-height", height + "px");
+      root.setAttribute("data-mx-boot-ledger-measured", "");
+      return true;
+    }
+    function reserveRows(rows, entry) {
       if (typeof ResizeObserver !== "function" || typeof MutationObserver !== "function") return;
       var findProbe = new MutationObserver(function() {
         var probe = document.querySelector("[data-layout-bootstrap] .mx-ledger-probe");
         if (!probe || !probe.querySelector("[data-ledger-probe-ready]")) return;
         findProbe.disconnect();
         observeReservation(probe, root.style, "--mx-boot-ledger", rows, locale,
-          function() { return probe.closest("[data-layout-bootstrap]") !== null; });
+          function() { return probe.closest("[data-layout-bootstrap]") !== null; },
+          function() {
+            return applyMeasuredHeight(entry && entry.ledgerWidth && entry.ledgerWidth === widthClass(probe)
+              ? entry.ledger : undefined);
+          });
       });
       findProbe.observe(document, { childList: true, subtree: true });
       document.addEventListener("DOMContentLoaded", function() { findProbe.disconnect(); }, { once: true });
@@ -174,10 +192,8 @@ export function overviewLayoutInitScript(scope: string) {
     root.style.setProperty("--mx-boot-ledger-rows", String(count));
     root.style.setProperty("--mx-boot-ledger-groups", String(Number(stocks > 0) + Number(funds > 0)));
     root.setAttribute("data-mx-boot-ledger", count ? "rows" : "empty");
-    if (entry.ledger !== undefined) {
-      root.style.setProperty("--mx-boot-ledger-height", entry.ledger + "px");
-      root.setAttribute("data-mx-boot-ledger-measured", "");
-    } else if (count) reserveRows(entry.rows);
+    if (entry.ledger !== undefined && !entry.rows.dateTagged) applyMeasuredHeight(entry.ledger);
+    else if (count) reserveRows(entry.rows, entry);
     var reading = entry.reading;
     var range = params.get("range");
     if (!config.bounds.ranges.includes(range)) range = "1D";
@@ -198,5 +214,5 @@ export function overviewLayoutInitScript(scope: string) {
       root.style.setProperty("--mx-boot-brief-display", "block");
     }
   } catch (error) {}
-})(${config}, ${validateLayout.toString()}, ${observeLedgerReservation.toString()}, ${prepareStorage.toString()});`;
+})(${config}, ${validateLayout.toString()}, ${observeLedgerReservation.toString()}, ${prepareStorage.toString()}, ${ledgerWidthClass.toString()});`;
 }

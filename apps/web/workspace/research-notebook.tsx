@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { WorkspaceSheet } from "./overlay";
 import { TextareaField, TextField } from "@/components/ui/form-field";
 import { useBuildNavigationGuard } from "@/ui/publication-provider";
@@ -560,181 +561,174 @@ function ModelVersions({ journal }: { journal: Journal }) {
         {!models.length ? (
           <Empty title={t("在估值页保存一个模型版本", "Save a model version from Valuation")} />
         ) : (
-          <div
-            className="mx-table-scroll"
-            role="region"
-            tabIndex={0}
-            aria-label={t("冻结模型对比", "Saved model comparison")}
-          >
-            <table className="mx-financial-table">
-              <thead>
-                <tr>
-                  <th>{t("模型内容", "Model detail")}</th>
-                  {columns.map((m) => (
-                    <th key={m.id}>
-                      {m.savedAt.slice(0, 16).replace("T", " ")} UTC
-                      <Button
-                        className="flex"
-                        variant="ghost"
-                        size="table"
-                        disabled={baseline.isPending}
-                        aria-pressed={m.id === journal.baselineModelId}
-                        onClick={() => baseline.mutate(m.id === journal.baselineModelId ? null : m.id)}
+          <Table containerProps={{ className: "mx-table-scroll" }} label={t("冻结模型对比", "Saved model comparison")} className="mx-financial-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{t("模型内容", "Model detail")}</TableHead>
+                {columns.map((m) => (
+                  <TableHead scope="col" key={m.id}>
+                    {m.savedAt.slice(0, 16).replace("T", " ")} UTC
+                    <Button
+                      className="flex"
+                      variant="ghost"
+                      size="table"
+                      disabled={baseline.isPending}
+                      aria-pressed={m.id === journal.baselineModelId}
+                      onClick={() => baseline.mutate(m.id === journal.baselineModelId ? null : m.id)}
+                    >
+                      {m.id === journal.baselineModelId
+                        ? t("取消基准", "Clear baseline")
+                        : t("设为基准", "Set as baseline")}
+                    </Button>
+                    <Button className="flex" variant="ghost" size="table" onClick={() => setOpened(m.id)}>
+                      {t("查看底稿", "Open worksheet")}
+                    </Button>
+                    {notice?.modelId === m.id && <>
+                      <Link
+                        href={`/research?ticker=${encodeURIComponent(journal.ticker)}&view=valuation&valuationView=scenario&evidence=open`}
+                        data-slot="button"
+                        className={cn(buttonVariants({ variant: "ghost", size: "table" }), "flex w-fit")}
+                        aria-describedby="model-evidence-notice"
                       >
-                        {m.id === journal.baselineModelId
-                          ? t("取消基准", "Clear baseline")
-                          : t("设为基准", "Set as baseline")}
-                      </Button>
-                      <Button className="flex" variant="ghost" size="table" onClick={() => setOpened(m.id)}>
-                        {t("查看底稿", "Open worksheet")}
-                      </Button>
-                      {notice?.modelId === m.id && <>
-                        <Link
-                          href={`/research?ticker=${encodeURIComponent(journal.ticker)}&view=valuation&valuationView=scenario&evidence=open`}
-                          data-slot="button"
-                          className={cn(buttonVariants({ variant: "ghost", size: "table" }), "flex w-fit")}
-                          aria-describedby="model-evidence-notice"
-                        >
-                          {t("看新证据", "See new evidence")}
-                          <span className="mx-evidence-dot" aria-hidden="true" />
-                        </Link>
-                        <span id="model-evidence-notice" className="sr-only">
-                          {t("有新证据：", "New evidence: ") + noticeKinds(notice, t)}
-                        </span>
-                      </>}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <th>{t("模型", "Model")}</th>
-                  {columns.map((m) => (
-                    <td key={m.id}>
-                      {m.preview.basis.family === "residual-income"
-                        ? t("剩余收益", "Residual income")
-                        : m.preview.basis.family === "net-income"
-                          ? t("净利润", "Net income")
-                          : t("股权现金流", "Equity cash flow")}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  <th>{t("预测年限", "Horizon")}</th>
-                  {columns.map((m) => (
-                    <td key={m.id}>{m.preview.horizon}</td>
-                  ))}
-                </tr>
-                <tr>
-                  <th>{t("保存时现价", "Price at save")}</th>
-                  {columns.map((m) => (
-                    <td key={m.id}>{quoteValue(m.preview.basis.spot, m.preview.basis.currency)}</td>
-                  ))}
-                </tr>
-                {(["revenue", "shares", "startMargin"] as const).map((k, i) => (
-                  <tr key={k}>
-                    <th>
-                      {
-                        [
-                          t("起始营收", "Starting revenue"),
-                          t("起始股数", "Starting shares"),
-                          t("起始利润率", "Starting margin"),
-                        ][i]
-                      }
-                    </th>
-                    {columns.map((m) => (
-                      <td key={m.id}>
-                        {k === "startMargin"
-                          ? percent(m.preview.basis[k])
-                          : (k === "revenue"
-                            ? quoteValue(m.preview.basis.revenue, m.preview.basis.currency, { style: "compact", locale }) +
-                              " " + quoteUnit(m.preview.basis.currency).currency
-                            : compact(m.preview.basis[k], locale))}
-                      </td>
-                    ))}
-                  </tr>
+                        {t("看新证据", "See new evidence")}
+                        <span className="mx-evidence-dot" aria-hidden="true" />
+                      </Link>
+                      <span id="model-evidence-notice" className="sr-only">
+                        {t("有新证据：", "New evidence: ") + noticeKinds(notice, t)}
+                      </span>
+                    </>}
+                  </TableHead>
                 ))}
-                {(["bear", "base", "bull"] as const).map((k, i) => (
-                  <tr key={k}>
-                    <th>
-                      {[t("保守估值", "Bear value"), t("中性估值", "Base value"), t("乐观估值", "Bull value")][i]}
-                    </th>
-                    {columns.map((m) => (
-                      <td key={m.id}>
-                        {quoteValue(m.preview.scenarios[k].value, m.preview.basis.currency)}
-                        <ValuationFloorNote adjustment={m.preview.scenarios[k].equityFloorAdjustment} />
-                      </td>
-                    ))}
-                  </tr>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRow>
+                <TableHead scope="row">{t("模型", "Model")}</TableHead>
+                {columns.map((m) => (
+                  <TableCell key={m.id}>
+                    {m.preview.basis.family === "residual-income"
+                      ? t("剩余收益", "Residual income")
+                      : m.preview.basis.family === "net-income"
+                        ? t("净利润", "Net income")
+                        : t("股权现金流", "Equity cash flow")}
+                  </TableCell>
                 ))}
-                {(
-                  [
-                    "revenueCagr",
-                    "targetFcfMargin",
-                    "discountRate",
-                    "shareCagr",
-                    "exitFcfMultiple",
-                    "rampYears",
-                    "initialRoe",
-                    "payout",
-                    "terminalPb",
-                  ] as const
-                ).map((k, i) => (
-                  <tr key={k}>
-                    <th>
-                      {
-                        [
-                          t("营收增长", "Revenue growth"),
-                          t("目标利润率", "Target margin"),
-                          t("股权资本成本", "Cost of equity"),
-                          t("股数增长", "Share growth"),
-                          t("终值倍数", "Exit multiple"),
-                          t("达到目标的年数", "Years to target margin"),
-                          t("第一年 ROE", "Year-one ROE"),
-                          t("派息率", "Payout"),
-                          t("终值市净率", "Terminal P/B"),
-                        ][i]
-                      }{" "}
-                      · {t("中性", "Base")}
-                    </th>
-                    {columns.map((m) => (
-                      <td key={m.id}>
-                        {(m.preview.basis.family === "residual-income" &&
-                          !["discountRate", "initialRoe", "payout", "terminalPb"].includes(k)) ||
-                        m.preview.scenarios.base.inputs[k] == null
-                          ? "—"
-                          : k === "rampYears"
-                            ? String(m.preview.scenarios.base.inputs[k])
-                            : k === "exitFcfMultiple" || k === "terminalPb"
-                              ? m.preview.scenarios.base.inputs[k] + "×"
-                              : percent(m.preview.scenarios.base.inputs[k])}
-                      </td>
-                    ))}
-                  </tr>
+              </TableRow>
+              <TableRow>
+                <TableHead scope="row">{t("预测年限", "Horizon")}</TableHead>
+                {columns.map((m) => (
+                  <TableCell key={m.id}>{m.preview.horizon}</TableCell>
                 ))}
-                <tr>
-                  <th>{t("终值贡献", "Terminal contribution")}</th>
+              </TableRow>
+              <TableRow>
+                <TableHead scope="row">{t("保存时现价", "Price at save")}</TableHead>
+                {columns.map((m) => (
+                  <TableCell key={m.id}>{quoteValue(m.preview.basis.spot, m.preview.basis.currency)}</TableCell>
+                ))}
+              </TableRow>
+              {(["revenue", "shares", "startMargin"] as const).map((k, i) => (
+                <TableRow key={k}>
+                  <TableHead scope="row">
+                    {
+                      [
+                        t("起始营收", "Starting revenue"),
+                        t("起始股数", "Starting shares"),
+                        t("起始利润率", "Starting margin"),
+                      ][i]
+                    }
+                  </TableHead>
                   {columns.map((m) => (
-                    <td key={m.id}>{percent(m.preview.scenarios.base.terminalContribution)}</td>
+                    <TableCell key={m.id}>
+                      {k === "startMargin"
+                        ? percent(m.preview.basis[k])
+                        : (k === "revenue"
+                          ? quoteValue(m.preview.basis.revenue, m.preview.basis.currency, { style: "compact", locale }) +
+                            " " + quoteUnit(m.preview.basis.currency).currency
+                          : compact(m.preview.basis[k], locale))}
+                    </TableCell>
                   ))}
-                </tr>
-                <tr>
-                  <th>{t("计算版本", "Formula version")}</th>
+                </TableRow>
+              ))}
+              {(["bear", "base", "bull"] as const).map((k, i) => (
+                <TableRow key={k}>
+                  <TableHead scope="row">
+                    {[t("保守估值", "Bear value"), t("中性估值", "Base value"), t("乐观估值", "Bull value")][i]}
+                  </TableHead>
                   {columns.map((m) => (
-                    <td key={m.id}>{m.preview.formulaVersion}</td>
+                    <TableCell key={m.id}>
+                      {quoteValue(m.preview.scenarios[k].value, m.preview.basis.currency)}
+                      <ValuationFloorNote adjustment={m.preview.scenarios[k].equityFloorAdjustment} />
+                    </TableCell>
                   ))}
-                </tr>
-                <tr>
-                  <th>{t("数据版本", "Data version")}</th>
+                </TableRow>
+              ))}
+              {(
+                [
+                  "revenueCagr",
+                  "targetFcfMargin",
+                  "discountRate",
+                  "shareCagr",
+                  "exitFcfMultiple",
+                  "rampYears",
+                  "initialRoe",
+                  "payout",
+                  "terminalPb",
+                ] as const
+              ).map((k, i) => (
+                <TableRow key={k}>
+                  <TableHead scope="row">
+                    {
+                      [
+                        t("营收增长", "Revenue growth"),
+                        t("目标利润率", "Target margin"),
+                        t("股权资本成本", "Cost of equity"),
+                        t("股数增长", "Share growth"),
+                        t("终值倍数", "Exit multiple"),
+                        t("达到目标的年数", "Years to target margin"),
+                        t("第一年 ROE", "Year-one ROE"),
+                        t("派息率", "Payout"),
+                        t("终值市净率", "Terminal P/B"),
+                      ][i]
+                    }{" "}
+                    · {t("中性", "Base")}
+                  </TableHead>
                   {columns.map((m) => (
-                    <td key={m.id}>
-                      <code title={m.preview.basis.dataVersion}>{m.preview.basis.dataVersion.slice(0, 12)}</code>
-                    </td>
+                    <TableCell key={m.id}>
+                      {(m.preview.basis.family === "residual-income" &&
+                        !["discountRate", "initialRoe", "payout", "terminalPb"].includes(k)) ||
+                      m.preview.scenarios.base.inputs[k] == null
+                        ? "—"
+                        : k === "rampYears"
+                          ? String(m.preview.scenarios.base.inputs[k])
+                          : k === "exitFcfMultiple" || k === "terminalPb"
+                            ? m.preview.scenarios.base.inputs[k] + "×"
+                            : percent(m.preview.scenarios.base.inputs[k])}
+                    </TableCell>
                   ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
+                </TableRow>
+              ))}
+              <TableRow>
+                <TableHead scope="row">{t("终值贡献", "Terminal contribution")}</TableHead>
+                {columns.map((m) => (
+                  <TableCell key={m.id}>{percent(m.preview.scenarios.base.terminalContribution)}</TableCell>
+                ))}
+              </TableRow>
+              <TableRow>
+                <TableHead scope="row">{t("计算版本", "Formula version")}</TableHead>
+                {columns.map((m) => (
+                  <TableCell key={m.id}>{m.preview.formulaVersion}</TableCell>
+                ))}
+              </TableRow>
+              <TableRow>
+                <TableHead scope="row">{t("数据版本", "Data version")}</TableHead>
+                {columns.map((m) => (
+                  <TableCell key={m.id}>
+                    <code title={m.preview.basis.dataVersion}>{m.preview.basis.dataVersion.slice(0, 12)}</code>
+                  </TableCell>
+                ))}
+              </TableRow>
+            </TableBody>
+          </Table>
         )}
       </Panel>
       {baseline.isError && <p role="alert">{t("基准设置失败", "Baseline change failed")}</p>}

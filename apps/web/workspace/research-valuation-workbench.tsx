@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { WorkspaceDialog } from "./overlay";
 import { FormField, TextareaField } from "@/components/ui/form-field";
 import { NumericInput } from "@/components/ui/numeric-input";
@@ -831,47 +832,40 @@ function ModelEditor({
             )}
             <details className="mx-disclosure">
               <summary>{t("比较情景假设", "Compare scenario assumptions")}</summary>
-              <div
-                className="mx-table-scroll"
-                tabIndex={0}
-                role="region"
-                aria-label={t("情景对比", "Scenario comparison")}
-              >
-                <table className="mx-financial-table">
-                  <thead>
-                    <tr>
-                      <th>{t("情景", "Scenario")}</th>
-                      <th>{residual ? "ROE" : t("增长", "Growth")}</th>
-                      <th>{residual ? t("派息率", "Payout") : marginLabel}</th>
-                      <th>{t("折现率", "Discount")}</th>
-                      <th>{t("价值", "Value")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {keys.map((k) => (
-                      <tr key={k}>
-                        <th>{scenarioNames[k]}</th>
-                        <td>
-                          {percent(
-                            residual
-                              ? result.scenarios[k].inputs.initialRoe
-                              : result.scenarios[k].inputs.revenueCagr,
-                          )}
-                        </td>
-                        <td>
-                          {percent(
-                            residual
-                              ? result.scenarios[k].inputs.payout
-                              : result.scenarios[k].inputs.targetFcfMargin,
-                          )}
-                        </td>
-                        <td>{percent(result.scenarios[k].inputs.discountRate)}</td>
-                        <td>{quoteValue(result.scenarios[k].value, result.basis.currency)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Table containerProps={{ className: "mx-table-scroll" }} label={t("情景对比", "Scenario comparison")} className="mx-financial-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead scope="col">{t("情景", "Scenario")}</TableHead>
+                    <TableHead scope="col">{residual ? "ROE" : t("增长", "Growth")}</TableHead>
+                    <TableHead scope="col">{residual ? t("派息率", "Payout") : marginLabel}</TableHead>
+                    <TableHead scope="col">{t("折现率", "Discount")}</TableHead>
+                    <TableHead scope="col">{t("价值", "Value")}</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {keys.map((k) => (
+                    <TableRow key={k}>
+                      <TableHead scope="row">{scenarioNames[k]}</TableHead>
+                      <TableCell>
+                        {percent(
+                          residual
+                            ? result.scenarios[k].inputs.initialRoe
+                            : result.scenarios[k].inputs.revenueCagr,
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {percent(
+                          residual
+                            ? result.scenarios[k].inputs.payout
+                            : result.scenarios[k].inputs.targetFcfMargin,
+                        )}
+                      </TableCell>
+                      <TableCell>{percent(result.scenarios[k].inputs.discountRate)}</TableCell>
+                      <TableCell>{quoteValue(result.scenarios[k].value, result.basis.currency)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
             </details>
           </Panel>, output)}
           {draftModule && <draftModule.DraftStatus phase={drafting.phase} error={failedBlock ? null : drafting.error}

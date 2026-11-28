@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { SearchInput } from "@/components/ui/search-input";
 import { useLocale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDate } from "@/ui/formatters";
@@ -298,75 +299,68 @@ export function BusinessSegments({ data }: { data: ResearchLensSnapshot }) {
           )}
         </p>
       )}
-      <div
-        className="mx-table-scroll"
-        tabIndex={0}
-        role="region"
-        aria-label={t("分部收入明细", "Segment revenue details")}
-      >
-        <table className="mx-financial-table">
-          <thead>
-            <tr>
-              <th>{t("分部", "Segment")}</th>
-              <th>{t("收入", "Revenue")}</th>
-              <th>{t("占比", "Share")}</th>
-              <th>{t("同比", "YoY")}</th>
-              <th>{t("增长贡献", "Growth contribution")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {selected.map((s) => {
-              const before = prior.find((p) => p.member === s.member);
-              const current = numeric(s.value);
-              const previous = numeric(before?.value);
-              const previousTotal = numeric(before?.reportedTotal);
-              return (
-                <tr key={str(s.id)}>
-                  <th>
-                    <button
-                      className="mx-inline-control"
-                      aria-pressed={selectedMembers.includes(str(s.member))}
-                      onClick={() =>
-                        update({
-                          segmentView: "trend",
-                          segmentMember: null,
-                          segmentMembers:
-                            selectedMembers.length === 1 &&
-                            selectedMembers[0] === s.member
-                              ? null
-                              : str(s.member),
-                        })
-                      }
-                    >
-                      {str(s.name)}
-                    </button>
-                  </th>
-                  <td>
-                    {compact(current, locale)}
-                  </td>
-                  <td>{reconciled ? percent(s.share) : "—"}</td>
-                  <td>
-                    {current != null && previous != null && previous > 0
-                      ? percent(current / previous - 1, true)
-                      : "—"}
-                  </td>
-                  <td>
-                    {current != null &&
-                    previous != null &&
-                    previousTotal != null &&
-                    previousTotal > 0
-                      ? number(
-                          ((current - previous) / previousTotal) * 100,
-                          2,
-                        ) + " pp"
-                      : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <Table containerProps={{ className: "mx-table-scroll" }} label={t("分部收入明细", "Segment revenue details")} className="mx-financial-table">
+        <TableHeader>
+          <TableRow>
+            <TableHead scope="col">{t("分部", "Segment")}</TableHead>
+            <TableHead scope="col">{t("收入", "Revenue")}</TableHead>
+            <TableHead scope="col">{t("占比", "Share")}</TableHead>
+            <TableHead scope="col">{t("同比", "YoY")}</TableHead>
+            <TableHead scope="col">{t("增长贡献", "Growth contribution")}</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {selected.map((s) => {
+            const before = prior.find((p) => p.member === s.member);
+            const current = numeric(s.value);
+            const previous = numeric(before?.value);
+            const previousTotal = numeric(before?.reportedTotal);
+            return (
+              <TableRow key={str(s.id)}>
+                <TableHead scope="row">
+                  <button
+                    className="mx-inline-control"
+                    aria-pressed={selectedMembers.includes(str(s.member))}
+                    onClick={() =>
+                      update({
+                        segmentView: "trend",
+                        segmentMember: null,
+                        segmentMembers:
+                          selectedMembers.length === 1 &&
+                          selectedMembers[0] === s.member
+                            ? null
+                            : str(s.member),
+                      })
+                    }
+                  >
+                    {str(s.name)}
+                  </button>
+                </TableHead>
+                <TableCell>
+                  {compact(current, locale)}
+                </TableCell>
+                <TableCell>{reconciled ? percent(s.share) : "—"}</TableCell>
+                <TableCell>
+                  {current != null && previous != null && previous > 0
+                    ? percent(current / previous - 1, true)
+                    : "—"}
+                </TableCell>
+                <TableCell>
+                  {current != null &&
+                  previous != null &&
+                  previousTotal != null &&
+                  previousTotal > 0
+                    ? number(
+                        ((current - previous) / previousTotal) * 100,
+                        2,
+                      ) + " pp"
+                    : "—"}
+                </TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
       <details className="mx-detail-records">
         <summary>{t("分部历史明细", "Segment history details")}</summary>
         <EvidenceTable
@@ -587,26 +581,24 @@ export function DividendHistory({ data }: { data: ResearchLensSnapshot }) {
           {t("除息记录", "Ex-dividend records")}
         </summary>
         {all && (
-          <div className="mx-table-scroll">
-            <table className="mx-financial-table">
-              <thead>
-                <tr>
-                  <th>{t("除息日", "Ex-dividend date")}</th>
-                  <th>{t("每股金额", "Amount per share")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i}>
-                    <th>{formatCalendarDate(str(r.date), locale)}</th>
-                    <td>
-                      {number(r.amount, 4)} {code}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <Table containerProps={{ className: "mx-table-scroll" }} label={t("除息记录", "Ex-dividend records")} className="mx-financial-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{t("除息日", "Ex-dividend date")}</TableHead>
+                <TableHead scope="col">{t("每股金额", "Amount per share")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r, i) => (
+                <TableRow key={i}>
+                  <TableHead scope="row">{formatCalendarDate(str(r.date), locale)}</TableHead>
+                  <TableCell>
+                    {number(r.amount, 4)} {code}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </details>
     </Panel>

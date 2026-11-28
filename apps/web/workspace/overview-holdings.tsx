@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { useQuery } from "@tanstack/react-query";
 import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
@@ -16,8 +17,8 @@ import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy, type Evide
 import { useEvidenceTime } from "./etf-reading";
 import Link from "./link";
 import { holdingsLedger, overviewHoldingsState, readingColumns, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
-import type { LedgerRows } from "@/lib/overview-layout-storage";
-import { observeLedgerReservation } from "@/lib/overview-ledger-reservation";
+import type { LedgerRows, LedgerWidth } from "@/lib/overview-layout-storage";
+import { ledgerWidthClass, observeLedgerReservation } from "@/lib/overview-ledger-reservation";
 import { SecurityPeek } from "./security-peek";
 
 /**
@@ -98,7 +99,16 @@ function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
   };
 }
 
-export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, pendingRows, pendingHeight, waiting = false, failed = false, error, retry }: {
+function LedgerColumns() {
+  return <colgroup>
+    <col />
+    <col className="mx-ledger-figure-column" />
+    <col className="mx-ledger-day-column" />
+    <col span={3} className="mx-ledger-figure-column" />
+  </colgroup>;
+}
+
+export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, pendingRows, pendingHeight, pendingWidth, waiting = false, failed = false, error, retry }: {
   holdings?: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
@@ -107,6 +117,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   account: string;
   pendingRows?: LedgerRows;
   pendingHeight?: number;
+  pendingWidth?: LedgerWidth;
   waiting?: boolean;
   failed?: boolean;
   error?: unknown;
@@ -166,7 +177,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
       action={<TextLink href="/holdings?view=lookthrough" className={state === "pending" ? "invisible" : undefined}>{t("穿透", "Look-through")}</TextLink>}
     >
       {state === "pending" ? (
-        <LedgerPlaceholder rows={pendingRows} height={pendingHeight} />
+        <LedgerPlaceholder rows={pendingRows} savedHeight={pendingHeight} savedWidth={pendingWidth} />
       ) : state === "error" ? (
         <QueryError error={error} retry={retry} />
       ) : state === "empty" ? (
@@ -176,23 +187,24 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
           <Donut ledger={ledger} palette={palette} focus={focus} setFocus={setFocus} restLabel={restLabel}
             countLabel={countLabel}
             title={locale === "zh" ? countLabel : <>{ledger.count}<small>{ledger.count === 1 ? "holding" : "holdings"}</small></>} />
-          <table className="mx-ledger-table">
+          <Table label={t("持仓配置", "Holdings allocation")} className="mx-ledger-table" containerProps={{ className: "tm-table-wide" }}>
+            <LedgerColumns />
             {ledger.groups.map(({ kind, rows }) => {
               const groupId = ledgerId + "-" + kind;
               const columns = readingColumns(kind, t, day);
-              return <tbody key={kind} data-asset-class={kind}>
-                <tr className="mx-ledger-head">
-                  <th scope="col" id={groupId}>{groupLabel(kind)}</th>
-                  <th scope="col" id={groupId + "-weight"}>{weightLabel}</th>
-                  {columns.map((column) => <th scope="col" key={column.key} id={groupId + "-" + column.key}>{column.label}</th>)}
-                </tr>
+              return <TableBody key={kind} data-asset-class={kind}>
+                <TableRow className="mx-ledger-head">
+                  <TableHead scope="col" id={groupId}>{groupLabel(kind)}</TableHead>
+                  <TableHead scope="col" id={groupId + "-weight"}>{weightLabel}</TableHead>
+                  {columns.map((column) => <TableHead scope="col" key={column.key} id={groupId + "-" + column.key}>{column.label}</TableHead>)}
+                </TableRow>
                 {rows.map((row, index) => {
                   const cells = figures(row, t, when);
                   const rowId = groupId + "-row-" + index;
                   const headers = (column: string) => rowId + " " + groupId + "-" + column;
                   return (
-                    <tr className="mx-ledger-row" key={row.ticker} {...pointer(rowFocus(row))} onClick={open} data-focus={lit(row)}>
-                      <th scope="row" id={rowId} headers={groupId}>
+                    <TableRow className="mx-ledger-row" key={row.ticker} {...pointer(rowFocus(row))} onClick={open} data-focus={lit(row)}>
+                      <TableHead scope="row" id={rowId} headers={groupId}>
                         <Link className="mx-ledger-link" href={row.href} {...keys(rowFocus(row))}>
                           {dot(row)}
                           <SecurityPeek ticker={row.ticker} position={{ valueGbp: row.value, weightPct: row.weight }}
@@ -204,20 +216,20 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                             <Instrument ticker={row.ticker} name={row.name} isin={row.isin} small />
                           </SecurityPeek>
                         </Link>
-                      </th>
-                      <td headers={headers("weight")}>{percent(row.weight)}</td>
-                      {columns.map(({ key }) => <td key={key} headers={headers(key)}>
-                        {key === "day" && row.dayDate && <Tag tone="warn">{dayLabel(row.dayDate)}</Tag>}
+                      </TableHead>
+                      <TableCell headers={headers("weight")}>{percent(row.weight)}</TableCell>
+                      {columns.map(({ key }) => <TableCell key={key} className={key === "day" ? "mx-ledger-day" : undefined} headers={headers(key)}>
+                        {key === "day" && row.dayDate && <span className="mx-ledger-date"><Tag tone="warn">{dayLabel(row.dayDate)}</Tag></span>}
                         {cells[key]}
-                      </td>)}
-                    </tr>
+                      </TableCell>)}
+                    </TableRow>
                   );
                 })}
-              </tbody>;
+              </TableBody>;
             })}
-          </table>
+          </Table>
           {/* Phones keep name and weight above the figures; each group introduces its own columns. */}
-          <div className="mx-ledger-list">
+          <div className="mx-ledger-list tm-table-compact">
             {ledger.groups.map(({ kind, rows }) => {
               const headingId = ledgerId + "-phone-" + kind;
               const columns = readingColumns(kind, t, day);
@@ -229,7 +241,7 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
                 <div className="mx-ledger-list-head" aria-hidden="true">
                   {columns.map((column) => <span key={column.key}>{column.short}</span>)}
                 </div>
-                <ol>
+                <ol role="list">
                   {rows.map((row) => {
                     const cells = figures(row, t, when);
                     return (
@@ -261,21 +273,26 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   );
 }
 
-function LedgerPlaceholder({ rows, height }: { rows?: LedgerRows; height?: number }) {
+function LedgerPlaceholder({ rows, savedHeight, savedWidth }: { rows?: LedgerRows; savedHeight?: number; savedWidth?: LedgerWidth }) {
   const { locale } = useLocale();
   const placeholder = useRef<HTMLDivElement>(null);
   const probe = useRef<HTMLDivElement>(null);
   const stocks = rows?.stocks;
   const funds = rows?.funds;
   const dateTagged = rows?.dateTagged;
+  const [currentWidth, setCurrentWidth] = useState<LedgerWidth>();
+  const height = !dateTagged || savedWidth && savedWidth === currentWidth ? savedHeight : undefined;
   useLayoutEffect(() => {
     const node = placeholder.current;
-    if (!node || !probe.current || typeof ResizeObserver !== "function") return;
-    if (height === undefined) {
-      return observeLedgerReservation(probe.current, node.style, "--mx-ledger-fallback",
-        { stocks: stocks ?? 5, funds: funds ?? 0, dateTagged }, locale);
-    }
-  }, [stocks, funds, dateTagged, height, locale]);
+    const sample = probe.current;
+    if (!node || !sample || typeof ResizeObserver !== "function") return;
+    return observeLedgerReservation(sample, node.style, "--mx-ledger-fallback",
+      { stocks: stocks ?? 5, funds: funds ?? 0, dateTagged }, locale, undefined, () => {
+        const width = ledgerWidthClass(sample);
+        setCurrentWidth(width);
+        return savedHeight !== undefined && !!savedWidth && savedWidth === width;
+      });
+  }, [stocks, funds, dateTagged, savedHeight, savedWidth, locale]);
   const count = rows && rows.stocks + rows.funds;
   const groups = rows && Number(rows.stocks > 0) + Number(rows.funds > 0);
   if (count === 0) return <Skeleton className="mx-ledger-rows-placeholder" style={{ height }} />;
@@ -283,7 +300,7 @@ function LedgerPlaceholder({ rows, height }: { rows?: LedgerRows; height?: numbe
     style={{ height, "--mx-ledger-rows": count, "--mx-ledger-groups": groups } as CSSProperties}>
     <div className="mx-ledger-chart"><Skeleton className="mx-ledger-donut mx-ledger-donut-placeholder" /></div>
     <Skeleton className="mx-ledger-rows-placeholder" />
-    {height === undefined && <div ref={probe} className="mx-ledger-probe">
+    {(height === undefined || !!dateTagged) && <div ref={probe} className="mx-ledger-probe">
       <LedgerSizingSample />
       <span data-ledger-probe-ready="" hidden />
     </div>}
@@ -298,20 +315,21 @@ function LedgerSizingSample() {
     <span className="mx-monogram" /><span><strong>0</strong><span className="mx-instrument-name">0</span></span>
   </span>;
   return <>
-    {["single", "both"].map(sample => <table key={sample} className="mx-ledger-table" data-probe-table={sample}>
-      {kinds.slice(0, sample === "both" ? 2 : 1).map(kind => <tbody key={kind}>
-        <tr className="mx-ledger-head">{Array.from({ length: 6 }, (_, index) => <th key={index}>0</th>)}</tr>
-        {samples.map((tagged, index) => <tr key={index} className="mx-ledger-row" data-probe-tagged={tagged || undefined}>
-          <th><span className="mx-ledger-link"><i className="mx-ledger-dot" />{instrument}</span></th>
-          <td>0</td>
-          <td>{tagged && <Tag tone="warn">19 Nov</Tag>}<span>+1.00%</span></td>
-          {Array.from({ length: 3 }, (_, cell) => <td key={cell}>0</td>)}
-        </tr>)}
-      </tbody>)}
-    </table>)}
+    {["single", "both"].map(sample => <Table key={sample} className="mx-ledger-table" containerProps={{ className: "tm-table-wide" }} data-probe-table={sample}>
+      <LedgerColumns />
+      {kinds.slice(0, sample === "both" ? 2 : 1).map(kind => <TableBody key={kind}>
+        <TableRow className="mx-ledger-head">{Array.from({ length: 6 }, (_, index) => <TableHead scope="row" key={index}>0</TableHead>)}</TableRow>
+        {samples.map((tagged, index) => <TableRow key={index} className="mx-ledger-row" data-probe-tagged={tagged || undefined}>
+          <TableHead scope="row"><span className="mx-ledger-link"><i className="mx-ledger-dot" />{instrument}</span></TableHead>
+          <TableCell>0</TableCell>
+          <TableCell className="mx-ledger-day">{tagged && <span className="mx-ledger-date"><Tag tone="warn">19 Nov</Tag></span>}<span>+1.00%</span></TableCell>
+          {Array.from({ length: 3 }, (_, cell) => <TableCell key={cell}>0</TableCell>)}
+        </TableRow>)}
+      </TableBody>)}
+    </Table>)}
     {(["en", "zh"] as const).map(locale => {
       const t = (zh: string, en: string) => locale === "zh" ? zh : en;
-      return <div key={locale} className="mx-ledger-list" data-probe-phone={locale} lang={locale}>
+      return <div key={locale} className="mx-ledger-list tm-table-compact" data-probe-phone={locale} lang={locale}>
         {kinds.map(kind => <div key={kind} className="mx-ledger-phone-group" data-asset-class={kind}>
           <div className="mx-ledger-list-heading">
             <span className="mx-ledger-group-name">{kind === "funds" ? t("基金", "Funds") : t("股票", "Stocks")}</span>
@@ -320,7 +338,7 @@ function LedgerSizingSample() {
           <div className="mx-ledger-list-head">
             {readingColumns(kind, t, t("今日", "Today")).map(column => <span key={column.key}>{column.short}</span>)}
           </div>
-          <ol>{samples.map((tagged, index) => <li key={index} className="mx-ledger-item" data-probe-tagged={tagged || undefined}>
+          <ol role="list">{samples.map((tagged, index) => <li key={index} className="mx-ledger-item" data-probe-tagged={tagged || undefined}>
             <span className="mx-ledger-item-head"><i className="mx-ledger-dot" />{instrument}<strong>0</strong></span>
             <dl>
               <div><dt className="sr-only">0</dt><dd>

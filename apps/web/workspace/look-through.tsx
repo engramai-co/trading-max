@@ -1,16 +1,17 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { WorkspaceSheet } from "./overlay";
 import { SearchInput } from "@/components/ui/search-input";
 import { Pagination } from "@/components/ui/pagination";
 import { ListFilter, Search } from "lucide-react";
-import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
 import Link from "./link";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   memo,
   useCallback,
+  useDeferredValue,
   useEffect,
   useId,
   useLayoutEffect,
@@ -72,24 +73,26 @@ const COVERAGE_FLOOR = 0.98;
 const PHONE_PAGE_SIZE = 25;
 const DESKTOP_PAGE_SIZE = 100;
 
-// The print sheet can cross the breakpoint. Keep the screen's mounted list for print.
-function usePhoneLayout() {
-  const [phone, setPhone] = useState(false);
-  useEffect(() => {
-    const narrow = window.matchMedia(MEDIA_QUERIES.phone);
+// The CSS probe uses the same queries as the record variants. Keep the
+// screen's mounted layout when the print sheet crosses those breakpoints.
+function useCompactRecords(probe: HTMLElement | null) {
+  const [compact, setCompact] = useState(false);
+  useLayoutEffect(() => {
+    if (!probe) return;
     const print = window.matchMedia("print");
     const sync = () => {
-      if (!print.matches) setPhone(narrow.matches);
+      if (!print.matches) setCompact(probe.getClientRects().length > 0);
     };
-    sync();
-    narrow.addEventListener("change", sync);
+    const resize = new ResizeObserver(sync);
+    resize.observe(probe);
     print.addEventListener("change", sync);
+    sync();
     return () => {
-      narrow.removeEventListener("change", sync);
+      resize.disconnect();
       print.removeEventListener("change", sync);
     };
-  }, []);
-  return phone;
+  }, [probe]);
+  return compact;
 }
 
 const DesktopHoldingRow = memo(function DesktopHoldingRow({
@@ -107,8 +110,8 @@ const DesktopHoldingRow = memo(function DesktopHoldingRow({
     [p.valueGbp, p.allocationPct, exposureLabel],
   );
   return (
-    <tr>
-      <td>
+    <TableRow>
+      <TableHead scope="row">
         <button
           className="mx-table-button"
           onClick={() => onSelect(p)}
@@ -125,15 +128,15 @@ const DesktopHoldingRow = memo(function DesktopHoldingRow({
             />
           </SecurityPeek>
         </button>
-      </td>
-      <td>{item.countryLabel}</td>
-      <td className="mx-align-right">{currency(p.directValueGbp)}</td>
-      <td className="mx-align-right">{currency(p.indirectValueGbp)}</td>
-      <td className="mx-align-right">
+      </TableHead>
+      <TableCell>{item.countryLabel}</TableCell>
+      <TableCell className="mx-align-right">{currency(p.directValueGbp)}</TableCell>
+      <TableCell className="mx-align-right">{currency(p.indirectValueGbp)}</TableCell>
+      <TableCell className="mx-align-right">
         <strong>{currency(p.valueGbp)}</strong>
         <small>{percent(p.allocationPct)}</small>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 });
 
@@ -176,17 +179,19 @@ const MobileHoldingCard = memo(function MobileHoldingCard({
   );
 });
 
-function UnderlyingHoldings({
+const UnderlyingHoldings = memo(function UnderlyingHoldings({
   items,
   expanded,
   batchKey,
   phone,
+  sort,
   onSelect,
 }: {
   items: PreparedLookthroughRow[];
   expanded: boolean;
   batchKey: string;
   phone: boolean;
+  sort: LookthroughSort;
   onSelect: (position: LookthroughPosition) => void;
 }) {
   const t = useCopy();
@@ -259,27 +264,20 @@ function UnderlyingHoldings({
     return <div className="mx-mobile-holdings mx-exposure-active">{visibleRows}</div>;
   }
   return (
-    <div
-      className="mx-table-wrap mx-desktop-holdings mx-exposure-active"
-      tabIndex={0}
-      role="region"
-      aria-label={t("底层持仓", "Underlying holdings")}
-    >
-      <table className="mx-table">
-        <thead>
-          <tr>
-            <th>{t("名称", "Name")}</th>
-            <th>{t("国家/地区", "Country")}</th>
-            <th className="mx-align-right">{t("直接持有", "Direct")}</th>
-            <th className="mx-align-right">{t("基金内持有", "Via funds")}</th>
-            <th className="mx-align-right">{t("合计敞口", "Total exposure")}</th>
-          </tr>
-        </thead>
-        <tbody>{visibleRows}</tbody>
-      </table>
-    </div>
+    <Table containerProps={{ className: "mx-table-wrap mx-desktop-holdings mx-exposure-active" }} label={t("底层持仓", "Underlying holdings")} className="mx-table">
+      <TableHeader>
+        <TableRow>
+          <TableHead scope="col" aria-sort={sort === "name" ? "ascending" : undefined}>{t("名称", "Name")}</TableHead>
+          <TableHead scope="col">{t("国家/地区", "Country")}</TableHead>
+          <TableHead scope="col" className="mx-align-right" aria-sort={sort === "direct" ? "descending" : undefined}>{t("直接持有", "Direct")}</TableHead>
+          <TableHead scope="col" className="mx-align-right" aria-sort={sort === "indirect" ? "descending" : undefined}>{t("基金内持有", "Via funds")}</TableHead>
+          <TableHead scope="col" className="mx-align-right" aria-sort={sort === "total" ? "descending" : undefined}>{t("合计敞口", "Total exposure")}</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>{visibleRows}</TableBody>
+    </Table>
   );
-}
+});
 
 /** Pages of underlying assets; a narrow row shows « ‹ 2 / 44 › » in place of page numbers. */
 function ExposurePager({
@@ -465,6 +463,7 @@ function Exposure({
     "companies" | "countries" | "sectors" | "gics" | "sources"
   >(dimensionsByKey[linkedDimension] ?? "companies");
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search.trim().toLowerCase());
   const [country, setCountry] = useState("all");
   const [selection, setSelection] = useState(() => linkedCompany ? { position: linkedCompany, snapshotId: snapshot } : null);
   const selected = selection?.position;
@@ -474,7 +473,9 @@ function Exposure({
   // The first row shown, so a page-size change keeps the same rows in view.
   const [start, setStart] = useState(0);
   const [showAll, setShowAll] = useState(false);
-  const phone = usePhoneLayout();
+  const phone = useBreakpoint("phone");
+  const [recordProbe, setRecordProbe] = useState<HTMLSpanElement | null>(null);
+  const compactRecords = useCompactRecords(recordProbe);
   const listTop = useRef<HTMLDivElement>(null);
   const [sector, setSector] = useState("all");
   const [ownership, setOwnership] = useState<LookthroughOwnership>("all");
@@ -490,20 +491,20 @@ function Exposure({
     [prepared.items, sort],
   );
   const rows = useMemo(
-    () => filterPreparedPositions(sorted, { search, country, sector, ownership }),
-    [sorted, search, country, sector, ownership],
+    () => filterPreparedPositions(sorted, { search: deferredSearch, country, sector, ownership }),
+    [sorted, deferredSearch, country, sector, ownership],
   );
 
   const filtered = Boolean(search.trim()) || country !== "all" || sector !== "all" || ownership !== "all";
   const activeFilters = [country, sector, ownership].filter((value) => value !== "all").length;
   // Large pages keep the ranking scannable; "show all" lifts paging with the same filters.
-  // Phones take 25 cards a page, with the page control above the list as well as below.
-  const pageSize = phone ? PHONE_PAGE_SIZE : DESKTOP_PAGE_SIZE;
+  // Compact layouts page through 25 cards, with controls above and below.
+  const pageSize = compactRecords ? PHONE_PAGE_SIZE : DESKTOP_PAGE_SIZE;
   const pages = showAll ? 1 : Math.max(1, Math.ceil(rows.length / pageSize));
   const currentPage = Math.min(Math.floor(start / pageSize) + 1, pages);
   const setPage = (value: number) => setStart((value - 1) * pageSize);
   const batchKey = showAll
-    ? JSON.stringify([search.trim().toLowerCase(), country, sector, ownership, sort])
+    ? JSON.stringify([deferredSearch, country, sector, ownership, sort])
     : "";
   const displayedRows = useMemo(
     () =>
@@ -660,7 +661,8 @@ function Exposure({
         <Freshness date={data.brokerAsOf || data.generatedAt} />
         {failure && <UpdateFailure {...failure} />}
       </div>
-      <Panel>
+      <Panel className="tm-table-variants">
+        <span className="tm-table-mode-probe" ref={setRecordProbe} aria-hidden="true" />
         <TabsScope value={view} onChange={(value) => {setChoice(null); setView(value);}}>
         <Tabs activation="automatic"
           label={t("穿透维度", "Exposure dimension")}
@@ -778,7 +780,7 @@ function Exposure({
               rows={companyComposition.rows}
               remainder={companyComposition.remainder}
             />}
-            {phone && pages > 1 && (
+            {compactRecords && pages > 1 && (
               <div className="mx-exposure-paging mx-exposure-paging-top" ref={listTop}>
                 <ExposurePager
                   label={t("底层持仓分页（列表上方）", "Underlying holding pages, above the list")}
@@ -789,11 +791,12 @@ function Exposure({
               </div>
             )}
             <UnderlyingHoldings
-              key={phone ? "cards" : "table"}
+              key={compactRecords ? "cards" : "table"}
               items={displayedRows}
               expanded={showAll}
               batchKey={batchKey}
-              phone={phone}
+              phone={compactRecords}
+              sort={sort}
               onSelect={selectPosition}
             />
             {(pages > 1 || showAll) && (
@@ -801,7 +804,7 @@ function Exposure({
                 {pages > 1 && (
                   <ExposurePager
                     label={
-                      phone
+                      compactRecords
                         ? t("底层持仓分页（列表下方）", "Underlying holding pages, below the list")
                         : t("底层持仓分页", "Underlying holding pages")
                     }
@@ -809,8 +812,8 @@ function Exposure({
                     value={currentPage}
                     onChange={(value) => {
                       setPage(value);
-                      // From the foot of a phone page, the next page starts at the top of the list.
-                      if (phone) listTop.current?.scrollIntoView({ block: "start" });
+                      // Return to the top of the compact list after changing pages.
+                      if (compactRecords) listTop.current?.scrollIntoView({ block: "start" });
                     }}
                   />
                 )}
@@ -931,6 +934,8 @@ function Exposure({
               key={view}
               label={t("完整配置明细", "Complete allocation details")}
               rows={allocations}
+              rowKey={categoryKey}
+              className="tm-allocation-table"
               columns={[
                 { label: t("分类", "Category"), value: row => ready ? <button type="button" className="mx-text-link" data-cited-allocation={params?.has("evidence") && (dimension === "country" ? place(categoryKey(row)) === place(params.get("category") ?? "") : categoryKey(row) === params.get("category")) || undefined} onClick={() => inspect({name:allocationLabel(row),category:categoryKey(row)})}>{allocationLabel(row)}</button> : allocationLabel(row) },
                 {

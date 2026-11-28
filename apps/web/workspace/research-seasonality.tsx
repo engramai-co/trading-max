@@ -1,5 +1,6 @@
 "use client";
 
+import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import type { ResearchLensSnapshot } from "@/lib/types";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -342,58 +343,51 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
           />
         </div>
         {!!matrix.length && (
-          <div
-            className="mx-table-scroll"
-            tabIndex={0}
-            role="region"
-            aria-label={t("年份与月份收益矩阵", "Year-by-month return matrix")}
-          >
-            <table className="mx-financial-table mx-season-table">
-              <thead>
-                <tr>
-                  <th>{t("年份", "Year")}</th>
-                  {months.map((m) => (
-                    <th key={m}>{m}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visibleYears.map((year) => (
-                  <tr key={year}>
-                    <th>{year}</th>
-                    {months.map((_, i) => {
-                      const value = numeric(
-                        cellIndex.get(`${year}-${i + 1}`)
-                          ?.return,
-                      );
-                      const direction =
-                        value == null || value === 0
-                          ? undefined
-                          : value > 0
-                            ? "up"
-                            : "down";
-                      return (
-                        <td
-                          key={i}
-                          className="tm-heat-subtle p-0 text-center"
-                          data-direction={direction}
-                          data-tone={direction}
-                        >
-                          <button
-                            className="w-full border-0 bg-transparent px-2 py-3 text-inherit tabular-nums focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-                            aria-label={`${year} ${months[i]} ${percent(value, true, 2)}`}
-                            onClick={() => setMonth(i + 1)}
-                          >
-                            {percent(value, true, 1)}
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
+          <Table containerProps={{ className: "mx-table-scroll" }} label={t("年份与月份收益矩阵", "Year-by-month return matrix")} className="mx-financial-table mx-season-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead scope="col">{t("年份", "Year")}</TableHead>
+                {months.map((m) => (
+                  <TableHead scope="col" key={m}>{m}</TableHead>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visibleYears.map((year) => (
+                <TableRow key={year}>
+                  <TableHead scope="row">{year}</TableHead>
+                  {months.map((_, i) => {
+                    const value = numeric(
+                      cellIndex.get(`${year}-${i + 1}`)
+                        ?.return,
+                    );
+                    const direction =
+                      value == null || value === 0
+                        ? undefined
+                        : value > 0
+                          ? "up"
+                          : "down";
+                    return (
+                      <TableCell
+                        key={i}
+                        className="tm-heat-subtle p-0 text-center"
+                        data-direction={direction}
+                        data-tone={direction}
+                      >
+                        <button
+                          className="w-full border-0 bg-transparent px-2 py-3 text-inherit tabular-nums focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+                          aria-label={`${year} ${months[i]} ${percent(value, true, 2)}`}
+                          onClick={() => setMonth(i + 1)}
+                        >
+                          {percent(value, true, 1)}
+                        </button>
+                      </TableCell>
+                    );
+                  })}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         )}
       </Panel>
       {!!availablePaths.length && (
@@ -491,28 +485,26 @@ export function Seasonality({ data, revision }: { data: ResearchLensSnapshot; re
           />
           <details className="mx-chart-data" onToggle={(event) => setRecordsOpen(event.currentTarget.open)}>
             <summary>{t("所选年份价格记录", "Selected year records")}</summary>
-            <div className="mx-table-scroll">
-              <table className="mx-financial-table">
-                <thead>
-                  <tr>
-                    <th>{t("日期", "Date")}</th>
-                    <th>{t("年内变化", "Year-to-date change")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recordsOpen && Object.entries(chartPaths).flatMap(([year, values]) =>
-                    values.map((p) => (
-                      <tr key={year + str(p.date)}>
-                        <th>
-                          {formatCalendarDate(str(p.date), locale, 0)}{year.includes(" · ") ? " · " + year.split(" · ")[1] : ""}
-                        </th>
-                        <td>{minus(percent(p.return, true, 2))}</td>
-                      </tr>
-                    )),
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <Table containerProps={{ className: "mx-table-scroll" }} label={t("所选年份价格记录", "Selected year records")} className="mx-financial-table">
+              <TableHeader>
+                <TableRow>
+                  <TableHead scope="col">{t("日期", "Date")}</TableHead>
+                  <TableHead scope="col">{t("年内变化", "Year-to-date change")}</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recordsOpen && Object.entries(chartPaths).flatMap(([year, values]) =>
+                  values.map((p) => (
+                    <TableRow key={year + str(p.date)}>
+                      <TableHead scope="row">
+                        {formatCalendarDate(str(p.date), locale, 0)}{year.includes(" · ") ? " · " + year.split(" · ")[1] : ""}
+                      </TableHead>
+                      <TableCell>{minus(percent(p.return, true, 2))}</TableCell>
+                    </TableRow>
+                  )),
+                )}
+              </TableBody>
+            </Table>
           </details>
         </Panel>
       )}

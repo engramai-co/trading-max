@@ -4,6 +4,17 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.84.0] - 2026-11-28
+
+### Changed
+- Holdings announces the sort direction to screen readers. On phones, you can reverse any sort.
+- Look-through shows company cards when the panel is narrow.
+
+### Fixed
+- Financial statements keep their column headings visible as you scroll the page. Long options chains now scroll with the page and keep their headings visible.
+- When you scroll sideways, Valuation keeps totals beside their labels, and Review keeps ending holdings beside their tickers.
+- Overview keeps dated returns clear of adjacent figures and sizes the holdings placeholder for the current panel width.
+
 ## [1.83.0] - 2026-11-28
 
 ### Changed

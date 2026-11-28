@@ -155,14 +155,6 @@
   .mx-segments .mx-segment-short {
     display: inline;
   }
-  .mx-desktop-holdings {
-    display: none;
-  }
-  .mx-mobile-holdings {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
   .mx-holdings-sort {
     display: block;
   }

@@ -278,50 +278,12 @@
   color: var(--mx-muted);
   line-height: 1.7;
 }
-.mx-table-wrap {
-  overflow: auto;
-  max-width: 100%;
-}
-.mx-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
-}
-.mx-table th {
-  text-align: left;
-  color: var(--mx-muted);
-  font-weight: 500;
-  padding: 13px 14px;
-  white-space: nowrap;
-  background: var(--mx-soft);
-  font-size: 12px;
-  letter-spacing: 0.25px;
-}
-.mx-table th:first-child {
-  border-radius: 6px 0 0 6px;
-}
-.mx-table th:last-child {
-  border-radius: 0 6px 6px 0;
-}
-.mx-table td {
-  padding: 17px 14px;
-  border-bottom: 1px solid var(--mx-border);
-  vertical-align: middle;
-}
-.mx-table tr:last-child td {
-  border-bottom: 0;
-}
+.mx-table th small,
 .mx-table td small {
   display: block;
   margin-top: 4px;
   font-size: 12px;
-  color: var(--mx-muted);
-}
-.mx-table .mx-align-right {
-  text-align: right;
-}
-.mx-table tbody tr {
-  transition: background 120ms;
+  color: var(--muted-foreground);
 }
 .mx-table-button {
   text-align: left;
@@ -333,17 +295,6 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-}
-.mx-sort {
-  background: transparent;
-  border: 0;
-  padding: 0;
-  font: inherit;
-  color: inherit;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-height: 26px;
 }
 .mx-th-help {
   display: inline-flex;
@@ -362,9 +313,6 @@
 }
 .mx-holdings-list > .mx-toolbar {
   margin-bottom: 22px;
-}
-.mx-mobile-holdings {
-  display: none;
 }
 /* Phones sort from a menu; the desktop table sorts from its headers. */
 .mx-holdings-sort {
@@ -428,41 +376,7 @@
   color: var(--mx-muted);
   margin-top: 7px;
 }
-.mx-month-cards {
-  display: none;
-}
 @media (max-width: 700px) {
-  .mx-month-table-wrap {
-    display: none;
-  }
-  .mx-month-cards {
-    display: grid;
-    gap: 18px;
-  }
-  .mx-month-cards h3 {
-    margin: 0 0 8px;
-    font-size: 13px;
-  }
-  .mx-month-cards section > div {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 6px;
-  }
-  .mx-month-cards section > div > span {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-  }
-  .mx-month-cards small {
-    color: var(--mx-muted);
-    font-size: 12px;
-  }
-  .mx-month-cards .mx-heat-pill,
-  .mx-month-cards .mx-heat-empty {
-    width: 100%;
-    text-align: center;
-  }
   .mx-attention {
     flex-wrap: nowrap;
     overflow-x: auto;
