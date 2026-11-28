@@ -1,11 +1,14 @@
 "use client";
 
+import { buttonVariants } from "@/components/ui/button";
 import { Tip } from "./foundation";
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, type ReactElement, type ReactNode } from "react";
 
-export function NavigationHint({ label, children, enabled = true }: { label: ReactNode; children: ReactElement<Record<string, unknown>>; enabled?: boolean }) {
-  return <Tip label={label} disabled={!enabled} position="right" offset={12} describes={false}>
+export const railLink = buttonVariants({ variant: "ghost", size: "icon", className: "mx-nav-link" });
+
+export function NavigationHint({ label, children }: { label: ReactNode; children: ReactElement<Record<string, unknown>> }) {
+  return <Tip label={label} position="right" offset={12} describes={false} decorative>
     {children}
   </Tip>;
 }

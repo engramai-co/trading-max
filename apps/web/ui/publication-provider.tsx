@@ -24,14 +24,14 @@ export function PublicationProvider({ children }: { children: ReactNode }) {
   const retry = useRef<() => void>(() => {});
 
   useEffect(() => {
-    const watcher = watchPublications(async (signal) => {
+    const watcher = watchPublications(async (signal, explicit) => {
       // Activity already reads the same health payload, often from a 5s poll.
       const existing = client.getQueryState<HealthDetails>(["workspace-health"]);
       if (existing?.status === "success" && existing.data?.health &&
           (!webBuildId || existing.data.buildId) && Date.now() - existing.dataUpdatedAt < 15_000) {
         return { ...publicationFromHealth(existing.data.health), buildId: existing.data.buildId };
       }
-      const response = await fetch("/api/backend/health", { cache: "no-store", signal });
+      const response = await fetch("/api/backend/health", { cache: "no-store", signal, priority: explicit ? "auto" : "low" });
       if (!response.ok) throw new Error("Publication check failed");
       return { ...publicationFromHealth(await response.json()), buildId: response.headers.get(webBuildHeader) };
     }, (publication) => {
@@ -45,11 +45,12 @@ export function PublicationProvider({ children }: { children: ReactNode }) {
       if (failures >= 2) setFailed(true);
     }, () => document.visibilityState === "visible");
     retry.current = watcher.retry;
+    const reconnect = () => watcher.retry(false);
     const wake = watcher.wake;
     window.addEventListener("focus", wake);
     // Browser connectivity hints can wake a check, but only the request decides
     // whether the selected service is reachable. A local service works offline.
-    window.addEventListener("online", watcher.retry);
+    window.addEventListener("online", reconnect);
     window.addEventListener("offline", wake);
     document.addEventListener("visibilitychange", wake);
     wake();
@@ -57,7 +58,7 @@ export function PublicationProvider({ children }: { children: ReactNode }) {
       watcher.dispose();
       retry.current = () => {};
       window.removeEventListener("focus", wake);
-      window.removeEventListener("online", watcher.retry);
+      window.removeEventListener("online", reconnect);
       window.removeEventListener("offline", wake);
       document.removeEventListener("visibilitychange", wake);
     };

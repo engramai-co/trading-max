@@ -149,7 +149,14 @@ test.describe("workspace navigation refinements", () => {
     const scrolled = await page.evaluate(() => window.scrollY);
     expect(scrolled).toBeGreaterThan(0);
     const entries = await page.evaluate(() => history.length);
-    const input = await openSearch(page);
+    // A trusted pointer click on the already visible sticky trigger avoids
+    // Playwright's automatic scroll to place the target inside root scroll padding.
+    const searchButton = page.getByRole("banner").getByRole("button", { name: searchName });
+    await expect(searchButton).toBeInViewport();
+    const searchBox = (await searchButton.boundingBox())!;
+    await page.mouse.click(searchBox.x + searchBox.width / 2, searchBox.y + searchBox.height / 2);
+    const input = page.getByRole("combobox", { name: searchName });
+    await expect(input).toBeFocused();
     await input.fill("Synthetic Example");
     await expect(findOption).toContainText("Synthetic Example");
     await findOption.click();
@@ -504,7 +511,7 @@ test.describe("workspace navigation refinements", () => {
     await expect(menu).toHaveCSS("opacity", "1");
     await expectMoreSelection(/^(数据状态|Data status)$/, /^(设置|Settings)$/);
 
-    await menu.getByRole("menuitem", { name: /^(浅色|Light)$/ }).tap();
+    await menu.getByRole("menuitemradio", { name: /^(浅色|Light)$/ }).tap();
     await expect(menu).toHaveCount(0);
     await more.tap();
     await expect(menu).toHaveCSS("opacity", "1");
@@ -525,19 +532,40 @@ test.describe("workspace navigation refinements", () => {
         .every((button) => button.getBoundingClientRect().width >= 44 && button.getBoundingClientRect().height >= 44))).toBe(true);
       await expect(page.locator(".mx-topbar").getByRole("button", { name: "Choose appearance" })).toBeHidden();
       await expect(page.locator(".mx-mobile-dock")).toBeVisible();
-      // Six cells at 320px: Holdings and Research, the longest names, still fit at 12px without clipping.
+      // Six cells at 320px: Holdings and Research, the longest names, still fit without clipping.
       const dockLinks = page.locator(".mx-mobile-dock").getByRole("link");
       await expect(dockLinks).toHaveText(["Home", "Holdings", "Returns", "Markets", "Research", "Review"]);
-      expect(await dockLinks.evaluateAll((links) => links.every((link) => {
-        const label = link.querySelector("span:last-child")!;
-        return label.getBoundingClientRect().width <= link.getBoundingClientRect().width + 0.5;
-      }))).toBe(true);
+      await page.evaluate(() => document.fonts.ready);
+      for (const link of await dockLinks.all()) {
+        const sizes = await link.evaluate((element) => {
+          const label = element.lastElementChild!;
+          const text = label.getBoundingClientRect();
+          const cell = element.getBoundingClientRect();
+          return {
+            direction: getComputedStyle(element).flexDirection,
+            size: parseFloat(getComputedStyle(label).fontSize),
+            fits: text.left >= cell.left && text.right <= cell.right,
+          };
+        });
+        expect.soft(sizes.direction).toBe("column");
+        expect.soft(sizes.size).toBeGreaterThanOrEqual(12);
+        expect.soft(sizes.fits).toBe(true);
+      }
+      const research = page.locator(".mx-mobile-dock").getByRole("link", { name: "Research" });
+      await research.tap();
+      await expect(research).toHaveAttribute("aria-current", "page");
+      expect(await research.evaluate((link) => {
+        const label = link.lastElementChild!.getBoundingClientRect();
+        const cell = link.getBoundingClientRect();
+        return label.left >= cell.left && label.right <= cell.right;
+      })).toBe(true);
+      await page.goBack();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await page.getByRole("button", { name: "More", exact: true }).tap();
       const menu = page.getByRole("menu");
-      // Mantine exposes the menu while it fades in; measure and scan it when fully painted.
       await expect(menu).toHaveCSS("opacity", "1");
-      await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Settings", "中文", "Light", "Dark", "System · Light"]);
+      await expect(menu.getByRole("menuitem")).toHaveText(["Data status", "Settings", "中文"]);
+      await expect(menu.getByRole("menuitemradio")).toHaveText(["Light", "Dark", "System · Light"]);
       const box = (await menu.boundingBox())!;
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(size.width);
@@ -553,6 +581,160 @@ test.describe("workspace navigation refinements", () => {
       await expect(page.getByRole("dialog")).toHaveCount(0);
     });
   }
+
+  test("appearance commands expose their selected value and return keyboard focus", async ({ page, isMobile }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.goto("/");
+    const trigger = page.getByRole("button", { name: isMobile ? "More" : "Choose appearance", exact: true });
+    const menu = page.getByRole("menu");
+    const appearance = menu.getByRole("group", { name: "Appearance" });
+    const light = appearance.getByRole("menuitemradio", { name: "Light", exact: true });
+    const dark = appearance.getByRole("menuitemradio", { name: "Dark", exact: true });
+    const system = appearance.getByRole("menuitemradio", { name: "System · Light" });
+    await trigger.focus();
+    await trigger.press("ArrowDown");
+    await expect(menu).toBeVisible();
+    await expect(isMobile ? menu.getByRole("menuitem", { name: "Data status" }) : light).toBeFocused();
+    await expect(dark).toHaveAttribute("aria-checked", "true");
+    await page.keyboard.press("End");
+    await expect(system).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(menu).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", "light");
+    await trigger.press("Enter");
+    await expect(appearance.getByRole("menuitemradio", { checked: true })).toHaveText("System · Light");
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+  });
+
+  for (const width of [320, 390]) {
+    test(`keyboard focus clears both shell bars at ${width}px`, async ({ page, isMobile }) => {
+      test.skip(!isMobile);
+      await page.setViewportSize({ width, height: 667 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.goto("/");
+      await page.addStyleTag({ content: ":root { --shell-safe-top: 59px; --shell-safe-bottom: 34px; }" });
+      const header = page.locator(".mx-topbar");
+      const dock = page.locator(".mx-mobile-dock");
+      await expect(page.locator("html")).toHaveCSS("scroll-padding-top", "123px");
+      await expect(page.locator("html")).toHaveCSS("scroll-padding-bottom", "102px");
+      const account = page.getByRole("combobox", { name: /Portfolio account|组合账户/ });
+      const more = header.getByRole("button", { name: /More|更多/ });
+      await more.focus();
+      await page.evaluate(() => {
+        const target = document.querySelector<HTMLElement>('main [role="combobox"]')!;
+        window.scrollBy(0, target.getBoundingClientRect().top - 60);
+      });
+      await page.keyboard.press("Tab");
+      await expect(account).toBeFocused();
+      await expect.poll(async () => (await account.boundingBox())!.y >= (await header.boundingBox())!.height).toBe(true);
+
+      const market = page.getByRole("button", { name: /选择市场，当前：|Choose market, now:/ });
+      await expect(market).toBeAttached();
+      // Position the picker under the dock before an ordinary reverse Tab.
+      await market.press("Tab");
+      await market.evaluate((target) => {
+        const dockTop = document.querySelector(".mx-mobile-dock")!.getBoundingClientRect().top;
+        window.scrollBy(0, target.getBoundingClientRect().top - dockTop - 8);
+      });
+      await page.keyboard.press("Shift+Tab");
+      await expect(market).toBeFocused();
+      await expect.poll(async () => {
+        const box = (await market.boundingBox())!;
+        return box.y + box.height <= (await dock.boundingBox())!.y;
+      }).toBe(true);
+    });
+  }
+
+  test("short landscape keeps the safe area clear and makes room below the top bar", async ({ page, isMobile }) => {
+    test.skip(!isMobile);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.addStyleTag({ content: ":root { --shell-safe-left: 59px; --shell-safe-right: 47px; }" });
+    const main = page.getByRole("main");
+    const top = page.locator(".mx-topbar");
+    const dock = page.locator(".mx-mobile-dock");
+    await expect(main).toHaveCSS("padding-left", "59px");
+    await expect(main).toHaveCSS("padding-right", "47px");
+    await expect(dock).toHaveCSS("height", "48px");
+    const skip = page.getByRole("link", { name: /跳到正文|Skip to content/ });
+    await skip.focus();
+    expect((await skip.boundingBox())!.x).toBeGreaterThanOrEqual(59);
+    await skip.press("Enter");
+    await expect(main).toBeFocused();
+    await page.evaluate(() => window.scrollTo(0, 250));
+    await expect.poll(async () => (await top.boundingBox())!.y).toBeLessThan(-60);
+    await expect(dock).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(844);
+  });
+
+  test("short landscape shows Search on focus return and More on upward scroll", async ({ page, isMobile }) => {
+    test.skip(!isMobile);
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    // Wait for the client workspace before sending a scroll from the top.
+    await expect(page.getByRole("combobox", { name: /Portfolio account|组合账户/ })).toBeEnabled();
+    const header = page.getByRole("banner");
+    const search = header.getByRole("button", { name: searchName });
+    const more = header.getByRole("button", { name: /^(More|更多)$/ });
+    await page.evaluate(() => window.scrollTo(0, 750));
+    await expect(search).not.toBeInViewport();
+    await page.keyboard.press("Meta+k");
+    await expect(page.getByRole("combobox", { name: searchName })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await expect(search).toBeFocused();
+    await expect.soft(search).toBeInViewport({ ratio: 1, timeout: 1500 });
+    expect(await page.evaluate(() => window.scrollY)).toBe(750);
+
+    // Once the header loses focus, scrolling down hides it and scrolling up shows it at the current position.
+    await search.blur();
+    await page.evaluate(() => window.scrollTo(0, 850));
+    await expect(more).not.toBeInViewport();
+    await page.evaluate(() => window.scrollTo(0, 750));
+    await expect.soft(more).toBeInViewport({ ratio: 1, timeout: 1500 });
+    expect(await page.evaluate(() => window.scrollY)).toBe(750);
+  });
+
+  test("the portrait Returns chart jump keeps its 80px landing", async ({ page, isMobile }) => {
+    test.skip(!isMobile);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+
+    await page.goto("/analytics?view=returns");
+    await page.locator(".mx-monthly-returns summary").click();
+    await page.locator(".mx-monthly-returns .mx-heat-pill").first().click();
+    const chart = page.locator(".mx-performance-chart");
+    await expect.poll(async () => Math.round((await chart.boundingBox())!.y), { timeout: 2500 }).toBe(80);
+  });
+
+  test("shell controls and content fit from 320 to 1920 CSS pixels", async ({ page, isMobile }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.goto("/");
+    for (const width of [320, 375, 767, 768, 959, 960, 1199, 1200, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 820 });
+      const box = (await page.getByRole("main").boundingBox())!;
+      expect(box.x).toBe(width <= 767 ? 0 : Math.max(76, (width + 76 - 1800) / 2));
+      const result = await page.evaluate(() => {
+        const { clientWidth, scrollWidth } = document.documentElement;
+        const controls = Array.from(document.querySelectorAll<HTMLElement>(".mx-topbar button, .mx-mobile-dock a"));
+        const visible = controls.filter((control) => control.getClientRects().length);
+        return {
+          pageFits: scrollWidth <= clientWidth,
+          controlsFit: visible.every((control) => {
+            const rect = control.getBoundingClientRect();
+            return rect.left >= 0 && rect.right <= clientWidth && rect.width >= (control.closest("nav") ? 44 : 40);
+          }),
+        };
+      });
+      expect(result, `viewport ${width}px, ${isMobile ? "coarse" : "fine"} pointer`).toEqual({ pageFits: true, controlsFit: true });
+    }
+  });
 
   test("mobile dock stays aligned after rotation, reduced-motion taps and history", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile");
@@ -587,7 +769,13 @@ test.describe("workspace navigation refinements", () => {
     const nav = rail.getByRole("navigation", { name: /主导航|Primary navigation/ });
     await expect(nav.locator(".mx-nav-group")).toHaveCount(1);
     await expect(nav.getByRole("link")).toHaveCount(6);
-    expect((await rail.boundingBox())!.width).toBeLessThanOrEqual(80);
+    expect((await rail.boundingBox())!.width).toBe(76);
+    const cells = await nav.getByRole("link").evaluateAll((links) => links.map((link) => {
+      const { x, y, height, width } = link.getBoundingClientRect();
+      return { x, y, height, width };
+    }));
+    expect(cells.map(({ width, height }) => [width, height])).toEqual(Array(6).fill([48, 48]));
+    expect(cells.slice(1).map((cell, i) => cell.y - cells[i].y)).toEqual(Array(5).fill(52));
     expect(await nav.innerText()).toBe("");
     expect(await nav.getByRole("link").evaluateAll((links) => links.every((link) => link.getAttribute("aria-label") && link.getBoundingClientRect().height >= 44))).toBe(true);
     const research = nav.getByRole("link", { name: /^(研究|Research)$/ });
@@ -597,17 +785,18 @@ test.describe("workspace navigation refinements", () => {
     expect(researchShape).not.toBe(await page.locator(".mx-topbar-search svg").innerHTML());
     expect(researchShape).not.toBe(await nav.getByRole("link", { name: /收益与风险|Performance/ }).locator(".mx-nav-icon svg").innerHTML());
     await research.hover();
-    const hint = page.getByRole("tooltip");
+    const hint = page.locator('[data-slot="tooltip-content"]');
     await expect(hint).toHaveText(/^(研究|Research)$/);
+    await expect(hint).toHaveAttribute("aria-hidden", "true");
     await expect(research).not.toHaveAttribute("aria-describedby");
     await hint.hover();
     await expect(hint).toBeVisible();
     await page.mouse.move(300, 80);
-    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await expect(hint).toHaveCount(0);
     await research.focus();
-    await expect(page.getByRole("tooltip")).toHaveText(/^(研究|Research)$/);
+    await expect(hint).toHaveText(/^(研究|Research)$/);
     await page.keyboard.press("Escape");
-    await expect(page.getByRole("tooltip")).toHaveCount(0);
+    await expect(hint).toHaveCount(0);
     await expect(research).toBeFocused();
   });
 

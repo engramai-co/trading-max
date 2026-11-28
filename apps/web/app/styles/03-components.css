@@ -132,8 +132,7 @@
   padding-inline: 0 8px;
   border-radius: 10px;
   background: var(--mx-soft);
-  scroll-margin-top: 80px;
-  scroll-margin-bottom: calc(var(--mx-mobile-dock-height, 0px) + env(safe-area-inset-bottom) + 16px);
+  scroll-margin-block: var(--shell-anchor-gap) 16px;
 }
 /* The row's link reaches the card's edge and pads itself, so its focus ring sits inside the card's corners. */
 .mx-decision-focus > .mx-decision-entry > .mx-row-link {

@@ -1,11 +1,13 @@
 "use client";
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { WorkspaceDialog } from "./overlay";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
 import { searchInputHints } from "@/components/ui/search-input";
 import { useColorScheme } from "@/components/color-scheme-provider";
-import { Button, CloseButton } from "@/components/ui/button";
+import { Button, buttonVariants, CloseButton } from "@/components/ui/button";
+import { isColorScheme } from "@/lib/color-scheme";
+import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint, useOs } from "@/lib/hooks";
 import {
   ArrowRight,
@@ -29,7 +31,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import Link from "./link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Fragment, Suspense, useEffect, useId, useRef, useState } from "react";
+import { Fragment, Suspense, useEffect, useId, useRef, useState, type FocusEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchShell } from "@/lib/types";
 import { BrandMark } from "@/ui/brand-mark";
@@ -49,7 +51,7 @@ import { documentTitle, useDocumentTitle } from "./document-title";
 import { useBrowserOnline } from "@/ui/query-client";
 import { useIndexCatalog } from "./market-indices-data";
 import { useListedIndices } from "./listed-indices";
-import { NavigationGroup, NavigationHint, NavigationIcon } from "./navigation-group";
+import { NavigationGroup, NavigationHint, NavigationIcon, railLink } from "./navigation-group";
 import {
   findsSecurity, highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
   type SearchIndex, type SearchResult,
@@ -90,6 +92,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<{ scope: string | null; visit: string; items: SearchResult[] }>({ scope: null, visit: "", items: [] });
   const searchId = useId();
+  const topbarRef = useRef<HTMLElement>(null);
+  const dockRef = useRef<HTMLElement>(null);
+  const focusFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(focusFrame.current), []);
   const resultsRef = useRef<HTMLDivElement>(null);
   const searchOpener = useRef<HTMLElement | null>(null);
   const restoreSearchFocus = useRef(false);
@@ -173,21 +179,36 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     window.addEventListener("keydown", handle);
     return () => window.removeEventListener("keydown", handle);
   }, [searchOpen]);
-  // The page title moves into the top bar (or the App's title band) once the
-  // large heading scrolls away.
+  // The title moves into the bar once the large heading scrolls away.
+  // Short landscape also tracks direction for Safari's sticky header.
   useEffect(() => {
     const root = document.documentElement;
+    const topbar = topbarRef.current;
+    const shortLandscape = window.matchMedia(MEDIA_QUERIES.shortLandscapeDock);
     let frame = 0;
+    let previousY = window.scrollY;
     const update = () => {
       frame = 0;
       root.toggleAttribute("data-scrolled", window.scrollY > 56);
+      if (!shortLandscape.matches || !topbar) return;
+      // Ignore rubber-band overscroll when reading the scroll direction.
+      const y = Math.max(0, Math.min(window.scrollY, root.scrollHeight - window.innerHeight));
+      if (y !== previousY) topbar.toggleAttribute("data-scroll-down", y > previousY && y >= topbar.offsetHeight);
+      previousY = y;
+    };
+    const reset = () => {
+      previousY = window.scrollY;
+      topbar?.removeAttribute("data-scroll-down");
     };
     const schedule = () => { if (!frame) frame = requestAnimationFrame(update); };
     update();
     window.addEventListener("scroll", schedule, { passive: true });
+    shortLandscape.addEventListener("change", reset);
     return () => {
       window.removeEventListener("scroll", schedule);
+      shortLandscape.removeEventListener("change", reset);
       cancelAnimationFrame(frame);
+      reset();
       root.removeAttribute("data-scrolled");
     };
   }, []);
@@ -330,18 +351,33 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     else if (replace) window.history.replaceState(null, "", route.href);
     else if (!navigateBuild?.(route.href)) router.push(route.href);
   }
-  const brand = (
-    <Link
-      href="/"
-      className="mx-brand"
-      aria-label={t("Trading Max · 组合总览", "Trading Max · Overview")}
-    >
-      <BrandMark size={32} className="mx-brand-symbol" />
-      <span>
-        Trading<span className="mx-brand-max">Max</span>
-      </span>
-    </Link>
-  );
+  function revealPageFocus(event: FocusEvent<HTMLElement>) {
+    const target = event.target;
+    if (!event.currentTarget.contains(target) || target.tabIndex < 0 || !target.matches(":focus-visible")) return;
+    cancelAnimationFrame(focusFrame.current);
+    // Scroll padding guides native focus navigation. Correct engines that leave
+    // a target behind a bar when it was already technically in the viewport.
+    focusFrame.current = requestAnimationFrame(() => {
+      if (document.activeElement !== target || !target.getClientRects().length) return;
+      const topbar = topbarRef.current;
+      const headerBottom = topbar ? Math.max(0, topbar.getBoundingClientRect().bottom) : 0;
+      const dockBottom = dockRef.current?.getBoundingClientRect();
+      const end = dockBottom?.height ? dockBottom.top : window.innerHeight;
+      const box = target.getBoundingClientRect();
+      let start = headerBottom;
+      const strip = target.closest(".mx-reading-sections")?.parentElement?.querySelector(".mx-section-rail");
+      const stripBox = strip?.getBoundingClientRect();
+      if (strip && stripBox && getComputedStyle(strip).display === "block" && stripBox.top <= start + 1) {
+        start = Math.max(start, stripBox.bottom);
+      }
+      const gap = 4; // The outline plus its offset.
+      if (box.top < start + gap) window.scrollBy({ top: box.top - start - gap, behavior: "instant" });
+      else if (box.bottom > end - gap && box.height <= end - start - gap * 2) {
+        window.scrollBy({ top: box.bottom - end + gap, behavior: "instant" });
+      }
+    });
+  }
+
   const systemResolved = osColorScheme === "dark"
     ? t("深色", "Dark")
     : osColorScheme === "light"
@@ -356,29 +392,31 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       Icon: Contrast,
     },
   ] as const;
-  const appearanceItems = appearances.map((item) => (
-    <DropdownMenuItem
-      key={item.value}
-      onClick={() => setColorScheme(item.value)}
+  const appearanceItems = (
+    <DropdownMenuRadioGroup
+      aria-label={t("外观", "Appearance")}
+      value={colorScheme}
+      onValueChange={(value) => { if (isColorScheme(value)) setColorScheme(value); }}
     >
-      <item.Icon size={18} className="size-[18px]" aria-hidden="true" />
-      {item.label}
-      {colorScheme === item.value && <Check className="ml-auto" size={16} aria-hidden="true" />}
-    </DropdownMenuItem>
-  ));
+      {appearances.map((item) => (
+        <DropdownMenuRadioItem key={item.value} value={item.value} closeOnClick>
+          <item.Icon size={18} className="size-[18px]" aria-hidden="true" />
+          {item.label}
+        </DropdownMenuRadioItem>
+      ))}
+    </DropdownMenuRadioGroup>
+  );
   const nextLocale = locale === "zh"
     ? { value: "en" as const, label: "English", lang: "en", action: "Switch to English" }
     : { value: "zh" as const, label: "中文", lang: "zh-CN", action: "切换到中文" };
   const theme = (
     <DropdownMenu modal={false}>
-      <DropdownMenuTrigger render={<Button
-          className="mx-topbar-preference [@media(max-width:767px)]:hidden [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:hidden"
-          variant="ghost"
-          size="icon"
-          aria-label={t("选择外观", "Choose appearance")}
-        >
-          <Contrast size={20} aria-hidden="true" />
-        </Button>} />
+      <DropdownMenuTrigger
+        className={buttonVariants({ variant: "ghost", size: "icon", className: "mx-topbar-preference" })}
+        aria-label={t("选择外观", "Choose appearance")}
+      >
+        <Contrast size={20} aria-hidden="true" />
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="mx-appearance-menu">{appearanceItems}</DropdownMenuContent>
     </DropdownMenu>
   );
@@ -386,14 +424,12 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   // what the dock lacks: workspace management and, on the web, preferences.
   const more = (
     <DropdownMenu modal={false}>
-      <DropdownMenuTrigger render={<Button
-          className="mx-topbar-more hidden [@media(max-width:767px)]:inline-flex [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:inline-flex [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:min-w-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:min-h-11 [[data-desktop-chrome=overlay]_&]:hidden!"
-          variant="ghost"
-          size="icon"
-          aria-label={t("更多", "More")}
-        >
-          <Ellipsis size={20} aria-hidden="true" />
-        </Button>} />
+      <DropdownMenuTrigger
+        className={buttonVariants({ variant: "ghost", size: "icon", className: "mx-topbar-more" })}
+        aria-label={t("更多", "More")}
+      >
+        <Ellipsis size={20} aria-hidden="true" />
+      </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="mx-more-menu">
         {navigation.filter((n) => n.group === 2).map((n) => (
           <DropdownMenuItem
@@ -425,34 +461,27 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       </DropdownMenuContent>
     </DropdownMenu>
   );
-  const links = (groups: number[], compact = false) => (
+  const links = (groups: number[]) => (
     <NavigationGroup activeHref={active && groups.includes(active.group) ? active.href : undefined}>
-    {navigation
-      .filter((n) => groups.includes(n.group))
-      .map((n) => (
-        <NavigationHint key={n.href} label={n.label} enabled={compact}>
-        <Link
-          href={n.href}
-          aria-label={n.label}
-          aria-current={active?.href === n.href ? "page" : undefined}
-          className="mx-nav-link"
-        >
-          {compact ? <NavigationIcon icon={n.icon} /> : <><n.icon
-            size={20}
-            aria-hidden="true"
-          />
-          <span>{n.label}</span></>}
-        </Link>
+      {navigation.filter((n) => groups.includes(n.group)).map((n) => (
+        <NavigationHint key={n.href} label={n.label}>
+          <Link
+            href={n.href}
+            aria-label={n.label}
+            aria-current={active?.href === n.href ? "page" : undefined}
+            className={railLink}
+          >
+            <NavigationIcon icon={n.icon} />
+          </Link>
         </NavigationHint>
       ))}
     </NavigationGroup>
   );
   const searchTrigger = (className: string, position: "bottom-end" | "right") => (
     <Tip
-      label={<>{t("搜索", "Search")}{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</>}
+      label={<><span aria-hidden="true">{t("搜索", "Search")}</span>{os !== "undetermined" && <kbd>{appleKeyboard ? "⌘ K" : "Ctrl K"}</kbd>}</>}
       position={position}
       offset={position === "right" ? 12 : 8}
-      describes={false}
     >
       <Button
         className={className}
@@ -480,42 +509,41 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         {t("跳到正文", "Skip to content")}
       </a>
       <aside className="mx-sidebar" inert={assistantOverlay || undefined}>
-
-        {brand}
-        {desktop && searchTrigger(
-          "mx-sidebar-search hidden [[data-desktop-chrome=overlay]_&]:flex [[data-desktop-chrome=overlay]_&]:w-full [[data-desktop-chrome=overlay]_&]:h-12 [[data-desktop-chrome=overlay]_&]:min-h-12 [[data-desktop-chrome=overlay]_&]:mt-1 [[data-desktop-chrome=overlay]_&]:mb-2 [[data-desktop-chrome=overlay]_&]:rounded-[10px] [[data-desktop-chrome=overlay]_&]:text-[var(--mx-side-ink)]",
-          "right",
-        )}
+        <Link
+          href="/"
+          className={buttonVariants({ variant: "ghost", size: "icon", className: "mx-brand" })}
+          aria-label={t("Trading Max · 组合总览", "Trading Max · Overview")}
+        >
+          <BrandMark size={32} className="mx-brand-symbol" />
+        </Link>
+        {desktop && searchTrigger("mx-sidebar-search", "right")}
         <nav aria-label={t("主导航", "Primary navigation")}>
-          {links([0, 1], true)}
+          {links([0, 1])}
         </nav>
         <div className="mx-sidebar-bottom">
           {desktop ? <DesktopStatus localWorkspace={localWorkspace} demonstration={demonstration} /> : <nav aria-label={t("工作区管理", "Workspace management")}>
-            {links([2], true)}
+            {links([2])}
           </nav>}
         </div>
 
       </aside>
       <div className="mx-content" inert={assistantOverlay || undefined}>
-        <header className="mx-topbar">
+        <header className="mx-topbar" ref={topbarRef}>
           <div className="mx-topbar-title">
             <span className="mx-topbar-workspace">
               {profile.data?.displayName ||
                 t("工作区", "Workspace")}
             </span>
-            <span className="mx-breadcrumb-divider">/</span>
+            <span className="mx-breadcrumb-divider" aria-hidden="true">/</span>
             <strong>{active?.label}</strong>
           </div>
           <div className="mx-topbar-actions">
             {demonstration && <Tag>{t("演示数据", "Demo data")}</Tag>}
             <AssistantEntry />
-            {searchTrigger(
-              "mx-topbar-search [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11 [[data-desktop-chrome=overlay]_&]:hidden!",
-              "bottom-end",
-            )}
+            {searchTrigger("mx-topbar-search", "bottom-end")}
             {/* In the App, language lives in workspace preferences and appearance follows macOS. */}
             {!desktop && <Button
-              className="mx-topbar-preference [@media(max-width:767px)]:hidden [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:hidden"
+              className="mx-topbar-preference"
               variant="ghost"
               size="icon"
               aria-label={nextLocale.action}
@@ -527,13 +555,14 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             {more}
           </div>
         </header>
-        <main id="main-content" tabIndex={-1}>
+        <main id="main-content" tabIndex={-1} onFocus={revealPageFocus}>
           {children}
         </main>
       </div>
       <AssistantPanel overlay={compactAssistant} page={active?.href.slice(1) || "overview"} scopeLabel={active?.label ?? t("工作区", "Workspace")} searchOpen={searchOpen} />
       <nav inert={assistantOverlay || undefined}
         className="mx-mobile-dock"
+        ref={dockRef}
         aria-label={t("快捷导航", "Quick navigation")}
       >
         <NavigationGroup activeHref={active && active.group < 2 ? active.href : undefined}>
@@ -543,7 +572,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             <Link
               key={n.href}
               href={n.href}
-              className="mx-mobile-dock-link"
+              className={buttonVariants({ variant: "ghost", className: "mx-mobile-dock-link" })}
               aria-current={active?.href === n.href ? "page" : undefined}
             >
               <NavigationIcon icon={n.icon} />
@@ -607,7 +636,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
               }}
             />
           </InputGroup>
-          <CloseButton className="mx-search-close [@media(max-width:767px)]:size-11 [@media(max-width:767px)]:min-w-11 [@media(max-width:767px)]:min-h-11 [@media(max-width:959px)_and_(max-height:500px)_and_(pointer:coarse)]:size-11" iconSize={18} aria-label={t("关闭", "Close")} onClick={closeSearch} />
+          <CloseButton className="mx-search-close" iconSize={18} aria-label={t("关闭", "Close")} onClick={closeSearch} />
         </div>
         <div className="mx-command-results" ref={resultsRef} id={searchId + "-results"} role="listbox" aria-label={t("搜索结果", "Search results")}>
           {results.map((item, i) => (

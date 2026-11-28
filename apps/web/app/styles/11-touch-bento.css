@@ -316,7 +316,7 @@
 }
 .mx-exposure-paging-top {
   margin: 0 0 4px;
-  scroll-margin-top: calc(80px + env(safe-area-inset-top));
+  scroll-margin-block-start: 24px;
 }
 @media (max-width: 767px) {
   /* Phones: the pager takes its own row and 显示全部 sits below it. */

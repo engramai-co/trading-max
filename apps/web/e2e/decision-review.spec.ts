@@ -612,6 +612,17 @@ test.describe("a link to one decision", () => {
     }
   });
 
+  test("a portrait Review decision anchor lands 80px from the top", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "Portrait shell clearance");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto(sale);
+    const card = page.locator(".mx-decision-focus");
+    await expect(card.getByRole("link")).toBeFocused();
+    await card.evaluate((element) => element.scrollIntoView({ block: "start", behavior: "instant" }));
+    expect(Math.round((await card.boundingBox())!.y)).toBe(80);
+  });
+
   test("letting go of a decision near the top keeps focus below the sticky bar", async ({ page, browserName }) => {
     await page.goto(sale);
     const card = page.locator(".mx-decision-focus");

@@ -160,11 +160,12 @@ export function useEscapeLayer(opened: boolean, scope: RefObject<Element | null>
 
 /** Supplemental text shares one delay and one collision-aware portal. */
 export function Tip({
-  children, label, describes = true, disabled, position = "top", offset = 8,
+  children, label, describes = true, decorative = false, disabled, position = "top", offset = 8,
 }: {
   children: ReactElement<Record<string, unknown>>;
   label: ReactNode;
   describes?: boolean;
+  decorative?: boolean;
   disabled?: boolean;
   position?: "top" | "right" | "bottom-end";
   offset?: number;
@@ -176,7 +177,7 @@ export function Tip({
   return <Tooltip disabled={disabled} onOpenChange={setOpen}>
     <TooltipTrigger render={cloneElement(children, { "aria-describedby": description || undefined })} />
     <TooltipContent id={id} side={position === "bottom-end" ? "bottom" : position}
-      align={position === "bottom-end" ? "end" : "center"} sideOffset={offset}>
+      align={position === "bottom-end" ? "end" : "center"} sideOffset={offset} aria-hidden={decorative || undefined}>
       {label}
     </TooltipContent>
   </Tooltip>;

@@ -2,9 +2,6 @@
    phone values over the surface files; 768px and wider keep their own. Tokens live in 01-foundation.css. */
 @media (max-width: 767px) {
   /* Sections sit 24px apart; a page heading sits 12px above its content. */
-  .mx-content main {
-    padding: var(--mx-space-panel) var(--mx-space-panel) 32px;
-  }
   .mx-page,
   .mx-grid,
   .mx-grid-two,
@@ -96,10 +93,6 @@
     .mx-document-feed a, .mx-job-name > strong, .mx-inline-control[aria-pressed="true"],
     .mx-highlight-subject, .mx-rating-distribution strong, .mx-target-summary b, .mx-target-values .mx-target-primary,
     .mx-disclosure > summary, .mx-detail-value, .mx-price-levels strong) {
-    font-weight: 600;
-  }
-  .mx-nav-link[aria-current],
-  .mx-brand-max {
     font-weight: 600;
   }
   .mx-page .mx-facts dd {

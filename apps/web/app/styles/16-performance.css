@@ -194,7 +194,7 @@
   font-variant-numeric: tabular-nums;
 }
 .mx-performance-chart {
-  scroll-margin-top: 80px;
+  scroll-margin-block-start: var(--shell-anchor-gap);
 }
 .mx-return-grid-tools {
   margin-bottom: 12px;

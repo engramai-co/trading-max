@@ -23,6 +23,7 @@ export const MEDIA_QUERIES = {
   researchIndexPhone: `(max-width: ${BREAKPOINTS.researchIndexMaxEm}em)`,
   desktop: `(min-width: ${BREAKPOINTS.phoneMax + 1}px)`,
   phoneDock: `(max-width: ${BREAKPOINTS.phoneMax}px), (max-width: ${BREAKPOINTS.tabletMax}px) and (max-height: ${BREAKPOINTS.phoneLandscapeMaxHeight}px) and (pointer: coarse)`,
+  shortLandscapeDock: `(max-width: ${BREAKPOINTS.tabletMax}px) and (max-height: ${BREAKPOINTS.phoneLandscapeMaxHeight}px) and (orientation: landscape) and (pointer: coarse)`,
   touchLayout: `(max-width: ${BREAKPOINTS.phoneMax}px), (hover: none) and (pointer: coarse)`,
   wideMap: `(min-width: ${BREAKPOINTS.wideMapMin}px)`,
   compactDesktop: `(max-width: ${BREAKPOINTS.desktopMax}px)`,
