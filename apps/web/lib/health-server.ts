@@ -23,9 +23,10 @@ function errorDetail(scope: HealthProbeError["scope"], status: number | null) {
 async function probe<T>(
   scope: Exclude<HealthProbeError["scope"], "backend">,
   pathname: string,
+  signal?: AbortSignal,
 ): Promise<Probe<T>> {
   try {
-    const response = await backendFetch(pathname);
+    const response = await backendFetch(pathname, { signal });
     const text = await response.text();
     if (!response.ok) {
       let detail = errorDetail(scope, response.status);
@@ -72,17 +73,22 @@ function unavailableDetails(checkedAt: string): HealthDetails {
   };
 }
 
-export async function loadHealthDetails(): Promise<HealthDetails> {
+export function probeHealthOutcomes(signal?: AbortSignal) {
+  return probe<JobOutcomes>("jobs", "/v1/jobs/outcomes?days=7", signal);
+}
+
+export async function loadHealthDetails({
+  signal, includeOutcomes = true,
+}: { signal?: AbortSignal; includeOutcomes?: boolean } = {}): Promise<HealthDetails> {
   const checkedAt = new Date().toISOString();
   if (!backendUrl()) return unavailableDetails(checkedAt);
 
   const [health, readiness, refresh, jobs, outcomes] = await Promise.all([
-    probe<HealthResponse>("health", "/health"),
-    probe<ReadinessResponse>("readiness", "/ready"),
-    probe<RefreshState>("refresh", "/v1/refresh-state"),
-    probe<JobListResponse>("jobs", "/v1/jobs?limit=12"),
-    // Supplementary: a service that cannot summarize history is not degraded.
-    probe<JobOutcomes>("jobs", "/v1/jobs/outcomes?days=7"),
+    probe<HealthResponse>("health", "/health", signal),
+    probe<ReadinessResponse>("readiness", "/ready", signal),
+    probe<RefreshState>("refresh", "/v1/refresh-state", signal),
+    probe<JobListResponse>("jobs", "/v1/jobs?limit=12", signal),
+    includeOutcomes ? probeHealthOutcomes(signal) : undefined,
   ]);
   const jobsResult: Probe<JobListResponse> =
     jobs.ok && !Array.isArray(jobs.data.jobs)
@@ -99,7 +105,8 @@ export async function loadHealthDetails(): Promise<HealthDetails> {
     refresh: refresh.ok ? refresh.data : null,
     jobs: jobPayload?.jobs ?? [],
     latestTerminalJobs: Array.isArray(jobPayload?.latestTerminalJobs) ? jobPayload.latestTerminalJobs : undefined,
-    outcomes: outcomes.ok ? outcomes.data : null,
+    // A supplementary probe does not affect the aggregate service status.
+    outcomes: outcomes && (outcomes.ok ? outcomes.data : null),
     errors,
   };
 }

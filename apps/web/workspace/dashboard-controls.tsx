@@ -16,23 +16,26 @@ export function rangeName(range: Range, all: string) {
 
 const phoneRanges = new Set<Range>(["3M", "YTD", "1Y"]);
 
-export function DashboardRanges({ value, onChange, label, intraday = true }: {
+export function DashboardRanges({ value, onChange, label, intraday = true, custom = false }: {
   value: Range;
   onChange: (range: Range) => void;
   label: string;
   intraday?: boolean;
+  custom?: boolean;
 }) {
   const t = useCopy();
   const phone = useBreakpoint("phone");
   const options = PORTFOLIO_RANGES.filter((range) => intraday || range !== "1D")
     .map((range) => ({ value: range, label: rangeName(range, t("全部", "All")), compact: phoneRanges.has(range) }));
   const more = options.filter((item) => !item.compact);
-  const selected = more.find((item) => item.value === value);
+  const selected = custom ? undefined : more.find((item) => item.value === value);
   const moreLabel = t("更多区间", "More periods");
 
   return (
     <div className="mx-dashboard-ranges">
-      <Segments label={label} value={value} onChange={onChange} options={options} shortcuts compact={phone} />
+      <Segments<Range | ""> label={label} value={custom ? "" : value} onChange={(next) => {
+        if (next) onChange(next);
+      }} options={options} shortcuts compact={phone} />
       <DropdownMenu modal={false}>
         <DropdownMenuTrigger render={<button className="mx-range-more" data-selected={Boolean(selected)} type="button"
             aria-label={moreLabel + (selected ? " · " + selected.label : "")}>
@@ -40,7 +43,7 @@ export function DashboardRanges({ value, onChange, label, intraday = true }: {
           </button>} />
         <DropdownMenuContent align="end" aria-label={moreLabel}>
           {more.map((item) => (
-            <DropdownMenuItem key={item.value} aria-current={value === item.value || undefined}
+            <DropdownMenuItem key={item.value} aria-current={!custom && value === item.value || undefined}
               onClick={() => onChange(item.value)}>{item.label}</DropdownMenuItem>
           ))}
         </DropdownMenuContent>

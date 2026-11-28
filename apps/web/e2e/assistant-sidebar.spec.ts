@@ -484,7 +484,7 @@ for (const locale of ["zh", "en"] as const) {
   });
 }
 
-test("a saved benchmark citation reopens its portfolio and prices and discloses expiry", async ({page}, info) => {
+test("a saved benchmark citation focuses its chart or its unavailable state", async ({page}, info) => {
   await page.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await fixtures(page);
   const dates = ["2026-02-02", "2026-02-03"];
@@ -520,8 +520,16 @@ test("a saved benchmark citation reopens its portfolio and prices and discloses 
   const shots = process.env.ASSISTANT_SCREENSHOTS;
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-reopened-benchmark.png")});
   expired = true;
-  await page.reload();
-  await expect(page.getByText("Cited publication unavailable", {exact:true}).and(page.locator(":not(.sr-only)"))).toBeVisible();
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.getByRole("button",{name:"Conversation history"}).click();
+  await page.getByRole("button",{name:"Saved benchmark",exact:true}).click();
+  await (await previewCitation(page, page.locator(".mx-turn-assistant").getByRole("button",{name:/^Market /}))).click();
+  const error = page.locator(".mx-performance-chart .mx-retry-reading").filter({hasText:"Cited publication unavailable"});
+  await expect(error).toBeVisible();
+  await expect(error.locator("..")).toBeFocused({timeout:3000});
+  await page.keyboard.press("Tab");
+  await expect(error.getByRole("button", {name:"Retry: Cited publication unavailable"})).toBeFocused();
   await expect(result).toHaveCount(0);
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-benchmark.png")});
 });

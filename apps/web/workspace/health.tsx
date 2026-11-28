@@ -4,6 +4,7 @@ import { WorkspaceSheet } from "./overlay";
 import {
   Activity,
   ArrowRight,
+  ChevronRight,
   CircleAlert,
   CircleCheck,
   Clock,
@@ -14,6 +15,7 @@ import Link from "./link";
 import { Fragment, useEffect, useRef, useState } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   deriveHealthDecision,
   durationBetween,
@@ -23,9 +25,9 @@ import {
   type HealthLocale,
 } from "@/lib/health";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
-import type { HealthDetails, RefreshJob } from "@/lib/types";
+import type { HealthDetails, JobOutcomes, RefreshJob } from "@/lib/types";
 import { formatDateTime } from "@/ui/formatters";
-import { api, ApiError, isReadTimeout, jsonRequest, number } from "@/workspace/data";
+import { api, ApiError, isReadTimeout, jsonRequest, number, readApi } from "@/workspace/data";
 import {
   Empty,
   Facts,
@@ -49,15 +51,17 @@ import { collapseRoutineRuns } from "./job-history";
 import { JobOutcomeSummary } from "./job-outcomes";
 import { SelectPicker } from "./picker";
 
+const activeCheckInterval = 5_000;
+const idleCheckInterval = 30_000;
+const outcomeCheckInterval = 60_000;
+
+function activeTask(job: RefreshJob | null | undefined) {
+  return job?.status === "queued" || job?.status === "running";
+}
+
 export function HealthWorkspace({ localWorkspace = false, desktop = false, initialScope = "all", readOnly = false }: { localWorkspace?: boolean; desktop?: boolean; initialScope?: RefreshJob["scope"]; readOnly?: boolean }) {
   const t = useCopy();
   const { locale, timeZone } = useLocale();
-  const query = useQuery({
-    queryKey: ["workspace-health"],
-    queryFn: ({ signal }) => api<HealthDetails>("/health/details", { signal }),
-    refetchInterval: 5000,
-    retry: 1,
-  });
   const demoSnapshot = useDashboardLens("overview", undefined, readOnly, { detail: "summary" });
   const [scope, setScope] = useState<RefreshJob["scope"]>(initialScope);
   const assistantReady = useOptionalAssistant()?.ready ?? false;
@@ -69,6 +73,30 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     setLastLinkedJob(linkedJob);
     setSelected(linkedJob);
   }
+  const [retainedJob, setRetainedJob] = useState<RefreshJob | null>(null);
+  const jobTrigger = useRef<HTMLElement | null>(null);
+  const checkTrigger = useRef<HTMLElement>(null);
+  const query = useQuery({
+    queryKey: ["workspace-health"],
+    queryFn: ({ signal }) => api<HealthDetails>("/health/details", {
+      signal,
+      headers: { "x-health-outcomes": "omit" },
+    }),
+    refetchInterval: ({ state }) => {
+      const queue = state.data?.health?.queue ?? state.data?.readiness?.queue;
+      return (queue?.running || queue?.queued || (selected === retainedJob?.jobId && activeTask(retainedJob)))
+        ? activeCheckInterval : idleCheckInterval;
+    },
+    refetchOnWindowFocus: "always",
+    retry: 1,
+  });
+  const outcomes = useQuery({
+    queryKey: ["workspace-health-outcomes"],
+    queryFn: ({ signal }) => readApi<JobOutcomes | null>("/health/outcomes", signal),
+    enabled: Boolean(query.data) && query.data?.outcomes === undefined,
+    staleTime: outcomeCheckInterval,
+    refetchInterval: outcomeCheckInterval,
+  });
   const [diagnosis, setDiagnosis] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
   const [everyRun, setEveryRun] = useState(false);
@@ -80,8 +108,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         jsonRequest("POST", { scope, skipSync: false, tickers: [] }),
       ),
     onSuccess: (job) => {
+      setRetainedJob(job);
       setSelected(job.jobId);
-      void query.refetch();
+      void query.refetch({ cancelRefetch: false });
     },
   });
   const Controls = desktop ? "details" : Fragment;
@@ -120,13 +149,18 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     setManualChecking(true);
     setAnnouncement(t("正在检查数据状态…", "Checking data status…"));
     try {
-      const result = await query.refetch();
+      const result = await query.refetch({ cancelRefetch: false });
+      const outcomeResult = result.data && result.data.outcomes === undefined
+        ? await outcomes.refetch({ cancelRefetch: false }) : undefined;
       const next = summarizeHealthView(result.data, result.error, viewOptions);
       lastSemanticKeyRef.current = next.semanticKey ?? null;
-      const prefix = result.isError
+      const prefix = result.isError || outcomeResult?.isError
         ? t("检查未完成：", "Check failed: ")
         : t("检查完成：", "Check complete: ");
-      setAnnouncement(prefix + next.liveMessage);
+      const message = !result.isError && outcomeResult?.isError
+        ? t("暂时无法检查近 7 天的更新结果。", "The seven-day update summary could not be checked.")
+        : next.liveMessage;
+      setAnnouncement(prefix + message);
     } finally {
       manualCheckingRef.current = false;
       setManualChecking(false);
@@ -137,17 +171,43 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     bootstrapIssue, readinessIssue, serviceIssue, serviceErrors, scheduleUnavailable, showStaleHeadline,
     jobsUnavailable, lastSuccess, snapshotTime, title, subtitle,
   } = statusView;
-  const job =
-    data?.jobs.find((j) => j.jobId === selected) ?? failures.find((j) => j.jobId === selected) ??
-    (start.data?.jobId === selected ? start.data : null);
+  const listedJob = data?.jobs.find((j) => j.jobId === selected) ??
+    data?.latestTerminalJobs?.find((j) => j.jobId === selected) ??
+    failures.find((j) => j.jobId === selected);
+  const lookupTask = Boolean(selected) && !query.isPending && (!listedJob || jobsUnavailable);
+  const task = useQuery({
+    queryKey: ["workspace-health-task", selected],
+    queryFn: ({ signal }) => readApi<RefreshJob>(`/health/task?job=${encodeURIComponent(selected ?? "")}`, signal),
+    enabled: lookupTask,
+    refetchInterval: ({ state }) => {
+      if (state.error instanceof ApiError && state.error.status === 404) return false;
+      const previous = retainedJob?.jobId === selected ? retainedJob : null;
+      return activeTask(state.data ?? previous) ? activeCheckInterval : false;
+    },
+    refetchOnWindowFocus: "always",
+    retry: (count, error) => count < 1 && !(error instanceof ApiError && error.status === 404),
+  });
+  const availableJob = jobsUnavailable ? task.data ?? listedJob : listedJob ?? task.data;
+  if (availableJob && availableJob !== retainedJob) setRetainedJob(availableJob);
+  const job = availableJob ?? (retainedJob?.jobId === selected ? retainedJob : null);
   const currentStage = job?.stages.find((stage) => stage.status === "running");
-  const drawerStatus = query.isError ? liveMessage : job && [
+  const taskUnavailable = lookupTask && (task.isError || (jobsUnavailable && !task.isSuccess));
+  const taskWarning = t("暂时无法检查此任务。以下是上次读取的进度。", "This task could not be checked. Showing its last known progress.");
+  const taskLoading = query.isPending || (task.isPending && task.fetchStatus !== "idle");
+  const missingTask = selected !== null && !job && !taskLoading;
+  const missingTaskMessage = missingTask ? t("引用的更新任务暂不可用", "Cited update task unavailable") : undefined;
+  const completedStages = job?.stages.filter((stage) => stage.status === "succeeded" || stage.status === "skipped").length ?? 0;
+  const drawerStatus = missingTaskMessage ?? (query.isError ? liveMessage : taskUnavailable && job ? taskWarning : job && [
     statusText(job.status, t),
     currentStage && stageText(currentStage.name, t),
-    job.stages.length > 0 ? `${job.stages.filter((stage) => ["succeeded", "skipped"].includes(stage.status)).length} / ${job.stages.length}` : null,
-  ].filter(Boolean).join(" · ");
+    job.stages.length > 0 ? `${completedStages} / ${job.stages.length}` : null,
+  ].filter(Boolean).join(" · "));
   const lastFailed = failures[0];
   const heroIssue = tone === "degraded" && lastFailed ? lastFailed.jobId : stale ? "stale" : null;
+  function openJob(id: string, trigger: HTMLElement) {
+    jobTrigger.current = trigger;
+    setSelected(id);
+  }
   function why(issue: string, label: string, location: string) {
     if (!assistantReady || readOnly) return null;
     const key = location + issue;
@@ -187,8 +247,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         />
       )}
       {Boolean(data.health?.eventRefreshes?.length) && (
-        <details className="mx-chart-data" open={statusView.eventFailures.length > 0}>
-          <summary>{t("新闻与日历数据时间", "News and calendar freshness")}</summary>
+        <details className="mx-health-disclosure" open={statusView.eventFailures.length > 0}>
+          <HealthSummary>{t("新闻与日历数据时间", "News and calendar freshness")}</HealthSummary>
           <Facts rows={(data.health?.eventRefreshes ?? []).map((source) => [
             eventSourceLabel(source.kind, t),
             <div key={source.kind} className="flex flex-wrap items-center gap-mx-xs">
@@ -197,23 +257,23 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             </div>,
           ])} />
           {(data.health?.eventRefreshes ?? []).flatMap((source) => (source.failures ?? []).map((failure) => (
-            <div key={source.kind + failure.source} className="mx-health-source-failure">
+            <div key={source.kind + failure.source} className="my-mx-xs flex flex-wrap justify-between gap-x-3 gap-y-1 wrap-anywhere">
               <span>{failure.source}</span>
-              {failure.checkedAt && <small><span>{t("上次尝试", "Last attempt")}</span> {formatDateTime(failure.checkedAt, locale, timeZone)}</small>}
+              {failure.checkedAt && <small className="text-muted-foreground tabular-nums"><span>{t("上次尝试", "Last attempt")}</span> {formatDateTime(failure.checkedAt, locale, timeZone)}</small>}
             </div>
           )))}
         </details>
       )}
-      <details className="mx-chart-data">
-        <summary>{t("更新范围说明", "What each schedule updates")}</summary>
+      <details className="mx-health-disclosure">
+        <HealthSummary>{t("更新范围说明", "What each schedule updates")}</HealthSummary>
         <ul className="mx-review-prerequisites">
           <li>{t("账户状态与日内采样：在活动时段刷新余额、持仓并保存日内观测点。", "Account state and intraday sampling: refresh balances and positions and record intraday readings during the active window.")}</li>
           <li>{t("绩效：使用已核对的账户历史计算收益、回撤和风险。", "Performance: calculate returns, drawdowns and risk from reconciled account history.")}</li>
           <li>{t("研究、板块与每日对账：更新研究资料，在交易时段采集板块行情，并每日核对账户流水。", "Research, sectors and daily reconciliation: update research, collect sector quotes during market hours and reconcile account transactions daily.")}</li>
         </ul>
       </details>
-      <details className="mx-chart-data">
-        <summary>{t("运行诊断详情", "Runtime diagnostics")}</summary>
+      <details className="mx-health-disclosure">
+        <HealthSummary>{t("运行诊断详情", "Runtime diagnostics")}</HealthSummary>
         <Facts
           rows={[
             [t("工作进程主机", "Worker host"), worker?.host ?? "—"],
@@ -246,6 +306,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
               t("覆盖检查快照", "Coverage snapshot"),
               shortRunId((data.refresh?.live ?? data.refresh?.intraday)?.flowSnapshotRunId),
             ],
+            ...(data.errors ?? []).map((error): [string, React.ReactNode] => [
+              [error.scope, error.status].filter((value) => value != null).join(" · "),
+              <code key={error.scope} className="mx-diagnostic-code">{error.detail}</code>,
+            ]),
           ]}
         />
         <p>
@@ -264,6 +328,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       className={desktop ? "mx-health-page mx-activity-page" : "mx-health-page"}
       actions={
         <Actions {...(desktop ? { className: "flex flex-wrap items-center gap-mx-sm" } : {})}>{desktop && <Button variant="outline" onClick={() => setControlsOpen((open) => !open)}>{readOnly ? t("查看服务详情", "Service details") : t("更新数据", "Update data")}</Button>}<Button
+          ref={checkTrigger}
           variant="outline"
           loading={manualChecking}
           loadingLabel={t("检查中…", "Checking…")}
@@ -280,15 +345,18 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
       </div>
       {query.isPending ? (
         <Pending />
-      ) : query.isError || !data ? (
+      ) : !data ? (
         <QueryError error={query.error} showDataStatusLink={false} />
       ) : (
         <>
-          <section
-            className={
-              "mx-health-hero" + (tone === "ready" && !stale ? " mx-health-ready" : "")
-            }
-          >
+          {query.isError && <Notice tone="warn">
+            <div>{liveMessage}</div>
+            <div className="flex flex-wrap gap-x-4">
+              <Freshness date={new Date(query.errorUpdatedAt).toISOString()} label={t("检查失败", "Failed check")} />
+              <Freshness date={data.checkedAt} label={t("最近成功检查", "Last successful check")} />
+            </div>
+          </Notice>}
+          <Card as="section" appearance="plain" className="mx-health-hero" data-ready={tone === "ready" && !stale ? "" : undefined}>
             <div className="mx-health-symbol">
               {tone === "running" ? (
                 <Activity aria-hidden="true" size={20} />
@@ -331,7 +399,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                     : t("需要关注", "Needs attention")}
               </Tag>
             )}
-          </section>
+          </Card>
           {!readOnly && failures.length > 0 && <Notice tone="warn">
             <div className="mx-toolbar">
               <span>
@@ -339,13 +407,13 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 {failures.map((job) => scopeLabel(job.scope)).join(" · ")}
               </span>
               {failures.length === 1 ? (
-                <Button variant="ghost" onClick={() => setSelected(failures[0].jobId)}>
+                <Button variant="ghost" onClick={(event) => openJob(failures[0].jobId, event.currentTarget)}>
                   {t("查看原因", "View issue")}
                 </Button>
               ) : (
                 <div className="flex flex-wrap items-center gap-mx-xs">
                   {failures.map((item) => (
-                    <Button key={item.jobId} variant="ghost" onClick={() => setSelected(item.jobId)}>
+                    <Button key={item.jobId} variant="ghost" className="max-w-full whitespace-normal" onClick={(event) => openJob(item.jobId, event.currentTarget)}>
                       {t("查看", "View ")}{scopeLabel(item.scope)}
                     </Button>
                   ))}
@@ -354,8 +422,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
             </div>
           </Notice>}
           <Controls {...controlsProps}>
-          {desktop && <summary>{t("更新范围、服务与计划", "Update scope, service & schedule")}</summary>}
-          <div className="mx-grid-two">
+          {desktop && <HealthSummary>{t("更新范围、服务与计划", "Update scope, service & schedule")}</HealthSummary>}
+          <div className="mx-health-grid">
             <Panel
               title={t("更新数据", "Update data")}
             >
@@ -397,8 +465,11 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                   <Button
                     loading={start.isPending}
                     loadingLabel={t("正在开始…", "Starting…")}
-                    disabled={readOnly || !data.health || queued > 0 || running > 0}
-                    onClick={() => start.mutate()}
+                    disabled={readOnly || query.isError || !data.health || queued > 0 || running > 0}
+                    onClick={(event) => {
+                      jobTrigger.current = event.currentTarget;
+                      start.mutate();
+                    }}
                   >
                     <RotateCw size={16} aria-hidden="true" />
                     {queued > 0 || running > 0 ? t("更新进行中", "Update in progress") : t("开始更新", "Start update")}
@@ -441,12 +512,9 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 {bootstrapIssue && (
                   <Notice tone="bad"><code className="mx-diagnostic-code">{bootstrapIssue}</code></Notice>
                 )}
-                {serviceErrors.length > 0 && (
-                  <Notice tone="warn">
-                    {t("暂时无法读取服务状态。", "Service status is temporarily unavailable.")}
-                    <code className="mx-diagnostic-code">{serviceErrors.map((error) => error.detail).join("\n")}</code>
-                  </Notice>
-                )}
+                {serviceErrors.length > 0 && <Notice tone="warn">
+                  {t("暂时无法读取服务状态。", "Service status is temporarily unavailable.")}
+                </Notice>}
               </Panel>
             ) : (
               schedule
@@ -487,27 +555,23 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 value={number(running, 0)}
               />
             </div>}
-            <JobOutcomeSummary outcomes={data.outcomes} scopeLabel={scopeLabel} />
+            <JobOutcomeSummary outcomes={data.outcomes === undefined ? outcomes.data : data.outcomes} scopeLabel={scopeLabel} />
             {jobsUnavailable ? (
               <Notice tone="warn">{t("暂时无法读取更新记录。", "Update history is temporarily unavailable.")}</Notice>
             ) : data.jobs.filter((j) => filter === "all" || j.status === filter).length ? (<>
-              <div className="mx-job-list">
+              <div className="mx-job-list mt-[22px]">
                 {(filter === "all" && !everyRun
                   ? collapseRoutineRuns(data.jobs)
                   : data.jobs.filter((j) => filter === "all" || j.status === filter).map((job) => ({ job, repeats: 0 }))
                 ).map(({ job: j, repeats }) => {
-                  const row = <button
-                      className="mx-job-row"
+                  const row = <Button
+                      variant="ghost"
+                      className="mx-job-row w-full justify-start gap-[18px] rounded-none border-0 border-t border-border px-0 py-5 text-left font-normal leading-[inherit] whitespace-normal max-phone:gap-2.5 [.mx-activity-page_&]:py-[18px]"
                       key={j.jobId}
-                      onClick={() => setSelected(j.jobId)}
+                      onClick={(event) => openJob(j.jobId, event.currentTarget)}
                     >
                       <span
-                        className={
-                          "mx-job-icon mx-" +
-                          (j.status === "failed" || j.status === "interrupted"
-                            ? "down"
-                            : "up")
-                        }
+                        className={j.status === "failed" || j.status === "interrupted" ? "text-warning" : "text-foreground"}
                       >
                         {j.status === "succeeded" ? (
                           <CircleCheck aria-hidden="true" size={20} />
@@ -517,17 +581,17 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                           <Clock aria-hidden="true" size={20} />
                         )}
                       </span>
-                      <span className="mx-job-name">
-                        <strong>
+                      <span className="mx-job-name flex min-w-0 flex-1 flex-col gap-[7px] wrap-break-word">
+                        <strong className="text-[0.8125rem] font-[550]">
                           {scopes.find((s) => s.value === j.scope)?.label ??
                             j.scope}
                         </strong>
-                        <span className="mx-job-meta">
+                        <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                           <Freshness date={j.createdAt} label="" />
-                          {repeats > 0 && <small>{locale === "zh" ? `更早 ${repeats} 次成功` : `${repeats} earlier successes`}</small>}
+                          {repeats > 0 && <small className="text-xs text-muted-foreground">{locale === "zh" ? `更早 ${repeats} 次成功` : `${repeats} earlier successes`}</small>}
                         </span>
                       </span>
-                      <span className="mx-job-duration">
+                      <span className="text-xs text-muted-foreground tabular-nums max-phone:hidden">
                         {durationBetween(j.startedAt, j.finishedAt, locale)}
                       </span>
                       {j.status === "succeeded" ? (
@@ -538,7 +602,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                         </Tag>
                       )}
                       <ArrowRight aria-hidden="true" size={18} />
-                    </button>;
+                    </Button>;
                   return assistantReady && !readOnly && ["failed","interrupted"].includes(j.status)
                     ? <div className="mx-job-with-why" key={j.jobId}>{row}{why(j.jobId,scopes.find(item=>item.value===j.scope)?.label ?? j.scope,"history:")}</div> : row;
                 })}
@@ -578,16 +642,25 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         onClose={() => setSelected(null)}
         title={t("更新任务详情", "Update task details")}
         closeLabel={t("关闭任务详情", "Close task details")}
+        finalFocus={() => {
+          const trigger = jobTrigger.current;
+          jobTrigger.current = null;
+          return trigger?.isConnected && !trigger.matches(":disabled, [aria-disabled=true]") ? trigger : checkTrigger.current;
+        }}
         width={520}
         className="mx-health-drawer"
       >
         <StatusMessage message={drawerStatus ?? undefined} />
         {query.isError && <Notice tone="warn">{liveMessage}</Notice>}
-        {!query.isPending && !job && linkedJob && <p data-cited-missing="">{t("引用的更新任务暂不可用", "Cited update task unavailable")}</p>}
+        {job && taskUnavailable && !query.isError && <Notice tone="warn">{taskWarning}</Notice>}
+        {selected !== null && !job && taskLoading && <Pending compact />}
+        {missingTask && <p data-cited-missing={linkedJob === selected ? "" : undefined}>
+          {missingTaskMessage}
+        </p>}
         {job && (
           <div className="mx-health-drawer-body flex flex-col gap-mx-lg">
             <div className="flex flex-wrap items-center justify-between gap-mx-md">
-              <h3>{scopes.find((s) => s.value === job.scope)?.label}</h3>
+              <h3>{scopeLabel(job.scope)}</h3>
               <Tag tone={statusTone(job.status)}>
                 {statusText(job.status, t)}
               </Tag>
@@ -608,7 +681,7 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 ],
               ]}
             />
-            {job.error && <Notice tone="bad"><code className="mx-diagnostic-code">{job.error}</code></Notice>}
+            {job.error && <TaskDiagnostic detail={job.error}>{t("更新任务出错。", "The update task reported an error.")}</TaskDiagnostic>}
             {job.status === "queued" && !worker?.healthy && (
               <Notice tone="warn">
                 {t(
@@ -617,14 +690,19 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                 )}
               </Notice>
             )}
-            <ol className="mx-stage-list">
+            {activeTask(job) && <progress
+              className="sr-only"
+              aria-label={t("更新阶段进度", "Update stage progress")}
+              max={job.stages.length || undefined}
+              value={job.stages.length ? completedStages : undefined}
+              aria-valuetext={job.stages.length ? `${completedStages} / ${job.stages.length}` : undefined}
+            />}
+            <ol className="mx-stage-list m-0 list-none p-0">
               {job.stages.map((stage, index) => (
-                <li key={stage.name}>
+                <li key={stage.name} className="flex gap-[18px] border-b border-border py-[18px]">
                   <span
-                    className={
-                      "mx-stage-number" +
-                      (stage.status === "succeeded" ? " mx-stage-complete" : "")
-                    }
+                    className={"grid size-[30px] shrink-0 place-items-center rounded-full border text-xs " +
+                      (stage.status === "succeeded" ? "border-transparent bg-secondary text-foreground" : "border-border text-muted-foreground")}
                   >
                     {stage.status === "succeeded" ? (
                       <CircleCheck aria-hidden="true" size={20} />
@@ -632,15 +710,15 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                       index + 1
                     )}
                   </span>
-                  <div>
+                  <div className="min-w-0 flex-1 text-xs">
                     <div className="mx-toolbar">
-                      <strong>{stageText(stage.name, t)}</strong>
+                      <strong className="min-w-0 wrap-break-word">{stageText(stage.name, t)}</strong>
                       <Tag tone={statusTone(stage.status)}>
                         {statusText(stage.status, t)}
                       </Tag>
                     </div>
                     {stage.startedAt && (
-                      <p>
+                      <p className="mt-2 text-muted-foreground tabular-nums">
                         {durationBetween(
                           stage.startedAt,
                           stage.finishedAt,
@@ -648,14 +726,14 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
                         )}
                       </p>
                     )}
-                    {stage.error && <Notice tone="bad"><code className="mx-diagnostic-code">{stage.error}</code></Notice>}
+                    {stage.error && <TaskDiagnostic detail={stage.error}>{t("此阶段出错。", "This stage reported an error.")}</TaskDiagnostic>}
                   </div>
                 </li>
               ))}
             </ol>
             {!job.stages.length && (
               <Notice>
-                {desktop && job.status !== "queued"
+                {job.status !== "queued"
                   ? job.status === "running"
                     ? t("任务正在执行，尚无阶段进度。", "The task is running; no stage progress has been reported yet.")
                     : t("本次任务没有留下阶段记录，请以上方任务状态和错误信息为准。", "No stage details were recorded. Refer to the task status and any error above.")
@@ -687,6 +765,25 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     </Page>
   );
 }
+
+function HealthSummary({ children }: { children: React.ReactNode }) {
+  return <summary className="mx-health-summary">
+    <ChevronRight size={14} aria-hidden="true" />
+    <span>{children}</span>
+  </summary>;
+}
+
+function TaskDiagnostic({ detail, children }: { detail: string; children: React.ReactNode }) {
+  const t = useCopy();
+  return <Notice tone="warn">
+    {children}
+    <details>
+      <HealthSummary>{t("技术详情", "Technical details")}</HealthSummary>
+      <code className="mx-diagnostic-code">{detail}</code>
+    </details>
+  </Notice>;
+}
+
 function stageText(
   name: string,
   t: (zh: string, en: string) => string,
@@ -785,19 +882,6 @@ function summarizeHealthView(
 ) {
   const { readOnly, locale, t, scopeLabel } = options;
   const decision = deriveHealthDecision(data, options);
-  if (error) {
-    const timeout = isReadTimeout(error);
-    return {
-      ...decision,
-      title: "",
-      subtitle: null,
-      semanticKey: timeout ? "error:timeout" : "error:unavailable",
-      showStaleHeadline: false,
-      liveMessage: timeout
-        ? t("数据请求超时", "Data request timed out")
-        : t("暂时无法读取数据", "Data is temporarily unavailable"),
-    };
-  }
   const { tone, snapshot, stale, serviceHealthy, failures, eventFailures, scheduleUnavailable, jobsUnavailable, serviceErrors } = decision;
   const staleAge = formatAge(data?.health?.artifactAgeSeconds, locale);
   const showStaleHeadline = stale && serviceHealthy && !failures.length && !eventFailures.length && tone !== "running";
@@ -823,6 +907,7 @@ function summarizeHealthView(
     "Preparing your first account data. Investments and returns will appear when it finishes; keep the App open and connected.",
   ) : null;
   const liveParts = [title];
+  if (stale && !showStaleHeadline && subtitle) liveParts.push(subtitle);
   if (!readOnly && failures.length > 0) {
     liveParts.push(t("需要检查的范围：", "Scopes needing attention: ") + failures.map((job) => scopeLabel(job.scope)).join(" · "));
   }
@@ -833,5 +918,17 @@ function summarizeHealthView(
   if (scheduleUnavailable) liveParts.push(t("暂时无法读取更新计划。", "Scheduled updates are temporarily unavailable."));
   if (jobsUnavailable) liveParts.push(t("暂时无法读取更新记录。", "Update history is temporarily unavailable."));
   if (serviceErrors.length > 0) liveParts.push(t("暂时无法读取服务状态。", "Service status is temporarily unavailable."));
-  return { ...decision, title, subtitle, showStaleHeadline, liveMessage: liveParts.join(locale === "zh" ? " " : ". ") };
+  if (error) {
+    const timeout = isReadTimeout(error);
+    return {
+      ...decision, title, subtitle, showStaleHeadline,
+      semanticKey: timeout ? "error:timeout" : "error:unavailable",
+      liveMessage: timeout
+        ? t("数据请求超时", "Data request timed out")
+        : t("暂时无法读取数据", "Data is temporarily unavailable"),
+    };
+  }
+  const liveMessage = locale === "zh" ? liveParts.join(" ")
+    : liveParts.map((part) => part.replace(/\.$/, "")).join(". ");
+  return { ...decision, title, subtitle, showStaleHeadline, liveMessage };
 }

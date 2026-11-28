@@ -35,7 +35,6 @@
 @import "./styles/13b-research-index.css" layer(mantine);
 @import "./styles/14-overview.css" layer(mantine);
 @import "./styles/15-loading.css" layer(mantine);
-@import "./styles/16-performance.css" layer(mantine);
 @import "./styles/18-overlay.css" layer(mantine);
 @import "./styles/19-assistant.css" layer(mantine);
 @import "./styles/19-research-reading.css" layer(mantine);

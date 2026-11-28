@@ -158,6 +158,45 @@ def test_job_outcomes_route_is_not_read_as_a_job_id(boundary_client):
     assert boundary_client.get("/v1/jobs/outcomes?days=0").status_code == 422
 
 
+def test_history_lookup_only_returns_public_refresh_jobs(boundary_client):
+    queue = boundary_client.app.state.jobs.queue
+    queue.enqueue("research", job_id="synthetic-system", trigger="system")
+    queue.enqueue("cfd", job_id="synthetic-refresh")
+    legacy = boundary_client.get("/v1/jobs/synthetic-system")
+    assert legacy.status_code == 200
+    assert legacy.json()["trigger"] == "on_demand"
+    assert legacy.json()["stages"] == []
+    for job_id in ("synthetic-system", "missing"):
+        hidden = boundary_client.get(f"/v1/job-history/{job_id}")
+        assert hidden.status_code == 404
+        assert hidden.json() == {"detail": {"code": "job_history_not_found"}}
+    lookup = boundary_client.get("/v1/job-history/synthetic-refresh")
+    assert lookup.status_code == 200
+    assert lookup.json()["jobId"] == "synthetic-refresh"
+
+
+@pytest.mark.parametrize("job_id", ["synthetic.task", "é", "a" * 129])
+def test_history_lookup_rejects_invalid_job_ids(boundary_client, monkeypatch, job_id):
+    looked_up = []
+
+    def find_job(candidate, **kwargs):
+        looked_up.append(candidate)
+        raise FileNotFoundError("Synthetic task not found")
+
+    monkeypatch.setattr(boundary_client.app.state.jobs, "get", find_job)
+    response = boundary_client.get(f"/v1/job-history/{job_id}")
+    assert not looked_up
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["path", "job_id"]
+
+
+@pytest.mark.parametrize("job_id", ["A", "Z0_-" * 32])
+def test_history_lookup_accepts_valid_job_id_boundaries(boundary_client, job_id):
+    response = boundary_client.get(f"/v1/job-history/{job_id}")
+    assert response.status_code == 404
+    assert response.json() == {"detail": {"code": "job_history_not_found"}}
+
+
 def test_latest_terminal_jobs_are_independent_of_recent_history(boundary_client):
     queue = boundary_client.app.state.jobs.queue
 

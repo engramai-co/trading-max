@@ -21,6 +21,7 @@ def test_openapi_snapshot_contains_public_contract_surface() -> None:
         "/v1/dashboard/lens/{view}",
         "/v1/refresh-state",
         "/v1/jobs/refresh",
+        "/v1/job-history/{job_id}",
         "/v1/research",
         "/v1/research/shell",
         "/v1/research/{ticker}/lens/{view}",

@@ -4,6 +4,19 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.85.0] - 2026-11-28
+
+### Changed
+
+- Data status and Returns & risk use the new design system. Data status checks less often when idle and keeps checking active updates frequently.
+- Returns puts custom dates and **Restore previous range** in the chart toolbar and leaves preset ranges unselected. Money shows a **Chart units** label beside the control.
+
+### Fixed
+
+- Data status opens links to older update tasks and announces when a task is unavailable. Task and stage errors now have expandable **Technical details**.
+- If **Check now** cannot refresh the seven-day update totals, Data status keeps the last available totals and announces the failure.
+- **Restore previous range** returns keyboard focus to the period cell that opened the custom range.
+
 ## [1.84.0] - 2026-11-28
 
 ### Changed

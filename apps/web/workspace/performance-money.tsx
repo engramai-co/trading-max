@@ -8,6 +8,20 @@ import { EstimateTag, HistoryBasis, estimateCoverage } from "./history-coverage"
 import { Metric, Tag, useCopy } from "./foundation";
 import { moneyEquation, signedPnl } from "./money-readings";
 
+export const moneyEquationClassName = [
+  "mt-3 grid max-w-224 grid-cols-4 gap-4 border-y border-border py-3 text-end",
+  "max-phone:mt-(--mx-space-items) max-phone:grid-cols-1 max-phone:gap-(--mx-space-tight) max-phone:py-(--mx-space-group)",
+].join(" ");
+
+const equationReadings = [
+  "mx-0 mb-0 [&_dt]:text-[0.75rem] [&_dt]:text-muted-foreground",
+  "[&_dd]:mx-0 [&_dd]:mt-1 [&_dd]:mb-0 [&_dd]:min-w-0 [&_dd]:overflow-x-auto [&_dd]:text-[1rem]",
+  "[&_dd]:font-semibold [&_dd]:whitespace-nowrap [&_dd]:tabular-nums",
+  "max-phone:[&>div]:flex max-phone:[&>div]:items-baseline max-phone:[&>div]:justify-between",
+  "max-phone:[&>div]:gap-(--mx-space-group) max-phone:[&>div]:text-start",
+  "max-phone:[&_dd]:mt-0 max-phone:[&_dd]:text-end max-phone:[&_dd]:text-[0.875rem]",
+].join(" ");
+
 export function citedMoneyAmount(money: Money, field: string | null) {
   switch (field) {
     case "/data/opening_value_gbp": return money.opening;
@@ -58,7 +72,7 @@ export function MoneySummary({ money, points }: { money: Money; points: NavPoint
         {...(estimated ? {} : { help, helpLabel: label })}
       />
       {equation && (
-        <dl className="mx-money-equation">
+        <dl className={moneyEquationClassName + " " + equationReadings}>
           <div><dt>{t("期初价值", "Opening value")}</dt><dd>{equation.opening}</dd></div>
           <div><dt>{t("净入金", "Net deposits")}</dt><dd>{equation.contributions.operator} {equation.contributions.amount}</dd></div>
           <div><dt>{t("净盈亏", "Net P&L")}</dt><dd>{equation.pnl.operator} {equation.pnl.amount}</dd></div>
