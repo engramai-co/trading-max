@@ -29,6 +29,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   TabPanel,
   Tabs,
   TabsScope,
@@ -263,10 +264,12 @@ function Positions() {
                 />
               </div>
             </div>
+            <QueryReadStatus key={cited ?? "live"} failed={!positionData && query.isError}
+              refreshFailed={!!failure?.updatedAt} ready={!!positionData} error={query.error} />
             {query.isPending ? (
               <Pending shape="holdings" label={t("正在读取持仓…", "Loading holdings…")} />
             ) : !query.data ? (
-              <QueryError retry={query.refetch} />
+              <QueryError retry={query.refetch} error={query.error} />
             ) : rows.length ? (
               <>
                 <div className="mx-table-wrap mx-desktop-holdings">

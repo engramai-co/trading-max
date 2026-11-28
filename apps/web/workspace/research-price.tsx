@@ -37,6 +37,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   Segments,
   UpdateFailure,
   useCopy,
@@ -397,6 +398,7 @@ export function PriceHistory({
   const content = (
     <>
       {tools}
+      <QueryReadStatus key={ticker + interval} label={t("价格走势", "Price history")} failed={!listingUnavailable && query.isError && !priceData} ready={!listingUnavailable && !!priceData && !!points.length} error={query.error} />
       {listingUnavailable ? (
         <Empty title={t("暂无此上市证券的价格记录", "Price history unavailable for this listing")} />
       ) : query.isPending && !priceData ? (

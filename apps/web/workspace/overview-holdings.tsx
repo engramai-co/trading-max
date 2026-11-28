@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { useId, useMemo, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { DashboardLens, Holding } from "@/lib/types";
 import { useAllocationChartColours } from "@/ui/charts/palette";
@@ -10,11 +10,14 @@ import { currency, percent, tone } from "@/workspace/data";
 import { holdingSignals, SIGNAL_LIMIT, THRESHOLD, type AttentionFact } from "./attention";
 import { ClosedMarket } from "./closed-market";
 import { useCurrentDay } from "./current-day";
-import { Help, Empty, Instrument, Panel, Pending, QueryError, Tag, TextLink, useCopy } from "./foundation";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Help, Empty, Instrument, Panel, QueryError, Tag, TextLink, useCopy } from "./foundation";
 import { etfPortfolioQuery, signedPoints, trackingDisplay, type Copy, type EvidenceTime } from "./etf-data";
 import { useEvidenceTime } from "./etf-reading";
 import Link from "./link";
 import { holdingsLedger, overviewHoldingsState, readingColumns, type HoldingsLedger, type LedgerGroup, type LedgerRow } from "./overview-holdings-data";
+import type { LedgerRows } from "@/lib/overview-layout-storage";
+import { observeLedgerReservation } from "@/lib/overview-ledger-reservation";
 import { SecurityPeek } from "./security-peek";
 
 /**
@@ -95,13 +98,16 @@ function figures(row: LedgerRow, t: Copy, when: EvidenceTime) {
   };
 }
 
-export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, failed = false, error, retry }: {
+export function OverviewHoldings({ holdings, technical, valuations, runId, brokerAsOf, account, pendingRows, pendingHeight, waiting = false, failed = false, error, retry }: {
   holdings?: Holding[];
   technical?: DashboardLens["technical"];
   valuations?: DashboardLens["valuations"];
   runId?: string;
   brokerAsOf?: string | null;
   account: string;
+  pendingRows?: LedgerRows;
+  pendingHeight?: number;
+  waiting?: boolean;
   failed?: boolean;
   error?: unknown;
   retry?: () => unknown;
@@ -121,12 +127,14 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
     [items, technical, valuations, etfs],
   );
   const state = overviewHoldingsState({
+    waiting,
     hasData: holdings !== undefined,
     isError: failed,
     count: ledger.count,
   });
   const dayLabel = (date: string | null) => (!date || date === today ? t("今日", "Today") : formatCalendarDate(date, locale, now));
   const weightLabel = t("占比", "Weight");
+  const holdingsLabel = t("持仓", "Holdings");
   const day = dayLabel(ledger.columnDay);
   const groupLabel = (kind: LedgerGroup["kind"]) => kind === "funds" ? t("基金", "Funds") : t("股票", "Stocks");
   const restLabel = locale === "zh" ? `其余 ${ledger.rest.count} 只` : `${ledger.rest.count} more`;
@@ -151,16 +159,16 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
   return (
     <Panel
       className="mx-overview-holdings"
-      title={t("持仓", "Holdings")}
+      title={holdingsLabel}
       help={locale === "zh"
         ? `占比按已投资市值计算，不含现金。最多标记 ${SIGNAL_LIMIT} 只持仓；每只显示所有触及阈值的读数。红色：浮亏 ≥ ${percent(-THRESHOLD.loss, false, 0)}。黄色：技术评分 ≤ ${THRESHOLD.score}、RSI ≥ ${THRESHOLD.rsiHigh} 或 ≤ ${THRESHOLD.rsiLow}、模型空间 ≤ ${percent(THRESHOLD.upside, true, 0)}。基金的一年跟踪差可比且在有效期内，≤ ${signedPoints(THRESHOLD.trackingPp)} 个百分点时标记。黄色跟踪差数字表示已过期或日期未验证。`
         : `Weights exclude cash. Up to ${SIGNAL_LIMIT} holdings are flagged. Each shows every reading that crossed a threshold. Red: a loss of ${percent(-THRESHOLD.loss, false, 0)} or more against cost. Amber: technical score ≤ ${THRESHOLD.score}, RSI ≥ ${THRESHOLD.rsiHigh} or ≤ ${THRESHOLD.rsiLow}, model upside ≤ ${percent(THRESHOLD.upside, true, 0)}. Amber also marks a fresh, comparable 1-year fund tracking difference ≤ ${signedPoints(THRESHOLD.trackingPp)} pp. An amber tracking figure indicates stale data or unverified dates.`}
-      action={<TextLink href="/holdings?view=lookthrough">{t("穿透", "Look-through")}</TextLink>}
+      action={<TextLink href="/holdings?view=lookthrough" className={state === "pending" ? "invisible" : undefined}>{t("穿透", "Look-through")}</TextLink>}
     >
       {state === "pending" ? (
-        <Pending shape="holdings" quiet />
+        <LedgerPlaceholder rows={pendingRows} height={pendingHeight} />
       ) : state === "error" ? (
-        <QueryError error={error} retry={retry ?? (() => {})} />
+        <QueryError error={error} retry={retry} />
       ) : state === "empty" ? (
         <Empty title={t("还没有持仓", "No holdings yet")} />
       ) : (
@@ -251,6 +259,80 @@ export function OverviewHoldings({ holdings, technical, valuations, runId, broke
       )}
     </Panel>
   );
+}
+
+function LedgerPlaceholder({ rows, height }: { rows?: LedgerRows; height?: number }) {
+  const { locale } = useLocale();
+  const placeholder = useRef<HTMLDivElement>(null);
+  const probe = useRef<HTMLDivElement>(null);
+  const stocks = rows?.stocks;
+  const funds = rows?.funds;
+  const dateTagged = rows?.dateTagged;
+  useLayoutEffect(() => {
+    const node = placeholder.current;
+    if (!node || !probe.current || typeof ResizeObserver !== "function") return;
+    if (height === undefined) {
+      return observeLedgerReservation(probe.current, node.style, "--mx-ledger-fallback",
+        { stocks: stocks ?? 5, funds: funds ?? 0, dateTagged }, locale);
+    }
+  }, [stocks, funds, dateTagged, height, locale]);
+  const count = rows && rows.stocks + rows.funds;
+  const groups = rows && Number(rows.stocks > 0) + Number(rows.funds > 0);
+  if (count === 0) return <Skeleton className="mx-ledger-rows-placeholder" style={{ height }} />;
+  return <div ref={placeholder} className="mx-ledger mx-ledger-pending" aria-hidden="true" data-measured={height !== undefined || undefined}
+    style={{ height, "--mx-ledger-rows": count, "--mx-ledger-groups": groups } as CSSProperties}>
+    <div className="mx-ledger-chart"><Skeleton className="mx-ledger-donut mx-ledger-donut-placeholder" /></div>
+    <Skeleton className="mx-ledger-rows-placeholder" />
+    {height === undefined && <div ref={probe} className="mx-ledger-probe">
+      <LedgerSizingSample />
+      <span data-ledger-probe-ready="" hidden />
+    </div>}
+  </div>;
+}
+
+// The middle row measures the date badge without a group-end border.
+function LedgerSizingSample() {
+  const kinds = ["stocks", "funds"] as const;
+  const samples = [false, true, false];
+  const instrument = <span className="mx-instrument mx-instrument-small">
+    <span className="mx-monogram" /><span><strong>0</strong><span className="mx-instrument-name">0</span></span>
+  </span>;
+  return <>
+    {["single", "both"].map(sample => <table key={sample} className="mx-ledger-table" data-probe-table={sample}>
+      {kinds.slice(0, sample === "both" ? 2 : 1).map(kind => <tbody key={kind}>
+        <tr className="mx-ledger-head">{Array.from({ length: 6 }, (_, index) => <th key={index}>0</th>)}</tr>
+        {samples.map((tagged, index) => <tr key={index} className="mx-ledger-row" data-probe-tagged={tagged || undefined}>
+          <th><span className="mx-ledger-link"><i className="mx-ledger-dot" />{instrument}</span></th>
+          <td>0</td>
+          <td>{tagged && <Tag tone="warn">19 Nov</Tag>}<span>+1.00%</span></td>
+          {Array.from({ length: 3 }, (_, cell) => <td key={cell}>0</td>)}
+        </tr>)}
+      </tbody>)}
+    </table>)}
+    {(["en", "zh"] as const).map(locale => {
+      const t = (zh: string, en: string) => locale === "zh" ? zh : en;
+      return <div key={locale} className="mx-ledger-list" data-probe-phone={locale} lang={locale}>
+        {kinds.map(kind => <div key={kind} className="mx-ledger-phone-group" data-asset-class={kind}>
+          <div className="mx-ledger-list-heading">
+            <span className="mx-ledger-group-name">{kind === "funds" ? t("基金", "Funds") : t("股票", "Stocks")}</span>
+            <span>{t("占比", "Weight")}</span>
+          </div>
+          <div className="mx-ledger-list-head">
+            {readingColumns(kind, t, t("今日", "Today")).map(column => <span key={column.key}>{column.short}</span>)}
+          </div>
+          <ol>{samples.map((tagged, index) => <li key={index} className="mx-ledger-item" data-probe-tagged={tagged || undefined}>
+            <span className="mx-ledger-item-head"><i className="mx-ledger-dot" />{instrument}<strong>0</strong></span>
+            <dl>
+              <div><dt className="sr-only">0</dt><dd>
+                {tagged && <Tag tone="warn">{t("11月19日", "19 Nov")}</Tag>}<span>+1.00%</span>
+              </dd></div>
+              {Array.from({ length: 3 }, (_, cell) => <div key={cell}><dt className="sr-only">0</dt><dd>0</dd></div>)}
+            </dl>
+          </li>)}</ol>
+        </div>)}
+      </div>;
+    })}
+  </>;
 }
 
 function Donut({ ledger, palette, focus, setFocus, title, countLabel, restLabel }: {

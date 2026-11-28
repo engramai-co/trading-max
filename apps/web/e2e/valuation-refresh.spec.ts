@@ -1444,7 +1444,7 @@ test("cancel a valuation draft and discard a late proposal", async ({ page }) =>
   const entry = editor.getByRole("button",{name:"✦ Draft",exact:true});
   await expect(entry).toHaveAccessibleDescription("");
   await expect(entry).not.toHaveAttribute("title", /.+/);
-  const status = editor.locator('[role="status"][aria-atomic="true"]');
+  const status = editor.locator('.mx-draft-status[role="status"][aria-atomic="true"]');
   await expect(status).toHaveText("");
   await status.evaluate(el => el.setAttribute("data-original-region", "true"));
   await entry.click();
@@ -1751,11 +1751,12 @@ test.describe("frozen draft review", () => {
     const width = (await editor.boundingBox())!.width;
     await entry.click();
     const top = () => page.locator("#research-sensitivity").evaluate(el => el.getBoundingClientRect().top + scrollY);
-    await expect(editor.getByRole("status")).toContainText("Reading valuation basis");
+    const status = editor.locator('.mx-draft-status[role="status"]');
+    await expect(status).toContainText("Reading valuation basis");
     await page.evaluate(() => document.fonts.ready.then(() => {}));
     const pending = await top();
     release();
-    await expect(editor.getByRole("status")).toContainText("proposed");
+    await expect(status).toContainText("proposed");
     expect(Math.abs(await top() - pending)).toBeLessThanOrEqual(1);
     if (page.viewportSize()!.width >= 1200) {
       const results = (await page.locator("#valuation-results").boundingBox())!;

@@ -3,7 +3,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { useCopy } from "../foundation";
+import { StatusMessage, useCopy } from "../foundation";
 import {
   AnchoredReading,
   EvidenceLink,
@@ -200,7 +200,7 @@ export function Inspection({
   usePageRole(card, register);
   if (!context) return null;
   if (role === "market-map") {
-    if (portal && snapshotId && expired) return createPortal(<p role="status">{t("引用的数据版本暂不可用","Cited publication unavailable")}</p>, portal);
+    if (portal && snapshotId && expired) return createPortal(<p><StatusMessage className="" message={t("引用的数据版本暂不可用", "Cited publication unavailable")} /></p>, portal);
     const line = reading?.lines[0];
     return portal && line
       ? createPortal(
@@ -241,24 +241,23 @@ export function Inspection({
     if (onClose) onClose();
     else setClosed(key);
   };
+  const readingStatus = unavailable ? t("引用的区间记录暂不可用", "Cited interval unavailable")
+    : reading ? t("解读已就绪。", "Reading ready.")
+    : query.isFetching ? t(descriptor.source[0], descriptor.source[1])
+    : stopped === key ? t("已停止。", "Stopped.")
+    : query.isError ? expired ? t("引用的数据版本暂不可用", "Cited publication unavailable") : t("暂时无法读取。", "Reading unavailable.")
+    : t("可核实的记录不足。", "Too few verified observations.");
   const Container = anchored ? AnchoredReading : InlineReading;
   return (
     <Container card={card} onClose={close} focusClose={unavailable} returnFocusRef={returnFocusRef} closeOnCitation={role === "company-summary"}>
+      <StatusMessage message={readingStatus} />
       {onUpdate && <button type="button" className="mx-text-link" onClick={onUpdate}>{t("解读最新记录","Read updated records")}</button>}
-      {unavailable ? <p role="status">{t("引用的区间记录暂不可用","Cited interval unavailable")}</p> : !reading ? (
-        <div className="mx-inspection-status" role="status">
+      {unavailable ? <p>{readingStatus}</p> : !reading ? (
+        <div className="mx-inspection-status">
           {query.isFetching && partial?.key === key && (
             <ReadingLines card={card} lines={partial.lines} />
           )}
-          <span>
-            {query.isFetching
-              ? t(descriptor.source[0], descriptor.source[1])
-              : stopped === key
-                ? t("已停止。", "Stopped.")
-                : query.isError
-                  ? expired ? t("引用的数据版本暂不可用","Cited publication unavailable") : t("暂时无法读取。", "Reading unavailable.")
-                  : t("可核实的记录不足。", "Too few verified observations.")}
-          </span>
+          <span>{readingStatus}</span>
           {query.isFetching ? (
             <button
               onClick={() => {

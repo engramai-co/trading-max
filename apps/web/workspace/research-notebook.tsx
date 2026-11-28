@@ -30,6 +30,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   Segments,
   useCopy,
 } from "./foundation";
@@ -203,6 +204,7 @@ export function ResearchNotebook({ data, fund = false }: { data: ResearchLensSna
           { value: "news", label: t("新闻", "News") },
         ]}
       />}
+      {(section === "notes" || section === "models") && <QueryReadStatus label={t("研究记录", "Research records")} failed={query.isError} ready={!!query.data && !query.isError} error={query.error} />}
       {section === "filings" || section === "news" ? (
         <ResearchDocuments data={data} news={section === "news"} />
       ) : query.isPending ? (

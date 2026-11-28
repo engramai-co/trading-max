@@ -26,7 +26,6 @@ const requiredToolchainImports = [
   '@import "tw-animate-css";',
   '@import "shadcn/tailwind.css";',
   '@import "@mantine/core/styles.layer.css";',
-  '@import "@mantine/notifications/styles.layer.css";',
 ];
 const themeImport = '@import "./shadcn-theme.css";';
 const sourceDirectives = [

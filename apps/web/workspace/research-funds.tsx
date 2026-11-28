@@ -12,7 +12,7 @@ import {
 } from "./etf-data";
 import { EvidenceReading, useEvidenceTime } from "./etf-reading";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Freshness, Help, Panel, Pending, QueryError, Tag, UpdateFailure, useCopy } from "./foundation";
+import { Empty, Facts, Freshness, Help, Panel, Pending, QueryError, QueryReadStatus, Tag, UpdateFailure, useCopy } from "./foundation";
 import Link from "./link";
 import { researchIndexHref } from "./market-indices-data";
 import { DailyTrackingSeries, PremiumDiscountSeries } from "./research-fund-tracking-series";
@@ -98,7 +98,9 @@ function FundUpdating({ fund }: { fund?: Fund }) {
 export function FundPending({ ticker, runId }: { ticker: string; runId?: string }) {
   const query = useQuery(fundQuery(ticker, runId, "profile"));
   const saved = useSavedFund(ticker);
-  return <>{query.isError && <QueryError error={query.error} retry={query.refetch} />}
+  return <><QueryReadStatus label={ticker} failed={query.isError}
+    ready={!!query.data && query.data.state !== "pending" && !query.isError} error={query.error} />
+    {query.isError && <QueryError error={query.error} retry={query.refetch} />}
     <FundUpdating fund={saved ?? query.data} /></>;
 }
 
@@ -108,11 +110,14 @@ function FundIssuerLens({ data, mode, onExplore }: {
   const query = useQuery(fundQuery(data.ticker, data.runId, mode === "holdings" ? "full" : mode === "tracking" ? "tracking" : "profile"));
   const saved = useSavedFund(data.ticker);
   const updating = query.isPending || query.data?.state === "pending";
-  if (!query.data && query.isError && !saved) return <QueryError retry={query.refetch} error={query.error} />;
-  if (updating) return <FundUpdating fund={saved ?? query.data} />;
+  const status = <QueryReadStatus key={data.ticker + mode} label={data.ticker} failed={query.isError && !query.data && !saved}
+    ready={!!query.data && !updating && !query.isError} error={query.error} />;
+  if (!query.data && query.isError && !saved) return <>{status}<QueryError retry={query.refetch} error={query.error} /></>;
+  if (updating) return <>{status}<FundUpdating fund={saved ?? query.data} /></>;
   const fund = query.data ?? saved;
-  if (!fund) return null;
+  if (!fund) return <>{status}</>;
   return <>
+    {status}
     {query.isError && <UpdateFailure updatedAt={query.dataUpdatedAt || Date.parse(fund.fetchedAt)} retry={query.refetch} />}
     {mode === "overview" ? <FundOverview fund={fund} data={data} />
       : mode === "tracking" ? <FundTracking fund={fund} />
@@ -361,19 +366,21 @@ function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: b
   const t = useCopy();
   const when = useEvidenceTime();
   const query = useQuery(fundQuery(data.ticker, data.runId, "peers"));
-  if (query.isPending) return <Pending />;
-  if (query.isError) return <QueryError retry={query.refetch} />;
   const comparison = query.data?.peerComparison;
   const title = separate ? t("UCITS 同类", "UCITS peers") : t("同类", "Peers");
-  if (!comparison) return <Panel title={title}>
+  const status = <QueryReadStatus key={data.ticker} label={title} failed={query.isError}
+    ready={!!comparison && !query.isError} error={query.error} />;
+  if (query.isPending) return <>{status}<Pending /></>;
+  if (query.isError) return <>{status}<QueryError retry={query.refetch} /></>;
+  if (!comparison) return <>{status}<Panel title={title}>
     <Empty title={t("暂无已核实的同类份额", "No verified peers available")} />
-  </Panel>;
+  </Panel></>;
   const fee = t("费率", "Fee");
   const size = t("份额类别资产", "Share-class assets");
   const tracking = t("一年跟踪差", "1-year tracking difference");
   const overlap = t("组合重叠", "Portfolio overlap");
   const metrics = { fee, shareClassSize: size, tracking, overlap };
-  return <Panel title={title} help={
+  return <>{status}<Panel title={title} help={
     <>
       <p>{[comparison.benchmark, comparison.domicile, hedge(comparison.hedging, t), income(comparison.incomeUse, t)].join(" · ")}</p>
       <p>{t("分位按数值从低到高排列，并列取中间位置。每项只与有同口径读数的份额比较。", "Percentiles rank values from low to high, with ties at the midpoint. Each metric uses only share classes with comparable readings.")}</p>
@@ -413,7 +420,7 @@ function FundPeers({ data, separate }: { data: ResearchLensSnapshot; separate: b
           : "—"];
       })} />
     </details>
-  </Panel>;
+  </Panel></>;
 }
 
 export function FundJournal({ data }: { data: ResearchLensSnapshot }) {
@@ -425,6 +432,7 @@ export function FundJournal({ data }: { data: ResearchLensSnapshot }) {
   const disclosures = [...(fund.data?.disclosures ?? [])].sort((a, b) => b.observedAt.localeCompare(a.observedAt));
   return <>
     <Panel title={t("交易记录", "Trade records")}>
+      <QueryReadStatus failed={prices.isError} ready={!!prices.data && !prices.isError} error={prices.error} />
       {prices.isPending ? <Pending /> : prices.isError ? <QueryError retry={prices.refetch} /> : marks.length ? <EvidenceTable
         label={t("交易记录", "Trade records")} rows={marks}
         columns={[
@@ -435,6 +443,7 @@ export function FundJournal({ data }: { data: ResearchLensSnapshot }) {
       /> : <Empty title={t("暂无交易记录", "No trade records")} />}
     </Panel>
     <Panel title={t("指数变动与持仓披露", "Index changes & holdings disclosures")}>
+      <QueryReadStatus failed={fund.isError} ready={!!fund.data && !fund.isError} error={fund.error} />
       {fund.isPending ? <Pending /> : fund.isError ? <QueryError retry={fund.refetch} /> : disclosures.length ? <EvidenceTable
         label={t("发行商披露", "Issuer disclosures")} rows={disclosures} columns={[
           { label: t("日期", "Date"), value: (row) => <time dateTime={row.effectiveAt ?? row.observedAt.slice(0, 10)}

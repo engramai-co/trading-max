@@ -36,6 +36,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  StatusMessage,
   Tag,
   useCopy,
 } from "./foundation";
@@ -102,8 +103,10 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
     if (!semanticKey || manualCheckingRef.current) return;
     const previous = lastSemanticKeyRef.current;
     lastSemanticKeyRef.current = semanticKey;
-    if (previous && previous !== semanticKey) setAnnouncement(liveMessage);
-  }, [semanticKey, liveMessage]);
+    if (previous !== semanticKey && (previous || query.isError || statusView.stale || statusView.tone === "degraded" || statusView.tone === "unavailable")) {
+      setAnnouncement(liveMessage);
+    }
+  }, [semanticKey, liveMessage, query.isError, statusView.stale, statusView.tone]);
 
   async function runManualCheck() {
     if (manualCheckingRef.current) return;
@@ -131,6 +134,12 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
   const job =
     data?.jobs.find((j) => j.jobId === selected) ?? failures.find((j) => j.jobId === selected) ??
     (start.data?.jobId === selected ? start.data : null);
+  const currentStage = job?.stages.find((stage) => stage.status === "running");
+  const drawerStatus = query.isError ? liveMessage : job && [
+    statusText(job.status, t),
+    currentStage && stageText(currentStage.name, t),
+    job.stages.length > 0 ? `${job.stages.filter((stage) => ["succeeded", "skipped"].includes(stage.status)).length} / ${job.stages.length}` : null,
+  ].filter(Boolean).join(" · ");
   const lastFailed = failures[0];
   const heroIssue = tone === "degraded" && lastFailed ? lastFailed.jobId : stale ? "stale" : null;
   function why(issue: string, label: string, location: string) {
@@ -566,6 +575,8 @@ export function HealthWorkspace({ localWorkspace = false, desktop = false, initi
         width={520}
         className="mx-health-drawer"
       >
+        <StatusMessage message={drawerStatus ?? undefined} />
+        {query.isError && <Notice tone="warn">{liveMessage}</Notice>}
         {job && (
           <div className="mx-health-drawer-body flex flex-col gap-mx-lg">
             <div className="flex flex-wrap items-center justify-between gap-mx-md">

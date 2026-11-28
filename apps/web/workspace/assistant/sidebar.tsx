@@ -241,7 +241,7 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
         void client.invalidateQueries({ queryKey: ["assistant-conversations"] });
       }
       if (settled.announcement && ready) {
-        setAnnouncement(turnAnnouncementText(settled.announcement, locale, timeZone, t));
+        setAnnouncement(turnAnnouncementText(settled.announcement, t));
       }
     },
   });
@@ -338,7 +338,7 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
     });
     turnStoreRef.current = nextStore;
     setTurnStore(nextStore);
-    setAnnouncement("");
+    setAnnouncement(t("正在准备回复…", "Preparing response…"));
 
     void sendMessage({
       id: userMessageId,
@@ -378,7 +378,7 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
       turnStoreRef.current = stopped.store;
       setTurnStore(stopped.store);
       if (stopped.announcement) {
-        setAnnouncement(turnAnnouncementText(stopped.announcement, locale, timeZone, t));
+        setAnnouncement(turnAnnouncementText(stopped.announcement, t));
       }
       if (currentRecord && shouldRestoreDraftOnStop(draft, draftRevision.current !== attempt.draftRevision)) {
         setDraft(currentRecord.prompt);
@@ -399,7 +399,7 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
       setEditedOrigin(null);
       restoredFromStopRef.current = null;
     }
-    const lastUser = [...messages].reverse().find(m => m.role === "user");
+    const lastUser = messages.findLast(m => m.role === "user");
     const replaceUserMessageId = lastUser?.id === record.userMessageId ? record.userMessageId : undefined;
     // Bound reading objects require their source publication. An expired
     // reading can be asked again as an ordinary question in the same page scope.
@@ -465,11 +465,11 @@ function Thread({ page, scopeLabel, checking, composerRef, initial, history, onH
               {streamingTurn ? (
                 <>
                   {steps.length > 0 ? (
-                    <div className="mx-assistant-work" role="status">
+                    <div className="mx-assistant-work">
                       <WorkStepItems steps={steps} />
                     </div>
                   ) : (
-                    <p className="mx-assistant-note" role="status">
+                    <p className="mx-assistant-note">
                       {t("正在读取", "Reading ")}{userContextLabel || scopeLabel}…
                     </p>
                   )}

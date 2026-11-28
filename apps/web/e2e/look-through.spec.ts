@@ -18,7 +18,9 @@ const positions = Array.from({ length: 60 }, (_, i) => ({
 async function open(
   page: Page,
   locale: "zh" | "en" = "en",
-  state = { runId: "synthetic-lookthrough", brokerAsOf: "2026-11-04T15:00:00Z" },
+  state: { runId: string; brokerAsOf: string; unavailable?: boolean } = {
+    runId: "synthetic-lookthrough", brokerAsOf: "2026-11-04T15:00:00Z",
+  },
   customPositions = positions,
 ) {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -31,7 +33,7 @@ async function open(
     if (path.endsWith("/health")) return route.fulfill({ json: {
       service: "trading_max-api", status: "ok", latestRunId: state.runId,
     } });
-    if (path.endsWith("/dashboard/lens/holdings-lookthrough")) return route.fulfill({ json: {
+    if (path.endsWith("/dashboard/lens/holdings-lookthrough")) return route.fulfill(state.unavailable ? { status: 503, json: {} } : { json: {
       runId: state.runId, lookthrough: {
         brokerAsOf: state.brokerAsOf,
         available: true, positions: customPositions, underlyingCount: customPositions.length, sources: [],
@@ -50,6 +52,35 @@ async function open(
 test.describe("look-through companies", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
 
+  test("a retained refresh failure and its recovery are each announced once", async ({ page, context }) => {
+    await page.clock.install();
+    const state = { runId: "synthetic-lookthrough-refresh", brokerAsOf: "2026-11-20T21:00:00Z", unavailable: false };
+    await open(page, "en", state);
+    const main = page.getByRole("main");
+    const company = main.getByRole("button", { name: /SYN01/ }).first();
+    const badge = main.locator(".mx-update-failure");
+    const failure = main.getByRole("status").filter({ hasText: "Look-through holdings · Update failed" });
+    const recovery = main.getByRole("status").filter({ hasText: "Look-through holdings · Data is available again." });
+    await expect(failure).toHaveCount(0);
+    await expect(recovery).toHaveCount(0);
+
+    state.unavailable = true;
+    await page.clock.fastForward(31_000);
+    await context.setOffline(true);
+    await context.setOffline(false);
+    await expect(badge).toBeVisible();
+    await expect(company).toBeVisible();
+    await expect(failure).toHaveCount(1);
+    await expect(recovery).toHaveCount(0);
+
+    state.unavailable = false;
+    await badge.click();
+    await expect(badge).toHaveCount(0);
+    await expect(company).toBeVisible();
+    await expect(recovery).toHaveCount(1);
+    await expect(failure).toHaveCount(0);
+  });
+
   test("phones lead with the companies and fold country, sector and ownership under one counted control", async ({ page, isMobile }) => {
     test.skip(!isMobile, "The phone layout");
     await open(page);
@@ -64,8 +95,18 @@ test.describe("look-through companies", () => {
     const toggle = page.getByRole("button", { name: /^Filters/ });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     await expect(country).toBeHidden();
-    await above.getByRole("button", { name: "Next page", exact: true }).click();
+    await expect(above.getByRole("button", { name: "First page", exact: true })).toBeDisabled();
+    const next = above.getByRole("button", { name: "Next page", exact: true });
+    await next.focus();
+    await expect(next).toHaveCSS("outline-width", "2px");
+    await next.press("Space");
+    await expect(next).toBeFocused();
     await expect(above).toContainText("2 / 3");
+    await above.getByRole("button", { name: "Last page", exact: true }).click();
+    await expect(next).toBeDisabled();
+    await below.getByRole("button", { name: "First page", exact: true }).click();
+    await expect(above).toContainText("1 / 3");
+    await next.click();
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
     await country.click();

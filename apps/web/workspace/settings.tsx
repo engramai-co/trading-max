@@ -29,6 +29,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   Segments,
   TabPanel,
   Tabs,
@@ -158,6 +159,7 @@ export function SettingsWorkspace({ localWorkspace = false, desktop = false }: {
           </button>
         </Notice>
       )}
+      {view !== "assistant" && <QueryReadStatus failed={query.isError && !data} ready={!!data} error={query.error} />}
       {view === "assistant" ? (
         <AssistantPreferences openModels={() => update({ tab: "models" })} />
       ) : query.isPending ? (

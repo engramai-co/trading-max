@@ -3,7 +3,7 @@ import type { Locale } from "@/components/locale-provider";
 import type { useCopy } from "../foundation";
 import type { RoleCard } from "./context";
 import { verifiedLines } from "./chat-reply";
-import { displayTurns, readableDates, sourceLabel } from "./evidence";
+import { displayTurns } from "./evidence";
 import { errorLabel } from "./status-label";
 import type { TurnContext } from "./turn-context";
 
@@ -35,7 +35,7 @@ export type TurnStore = {
 };
 
 export type TurnAnnouncement =
-  | { kind: "completed"; message: UIMessage | null }
+  | { kind: "completed" }
   | { kind: "stopped" }
   | { kind: "failed"; status: "failed" | "disconnected" | "rate_limited"; errorCode?: string };
 
@@ -193,7 +193,7 @@ export function settleTurnAttempt(
     return finishTurn(store, attemptId, { kind: "failed", status: "failed", errorCode: "assistant_reply_unverified" },
       null, snapshotId);
   } else {
-    announcement = { kind: "completed", message: assistantMessage };
+    announcement = { kind: "completed" };
   }
   return finishTurn(store, attemptId, announcement, assistantMessage, snapshotId);
 }
@@ -256,22 +256,8 @@ export function turnStatusText(
   return errorLabel(errorCode ?? "assistant_unavailable", t);
 }
 
-export function turnAnnouncementText(
-  event: TurnAnnouncement,
-  locale: Locale,
-  timeZone: string,
-  t: ReturnType<typeof useCopy>,
-): string {
-  if (event.kind === "stopped") {
-    return t("已停止生成。", "Generation stopped.");
-  }
-  if (event.kind === "failed") {
-    return turnStatusText(event.status, event.errorCode, false, t);
-  }
-  const lines = event.message ? verifiedLines(event.message, locale, timeZone) : [];
-  return lines.length
-    ? lines
-        .map((line) => readableDates(line.text, locale, timeZone) + " " + sourceLabel(line.evidence, t))
-        .join(" ")
-    : t("无法核实这次回复。", "This reply could not be verified.");
+export function turnAnnouncementText(event: TurnAnnouncement, t: ReturnType<typeof useCopy>): string {
+  if (event.kind === "stopped") return t("已停止生成。", "Generation stopped.");
+  if (event.kind === "failed") return turnStatusText(event.status, event.errorCode, false, t);
+  return t("回复已就绪。", "Response ready.");
 }

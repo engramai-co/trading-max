@@ -95,13 +95,12 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   expect(sends).toHaveLength(1);
   const liveReply = page.locator("#mx-assistant-panel [aria-live=polite]");
   await expect(liveReply).toHaveCount(1);
-  await expect(liveReply).toContainText("本期净盈亏 £21.50");
-  await expect(liveReply).toContainText(formatCalendarDate("2026-11-12", "zh") + " – " + formatCalendarDate("2026-11-13", "zh"));
+  await expect(liveReply).toHaveText("回复已就绪。");
+  const reply = page.locator(".mx-turn-assistant");
+  await expect(reply).toContainText(formatCalendarDate("2026-11-12", "zh") + " – " + formatCalendarDate("2026-11-13", "zh"));
   const moneyLink = page.locator(".mx-turn-assistant").getByRole("link", {name:"账户"});
   await expect(moneyLink).toHaveAttribute("href", "/analytics?view=money&range=1D&moneyFrom=2026-11-12&moneyTo=2026-11-13&snapshotId=synthetic&evidence=period_performance");
-  await expect(liveReply).toContainText("覆盖不完整");
-  const visible = await page.locator(".mx-turn-assistant .mx-reading-line").allInnerTexts();
-  await expect(liveReply).toHaveText(visible.join(" "));
+  await expect(reply).toContainText("覆盖不完整");
   expect(new URL(request.url()).searchParams.get("format")).toBe("references");
   await expect(page.locator(".mx-turn-assistant")).not.toContainText("{{");
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-verified-figure.png")});
@@ -180,8 +179,7 @@ test("saved history loads and deletes a conversation", async ({page}) => {
 });
 test("stopping a turn restores its question and evidence points to the selected page", async ({page}) => {
   await fixtures(page);
-  let finish: () => void = () => {};
-  const hold = new Promise<void>(resolve => { finish = resolve; });
+  const { promise: hold, resolve: finish } = Promise.withResolvers<void>();
   await page.route("**/api/backend/assistant/chat*", async route => {
     await hold;
     await route.abort().catch(() => undefined);
@@ -221,8 +219,7 @@ test("weekly follow-ups retain the reading context after navigation and stop", a
     await page.locator("[data-assistant-trigger]").click();
   }
   await expect(page).toHaveURL(/\/holdings$/);
-  let release: () => void = () => {};
-  const held = new Promise<void>(resolve => {release = resolve;});
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/api/backend/assistant/chat*", async route => {await held; await route.abort().catch(() => {});});
   try {
     for (let i = 0; i < 2; i++) {
@@ -241,7 +238,8 @@ test("stopping a second weekly turn after navigating keeps the reading context f
   let finishNavigation: () => void = () => {};
   if (info.project.name === "desktop") {
     // Keep navigation pending when Stop restores the draft.
-    const navigation = new Promise<void>(resolve => {finishNavigation = resolve;});
+    const { promise: navigation, resolve } = Promise.withResolvers<void>();
+    finishNavigation = resolve;
     await page.route(url => url.pathname === "/holdings", async route => {
       await navigation;
       await route.continue().catch(() => {});
@@ -260,8 +258,7 @@ test("stopping a second weekly turn after navigating keeps the reading context f
   await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
   await expect(page.getByRole("button", {name:"发送", exact:true})).toBeDisabled();
 
-  let release: () => void = () => {};
-  const held = new Promise<void>(resolve => {release = resolve;});
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/api/backend/assistant/chat*", async route => {await held; await route.abort().catch(() => {});});
   try {
     const followUp = "Which holding moved most that week?";
@@ -341,7 +338,7 @@ test("an undated Holdings quote discloses its missing time in the sidebar and an
   await input.press("Enter");
   const expected = "SYN · ISA · Unit price £7.0000 · Time unavailable";
   await expect(page.locator(".mx-turn-assistant .mx-reading-line").first()).toContainText(expected);
-  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toContainText(expected);
+  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("Response ready.");
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-undated-quote.png")});
 });
 
@@ -457,7 +454,7 @@ for (const locale of ["zh", "en"] as const) {
     const rows = page.locator(".mx-turn-assistant .mx-reading-line");
     await expect(rows.nth(0)).toContainText(locale === "zh" ? "技术指标 · 已过时" : "Technical data · Stale");
     await expect(rows.nth(1)).toContainText(locale === "zh" ? "业绩数据 · 缺失" : "Earnings data · Missing");
-    await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText((await rows.allInnerTexts()).join(" "));
+    await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText(locale === "zh" ? "回复已就绪。" : "Response ready.");
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name+"-"+locale+"-freshness.png")});
   });
 }
@@ -498,7 +495,7 @@ test("a saved benchmark citation reopens its portfolio and prices and discloses 
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-reopened-benchmark.png")});
   expired = true;
   await page.reload();
-  await expect(page.getByText("Cited publication unavailable", {exact:true})).toBeVisible();
+  await expect(page.getByText("Cited publication unavailable", {exact:true}).and(page.locator(":not(.sr-only)"))).toBeVisible();
   await expect(result).toHaveCount(0);
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-expired-benchmark.png")});
 });
@@ -648,8 +645,7 @@ test("cross-tab withdrawal suspends cached readings and History while the profil
   await context.addInitScript(() => localStorage.setItem("trading_max-locale","en"));
   await fixtures(page);
   let enabled = true;
-  let releaseProfile!: () => void;
-  const profileWait = new Promise<void>(resolve => { releaseProfile = resolve; });
+  const { promise: profileWait, resolve: releaseProfile } = Promise.withResolvers<void>();
   const assistantRequests: string[] = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
@@ -741,8 +737,7 @@ for (const recovery of ["automatic retry", "focus after retry exhaustion"] as co
     const status = changed ? await new Promise<number>(resolve => profiles.push(resolve)) : 200;
     await route.fulfill({status, json:{accountLabels:{},assistantEnabled:true}});
   });
-  let releaseStreams!: () => void;
-  const hold = new Promise<void>(resolve => { releaseStreams = resolve; });
+  const { promise: hold, resolve: releaseStreams } = Promise.withResolvers<void>();
   await page.route(/\/assistant\/(chat\?|roles\/weekly\/reading)/, async route => {
     await hold;
     await route.abort().catch(() => {});
@@ -880,8 +875,7 @@ test("a passive readiness response preserves every keystroke during typing", asy
   await page.keyboard.type("Continue");
   await expect(draft).toHaveValue("Continue");
 
-  let release!: () => void;
-  const held = new Promise<void>(resolve => { release = resolve; });
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/api/backend/assistant/status", async route => {
     await held;
     await route.fulfill({json:{ready:true, code:null}});
@@ -922,8 +916,7 @@ test("a passive readiness check leaves focus on the wide workspace", async ({pag
   await skip.focus();
   await expect(skip).toBeFocused();
 
-  let release!: () => void;
-  const held = new Promise<void>(resolve => { release = resolve; });
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/api/backend/assistant/status", async route => {
     await held;
     await route.fulfill({json:{ready:true, code:null}});
@@ -970,8 +963,7 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
       }
     }
 
-    let release!: () => void;
-    const response = new Promise<void>(resolve => { release = resolve; });
+    const { promise: response, resolve: release } = Promise.withResolvers<void>();
     await page.route("**/api/backend/assistant/status", async route => {
       await response;
       const ready = outcome !== "withdrawn";
@@ -1015,6 +1007,7 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
       await expect(draft).toHaveCount(0);
       if (shots) await page.screenshot({path:join(shots,info.project.name + "-withdrawn-focus.png")});
     } else {
+      await expect(panel.getByText("Checking connection…")).toBeHidden();
       await expect(control).toBeFocused();
       await expect(draft).toHaveValue("Keep this draft");
       if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-restored-focus.png")});
@@ -1129,8 +1122,7 @@ async function openDraftBeforeStatusCheck(page: Page) {
 type StatusOutcome = 200 | 503 | "network error" | "provider_not_configured";
 
 async function holdPassiveStatus(page: Page, time = "2026-03-01T12:00:31Z") {
-  let release!: (status: StatusOutcome) => void;
-  const held = new Promise<StatusOutcome>(resolve => { release = resolve; });
+  const { promise: held, resolve: release } = Promise.withResolvers<StatusOutcome>();
   await page.route("**/api/backend/assistant/status", async route => {
     const status = await held;
     if (status === "network error") return route.abort("failed");
@@ -1297,8 +1289,7 @@ test("first approval focuses the lazy composer after the opening consent check",
   if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
   await fixtures(page);
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
-  let approve!: () => void;
-  const held = new Promise<void>(resolve => { approve = resolve; });
+  const { promise: held, resolve: approve } = Promise.withResolvers<void>();
   await page.route("**/api/backend/assistant/status", async route => {
     await held;
     await route.fulfill({json:{ready:true,code:null}});

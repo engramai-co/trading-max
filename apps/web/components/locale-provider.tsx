@@ -6,6 +6,7 @@ import {
   useContext,
   useSyncExternalStore,
 } from "react";
+import { DISPLAY_LOCALE_STORAGE_KEY } from "@/lib/display-preferences";
 
 export type Locale = "zh" | "en";
 export type DisplayTimeZonePreference = "browser" | string;
@@ -21,7 +22,6 @@ type LocaleContextValue = {
   timeZonePreference: DisplayTimeZonePreference;
 };
 
-const STORAGE_KEY = "trading_max-locale";
 const TIME_ZONE_STORAGE_KEY = "trading_max-time-zone";
 let currentLocale: Locale = "zh";
 let currentBrowserTimeZone = DEFAULT_DISPLAY_TIME_ZONE;
@@ -89,7 +89,7 @@ function subscribe(listener: () => void) {
 
   if (!storageLoaded && typeof window !== "undefined") {
     storageLoaded = true;
-    const stored = storedPreference(STORAGE_KEY);
+    const stored = storedPreference(DISPLAY_LOCALE_STORAGE_KEY);
     const nextLocale: Locale = stored === "en" ? "en" : "zh";
     applyLocale(nextLocale);
     currentBrowserTimeZone = readBrowserTimeZone();
@@ -128,7 +128,7 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
   );
   const setLocale = useCallback((nextLocale: Locale) => {
     applyLocale(nextLocale);
-    rememberPreference(STORAGE_KEY, nextLocale);
+    rememberPreference(DISPLAY_LOCALE_STORAGE_KEY, nextLocale);
     emitChange();
   }, []);
   const timeZonePreference = useSyncExternalStore(

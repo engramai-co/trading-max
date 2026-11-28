@@ -13,7 +13,7 @@ import { useState, type ReactNode } from "react";
 import { useLocale } from "@/components/locale-provider";
 import { formatDate } from "@/ui/formatters";
 import { number, percent } from "./data";
-import { Empty, Help, Panel, Pending, QueryError, useCopy } from "./foundation";
+import { Empty, Help, Panel, Pending, QueryError, QueryReadStatus, useCopy } from "./foundation";
 import { PriceHistory } from "./research-price";
 import { TechnicalView } from "./research-company";
 import { researchLensQuery } from "./research-queries";
@@ -103,6 +103,7 @@ export function TechnicalWorkspace({ ticker, runId, snapshotId, data, pending, e
 }) {
   const t = useCopy();
   return <ResearchReading sections={seasonality ? technicalSections : technicalSections.slice(0, 2)} parameter="technicalView">
+    <QueryReadStatus label={t("技术诊断", "Technical diagnosis")} failed={error && !data} ready={!!data} />
     <div className="mx-tech-workspace">
       <div id="research-price" className="mx-tech-main"><PriceHistory ticker={ticker} runId={runId} snapshotId={snapshotId} technical compactChart context={data} /></div>
       <Panel bare className="mx-tech-rail"><TechnicalScoreCard data={data?.technical} pending={pending} />{error && !data && <QueryError retry={retry} />}</Panel>
@@ -120,9 +121,10 @@ export function SeasonalitySection({ ticker, revision, preview }: { ticker: stri
   const [box, near] = useApproached(params.get("technicalView") === "seasonality");
   const lens = useQuery({ ...researchLensQuery(ticker, "technical", revision, "seasonality", preview), enabled: near });
   return <div id="research-seasonality" ref={box}>
+    <QueryReadStatus key={ticker} label={t("月度季节性", "Monthly seasonality")} failed={lens.isError && !lens.data} ready={!!lens.data} error={lens.error} />
     {lens.data ? <Seasonality data={lens.data} revision={revision} />
       : <Panel title={t("月度季节性", "Monthly seasonality")}>
-        {lens.isError ? <QueryError retry={() => { void lens.refetch(); }} error={lens.error} /> : <Pending shape="chart" height={300} quiet />}
+        {lens.isError ? <QueryError retry={lens.refetch} error={lens.error} /> : <Pending shape="chart" height={300} quiet />}
       </Panel>}
   </div>;
 }

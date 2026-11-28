@@ -1,7 +1,7 @@
 "use client";
 
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
-import { LoaderCircle } from "lucide-react";
+import { Spinner } from "./spinner";
 import { useId, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
@@ -31,7 +31,7 @@ function Switch({
       data-slot="switch"
     >
       <SwitchPrimitive.Thumb data-slot="switch-thumb">
-        {saving && <LoaderCircle size={10} className="animate-spin" aria-hidden="true" />}
+        {saving && <Spinner />}
       </SwitchPrimitive.Thumb>
     </SwitchPrimitive.Root>
   );

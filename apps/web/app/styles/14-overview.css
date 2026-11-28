@@ -514,7 +514,7 @@
     color: var(--mx-muted);
     font-size: var(--mx-text-label);
   }
-  .mx-ledger-list-heading h3 {
+  .mx-ledger-list-heading :is(h3, .mx-ledger-group-name) {
     margin: 0;
     color: var(--mx-ink);
     font-size: var(--mx-text-body);
@@ -658,6 +658,43 @@
 .mx-overview-unavailable-history {
   min-height: 326px;
 }
+.mx-overview-history-pending {
+  display: flex;
+  flex-direction: column;
+}
+.mx-overview-portfolio[data-waiting] {
+  min-block-size: var(--mx-overview-summary-size, 0px);
+}
+html[data-mx-boot-history] .mx-overview-read[data-layout-bootstrap] {
+  --mx-overview-summary-size: var(--mx-boot-summary-size);
+  --mx-overview-history-size: var(--mx-boot-history-size);
+  --mx-overview-plot-top: var(--mx-boot-plot-top);
+}
+:is(.mx-overview-history-reserved, html[data-mx-boot-history] [data-layout-bootstrap] .mx-overview-history) {
+  position: relative;
+  min-block-size: var(--mx-overview-history-size);
+}
+:is(.mx-overview-history-reserved, html[data-mx-boot-history="plot"] [data-layout-bootstrap] .mx-overview-history) .mx-loading-chart {
+  position: absolute;
+  inset-block-start: var(--mx-overview-plot-top);
+  inset-inline: var(--mx-space-panel);
+}
+html[data-mx-boot-history] [data-layout-bootstrap] .mx-overview-attention-placeholder,
+html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history .mx-loading-chart {
+  display: none;
+}
+.mx-overview-attention-placeholder {
+  min-block-size: 58px;
+}
+.mx-overview-sectors > :is(.mx-loading, .mx-empty) {
+  min-height: 248px;
+}
+.mx-period-figure-placeholder {
+  width: 155px;
+  height: 37px;
+  border-radius: var(--radius-tooltip);
+  background: var(--mx-placeholder);
+}
 .mx-overview-read :is(.mx-overview-totals, .mx-loading-summary) {
   min-height: 84px;
 }
@@ -669,6 +706,9 @@
 }
 
 @media (max-width: 767px) {
+  .mx-overview-attention-placeholder {
+    min-block-size: 82px;
+  }
   .mx-overview-read .mx-overview-totals {
     grid-template-columns: minmax(0, 1fr);
     gap: var(--mx-space-items);
@@ -688,15 +728,6 @@
   }
   .mx-overview-unavailable {
     min-height: 327px;
-  }
-  .mx-overview-read :is(.mx-overview-totals, .mx-loading-summary) {
-    min-height: 134px;
-  }
-  .mx-overview-read .mx-loading-summary > .mx-loading-shape {
-    background:
-      linear-gradient(var(--mx-placeholder) 0 0) 0 27px / 52% 38px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 100% 96px / 24% 14px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 100% 120px / 20% 12px no-repeat;
   }
 }
 
@@ -791,15 +822,13 @@
     font-size: var(--mx-text-body);
   }
   .mx-overview-read .mx-loading-summary {
-    min-height: 158px;
+    min-height: 72px;
   }
   .mx-overview-read .mx-loading-summary > .mx-loading-shape {
     background:
-      linear-gradient(var(--mx-placeholder) 0 0) 0 2px / 14% 12px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 24px / 52% 38px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 74px / 62% 14px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 108px / 46% 20px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 140px / 58% 13px no-repeat;
+      linear-gradient(var(--mx-placeholder) 0 0) 0 2px / 46% 20px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 34px / 58% 13px no-repeat,
+      linear-gradient(var(--mx-placeholder) 0 0) 0 56px / 43% 13px no-repeat;
   }
   /* The move leads the summary above, so the period panel shows its chart without repeating it. */
   .mx-page .mx-overview-history .mx-period-figure,

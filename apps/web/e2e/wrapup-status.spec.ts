@@ -17,6 +17,7 @@ test.describe("data status and scheduled updates", () => {
     } }));
     await page.goto("/health");
     await expect(page.getByRole("heading", { name: /no completed update for 5d/ })).toBeVisible();
+    await expect(page.locator(".mx-health-page > [role=status][aria-live]")).toContainText("no completed update for 5d");
     await expect(page.locator(".mx-health-hero").getByText("Published snapshot", { exact: false })).toBeVisible();
     await expect(page.getByText("No update jobs recorded")).toBeVisible();
     await expect(page.getByText("Your first update starts here")).toHaveCount(0);
@@ -30,8 +31,7 @@ test.describe("data status and scheduled updates", () => {
   test("a delayed or timed-out research directory still names the requested listing", async ({ page, isMobile }) => {
     if (isMobile) await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     await page.route("**/api/backend/research/shell", async (route) => {
       await gate;
       await route.fulfill({ status: 504, json: {} });
@@ -41,6 +41,22 @@ test.describe("data status and scheduled updates", () => {
     release();
     await expect(page.getByRole("heading", { name: "Data request timed out" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "SYNTH", exact: true })).toBeVisible();
+  });
+
+  test("the first Data Status failure is announced without moving focus", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    await page.route(healthRoute, async (route) => {
+      await gate;
+      await route.fulfill({ status: 503, json: {} });
+    });
+    await page.goto("/health");
+    const checkNow = page.getByRole("button", { name: "Check now" });
+    await checkNow.focus();
+    release();
+    await expect(page.getByRole("heading", { name: "Data is temporarily unavailable" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Data is temporarily unavailable" })).toHaveCount(1);
+    await expect(checkNow).toBeFocused();
   });
 
   test("a failed CFD review outside the history list stays visible until its retry succeeds", async ({ page }) => {
@@ -251,6 +267,23 @@ test.describe("data status and scheduled updates", () => {
 });
 
 const healthRoute = "**/api/backend/health/details";
+test("a failed health poll discloses interruption beside retained task stages", async ({ page }) => {
+  await page.clock.install();
+  let failing = false;
+  const job = { ...failedJob, stages: [{ name: "publish", status: "failed", error: "Synthetic failure" }] };
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.route(healthRoute, (route) => route.fulfill(failing
+    ? { status: 503, json: {} } : { json: healthFixture({ jobs: [job] }) }));
+  await page.goto("/health?job=perf-fail");
+  const dialog = page.getByRole("dialog", { name: "Update task details" });
+  await expect(dialog.locator(".mx-stage-list > li")).toHaveCount(1);
+  await expect(dialog.getByRole("note").filter({ hasText: "Data is temporarily unavailable" })).toHaveCount(0);
+  failing = true;
+  await page.clock.runFor(7_000);
+  await expect(dialog.getByRole("note").filter({ hasText: "Data is temporarily unavailable" })).toBeVisible();
+  await expect(dialog.locator(".mx-stage-list > li")).toHaveCount(1);
+});
+
 const failedJob = {
   jobId: "perf-fail",
   scope: "performance",

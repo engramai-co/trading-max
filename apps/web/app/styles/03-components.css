@@ -671,10 +671,6 @@
   color: var(--mx-warning);
   font-size: 13px;
 }
-.mx-retry-reading .mx-inline-retry {
-  padding: 0 8px;
-  min-height: 32px;
-}
 .mx-prior-range {
   margin: 0 0 8px;
   color: var(--mx-muted);
@@ -713,9 +709,6 @@
   }
   .mx-range-more[data-selected="true"] {
     background: var(--segment-indicator);
-  }
-  .mx-retry-reading .mx-inline-retry {
-    min-height: 44px;
   }
 }
 

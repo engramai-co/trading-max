@@ -19,6 +19,8 @@ import { Button, CloseButton, buttonVariants } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs as TabsRoot, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Empty as EmptyRoot, EmptyDescription, EmptyTitle } from "@/components/ui/empty";
+import { Skeleton } from "@/components/ui/skeleton";
 import { CenteredCopy } from "@/ui/centered-copy";
 import { formatDate, formatDateTime } from "@/ui/formatters";
 import { isReadTimeout, type ChangeTone } from "./data";
@@ -253,6 +255,7 @@ export function Page({
   eyebrow,
   title,
   titleHidden = false,
+  headingRef,
   description,
   nav,
   actions,
@@ -263,6 +266,7 @@ export function Page({
   title: ReactNode;
   /** Keep the heading for assistive technology when the layout names the page. */
   titleHidden?: boolean;
+  headingRef?: RefObject<HTMLHeadingElement | null>;
   description?: ReactNode;
   /** A switch between the page's own scopes, beside its title. */
   nav?: ReactNode;
@@ -270,18 +274,20 @@ export function Page({
   children: ReactNode;
   className?: string;
 }) {
-  const heading = <h1 className={titleHidden ? "sr-only" : undefined}>{title}</h1>;
+  const heading = <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className={titleHidden ? "sr-only" : undefined}>{title}</h1>;
   return (
     <div className={"mx-page " + className}>
-      <header className={"mx-page-heading" + (titleHidden ? " mx-page-tools" : "")}>
-        <div>
-          {eyebrow && <div className="mx-eyebrow">{eyebrow}</div>}
-          {nav ? <div className="mx-page-title">{heading}{nav}</div> : heading}
-          {description && <p>{description}</p>}
-        </div>
-        {actions && <div className="mx-page-actions">{actions}</div>}
-      </header>
-      {children}
+      <ReadScope scope={typeof title === "string" ? title : undefined}>
+        <header className={"mx-page-heading" + (titleHidden ? " mx-page-tools" : "")}>
+          <div>
+            {eyebrow && <div className="mx-eyebrow">{eyebrow}</div>}
+            {nav ? <div className="mx-page-title">{heading}{nav}</div> : heading}
+            {description && <p>{description}</p>}
+          </div>
+          {actions && <div className="mx-page-actions">{actions}</div>}
+        </header>
+        {children}
+      </ReadScope>
     </div>
   );
 }
@@ -329,7 +335,7 @@ export function Panel({
           {action}
         </div>
       )}
-      {children}
+      <ReadScope scope={typeof title === "string" ? title : undefined}>{children}</ReadScope>
     </section>
   );
 }
@@ -415,36 +421,83 @@ export function Empty({
   description?: ReactNode;
   action?: ReactNode;
 }) {
-  const Heading = headingLevel === 2 ? "h2" : "h3";
   return (
-    <div className="mx-empty">
-      <div className="mx-empty-mark">
-        <Info aria-hidden="true" size={20} />
-      </div>
-      <Heading><CenteredCopy>{title}</CenteredCopy></Heading>
-      {description && <p><CenteredCopy>{description}</CenteredCopy></p>}
+    <EmptyRoot>
+      <EmptyTitle as={headingLevel === 2 ? "h2" : "h3"}><CenteredCopy>{title}</CenteredCopy></EmptyTitle>
+      {description && <EmptyDescription><CenteredCopy>{description}</CenteredCopy></EmptyDescription>}
       {action}
-    </div>
+    </EmptyRoot>
   );
 }
+
+/** Start empty even when a newly mounted panel is already in an error state. */
+export function StatusMessage({ message, className = "sr-only" }: { message?: string; className?: string }) {
+  const [announced, setAnnounced] = useState<string>();
+  useEffect(() => {
+    const timer = window.setTimeout(() => setAnnounced(message), 100);
+    return () => window.clearTimeout(timer);
+  }, [message]);
+  return <span className={className} role="status" aria-atomic="true">{announced}</span>;
+}
+
+const ReadScopeLabel = createContext<string | undefined>(undefined);
+
+function ReadScope({ scope, children }: { scope?: string; children: ReactNode }) {
+  return scope ? <ReadScopeLabel.Provider value={scope}>{children}</ReadScopeLabel.Provider> : children;
+}
+
+function useReadFailure(error?: unknown) {
+  const t = useCopy();
+  return isReadTimeout(error) ? t("数据请求超时", "Data request timed out")
+    : t("暂时无法读取数据", "Data is temporarily unavailable");
+}
+
+/** Only the owner knows whether the fetched reading satisfies its display contract. */
+export function QueryReadStatus({ failed, ready, error, label, refreshFailed = false }: {
+  failed: boolean;
+  ready: boolean;
+  error?: unknown;
+  label?: string;
+  refreshFailed?: boolean;
+}) {
+  const t = useCopy();
+  const panel = useContext(ReadScopeLabel);
+  const scope = label ?? panel;
+  const readFailure = useReadFailure(error);
+  const message = refreshFailed ? t("更新失败", "Update failed") : failed ? readFailure : undefined;
+  const recovered = t("数据已恢复。", "Data is available again.");
+  return <ReadStatus failure={message ? [scope, message].filter(Boolean).join(" · ") : undefined}
+    ready={ready} recovered={[scope, recovered].filter(Boolean).join(" · ")} />;
+}
+
+/** Keep this mounted beside the affected reading through loading, error and recovery. */
+export function ReadStatus({ failure, ready, recovered }: { failure?: string; ready: boolean; recovered: string }) {
+  const [lastFailure, setLastFailure] = useState<string>();
+  const [recovery, setRecovery] = useState<string>();
+  if (failure && lastFailure !== failure) {
+    setLastFailure(failure);
+    setRecovery(undefined);
+  } else if (!failure && ready && lastFailure) {
+    setLastFailure(undefined);
+    setRecovery(recovered);
+  }
+  return <StatusMessage message={failure ?? (ready ? recovery : undefined)} />;
+}
+
 export function LoadingStatus({ label }: { label: string }) {
   const [visible, setVisible] = useState(false);
   useEffect(() => scheduleLoadingStatus(() => setVisible(true)), []);
   return (
-    <div className="mx-loading-status" role="status" aria-label={label}>
+    <div className="mx-loading-status">
       <span className="mx-loading-message" aria-hidden="true">{label}</span>
-      {visible && <span className="sr-only">{label}</span>}
+      <span className="sr-only" role="status">{visible ? label : ""}</span>
     </div>
   );
 }
 
-function LoadingShape({ className = "" }: { className?: string }) {
-  return <div aria-hidden="true" className={`mx-loading-shape ${className}`} />;
-}
-
 export function Pending({ compact = false, shape, label, height, quiet = false }: {
   compact?: boolean;
-  shape?: "summary" | "holdings" | "review" | "analytics" | "chart" | "research" | "sectors";
+  shape?: "summary" | "holdings" | "review" | "chart" | "research" | "sectors";
   label?: string;
   height?: number;
   quiet?: boolean;
@@ -452,7 +505,7 @@ export function Pending({ compact = false, shape, label, height, quiet = false }
   const t = useCopy();
   return (
     <div className={`mx-loading mx-loading-${shape ?? (compact ? "compact" : "generic")}`} style={{ minHeight: height }}>
-      <LoadingShape />
+      <Skeleton className="mx-loading-shape" />
       {!quiet && <LoadingStatus label={label ?? t("正在读取数据…", "Loading data…")} />}
     </div>
   );
@@ -501,11 +554,12 @@ export function QueryError({
 }) {
   const t = useCopy();
   const detail = useReadErrorCopy();
+  const failure = useReadFailure(error);
+  const message = title ?? failure;
   return (
     <Panel>
       <Empty
-        title={title ?? (isReadTimeout(error)
-          ? t("数据请求超时", "Data request timed out") : t("暂时无法读取数据", "Data is temporarily unavailable"))}
+        title={message}
         description={detail}
         action={(retry || showDataStatusLink) && (
           <div className="flex flex-wrap items-center gap-mx-md">

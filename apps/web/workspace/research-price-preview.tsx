@@ -14,7 +14,7 @@ import { Plot } from "./charts";
 import { candleSeries, candleValues, priceGapConnectors, priceReading } from "./research-price-candles";
 import { volume } from "./reading-format";
 import { TechnicalScoreCard } from "./research-technical";
-import { Empty, Panel, Pending, QueryError, UpdateFailure, useCopy } from "./foundation";
+import { Empty, Panel, Pending, QueryError, QueryReadStatus, UpdateFailure, useCopy } from "./foundation";
 
 /** A fixed three-month daily preview. Analytical controls live in Technical. */
 export function PricePreview({ ticker, query, summary, pending = false }: {
@@ -51,7 +51,8 @@ export function PricePreview({ ticker, query, summary, pending = false }: {
     >
       <div className="mx-tech-preview-grid">
         <div>
-          {query.isPending ? (
+          <QueryReadStatus failed={query.isError && !query.data} ready={!!latest} error={query.error} />
+      {query.isPending ? (
             <Pending shape="chart" height={height} label={t("正在读取价格走势…", "Loading price history…")} />
           ) : query.isError && !query.data ? (
             <QueryError retry={query.refetch} />

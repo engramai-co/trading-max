@@ -1,5 +1,6 @@
 import type { Scope } from "@/lib/portfolio/nav";
 import type { DashboardLens, Holding } from "@/lib/types";
+import type { LedgerRows } from "@/lib/overview-layout-storage";
 import type { AttentionFact, HoldingSignal } from "./attention";
 import { findETF, type Copy, type ETFReading } from "./etf-data";
 import { combinedHoldingPnl, finite, groupHoldings, holdingTechnical, holdingValuation, isFundHolding } from "./holding-groups";
@@ -124,6 +125,24 @@ function dayMove(positions: Holding[]) {
   return { share: finite(largest.dayChangePct), date };
 }
 
+function latestLedgerDay(moves: Iterable<ReturnType<typeof dayMove>>) {
+  let latest: string | null = null;
+  for (const { date } of moves) {
+    if (date && (!latest || date > latest)) latest = date;
+  }
+  return latest;
+}
+
+/** These are the same merged holdings and date badges the ledger renders. */
+export function overviewLedgerRows(holdings: Holding[]): LedgerRows {
+  const groups = [...groupHoldings(holdings).values()];
+  const funds = groups.filter(isFundHolding).length;
+  const moves = groups.map(dayMove);
+  const latest = latestLedgerDay(moves);
+  const dateTagged = moves.filter(({ date }) => date && date !== latest).length;
+  return { stocks: groups.length - funds, funds, ...(dateTagged ? { dateTagged } : {}) };
+}
+
 /**
  * The overview's holdings: one row per security across accounts, largest first, every one of them listed.
  * The largest eight and any flagged holding beyond them own a colour and a donut segment; the others share
@@ -145,7 +164,7 @@ export function holdingsLedger({ holdings, technical, valuations, etfs, signals 
   const total = securities.reduce((sum, security) => sum + security.value, 0);
   const share = (value: number) => (total > 0 ? value / total : 0);
   const moves = new Map(securities.map((security) => [security.ticker, dayMove(security.positions)]));
-  const columnDay = [...moves.values()].flatMap((move) => (move.date ? [move.date] : [])).sort().at(-1) ?? null;
+  const columnDay = latestLedgerDay(moves.values());
   const flagged = new Map(signals.map((signal) => [signal.ticker, signal]));
   let colours = 0;
   const rows = securities.map((security, index): LedgerRow => {

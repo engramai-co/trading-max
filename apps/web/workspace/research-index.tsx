@@ -17,7 +17,7 @@ import { formatCalendarDate, formatCurrency, formatDateTime, formatDeltaPercent,
 import { api, readApi, safeUrl } from "./data";
 import { useDemonstration } from "./demonstration";
 import { EvidenceTable } from "./evidence-table";
-import { Empty, Facts, Help, Page, Panel, Pending, QueryError, TabPanel, Tabs, TabsScope, Tip, useCopy } from "./foundation";
+import { Empty, Facts, Help, Page, Panel, Pending, QueryError, QueryReadStatus, TabPanel, Tabs, TabsScope, Tip, useCopy } from "./foundation";
 import Link from "./link";
 import {
   indexHref, researchIndexHref, useIndexCatalog,
@@ -127,6 +127,7 @@ export function IndexResearchWorkspace() {
         {index && <IndexListActions id={index.id} />}
       </>
     }>
+      <QueryReadStatus key={id} label={t("指数清单", "Index catalog")} failed={catalog.isError} ready={!!index && !catalog.isError} error={catalog.error} />
       {catalog.isPending ? <Pending shape="research" quiet /> : catalog.isError
         ? <QueryError retry={catalog.refetch} /> : !index
           ? <Panel><Empty title={t("未找到此指数", "Index not found")} /></Panel> : <>
@@ -161,6 +162,10 @@ export function IndexResearchWorkspace() {
               <Tabs label={t("研究视角", "Research perspectives")} value={view}
                 options={views.map((value) => ({ value, ...tabLabels[value] }))} />
               <TabPanel value={view} className="mx-index-research-body">
+              {view === "overview" && <QueryReadStatus key={id} label={name}
+                failed={overview.isError} ready={!!overview.data && !overview.isError} error={overview.error} />}
+              {view !== "overview" && view !== "price" && <QueryReadStatus key={id + view} label={name}
+                failed={selected.isError} ready={!!selected.data && !selected.isError} error={selected.error} />}
               {view === "price" ? <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} demonstration={demonstration} />
                 : view === "overview" ? <>
                   <ResearchIndexChart key={index.id} index={index} catalogue={catalogue} snapshotId={shell.data?.status.runId ?? undefined} preview demonstration={demonstration} />
@@ -187,6 +192,7 @@ export function IndexResearchWorkspace() {
           onSearch={() => { setFinderQuery(""); setFinder(true); }} />}
         width={360}
       >
+        <QueryReadStatus label={t("研究清单", "Research list")} failed={shell.isError} ready={!!shell.data && !shell.isError} error={shell.error} />
         {shell.isError ? <QueryError retry={shell.refetch} /> : <UniverseList
           state={universe}
           categories={shell.data?.watchlistCategories ?? []}

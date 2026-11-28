@@ -2,7 +2,7 @@
 
 import { WorkspaceSheet } from "./overlay";
 import { SearchInput } from "@/components/ui/search-input";
-import { Pagination } from "@mantine/core";
+import { Pagination } from "@/components/ui/pagination";
 import { ListFilter, Search } from "lucide-react";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
@@ -25,7 +25,7 @@ import { useFinePointer } from "@/ui/pointer";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { LookthroughData, LookthroughPosition } from "@/lib/types";
-import { EvidenceTable, usePaginationLabels } from "./evidence-table";
+import { EvidenceTable } from "./evidence-table";
 import { AllocationComposition, type AllocationSlice } from "./allocation-composition";
 import { companyAllocation } from "./company-allocation";
 import { currency, number, objects, percent, safeUrl, str } from "@/workspace/data";
@@ -40,6 +40,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   Segments,
   TabPanel,
   Tabs,
@@ -293,20 +294,7 @@ function ExposurePager({
   value: number;
   onChange: (value: number) => void;
 }) {
-  const paginationLabels = usePaginationLabels();
-  return (
-    <nav aria-label={label}>
-      <Pagination
-        total={total}
-        value={value}
-        onChange={onChange}
-        withEdges
-        layout="responsive"
-        formatLabel={({ page, totalPages }) => page + " / " + totalPages}
-        getControlProps={paginationLabels}
-      />
-    </nav>
-  );
+  return <Pagination label={label} total={total} value={value} onChange={onChange} responsive />;
 }
 
 /**
@@ -417,19 +405,25 @@ export function Lookthrough() {
   const cited = params?.get("evidence") && params.get("snapshotId") || undefined;
   const query = useDashboardLens("holdings-lookthrough", undefined, true, cited ? {detail:"summary"} : undefined, cited);
   const publicationFailure = usePublicationFailure(query.dataUpdatedAt);
-  useAssistantPageContext({ page: "holdings", scope: "broker_total" }, !query.data?.lookthrough || Boolean(cited && query.isError));
-  return query.isPending ? (
+  const exposure = query.data?.lookthrough;
+  const failure = query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure;
+  useAssistantPageContext({ page: "holdings", scope: "broker_total" }, !exposure || Boolean(cited && query.isError));
+  return <>
+    <QueryReadStatus key={cited ?? "live"} label={t("穿透持仓", "Look-through holdings")}
+      failed={!cited && query.isError && !query.data}
+      refreshFailed={!!exposure?.available && !!failure?.updatedAt && (!cited || !query.isError)}
+      ready={query.isSuccess && !!exposure} error={query.error} />
+    {query.isPending ? (
     <Pending shape="holdings" label={t("正在读取穿透持仓…", "Loading look-through holdings…")} />
   ) : cited && query.isError ? (
     <Empty title={t("引用的数据版本暂不可用","Cited publication unavailable")} />
   ) : query.isError && !query.data ? (
     <QueryError retry={query.refetch} />
-  ) : query.data?.lookthrough ? (
-    <Exposure key={cited ? params?.toString() : "latest"} data={query.data.lookthrough} snapshot={query.data.runId}
-      failure={query.isRefetchError ? { updatedAt: query.dataUpdatedAt, retry: query.refetch } : publicationFailure} />
+  ) : query.data && exposure ? (
+    <Exposure key={cited ? params?.toString() : "latest"} data={exposure} snapshot={query.data.runId} failure={failure} />
   ) : (
     <Empty title={t("暂无穿透记录", "No look-through records")} />
-  );
+  )}</>;
 }
 function Exposure({
   data,

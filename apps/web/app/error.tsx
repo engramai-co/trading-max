@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Empty, Page, Panel, useCopy } from "@/workspace/foundation";
 export default function ErrorPage({
@@ -9,9 +10,12 @@ export default function ErrorPage({
   reset: () => void;
 }) {
   const t = useCopy();
+  const title = useRef<HTMLHeadingElement>(null);
+  useEffect(() => title.current?.focus(), []);
   return (
     <Page
       title={t("这一页暂时无法显示", "This page could not be displayed")}
+      headingRef={title}
     >
       <Panel>
         <Empty

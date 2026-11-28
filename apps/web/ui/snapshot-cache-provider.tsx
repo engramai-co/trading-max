@@ -1,10 +1,16 @@
 "use client";
 
 import { hashKey, IsRestoringProvider, useQueryClient } from "@tanstack/react-query";
-import { useLayoutEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useLayoutEffect, useState, type ReactNode } from "react";
 import {
   isSnapshotEntry, packSnapshotCache, readSnapshotCache, snapshotCacheStorageKey, type SnapshotCacheEntry,
 } from "@/lib/snapshot-cache";
+
+const SnapshotCacheScope = createContext<string | undefined>(undefined);
+
+export function useSnapshotCacheScope() {
+  return useContext(SnapshotCacheScope);
+}
 
 export function SnapshotCacheProvider({ scope, desktop, children }: {
   scope: string;
@@ -72,5 +78,7 @@ export function SnapshotCacheProvider({ scope, desktop, children }: {
     };
   }, [client, desktop, scope]);
 
-  return <IsRestoringProvider value={restoring}>{children}</IsRestoringProvider>;
+  return <SnapshotCacheScope.Provider value={scope}>
+    <IsRestoringProvider value={restoring}>{children}</IsRestoringProvider>
+  </SnapshotCacheScope.Provider>;
 }

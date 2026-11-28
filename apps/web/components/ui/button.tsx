@@ -2,7 +2,8 @@
 
 import { Button as ButtonPrimitive } from "@base-ui/react/button";
 import { cva, type VariantProps } from "class-variance-authority";
-import { LoaderCircle, X } from "lucide-react";
+import { X } from "lucide-react";
+import { Spinner } from "./spinner";
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
@@ -116,11 +117,7 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(function Button(
             aria-hidden={!isLoading ? true : undefined}
           >
             {isLoading ? (
-              <LoaderCircle
-                data-slot="button-spinner"
-                className="size-4 animate-spin"
-                aria-hidden="true"
-              />
+              <Spinner data-slot="button-spinner" />
             ) : (
               <span
                 data-slot="button-spinner-placeholder"

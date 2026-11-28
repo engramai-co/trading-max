@@ -18,12 +18,14 @@
 
 import { ChartLine } from "lucide-react";
 import Link from "./link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { buttonVariants } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useBrowserOnline } from "@/ui/query-client";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
 import type { DashboardLens, RefreshAttention } from "@/lib/types";
-import { TimelineChart } from "./timeline-chart";
+import { TimelineChart, timelinePlotHeight } from "./timeline-chart";
 import { readingTone, signedPercent, signedPounds } from "./reading-format";
 import { api, currency, percent, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
@@ -31,6 +33,7 @@ import { attentionItems, type AttentionItem } from "./attention";
 import { type Range, type Scope } from "@/lib/portfolio/nav";
 import {
   Empty,
+  StatusMessage,
   Freshness,
   Metric,
   Notice,
@@ -38,6 +41,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  ReadStatus,
   TextLink,
   UpdateFailure,
   useCopy,
@@ -62,7 +66,8 @@ import {
   LocalOnboarding,
 } from "./local-onboarding";
 import { OverviewHoldings } from "./overview-holdings";
-import { overviewScopedHoldings } from "./overview-holdings-data";
+import { useOverviewLayout, useSaveOverviewLayout } from "./overview-layout";
+import { overviewLedgerRows, overviewScopedHoldings } from "./overview-holdings-data";
 import { OverviewSectors } from "./overview-sectors";
 import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useRetainedResult } from "./retained-result";
@@ -81,6 +86,7 @@ export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?:
 }
 function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
+  const { locale } = useLocale();
   const { ready: assistantReady } = useAssistant();
   const { data: profile } = useWorkspaceProfile();
   // A late profile can rename options while the reader is switching accounts.
@@ -119,6 +125,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const candidate = useMemo(() => incoming && {
     lens: incoming, selection, history: history.data,
     updatedAt: Math.max(query.dataUpdatedAt, history.dataUpdatedAt),
+    historyUpdatedAt: history.dataUpdatedAt,
   }, [incoming, selection, history.data, query.dataUpdatedAt, history.dataUpdatedAt]);
   const complete = candidate?.history && runtime.status !== "loading" ? candidate : undefined;
   const retained = useRetainedResult(complete, Object.is, (next, previous) =>
@@ -136,6 +143,10 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const initialWaiting = !shown && (
     checkingOnboarding || !query.isError && (!incoming || history.isPending || runtime.status === "loading"));
   const initialError = !initialWaiting && !data && query.isError;
+  const online = useBrowserOnline();
+  const offline = !online || query.fetchStatus === "paused" || history.fetchStatus === "paused";
+  const offlineLabel = t("网络已断开，数据将在重连后更新。", "You’re offline. Data will update when you reconnect.");
+  const accountUnavailable = t("账户价值暂不可用", "Account value unavailable");
   const scope = displayed?.selection.scope ?? requestedScope;
   useAssistantPageContext({
     page: "overview",
@@ -147,8 +158,10 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const summaryFailure = query.isRefetchError
     ? { updatedAt: shown?.updatedAt ?? query.dataUpdatedAt, retry: query.refetch }
     : publicationFailure;
+  const accountReadFailure = initialError ? accountUnavailable : summaryFailure
+    ? t("账户价值更新失败", "Account value update failed") : undefined;
   const historyFailure = history.isError && shown
-    ? { updatedAt: shown.updatedAt, retry: history.refetch } : undefined;
+    ? { updatedAt: shown.historyUpdatedAt, retry: history.refetch } : undefined;
   const accounts = (data?.accounts ?? []).filter((a) => a.isInvestable);
   const selected = accounts.find(
     (a) => a.code === (scope === "invest" ? "A" : scope === "isa" ? "B" : ""),
@@ -157,6 +170,21 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     () => overviewScopedHoldings(data, scope),
     [data, scope],
   );
+  const counts = useMemo(() => holdings && overviewLedgerRows(holdings), [holdings]);
+  const overview = useRef<HTMLDivElement>(null);
+  const { key: layoutKey, layout, booting } = useOverviewLayout(requestedScope, locale);
+  useSaveOverviewLayout(overview, layoutKey, !history.isError && runtime.status === "ready" ? displayed : undefined,
+    !initialWaiting && !initialError && !!data, counts);
+  const savedReading = layout?.reading;
+  const savedRows = layout?.rows;
+  const matchingRows = !counts || savedRows && counts.stocks === savedRows.stocks && counts.funds === savedRows.funds &&
+    counts.dateTagged === savedRows.dateTagged;
+  const reservedLayout = initialWaiting && !offline && savedReading?.range === range ? savedReading : undefined;
+  const pendingStyle = reservedLayout ? {
+    "--mx-overview-summary-size": reservedLayout.summary + "px",
+    "--mx-overview-history-size": reservedLayout.history + "px",
+    "--mx-overview-plot-top": reservedLayout.plotTop === undefined ? undefined : reservedLayout.plotTop + "px",
+  } as CSSProperties : undefined;
   if (initialError && localWorkspace && localOnboarding.data && !localOnboarding.data.confirmed) {
     return <LocalOnboarding showAccountLink />;
   }
@@ -185,8 +213,12 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   // Data problems speak here; a holding's readings are marked in its own row below.
   const attention = demonstration ? [] : attentionItems({ brokerAsOf: data?.brokerAsOf, refresh: refresh.data, now });
   return (
-    <ReadingBoundary.Provider value={reading.report}><div className="mx-overview-read">
-      <div className="mx-panel mx-overview-portfolio">
+    <ReadingBoundary.Provider value={reading.report}><div ref={overview} className="mx-overview-read" style={pendingStyle}
+      data-layout-bootstrap={booting && initialWaiting || undefined}>
+      <StatusMessage message={offline ? offlineLabel : undefined} />
+      <div className="mx-panel mx-overview-portfolio" data-waiting={initialWaiting || undefined}>
+        <ReadStatus failure={accountReadFailure} ready={!initialWaiting && query.isSuccess && !!data}
+          recovered={t("账户价值已恢复。", "Account value is available again.")} />
         <section
           className="mx-summary"
           aria-label={t("账户价值", "Account value")}
@@ -209,27 +241,30 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
             />
             {(!initialError || summaryFailure) && (
               <span className="mx-freshness-group">
-                {initialWaiting ? <WaitingAsOf label={t("正在读取账户价值…", "Loading account value…")} />
+                {initialWaiting ? offline ? <span className="mx-waiting-as-of">{offlineLabel}</span>
+                    : <WaitingAsOf label={t("正在读取账户价值…", "Loading account value…")} />
                   : initialError ? null
                     : demonstration ? <DemoAsOf date={data?.brokerAsOf} /> : <Freshness date={data?.brokerAsOf} />}
                 {summaryFailure && <UpdateFailure {...summaryFailure} />}
+                {offline && !initialWaiting && <span className="mx-waiting-as-of">{offlineLabel}</span>}
               </span>
             )}
           </div>
-          {initialWaiting ? <Pending shape="summary" quiet /> : initialError ? (
+          {initialError ? (
             <div className="mx-overview-summary-failure">
-              <InlineRetry label={t("账户价值暂不可用", "Account value unavailable")} retry={query.refetch} />
+              <InlineRetry label={accountUnavailable} retry={query.refetch} />
               <TextLink href="/health">{t("查看数据状态", "Data status")}</TextLink>
             </div>
           ) : <>
           <OverviewLead
+            retained={history.isError && displayed?.selection.range !== range}
             selection={displayed?.selection ?? selection}
-            data={displayed?.history}
+            data={initialWaiting ? undefined : displayed?.history}
             failed={history.isError}
             dayAttribution={data?.dayAttribution}
             windowAttribution={data?.windowAttribution}
           />
-          <div className="mx-overview-totals">
+          {!initialWaiting ? <div className="mx-overview-totals">
             <Metric
               large
               label={t("账户价值", "Account value")}
@@ -247,8 +282,9 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
                 value={currency(cash, "GBP", 2)}
               />
             </div>
-          </div>
+          </div> : <Pending shape="summary" quiet />}
           <Attention items={attention} />
+          {!attention.length && initialWaiting && !reservedLayout && <div className="mx-overview-attention-placeholder" aria-hidden="true" />}
           </>}
         </section>
         {!initialWaiting && data && scope !== "total" && !selected && (
@@ -272,18 +308,21 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
           failure={historyFailure}
           waiting={Boolean(shown && shown !== complete && !reading.active)}
           initialWaiting={initialWaiting}
+          reservation={reservedLayout ? reservedLayout.plotTop === undefined ? "empty" : "plot" : undefined}
+          offline={offline}
           runtime={runtime}
           onRange={(value) => update({ range: value })}
           dayAttribution={data?.dayAttribution}
           windowAttribution={data?.windowAttribution}
         />
-        <OverviewSectors />
+        <OverviewSectors online={online} />
       </div>
-      {initialWaiting ? <Panel className="mx-overview-holdings" title={t("持仓", "Holdings")}><Pending shape="holdings" quiet /></Panel>
-        : <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
-          runId={data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
-          brokerAsOf={data?.brokerAsOf} account={requestedScope}
-          failed={initialError} error={query.error} retry={query.refetch} />}
+      <OverviewHoldings holdings={holdings} technical={data?.technical} valuations={data?.valuations}
+        runId={!initialWaiting && data?.runId === incoming?.runId && scope === requestedScope ? data?.runId : undefined}
+        brokerAsOf={data?.brokerAsOf} account={requestedScope}
+        pendingRows={counts ?? savedRows}
+        pendingHeight={matchingRows ? layout?.ledger : undefined}
+        waiting={initialWaiting} failed={initialError} error={query.error} retry={query.refetch} />
       {!initialWaiting && data && <><Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />{assistantReady && <OverviewBrief snapshot={data.runId} scope={scope} />}</>}
     </div></ReadingBoundary.Provider>
   );
@@ -329,10 +368,11 @@ function localDay(timeZone: string) {
  * windows keep the move in the period panel, so the stylesheet shows this block only below 768px. It reads the
  * same history as the panel, so both always show one figure.
  */
-function OverviewLead({ selection, data, failed, dayAttribution, windowAttribution }: {
+function OverviewLead({ selection, data, failed, retained, dayAttribution, windowAttribution }: {
   selection: Parameters<typeof usePortfolioHistory>[0];
   data?: ReturnType<typeof usePortfolioHistory>["data"];
   failed: boolean;
+  retained: boolean;
   dayAttribution?: DashboardLens["dayAttribution"];
   windowAttribution?: DashboardLens["windowAttribution"];
 }) {
@@ -342,7 +382,7 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
   if (!data) {
     return failed ? null : (
       <div className="mx-overview-lead mx-overview-lead-pending" aria-hidden="true">
-        <div className="mx-loading-shape" />
+        <Skeleton className="mx-loading-shape" />
       </div>
     );
   }
@@ -362,11 +402,13 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
   // Today's move says so; an earlier session names its day, so a closed market never reads as today.
   const label = range !== "1D" ? rangeName(range, t("全部", "All"))
     : history.endDay === localDay(timeZone) ? t("今日", "Today")
-      : periodSpan(points, locale, timeZone) || t("今日", "Today");
+      : periodSpan(points.length ? points : history.endDay ? [{ date: history.endDay }] : [], locale, timeZone) || t("今日", "Today");
   return (
     <div className="mx-overview-lead">
       <div className="mx-overview-lead-head">
-        <span className="mx-overview-lead-label">{label}</span>
+        <span className="mx-overview-lead-label">{retained
+          ? (range === "1D" ? label + " · " : "") + t("当前显示 ", "Showing ") + rangeName(range, t("全部", "All"))
+          : label}</span>
         <TextLink href={portfolioPerformanceHref(scope, range)}>
           <ChartLine aria-hidden="true" size={16} />
           {t("收益分析", "View performance")}
@@ -389,7 +431,7 @@ function OverviewLead({ selection, data, failed, dayAttribution, windowAttributi
   );
 }
 function OverviewHistory({
-  range: requestedRange, selection, data, failed, retry, failure, waiting, initialWaiting, runtime, onRange,
+  range: requestedRange, selection, data, failed, retry, failure, waiting, initialWaiting, reservation, offline, runtime, onRange,
   dayAttribution, windowAttribution,
 }: {
   range: Range;
@@ -400,6 +442,8 @@ function OverviewHistory({
   failure?: { updatedAt: number; retry: () => unknown };
   waiting: boolean;
   initialWaiting: boolean;
+  reservation?: "empty" | "plot";
+  offline: boolean;
   runtime: ReturnType<typeof useChartRuntime>;
   onRange: (range: Range) => void;
   /** Today's moves by position, listed under the 1D figure. */
@@ -408,6 +452,8 @@ function OverviewHistory({
 }) {
   const t = useCopy();
   const { range, scope } = selection;
+  const plotHeight = 264;
+  const pendingPlotHeight = timelinePlotHeight(plotHeight, requestedRange);
   const [figureAnchor, setFigureAnchor] = useState<HTMLDivElement | null>(null);
   const history = useMemo(() => data?.history ?? selectPortfolioHistory({ range, scope }), [data?.history, range, scope]);
   const { points } = history;
@@ -427,6 +473,9 @@ function OverviewHistory({
       ...(money.pnlPercents[row] != null ? { detail: signedPercent(money.pnlPercents[row]) + t(" 相对期初", " vs opening") } : {}),
     },
   }), [money.pnlPercents, money.pnls, t]);
+  const unavailable = t("盈亏记录暂不可用", "P&L history unavailable");
+  const readFailure = !initialWaiting && (failed || runtime.status === "failed")
+    ? data ? t("盈亏记录更新失败", "P&L history update failed") : unavailable : undefined;
   const drivers = attribution ? dayDrivers({
     attribution,
     scope,
@@ -438,26 +487,34 @@ function OverviewHistory({
   }) : null;
   return (
     <Panel
-      className="mx-overview-history"
+      className={"mx-overview-history" + (reservation ? " mx-overview-history-reserved" : "")}
       title={t("区间净盈亏", "Period net P&L")}
       help={<HistoryHelp />}
       helpAnchor={figureAnchor}
       action={
         <div className="mx-period-control">
           <PeriodSpan points={initialWaiting ? [] : points} reserve />
-          {failure && <UpdateFailure {...failure} />}
+          {failure && <UpdateFailure {...failure} showRetry />}
           <DashboardRanges label={t("图表区间", "Chart range")} value={requestedRange} onChange={onRange} />
         </div>
       }
     >
+      <ReadStatus failure={readFailure}
+        ready={!initialWaiting && !!data && runtime.status === "ready" && !failed}
+        recovered={t("盈亏记录已恢复。", "P&L history is available again.")} />
       {initialWaiting || !data && !failed ? (
-        <Pending shape="chart" height={326} quiet={initialWaiting} label={t("正在读取 ", "Loading ") +
-          rangeName(requestedRange, t("全部", "all")) + t(" 盈亏记录…", " P&L history…")} />
+        <div className="mx-overview-history-pending">
+          <div className="mx-period-figure" aria-hidden="true">
+            <Skeleton as="span" className="mx-period-figure-placeholder" />
+          </div>
+          {reservation !== "empty" && <Pending shape="chart" height={pendingPlotHeight} quiet={initialWaiting || offline} label={t("正在读取 ", "Loading ") +
+            rangeName(requestedRange, t("全部", "all")) + t(" 盈亏记录…", " P&L history…")} />}
+        </div>
       ) : runtime.status === "failed" ? (
         <QueryError retry={runtime.retry} />
       ) : !data ? (
         <div className="mx-overview-unavailable mx-overview-unavailable-history">
-          <InlineRetry label={t("盈亏记录暂不可用", "P&L history unavailable")} retry={retry} />
+          <InlineRetry label={unavailable} retry={retry} />
         </div>
       ) : (
         <div className="mx-data-body" aria-busy={waiting && !failed || undefined}>
@@ -490,7 +547,7 @@ function OverviewHistory({
             observations={points}
             pendingCashFlows={history.pendingCashFlows}
             showHistoryEvidence={false}
-            height={264}
+            height={plotHeight}
             reading={readNetPnl}
           />
         </div>

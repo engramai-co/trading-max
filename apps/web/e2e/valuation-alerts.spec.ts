@@ -189,8 +189,7 @@ test("reopened after a consensus-only publication, the evidence is compared with
   await page.route(/\/api\/backend\/research\/SYNT\/lens\/(\w+)/, (route) =>
     route.fulfill({ json: { ...lens(/lens\/(\w+)/.exec(route.request().url())![1]), runId: run } }));
   // The next comparison waits, to show what the panel holds while it is made.
-  let release = () => {};
-  const held = new Promise<void>((resolve) => { release = resolve; });
+  const { promise: held, resolve: release } = Promise.withResolvers<void>();
   await page.route("**/SYNT/valuation-maintenance", async (route) => {
     await held;
     return route.fallback();
@@ -201,7 +200,10 @@ test("reopened after a consensus-only publication, the evidence is compared with
   await expect(toggle.locator(".mx-evidence-dot")).toBeVisible();
   // Reopened without an edit, the evidence is compared again, and the earlier comparison is not shown meanwhile.
   await toggle.click();
-  await expect(evidence.getByRole("status", { name: "Comparing with the saved version…" })).toBeVisible();
+  await expect(evidence.getByRole("status").filter({ hasText: "Comparing with the saved version…" })).toBeVisible();
+  const loadingMessage = evidence.locator(".mx-loading-message");
+  await expect(loadingMessage).toHaveText("Comparing with the saved version…");
+  await expect(loadingMessage).toBeVisible();
   await expect(evidence.getByText("2.50 → 2.70 USD")).toHaveCount(0);
   expect(state.seen).toEqual([]);
   release();

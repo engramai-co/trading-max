@@ -9,9 +9,6 @@
     "ui/provider.tsx": {
       "@mantine/core": [
         "MantineProvider"
-      ],
-      "@mantine/notifications": [
-        "Notifications"
       ]
     },
     "ui/theme.ts": {
@@ -24,24 +21,9 @@
         "MantineProvider"
       ]
     },
-    "workspace/evidence-table.tsx": {
-      "@mantine/core": [
-        "Pagination"
-      ]
-    },
-    "workspace/history-records.tsx": {
-      "@mantine/core": [
-        "Pagination"
-      ]
-    },
     "workspace/holding-market-closed.test.ts": {
       "@mantine/core": [
         "MantineProvider"
-      ]
-    },
-    "workspace/look-through.tsx": {
-      "@mantine/core": [
-        "Pagination"
       ]
     },
     "workspace/overview-holdings.test.ts": {
@@ -52,16 +34,6 @@
     "workspace/overview.test.ts": {
       "@mantine/core": [
         "MantineProvider"
-      ]
-    },
-    "workspace/research-header.tsx": {
-      "@mantine/core": [
-        "Avatar"
-      ]
-    },
-    "workspace/settings-oauth.tsx": {
-      "@mantine/core": [
-        "Code"
       ]
     }
   }

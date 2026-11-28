@@ -1,23 +1,12 @@
 "use client";
 
-import { Pagination } from "@mantine/core";
+import { Pagination } from "@/components/ui/pagination";
 import { Table } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { ChevronFirst, ChevronLast, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState, type ReactNode } from "react";
 import { Empty, useCopy } from "./foundation";
-
-export function usePaginationLabels() {
-  const t = useCopy();
-  const labels = {
-    first: t("第一页", "First page"),
-    previous: t("上一页", "Previous page"),
-    next: t("下一页", "Next page"),
-    last: t("最后一页", "Last page"),
-  };
-  return (control: keyof typeof labels) => ({ "aria-label": labels[control] });
-}
 
 export type EvidenceColumn<T> = {
   label: string;
@@ -49,10 +38,15 @@ export function EvidenceTable<T>({
   chart?: boolean;
 }) {
   const t = useCopy();
-  const paginationLabels = usePaginationLabels();
   const [page, setPage] = useState(1);
   const pages = Math.max(1, Math.ceil(rows.length / pageSize));
   const current = Math.min(page, pages);
+  const paginationLabels = {
+    first: t("第一页", "First page"),
+    previous: t("上一页", "Previous page"),
+    next: t("下一页", "Next page"),
+    last: t("最后一页", "Last page"),
+  };
   if (!rows.length)
     return <Empty title={t("没有符合条件的记录", "No matching records")} />;
   const pageRows = rows.slice((current - 1) * pageSize, current * pageSize);
@@ -119,20 +113,19 @@ export function EvidenceTable<T>({
         </div>)}</dl>)}
       </div>}
       {pages > 1 && (
-        <nav aria-label={t("记录分页", "Record pages")}>
-          {chart ? (
-            <div className="mt-4 flex flex-wrap items-center gap-1">
-              <Button {...paginationLabels("first")} size="icon" variant="outline" disabled={current === 1} onClick={() => setPage(1)}><ChevronFirst size={16} aria-hidden="true" /></Button>
-              <Button {...paginationLabels("previous")} size="icon" variant="outline" disabled={current === 1} onClick={() => setPage(current - 1)}><ChevronLeft size={16} aria-hidden="true" /></Button>
-              {chartPageNumbers(current, pages).map((item, i) => item === null
-                ? <span key={"gap-" + i} aria-hidden="true" className="px-2">…</span>
-                : <Button key={item} size="icon" variant={item === current ? "secondary" : "outline"}
-                    aria-current={item === current ? "page" : undefined} onClick={() => setPage(item)}>{item}</Button>)}
-              <Button {...paginationLabels("next")} size="icon" variant="outline" disabled={current === pages} onClick={() => setPage(current + 1)}><ChevronRight size={16} aria-hidden="true" /></Button>
-              <Button {...paginationLabels("last")} size="icon" variant="outline" disabled={current === pages} onClick={() => setPage(pages)}><ChevronLast size={16} aria-hidden="true" /></Button>
-            </div>
-          ) : <Pagination total={pages} value={current} onChange={setPage} withEdges mt="md" getControlProps={paginationLabels} />}
-        </nav>
+        chart ? <nav aria-label={t("记录分页", "Record pages")}>
+          <div className="mt-4 flex flex-wrap items-center gap-1">
+            <Button aria-label={paginationLabels.first} size="icon" variant="outline" disabled={current === 1} onClick={() => setPage(1)}><ChevronFirst size={16} aria-hidden="true" /></Button>
+            <Button aria-label={paginationLabels.previous} size="icon" variant="outline" disabled={current === 1} onClick={() => setPage(current - 1)}><ChevronLeft size={16} aria-hidden="true" /></Button>
+            {chartPageNumbers(current, pages).map((item, i) => item === null
+              ? <span key={"gap-" + i} aria-hidden="true" className="px-2">…</span>
+              : <Button key={item} size="icon" variant={item === current ? "secondary" : "outline"}
+                  aria-current={item === current ? "page" : undefined} onClick={() => setPage(item)}>{item}</Button>)}
+            <Button aria-label={paginationLabels.next} size="icon" variant="outline" disabled={current === pages} onClick={() => setPage(current + 1)}><ChevronRight size={16} aria-hidden="true" /></Button>
+            <Button aria-label={paginationLabels.last} size="icon" variant="outline" disabled={current === pages} onClick={() => setPage(pages)}><ChevronLast size={16} aria-hidden="true" /></Button>
+          </div>
+        </nav> : <Pagination label={t("记录分页", "Record pages")} total={pages} value={current}
+          onChange={setPage} className="mt-4" />
       )}
     </>
   );

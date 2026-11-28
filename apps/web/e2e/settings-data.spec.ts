@@ -70,8 +70,7 @@ async function open(page: Page, settings: () => IntegrationOverview, publishedBu
 
 /** Holds a request until the test releases it, so a pending state can be inspected. */
 function gate() {
-  let release!: () => void;
-  const opened = new Promise<void>((resolve) => { release = resolve; });
+  const { promise: opened, resolve: release } = Promise.withResolvers<void>();
   return { opened, release };
 }
 
@@ -155,6 +154,7 @@ test.describe("reconstruction market data", () => {
   }
 
   test("one switch turns Alpaca on, holds while it saves and keeps keyboard focus", async ({ page, isMobile }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
     let server = alpaca(false);
     const { panel, unexpected } = await open(page, () => overview([server]));
     const toggle = panel.getByRole("switch", { name: "Alpaca enhancement", exact: true });
@@ -192,6 +192,7 @@ test.describe("reconstruction market data", () => {
     await page.keyboard.press("Space");
     await expect(toggle).toBeChecked();
     await expect(toggle).toHaveAttribute("aria-busy", "true");
+    await expect(toggle.locator("[data-slot=spinner]")).toHaveCSS("animation-iteration-count", "infinite");
     await expect(toggle).toBeFocused();
     await expect(announcer).toHaveText("Saving…");
     // A second press while the change saves is ignored.

@@ -434,9 +434,6 @@
     min-width: 44px;
     min-height: 44px;
   }
-  .mx-page .mantine-Pagination-root {
-    --pagination-control-size: 44px;
-  }
   .mx-page :is(.mx-table tbody a, .mx-document-feed a, .mx-assumption-picker button) {
     position: relative;
   }

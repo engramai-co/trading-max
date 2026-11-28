@@ -13,6 +13,8 @@ type Context = {
   habitsConsented?: boolean; unpricedBasket?: boolean; renamed?: boolean; observations?: boolean; cluster?: boolean; empty?: boolean; isa?: boolean;
   /** Both accounts carry one display name, and Stocks ISA also sold SYND.AS on Invest's day. */
   namesake?: boolean;
+  tradeCoverage?: { count: number; reason: string };
+  cfdMissingFx?: boolean;
 };
 
 // Inside their first 20 trading days: a sale of a dotted ticker, a buy with no close after it yet, and a T.
@@ -138,10 +140,21 @@ async function serve(page: Page, context: () => Context) {
       reviewHabitsConsented: current.habitsConsented, totalValueGbp: 2000, totalCashGbp: 100, holdings: [], nav: [],
       accounts: [{ code: "A", isInvestable: true, totalValueGbp: 2000 }],
       // Enough of the account review for its highlights: a realized gain and a loss to open.
-      selectedAccountReview: current.empty ? null : { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
+      selectedAccountReview: current.empty ? null : current.tradeCoverage ? {
+        coverage: { closedCampaignCount: current.tradeCoverage.count },
+        attribution: { status: "unavailable", unavailableReason: current.tradeCoverage.reason },
+        realisedTradeQuality: { status: "unavailable", unavailableReason: current.tradeCoverage.reason, tradeCount: current.tradeCoverage.count },
+      } : { attribution: { by_instrument: { buckets: [{ key: "SYNA", netResultGbp: 120 }, { key: "SYNB", netResultGbp: -40 }] } } },
       selectedCfdReview: current.empty ? null : { moneyOutcome: {
         endingRealisedCashEquityProxyGbp: 1500, netRealisedPnlGbp: -200, maxRealisedPnlDrawdownGbp: -300, accountCashFlowGbp: 1700,
-      } },
+      }, ...(current.cfdMissingFx ? {
+        coverage: { closedCampaignCount: 99 },
+        attribution: { status: "unavailable", unavailableReason: "fx_unavailable" },
+        tradeQuality: {
+          status: "unavailable", unavailableReason: "fx_unavailable", tradeCount: 4,
+          sameDayCount: 3, underOneHourCount: 2, averageDurationHours: 4, medianDurationHours: 1.5,
+        },
+      } : {}) },
       selectedAccountDecisions: current.empty ? null : account === "B"
         ? review(current.isa ? isa(current) : [])
         : review(decisions(current), true),
@@ -492,6 +505,10 @@ test.describe("a link to one decision", () => {
     const row = page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Delta/ });
     await expect(row).toBeFocused();
     const twenty = page.getByRole("group", { name: "对照时点" }).getByRole("button", { name: "20 个交易日后" });
+    const failedStatus = page.getByRole("status").filter({ hasText: "投资复盘更新失败" });
+    const recoveredStatus = page.getByRole("status").filter({ hasText: "投资复盘已恢复。" });
+    await expect(failedStatus).toHaveCount(0);
+    await expect(recoveredStatus).toHaveCount(0);
     await twenty.click();
     await row.focus();
     context = { ...context, failing: true };
@@ -500,6 +517,8 @@ test.describe("a link to one decision", () => {
     await page.clock.fastForward(5_000);
     const failure = page.getByRole("button", { name: /更新失败 · 上次成功 \d{2}:\d{2} · 重试/ });
     await expect(failure).toBeVisible();
+    await expect(failedStatus).toHaveCount(1);
+    await expect(recoveredStatus).toHaveCount(0);
     await expect(row).toBeFocused();
     await expect(twenty).toHaveAttribute("aria-pressed", "true");
     context = { ...context, failing: false, benchmark: 0.034 };
@@ -509,6 +528,8 @@ test.describe("a link to one decision", () => {
     await reconnect(page);
     await recovered;
     await expect(failure).toHaveCount(0);
+    await expect(recoveredStatus).toHaveCount(1);
+    await expect(failedStatus).toHaveCount(0);
     await expect(row).toBeFocused();
     await expect(twenty).toHaveAttribute("aria-pressed", "true");
   });
@@ -521,6 +542,8 @@ test.describe("a link to one decision", () => {
     await first;
     const row = page.locator(".mx-decision-focus").getByRole("link", { name: /Synthetic Delta/ });
     const failure = page.getByRole("button", { name: /更新失败 · 上次成功 \d{2}:\d{2} · 重试/ });
+    const failedStatus = page.getByRole("status").filter({ hasText: "投资复盘更新失败" });
+    const recoveredStatus = page.getByRole("status").filter({ hasText: "投资复盘已恢复。" });
     await expect(row).toBeFocused();
     context = { ...context, healthFailing: true };
     const dropped = health(503);
@@ -531,6 +554,8 @@ test.describe("a link to one decision", () => {
     await page.clock.fastForward(61_000);
     await outage;
     await expect(failure).toBeVisible();
+    await expect(failedStatus).toHaveCount(1);
+    await expect(recoveredStatus).toHaveCount(0);
     await expect(row).toBeFocused();
 
     // The service can recover without publishing another snapshot.
@@ -539,6 +564,8 @@ test.describe("a link to one decision", () => {
     await page.clock.fastForward(121_000);
     await recovery;
     await expect(failure).toHaveCount(0);
+    await expect(recoveredStatus).toHaveCount(1);
+    await expect(failedStatus).toHaveCount(0);
     await expect(row).toBeFocused();
   });
 
@@ -1147,7 +1174,9 @@ test.describe("the review across accounts", () => {
       await scope.getByRole("button", { name: "Stocks ISA" }).click();
       const settledB = settled(await requestedB);
       await expect(scope.getByRole("button", { name: "Stocks ISA" })).toHaveAttribute("aria-pressed", "true");
-      await expect(page.getByRole("status", { name: /正在读取 Stocks\sISA 复盘…/ })).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: /正在读取 Stocks\sISA 复盘…/ })).toBeVisible();
+      await expect(page.locator(".mx-loading-message")).toHaveText(/正在读取 Stocks\sISA 复盘…/);
+      await expect(page.locator(".mx-loading-message")).toBeVisible();
       await expect(lead).toHaveCount(0);
       await expect(page.getByText("£2,000.00")).toHaveCount(0);
       await expect(page.getByText("赚 £60")).toHaveCount(0);
@@ -1181,7 +1210,8 @@ test.describe("the review across accounts", () => {
         req.url().includes("/dashboard/lens/account-analysis") && new URL(req.url()).searchParams.get("account") === "B");
       await scope.getByRole("button", { name: "Stocks ISA" }).click();
       const settledMidFlightB = settled(await requestedMidFlightB);
-      await expect(page.getByRole("status", { name: /正在读取 Stocks\sISA 复盘…/ })).toBeVisible();
+      await expect(page.getByRole("status").filter({ hasText: /正在读取 Stocks\sISA 复盘…/ })).toBeVisible();
+      await expect(page.locator(".mx-loading-message")).toBeVisible();
       await expect(lead).toHaveCount(0);
 
       await scope.getByRole("button", { name: "Invest" }).click();
@@ -1340,6 +1370,51 @@ test("CFD without history offers prerequisites and the import screen", async ({ 
   await expect(page).toHaveURL(/reviewView=imports/);
   await expect(page.getByRole("tab", { name: "导入记录" })).toHaveAttribute("aria-selected", "true");
   await expect(page.getByRole("heading", { name: "CFD 历史账本", level: 2 })).toBeVisible();
+});
+
+for (const [count, reason, copy] of [
+  [0, "no reliably reconstructed closed campaigns are available", "Complete opening and closing records are needed"],
+  [3, "missing FX for closed campaigns", "Some transactions lack reliable historical exchange rates"],
+] as const) {
+  test(`unavailable attribution and trade quality retain the reason and count ${count}`, async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await serve(page, () => ({ benchmark: 0.03, events: true, tradeCoverage: { count, reason } }));
+    await page.goto("/review?account=A&reviewView=attribution");
+    const panel = page.getByRole("tabpanel");
+    await expect(panel.getByRole("heading", { name: "Realised P&L attribution · GBP" })).toBeVisible();
+    await expect(panel.getByText(copy, { exact: false })).toHaveCount(1);
+    await expect(panel.getByText("Closed trades", { exact: true })).toHaveCount(1);
+    await expect(panel.locator("dd").first()).toHaveText(String(count));
+    await expect(panel.getByRole("combobox", { name: "Attribution dimension" })).toHaveCount(0);
+    await expect(panel.getByRole("table")).toHaveCount(0);
+    await panel.getByText("Diagnostic details", { exact: true }).click();
+    await expect(panel.getByText(reason, { exact: true })).toBeVisible();
+
+    await page.getByRole("tab", { name: "Trade quality" }).click();
+    await expect(panel.getByRole("heading", { name: "Understand the trading process" })).toBeVisible();
+    await expect(panel.getByText(copy, { exact: false })).toHaveCount(1);
+    await expect(panel.getByRole("heading", { name: "Distribution and tail risk" })).toHaveCount(0);
+  });
+}
+
+test("CFD keeps verified durations, help and counts when FX evidence is missing", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await serve(page, () => ({ benchmark: 0.03, events: true, cfdMissingFx: true }));
+  await page.goto("/review?account=C&reviewView=quality");
+  const panel = page.getByRole("tabpanel");
+  const quality = panel.locator(".mx-panel").filter({ has: page.getByRole("heading", { name: "Understand the trading process" }) });
+  await expect(quality.getByText(/Some transactions lack reliable historical exchange rates/)).toHaveCount(1);
+  for (const [label, value] of [["Closed trades", "4"], ["Closed on the same day", "3"], ["Closed within one hour", "2"], ["Median holding duration", "1.5 hours"]]) {
+    await expect(quality.locator("dt").filter({ hasText: label }).locator("..").locator("dd")).toHaveText(value);
+  }
+  await quality.getByRole("button", { name: /Understand the trading process explained/ }).click();
+  await expect(page.getByText("Examine closed-trade distributions without inferring investment motives.", { exact: true })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await quality.getByText("Diagnostic details", { exact: true }).click();
+  await expect(quality.getByText("fx_unavailable", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Attribution" }).click();
+  await expect(panel.locator("dt").filter({ hasText: "Closed trades" }).locator("..").locator("dd")).toHaveText("4");
+  await expect(panel.getByRole("combobox", { name: "Attribution dimension" })).toHaveCount(0);
 });
 
 test.describe("review assistant", () => {

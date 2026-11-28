@@ -64,7 +64,8 @@ vi.mock("./overview-sectors", () => ({
 vi.mock("./narrative", () => ({
   Narrative: () => null,
 }));
-vi.mock("./timeline-chart", () => ({
+vi.mock("./timeline-chart", async (importOriginal) => ({
+  ...await importOriginal<typeof import("./timeline-chart")>(),
   TimelineChart: () => null,
 }));
 
@@ -180,6 +181,32 @@ describe("OverviewWorkspace error, freshness, and local onboarding states", () =
     expect(html).not.toContain("账户价值暂不可用");
   });
 
+  it("shows indeterminate first sync until the active job reports stages", () => {
+    const job: NonNullable<LocalWorkspaceStatus["latestFullJob"]> = {
+      jobId: "synthetic-sync-job",
+      createdAt: "2026-11-26T00:00:00Z",
+      schemaVersion: 2,
+      scope: "all",
+      skipSync: false,
+      trigger: "on_demand",
+      status: "running",
+      stages: [{ name: "account", label: "Account", status: "succeeded" }, { name: "history", label: "History", status: "running" }],
+    };
+    const renderSync = (id: string) => render(el(OverviewWorkspace, { localWorkspace: true }), (client) => {
+      client.setQueryData(LOCAL_ONBOARDING_QUERY_KEY, workspaceStatus({
+        connectedAccounts: ["invest"], activeJobId: id, latestFullJob: job,
+      }));
+    });
+    const waiting = renderSync("synthetic-queued-job");
+    expect(waiting).toContain("等待任务开始");
+    expect(waiting.match(/<progress[^>]*>/)?.[0]).not.toMatch(/\bvalue=/);
+    expect(waiting).toContain('aria-label="同步进度"');
+    const running = renderSync(job.jobId);
+    expect(running).toContain("1 / 2");
+    expect(running).toContain('aria-valuenow="1"');
+    expect(running).toContain('aria-valuemax="2"');
+  });
+
   it("falls through to the overview error UI when local workspace status itself fails", async () => {
     const html = await renderAsync(el(OverviewWorkspace, { localWorkspace: true }), async (client) => {
       await client.prefetchQuery({
@@ -197,7 +224,7 @@ describe("OverviewWorkspace error, freshness, and local onboarding states", () =
   it("stays in the waiting skeleton while local onboarding status is still loading", () => {
     const html = render(el(OverviewWorkspace, { localWorkspace: true }));
     expect(html).toContain("mx-loading-summary");
-    expect(html).toContain("mx-loading-holdings");
+    expect(html).toContain("mx-ledger-rows-placeholder");
     expect(html).not.toContain("账户价值暂不可用");
     expect(html).not.toContain("数据截至");
     expect(html).not.toContain("尚未更新");

@@ -37,6 +37,7 @@ import {
   Panel,
   Pending,
   QueryError,
+  QueryReadStatus,
   Tag,
   useCopy,
 } from "./foundation";
@@ -96,6 +97,7 @@ export function AutomationPreferences() {
     <Panel
       title={t("自动更新", "Automatic updates")}
     >
+      <QueryReadStatus failed={query.isError} ready={!!query.data && !query.isError} error={query.error} />
       {query.isPending ? (
         <Pending />
       ) : query.isError ? (
@@ -235,6 +237,7 @@ export function CfdImports({ desktop = false, readOnly = false }: { desktop?: bo
     <Panel
       title={t("CFD 历史账本", "CFD history ledger")}
     >
+      <QueryReadStatus failed={query.isError} ready={!!data && !query.isError} error={query.error} />
       {query.isPending ? (
         <Pending compact />
       ) : query.isError ? (

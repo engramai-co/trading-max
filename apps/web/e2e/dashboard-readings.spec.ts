@@ -35,8 +35,7 @@ test.describe("dashboard readings", () => {
   test("uses one shared VOO interval, restores a missing comparison, and opens monthly returns by keyboard", async ({ page }) => {
     let qqqReady = false;
     let reads = 0;
-    let start!: () => void;
-    const firstAnalytics = new Promise<void>((resolve) => { start = resolve; });
+    const { promise: firstAnalytics, resolve: start } = Promise.withResolvers<void>();
     await page.route("**/api/backend/**", async (route) => {
       const path = new URL(route.request().url()).pathname;
       if (path.endsWith("/dashboard/lens/analytics")) {
@@ -67,14 +66,17 @@ test.describe("dashboard readings", () => {
 
     await benchmark.click();
     await page.getByRole("option", { name: "Nasdaq 100 · QQQ" }).click();
-    await expect(page.getByText("Selected benchmark lacks shared records")).toBeVisible();
+    await expect(page.locator(".mx-retry-reading").getByText("Selected benchmark lacks shared records").and(page.locator(":not(.sr-only)"))).toBeVisible();
     await expect(chart).toBeVisible();
     await expect(comparison.locator("tbody tr")).toHaveCount(1);
     await expect(page.locator(".mx-comparison-basis")).toHaveCount(0);
     qqqReady = true;
-    await page.getByRole("button", { name: "Retry", exact: true }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Selected benchmark lacks shared records" })).toHaveCount(1);
+    await page.getByRole("button", { name: "Retry: Selected benchmark lacks shared records", exact: true }).click();
     await expect(comparison.getByRole("rowheader", { name: "QQQ" })).toBeVisible();
-    await expect(page.getByText("Selected benchmark lacks shared records")).toHaveCount(0);
+    await expect(page.locator(".mx-retry-reading")).toHaveCount(0);
+    await expect(page.getByRole("status").filter({ hasText: "Shared benchmark records are available again." })).toHaveCount(1);
+    await expect(page.getByRole("status").filter({ hasText: "Selected benchmark lacks shared records" })).toHaveCount(0);
 
     const monthly = page.locator(".mx-monthly-returns");
     await expect(monthly.locator("table")).toHaveCount(0);

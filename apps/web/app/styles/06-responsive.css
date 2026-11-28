@@ -400,7 +400,8 @@
     animation-duration: 160ms !important;
   }
   /* Loading spinners keep turning because they indicate work in progress. */
-  [data-slot="button-spinner"] {
+  [data-slot="button-spinner"],
+  [data-slot="switch"] [data-slot="spinner"] {
     animation-duration: 1s !important;
     animation-iteration-count: infinite !important;
   }

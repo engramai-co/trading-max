@@ -38,7 +38,7 @@ import { useEvidenceHighlight } from "./assistant/highlight";
 import { AssistantEntry, AssistantPanel } from "./assistant/shell";
 import { useAssistant } from "./assistant/context";
 import { useWorkspaceProfile } from "./profile";
-import { Tip, Tag, useCopy } from "./foundation";
+import { Tip, Tag, StatusMessage, useCopy } from "./foundation";
 import { isImeComposing } from "./shortcut-platform";
 
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -46,6 +46,7 @@ import { useBuildNavigation } from "@/ui/publication-provider";
 import { desktopPage, presentationLink } from "./desktop-routing";
 import { DesktopStatus } from "./desktop-surfaces";
 import { documentTitle, useDocumentTitle } from "./document-title";
+import { useBrowserOnline } from "@/ui/query-client";
 import { useIndexCatalog } from "./market-indices-data";
 import { useListedIndices } from "./listed-indices";
 import { NavigationGroup, NavigationHint, NavigationIcon } from "./navigation-group";
@@ -216,6 +217,23 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   });
   const onIndexPage = pathname === "/research" && params.get("type") === "index";
   const indexCatalog = useIndexCatalog(searchOpen || onIndexPage);
+  const online = useBrowserOnline();
+  const directoryOffline = !online || directory.fetchStatus === "paused" || indexCatalog.fetchStatus === "paused";
+  const researchFailed = directory.isError;
+  const indexFailed = indexCatalog.isError;
+  const catalogPending = directory.isPending || indexCatalog.isPending;
+  const catalogsReady = directory.isSuccess && indexCatalog.isSuccess;
+  const directoryIssue = directoryOffline
+    ? t("网络已断开。页面搜索仍可使用，研究清单将在重连后更新。", "You’re offline. You can still search pages. The research list will update when you reconnect.")
+    : researchFailed ? t("研究清单暂不可用，页面搜索仍可使用。", "Research list unavailable. You can still search pages.")
+    : indexFailed ? t("指数查询暂不可用，页面搜索仍可使用。", "Index search unavailable. You can still search pages.") : undefined;
+  const [previousDirectoryIssue, setPreviousDirectoryIssue] = useState<string>();
+  if (searchOpen && previousDirectoryIssue !== directoryIssue && directoryIssue) setPreviousDirectoryIssue(directoryIssue);
+  else if (!searchOpen && previousDirectoryIssue) setPreviousDirectoryIssue(undefined);
+  const directoryLoading = t("正在加载研究清单…", "Loading research list…");
+  const directoryMessage = directoryIssue ?? (catalogPending
+    ? directoryLoading
+    : previousDirectoryIssue && catalogsReady ? t("研究清单可用。", "Research list available.") : undefined);
   const listedIndices = useListedIndices();
   const indexName = (id: string) => {
     const index = indexCatalog.data?.find((item) => item.id === id);
@@ -546,6 +564,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         className="mx-command-dialog" headerClassName="sr-only" bodyClassName="mx-search-body"
         width={600}
       >
+        <StatusMessage message={directoryMessage} />
         <div className="mx-search-row" role="search" aria-label={t("搜索", "Search")}>
           <InputGroup>
             <InputGroupAddon aria-hidden="true"><Search size={20} /></InputGroupAddon>
@@ -620,30 +639,22 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         {needsSecurity(query, currentTicker) && (
           <p className="mx-command-status" role="status">{t("加上代码，例如 ARM 技术面。", "Add a ticker, such as ARM technical.")}</p>
         )}
-        {match && results.every((item) => item.group === "holdings") && !directory.isFetching && !needsSecurity(query, currentTicker) && (
+        {match && results.every((item) => item.group === "holdings") && catalogsReady && !directory.isFetching && !indexCatalog.isFetching && !directoryOffline && !needsSecurity(query, currentTicker) && (
           <p className="mx-command-status" role="status">{t("没有找到“", "No results for “") + query.trim() + "”"}</p>
         )}
-        {directory.isPending && (
-          <p className="mx-command-status" role="status">
-            {t("正在加载研究清单…", "Loading research list…")}
-          </p>
-        )}
-        {directory.isError && (
-          <div className="mx-command-status" role="status">
-            <span>
-              {t(
-                "研究清单暂不可用，页面搜索仍可使用。",
-                "Research list unavailable. You can still search pages.",
-              )}
-            </span>
-            <Button
-              variant="ghost"
-              onClick={() => void directory.refetch()}
-            >
+        {directoryIssue ? (
+          <div className="mx-command-status">
+            <span>{directoryIssue}</span>
+            {(researchFailed || indexFailed) && !directoryOffline && <Button variant="ghost" onClick={() => {
+              if (researchFailed) void directory.refetch();
+              if (indexFailed) void indexCatalog.refetch();
+            }}>
               {t("重试", "Retry")}
-            </Button>
+            </Button>}
           </div>
-        )}
+        ) : catalogPending ? (
+          <p className="mx-command-status">{directoryLoading}</p>
+        ) : null}
         {!match && recent.length > 0 && <div className="mx-command-recent-actions"><button type="button" className="mx-command-clear" onClick={() => setHistory((previous) => ({ ...previous, items: [] }))}>{t("清除最近访问", "Clear recent")}</button></div>}
         <div className="mx-command-footer">
           <span>{t("↑ ↓ 选择 · Enter 打开", "↑ ↓ navigate · Enter open")}</span>

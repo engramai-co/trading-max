@@ -18,6 +18,10 @@ import { HistoryRecords } from "./history-records";
 import type { Range } from "@/lib/portfolio/nav";
 import { moneyTimelineLayout } from "./money-timeline-layout";
 
+export function timelinePlotHeight(height: number, range?: Range) {
+  return height - (range === "1D" || range === "1W" ? 24 : 0);
+}
+
 export function TimelineChart({
   dates,
   layers,
@@ -71,8 +75,7 @@ export function TimelineChart({
   const moneyLayout = useMemo(() => hasDrawdownHeading ? moneyTimelineLayout(!!phone, !!narrow) : undefined,
     [hasDrawdownHeading, phone, narrow]);
   const shortRange = range === "1D" || range === "1W";
-  const plotHeight = (moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510))
-    - (shortRange ? 24 : 0);
+  const plotHeight = timelinePlotHeight(moneyLayout?.height ?? height ?? (layers.length === 1 ? 314 : layers.length === 3 ? 706 : 510), range);
   const hasValues = useMemo(() => !(
     !dates.length ||
     (timeline && !timeline.rowIndexes.some((row) => row != null)) ||

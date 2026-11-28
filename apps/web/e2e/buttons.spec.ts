@@ -5,9 +5,8 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a seeded local preview.");
 
   test("buttons draw a single 2px focus ring and keep exact width while loading", async ({ page }) => {
-    let release!: () => void;
     let hold = false;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await page.route("**/api/backend/health/details", async (route) => {
       if (hold) await gate;
@@ -61,8 +60,7 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
   });
 
   test("save actions show localised progress labels without jumping width", async ({ page, request }) => {
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
     const overview = await (await request.get("/api/backend/settings/integrations")).json() as IntegrationOverview;
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     await page.route("**/api/backend/settings/integrations", (route) => route.fulfill({ json: overview }));
@@ -235,9 +233,10 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     // Live region sits outside the button.
     await expect(copyBtn.locator("[role=status]")).toHaveCount(0);
     await copyBtn.click();
-    await expect(dialog.getByRole("button", { name: "Copied" })).toBeEnabled();
-    expect(Math.abs((await dialog.getByRole("button", { name: "Copied" }).boundingBox())!.width - idleWidth)).toBeLessThanOrEqual(0.5);
-    await expect(dialog.locator(".sr-only[role=status]")).toContainText("One-time code copied");
+    await expect(copyBtn).toHaveAttribute("data-copied", "");
+    await expect(copyBtn.getByText("Copied", { exact: true })).toBeVisible();
+    expect(Math.abs((await copyBtn.boundingBox())!.width - idleWidth)).toBeLessThanOrEqual(0.5);
+    await expect(dialog.getByRole("status").filter({ hasText: "One-time code copied" })).toHaveCount(1);
 
     // Inline external Sign-in help TextLink preserves external security attributes.
     const helpLink = dialog.getByRole("link", { name: "Sign-in help" });
@@ -250,9 +249,10 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
       (window as unknown as { __setCopyFail: (v: boolean) => void }).__setCopyFail(true);
       document.execCommand = () => false;
     });
-    await dialog.getByRole("button", { name: "Copied" }).click();
-    await expect(dialog.getByRole("button", { name: "Copy failed" })).toBeVisible();
-    await expect(dialog.locator(".sr-only[role=status]")).toContainText("Could not copy code");
+    await copyBtn.click();
+    await expect(copyBtn).toHaveAttribute("data-failed", "");
+    await expect(copyBtn.getByText("Copy failed", { exact: true })).toBeVisible();
+    await expect(dialog.getByRole("status").filter({ hasText: "Could not copy code" })).toHaveCount(1);
   });
 
   test("destructive confirmation uses red text and outline with transparent fill", async ({ page }) => {

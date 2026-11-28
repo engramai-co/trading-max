@@ -171,6 +171,75 @@ test.describe("portfolio workspace", () => {
     expect(documentNavigations).toEqual([]);
   });
 
+  test("Holdings announces a failed read and announces its recovery once", async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    let unavailable = true;
+    await page.route("**/api/backend/dashboard/lens/holdings-positions", (route) => unavailable
+      ? route.fulfill({ status: 503, json: {} }) : route.fallback());
+    await page.goto("/holdings");
+    const main = page.getByRole("main");
+    const failure = main.getByRole("status").filter({ hasText: /Holdings.*Data is temporarily unavailable/ });
+    await expect(failure).toHaveCount(1);
+    unavailable = false;
+    await main.getByRole("button", { name: "Try again" }).click();
+    await expect(main.getByRole("status").filter({ hasText: /Holdings.*Data is available again/ })).toHaveCount(1);
+    await expect(failure).toHaveCount(0);
+  });
+
+  test("Holdings announces recovery after an automatic reconnect", async ({ page, context }) => {
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    let unavailable = true;
+    await page.route("**/api/backend/dashboard/lens/holdings-positions", (route) => unavailable
+      ? route.fulfill({ status: 503, json: {} }) : route.fallback());
+    await page.goto("/holdings");
+    const main = page.getByRole("main");
+    await expect(main.getByRole("status").filter({ hasText: /Holdings.*Data is temporarily unavailable/ })).toHaveCount(1);
+    await context.setOffline(true);
+    await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
+    unavailable = false;
+    await context.setOffline(false);
+    await expect(main.getByRole("status").filter({ hasText: /Holdings.*Data is available again/ })).toHaveCount(1);
+  });
+
+  test("Holdings announces a failed refresh and recovery once while retaining its positions", async ({ page, context }) => {
+    await page.clock.install();
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    let unavailable = false;
+    await page.route("**/api/backend/dashboard/lens/holdings-positions", route => route.fulfill(unavailable
+      ? { status: 503, json: {} } : { json: {
+        runId: "synthetic-holdings-refresh", brokerAsOf: "2026-11-20T21:00:00Z",
+        holdings: [{ account: "A", ticker: "SYN", name: "Synthetic holding", currentValueGbp: 200, costGbp: 150, pnlGbp: 50 }],
+      } }));
+    await page.route("**/api/backend/health", route => route.fulfill({ json: {
+      service: "trading_max-api", status: "ok", latestRunId: "synthetic-holdings-refresh",
+    } }));
+    await page.goto("/holdings");
+    const main = page.getByRole("main");
+    const positions = main.getByText("Synthetic holding", { exact: true }).filter({ visible: true });
+    const badge = main.locator(".mx-update-failure");
+    const failure = main.getByRole("status").filter({ hasText: "Holdings · Update failed" });
+    const recovery = main.getByRole("status").filter({ hasText: "Holdings · Data is available again." });
+    await expect(positions).toBeVisible();
+    await expect(failure).toHaveCount(0);
+    await expect(recovery).toHaveCount(0);
+
+    unavailable = true;
+    await page.clock.fastForward(31_000);
+    await context.setOffline(true);
+    await context.setOffline(false);
+    await expect(badge).toBeVisible();
+    await expect(positions).toBeVisible();
+    await expect(failure).toHaveCount(1);
+    await expect(recovery).toHaveCount(0);
+
+    unavailable = false;
+    await badge.click();
+    await expect(badge).toHaveCount(0);
+    await expect(positions).toBeVisible();
+    await expect(recovery).toHaveCount(1);
+    await expect(failure).toHaveCount(0);
+  });
+
   test("command search supports keyboard selection and closes after navigation", async ({
     page,
   }) => {
