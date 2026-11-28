@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.80.0] - 2026-11-28
+
+### Added
+- Unsaved preferences and model assignments are kept when you leave Settings and return. The browser asks before reloading or closing the page if you still have a draft.
+
+### Changed
+- Settings uses the new design system in the browser and desktop app, with loading placeholders sized for each tab.
+- When no model provider is connected, **Choose a provider** opens setup. If an assigned provider disconnects, you can reconnect it beside the model picker.
+- Preferences shows the portfolio reporting currency as plain text.
+
+### Fixed
+- Switching Settings tabs keeps a CFD import in progress. If it fails, the selected file stays available to retry.
+- If a workspace status refresh fails during setup, the last status stays visible with a Retry button. Balance confirmation waits for a successful refresh.
+- ChatGPT sign-in, cancellation and disconnection errors now offer a retry for the action that failed.
+
 ## [1.79.0] - 2026-11-28
 
 ### Added
