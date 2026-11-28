@@ -14,9 +14,6 @@
   .mx-watchlist-item:hover {
     background: var(--mx-soft);
   }
-  .mx-command-result:hover {
-    background: var(--mx-soft);
-  }
 }
 @media (min-width: 1600px) {
   .mx-panel {

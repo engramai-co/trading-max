@@ -70,6 +70,13 @@ function indexResearchHref(id: string, view = "overview") {
   return "/research?type=index&index=" + id + (view !== "overview" ? "&view=" + view : "");
 }
 
+function instrumentRank(item: Instrument, query: string) {
+  const ticker = normalise(item.ticker);
+  if (ticker === query) return 0;
+  if (ticker.startsWith(query)) return 1;
+  return normalise(item.name).startsWith(query) ? 2 : 3;
+}
+
 export function searchWorkspace({ query, pages, instruments, indices = [], recent, currentTicker, locale }: {
   query: string;
   pages: SearchPage[];
@@ -94,7 +101,7 @@ export function searchWorkspace({ query, pages, instruments, indices = [], recen
   const security = target?.security || (target && currentTicker ? normalise(currentTicker) : match);
   const foundInstruments = (target && !target.security && !currentTicker ? [] : instruments)
     .filter((item) => !security || matches(item.ticker + " " + item.name, security))
-    .slice().sort((a, b) => Number(normalise(b.ticker) === security) - Number(normalise(a.ticker) === security))
+    .sort((a, b) => instrumentRank(a, security) - instrumentRank(b, security))
     .slice(0, 8)
     .map((item): SearchResult => ({
       href: researchHref(item.ticker, target?.lens.view),
@@ -180,9 +187,27 @@ export function rememberVisit(recent: readonly SearchResult[], visit: SearchResu
   return [visit, ...recent.filter((item) => item.href !== visit.href)].slice(0, 6);
 }
 
+// Full-width ASCII folds one code unit at a time, so match offsets still point
+// to the displayed text, including queries echoed verbatim in an action.
+function foldWidth(text: string) {
+  return text.replace(/[\u3000\uFF01-\uFF5E]/g, (character) => character.normalize("NFKC"));
+}
+
 export function highlightParts(text: string, query: string) {
-  const words = query.trim().split(/\s+/).filter(Boolean).map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const words = Array.from(new Set([foldWidth(query), normalise(query)].flatMap((form) => form.trim().split(/\s+/))))
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map((word) => word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   if (!words.length) return [{ text, match: false }];
-  const pattern = new RegExp("(" + words.sort((a, b) => b.length - a.length).join("|") + ")", "gi");
-  return text.split(pattern).filter(Boolean).map((part) => ({ text: part, match: words.some((word) => new RegExp("^(?:" + word + ")$", "i").test(part)) }));
+  const pattern = new RegExp(words.join("|"), "gi");
+  const parts: { text: string; match: boolean }[] = [];
+  let offset = 0;
+  for (const match of foldWidth(text).matchAll(pattern)) {
+    const start = match.index;
+    if (start > offset) parts.push({ text: text.slice(offset, start), match: false });
+    offset = start + match[0].length;
+    parts.push({ text: text.slice(start, offset), match: true });
+  }
+  if (offset < text.length) parts.push({ text: text.slice(offset), match: false });
+  return parts.length ? parts : [{ text, match: false }];
 }

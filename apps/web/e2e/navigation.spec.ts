@@ -36,6 +36,7 @@ test.describe("workspace navigation refinements", () => {
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(new RegExp(href.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "$"));
       await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(page.getByRole("main")).toBeFocused();
     });
   }
 
@@ -54,6 +55,8 @@ test.describe("workspace navigation refinements", () => {
     const selected = page.getByRole("option", { selected: true });
     await expect(selected).toContainText("BE");
     await expect(input).toHaveAttribute("aria-activedescendant", await selected.getAttribute("id") ?? "");
+    await expect(page.getByRole("listbox").getByRole("group", { name: /研究清单|Research list/ }).getByRole("option", { selected: true })).toBeVisible();
+    await expect(selected).toHaveCSS("outline-width", "2px");
     await expect(selected.locator("mark").first()).toHaveText("BE");
     await page.keyboard.press("ArrowDown");
     await expect(input).toBeFocused();
@@ -92,7 +95,10 @@ test.describe("workspace navigation refinements", () => {
 
   test("a failed index catalog keeps page commands and delays a definitive search result", async ({ page }) => {
     let failing = true;
-    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.addInitScript(() => {
+      localStorage.setItem("trading_max-locale", "en");
+      Reflect.deleteProperty(AbortSignal, "any");
+    });
     await page.route("**/api/backend/indices/catalog", (route) => route.fulfill(failing
       ? { status: 503, json: {} } : { json: [] }));
     await page.goto("/");
@@ -101,13 +107,60 @@ test.describe("workspace navigation refinements", () => {
     await expect(dialog.getByRole("status").filter({ hasText: "Index search unavailable." })).toHaveCount(1);
     await input.fill("Holdings");
     await expect(dialog.getByRole("option").first()).toContainText("Holdings");
-    await input.fill("Z");
+    await input.fill("zzzz-nonsense");
     await expect(dialog.getByText(/No results for/)).toHaveCount(0);
     await expect(dialog.getByText("Research list available.")).toHaveCount(0);
     failing = false;
     await dialog.getByRole("button", { name: "Retry" }).click();
     await expect(dialog.getByRole("status").filter({ hasText: "Research list available." })).toHaveCount(1);
-    await expect(dialog.getByText(/No results for/)).toBeVisible();
+    await expect(dialog.getByRole("status")).toContainText(/No results for/);
+    await expect(dialog.getByRole("option")).toHaveCount(2);
+  });
+
+  test("Enter waits for an index ticker without disabling fallback actions", async ({ page, request }) => {
+    const { promise: catalogPending, resolve: releaseCatalog } = Promise.withResolvers<void>();
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    const catalog = await (await request.get("/api/backend/indices/catalog")).json();
+    await page.route("**/api/backend/indices/catalog", async (route) => {
+      await catalogPending;
+      await route.fulfill({ json: catalog });
+    });
+    await page.goto("/");
+    const input = await openSearch(page);
+    const dialog = page.getByRole("dialog", { name: "Search" });
+    try {
+      // A research result proves that the directory has settled while the index catalog is held.
+      await input.fill("ARM");
+      await expect(dialog.getByRole("option", { name: /Arm Holdings/ })).toBeVisible();
+      await input.fill("^GSPC");
+      const holdings = dialog.getByRole("option", { name: /Search holdings/ });
+      const finder = dialog.getByRole("option", { name: /Find in all securities/ });
+      await expect(holdings).toBeVisible();
+      await expect(finder).toBeVisible();
+      await expect(input).not.toHaveAttribute("aria-activedescendant");
+      await input.press("Enter");
+      await expect(input).toBeFocused({ timeout: 2_000 });
+      await expect(page).toHaveURL(/\/$/);
+      await input.press("ArrowDown");
+      await expect(holdings).toHaveAttribute("aria-selected", "true");
+      await input.press("ArrowDown");
+      await expect(finder).toHaveAttribute("aria-selected", "true");
+
+      // An unchanged query retains the explicit selection, and a new query
+      // selects the matching index after the catalog has arrived.
+      releaseCatalog();
+      const index = dialog.getByRole("option", { name: /S&P 500.*GSPC/ });
+      await expect(index).toBeVisible();
+      await expect(finder).toHaveAttribute("aria-selected", "true");
+      await input.fill("^GSP");
+      await input.fill("^GSPC");
+      await expect(index).toHaveAttribute("aria-selected", "true");
+      await input.press("Enter");
+      await expect(page).toHaveURL(/type=index&index=sp-500$/);
+      await expect(page.getByRole("main")).toBeFocused();
+    } finally {
+      releaseCatalog();
+    }
   });
 
   test("composition Enter does not navigate and an unknown ticker is not guessed", async ({ page }) => {
@@ -120,11 +173,103 @@ test.describe("workspace navigation refinements", () => {
     await input.dispatchEvent("keydown", { key: "Escape", code: "Escape", isComposing: false, keyCode: 229 });
     await expect(page.getByRole("dialog")).toBeVisible();
     await expect(page).toHaveURL(/\/$/);
-    await input.fill("UNKNOWN technical");
+    await input.press("Enter");
+    await expect(page).toHaveURL(/ticker=BE&view=valuation$/);
+    const again = await openSearch(page);
+    await again.fill("UNKNOWN technical");
     await expect(page.getByRole("option")).toHaveCount(1);
     await expect(page.getByRole("option")).toContainText(/在持仓中搜索|Search holdings/);
-    await input.fill("估值");
+    await page.goto("/");
+    await (await openSearch(page)).fill("估值");
     await expect(page.getByRole("status").filter({ hasText: /加上代码|Add a ticker/ })).toBeVisible();
+  });
+
+  for (const [query, shouldKeepFinder] of [["ZZNX", false], ["ZZN", true]] as const) {
+    test(`search keeps a stable active command as data arrives for ${query}`, async ({ page, request }) => {
+      const data = await (await request.get("/api/backend/research/shell")).json() as ResearchShell;
+      const instrument = { ...data.instruments[0], ticker: "ZZNX", name: "Synthetic search fixture" };
+      await page.unroute("**/api/backend/research/shell");
+      const { promise: directory, resolve: releaseDirectory } = Promise.withResolvers<void>();
+      await page.route("**/api/backend/research/shell", async (route) => {
+        await directory;
+        await route.fulfill({ json: { ...data, instruments: [...data.instruments, instrument] } });
+      });
+      await page.goto("/");
+      try {
+        const input = await openSearch(page);
+        const dialog = page.getByRole("dialog", { name: searchName });
+        const finder = dialog.getByRole("option", { name: /在全部证券中查找|Find in all securities/ });
+        const selected = dialog.getByRole("option", { selected: true });
+        await input.fill(query);
+        await expect(selected).toHaveCount(0);
+        await input.press("Enter");
+        await expect(input).toBeFocused();
+        await input.press("ArrowDown");
+        await input.press("ArrowDown");
+        await expect(finder).toHaveAttribute("aria-selected", "true");
+        const id = await finder.getAttribute("id");
+        expect(id).toBeTruthy();
+        await expect(input).toHaveAttribute("aria-activedescendant", id!);
+        releaseDirectory();
+        const listed = dialog.getByRole("group", { name: /研究清单|Research list/ }).getByRole("option", { name: /ZZNX/ });
+        await expect(listed).toBeVisible();
+        if (shouldKeepFinder) {
+          await expect(finder).toHaveAttribute("id", id!);
+          await expect(finder).toHaveAttribute("aria-selected", "true");
+          await expect(input).toHaveAttribute("aria-activedescendant", id!);
+          await input.dispatchEvent("keydown", { key: "Enter", isComposing: false, keyCode: 229 });
+          await expect(finder).toBeVisible();
+          await input.press("Enter");
+          await expect(page.getByRole("dialog").getByRole("searchbox")).toBeFocused();
+        } else {
+          await expect(finder).toHaveCount(0);
+          await expect(selected).toHaveCount(0);
+          await expect(input).not.toHaveAttribute("aria-activedescendant");
+          await expect(dialog.getByRole("listbox")).not.toHaveAttribute("aria-activedescendant");
+          await input.press("Enter");
+          await expect(input).toBeFocused();
+          await input.press("ArrowDown");
+          await expect(listed).toHaveAttribute("aria-selected", "true");
+        }
+      } finally {
+        releaseDirectory();
+      }
+    });
+  }
+
+  test("search fits a long query at 320 and 390 pixels in a short viewport", async ({ page, isMobile }) => {
+    await page.setViewportSize({ width: 320, height: 220 });
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    const input = await openSearch(page);
+    const dialog = page.getByRole("dialog", { name: searchName });
+    const list = dialog.getByRole("listbox");
+    await input.fill("1234567890".repeat(16));
+    for (const width of [320, 390]) {
+      await page.setViewportSize({ width, height: 220 });
+      await expect(dialog).toHaveCSS("width", `${width}px`);
+      await expect(dialog).toHaveCSS("height", "220px");
+      expect((await list.boundingBox())!.height).toBeGreaterThan(44);
+      expect(await list.evaluate((element) => element.scrollWidth)).toBe(await list.evaluate((element) => element.clientWidth));
+    }
+    if (isMobile) {
+      expect(await input.evaluate((element) => parseFloat(getComputedStyle(element).fontSize))).toBeGreaterThanOrEqual(16);
+      // Keyboard reduces the visible viewport without resizing layout on iOS.
+      await page.evaluate(() => {
+        const viewport = window.visualViewport!;
+        Object.defineProperty(viewport, "height", { configurable: true, get: () => 180 });
+        Object.defineProperty(viewport, "offsetTop", { configurable: true, get: () => 12 });
+        viewport.dispatchEvent(new Event("resize"));
+      });
+      await expect(dialog).toHaveCSS("height", "180px");
+      await expect(dialog).toHaveCSS("top", "12px");
+      expect((await list.boundingBox())!.height).toBeGreaterThan(44);
+    }
+    await input.press("Tab");
+    const close = dialog.getByRole("button", { name: /关闭|Close/ });
+    await expect(close).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(dialog).toHaveCount(0);
   });
 
   test("search hands a security outside the research list to the finder over the current view and its filters", async ({ page, browserName }) => {
@@ -349,7 +494,7 @@ test.describe("workspace navigation refinements", () => {
     await openSearch(page);
     await expect(page.getByRole("option").first()).toContainText("TWR");
     await page.getByRole("button", { name: /清除最近访问|Clear recent/ }).click();
-    await expect(page.locator(".mx-command-group").filter({ hasText: /最近访问|Recent/ })).toHaveCount(0);
+    await expect(page.getByRole("listbox").getByRole("group", { name: /最近访问|Recent/ })).toHaveCount(0);
     await page.keyboard.press("Escape");
     await page.reload();
     input = await openSearch(page);

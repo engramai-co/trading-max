@@ -43,6 +43,7 @@
 @import "./styles/22-feedback.css" layer(mantine);
 
 @import "./styles/23-workspace-shell.css" layer(mantine);
+@import "./styles/command-palette.css" layer(mantine);
 
 /* Generate utilities from application code only. */
 @source "../{app,components,lib,ui,workspace}/**/*.{js,jsx,ts,tsx,mjs,cjs,mts,cts}";

@@ -1,16 +1,12 @@
 "use client";
 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { WorkspaceDialog } from "./overlay";
-import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
-import { searchInputHints } from "@/components/ui/search-input";
 import { useColorScheme } from "@/components/color-scheme-provider";
-import { Button, buttonVariants, CloseButton } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { isColorScheme } from "@/lib/color-scheme";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint, useOs } from "@/lib/hooks";
 import {
-  ArrowRight,
   ChartColumnIncreasing,
   ChartLine,
   ChartPie,
@@ -26,12 +22,11 @@ import {
   Search,
   Settings,
   Sun,
-  type LucideIcon,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "./link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Fragment, Suspense, useEffect, useId, useRef, useState, type FocusEvent } from "react";
+import { Suspense, useEffect, useRef, useState, type FocusEvent } from "react";
 import { useLocale } from "@/components/locale-provider";
 import type { ResearchShell } from "@/lib/types";
 import { BrandMark } from "@/ui/brand-mark";
@@ -40,7 +35,7 @@ import { useEvidenceHighlight } from "./assistant/highlight";
 import { AssistantEntry, AssistantPanel } from "./assistant/shell";
 import { useAssistant } from "./assistant/context";
 import { useWorkspaceProfile } from "./profile";
-import { Tip, Tag, StatusMessage, useCopy } from "./foundation";
+import { Tip, Tag, useCopy } from "./foundation";
 import { isImeComposing } from "./shortcut-platform";
 
 import { researchShellKey } from "@/lib/dashboard-query";
@@ -53,13 +48,10 @@ import { useIndexCatalog } from "./market-indices-data";
 import { useListedIndices } from "./listed-indices";
 import { NavigationGroup, NavigationHint, NavigationIcon, railLink } from "./navigation-group";
 import {
-  findsSecurity, highlightParts, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
+  findsSecurity, needsSecurity, pageAliases, recentVisit, rememberVisit, searchWorkspace,
   type SearchIndex, type SearchResult,
 } from "./command-search";
-
-function SearchHighlight({ text, query }: { text: string; query: string }) {
-  return highlightParts(text, query).map((part, index) => part.match ? <mark key={index}>{part.text}</mark> : <Fragment key={index}>{part.text}</Fragment>);
-}
+import { CommandPalette, type CommandResult } from "./command-palette";
 
 function SearchRouteObserver({ onChange }: { onChange: (search: string) => void }) {
   const params = useSearchParams();
@@ -89,14 +81,13 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const appleKeyboard = os === "macos" || os === "ios";
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [index, setIndex] = useState(0);
   const [history, setHistory] = useState<{ scope: string | null; visit: string; items: SearchResult[] }>({ scope: null, visit: "", items: [] });
-  const searchId = useId();
   const topbarRef = useRef<HTMLElement>(null);
   const dockRef = useRef<HTMLElement>(null);
   const focusFrame = useRef(0);
   useEffect(() => () => cancelAnimationFrame(focusFrame.current), []);
-  const resultsRef = useRef<HTMLDivElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const pendingSearchFocus = useRef<{ pathname: string; search: string } | null>(null);
   const searchOpener = useRef<HTMLElement | null>(null);
   const restoreSearchFocus = useRef(false);
   const navigation = [
@@ -170,7 +161,10 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
       if (!isImeComposing(event) && (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         if (!event.repeat) {
-          if (!searchOpen) searchOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          if (!searchOpen) {
+            pendingSearchFocus.current = null;
+            searchOpener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+          }
           restoreSearchFocus.current = searchOpen;
           setSearchOpen(!searchOpen);
         }
@@ -226,6 +220,15 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     });
     return () => cancelAnimationFrame(frame);
   }, [searchOpen]);
+  useEffect(() => {
+    const destination = pendingSearchFocus.current;
+    if (!destination || searchOpen || destination.pathname !== actualPathname || destination.search !== routeSearch) return;
+    const frame = requestAnimationFrame(() => {
+      pendingSearchFocus.current = null;
+      mainRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [actualPathname, routeSearch, searchOpen]);
   function closeSearch() {
     restoreSearchFocus.current = true;
     setSearchOpen(false);
@@ -244,6 +247,8 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const researchFailed = directory.isError;
   const indexFailed = indexCatalog.isError;
   const catalogPending = directory.isPending || indexCatalog.isPending;
+  const initialCatalogRead = catalogPending ||
+    (!directory.data && directory.isFetching) || (!indexCatalog.data && indexCatalog.isFetching);
   const catalogsReady = directory.isSuccess && indexCatalog.isSuccess;
   const directoryIssue = directoryOffline
     ? t("网络已断开。页面搜索仍可使用，研究清单将在重连后更新。", "You’re offline. You can still search pages. The research list will update when you reconnect.")
@@ -268,7 +273,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     aliases: [index.name, index.nameZh, index.symbol ?? "", ...index.aliases].join(" "),
     listed: listedIndices.has(index.id),
   }));
-  const match = query.trim().toLowerCase();
+  const findText = query.trim();
   const pages = navigation.map((item) => ({ href: item.href, label: dock ? item.mobileLabel : item.label, aliases: pageAliases[item.href] }));
   const profileId = profile.data?.profileId ?? null;
   const visit = recentVisit(pathname, new URLSearchParams(routeSearch), pages, locale, indexName);
@@ -292,7 +297,6 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
     active?.label,
   ));
   const researchIcon = navigation.find((page) => page.href === "/research")?.icon ?? Search;
-  const findText = query.trim();
   // On Research the address keeps its view, filters and everything else, and gains only the text
   // to find: the page opens its finder over itself and drops the text again, so closing the finder
   // leaves the page as it was. Elsewhere, and from a cited reading, which has no finder, Research
@@ -300,19 +304,15 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
   const onResearch = pathname === "/research" && !params.has("evidence");
   const findQuery = new URLSearchParams(onResearch ? routeSearch : "");
   findQuery.set("find", findText);
-  const results: Array<Omit<SearchResult, "group"> & {
-    group: SearchResult["group"] | "holdings" | "securities";
-    Icon: LucideIcon;
-    replace?: boolean;
-  }> = [
+  const results: CommandResult[] = [
     ...searchWorkspace({ query, pages, instruments: directory.data?.instruments ?? [], indices, recent, currentTicker, locale })
       .map((item) => ({ ...item, Icon: navigation.find((page) => page.href === item.href.split("?")[0])?.icon ?? Search })),
-    ...(match
+    ...(findText
       ? [
           {
-            href: "/holdings?q=" + encodeURIComponent(query.trim()),
+            href: "/holdings?q=" + encodeURIComponent(findText),
             label:
-              t("在持仓中搜索", "Search holdings") + " “" + query.trim() + "”",
+              t("在持仓中搜索", "Search holdings") + " “" + findText + "”",
             detail: undefined,
             group: "holdings" as const,
             Icon: ChartPie,
@@ -333,23 +333,26 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         ]
       : []),
   ];
-  const selectedIndex = Math.min(index, Math.max(0, results.length - 1));
-  const groups = {
-    recent: t("最近访问", "Recent"), pages: t("页面", "Pages"), research: t("研究清单", "Research list"),
-    indices: t("指数", "Indices"), holdings: t("持仓", "Holdings"), securities: t("全部证券", "All securities"),
-  };
-  useEffect(() => {
-    if (searchOpen) resultsRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: "nearest" });
-  }, [selectedIndex, query, searchOpen, results.length]);
-  function navigate(href: string, replace = false) {
-    restoreSearchFocus.current = false;
+  const lensNeedsSecurity = needsSecurity(query, currentTicker);
+  const matchCount = results.filter(({ group }) => group !== "holdings" && group !== "securities").length;
+  const noResults = findText && matchCount === 0 && catalogsReady && !directory.isFetching &&
+    !indexCatalog.isFetching && !directoryOffline && !lensNeedsSecurity
+    ? t("没有找到“", "No results for “") + findText + "”"
+    : undefined;
+  function navigate(item: CommandResult, keyboard: boolean) {
+    const route = presentationLink(actualPathname, item.href);
+    restoreSearchFocus.current = route.separate;
     setSearchOpen(false);
-    const route = presentationLink(actualPathname, href);
     if (route.separate) window.open(route.href, "_blank", "noopener");
-    // Only the address of the current page changes: no navigation, scroll, remount or history entry.
-    // A fresh state, as the route helpers write, lets the router read the new address.
-    else if (replace) window.history.replaceState(null, "", route.href);
-    else if (!navigateBuild?.(route.href)) router.push(route.href);
+    // A finder handoff keeps the current address and lets the finder take focus.
+    else if (item.replace) window.history.replaceState(null, "", route.href);
+    else if (!navigateBuild?.(route.href)) {
+      if (keyboard && item.group !== "securities") {
+        const destination = new URL(route.href, window.location.href);
+        pendingSearchFocus.current = { pathname: destination.pathname, search: destination.searchParams.toString() };
+      }
+      router.push(route.href);
+    }
   }
   function revealPageFocus(event: FocusEvent<HTMLElement>) {
     const target = event.target;
@@ -493,6 +496,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
         aria-expanded={searchOpen}
         aria-keyshortcuts={appleKeyboard ? "Meta+K" : "Control+K"}
         onClick={(event) => {
+          pendingSearchFocus.current = null;
           searchOpener.current = event.currentTarget;
           restoreSearchFocus.current = false;
           setSearchOpen(true);
@@ -555,7 +559,7 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
             {more}
           </div>
         </header>
-        <main id="main-content" tabIndex={-1} onFocus={revealPageFocus}>
+        <main ref={mainRef} id="main-content" tabIndex={-1} onFocus={revealPageFocus}>
           {children}
         </main>
       </div>
@@ -581,116 +585,25 @@ export function WorkspaceShell({ children, desktop = false, localWorkspace = fal
           ))}
         </NavigationGroup>
       </nav>
-      <WorkspaceDialog
+      <CommandPalette
         open={searchOpen}
         onClose={closeSearch}
-        finalFocus={false}
-        onClosed={() => {
-          setQuery("");
-          setIndex(0);
-        }}
-        title={t("搜索", "Search")}
-        hideClose
-        className="mx-command-dialog" headerClassName="sr-only" bodyClassName="mx-search-body"
-        width={600}
-      >
-        <StatusMessage message={directoryMessage} />
-        <div className="mx-search-row" role="search" aria-label={t("搜索", "Search")}>
-          <InputGroup>
-            <InputGroupAddon aria-hidden="true"><Search size={20} /></InputGroupAddon>
-            <InputGroupInput
-              {...searchInputHints}
-              name="q"
-              data-autofocus
-              role="combobox"
-              aria-autocomplete="list"
-              aria-expanded={true}
-              aria-controls={searchId + "-results"}
-              aria-activedescendant={results[selectedIndex] ? searchId + "-" + selectedIndex : undefined}
-              aria-label={t("搜索", "Search")}
-              placeholder={t("页面、代码或名称", "Page, ticker or name")}
-              value={query}
-              maxLength={160}
-              onChange={(event) => {
-                setQuery(event.currentTarget.value);
-                setIndex(0);
-              }}
-              onKeyDown={(event) => {
-                if (isImeComposing(event)) return;
-                if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-                  event.preventDefault();
-                  setIndex((i) =>
-                    Math.max(
-                      0,
-                      Math.min(
-                        results.length - 1,
-                        Math.min(i, Math.max(0, results.length - 1)) + (event.key === "ArrowDown" ? 1 : -1),
-                      ),
-                    ),
-                  );
-                }
-                if (event.key === "Enter" && results[selectedIndex]) {
-                  event.preventDefault();
-                  navigate(results[selectedIndex].href, results[selectedIndex].replace);
-                }
-              }}
-            />
-          </InputGroup>
-          <CloseButton className="mx-search-close" iconSize={18} aria-label={t("关闭", "Close")} onClick={closeSearch} />
-        </div>
-        <div className="mx-command-results" ref={resultsRef} id={searchId + "-results"} role="listbox" aria-label={t("搜索结果", "Search results")}>
-          {results.map((item, i) => (
-            <Fragment key={item.href}>
-              {item.group !== results[i - 1]?.group && (
-                <div className="mx-command-group" role="presentation"><span>{groups[item.group]}</span></div>
-              )}
-              <button
-                type="button"
-                role="option"
-                id={searchId + "-" + i}
-                aria-selected={i === selectedIndex}
-                tabIndex={-1}
-                className="mx-command-result"
-                data-active={i === selectedIndex || undefined}
-                onMouseDown={(event) => event.preventDefault()}
-                onClick={() => navigate(item.href, item.replace)}
-                onFocus={() => setIndex(i)}
-              >
-                <item.Icon size={20} aria-hidden="true" />
-                <span>
-                  <strong><SearchHighlight text={item.label} query={query} /></strong>
-                  {item.detail && <small><SearchHighlight text={item.detail} query={query} /></small>}
-                </span>
-                <ArrowRight size={16} aria-hidden="true" />
-              </button>
-            </Fragment>
-          ))}
-        </div>
-        {needsSecurity(query, currentTicker) && (
-          <p className="mx-command-status" role="status">{t("加上代码，例如 ARM 技术面。", "Add a ticker, such as ARM technical.")}</p>
-        )}
-        {match && results.every((item) => item.group === "holdings") && catalogsReady && !directory.isFetching && !indexCatalog.isFetching && !directoryOffline && !needsSecurity(query, currentTicker) && (
-          <p className="mx-command-status" role="status">{t("没有找到“", "No results for “") + query.trim() + "”"}</p>
-        )}
-        {directoryIssue ? (
-          <div className="mx-command-status">
-            <span>{directoryIssue}</span>
-            {(researchFailed || indexFailed) && !directoryOffline && <Button variant="ghost" onClick={() => {
-              if (researchFailed) void directory.refetch();
-              if (indexFailed) void indexCatalog.refetch();
-            }}>
-              {t("重试", "Retry")}
-            </Button>}
-          </div>
-        ) : catalogPending ? (
-          <p className="mx-command-status">{directoryLoading}</p>
-        ) : null}
-        {!match && recent.length > 0 && <div className="mx-command-recent-actions"><button type="button" className="mx-command-clear" onClick={() => setHistory((previous) => ({ ...previous, items: [] }))}>{t("清除最近访问", "Clear recent")}</button></div>}
-        <div className="mx-command-footer">
-          <span>{t("↑ ↓ 选择 · Enter 打开", "↑ ↓ navigate · Enter open")}</span>
-          <span>Esc {t("关闭", "close")}</span>
-        </div>
-      </WorkspaceDialog>
+        query={query}
+        onQueryChange={setQuery}
+        results={results}
+        onSelect={navigate}
+        allowImplicitFallback={!(initialCatalogRead && /^[a-z0-9^][a-z0-9.^=-]*$/i.test(findText.normalize("NFKC")))}
+        matchCount={findText && catalogsReady && !directory.isFetching && !indexCatalog.isFetching ? matchCount : undefined}
+        searchHint={lensNeedsSecurity ? t("加上代码，例如 ARM 技术面。", "Add a ticker, such as ARM technical.") : undefined}
+        noResults={noResults}
+        providerMessage={directoryMessage}
+        providerNotice={directoryIssue ?? (catalogPending ? directoryLoading : undefined)}
+        onRetry={(researchFailed || indexFailed) && !directoryOffline ? () => {
+          if (researchFailed) void directory.refetch();
+          if (indexFailed) void indexCatalog.refetch();
+        } : undefined}
+        onClearRecent={!findText && recent.length > 0 ? () => setHistory((previous) => ({ ...previous, items: [] })) : undefined}
+      />
     </div>
   );
 }

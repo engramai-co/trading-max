@@ -402,12 +402,8 @@
   .mx-monogram,
   .mx-instrument strong,
   .mx-timeline-entry h3,
-  .mx-security-price strong,
-  .mx-command-result mark {
+  .mx-security-price strong {
     font-weight: 600;
-  }
-  .mx-command-group {
-    font-weight: 500;
   }
   /* Headings and table headers that only carry the browser's bold; any authored weight still wins. */
   :where(h1, h2, h3, h4, h5, h6, b, strong) {
