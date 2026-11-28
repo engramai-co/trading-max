@@ -153,6 +153,7 @@ test.describe("workspace overlays", () => {
     overview.integrations = overview.integrations.map((item) => ({ ...item, configured: false, enabled: false }));
     await page.route("**/api/backend/settings/integrations", (route) => route.fulfill({ json: overview }));
     await page.goto("/settings?tab=models");
+    await page.getByRole("button", { name: "Choose a provider", exact: true }).click();
     const providerDialog = page.getByRole("dialog", { name: "Connect your model", exact: true });
     await expect(providerDialog).toBeVisible();
     await providerDialog.getByRole("combobox", { name: "Model provider" }).click();
@@ -175,6 +176,7 @@ test.describe("workspace overlays", () => {
 
     // Reopen the model-provider dialog cleanly and confirm a second Escape closes it.
     await page.reload();
+    await page.getByRole("button", { name: "Choose a provider", exact: true }).click();
     await expect(providerDialog).toBeVisible();
     await providerDialog.getByRole("combobox", { name: "Model provider" }).click();
     await expect(providerDialog.getByRole("option", { name: "Anthropic", exact: true })).toBeVisible();
@@ -264,6 +266,7 @@ test.describe("workspace overlays", () => {
     overview.integrations = overview.integrations.map((item) => ({ ...item, configured: false, enabled: false }));
     await page.route("**/api/backend/settings/integrations", (route) => route.fulfill({ json: overview }));
     await page.goto("/settings?tab=models");
+    await page.getByRole("button", { name: "Choose a provider", exact: true }).click();
     const provider = page.getByRole("dialog", { name: "Connect your model" });
     await provider.getByRole("combobox", { name: "Model provider" }).click();
     await provider.getByRole("option", { name: "Anthropic", exact: true }).click();

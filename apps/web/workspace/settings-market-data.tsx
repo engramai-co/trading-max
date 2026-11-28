@@ -11,6 +11,14 @@ import type { IntegrationOverview, IntegrationSummary } from "@/lib/types";
 import { api, jsonRequest } from "@/workspace/data";
 import { Freshness, Notice, Panel, useCopy } from "./foundation";
 import { settingsKey } from "./settings-query";
+import {
+  settingsDetailsBodyClass,
+  settingsRowClass,
+  settingsRowCopyClass,
+  settingsRowHeadingClass,
+  settingsSwitchRowClass,
+  guardSettingsFormEnter,
+} from "./settings-styles";
 
 const path = "/settings/integrations/alpaca";
 /** Every Alpaca write shares this key, so the global mutation cache can hold one at a time across tab changes. */
@@ -74,10 +82,10 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
       help={t("Alpaca 提供美股行情，并补充账户价值重建所需的历史数据。", "Alpaca provides US market prices and supplements account value reconstruction.")}
     >
       {/* YF is the base in every state; the row names it until Alpaca keys exist, then switches Alpaca on or off. */}
-      <div className="mx-setting-row">
+      <div className={settingsRowClass}>
         {integration?.configured ? (
           <Switch
-            className="mx-setting-switch"
+            className={settingsSwitchRowClass}
             label={t("Alpaca 增强", "Alpaca enhancement")}
             labelPosition="left"
             checked={enabled}
@@ -92,29 +100,29 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
           />
         ) : (
           <>
-            <div>
-              <h3>Alpaca</h3>
-              <p>{t("可选。连接后可补充美股历史行情。", "Optional. Connect to add US market history.")}</p>
+            <div className="min-w-0">
+              <h3 className={settingsRowHeadingClass}>Alpaca</h3>
+              <p className={settingsRowCopyClass}>{t("可选。连接后可补充美股历史行情。", "Optional. Connect to add US market history.")}</p>
             </div>
-            <Button disabled={busy} onClick={() => setOpened(true)}>{t("连接 Alpaca", "Connect Alpaca")}</Button>
+            <Button type="button" disabled={busy} onClick={() => setOpened(true)}>{t("连接 Alpaca", "Connect Alpaca")}</Button>
           </>
         )}
         {/* Always mounted, so screen readers hear the save start; empty otherwise. Focus stays on the switch. */}
         <span role="status" className="sr-only">{requested !== undefined ? t("正在保存…", "Saving…") : null}</span>
       </div>
       <div className="flex flex-col gap-mx-md">
-
         {integration?.lastTestAt && <Freshness date={integration.lastTestAt} label={t("连接测试", "Connection tested")} />}
         {outcome === "failed" && <Notice tone="bad">{t("无法更改设置，请检查 Alpaca 连接后重试。", "Could not update settings. Check the Alpaca connection and retry.")}</Notice>}
         {outcome === "saved" && <Notice tone="good">{t("设置已保存，下一次账户更新会重新计算历史重建。", "Saved. The next account update will recalculate reconstruction history.")}</Notice>}
-        <details>
-          <summary>{integration?.configured ? t("管理 Alpaca 密钥", "Manage Alpaca keys") : t("覆盖范围与密钥获取", "Coverage and API keys")}</summary>        {integration?.configured && (
-          <div className="flex flex-wrap items-center gap-mx-md">
-            <Button variant="secondary" disabled={busy} onClick={() => setOpened(true)}>{t("更新 Alpaca 密钥", "Update Alpaca keys")}</Button>
-            <Button variant="ghost" disabled={busy} onClick={() => setRemoving(true)}>{t("删除密钥", "Remove keys")}</Button>
-          </div>
-        )}
-          <p className="mx-measure">{t("使用免费 Paper 账户的 API Key ID 和 Secret。密钥保存在服务器的系统凭据库中。", "Use a free Paper account’s API Key ID and Secret. Keys are kept in the server’s operating-system credential store.")}</p>
+        <details className={settingsDetailsBodyClass}>
+          <summary>{integration?.configured ? t("管理 Alpaca 密钥", "Manage Alpaca keys") : t("覆盖范围与密钥获取", "Coverage and API keys")}</summary>
+          {integration?.configured && (
+            <div className="mt-3 flex flex-wrap items-center gap-mx-md">
+              <Button type="button" variant="secondary" disabled={busy} onClick={() => setOpened(true)}>{t("更新 Alpaca 密钥", "Update Alpaca keys")}</Button>
+              <Button type="button" variant="ghost" disabled={busy} onClick={() => setRemoving(true)}>{t("删除密钥", "Remove keys")}</Button>
+            </div>
+          )}
+          <p className="max-w-[40em]">{t("使用免费 Paper 账户的 API Key ID 和 Secret。密钥保存在服务器的系统凭据库中。", "Use a free Paper account’s API Key ID and Secret. Keys are kept in the server’s operating-system credential store.")}</p>
           <a href="https://app.alpaca.markets/dashboard/overview" target="_blank" rel="noreferrer">{t("打开 Alpaca → Paper → API Keys", "Open Alpaca → Paper → API Keys")}</a>
         </details>
       </div>
@@ -127,8 +135,8 @@ export function ReconstructionMarketData({ integration }: { integration?: Integr
           <p>{t("删除后恢复使用 YF，已有券商记录和快照会保留。", "YF will remain active. Existing broker observations and snapshots are preserved.")}</p>
           {remove.isError && <Notice tone="bad">{t("删除失败，请重试。", "Could not remove keys. Please retry.")}</Notice>}
           <div className="flex flex-wrap items-center justify-end gap-mx-md">
-            <Button data-autofocus variant="secondary" disabled={remove.isPending} onClick={() => setRemoving(false)}>{t("取消", "Cancel")}</Button>
-            <Button variant="destructive" loading={remove.isPending} loadingLabel={t("删除中…", "Removing…")} disabled={busy} onClick={() => { if (writeInFlight(client)) return; begin(); remove.mutate(); }}>{t("确认删除", "Remove keys")}</Button>
+            <Button type="button" data-autofocus variant="secondary" disabled={remove.isPending} onClick={() => setRemoving(false)}>{t("取消", "Cancel")}</Button>
+            <Button type="button" variant="destructive" loading={remove.isPending} loadingLabel={t("删除中…", "Removing…")} disabled={busy} onClick={() => { if (writeInFlight(client)) return; begin(); remove.mutate(); }}>{t("确认删除", "Remove keys")}</Button>
           </div>
         </div>
       </WorkspaceAlertDialog>
@@ -163,7 +171,14 @@ function AlpacaKeyForm({ onStart, onSaved }: { onStart: () => void; onSaved: () 
   const writing = useIsMutating({ mutationKey: writeKey }) > 0;
   const busy = test.isPending || writing;
   const required = useRequiredFields();
-  function edit(action: () => void) { action(); setToken(null); setFailed(null); }
+  const keyMissingMsg = t("请输入 API Key ID。", "Enter the API key ID.");
+  const secretMissingMsg = t("请输入 API Secret。", "Enter the API secret.");
+  function edit(field: string, value: string, action: () => void) {
+    action();
+    required.markEdited(field, value);
+    setToken(null);
+    setFailed(null);
+  }
   function runTest(form: HTMLFormElement | null) {
     if (busy || !required.validate(form)) return;
     setToken(null);
@@ -185,26 +200,80 @@ function AlpacaKeyForm({ onStart, onSaved }: { onStart: () => void; onSaved: () 
     });
   }
   return (
-    <form method="post" noValidate onSubmit={(event) => { event.preventDefault(); if (required.validate(event.currentTarget)) submit(); }}>
+    <form
+      method="post"
+      autoComplete="off"
+      noValidate
+      aria-label={t("连接 Alpaca 行情", "Connect Alpaca market data")}
+      onKeyDown={guardSettingsFormEnter}
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (busy) return;
+        if (token) {
+          if (required.validate(event.currentTarget)) submit();
+        } else {
+          runTest(event.currentTarget);
+        }
+      }}
+    >
       <div className="flex flex-col gap-mx-md">
-        <CredentialField label="Alpaca API Key ID" name="alpaca-key-id"
+        <CredentialField
+          label="Alpaca API Key ID"
+          name="alpaca-key-id"
+          autoComplete="off"
           revealLabel={t("显示或隐藏 Key ID", "Show or hide key ID")}
-          error={required.missing(key) ? t("请输入 API Key ID。", "Enter the API key ID.") : undefined}
-          value={key} disabled={busy} onChange={(event) => { const value = event.currentTarget.value; edit(() => setKey(value)); }} />
-        <CredentialField label="Alpaca API Secret" name="alpaca-secret"
+          error={required.missing(key, "alpaca-key-id") ? keyMissingMsg : undefined}
+          value={key}
+          disabled={busy}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            edit("alpaca-key-id", value, () => setKey(value));
+          }}
+          onBlur={(event) => required.markBlurred("alpaca-key-id", event.currentTarget.value, keyMissingMsg, event)}
+        />
+        <CredentialField
+          label="Alpaca API Secret"
+          name="alpaca-secret"
+          autoComplete="off"
           revealLabel={t("显示或隐藏 Secret", "Show or hide secret")}
-          error={required.missing(secret) ? t("请输入 API Secret。", "Enter the API secret.") : undefined}
-          autoComplete="new-password" value={secret} disabled={busy}
-          onChange={(event) => { const value = event.currentTarget.value; edit(() => setSecret(value)); }} />
+          error={required.missing(secret, "alpaca-secret") ? secretMissingMsg : undefined}
+          value={secret}
+          disabled={busy}
+          onChange={(event) => {
+            const value = event.currentTarget.value;
+            edit("alpaca-secret", value, () => setSecret(value));
+          }}
+          onBlur={(event) => required.markBlurred("alpaca-secret", event.currentTarget.value, secretMissingMsg, event)}
+        />
+        {required.liveRegion}
         {failed === "test" && <Notice tone="bad">{t("历史行情测试失败，请检查密钥与 SIP / BOATS 访问权限。", "Historical market-data test failed. Check the keys and SIP / BOATS access.")}</Notice>}
         {token && <Notice tone="good">{t("SIP 与隔夜 BOATS 访问测试通过。", "SIP and overnight BOATS access verified.")}</Notice>}
         {failed === "save" && <Notice tone="bad">{t("保存失败，请检查服务器凭据库并重新测试。", "Save failed. Check the server credential store and test again.")}</Notice>}
         <div className="flex flex-col gap-mx-xs">
           <div className="flex flex-wrap items-center gap-mx-md">
-            <Button className="grow max-w-[calc(50%-8px)]" variant="outline" disabled={busy} loading={test.isPending} loadingLabel={t("测试中…", "Testing…")} onClick={event => runTest((event.currentTarget as HTMLButtonElement).form)}>{t("测试连接", "Test connection")}</Button>
-            <Button className="grow max-w-[calc(50%-8px)]" type="submit" aria-describedby={!token ? "alpaca-save-requirement" : undefined} disabled={!token || busy} loading={save.isPending} loadingLabel={t("保存中…", "Saving…")}>{t("保存并开启增强", "Save and enable")}</Button>
+            <Button
+              className="grow max-w-[calc(50%-8px)]"
+              type={token ? "button" : "submit"}
+              variant="outline"
+              disabled={busy}
+              loading={test.isPending}
+              loadingLabel={t("测试中…", "Testing…")}
+              onClick={token ? (event) => runTest((event.currentTarget as HTMLButtonElement).form) : undefined}
+            >
+              {t("测试连接", "Test connection")}
+            </Button>
+            <Button
+              className="grow max-w-[calc(50%-8px)]"
+              type={token ? "submit" : "button"}
+              aria-describedby={!token ? "alpaca-save-requirement" : undefined}
+              disabled={!token || busy}
+              loading={save.isPending}
+              loadingLabel={t("保存中…", "Saving…")}
+            >
+              {t("保存并开启增强", "Save and enable")}
+            </Button>
           </div>
-          {!token && <p className="mx-form-help" id="alpaca-save-requirement">{t("连接测试通过后即可保存。", "Test the connection before saving.")}</p>}
+          {!token && <p className="text-xs leading-[1.9] text-muted-foreground" id="alpaca-save-requirement">{t("连接测试通过后即可保存。", "Test the connection before saving.")}</p>}
         </div>
       </div>
     </form>

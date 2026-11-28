@@ -22,6 +22,7 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
 }) {
   const t = useCopy();
   const codeId = useId();
+  const codeLabelId = useId();
   const [model, setModel] = useState(existing?.model ?? provider.defaultModel);
   const [defaultModel, setDefaultModel] = useState(Boolean(useAsDefault));
   const [session, setSession] = useState<OAuthLoginStatus | null>(null);
@@ -73,26 +74,62 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
     mutationFn: () => api("/settings/llm/providers/openai-codex", { method: "DELETE" }),
     onSuccess: () => onSaved("disconnected"),
   });
-  const failed = start.isError || status.isError || cancel.isError || disconnect.isError || current?.state === "error" || current?.state === "expired";
-  const errorMessage = !failed ? undefined : current?.errorCode === "credential_store_unavailable"
-    ? t("设备的凭据存储不可用，连接未保存。请解锁系统钥匙串后重试。", "The device credential store is unavailable. Unlock the system keychain and try again.")
-    : t("本次登录未完成或已过期，请重试。若无法取得授权码，请检查 ChatGPT 安全设置中的设备码登录权限。", "Login did not complete or expired. Try again; if no code appears, check device-code login permissions in ChatGPT security settings.");
-  const codeReady = current?.state === "pending" && Boolean(current.userCode && current.verificationUrl);
+  const signInLabel = t("使用 ChatGPT 登录", "Sign in with ChatGPT");
+  function signIn() {
+    cancel.reset();
+    disconnect.reset();
+    setSession(null);
+    start.mutate();
+  }
+  const retry = disconnect.isError ? {
+    message: t("未能断开 ChatGPT 授权，请重试。", "Could not disconnect ChatGPT authorisation. Try again."),
+    label: t("重试断开", "Retry disconnect"),
+    action: () => disconnect.mutate(),
+  } : cancel.isError && pending ? {
+    message: t("未能取消授权，请重试。", "Could not cancel authorisation. Try again."),
+    label: t("重试取消", "Retry cancellation"),
+    action: () => cancel.mutate(),
+  } : status.isError || start.isError || current?.state === "expired" || current?.state === "error" ? {
+    message: status.isError
+      ? t("未能读取授权状态，请重试登录。", "Could not check authorisation status. Sign in again to retry.")
+      : current?.state === "expired"
+        ? t("一次性授权码已过期，请重新使用 ChatGPT 登录获取新代码。", "The one-time authorisation code expired. Sign in with ChatGPT again to get a new code.")
+        : current?.errorCode === "credential_store_unavailable"
+          ? t("设备的凭据存储不可用，连接未保存。请解锁系统钥匙串后重试。", "The device credential store is unavailable. Unlock the system keychain and try again.")
+          : start.isError
+            ? t("未能启动 ChatGPT 登录，请重试。", "Could not start ChatGPT sign-in. Try again.")
+            : t("本次登录未完成，请重试。若无法取得授权码，请检查 ChatGPT 安全设置中的设备码登录权限。", "Login did not complete. Try again; if no code appears, check device-code login permissions in ChatGPT security settings."),
+    label: signInLabel,
+    action: signIn,
+  } : null;
+  const codeReady = !status.isError && current?.state === "pending" && current.userCode && current.verificationUrl;
+  const announcement = retry?.message ?? (codeReady
+    ? t("一次性授权码已生成，请复制并在 OpenAI 页面完成授权。", "One-time authorisation code is ready. Copy it and complete sign-in on OpenAI.")
+    : undefined);
+
   return <div className="flex flex-col gap-mx-lg">
-    <StatusMessage message={errorMessage ?? (codeReady ? t("在 OpenAI 完成授权", "Authorise with OpenAI") : undefined)} />
+    <div className="sr-only" data-oauth-status=""><StatusMessage className="" message={announcement} /></div>
     <Notice>{t(
       "使用 ChatGPT 账户的 Codex 额度。授权保存在运行 Trading Max 的设备上；API Key 使用独立计费。",
       "Use your ChatGPT account’s Codex allowance. Authorisation stays on the device running Trading Max. API keys are billed separately.",
     )}</Notice>
     <SelectPicker label={t("模型", "Model")} options={provider.models} value={model}
-      onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending}  />
+      onChange={(value) => setModel(value ?? provider.defaultModel)} disabled={pending} />
     <Checkbox checked={defaultModel} onCheckedChange={(checked) => setDefaultModel(checked)}
       disabled={pending} label={t("设为默认模型", "Use as the default model")} />
-    {current?.state === "pending" && current.userCode && current.verificationUrl && <div className="flex flex-col gap-mx-md">
+    {!status.isError && current?.state === "pending" && current.userCode && current.verificationUrl && <div className="flex flex-col gap-mx-md">
       <p className="text-[0.9375rem] leading-[1.55] font-semibold">{t("在 OpenAI 完成授权", "Authorise with OpenAI")}</p>
       <p className="text-[0.8125rem] leading-[1.45]">{t("复制一次性代码，然后打开授权页面。完成后这里会自动连接。", "Copy the one-time code and open the authorisation page. This screen will connect automatically when you finish.")}</p>
       <div className="flex flex-wrap items-center justify-between gap-mx-md">
-        <code id={codeId} className="select-text rounded-[var(--radius-tooltip)] bg-muted p-3 font-mono text-xl [overflow-wrap:anywhere]">{current.userCode}</code>
+        <div role="group" aria-labelledby={codeLabelId} className="min-w-0">
+          <span id={codeLabelId} className="sr-only">{t("一次性授权码", "One-time authorisation code")}</span>
+          <code
+            id={codeId}
+            className="inline-block select-all rounded-[var(--radius-heat-tile)] border border-border bg-muted px-3 py-2 font-mono text-xl font-semibold tracking-wider text-foreground [overflow-wrap:anywhere]"
+          >
+            {current.userCode}
+          </code>
+        </div>
         <CopyButton
           value={current.userCode}
           targetId={codeId}
@@ -108,25 +145,29 @@ export function OpenAIOAuthConnection({ provider, existing, useAsDefault, onSave
         {t("打开 OpenAI 授权", "Open OpenAI authorisation")}
         <ExternalLink size={16} aria-hidden="true" />
       </a>
-      <p className="text-[0.8125rem] leading-[1.45] text-[var(--mx-muted)]">{t("代码约 15 分钟内有效。请仅在 OpenAI 官方页面登录并输入代码。", "The code is valid for about 15 minutes. Sign in and enter it only on the official OpenAI page.")}</p>
+      <p className="text-[0.8125rem] leading-[1.45] text-muted-foreground">{t("代码约 15 分钟内有效。请仅在 OpenAI 官方页面登录并输入代码。", "The code is valid for about 15 minutes. Sign in and enter it only on the official OpenAI page.")}</p>
     </div>}
-    {errorMessage && <Notice tone="warn">{errorMessage}</Notice>}
+    {retry && <Notice tone="warn">
+      <p>{retry.message}</p>
+      <Button type="button" variant="secondary" className="mt-2" onClick={retry.action}>{retry.label}</Button>
+    </Notice>}
     {pending ? <div className="flex flex-wrap items-center gap-mx-md">
       <Button
+        type="button"
         variant="secondary"
         loading
         loadingLabel={t("等待授权", "Waiting for authorisation")}
       >
         {t("等待授权", "Waiting for authorisation")}
       </Button>
-      {session && <Button variant="ghost" onClick={() => cancel.mutate()} loading={cancel.isPending} loadingLabel={t("取消中…", "Cancelling…")}>{t("取消", "Cancel")}</Button>}
-    </div> : <Button onClick={() => { setSession(null); start.mutate(); }} loading={start.isPending} loadingLabel={t("启动中…", "Starting…")}>
-      {t("使用 ChatGPT 登录", "Sign in with ChatGPT")}
+      {session && !cancel.isError && <Button type="button" variant="ghost" onClick={() => cancel.mutate()} loading={cancel.isPending} loadingLabel={t("取消中…", "Cancelling…")}>{t("取消", "Cancel")}</Button>}
+    </div> : !retry && <Button type="button" onClick={signIn} loading={start.isPending} loadingLabel={t("启动中…", "Starting…")}>
+      {signInLabel}
     </Button>}
-    <p className="text-[0.8125rem] leading-[1.45] text-[var(--mx-muted)]">{t("账户可用模型和使用额度以 OpenAI 为准。", "Model access and usage limits depend on your OpenAI account.")} {" "}
+    <p className="text-[0.8125rem] leading-[1.45] text-muted-foreground">{t("账户可用模型和使用额度以 OpenAI 为准。", "Model access and usage limits depend on your OpenAI account.")} {" "}
       <TextLink inline external href="https://learn.chatgpt.com/docs/auth">{t("登录帮助", "Sign-in help")}</TextLink>
     </p>
-    {existing?.configured && <Button variant={disconnecting ? "destructive" : "ghost"} disabled={pending} loading={disconnect.isPending} loadingLabel={t("断开中…", "Disconnecting…")}
+    {existing?.configured && !disconnect.isError && <Button type="button" variant={disconnecting ? "destructive" : "ghost"} disabled={pending} loading={disconnect.isPending} loadingLabel={t("断开中…", "Disconnecting…")}
       onClick={() => disconnecting ? disconnect.mutate() : setDisconnecting(true)}>
       {disconnecting ? t("确认移除此设备的授权", "Confirm removing this device’s authorisation") : t("断开 ChatGPT", "Disconnect ChatGPT")}
     </Button>}

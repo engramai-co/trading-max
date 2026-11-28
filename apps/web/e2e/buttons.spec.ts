@@ -219,6 +219,7 @@ test.describe("button primitives, focus, loading stability, copy and touch targe
     );
 
     await page.goto("/settings?tab=models");
+    await page.getByRole("button", { name: "Choose a provider", exact: true }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Continue" }).click();
     const dialog = page.getByRole("dialog", { name: "Connect OpenAI" });
     await dialog.getByRole("button", { name: "Sign in with ChatGPT" }).click();

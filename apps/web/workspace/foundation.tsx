@@ -453,18 +453,19 @@ function useReadFailure(error?: unknown) {
 }
 
 /** Only the owner knows whether the fetched reading satisfies its display contract. */
-export function QueryReadStatus({ failed, ready, error, label, refreshFailed = false }: {
+export function QueryReadStatus({ failed, ready, error, label, refreshFailed = false, refreshFailureMessage }: {
   failed: boolean;
   ready: boolean;
   error?: unknown;
   label?: string;
   refreshFailed?: boolean;
+  refreshFailureMessage?: string;
 }) {
   const t = useCopy();
   const panel = useContext(ReadScopeLabel);
   const scope = label ?? panel;
   const readFailure = useReadFailure(error);
-  const message = refreshFailed ? t("更新失败", "Update failed") : failed ? readFailure : undefined;
+  const message = refreshFailureMessage ?? (refreshFailed ? t("更新失败", "Update failed") : failed ? readFailure : undefined);
   const recovered = t("数据已恢复。", "Data is available again.");
   return <ReadStatus failure={message ? [scope, message].filter(Boolean).join(" · ") : undefined}
     ready={ready} recovered={[scope, recovered].filter(Boolean).join(" · ")} />;

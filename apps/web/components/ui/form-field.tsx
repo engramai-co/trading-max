@@ -1,7 +1,7 @@
 "use client";
 
 import { CircleAlert, Eye, EyeOff } from "lucide-react";
-import { useId, useLayoutEffect, useRef, useState, type ComponentProps, type ReactNode } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ComponentProps, type FocusEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { Button } from "./button";
 import { Field, FieldDescription, FieldError, FieldLabel } from "./field";
@@ -109,21 +109,83 @@ export function CredentialField({
   </FormField>;
 }
 
-/** A submit attempt exposes recovery text only on fields that still need a value. */
+/**
+ * Tracks submit and post-interaction blur validation on required fields, providing
+ * Safari 16.4-compatible `:user-invalid` timing and polite delayed announcements on blur.
+ */
 export function useRequiredFields() {
   const [attempted, setAttempted] = useState(false);
+  const [blurred, setBlurred] = useState<ReadonlySet<string>>(() => new Set());
+  const [announcement, setAnnouncement] = useState("");
+  const editedRef = useRef(new Set<string>());
+  const announcedRef = useRef<{ field: string | null; timer: number | null }>({ field: null, timer: null });
+
+  function clearAnnouncement(field?: string) {
+    if (field && announcedRef.current.field !== field) return;
+    if (announcedRef.current.timer !== null) {
+      window.clearTimeout(announcedRef.current.timer);
+      announcedRef.current.timer = null;
+    }
+    announcedRef.current.field = null;
+    setAnnouncement("");
+  }
+
+  useEffect(() => () => {
+    if (announcedRef.current.timer !== null) window.clearTimeout(announcedRef.current.timer);
+  }, []);
+
   return {
-    reset: () => setAttempted(false),
-    missing: (value: string) => attempted && !value.trim(),
+    reset() {
+      setAttempted(false);
+      setBlurred(new Set());
+      editedRef.current.clear();
+      clearAnnouncement();
+    },
+    markEdited(field: string, value?: string) {
+      editedRef.current.add(field);
+      if (value !== undefined && value.trim()) clearAnnouncement(field);
+    },
+    markBlurred(field: string, value: string, message: string, event?: FocusEvent<HTMLElement>) {
+      if (!editedRef.current.has(field)) return;
+      const nextTarget = event?.relatedTarget instanceof Element ? event.relatedTarget : null;
+      // Avoid shifting a submit or reveal button out from under a pointer click during blur.
+      if (nextTarget?.closest('button[type="submit"], button.tm-field-reveal')) return;
+      setBlurred((current) => {
+        if (current.has(field)) return current;
+        const next = new Set(current);
+        next.add(field);
+        return next;
+      });
+      if (!value.trim()) {
+        if (announcedRef.current.timer !== null) window.clearTimeout(announcedRef.current.timer);
+        setAnnouncement("");
+        announcedRef.current.field = field;
+        announcedRef.current.timer = window.setTimeout(() => {
+          announcedRef.current.timer = null;
+          setAnnouncement(message);
+        }, 500);
+      } else {
+        clearAnnouncement(field);
+      }
+    },
+    missing: (value: string, field?: string) =>
+      (attempted || (field !== undefined && blurred.has(field))) && !value.trim(),
     validate(form: HTMLFormElement | null) {
       if (!form) return false;
       const first = Array.from(form.querySelectorAll<HTMLInputElement>("input[required]:enabled"))
         .find(control => !control.value.trim());
       if (first) {
+        // Focus moving to the first invalid field announces its error directly.
+        clearAnnouncement();
         flushSync(() => setAttempted(true));
         first.focus();
       }
       return !first;
     },
+    liveRegion: (
+      <span className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </span>
+    ),
   };
 }

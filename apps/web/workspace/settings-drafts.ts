@@ -48,18 +48,16 @@ export function reconcilePreferencesDraft(
   current: PreferencesDraft,
   submitted: PreferencesSubmission,
   committed: UserProfile,
-): PreferencesDraft {
+): PreferencesDraft | undefined {
   if (current.baseRevision !== submitted.values.expectedRevision) return current;
 
   const labels = Object.fromEntries(Object.entries(current.labels ?? {}).filter(
     ([code, label]) => label !== committed.accountLabels[code],
   ));
-  return {
-    baseRevision: committed.revision,
-    name: current.name?.trim() === committed.displayName ? undefined : current.name,
-    zone: current.zone === submitted.timeZonePreference ? undefined : current.zone,
-    labels,
-  };
+  const name = current.name?.trim() === committed.displayName ? undefined : current.name;
+  const zone = current.zone === submitted.timeZonePreference ? undefined : current.zone;
+  if (name === undefined && zone === undefined && !Object.keys(labels).length) return undefined;
+  return { baseRevision: committed.revision, name, zone, labels };
 }
 
 export function reconcileModelRoutingDraft(
@@ -80,9 +78,8 @@ export function reconcileModelRoutingDraft(
       else overrides[lens] = route;
     }
   }
-  return {
-    baseRevision: committed.revision,
-    defaultRoute: current.defaultRoute === submitted.defaultRoute ? undefined : current.defaultRoute,
-    overrides: sameStringRecord(overrides, committed.overrides) ? undefined : overrides,
-  };
+  const defaultRoute = current.defaultRoute === submitted.defaultRoute ? undefined : current.defaultRoute;
+  const overridesChanged = !sameStringRecord(overrides, committed.overrides);
+  if (!defaultRoute && !overridesChanged) return undefined;
+  return { baseRevision: committed.revision, defaultRoute, overrides: overridesChanged ? overrides : undefined };
 }

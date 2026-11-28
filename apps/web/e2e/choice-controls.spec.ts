@@ -84,8 +84,27 @@ test("Settings keeps the active panel while keyboard focus moves", async ({ page
   await expect(page.getByRole("tabpanel", { name: "Preferences", exact: true })).toBeVisible();
   await expect(page).toHaveURL(/tab=preferences/);
   await page.keyboard.press("Space");
-  await expect(page.getByRole("tabpanel", { name: "Update schedule", exact: true })).toBeVisible();
+  const schedule = page.getByRole("tabpanel", { name: "Update schedule", exact: true });
+  await expect(schedule).toBeVisible();
   await expect(page).toHaveURL(/tab=automation/);
+  await page.keyboard.press("Tab");
+  await expect(schedule).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(automation).toBeFocused();
+
+  const models = tabs.getByRole("tab", { name: "Model connections", exact: true });
+  await page.keyboard.press("ArrowLeft");
+  await page.keyboard.press("ArrowLeft");
+  await expect(models).toBeFocused();
+  await expect(schedule).toBeVisible();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tabpanel", { name: "Model connections", exact: true })).toBeVisible();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const relationships = await tabs.getByRole("tab").evaluateAll((items) => items.map((tab) => {
+    const panel = document.getElementById(tab.getAttribute("aria-controls") ?? "");
+    return panel?.getAttribute("aria-labelledby") === tab.id;
+  }));
+  expect(relationships).toEqual([true, true, true, true, true]);
 });
 
 test("the Chinese exposure tabs fit at 390 pixels", async ({ page }) => {

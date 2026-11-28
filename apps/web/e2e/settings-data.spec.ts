@@ -35,7 +35,7 @@ function overview(integrations: IntegrationSummary[]): IntegrationOverview {
 }
 
 /** Opens Settings with every backend request answered here; writes other than the ones a test routes fail it. */
-async function open(page: Page, settings: () => IntegrationOverview, publishedBuild?: string) {
+async function open(page: Page, settings: () => IntegrationOverview, publishedBuild?: string, cfdRecords = 0) {
   const unexpected: string[] = [];
   await page.route("**/*", (route) => {
     if (route.request().method() === "GET") return route.fallback();
@@ -55,8 +55,8 @@ async function open(page: Page, settings: () => IntegrationOverview, publishedBu
       json: { service: "trading_max-api", status: "ok", latestRunId: null },
     });
     if (path.endsWith("/imports/trading212/cfd")) return route.fulfill({ json: {
-      parserVersion: "synthetic", accountStatus: "active", importedFiles: 0, uniqueEvents: 0, duplicateEvents: 0,
-      totalRawRows: 0, isStale: false, warnings: [], files: [], coverageStartDate: null, coverageEndDate: null,
+      parserVersion: "synthetic", accountStatus: "active", importedFiles: 0, uniqueEvents: cfdRecords, duplicateEvents: 0,
+      totalRawRows: cfdRecords, isStale: false, warnings: [], files: [], coverageStartDate: null, coverageEndDate: null,
     } });
     return route.fulfill({ json: path.endsWith("/profile") ? settings().profile : {} });
   });
@@ -146,6 +146,7 @@ test.describe("reconstruction market data", () => {
       expect(unexpected).toEqual([]);
       await key.fill("synthetic-key");
       await secret.fill("synthetic-secret");
+      await expect(dialog.getByText("Closing this form clears unsaved keys.", { exact: true })).toHaveCount(0);
       await expect(key).toHaveAttribute("aria-invalid", "false");
       await expect(secret).toHaveAttribute("aria-invalid", "false");
       await expect(save).toBeDisabled();
@@ -530,9 +531,16 @@ test.describe("CFD import", () => {
   test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
 
   test("the file control has a name with and without a chosen file, and its prompt names the file", async ({ page }) => {
-    const { unexpected } = await open(page, () => overview([]));
+    const { unexpected } = await open(page, () => overview([]), undefined, Number.MAX_SAFE_INTEGER);
     const ledger = page.locator("section.mx-panel").filter({ has: page.getByRole("heading", { name: "CFD history ledger", exact: true }) });
     const drop = ledger.locator(".mx-import-drop");
+    const count = ledger.locator(".mx-metric").filter({ hasText: "9,007,199,254,740,991" });
+    await expect(count).toBeVisible();
+    expect(await count.evaluate((element) => element.scrollWidth <= element.clientWidth + 1)).toBe(true);
+    await ledger.getByText("Import history & coverage", { exact: true }).click();
+    const empty = ledger.getByText("No imports yet", { exact: true });
+    await expect(empty).toBeVisible();
+    expect((await empty.boundingBox())!.height).toBeLessThan(48);
     // The panel title is the only heading; the control's prompt says which file it wants.
     await expect(ledger.getByRole("heading")).toHaveCount(1);
     await expect(drop.getByText("Choose CFD activity CSV file", { exact: true })).toBeVisible();
@@ -540,6 +548,10 @@ test.describe("CFD import", () => {
     // Choosing a file stays in the page; nothing is uploaded.
     await drop.locator("input[type=file]").setInputFiles({ name: "synthetic-activity.csv", mimeType: "text/csv", buffer: Buffer.from("Action,Time\n") });
     expect(await drop.ariaSnapshot()).toContain('button "CFD activity CSV file: synthetic-activity.csv"');
+    const longName = `synthetic-${"账本".repeat(22)}-${"long-name".repeat(8)}.csv`;
+    await drop.locator("input[type=file]").setInputFiles({ name: longName, mimeType: "text/csv", buffer: Buffer.from("Action,Time\n") });
+    await expect(drop.getByRole("button", { name: `CFD activity CSV file: ${longName}` })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     const importLedger = drop.getByRole("button", { name: "Import ledger", exact: true });
     await expect(importLedger).toBeEnabled();
     expect(await axe(page)).toEqual([]);
@@ -564,6 +576,7 @@ for (const scheme of ["dark", "light"] as const) {
     const { unexpected } = await open(page, () => server);
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", scheme);
     await page.getByRole("tab", { name: "Model connections", exact: true }).click();
+    await page.getByRole("button", { name: "Choose a provider", exact: true }).click();
     await page.getByRole("button", { name: "Continue", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Connect OpenAI", exact: true });
     await dialog.locator('input[type="password"]').fill("synthetic-secret");
@@ -633,6 +646,7 @@ test("an EODHD key is tested and saved with index history off by default", async
   await expect(key).toHaveAccessibleDescription("Enter the API key.");
   expect(requests).toEqual([]);
   await key.fill("synthetic-secret");
+  await expect(dialog.getByText("Closing this form clears unsaved keys.", { exact: true })).toHaveCount(0);
   await expect(key).toHaveAttribute("aria-invalid", "false");
   await key.press("Tab");
   await expect(reveal).toBeFocused();
@@ -664,6 +678,96 @@ async function expectDraftNavigation(page: Page, isMobile: boolean) {
   await expect(page.locator("body")).toHaveAttribute("data-settings-document", "yes");
 }
 
+test("the schedule opens independently and retries a write using the latest revision", async ({ page }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  let integrationsReads = 0;
+  let revision = 1;
+  let writes = 0;
+  let enabled = false;
+  let canRead = false;
+  await page.route("**/api/backend/settings/integrations", (route) => {
+    integrationsReads++;
+    return route.fulfill({ status: 503 });
+  });
+  await page.route("**/api/backend/settings/automation", (route) => {
+    if (!canRead && route.request().method() === "GET") return route.fulfill({ status: 503 });
+    if (route.request().method() === "PUT") {
+      expect(route.request().postDataJSON()).toEqual({ liveEnabled: true, expectedRevision: revision });
+      writes++;
+      revision++;
+      if (writes === 1) return route.fulfill({ status: 409 });
+      enabled = true;
+    }
+    return route.fulfill({
+      json: {
+        revision,
+        liveEnabled: enabled,
+        performanceEnabled: false,
+        researchEnabled: false,
+        evidenceNoticesEnabled: false,
+      },
+    });
+  });
+  await page.goto("/settings?tab=automation");
+  const schedule = page.getByRole("tabpanel", { name: "Update schedule" });
+  await expect(schedule.getByRole("status").filter({ hasText: "Automatic updates · Data is temporarily unavailable" })).toHaveCount(1);
+  canRead = true;
+  await schedule.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(schedule.getByRole("status").filter({ hasText: "Automatic updates · Data is available again." })).toHaveCount(1);
+  const live = schedule.getByRole("switch", { name: "Account state & intraday history" });
+  await live.focus();
+  await page.keyboard.press("Space");
+  const retry = schedule.getByRole("button", { name: "Retry", exact: true });
+  await expect(retry).toBeVisible();
+  await expect(live).not.toBeChecked();
+  await retry.click();
+  await expect(live).toBeChecked();
+  await expect(schedule.getByText("Schedule saved")).toBeVisible();
+  expect(writes).toBe(2);
+  expect(integrationsReads).toBe(0);
+});
+
+test("the schedule announces a failed refresh and successful retry with cached settings", async ({ page, context }) => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Set PLAYWRIGHT_BASE_URL to an isolated local web build.");
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.clock.install();
+  let available = true;
+  let liveEnabled = false;
+  await page.route("**/api/backend/settings/automation", (route) => available
+    ? route.fulfill({ json: { revision: 1, liveEnabled, performanceEnabled: false, researchEnabled: false, evidenceNoticesEnabled: false } })
+    : route.fulfill({ status: 503 }));
+  await page.goto("/settings?tab=automation");
+  const schedule = page.getByRole("tabpanel", { name: "Update schedule" });
+  const live = schedule.getByRole("switch", { name: "Account state & intraday history" });
+  const failure = schedule.getByRole("status").filter({ hasText: "Automatic updates · Update failed" });
+  const recovery = schedule.getByRole("status").filter({ hasText: "Automatic updates · Data is available again." });
+  await expect(live).toBeVisible();
+  await expect(recovery).toHaveCount(0);
+
+  available = false;
+  await page.clock.fastForward(31_000);
+  await context.setOffline(true);
+  await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
+  await context.setOffline(false);
+  const warning = schedule.locator(".mx-notice").filter({ hasText: "Update schedule could not be reloaded." });
+  await expect(warning).toBeVisible();
+  await expect(live).not.toBeChecked();
+  await expect(failure).toHaveCount(1);
+  await expect(schedule.getByRole("alert").filter({ hasText: "Update schedule could not be reloaded." })).toHaveCount(0);
+  const announcer = await failure.elementHandle();
+  await expect(recovery).toHaveCount(0);
+
+  available = true;
+  liveEnabled = true;
+  await warning.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(live).toBeChecked();
+  await expect(warning).toHaveCount(0);
+  await expect(recovery).toHaveCount(1);
+  await expect(failure).toHaveCount(0);
+  expect(await recovery.evaluate((element, original) => element === original, announcer)).toBe(true);
+});
+
 test("Preferences can save the language selected from the shell", async ({ page, isMobile }) => {
   const server = overview([]);
   const { unexpected } = await open(page, () => server);
@@ -687,6 +791,11 @@ test("Preferences can save the language selected from the shell", async ({ page,
   const originalName = await name.inputValue();
   const save = page.getByRole("button", { name: "保存偏好", exact: true });
   await name.fill("  ");
+  const compositionWasGuarded = await name.evaluate((input) => !input.dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", keyCode: 229, bubbles: true, cancelable: true }),
+  ));
+  expect(compositionWasGuarded).toBe(true);
+  await expect(name).toHaveAttribute("aria-invalid", "false");
   await save.click();
   await expect(name).toBeFocused();
   await expect(name).toHaveAccessibleDescription("请输入显示名称。");
@@ -939,4 +1048,200 @@ test("a routing draft survives tabs and a later revision supersedes the old save
   await preferences.click();
   await expectDraftNavigation(page, isMobile);
   expect(unexpected).toEqual([]);
+});
+
+test.describe("Settings review", () => {
+  test.skip(!process.env.PLAYWRIGHT_BASE_URL, "Requires a synthetic web preview.");
+
+  test("drafts survive leaving Settings and guard unload", async ({ page }) => {
+    const server = overview([{ ...alpaca(true), provider: "openai", model: "gpt-5" }]);
+    server.llmProviders = [{
+      provider: "openai", label: "OpenAI", adapter: "openai", baseUrl: "https://example.invalid",
+      models: ["gpt-5", "gpt-5-mini"], defaultModel: "gpt-5", authMethod: "api_key",
+    }];
+    server.llmRoutePolicy = { defaultRoute: "openai/gpt-5", overrides: {}, revision: 1, updatedAt: server.profile.updatedAt };
+    await open(page, () => server);
+    await page.getByRole("tab", { name: "Model connections" }).click();
+    await page.getByRole("combobox", { name: "Default model", exact: true }).click();
+    await page.getByRole("option", { name: "OpenAI · gpt-5-mini" }).click();
+    await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+    await page.getByRole("textbox", { name: "Display name" }).fill("Draft across navigation");
+    const unloadGuarded = () => page.evaluate(() => !window.dispatchEvent(new Event("beforeunload", { cancelable: true })));
+    await expect.soft.poll(unloadGuarded, { timeout: 1500 }).toBe(true);
+    await page.getByRole("tab", { name: "Accounts & data" }).click();
+    await page.getByRole("link", { name: "View research", exact: true }).click();
+    await expect(page).toHaveURL(/\/research/);
+    await expect.soft.poll(unloadGuarded, { timeout: 1500 }).toBe(true);
+    await page.goBack();
+    await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+    await expect(page.getByRole("textbox", { name: "Display name" })).toHaveValue("Draft across navigation");
+    await page.getByRole("button", { name: "Discard changes" }).click();
+    await page.getByRole("tab", { name: "Model connections" }).click();
+    await expect(page.getByRole("combobox", { name: "Default model", exact: true })).toHaveValue("OpenAI · gpt-5-mini");
+    await page.getByRole("button", { name: "Discard changes" }).click();
+    await expect.poll(unloadGuarded).toBe(false);
+  });
+
+  test("CFD import stays locked across tabs and clears the submitted file", async ({ page }) => {
+    await open(page, () => overview([]));
+    const upload = gate();
+    let posts = 0;
+    await page.route("**/api/backend/imports/trading212/cfd", async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      posts++;
+      await upload.opened;
+      return route.fulfill({ json: { status: "imported" } });
+    });
+    const ledger = page.locator("section").filter({ has: page.getByRole("heading", { name: "CFD history ledger", exact: true }) });
+    await ledger.locator("input[type=file]").setInputFiles({
+      name: "synthetic.csv", mimeType: "text/csv", buffer: Buffer.from("Action,Time\n"),
+    });
+    const posting = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/cfd"));
+    await ledger.getByRole("button", { name: "Import ledger" }).click();
+    await posting;
+    try {
+      await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+      await page.getByRole("tab", { name: "Accounts & data" }).click();
+      await expect(ledger.getByRole("button", { name: "Importing…" })).toBeDisabled();
+      expect(posts).toBe(1);
+    } finally {
+      upload.release();
+    }
+    await expect(ledger.getByRole("button", { name: "Choose CFD activity CSV file" })).toBeVisible();
+    await expect(ledger.getByText(/File imported/)).toBeVisible();
+  });
+
+  test("CFD import keeps the same file after a 503 and can retry", async ({ page }) => {
+    await open(page, () => overview([]));
+    const contents = "Action,Time\n";
+    const filename = "synthetic-cfd.csv";
+    let uploads = 0;
+    await page.route("**/api/backend/imports/trading212/cfd", (route) => {
+      const request = route.request();
+      if (request.method() !== "POST") return route.fallback();
+      expect(request.headers()["x-trading-max-filename"]).toBe(filename);
+      expect(request.headers()["content-type"]).toBe("text/csv");
+      const body = request.postData();
+      if (body !== null) expect(body).toBe(contents);
+      uploads++;
+      return uploads === 1
+        ? route.fulfill({ status: 503, json: {} })
+        : route.fulfill({ json: { status: "imported" } });
+    });
+    const ledger = page.locator("section").filter({ has: page.getByRole("heading", { name: "CFD history ledger", exact: true }) });
+    await ledger.locator("input[type=file]").setInputFiles({ name: filename, mimeType: "text/csv", buffer: Buffer.from(contents) });
+    const upload = ledger.getByRole("button", { name: "Import ledger", exact: true });
+    await upload.click();
+    await expect(ledger.getByRole("alert")).toContainText("Import failed.");
+    await expect(ledger.getByRole("button", { name: "CFD activity CSV file: " + filename })).toBeVisible();
+    await expect(upload).toBeEnabled();
+    await upload.click();
+    await expect(ledger.getByText(/File imported/)).toBeVisible();
+    await expect(ledger.getByRole("button", { name: "Choose CFD activity CSV file" })).toBeVisible();
+    await expect(upload).toBeDisabled();
+    expect(uploads).toBe(2);
+  });
+
+  test("Discard restores a Settings preview and preserves the shell language choice", async ({ page, isMobile }) => {
+    const server = overview([]);
+    server.profile.locale = "zh";
+    await open(page, () => server);
+    await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+    const name = page.getByRole("textbox", { name: "Display name", exact: true });
+    await name.fill("Other draft");
+    await page.getByRole("button", { name: "Discard changes" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-locale", "en");
+    await page.getByRole("combobox", { name: "Interface language" }).click();
+    await page.getByRole("option", { name: "Chinese (Simplified)" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-locale", "zh");
+    await page.getByRole("button", { name: "放弃修改" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-locale", "en");
+    await page.getByRole("combobox", { name: "Interface language" }).click();
+    await page.getByRole("option", { name: "Chinese (Simplified)" }).click();
+    if (isMobile) {
+      await page.getByRole("button", { name: "更多", exact: true }).click();
+      await page.getByRole("menuitem", { name: "Switch to English" }).click();
+    } else {
+      await page.getByRole("button", { name: "Switch to English" }).click();
+    }
+    await name.fill("Another draft");
+    await page.getByRole("button", { name: "Discard changes" }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-locale", "en");
+  });
+
+  test("reporting currency can be selected and copied with the keyboard", async ({ page }) => {
+    await open(page, () => overview([]));
+    await page.getByRole("tab", { name: "Preferences", exact: true }).click();
+    const currency = page.getByRole("textbox", { name: "Portfolio reporting currency" });
+    await expect(currency).toHaveAttribute("readonly", "");
+    await expect(currency).not.toBeFocused();
+    await expect(currency).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+    await expect(currency).toHaveCSS("border-top-color", "rgba(0, 0, 0, 0)");
+    await currency.focus();
+    await page.keyboard.press("ControlOrMeta+A");
+    expect(await currency.evaluate((input: HTMLInputElement) => input.value.slice(input.selectionStart!, input.selectionEnd!))).toBe("GBP");
+    await expect(currency).toHaveCSS("outline-width", "2px");
+    await expect(currency).toHaveCSS("outline-offset", "2px");
+    await page.evaluate(() => document.addEventListener("copy", () => {
+      document.documentElement.dataset.copied = (document.activeElement as HTMLInputElement).value;
+    }, { once: true }));
+    await page.keyboard.press("ControlOrMeta+C");
+    await expect(page.locator("html")).toHaveAttribute("data-copied", "GBP");
+  });
+
+  test("an unavailable route shows one label and a nearby reconnect action", async ({ page }) => {
+    const server = overview([]);
+    server.llmProviders = [{
+      provider: "openai", label: "OpenAI", adapter: "openai", baseUrl: "https://example.invalid",
+      models: ["gpt-5"], defaultModel: "gpt-5", authMethod: "api_key",
+    }];
+    server.llmRoutePolicy = { defaultRoute: "openai/gpt-5", overrides: {}, revision: 1, updatedAt: server.profile.updatedAt };
+    await open(page, () => server);
+    await page.getByRole("tab", { name: "Model connections" }).click();
+    const form = page.getByRole("form", { name: "Model assignments" });
+    await expect(form.getByRole("combobox", { name: "Default model", exact: true })).toHaveValue(/unavailable/);
+    await expect(form.getByText(/The selected model .* is unavailable/)).toHaveCount(0);
+    await form.getByRole("button", { name: "Connect OpenAI", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Connect OpenAI" })).toBeVisible();
+  });
+
+  test("cached local readiness cannot confirm balances after polling fails", async ({ page }) => {
+    test.skip(process.env.TRADING_MAX_DESKTOP_WORKSPACE_ID !== "synthetic-settings-review", "Requires the synthetic local onboarding preview.");
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    let available = true;
+    let writes = 0;
+    const status = {
+      name: "Synthetic workspace", path: "/synthetic/workspace", connectedAccounts: ["invest"],
+      readiness: { status: "ready", latestRunId: "sample-run" },
+      latestFullJob: null, activeJobId: null, confirmed: false, canConfirm: true,
+    };
+    await page.route("**/api/backend/local-workspace", (route) => available
+      ? route.fulfill({ json: status })
+      : route.fulfill({ status: 503, json: {} }));
+    await page.route("**/api/backend/local-workspace/confirm", (route) => {
+      writes++;
+      return route.fulfill({ json: { ...status, confirmed: true, canConfirm: false } });
+    });
+    await page.route("**/api/backend/dashboard/lens/overview?detail=summary", (route) =>
+      route.fulfill({ json: { runId: "sample-run", accounts: [{ code: "A", isInvestable: true, totalValueGbp: 100 }] } }));
+    await page.goto("/settings");
+    const confirm = page.getByRole("button", { name: "Finish setup", exact: true });
+    await page.getByRole("checkbox", { name: /account values are plausible/ }).check();
+    await expect(confirm).toBeEnabled();
+    available = false;
+    const warning = page.getByRole("note").filter({ hasText: "Workspace status could not be refreshed." });
+    await expect(warning).toBeVisible();
+    const failedRead = page.getByRole("status").filter({ hasText: "Workspace status could not be refreshed." });
+    await expect(failedRead).toHaveCount(1);
+    await expect(confirm).toBeDisabled();
+    expect(writes).toBe(0);
+    const retry = warning.getByRole("button", { name: "Retry", exact: true });
+    await expect(retry).toBeEnabled();
+    available = true;
+    await retry.click();
+    await expect(confirm).toBeEnabled();
+    await expect(failedRead).toHaveCount(0);
+    await confirm.click();
+    expect(writes).toBe(1);
+  });
 });
