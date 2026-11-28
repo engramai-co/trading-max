@@ -10,6 +10,7 @@ import { useChartRuntime } from "@/ui/charts/use-echarts";
 import { useComputedColorScheme } from "@/components/color-scheme-provider";
 import { useLocale } from "@/components/locale-provider";
 import { cn } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
 import { sampleLine } from "@/lib/portfolio/line-sampling";
 import { historyGapSeries } from "@/lib/portfolio/series";
 import { formatCalendarDate, formatCurrency, formatDate, formatDateTime, formatDeltaPercent, formatNumber, formatPercent, formatReadingTime } from "@/ui/formatters";
@@ -213,85 +214,87 @@ function IndexCard({ quote, open, selected, nameOverride, primaryBenchmark, glob
   const notice = quote.calendarKnown === false ? t("日历未知", "Calendar unknown") : freshness;
   const sparkTone = tone === "up" ? "text-gain" : tone === "down" ? "text-loss" : "text-muted-foreground";
   return (
-    <Link
-      href={indexHref(index)}
-      prefetch={false}
-      onClick={(event) => open(event, index)}
-      id={`index-card-${index.id}`}
-      className={cn(
-        "mx-index-card tm-heat-surface relative grid min-w-0 rounded-[var(--radius-heat-tile)] border border-border text-foreground no-underline hover:border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight] max-[767px]:snap-start",
-        selected && "outline-2 -outline-offset-2 outline-link focus-visible:outline-offset-2 focus-visible:outline-ring",
-        primaryBenchmark && "min-[768px]:border-border-strong",
-        globalBenchmark
-          ? "grid-rows-[auto_auto_25px] gap-2 px-3 pb-2 pt-2.5 max-[1179px]:min-[768px]:px-2 max-[959px]:min-[768px]:grid-rows-[18px_auto_21px] max-[767px]:min-h-11 max-[767px]:grid-rows-[auto_auto] max-[767px]:content-center max-[767px]:gap-px max-[767px]:rounded-none max-[767px]:border-0 max-[767px]:border-b max-[767px]:border-border max-[767px]:bg-transparent max-[767px]:px-[5px] max-[767px]:py-[3px]"
-          : "grid-rows-[auto_auto_25px] gap-[7px] px-3 pb-[7px] pt-2.5",
-      )}
-      data-tone={tone}
-      data-benchmark={primaryBenchmark ? "primary" : undefined}
-      aria-current={selected ? "page" : undefined}
-      style={{ "--mx-heat-mix": heatMix(tone === "neutral" ? null : quote.change, scheme) } as CSSProperties}
-    >
-      <span
+    <Card appearance="plain" className="grid min-w-0 max-[767px]:snap-start">
+      <Link
+        href={indexHref(index)}
+        prefetch={false}
+        onClick={(event) => open(event, index)}
+        id={`index-card-${index.id}`}
         className={cn(
-          "mx-index-name flex min-w-0 items-center justify-between gap-1.5 font-semibold",
+          "mx-index-card tm-heat-surface relative grid min-w-0 rounded-[var(--radius-heat-tile)] border border-border text-foreground no-underline hover:border-muted-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight]",
+          selected && "outline-2 -outline-offset-2 outline-link focus-visible:outline-offset-2 focus-visible:outline-ring",
+          primaryBenchmark && "min-[768px]:border-border-strong",
           globalBenchmark
-            ? "text-[14px] max-[1179px]:min-[768px]:block max-[1179px]:min-[768px]:truncate max-[1179px]:min-[768px]:text-[12px] max-[767px]:text-[12px] max-[767px]:leading-[1.25]"
-            : "text-[13px]",
+            ? "grid-rows-[auto_auto_25px] gap-2 px-3 pb-2 pt-2.5 max-[1179px]:min-[768px]:px-2 max-[959px]:min-[768px]:grid-rows-[18px_auto_21px] max-[767px]:min-h-11 max-[767px]:grid-rows-[auto_auto] max-[767px]:content-center max-[767px]:gap-px max-[767px]:rounded-none max-[767px]:border-0 max-[767px]:border-b max-[767px]:border-border max-[767px]:bg-transparent max-[767px]:px-[5px] max-[767px]:py-[3px]"
+            : "grid-rows-[auto_auto_25px] gap-[7px] px-3 pb-[7px] pt-2.5",
         )}
+        data-tone={tone}
+        data-benchmark={primaryBenchmark ? "primary" : undefined}
+        aria-current={selected ? "page" : undefined}
+        style={{ "--mx-heat-mix": heatMix(tone === "neutral" ? null : quote.change, scheme) } as CSSProperties}
       >
-        {nameOverride ?? (index.basis === "total-return" ? `${name(index)} · ${basis(index)}` : name(index))}
-        {!globalBenchmark && <ChevronRight size={16} className="-mx-[1.5px] flex-none" aria-hidden="true" />}
-      </span>
-      <span
-        className={cn(
-          "mx-index-figures flex items-baseline justify-between gap-1.5",
-          globalBenchmark
-            ? "flex-wrap max-[1179px]:min-[768px]:flex-nowrap max-[1179px]:min-[768px]:gap-[3px] max-[959px]:min-[768px]:flex-col max-[959px]:min-[768px]:gap-px max-[767px]:flex-nowrap"
-            : "flex-wrap",
-        )}
-      >
-        <strong
-          className={cn(
-            "font-[650] leading-[1.1] tabular-nums max-[767px]:font-semibold",
-            globalBenchmark
-              ? "text-[22px] max-[1179px]:min-[768px]:text-[clamp(13px,1.65vw,19px)] max-[767px]:text-[15px]"
-              : "text-[21px] max-[767px]:text-[20px]",
-          )}
-        >
-          {level}
-        </strong>
         <span
           className={cn(
-            "tabular-nums",
-            globalBenchmark ? "text-[13px] max-[1179px]:min-[768px]:text-[12px]" : "text-[13px]",
+            "mx-index-name flex min-w-0 items-center justify-between gap-1.5 font-semibold",
+            globalBenchmark
+              ? "text-[14px] max-[1179px]:min-[768px]:block max-[1179px]:min-[768px]:truncate max-[1179px]:min-[768px]:text-[12px] max-[767px]:text-[12px] max-[767px]:leading-[1.25]"
+              : "text-[13px]",
           )}
         >
-          {move}
+          {nameOverride ?? (index.basis === "total-return" ? `${name(index)} · ${basis(index)}` : name(index))}
+          {!globalBenchmark && <ChevronRight size={16} className="-mx-[1.5px] flex-none" aria-hidden="true" />}
         </span>
-      </span>
-      <span className={cn("mx-index-spark relative", sparkTone, globalBenchmark && "max-[767px]:hidden")}>
-        {points.length > 1 && (
-          <svg
-            className={cn("h-full stroke-current [stroke-width:1.5px]", globalBenchmark ? "w-[72%]" : "w-full")}
-            aria-hidden="true"
-            viewBox="0 0 200 25"
-            preserveAspectRatio="none"
-          >
-            <path d={line.path} fill="none" vectorEffect="non-scaling-stroke" />
-          </svg>
-        )}
-      </span>
-      {notice && (
-        <small
+        <span
           className={cn(
-            "mx-index-freshness rounded bg-muted px-1 text-[12px] text-foreground",
-            globalBenchmark ? "absolute bottom-[7px] right-2 max-[767px]:static max-[767px]:justify-self-start" : "absolute bottom-[7px] right-2",
+            "mx-index-figures flex items-baseline justify-between gap-1.5",
+            globalBenchmark
+              ? "flex-wrap max-[1179px]:min-[768px]:flex-nowrap max-[1179px]:min-[768px]:gap-[3px] max-[959px]:min-[768px]:flex-col max-[959px]:min-[768px]:gap-px max-[767px]:flex-nowrap"
+              : "flex-wrap",
           )}
         >
-          {notice}
-        </small>
-      )}
-    </Link>
+          <strong
+            className={cn(
+              "font-[650] leading-[1.1] tabular-nums max-[767px]:font-semibold",
+              globalBenchmark
+                ? "text-[22px] max-[1179px]:min-[768px]:text-[clamp(13px,1.65vw,19px)] max-[767px]:text-[15px]"
+                : "text-[21px] max-[767px]:text-[20px]",
+            )}
+          >
+            {level}
+          </strong>
+          <span
+            className={cn(
+              "tabular-nums",
+              globalBenchmark ? "text-[13px] max-[1179px]:min-[768px]:text-[12px]" : "text-[13px]",
+            )}
+          >
+            {move}
+          </span>
+        </span>
+        <span className={cn("mx-index-spark relative", sparkTone, globalBenchmark && "max-[767px]:hidden")}>
+          {points.length > 1 && (
+            <svg
+              className={cn("h-full stroke-current [stroke-width:1.5px]", globalBenchmark ? "w-[72%]" : "w-full")}
+              aria-hidden="true"
+              viewBox="0 0 200 25"
+              preserveAspectRatio="none"
+            >
+              <path d={line.path} fill="none" vectorEffect="non-scaling-stroke" />
+            </svg>
+          )}
+        </span>
+        {notice && (
+          <small
+            className={cn(
+              "mx-index-freshness rounded bg-muted px-1 text-[12px] text-foreground",
+              globalBenchmark ? "absolute bottom-[7px] right-2 max-[767px]:static max-[767px]:justify-self-start" : "absolute bottom-[7px] right-2",
+            )}
+          >
+            {notice}
+          </small>
+        )}
+      </Link>
+    </Card>
   );
 }
 
@@ -385,11 +388,11 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
   }, [id, index, hasHistory, query.isPending]);
   const catalogStatus = <QueryReadStatus key={id} label={t("指数清单", "Index catalog")} failed={catalog.isError && !index} ready={!!index} error={catalog.error} />;
   if (!index) {
-    if (catalog.isSuccess) return <Empty title={t("没有这个市场指数", "Index not found in this market")}
+    if (catalog.isSuccess) return <Empty headingLevel={2} title={t("没有这个市场指数", "Index not found in this market")}
       description={t("从市场的全部指数中选择其他指数。", "Choose another index from the market’s index list.")} />;
     return <>{catalogStatus}<div className="mx-index-detail"><section className="mx-panel mx-index-history">
       <div className="mx-index-title"><h2 ref={title} tabIndex={-1}>{id}</h2></div>
-      {catalog.isError ? <QueryError retry={catalog.refetch} error={catalog.error} showDataStatusLink={false} />
+      {catalog.isError ? <QueryError headingLevel={3} retry={catalog.refetch} error={catalog.error} showDataStatusLink={false} />
         : <Pending label={t("正在加载指数", "Loading index")} />}
     </section></div></>;
   }
@@ -540,7 +543,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           />}
         </div>}
         {!points.length && !hasHistory && index.rights === "licensed-source-required"
-          ? <Empty title={t("官方指数走势需要授权数据", "Official index history requires a licensed source")}
+          ? <Empty headingLevel={3} title={t("官方指数走势需要授权数据", "Official index history requires a licensed source")}
               description={t("当前工作区没有获授权的指数报价。可查看基金市价走势；它不同于基金净值或官方指数总回报。", "This workspace has no licensed index feed. The ETF’s listed price is available as a proxy and differs from its NAV and the official index total return.")}
               action={index.id === "ftse-all-world" && <Link className="mx-text-link" href="/sectors?market=global&index=ftse-all-world-etf">
                 {t("查看富时全球 ETF 市价代理", "View FTSE All-World ETF price proxy")}
@@ -548,7 +551,7 @@ export function IndexDetail({ id, market, period: requestedPeriod, gbp, comparis
           : !points.length && hasHistory && query.isPending
             ? <Pending label={t("正在加载走势", "Loading index history")} />
             : !points.length && !query.isError
-              ? <Empty title={t("此范围没有走势", "No history for this range")}
+              ? <Empty headingLevel={3} title={t("此范围没有走势", "No history for this range")}
                   description={t("行情源未返回此范围的读数。选择其他时间范围，或稍后重试。", "The source returned no readings for this range. Choose another range or retry later.")} />
               : null}
         {history?.coverageReason === "source-interval-mismatch" &&

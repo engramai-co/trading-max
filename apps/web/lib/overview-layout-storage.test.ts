@@ -57,6 +57,15 @@ describe("Overview layout bootstrap", () => {
     expect(removeItem).not.toHaveBeenCalled();
   });
 
+  it("shares the measured period figure with pre-paint and keeps older reservations usable", () => {
+    const measured = { ...layout, reading: { ...layout.reading, periodFigure: 40 } };
+    expect(parseOverviewLayout(JSON.stringify(measured))).toEqual(measured);
+    expect(runBootstrap(JSON.stringify(measured)).properties.get("--mx-boot-period-figure")).toBe("40px");
+    expect(runBootstrap(JSON.stringify(layout)).properties.has("--mx-boot-period-figure")).toBe(false);
+    const invalid = { ...layout, reading: { ...layout.reading, periodFigure: 1000 } };
+    expect(parseOverviewLayout(JSON.stringify(invalid))).toEqual(layout);
+  });
+
   it("applies validated sector and brief geometry independently", () => {
     const raw = JSON.stringify({ ...layout, reading: null, sectors: 392.5, brief: 82, content: "Synthetic brief text" });
     expect(parseOverviewLayout(raw)).toEqual({ rows: layout.rows, ledger: layout.ledger, sectors: 392.5, brief: 82 });

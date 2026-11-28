@@ -12,6 +12,7 @@ export default function NotFound() {
     >
       <Panel>
         <Empty
+          headingLevel={2}
           title={t("检查页面地址", "Check the page address")}
           description={t(
             "地址可能已变更。可通过导航重新选择，或回到组合总览。",

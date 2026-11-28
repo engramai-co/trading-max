@@ -229,7 +229,9 @@ describe("drivers beside the figure they explain", () => {
     // observation and its attribution already reach 15:00.
     const history = { pendingCashFlows: true, cashFlowCutoffAt: "2026-11-02T09:00:00Z" };
     const tag = renderToStaticMarkup(createElement(LocaleProvider, null, createElement(CutoffTag, { history })));
-    expect(tag).toBe('<span class="mx-tag mx-tag-warn">截至 09:00</span>');
+    expect(tag).toContain('data-slot="badge"');
+    expect(tag).toContain('class="mx-tag mx-tag-warn"');
+    expect(tag).toContain('>截至 09:00</span>');
     expect(cutoffLabel(history, "en", "Europe/London")).toBe("Through 09:00");
     expect(cutoffLabel(history, "en", "Asia/Shanghai")).toBe("Through 17:00");
     expect(cutoffLabel({ pendingCashFlows: true, cashFlowCutoffAt: null }, "en", "Europe/London")).toBe("Deposits and withdrawals pending");

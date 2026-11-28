@@ -572,11 +572,11 @@ test("a saved index field reopens its exact series and discloses expiry", async 
   const url = "/research?" + new URLSearchParams({type:"index",index:"example",ticker:"^SYNT",date:day,start:day,end:day,series,snapshotId:snapshot,
     evidence:"price_key_moments",evidenceId:"ev_saved",field:"/data/items/0/move_fraction"});
   await page.goto(url);
-  await expect(page.getByText(/4\.10%/)).toBeVisible();
+  const observation = page.locator("[data-cited-research]");
+  await expect(observation).toContainText("up 4.1%");
   expired = true;
   await page.reload();
-  await expect(page.getByText("Cited research observation unavailable.")).toBeVisible();
-  await expect(page.getByText(/4\.10%/)).toHaveCount(0);
+  await expect(observation).toHaveText("Cited research observation unavailable.");
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({scale:"css",path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-expired-research.png")});
 });
 

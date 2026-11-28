@@ -687,14 +687,21 @@ html[data-mx-boot-history] .mx-overview-read[data-layout-bootstrap] {
   --mx-overview-summary-size: var(--mx-boot-summary-size);
   --mx-overview-history-size: var(--mx-boot-history-size);
   --mx-overview-plot-top: var(--mx-boot-plot-top);
+  --mx-overview-saved-period-figure: var(--mx-boot-period-figure);
+}
+@media (min-width: 768px) and (pointer: fine) {
+  /* Older saved layouts use the period figure's previous 37px minimum. */
+  .mx-overview-history {
+    --mx-overview-period-growth: max(0px, calc(var(--mx-action-size) - var(--mx-overview-saved-period-figure, 37px)));
+  }
 }
 :is(.mx-overview-history-reserved, html[data-mx-boot-history] [data-layout-bootstrap] .mx-overview-history) {
   position: relative;
-  min-block-size: var(--mx-overview-history-size);
+  min-block-size: calc(var(--mx-overview-history-size) + var(--mx-overview-period-growth, 0px));
 }
 :is(.mx-overview-history-reserved, html[data-mx-boot-history="plot"] [data-layout-bootstrap] .mx-overview-history) .mx-loading-chart {
   position: absolute;
-  inset-block-start: var(--mx-overview-plot-top);
+  inset-block-start: calc(var(--mx-overview-plot-top) + var(--mx-overview-period-growth, 0px));
   inset-inline: var(--mx-space-panel);
 }
 html[data-mx-boot-history] [data-layout-bootstrap] .mx-overview-attention-placeholder,
@@ -709,6 +716,13 @@ html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history 
 }
 .mx-overview-sectors-pending {
   block-size: var(--mx-overview-sectors-size, auto);
+}
+@media (min-width: 960px) {
+  /* The sector panel can stretch to match a taller history reservation in the shared row. */
+  .mx-overview-sectors-pending {
+    block-size: auto;
+    min-block-size: var(--mx-overview-sectors-size, 0px);
+  }
 }
 .mx-overview-sectors-pending > .mx-loading {
   flex: auto;
@@ -728,7 +742,7 @@ html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history 
 }
 .mx-period-figure-placeholder {
   width: 155px;
-  height: 37px;
+  block-size: var(--mx-action-size);
   border-radius: var(--radius-tooltip);
   background: var(--mx-placeholder);
 }

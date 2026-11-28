@@ -4,6 +4,16 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.82.0] - 2026-11-28
+
+### Changed
+- Shared page and panel headings now scale with your browser’s text size.
+
+### Fixed
+- On desktop, Overview’s View performance link has a larger click target.
+- Holdings retry buttons have larger tap targets, and empty and error states follow the page’s heading order for screen readers.
+- Research valuation figures follow your browser’s text size, and the panel stays in place as a draft arrives.
+
 ## [1.81.0] - 2026-11-28
 
 ### Added

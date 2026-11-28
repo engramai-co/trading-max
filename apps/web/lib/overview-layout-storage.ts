@@ -16,7 +16,7 @@ export const OVERVIEW_LAYOUT_MEDIA = {
 } as const;
 
 export type LedgerRows = { stocks: number; funds: number; dateTagged?: number };
-export type ReadingLayout = { range: Range; summary: number; history: number; plotTop?: number };
+export type ReadingLayout = { range: Range; summary: number; history: number; plotTop?: number; periodFigure?: number };
 export type OverviewLayout = { rows: LedgerRows; ledger?: number; reading?: ReadingLayout; sectors?: number; brief?: number };
 
 const layoutBounds = {
@@ -53,10 +53,13 @@ function validateLayout(raw: string | null | undefined, bounds: typeof layoutBou
     if (brief !== undefined && size(brief, bounds.panel)) valid.brief = brief;
     if (!reading || !bounds.ranges.includes(reading.range) ||
         !size(reading.summary, bounds.panel) || !size(reading.history, bounds.panel)) return valid;
-    const { range, summary, history, plotTop } = reading;
+    const { range, summary, history, plotTop, periodFigure } = reading;
     if (plotTop !== undefined && (!Number.isFinite(plotTop) || plotTop < 0 ||
         plotTop > Math.min(history, bounds.plotOffset))) return valid;
     valid.reading = { range, summary, history, plotTop };
+    if (periodFigure === 0 || periodFigure !== undefined && size(periodFigure, history)) {
+      valid.reading.periodFigure = periodFigure;
+    }
     return valid;
   } catch {
     return undefined;
@@ -181,6 +184,7 @@ export function overviewLayoutInitScript(scope: string) {
     if (navigator.onLine && reading && reading.range === range) {
       root.style.setProperty("--mx-boot-summary-size", reading.summary + "px");
       root.style.setProperty("--mx-boot-history-size", reading.history + "px");
+      if (reading.periodFigure !== undefined) root.style.setProperty("--mx-boot-period-figure", reading.periodFigure + "px");
       var plot = reading.plotTop !== undefined;
       if (plot) root.style.setProperty("--mx-boot-plot-top", reading.plotTop + "px");
       root.setAttribute("data-mx-boot-history", plot ? "plot" : "empty");

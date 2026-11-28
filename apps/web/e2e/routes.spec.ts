@@ -50,6 +50,47 @@ test.describe("portfolio workspace", () => {
     });
   }
 
+  test("fallback headings follow the page title", async ({ page }) => {
+    await page.goto("/this-page-does-not-exist");
+    const main = page.getByRole("main");
+    await expect(main.getByRole("heading", { level: 1, name: /页面不存在|Page not found/ })).toBeVisible();
+    await expect(main.getByRole("heading", { level: 2, name: /检查页面地址|Check the page address/ })).toBeVisible();
+    await main.getByRole("link", { name: /返回组合总览|Back to overview/ }).press("Enter");
+    await expect(page).toHaveURL(/\/$/);
+
+    await page.route("**/api/backend/indices/catalog", (route) => route.fulfill({ json: [] }));
+    await page.goto("/research?type=index&index=missing");
+    await expect(main.getByRole("heading", { level: 1, name: /研究|Research/ })).toHaveCount(1);
+    await expect(main.getByRole("heading", { level: 2, name: /未找到此指数|Index not found/ })).toBeVisible();
+  });
+
+  test("the phone return comparison keeps its lead percentage together", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/analytics?view=returns");
+    const reading = page.locator(".mx-return-reading .mx-number-value").first();
+    await expect(reading).toHaveText(/%/);
+    const lines = await reading.evaluate((value) => {
+      const range = document.createRange();
+      range.selectNodeContents(value);
+      return new Set(Array.from(range.getClientRects(), (rect) => rect.top)).size;
+    });
+    expect(lines).toBe(1);
+  });
+
+  test("phone research controls keep normal journal labels together", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+    await page.goto("/research?ticker=NVDA&view=ledger");
+    const label = page.getByRole("button", { name: "Model versions", exact: true }).locator(".mx-segment-label");
+    await expect(label).toBeVisible();
+    const lines = await label.evaluate((value) => {
+      const range = document.createRange();
+      range.selectNodeContents(value);
+      return new Set(Array.from(range.getClientRects(), (rect) => rect.top)).size;
+    });
+    expect(lines).toBe(1);
+  });
+
   test("settings tabs update both content and URL without reloading", async ({
     page,
   }) => {
@@ -146,7 +187,7 @@ test.describe("portfolio workspace", () => {
     const holdings = page.locator(".mx-overview-holdings");
     await expect(assets.getByRole("button", { name: /重试|Retry/ })).toBeVisible();
     await expect(assets.locator(".mx-freshness")).toHaveCount(0);
-    await expect(holdings.getByRole("heading", { name: /数据请求超时|Data request timed out/ })).toBeVisible();
+    await expect(holdings.getByRole("heading", { level: 3, name: /数据请求超时|Data request timed out/ })).toBeVisible();
     await expect(holdings).not.toContainText(/还没有持仓|No holdings yet/);
     await page.unroute("**/api/backend/dashboard/lens/overview?**");
     await holdings.getByRole("button", { name: /重新加载|Try again/ }).click();
@@ -163,7 +204,7 @@ test.describe("portfolio workspace", () => {
     );
     await page.goto("/health");
     const main = page.getByRole("main");
-    await expect(main.getByRole("heading", { name: /暂时无法读取数据|Data is temporarily unavailable/ })).toBeVisible();
+    await expect(main.getByRole("heading", { level: 2, name: /暂时无法读取数据|Data is temporarily unavailable/ })).toBeVisible();
     const retry = main.getByRole("button", { name: /^(重新检查|Check now)$/ });
     await expect(retry).toBeVisible();
     await expect(main.getByRole("link", { name: /查看数据状态|Data status/ })).toHaveCount(0);
@@ -208,7 +249,7 @@ test.describe("portfolio workspace", () => {
     await expect(main.getByRole("status").filter({ hasText: /Holdings.*Data is available again/ })).toHaveCount(1);
   });
 
-  test("Holdings announces a failed refresh and recovery once while retaining its positions", async ({ page, context }) => {
+  test("Holdings retry is easy to target and announces recovery once while retaining positions", async ({ page, context, isMobile }) => {
     await page.clock.install();
     await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
     let unavailable = false;
@@ -239,8 +280,21 @@ test.describe("portfolio workspace", () => {
     await expect(failure).toHaveCount(1);
     await expect(recovery).toHaveCount(0);
 
+    await badge.scrollIntoViewIfNeeded();
+    const targetSize = isMobile ? 44 : 40;
+    const hit = await badge.evaluate((button, size) => {
+      const bounds = button.getBoundingClientRect();
+      const x = bounds.left + bounds.width / 2;
+      const y = bounds.top + bounds.height / 2;
+      const half = size / 2 - 1;
+      const points = [[x, y - half], [x, y + half], [x - half, y], [x + half, y]];
+      return { x, y: y + half, edges: points.map(([left, top]) => button.contains(document.elementFromPoint(left, top))) };
+    }, targetSize);
+    expect(hit.edges, `${targetSize}px retry target`).toEqual([true, true, true, true]);
+
     unavailable = false;
-    await badge.click();
+    if (isMobile) await page.touchscreen.tap(hit.x, hit.y);
+    else await page.mouse.click(hit.x, hit.y);
     await expect(badge).toHaveCount(0);
     await expect(positions).toBeVisible();
     await expect(recovery).toHaveCount(1);

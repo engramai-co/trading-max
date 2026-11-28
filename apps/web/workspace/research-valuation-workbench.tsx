@@ -281,7 +281,7 @@ export function ValuationWorkbench({
         action={<div className="flex flex-wrap items-center gap-mx-xs">
           {source && <span className="mx-unit mx-assumption-source">{source}</span>}
           {editor && <span ref={setEvidenceAction} className="mx-slot" />}
-          {enabled && <span ref={setDraftAction}>
+          {enabled && <span className="mx-valuation-draft-action" ref={setDraftAction}>
             {!editor && block && <Button variant="secondary" disabled aria-describedby="valuation-draft-block">{t("✦ 起草", "✦ Draft")}</Button>}
           </span>}
           {editor && <a href="#valuation-results" data-slot="button"
@@ -409,6 +409,8 @@ function ModelEditor({
   const actions = useRef<DraftActions>(null);
   const [drafting, setDrafting] = useState(emptyReview);
   const { draft } = drafting;
+  const cancelDraftLabel = t("取消起草", "Cancel draft");
+  const discardDraftLabel = t("放弃草稿", "Discard draft");
   const [editingProposal, setEditingProposal] = useState<string | null>(null);
   const focusField = useRef<string | null>(null);
   useLayoutEffect(() => {
@@ -731,14 +733,21 @@ function ModelEditor({
           {t("有新证据：", "New evidence: ") + noticeKinds(unopened, t)}
         </span>}
       </>, evidenceAction)}
-      {draftAction && createPortal(draft ? <Button variant="secondary" onClick={discardDraft}>
-        {t("放弃草稿", "Discard draft")}
-      </Button> : <Button variant="secondary"
-        aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
-        disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
-        onClick={() => { if (drafting.phase) actions.current?.cancel(); else { setEditingProposal(null); void actions.current?.start(result); } }}>
-        {drafting.phase ? t("取消起草", "Cancel draft") : t("✦ 起草", "✦ Draft")}
-      </Button>, draftAction)}
+      {draftAction && createPortal(<>
+        <span className="mx-valuation-draft-reservation" aria-hidden="true">
+          {[cancelDraftLabel, discardDraftLabel].map(label => (
+            <span key={label} className={buttonVariants({ variant: "secondary" })}>{label}</span>
+          ))}
+        </span>
+        {draft ? <Button variant="secondary" onClick={discardDraft}>
+          {discardDraftLabel}
+        </Button> : <Button variant="secondary"
+          aria-describedby={draftBlock ? "valuation-draft-block" : undefined}
+          disabled={!drafting.phase && (busy || stale || staleDraft || basisChanged || Boolean(draftBlock))}
+          onClick={() => { if (drafting.phase) actions.current?.cancel(); else { setEditingProposal(null); void actions.current?.start(result); } }}>
+          {drafting.phase ? cancelDraftLabel : t("✦ 起草", "✦ Draft")}
+        </Button>}
+      </>, draftAction)}
       {draftModule && draftBlock && <p className="mx-draft-status" id="valuation-draft-block">{draftBlockMessage(draftBlock, t, "complete-ttm-currency-and-share-count-required")}</p>}
       {output && createPortal(
           <Panel

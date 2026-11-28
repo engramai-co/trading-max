@@ -379,6 +379,11 @@ a.mx-sector-symbol:hover {
     width: 44px;
     height: 44px;
   }
+  @media (pointer: fine) {
+    .mx-global-view-switch .mx-info {
+      margin: -5px 0;
+    }
+  }
   .mx-sectors-bar:has(.mx-global-view-switch) .mx-sector-market-picker {
     width: auto;
     min-width: 0;

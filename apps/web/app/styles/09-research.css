@@ -830,6 +830,10 @@ html[data-mantine-color-scheme="light"] .mx-option-chain tr.mx-near-spot .mx-str
 .mx-business-excerpt {
   line-height: 1.7;
   margin: 14px 0;
+  overflow-wrap: anywhere;
+}
+.mx-business-description {
+  text-wrap: pretty;
 }
 @media (max-width: 767px) {
   .mx-overview-facts {

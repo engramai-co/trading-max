@@ -11,6 +11,7 @@
 
 /* Authored styles, in cascade order. Add rules to the file for their surface; keep this list ordered. */
 @import "./styles/01-foundation.css" layer(mantine);
+@import "./styles/01a-workspace-primitives.css" layer(mantine);
 @import "./styles/02-page.css" layer(mantine);
 @import "./styles/03-components.css" layer(mantine);
 @import "./styles/03a-choice-controls.css" layer(mantine);
