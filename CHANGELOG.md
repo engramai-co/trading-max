@@ -4,6 +4,12 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.80.1] - 2026-11-28
+
+### Fixed
+- Overview remembers its loading layout when you reopen the installed web app or open a new browser tab, including on phones.
+- On phones, the holdings panel stays in place while the panels above it finish loading.
+
 ## [1.80.0] - 2026-11-28
 
 ### Added
