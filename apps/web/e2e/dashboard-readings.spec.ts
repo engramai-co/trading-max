@@ -79,13 +79,20 @@ test.describe("dashboard readings", () => {
     await expect(page.getByRole("status").filter({ hasText: "Selected benchmark lacks shared records" })).toHaveCount(0);
 
     const monthly = page.locator(".mx-monthly-returns");
+    const toggle = monthly.getByRole("button", { name: "Periodic returns (TWR)" });
     await expect(monthly.locator("table")).toHaveCount(0);
-    await monthly.getByText("Periodic returns (TWR)", { exact: true }).press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.press("Enter");
     await expect(monthly.locator("table")).toHaveCount(1);
-    await expect(monthly).toHaveAttribute("open", "");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle.locator("svg")).toHaveCount(1);
+    await toggle.press("Space");
+    await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(monthly.locator("table")).toHaveCount(0);
   });
 
-  test("selects a TWR heat cell and returns to the previous chart interval", async ({ page }) => {
+  test("a keyboard TWR drill-down focuses the chart and Restore returns to the period cell", async ({ page, isMobile }) => {
     const monthDates = ["2025-12-31", "2026-01-30", "2026-02-27", "2026-03-12"];
     const sample = monthDates.map((date, index) => ({ ...nav[index], date, totalTwr: [0, 0.2, 0.08, 0.134][index] }));
     await page.route("**/api/backend/**", (route) => {
@@ -95,15 +102,118 @@ test.describe("dashboard readings", () => {
     });
     await page.goto("/analytics?view=returns&range=3M");
     const grid = page.locator(".mx-monthly-returns");
-    await grid.getByText("Periodic returns (TWR)", { exact: true }).click();
-    await grid.getByRole("button", { name: "Quarter", exact: true }).click();
+    await grid.getByRole("button", { name: "Periodic returns (TWR)" }).click();
+    if (isMobile) {
+      const year = grid.getByRole("combobox", { name: "Year" });
+      await expect(year).toHaveText("2026");
+      await expect(grid.getByRole("rowheader", { name: "2026" })).toHaveClass("sr-only");
+      await year.press("Space");
+      await page.keyboard.press("Escape");
+      await expect(year).toBeFocused();
+      await year.click();
+      await page.getByRole("option", { name: "2025" }).click();
+      await expect(grid.getByRole("rowheader", { name: "2025" })).toHaveCount(1);
+      await year.click();
+      await page.getByRole("option", { name: "2026" }).click();
+    }
+    const periods = grid.getByRole("group", { name: "Return period" });
+    const month = periods.getByRole("button", { name: "Month", exact: true });
+    await month.press("ArrowRight");
+    const quarter = periods.getByRole("button", { name: "Quarter", exact: true });
+    await expect(quarter).toBeFocused();
+    await quarter.press("Space");
     const cell = grid.getByRole("button", { name: /2026-Q1 · \+8.00%.*Partial coverage/ });
     await cell.press("Enter");
     await expect(page).toHaveURL(/returnFrom=2025-12-31&returnTo=2026-02-27/);
+    const toolbar = page.getByRole("group", { name: "Return comparison", exact: true });
+    await expect(toolbar).toBeFocused();
+    await expect(toolbar).toBeInViewport();
+    await expect(toolbar.locator(".mx-period-control")).toContainText(/31 Dec.*27 Feb/);
+    await page.keyboard.press("Tab");
+    await expect(toolbar.getByRole("combobox", { name: "Benchmark" })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
     await expect(cell).toHaveAttribute("aria-pressed", "true");
+    const range = toolbar.getByRole("group", { name: "Performance range" });
+    await expect(range.getByRole("button", { pressed: true })).toHaveCount(0);
+    if (isMobile) await expect(toolbar.getByRole("button", { name: "More periods", exact: true })).toBeVisible();
     await expect(page.locator(".mx-chart-readout-latest")).toContainText("+8.00%");
-    await page.getByRole("button", { name: "Restore previous range" }).click();
+    const restore = toolbar.getByRole("button", { name: "Restore previous range" });
+    await restore.press("Enter");
     await expect(page).toHaveURL(/range=3M$/);
+    await expect(range.getByRole("button", { name: "3M", pressed: true })).toBeVisible();
+    await expect(cell).toBeFocused();
+    await expect(cell).toBeInViewport();
+
+    await cell.click();
+    await expect(cell).toHaveAttribute("aria-pressed", "true");
+    await restore.press("Enter");
+    await expect(cell).toBeFocused({ timeout: 3000 });
+    await expect(cell).toBeInViewport();
+  });
+
+  test("English phone Money keeps the chart units label and switch on one row", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "Phone toolbar geometry.");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/analytics?view=money");
+    const toolbar = page.locator(".mx-chart-toolbar");
+    const label = toolbar.getByText("Chart units", { exact: true });
+    const switcher = toolbar.getByRole("group", { name: "Chart units" });
+    await expect(label).toBeVisible();
+    await expect(switcher).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
+    const labelBox = (await label.boundingBox())!;
+    const switchBox = (await switcher.boundingBox())!;
+    expect(switchBox.x).toBeGreaterThanOrEqual(labelBox.x + labelBox.width);
+    expect(Math.abs(labelBox.y + labelBox.height / 2 - switchBox.y - switchBox.height / 2)).toBeLessThan(1);
+    expect(Math.abs(switchBox.height - 44)).toBeLessThan(1);
+  });
+
+  test("periodic returns loads on disclosure and can recover from a failed read to an empty grid", async ({ page }) => {
+    let fail = true;
+    const allHistory = "**/dashboard/lens/analytics?**range=ALL**";
+    await page.route("**/api/backend/**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      return route.fulfill({ json: path.endsWith("/dashboard/lens/analytics") ? fixture(firstRun) : supportingData(path, firstRun) });
+    });
+    const { promise: held, resolve: release } = Promise.withResolvers<void>();
+    await page.route(allHistory, async (route) => {
+      await held;
+      return fail ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: { ...fixture(firstRun), nav: [] } });
+    });
+    await page.goto("/analytics?view=returns&range=3M");
+    const grid = page.locator(".mx-monthly-returns");
+    const toggle = grid.getByRole("button", { name: "Periodic returns (TWR)" });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.press("Enter");
+    try {
+      await expect(grid.getByRole("status").filter({ hasText: "Loading data…" })).toBeVisible();
+    } finally {
+      release();
+    }
+    const retry = grid.getByRole("button", { name: "Try again" });
+    await expect(retry).toBeVisible();
+    fail = false;
+    await retry.click();
+    await expect(grid.getByText("More daily return observations are needed")).toBeVisible();
+    await expect(grid.getByRole("table")).toHaveCount(0);
+  });
+
+  test("drawdown duration counts calendar dates and preserves elapsed-day and gap readings", async ({ page }) => {
+    const cases = [
+      { dates: ["2026-10-24", "2026-10-25", "2026-10-26"], depth: [0, -0.25, 0], text: "2 days" },
+      { dates: ["2026-10-24T14:00:00+01:00", "2026-10-25T14:00:00+00:00", "2026-10-26T14:00:00+00:00"], depth: [0, -0.25, 0], text: "3 days" },
+      { dates: ["2026-10-24", "2026-10-25", "2026-10-26"], depth: [0, -0.25, null], text: "Recovery unverified across a gap" },
+    ];
+    let scenario = cases[0];
+    await page.route("**/api/backend/**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      const data = { ...fixture(firstRun), nav: scenario.dates.map((date, index) => ({ ...nav[index], date, totalDrawdown: scenario.depth[index] })) };
+      return route.fulfill({ json: path.endsWith("/dashboard/lens/analytics") ? data : supportingData(path, firstRun) });
+    });
+    for (scenario of cases) {
+      await page.goto("/analytics?view=risk");
+      await expect(page.locator(".mx-drawdown-reading")).toContainText(scenario.text);
+    }
   });
 
   test("takes the selected account to risk and requests all history", async ({ page }) => {

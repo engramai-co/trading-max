@@ -6,6 +6,8 @@ import { formatCalendarDate, formatDateTime } from "@/ui/formatters";
 import { percent } from "@/workspace/data";
 import { useCopy } from "./foundation";
 
+const millisecondsPerDay = 86_400_000;
+
 export function drawdownMarks(episode: DrawdownEpisode | undefined, dates: string[], t: ReturnType<typeof useCopy>) {
   if (!episode) return [];
   return [
@@ -27,11 +29,14 @@ export function DrawdownReading({ episode, dates, basis }: {
   const displayDate = (value: string) => daily
     ? formatCalendarDate(value.slice(0, 10), locale) : formatDateTime(value, locale, timeZone);
   const marks = drawdownMarks(episode, dates, t);
+  // Daily labels count calendar days in UTC. Instant series count elapsed 24-hour
+  // intervals rounded up, so a daylight-saving change cannot shift the result.
+  const durationDate = (value: string) => Date.parse(daily ? value.slice(0, 10) : value);
   const days = episode?.recovery != null
-    ? Math.ceil((Date.parse(dates[episode.recovery]) - Date.parse(dates[episode.peak])) / 86_400_000) : null;
-  return <div className="mx-drawdown-reading">
-    <span>{basis === "all" ? t("高点按全部可用历史确定", "Peak uses all available history") : t("高点按所选区间确定", "Peak uses the selected range")}</span>
-    {episode && <dl>
+    ? Math.ceil((durationDate(dates[episode.recovery]) - durationDate(dates[episode.peak])) / millisecondsPerDay) : null;
+  return <div className="mx-drawdown-reading flex flex-wrap items-baseline gap-x-4 gap-y-2 text-[0.8125rem]">
+    <span className="text-muted-foreground">{basis === "all" ? t("高点按全部可用历史确定", "Peak uses all available history") : t("高点按所选区间确定", "Peak uses the selected range")}</span>
+    {episode && <dl className="m-0 flex flex-wrap gap-x-4 gap-y-2 [&>div]:flex [&>div]:gap-1.5 [&_dd]:m-0 [&_dd]:tabular-nums [&_dt]:text-muted-foreground">
       {marks.map((mark) => <div key={mark.name}><dt>{mark.name}</dt><dd><time dateTime={mark.date}>{displayDate(mark.date)}</time></dd></div>)}
       <div><dt>{t("回撤", "Drawdown")}</dt><dd className="mx-down">{percent(episode.depth, false, 2)}</dd></div>
       {days != null ? <div><dt>{t("持续时间", "Duration")}</dt><dd>{days} {days === 1 ? t("天", "day") : t("天", "days")}</dd></div>

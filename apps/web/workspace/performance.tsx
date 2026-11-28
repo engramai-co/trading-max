@@ -1,6 +1,7 @@
 "use client";
 
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MEDIA_QUERIES } from "@/lib/breakpoints";
 import { useBreakpoint } from "@/lib/hooks";
@@ -53,7 +54,7 @@ import { portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history"
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { portfolioValueLines } from "./portfolio-value-lines";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
-import { CitedMoneyAmount, MoneyDrawdown, MoneySummary, citedMoneyAmount } from "./performance-money";
+import { CitedMoneyAmount, MoneyDrawdown, MoneySummary, citedMoneyAmount, moneyEquationClassName } from "./performance-money";
 import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useChartColours } from "@/ui/charts/palette";
@@ -98,9 +99,11 @@ export function PerformanceContent({
   const {ready} = useAssistant();
   const {locale, timeZone} = useLocale();
   const [selectionRange,setSelectionRange] = useState<{start:string; end:string; identity:string; snapshotId:string} | null>(null);
-  const rangeTrigger = useRef<HTMLButtonElement>(null);
+  const rangeTrigger = useRef<HTMLElement>(null);
   const riskTab = useRef<HTMLButtonElement>(null);
-  const bindRiskRangeTrigger = useCallback((button: HTMLButtonElement | null) => {
+  const chartToolbar = useRef<HTMLDivElement>(null);
+  const periodTrigger = useRef<HTMLElement>(null);
+  const bindRiskRangeTrigger = useCallback((button: HTMLElement | null) => {
     // An updated history can remove Read range while its reading sheet is open.
     rangeTrigger.current = button ?? riskTab.current;
   }, []);
@@ -112,6 +115,13 @@ export function PerformanceContent({
   const end = params.get("returnTo") ?? (showRecord ? linkedTo : null);
   const customRange = view === "returns" && start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start < end
     ? { start, end } : null;
+  const restoreRange = () => {
+    update({ returnFrom: null, returnTo: null });
+    const trigger = periodTrigger.current;
+    periodTrigger.current = null;
+    if (trigger?.isConnected) trigger.focus();
+    else chartToolbar.current?.focus({ preventScroll: true });
+  };
   const requestedRange = view === "risk" || customRange ? "ALL" : view === "returns" && range === "1D" ? "3M" : range;
   const citedId = params.get("snapshotId");
   const inspectionCitation = Boolean(citedId && linkedFrom && linkedTo);
@@ -221,6 +231,9 @@ export function PerformanceContent({
     : null, [view, availablePoints, scope, data?.benchmarkSeries, benchmark]);
   const returnsPoints = comparison?.points;
   const points = returnsPoints ?? availablePoints;
+  const chartWindowReady = runtime.status === "ready" && !rangeMismatch && points.length > 0;
+  const toolbarDates = customRange && !chartWindowReady ? [{ date: customRange.start }, { date: customRange.end }]
+    : runtime.status === "ready" ? points : [];
   const plottedDates = useMemo(() => points.map((point) => point.date), [points]);
   const readingReady = !!shown && runtime.status === "ready" && !unavailable;
   const benchmarkUnavailable = t("所选基准缺少共同记录", "Selected benchmark lacks shared records");
@@ -405,29 +418,34 @@ export function PerformanceContent({
           )}
         </Notice>
       ) : view === "risk" ? (
-        <div className="mx-data-body mx-performance-risk" data-citation-ready={Boolean(shown && !waiting) || undefined} aria-busy={waiting || undefined}>
+        <div className="mx-data-body mx-performance-risk grid gap-[inherit]" data-citation-ready={Boolean(shown && !waiting) || undefined} aria-busy={waiting || undefined}>
           <RiskDashboard onBrush={brush} rangeTrigger={bindRiskRangeTrigger} inspection={inspection} data={runtime.status === "ready" ? data : undefined} scope={scope}
             unavailable={unavailable} retry={usesAnalytics ? summary.refetch : undefined} />
         </div>
       ) : (
         <>
-          <Panel className="mx-performance-chart">
+          <Panel className="mx-performance-chart [scroll-margin-block-start:var(--shell-anchor-gap)]">
             {ready && <h2 className="sr-only" data-citation-ready={Boolean(shown && !waiting) || undefined}>{view === "money" ? t("资金与盈亏","Money and P&L") : t("收益对比","Return comparison")}</h2>}
             {/* The tab names the view; the chart's controls share one row. */}
-            <div className="mx-toolbar mx-chart-toolbar">
+            <div className="mx-toolbar mx-chart-toolbar rounded-xl focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight]"
+              ref={chartToolbar} tabIndex={view === "returns" ? -1 : undefined}
+              role={view === "returns" ? "group" : undefined} aria-label={view === "returns" ? t("收益对比", "Return comparison") : undefined}>
               {view === "money" ? (
-                <Segments
-                  label={t("图表单位", "Chart units")}
-                  value={moneyUnit}
-                  onChange={setMoneyUnit}
-                  options={[
-                    { value: "gbp", label: "GBP" },
-                    {
-                      value: "percent",
-                      label: t("占期初价值 %", "% of opening value"),
-                    },
-                  ]}
-                />
+                <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2 max-phone:gap-x-1">
+                  <span className="text-xs text-muted-foreground" aria-hidden="true">{t("图表单位", "Chart units")}</span>
+                  <Segments
+                    label={t("图表单位", "Chart units")}
+                    value={moneyUnit}
+                    onChange={setMoneyUnit}
+                    options={[
+                      { value: "gbp", label: "GBP" },
+                      {
+                        value: "percent",
+                        label: t("占期初价值 %", "% of opening value"),
+                      },
+                    ]}
+                  />
+                </div>
               ) : (
                 <SelectPicker
                   aria-label={t("基准", "Benchmark")}
@@ -445,15 +463,21 @@ export function PerformanceContent({
                   style={{ width: 220 }}
                 />
               )}
-              <div className="mx-period-control" onClickCapture={event => {
+              <div className="mx-period-control max-phone:w-full max-phone:[&>.mx-dashboard-ranges]:w-full" onClickCapture={event => {
                 const button = event.target instanceof Element ? event.target.closest("button") : null;
                 // The More menu is portalled. Keep its persistent opener when a menu item is chosen.
                 if (button && event.currentTarget.contains(button)) rangeTrigger.current = button;
               }}>
-                {runtime.status === "ready" && comparison && comparison.comparisons.length > 0
-                  ? <span className="mx-comparison-basis">{t("共同区间", "Shared dates")} <PeriodSpan points={points} /></span>
-                  : <PeriodSpan points={runtime.status === "ready" ? points : []} reserve />}
-                <DashboardRanges value={requestedRange} onChange={(value) => {
+                <div className={customRange ? "flex flex-wrap items-baseline gap-x-2" : "contents"}>
+                  {runtime.status === "ready" && comparison && comparison.comparisons.length > 0 && (!customRange || chartWindowReady)
+                    ? <span className="mx-comparison-basis flex flex-wrap items-baseline gap-x-2 text-[0.75rem] text-muted-foreground">{t("共同区间", "Shared dates")} <PeriodSpan points={points} /></span>
+                    : <PeriodSpan points={toolbarDates} reserve />}
+                  {customRange && <Button type="button" variant="link" className="px-2 text-xs" onClick={restoreRange}>
+                    {t("恢复上个区间", "Restore previous range")}
+                  </Button>}
+                </div>
+                <DashboardRanges value={requestedRange} custom={Boolean(customRange)} onChange={(value) => {
+                  periodTrigger.current = null;
                   if (ready && window.matchMedia(MEDIA_QUERIES.phone).matches) {
                     setSelectionRange(null); setPhoneRange([view,requestedScope,value].join("|"));
                   }
@@ -462,23 +486,23 @@ export function PerformanceContent({
                   label={t("绩效区间", "Performance range")} intraday={view === "money"} />
               </div>
             </div>
-            {unavailable ? <div className="mx-performance-unavailable"><InlineRetry {...unavailable} /></div>
+            {unavailable ? <div className="mx-performance-unavailable grid min-h-[260px] content-center"><InlineRetry {...unavailable} /></div>
               : !shown || runtime.status === "loading" ? <PerformancePending money={view === "money"} />
               : <div className="mx-data-body" aria-busy={waiting || undefined}>
             {rangeMismatch && <p className="mx-prior-range">
               {t("当前显示 ", "Showing ")}{rangeName(actualRange, t("全部", "all"))}
             </p>}
-            {view === "money" && inlineFailure && <div className="mx-money-history-failure">
+            {view === "money" && inlineFailure && <div className="mx-money-history-failure mb-2 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[0.75rem] text-muted-foreground max-phone:[&_.mx-update-failure]:min-h-11">
               <span>{t("盈亏记录", "P&L history")}</span><UpdateFailure {...inlineFailure} showRetry />
             </div>}
-            {pinnedMoney && shown?.history && <p className="mx-return-range">{shown.history.history.startDay} – {shown.history.history.endDay} <button type="button" className="mx-text-link" onClick={() => update({})}>
-              {t("返回当前记录", "Return to current history")}</button></p>}
+            {pinnedMoney && shown?.history && <div className="flex flex-wrap items-baseline gap-x-4 gap-y-2 text-[0.8125rem]">{shown.history.history.startDay} – {shown.history.history.endDay} <Button type="button" variant="link" className="px-0 text-xs" onClick={() => update({})}>
+              {t("返回当前记录", "Return to current history")}</Button></div>}
             {view === "money" && <HistoryCoverage history={history} />}
             {citedMoneyField && <CitedMoneyAmount money={money} field={citedMoneyField} />}
             {view === "money" ? (
               <MoneySummary money={money} points={points} />
             ) : (
-              <div className="mx-metric-grid mx-metric-lead mx-chart-metrics mx-return-reading">
+              <div className="mx-metric-grid mx-metric-lead mx-chart-metrics mx-return-reading min-w-0 grid-cols-[max-content_minmax(0,1fr)] items-end max-phone:grid-cols-1 phone:[&>:is(.mx-return-comparator,.mx-retry-reading)]:pb-2">
                 <Metric
                   large
                   label={t("组合 TWR", "Portfolio TWR")}
@@ -497,20 +521,15 @@ export function PerformanceContent({
                 />
                 {comparison?.missing ? <InlineRetry
                   label={benchmarkUnavailable} retry={summary.refetch} />
-                  : spread != null && <div className="mx-return-comparator">
-                    <span>{returnLines[1].name} <strong>{percent(benchmarkEnd, true, 2)}</strong></span>
-                    <span>{t("相差", "Difference")} <strong>{spread > 0 ? "+" : ""}{spread.toFixed(2)} {t("个百分点", "pp")}</strong></span>
+                  : spread != null && <div className="mx-return-comparator flex min-w-0 flex-wrap gap-x-4 gap-y-1.5 text-[0.75rem] text-muted-foreground tabular-nums">
+                    <span>{returnLines[1].name} <strong className="text-foreground">{percent(benchmarkEnd, true, 2)}</strong></span>
+                    <span>{t("相差", "Difference")} <strong className="text-foreground">{spread > 0 ? "+" : ""}{spread.toFixed(2)} {t("个百分点", "pp")}</strong></span>
                   </div>}
               </div>
             )}
             {view === "money" && moneyUnit === "percent" && points.length > 0 && (navNumber(first, scope) ?? 0) <= 0 && (
               <Notice>{t("期初价值不大于零，无法显示百分比。请选择 GBP。", "Opening value is zero or negative. Select GBP to view amounts.")}</Notice>
             )}
-              {view === "returns" && customRange && <div className="mx-return-range">
-              <PeriodSpan points={points} /><button type="button" className="mx-text-link" onClick={() => update({ returnFrom: null, returnTo: null })}>
-                {t("恢复上个区间", "Restore previous range")}
-              </button>
-            </div>}
               {view === "returns" && <Legend items={returnLegendItems(returnLines, colours)} />}
               <TimelineChart
                 onBrush={brush}
@@ -587,9 +606,12 @@ export function PerformanceContent({
             </div>}
           </Panel>
           {view === "returns" && shown && runtime.status === "ready" && (
-            <div className="mx-data-body" aria-busy={waiting || undefined}><ReturnGrid runId={pinnedLens} scope={scope} selected={customRange} onSelect={(period) => {
+            <div className="mx-data-body" aria-busy={waiting || undefined}><ReturnGrid runId={pinnedLens} scope={scope} selected={customRange} onSelect={(period, trigger) => {
               update({ returnFrom: period.start, returnTo: period.end });
-              document.querySelector(".mx-performance-chart")?.scrollIntoView({ block: "start" });
+              periodTrigger.current = trigger;
+              const toolbar = chartToolbar.current;
+              toolbar?.focus({ preventScroll: true });
+              toolbar?.closest(".mx-performance-chart")?.scrollIntoView({ block: "start" });
             }} /></div>
           )}
         </>
@@ -615,12 +637,12 @@ function PerformancePending({ money }: { money: boolean }) {
     <div className={money ? "mx-money-summary" : "mx-chart-metrics"}>
       <Metric large label={money ? t("区间净盈亏", "Period net P&L") : t("组合 TWR", "Portfolio TWR")}
         value={<Skeleton as="span" className="mx-reading-placeholder" />} />
-      {money && <div className="mx-money-equation mx-equation-placeholder" aria-hidden="true">
-        {Array.from({ length: 4 }, (_, index) => <Skeleton as="span" className="mx-reading-placeholder" key={index} />)}
+      {money && <div className={moneyEquationClassName} aria-hidden="true">
+        {Array.from({ length: 4 }, (_, index) => <Skeleton as="span" className="mx-reading-placeholder my-2 ml-auto w-[min(100%,9ch)] max-phone:my-0.5" key={index} />)}
       </div>}
     </div>
-    <div className="mx-plot-placeholder" aria-hidden="true" style={{ height: layout.height }}>
-      {layout.grids.map(({ top, height }) => <div key={top} style={{ top, height }}><Pending shape="chart" height={height} quiet /></div>)}
+    <div className="mx-plot-placeholder relative" aria-hidden="true" style={{ height: layout.height }}>
+      {layout.grids.map(({ top, height }) => <div className="absolute start-12 end-2 [&_.mx-loading]:min-h-0" key={top} style={{ top, height }}><Pending shape="chart" height={height} quiet /></div>)}
     </div>
   </>;
 }
@@ -643,12 +665,12 @@ function RiskReadings({ rows, scope, pending }: { rows: NavPoint[]; scope: Scope
   }
   const date = (point: NavPoint) => formatDate(point.date, locale, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   const placeholder = <Skeleton as="span" className="mx-reading-placeholder" />;
-  return <div className="mx-risk-readings">
+  return <div className="mx-risk-readings mb-4 grid grid-cols-[minmax(0,max-content)_minmax(0,1fr)] items-start gap-7 max-phone:gap-(--mx-space-items) [&_.mx-metric:not(.mx-metric-large)_.mx-number]:text-[1.5rem] max-phone:[&_.mx-metric:not(.mx-metric-large)_.mx-number]:text-(length:--mx-text-metric)">
     <Metric large label={t("当前回撤", "Current drawdown")}
       value={pending ? placeholder : percent(current, false, 2)} tone={tone(current)} />
     <Metric label={t("最大回撤", "Max drawdown")}
       value={pending ? placeholder : percent(maximum, false, 2)} tone={tone(maximum)}
-      note={peak ? <span className="mx-risk-drawdown-episode">
+      note={peak ? <span className="mx-risk-drawdown-episode text-[0.75rem] text-muted-foreground [&_time]:whitespace-nowrap">
         {t("高点 ", "Peak ")}<time dateTime={peak.date}>{date(peak)}</time>
         <span aria-hidden="true"> → </span>
         {t("低点 ", "Trough ")}<time dateTime={rows[bottom].date}>{date(rows[bottom])}</time>
@@ -658,7 +680,7 @@ function RiskReadings({ rows, scope, pending }: { rows: NavPoint[]; scope: Scope
 
 function RiskDashboard({ data, scope, unavailable, retry, onBrush, rangeTrigger, inspection }: {
   onBrush?: (start:string,end:string)=>void;
-  rangeTrigger: (button: HTMLButtonElement | null) => void;
+  rangeTrigger: (button: HTMLElement | null) => void;
   inspection:ReactNode;
   data?: DashboardLens;
   scope: Scope;
@@ -673,6 +695,7 @@ function RiskDashboard({ data, scope, unavailable, retry, onBrush, rangeTrigger,
   return (
     <>
       <Panel
+        className="max-phone:[&>.mx-panel-heading]:flex-col max-phone:[&>.mx-panel-heading]:items-start"
         title={t("历史收益回撤", "Historical return drawdown")}
         help={<>
           <p>{t("收益相对历史高点的回落幅度，使用全部可用历史。", "Return decline from the previous high across the full available history.")}</p>
@@ -681,10 +704,16 @@ function RiskDashboard({ data, scope, unavailable, retry, onBrush, rangeTrigger,
             "Time-weighted returns on end-of-day account values, in pounds; intraday records are not used.",
           )}</DataBasis>
         </>}
-        action={<span className="mx-risk-basis">{onBrush && dates.length>1 && <button ref={rangeTrigger} className="mx-range-inspect-mobile" onClick={()=>onBrush(dates[0],dates.at(-1)!)}>{t("解读区间","Read range")}</button>}{t("全部可用历史", "All available history")} <PeriodSpan points={rows} /></span>}
+        action={<span className="mx-risk-basis flex flex-wrap items-baseline gap-x-2 text-[0.75rem] text-muted-foreground">
+          {onBrush && dates.length > 1 && <Button type="button" variant="link" ref={rangeTrigger}
+            className="mx-range-inspect-mobile min-h-(--mx-action-size) px-0 text-xs phone:hidden" onClick={() => onBrush(dates[0], dates.at(-1)!)}>
+            {t("解读区间", "Read range")}
+          </Button>}
+          {t("全部可用历史", "All available history")} <PeriodSpan points={rows} />
+        </span>}
       >
         <RiskReadings rows={rows} scope={scope} pending={!data && !unavailable} />
-        {unavailable ? <div className="mx-performance-unavailable"><InlineRetry {...unavailable} /></div>
+        {unavailable ? <div className="grid min-h-[260px] content-center"><InlineRetry {...unavailable} /></div>
           : !data ? <Pending shape="chart" height={260} quiet />
           : <HistoryChart onBrush={onBrush}
           fullscreen

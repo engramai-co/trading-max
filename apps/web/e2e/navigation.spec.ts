@@ -709,7 +709,7 @@ test.describe("workspace navigation refinements", () => {
     await page.emulateMedia({ reducedMotion: "reduce" });
 
     await page.goto("/analytics?view=returns");
-    await page.locator(".mx-monthly-returns summary").click();
+    await page.locator(".mx-monthly-returns").getByRole("button", { name: /周期收益|Periodic returns/ }).click();
     await page.locator(".mx-monthly-returns .mx-heat-pill").first().click();
     const chart = page.locator(".mx-performance-chart");
     await expect.poll(async () => Math.round((await chart.boundingBox())!.y), { timeout: 2500 }).toBe(80);
