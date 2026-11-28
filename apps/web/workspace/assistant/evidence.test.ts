@@ -1,3 +1,4 @@
+import { formatCalendarDate } from "@/ui/formatters";
 import pageOutputs from "./page-figures.fixture.json";
 import { describe, expect, it } from "vitest";
 import { dividendAmount } from "@/lib/dividend-disclosure";
@@ -5,7 +6,7 @@ import earlyClose from "../../tests/fixtures/market-early-close.json";
 import historicalEvents from "../../tests/fixtures/historical-events.json";
 import historicalDividend from "../../tests/fixtures/historical-dividend.json";
 import { verifiedLines } from "./chat-reply";
-import { chatContext, displayTurns, evidenceHref, messageEvidence, observationText, readableDates, sourceLabel } from "./evidence";
+import { citationPreview, chatContext, displayTurns, evidenceHref, messageEvidence, observationText, readableDates, sourceLabel, verifiedCitationLine, type Evidence } from "./evidence";
 import type { UIMessage } from "ai";
 
 describe("dates in readings and replies", () => {
@@ -465,7 +466,8 @@ it("resolves each published historical event date to its source in mixed replies
       } else if (row.kind === "own_trade") {
         const url = new URL(href!, "http://localhost");
         expect(url.pathname).toBe("/review");
-        expect(Object.fromEntries(url.searchParams)).toEqual({account:"A", decision:"2026-11-25.buy.ALFA", snapshotId:historicalEvents.snapshot_id});
+        expect(Object.fromEntries(url.searchParams)).toEqual({account:"A", decision:"2026-11-25.buy.ALFA",
+          snapshotId:historicalEvents.snapshot_id,evidence:"recent_decisions",field:`/data/items/${offset + index}/date`});
       } else {
         expect(Object.fromEntries(new URL(href!, "http://localhost").searchParams)).toMatchObject({
           event:row.kind === "ex_dividend" ? "exDividend" : row.kind,
@@ -512,6 +514,146 @@ it("cites the restated sentence of a company description on the security's overv
   const evidence = {tool:"company_profile", source:"disclosure" as const, evidenceId:"ev_profile",
     arguments:{ticker:"TEST", lens:"overview", sentence:"1", sentenceId:"6e2b34b5", snapshotId:"saved-run"}};
   expect(evidenceHref(evidence)).toBe(
-    "/research?ticker=TEST&sentence=1&sentenceId=6e2b34b5&snapshotId=saved-run&view=overview&evidence=company_profile");
+    "/research?ticker=TEST&sentence=1&sentenceId=6e2b34b5&snapshotId=saved-run&evidenceId=ev_profile&field=%2Fdata%2Fsentences%2F1&view=overview&evidence=company_profile");
   expect([sourceLabel(evidence, zh => zh), sourceLabel(evidence, (_zh, en) => en)]).toEqual(["披露", "Disclosure"]);
+});
+
+describe("citation previews", () => {
+  it("reads the verified claim and its pinned window without including unselected fields", () => {
+    const [line] = verifiedLines(fieldReply("period_performance", {
+      status:"partial", scope:"isa", snapshot_id:"original",
+      data:{period_pnl_gbp:-21.5, net_contributions_gbp:99, window_start:"2026-11-12", window_end:"2026-11-13"},
+    }, "/data/period_pnl_gbp"));
+    const preview = citationPreview(line.evidence!, "en", "Europe/London");
+    expect(preview).toMatchObject({
+      title:"Period performance", scope:"ISA", date:expect.stringMatching(/^12 Nov.* – 13 Nov/),
+      fact:expect.stringMatching(/−£21.50.*limited coverage/), href:expect.stringContaining("snapshotId=original"),
+    });
+    expect(preview?.fact).not.toContain("99");
+  });
+
+  it("distinguishes company sentences in Chinese without changing the source vocabulary", () => {
+    const evidence = { evidenceId:"profile", tool:"company_profile", source:"disclosure" as const,
+      arguments:{ticker:"SYNT", sentence:"2", snapshotId:"saved"} };
+    const preview = citationPreview(evidence, "zh", "Europe/London", "公司资料");
+    expect(preview?.context).toBe("SYNT 公司资料 · 第 3 句");
+    expect(citationPreview({...evidence, source:"inference"}, "zh", "Europe/London")).toBeNull();
+  });
+
+  it.each(["javascript:alert(1)", "https://name:password@example.org"])("does not preview unsafe external URLs (%s)", url => {
+    expect(citationPreview({ evidenceId:"calendar", tool:"upcoming_events", source:"calendar", arguments:{url} },
+      "en", "Europe/London")).toBeNull();
+  });
+});
+
+it.each([
+  ["/data/items/0/move_fraction", ["2026-01-12"]],
+  ["/data/following/0/return_fraction", ["2026-01-12", "2026-01-20"]],
+])("shows the verified date or window in a %s citation", (field, days) => {
+  const output = {
+    status:"ok", evidence_id:"ev_chart", snapshot_id:"retained-chart", scope:"broker_total",
+    bound_arguments:{start:"2026-01-01",end:"2026-01-30"},
+    data:{ ticker:"SYNT", start:"2026-01-01", end:"2026-01-30",
+      items:[{date:"2026-01-12",move_fraction:-0.04}],
+      following:[{start:"2026-01-12",date:"2026-01-20",return_fraction:0.02}] },
+  };
+  const [line] = verifiedLines(fieldReply("price_key_moments", output, field));
+  const preview = citationPreview(line.evidence!, "en", "Europe/London");
+  expect(preview?.date).toBe(days.map(day => formatCalendarDate(day, "en")).join(" – "));
+  expect(preview?.href).toContain("end=2026-01-30");
+});
+
+it("dates an in-place research comparison by its matched sessions", () => {
+  const evidence = {tool:"research_position", source:"technical" as const, evidenceId:"ev_comparison",
+    arguments:{ticker:"SYNT", snapshotId:"retained-chart", date:"2026-01-30"}};
+  const observation = "2026-01-12 – 2026-01-20, over 6 matched USD sessions, SYNT +2.00%.";
+  const preview = citationPreview(evidence, "en", "Europe/London", observation);
+  expect(preview?.date).toBe(["2026-01-12", "2026-01-20"].map(day => formatCalendarDate(day, "en")).join(" – "));
+});
+
+it("reopens each verified citation only at an exact record or a validated publisher URL", () => {
+  const retained = "retained-publication";
+  const field = "/data/items/0/value";
+  const window = {start:"2026-01-10", end:"2026-01-20"};
+  const selection = {scope:"isa", ticker:"SYNT"};
+  const event = {event:"exDividend", date:window.start, eventId:"ev_event", calendarEventId:"ev_calendar"};
+  const slot = {ticker:"SYNT", lens:"technical", ...window};
+  const routes = [
+    ["portfolio_overview", selection, "/", {}],
+    ["period_performance", {...selection, ...window, range:"1M", field:"/data/net_contributions_gbp"}, "/analytics", {view:"money",moneyFrom:window.start,moneyTo:window.end}],
+    ["period_performance", {...selection, ...window, field:"/data/twr/fraction"}, null, {}],
+    ["compare_benchmarks", {...selection, ...window, benchmark:"VOO"}, "/analytics", {view:"returns",returnFrom:window.start,returnTo:window.end}],
+    ["list_holdings", selection, "/holdings", {account:"B",q:"SYNT"}],
+    ["position_detail", selection, "/holdings", {account:"B",q:"SYNT"}],
+    ["lookthrough_exposure", {}, "/holdings", {view:"lookthrough"}],
+    ["selected_exposure", {dimension:"sector",category:"Energy"}, "/holdings", {view:"lookthrough",category:"Energy"}],
+    ["dated_exposure", {dimension:"sector",category:"Energy"}, null, {}],
+    ["exposure_benchmark", {dimension:"sector",category:"Energy",benchmarkSource:"SSAC",benchmarkAsOf:window.end,benchmarkObservation:"obs"}, "/holdings", {benchmarkObservation:"obs"}],
+    ["read_research_lens", slot, null, {}],
+    ["read_research_lens", {...slot, ...event}, "/research", {calendarEventId:"ev_calendar"}],
+    ["read_valuation_evidence", slot, null, {}],
+    ["research_position", slot, "/research", {evidenceId:"ev_saved",ticker:"SYNT"}],
+    ["price_key_moments", {...slot,index:"sp500"}, "/research", {evidenceId:"ev_saved",type:"index"}],
+    ["research_earnings", slot, "/research", {evidenceId:"ev_saved"}],
+    ["research_headline", {...slot,field:"/data/title"}, "/research", {evidenceId:"ev_saved",field:"/data/title"}],
+    ["company_profile", {...slot,sentence:"0",sentenceId:"a3f2cd56",field:"/data/sentences/0"}, "/research", {sentence:"0",sentenceId:"a3f2cd56",evidenceId:"ev_saved"}],
+    ["recent_decisions", selection, "/review", {account:"B"}],
+    ["decision_timing_and_habits", {...selection,side:"buy",decision_date:window.end}, "/review", {decision:"2026-01-20.buy.SYNT"}],
+    ["review_patterns", {...selection,habit:"basket_buy"}, "/review", {habit:"basket_buy"}],
+    ["selected_daily", {...selection,...window}, "/analytics", {inspectFrom:window.start,inspectTo:window.end}],
+    ["selected_fx", {...selection,...window}, "/analytics", {inspectFrom:window.start,inspectTo:window.end}],
+    ["selected_money", {...selection,...window,view:"money"}, "/analytics", {inspectFrom:window.start,view:"money"}],
+    ["daily_returns", {...selection,...window}, "/analytics", {inspectFrom:window.start}],
+    ["holding_fx_split", {...selection,...window}, "/analytics", {inspectFrom:window.start}],
+    ["sector_headline", {url:"https://example.org/article"}, "https://example.org/article", {}],
+    ["market_sector", {market:"us",sector:"energy",observed:"2026-01-20T16:00:00Z"}, null, {}],
+    ["global_map", {market:"jp",observed:"2026-01-20T16:00:00Z"}, null, {}],
+    ["update_issue", {job:"update-1"}, "/health", {job:"update-1"}],
+    ["update_issue", {issue:"stale"}, null, {}],
+    ["data_freshness", selection, null, {}],
+    ["news_and_events", {...selection,...event,rowCitation:"1",...window}, "/research", {evidenceId:"ev_saved"}],
+    ["upcoming_events", {...selection,...event,holdingTicker:"SYNT"}, "/research", {calendarEventId:"ev_event"}],
+  ] as const;
+  for (const [tool, args, path, expected] of routes) {
+    const pointer = "field" in args ? args.field : field;
+    const source: Evidence["source"] = tool === "sector_headline" ? "publisher" : "account";
+    const {evidence} = verifiedCitationLine({ text:"Verified observation", evidence:{tool, source, evidenceId:"ev_saved",
+      arguments:{...args,snapshotId:"forged-input"}} }, {snapshot_id:retained, status:"ok"}, pointer);
+    const preview = citationPreview(evidence, "en", "Europe/London");
+    expect.soft(preview, tool).toBeTruthy();
+    if (!path || path.startsWith("https:")) expect.soft(preview?.href, tool).toBe(path);
+    else {
+      const url = new URL(preview?.href ?? "/missing", "https://workspace.invalid");
+      expect.soft(url.pathname, tool).toBe(path);
+      expect.soft(Object.fromEntries(url.searchParams), tool).toMatchObject({snapshotId:retained,field:pointer,...expected});
+    }
+    const unbound = verifiedCitationLine({text:"Verified observation", evidence:{tool,source,evidenceId:"ev_saved",
+      arguments:{...args,snapshotId:"unverified-input"}}}, {status:"ok"}, pointer);
+    const standalone = path?.startsWith("https:") || path === "/health";
+    expect.soft(Boolean(citationPreview(unbound.evidence, "en", "Europe/London")?.href), `${tool} without a publication ID`)
+      .toBe(Boolean(standalone));
+  }
+});
+
+it("dates an early-close citation by the event and preserves its search window", () => {
+  const {output, arguments:args} = earlyClose;
+  const row = output.data.items[0];
+  const search = {start:"2026-11-25",end:"2026-11-30"};
+  const [line] = verifiedLines(fieldReply("upcoming_events", {...output, data:{...output.data,...search},
+    bound_arguments:{...args,...search}}, "/data/items/0/date"));
+  const preview = citationPreview(line.evidence!, "en", "Europe/London");
+  expect(preview?.date).toBe(formatCalendarDate(row.local_date, "en"));
+  expect(Object.fromEntries(new URL(preview!.href!, "http://localhost").searchParams)).toMatchObject(search);
+});
+
+it("binds a saved contribution to its published money window and field", () => {
+  const [line] = verifiedLines(fieldReply("period_performance", {snapshot_id:"saved-returns",scope:"isa",
+    data:{range:"1M",window_start:"2026-10-01",window_end:"2026-10-30",net_contributions_gbp:120}},
+  "/data/net_contributions_gbp"));
+  expect(line.text).toContain("£120.00");
+  const preview = citationPreview(line.evidence!, "en", "Europe/London");
+  expect(Object.fromEntries(new URL(preview!.href!, "http://localhost").searchParams)).toMatchObject({
+    view:"money", range:"1M", scope:"isa", moneyFrom:"2026-10-01", moneyTo:"2026-10-30",
+    snapshotId:"saved-returns", field:"/data/net_contributions_gbp",
+  });
 });

@@ -1,3 +1,4 @@
+import { captureCitation, previewCitation } from "./citation-preview";
 import historicalEvents from "../tests/fixtures/historical-events.json";
 import historicalDividend from "../tests/fixtures/historical-dividend.json";
 import AxeBuilder from "@axe-core/playwright";
@@ -7,6 +8,12 @@ import type { DashboardLens } from "../lib/types";
 import { backendFixture } from "../tests/loading/fixtures";
 import { ASSISTANT_NAME } from "../workspace/assistant-settings";
 import { formatCalendarDate } from "../ui/formatters";
+
+async function assistantShortcut(page: Page) {
+  const apple = await page.evaluate(() => /Macintosh|MacIntel|iPhone|iPad|iPod/i.test(navigator.userAgent));
+  await expect(page.locator("[data-assistant-trigger]")).toHaveAttribute("aria-keyshortcuts", apple ? "Meta+J" : "Control+J");
+  await page.keyboard.press(apple ? "Meta+j" : "Control+j");
+}
 
 function line(section: string, source: string, tool: string, zh: string, en: string) {
   return {section, zh, en, evidence: { source, tool, arguments: {range:"1W", ticker:"SYNT"}, evidenceId:"ev_example" }};
@@ -19,7 +26,10 @@ async function fixtures(page: Page, ready = true) {
     if (url.pathname.endsWith("/reading")) return route.fulfill({contentType:"application/x-ndjson", body:JSON.stringify({type:"result",reading:{
       role: url.pathname.includes("weekly") ? "weekly" : "daily", version:"synthetic", asOf:"2026-01-30T20:00:00Z",
       lines:[line("market","market","compare_benchmarks","组合与 VOO 同期回报接近。","The portfolio tracked VOO over the shared period."),
-        line("portfolio","account","period_performance","本期净盈亏 £18.40。","Period net P&L was £18.40."),
+        {...line("portfolio","account","period_performance","本期净盈亏 £18.40。","Period net P&L was £18.40."),
+          evidence:{source:"account",tool:"period_performance",evidenceId:"ev_brief",arguments:{
+            scope:"broker_total",date:"2026-01-30",range:"1D",metric:"period_pnl_gbp",
+            start:"2026-01-30",end:"2026-01-30",snapshotId:"synthetic-loading"}}},
         line("events","review","recent_decisions","本周有一笔 SYNT 买入记录。","One SYNT purchase was recorded this week."),
         {...line("next","calendar","upcoming_events","2026-02-03 · JP · 消费者价格","2026-02-03 · JP · Consumer prices"),
           evidence:{source:"calendar",tool:"upcoming_events",evidenceId:"ev_cal",arguments:{
@@ -65,7 +75,7 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   await fixtures(page);
   await page.goto("/");
   const digest = page.locator(".mx-digest");
-  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-digest-toggle").click();
   const question = digest.locator(".mx-reading-actions button").first();
   const wording = await question.innerText();
   if (info.project.name === "desktop") {
@@ -93,13 +103,15 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
   expect(body.messages).toHaveLength(1);
   await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
   expect(sends).toHaveLength(1);
-  const liveReply = page.locator("#mx-assistant-panel [aria-live=polite]");
+  const liveReply = page.locator("#mx-assistant-panel [data-assistant-announcement]");
   await expect(liveReply).toHaveCount(1);
   await expect(liveReply).toHaveText("回复已就绪。");
   const reply = page.locator(".mx-turn-assistant");
   await expect(reply).toContainText(formatCalendarDate("2026-11-12", "zh") + " – " + formatCalendarDate("2026-11-13", "zh"));
-  const moneyLink = page.locator(".mx-turn-assistant").getByRole("link", {name:"账户"});
-  await expect(moneyLink).toHaveAttribute("href", "/analytics?view=money&range=1D&moneyFrom=2026-11-12&moneyTo=2026-11-13&snapshotId=synthetic&evidence=period_performance");
+  const moneySource = page.locator(".mx-turn-assistant").getByRole("button", {name:/^账户 /});
+  const moneyLink = await previewCitation(page, moneySource);
+  await expect(moneyLink).toHaveAttribute("href", "/analytics?view=money&range=1D&moneyFrom=2026-11-12&moneyTo=2026-11-13&snapshotId=synthetic&evidence=period_performance&field=%2Fdata%2Fperiod_pnl_gbp");
+  await page.keyboard.press("Escape");
   await expect(reply).toContainText("覆盖不完整");
   expect(new URL(request.url()).searchParams.get("format")).toBe("references");
   await expect(page.locator(".mx-turn-assistant")).not.toContainText("{{");
@@ -113,9 +125,9 @@ test("explicit follow-up keeps its scope, conversation and draft", async ({ page
     await expect(input).toHaveValue("Draft retained");
     await expect(page.locator(".mx-assistant-scope")).toContainText("持仓");
   }
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await expect(input).toBeHidden();
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await expect(input).toHaveValue("Draft retained");
   await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
 });
@@ -132,16 +144,19 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
     await page.goto("/");
     await expect(page.locator("html")).toHaveAttribute("data-mantine-color-scheme", theme);
     const digest = page.locator(".mx-digest");
-    await expect(digest.locator("[aria-expanded]")).toHaveAttribute("aria-expanded","false");
+    await expect(digest.locator(".mx-digest-toggle")).toHaveAttribute("aria-expanded","false");
     await expect(digest.locator(".mx-digest-summary")).toContainText("£18.40");
-    await digest.locator("[aria-expanded]").click();
+    await digest.locator(".mx-digest-toggle").click();
     await expect(digest.locator(".mx-reading-line")).toHaveCount(4);
     const comingUp = digest.locator(".mx-digest-grid > div").last();
     await expect(comingUp).toContainText(language === "zh" ? /2026年2月4日.*08:30/ : /4 Feb 2026.*08:30/);
-    await expect(comingUp.getByRole("link")).toHaveText(language === "zh" ? ["日历", "财报", "披露"] : ["Calendar", "Financials", "Disclosure"]);
-    await expect(comingUp.getByRole("link").first()).toHaveAttribute("href","https://example.org/calendar");
+    const sources = comingUp.locator("button.mx-reading-source");
+    await expect(sources).toHaveText(language === "zh" ? [/^日历/, /^财报/, /^披露/] : [/^Calendar/, /^Financials/, /^Disclosure/]);
+    await expect(await previewCitation(page, sources.first())).toHaveAttribute("href","https://example.org/calendar");
+    await page.keyboard.press("Escape");
     const locale = language === "zh" ? "zh" : "en";
     await expect(comingUp).toContainText(formatCalendarDate("2026-02-04", locale) + " – " + formatCalendarDate("2026-02-06", locale));
+    await captureCitation(page, digest.locator("button.mx-reading-source").first(), ["overview",info.project.name,language,theme].join("-"));
     const shots = process.env.ASSISTANT_SCREENSHOTS;
     await digest.evaluate(el => el.scrollIntoView({block:"center",behavior:"instant"}));
     if (shots) await page.screenshot({path:join(shots, info.project.name+"-"+language+"-"+theme+"-brief.png")});
@@ -152,6 +167,12 @@ for (const language of ["zh", "en"]) for (const theme of ["light", "dark"] as co
     expect((await new AxeBuilder({page}).include("#mx-assistant-panel").analyze()).violations).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
     if (shots) await page.screenshot({path:join(shots, info.project.name+"-"+language+"-"+theme+"-sidebar.png")});
+    if (process.env.TM_CITATION_SHOTS) {
+      const composer = panel.locator("textarea");
+      await composer.fill(language === "zh" ? "这段时间的净盈亏是多少？" : "What was net P&L over this period?");
+      await composer.press("Enter");
+      await captureCitation(page, panel.locator(".mx-turn-assistant button.mx-reading-source"), ["sidebar",info.project.name,language,theme].join("-"));
+    }
   });
 }
 test("saved history loads and deletes a conversation", async ({page}) => {
@@ -173,6 +194,10 @@ test("saved history loads and deletes a conversation", async ({page}) => {
   await expect(page.locator(".mx-turn-user")).toHaveText("Historical question");
   await page.getByRole("button", {name:"历史对话"}).click();
   await page.getByRole("button", {name:"删除对话 · Synthetic prior turn"}).click();
+  const dialog = page.getByRole("alertdialog", {name:"删除对话"});
+  await expect(dialog).toContainText("Synthetic prior turn");
+  await expect(dialog.getByRole("button", {name:"取消", exact:true})).toBeFocused();
+  await dialog.getByRole("button", {name:"删除", exact:true}).click();
   await expect(page.locator("#mx-assistant-panel")).toContainText("暂无已保存的对话。");
   await page.getByRole("button", {name:"返回对话"}).click();
   await expect(page.locator(".mx-turn-user")).toHaveCount(0);
@@ -196,8 +221,8 @@ test("stopping a turn restores its question and evidence points to the selected 
   } finally { finish(); }
   await page.getByRole("button", {name:"关闭侧栏"}).click();
   const digest = page.locator(".mx-digest");
-  await digest.locator("[aria-expanded]").click();
-  await digest.getByRole("link", {name:"账户",exact:true}).click();
+  await digest.locator(".mx-digest-toggle").click();
+  await (await previewCitation(page, digest.getByRole("button", {name:/^账户 /}))).click();
   await expect(page).toHaveURL(/analytics.*evidence=period_performance/);
   await expect(page.locator("[data-assistant-evidence]")).toBeVisible();
 });
@@ -207,7 +232,7 @@ test("weekly follow-ups retain the reading context after navigation and stop", a
   await page.goto("/?scope=invest&range=3M");
   const digest = page.locator(".mx-digest");
   await digest.getByRole("button", {name:"周报",exact:true}).click();
-  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-digest-toggle").click();
   await digest.locator(".mx-reading-actions button").first().click();
   const input = page.locator(".mx-assistant-composer textarea");
   const draft = await input.inputValue();
@@ -248,7 +273,7 @@ test("stopping a second weekly turn after navigating keeps the reading context f
   await page.goto("/?scope=invest&range=3M");
   const digest = page.locator(".mx-digest");
   await digest.getByRole("button", {name:"周报", exact:true}).click();
-  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-digest-toggle").click();
   await digest.locator(".mx-reading-actions button").first().click();
   const input = page.locator(".mx-assistant-composer textarea");
   const weeklyContext = {role:"weekly", page:"overview", scope:"broker_total", range:"1W", snapshotId:"synthetic", object:{benchmark:"VOO"}};
@@ -338,7 +363,7 @@ test("an undated Holdings quote discloses its missing time in the sidebar and an
   await input.press("Enter");
   const expected = "SYN · ISA · Unit price £7.0000 · Time unavailable";
   await expect(page.locator(".mx-turn-assistant .mx-reading-line").first()).toContainText(expected);
-  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("Response ready.");
+  await expect(page.locator("#mx-assistant-panel [data-assistant-announcement]")).toHaveText("Response ready.");
   if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name + "-undated-quote.png")});
 });
 
@@ -355,7 +380,7 @@ test("uncited or invented chat evidence stays out of the transcript and announce
   await expect(turn).toHaveAttribute("data-turn-status", "failed");
   await expect(turn.getByText(notice, { exact: true })).toBeVisible();
   await expect(turn.getByRole("button", { name: "Retry", exact: true })).toBeEnabled();
-  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText(notice);
+  await expect(page.locator("#mx-assistant-panel [data-assistant-announcement]")).toHaveText(notice);
   await expect(page.locator("#mx-assistant-panel")).not.toContainText("Invented fact");
 });
 
@@ -425,7 +450,7 @@ test("neither chat nor its live region repeats a false amount with a genuine cit
   await page.locator(".mx-assistant-questions button").first().click();
   await expect(page.locator(".mx-turn-assistant")).toContainText("无法核实");
   await expect(page.locator("#mx-assistant-panel")).not.toContainText("9,999,999");
-  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("无法核实这次回复。");
+  await expect(page.locator("#mx-assistant-panel [data-assistant-announcement]")).toHaveText("无法核实这次回复。");
   if (info.project.name === "desktop" && process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,"false-figure-withheld.png")});
 });
 
@@ -454,7 +479,7 @@ for (const locale of ["zh", "en"] as const) {
     const rows = page.locator(".mx-turn-assistant .mx-reading-line");
     await expect(rows.nth(0)).toContainText(locale === "zh" ? "技术指标 · 已过时" : "Technical data · Stale");
     await expect(rows.nth(1)).toContainText(locale === "zh" ? "业绩数据 · 缺失" : "Earnings data · Missing");
-    await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText(locale === "zh" ? "回复已就绪。" : "Response ready.");
+    await expect(page.locator("#mx-assistant-panel [data-assistant-announcement]")).toHaveText(locale === "zh" ? "回复已就绪。" : "Response ready.");
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS, info.project.name+"-"+locale+"-freshness.png")});
   });
 }
@@ -486,7 +511,8 @@ test("a saved benchmark citation reopens its portfolio and prices and discloses 
   await page.getByRole("button",{name:"Conversation history"}).click();
   await page.getByRole("button",{name:"Saved benchmark",exact:true}).click();
   await expect(page.locator(".mx-turn-assistant")).toContainText("2.00%");
-  await page.locator(".mx-turn-assistant").getByRole("link",{name:"Market"}).click();
+  await (await previewCitation(page, page.locator(".mx-turn-assistant").getByRole("button",{name:/^Market /}))).click();
+  await expect(page.locator(".mx-performance-chart h2").first()).toBeFocused();
   const result = page.locator(".mx-return-reading");
   await expect(result).toContainText("+2.00%");
   await expect(result).toContainText("+1.00%");
@@ -509,8 +535,8 @@ test("earnings citations reopen the exact retained row and disclose expiry", asy
       kind:"earnings",evidence_id:"ev_window",ticker:"SYNT",date:"2026-02-04",end_date:"2026-02-06",title_en:"Estimated earnings",publisher:"Fixture",
     }}));
   await page.goto("/");
-  await page.locator(".mx-digest [aria-expanded]").click();
-  const link = page.locator(".mx-digest").getByRole("link",{name:"Financials",exact:true}).first();
+  await page.locator(".mx-digest-toggle").click();
+  const link = await previewCitation(page, page.locator(".mx-digest").getByRole("button",{name:/^Financials /}).first());
   await expect(link).toHaveAttribute("href", /snapshotId=saved/);
   await link.click();
   const target = page.locator("[data-reading-event]");
@@ -596,7 +622,7 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
   await page.goto("/");
   const digest = page.locator(".mx-digest");
   await digest.getByRole("button",{name:"Weekly"}).click();
-  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-digest-toggle").click();
   await expect(digest).toContainText(/4 Feb 2026.*08:30/);
   const shots = process.env.ASSISTANT_SCREENSHOTS;
   if (shots) {
@@ -611,8 +637,10 @@ test("a calendar follow-up cites its Tokyo release and the published earnings ro
   const reply = page.locator(".mx-turn-assistant");
   await expect(reply).toContainText(/Consumer prices \(cancelled\).*4 Feb 2026.*08:30/);
   await expect(reply).toContainText("GDP (provisional) · 2026-03 – 2026-04");
-  await expect(reply.getByRole("link",{name:"Calendar"}).first()).toHaveAttribute("href","https://example.org/calendar");
-  await expect(reply.getByRole("link",{name:"Financials"})).toHaveAttribute("href",/snapshotId=saved.*calendarEventId=ev_report/);
+  await expect(await previewCitation(page, reply.getByRole("button",{name:/^Calendar /}).first())).toHaveAttribute("href","https://example.org/calendar");
+  await page.keyboard.press("Escape");
+  await expect(await previewCitation(page, reply.getByRole("button",{name:/^Financials /}))).toHaveAttribute("href",/snapshotId=saved.*calendarEventId=ev_report/);
+  await page.keyboard.press("Escape");
   if (shots) await page.screenshot({path:join(shots,info.project.name+"-calendar-followup.png")});
 });
 
@@ -691,14 +719,20 @@ test("cross-tab withdrawal suspends cached readings and History while the profil
     await expect(close).toBeFocused();
     const modal = await panel.getAttribute("role") === "dialog";
     await page.keyboard.press("Tab");
+    const skip = page.getByRole("link", {name:"Skip to content"});
     if (modal) await expect(close).toBeFocused();
-    else await expect(panel.locator(":focus")).toHaveCount(0);
-    const focused = await page.evaluateHandle(() => document.activeElement);
+    else {
+      await expect(panel.locator(":focus")).toHaveCount(0);
+      // The final dock control can tab into browser chrome before cycling.
+      // Explicitly focus an unrelated workspace control for the recovery check.
+      await skip.focus();
+      await expect(skip).toBeFocused();
+    }
     expect(assistantRequests).toEqual([]);
 
     releaseProfile();
     await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
-    await expect.poll(() => focused.evaluate(element => document.activeElement === element)).toBe(true);
+    await expect(modal ? close : skip).toBeFocused();
     await expect(digest).toHaveCount(0);
     await expect(panel.getByText("Saved weekly follow-up")).toHaveCount(0);
     expect(assistantRequests).toEqual([]);
@@ -776,10 +810,11 @@ for (const recovery of ["automatic retry", "focus after retry exhaustion"] as co
     expect(requests).toEqual([]);
     if (recovery === "focus after retry exhaustion") {
       profiles[2](503);
-      await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+      const retry = panel.getByRole("button", {name:"Retry", exact:true});
+      await expect(retry).toBeVisible();
       await expect(draft).toBeHidden();
       await form.evaluate(form => (form as HTMLFormElement).requestSubmit());
-      await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+      await retry.click();
       await expect.poll(() => profiles.length).toBe(4);
       expect(requests).toEqual([]);
       profiles[3](200);
@@ -833,13 +868,17 @@ for (const transition of ["reopening", "delayed overlay activation"] as const) {
     await page.locator("[data-assistant-trigger]").click();
     const panel = page.locator("#mx-assistant-panel");
     const draft = panel.getByRole("textbox", {name:"Message"});
+    if (info.project.name === "mobile" && transition === "reopening") {
+      await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+      await draft.focus();
+    }
     await expect(draft).toBeFocused();
     await page.keyboard.type("First");
     await expect(draft).toHaveValue("First");
     if (transition === "reopening") {
       await panel.getByRole("button", {name:"Close sidebar"}).click();
       await expect(page.locator("[data-assistant-trigger]")).toBeFocused();
-      await page.keyboard.press("Control+j");
+      await assistantShortcut(page);
       await expect(draft).toBeVisible();
     } else {
       // Activate the modal keyboard boundary after the composer has received real keystrokes.
@@ -852,6 +891,8 @@ for (const transition of ["reopening", "delayed overlay activation"] as const) {
     const shots = process.env.ASSISTANT_SCREENSHOTS;
     if (shots) await page.screenshot({path:join(shots, info.project.name + "-" + transition.replaceAll(" ", "-") + ".png")});
     if (transition === "delayed overlay activation") {
+      await page.keyboard.press("Tab");
+      await expect(panel.getByRole("button", {name:"Holdings", exact:true})).toBeFocused();
       await page.keyboard.press("Tab");
       await expect(panel.getByRole("button", {name:"Send"})).toBeFocused();
       await page.keyboard.press("Tab");
@@ -871,6 +912,7 @@ test("a passive readiness response preserves every keystroke during typing", asy
   const panel = page.locator("#mx-assistant-panel");
   const draft = panel.getByRole("textbox", {name:"Message"});
   const send = panel.getByRole("button", {name:"Send"});
+  await draft.focus();
   await expect(draft).toBeFocused();
   await page.keyboard.type("Continue");
   await expect(draft).toHaveValue("Continue");
@@ -970,7 +1012,7 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
       await route.fulfill({json:{ready,code:ready ? null : "assistant_disabled"}});
     });
     await page.clock.setFixedTime(new Date("2026-03-01T12:00:31Z"));
-    if (shortcut) await page.keyboard.press(outcome);
+    if (shortcut) await assistantShortcut(page);
     else if (outcome === "reopened draft") await page.locator("[data-assistant-trigger]").click();
     else if (outcome === "changed settings") await page.evaluate(() => window.dispatchEvent(
       new StorageEvent("storage",{key:"trading_max-assistant-settings-revision",newValue:"2"})));
@@ -1008,8 +1050,12 @@ for (const outcome of ["draft", "history button", "reopened draft", "Control+j",
       if (shots) await page.screenshot({path:join(shots,info.project.name + "-withdrawn-focus.png")});
     } else {
       await expect(panel.getByText("Checking connection…")).toBeHidden();
-      await expect(control).toBeFocused();
       await expect(draft).toHaveValue("Keep this draft");
+      if (info.project.name === "mobile" && outcome === "reopened draft") {
+        await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+        await draft.focus();
+      }
+      await expect(control).toBeFocused();
       if (shots && outcome === "draft") await page.screenshot({path:join(shots,info.project.name + "-restored-focus.png")});
       await page.keyboard.press("Tab");
       await expect(panel.locator(":focus")).toHaveCount(1);
@@ -1039,7 +1085,7 @@ test("a historical dividend in chat reopens its published amount and basis", asy
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   await page.locator(".mx-assistant-questions button").first().click();
-  const disclosure = page.locator(".mx-turn-assistant").getByRole("link", {name:"Disclosure"});
+  const disclosure = await previewCitation(page, page.locator(".mx-turn-assistant").getByRole("button", {name:/^Disclosure /}));
   await disclosure.click({timeout:3000});
   const target = page.locator("[data-reading-event]");
   await expect(target).toContainText("USD 0.375 per share");
@@ -1090,7 +1136,7 @@ test("mixed historical event replies retain their published dates and citations"
       const line = reply.locator(".mx-reading-line").nth(i);
       await expect(line).toContainText(row.title_en);
       await expect(line).toContainText(formatCalendarDate(row.date, "en"));
-      const link = line.getByRole("link");
+      const link = await previewCitation(page, line.locator("button.mx-reading-source"));
       if (kind === "news" || kind === "filing" || kind === "rating_change") {
         await expect(link).toHaveAttribute("href", row.source_url!);
       } else if (kind === "own_trade") {
@@ -1100,6 +1146,7 @@ test("mixed historical event replies retain their published dates and citations"
         expect(Object.fromEntries(args)).toMatchObject({snapshotId:historicalEvents.snapshot_id,
           calendarEventId:row.evidence_id, event:kind === "ex_dividend" ? "exDividend" : kind, ticker:row.ticker});
       }
+      await page.keyboard.press("Escape");
     }
     if (process.env.ASSISTANT_SCREENSHOTS) await page.screenshot({path:join(process.env.ASSISTANT_SCREENSHOTS,info.project.name+"-historical-dates-"+index+".png")});
   }
@@ -1113,6 +1160,7 @@ async function openDraftBeforeStatusCheck(page: Page) {
   await page.locator("[data-assistant-trigger]").click();
   const panel = page.locator("#mx-assistant-panel");
   const draft = panel.getByRole("textbox", {name:"Message"});
+  await draft.focus();
   await expect(draft).toBeFocused();
   await page.keyboard.type("Continue");
   await expect(draft).toHaveValue("Continue");
@@ -1147,7 +1195,8 @@ for (const failure of [503, "network error", "provider_not_configured"] as const
   await page.keyboard.type("s through recovery");
   await expect(draft).toHaveValue("Continues through recovery");
   fail(failure);
-  await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+  await expect(failure === "provider_not_configured" ? panel.getByRole("link", {name:"Open Settings"})
+    : panel.getByRole("button", {name:"Retry", exact:true})).toBeVisible();
   await expect(draft).toBeHidden();
   if (failure === "provider_not_configured") await expect(panel.getByText("Check the model connection in Settings.")).toBeVisible();
   const retry = await holdPassiveStatus(page, "2026-03-01T12:01:02Z");
@@ -1170,7 +1219,7 @@ test("a status failure after profile confirmation retains the hidden draft", asy
     key:"trading_max-assistant-settings-revision", newValue:"2",
   })));
   await failed;
-  await expect(panel.getByRole("link", {name:"Open Settings"})).toBeVisible();
+  await expect(panel.getByRole("button", {name:"Retry", exact:true})).toBeVisible();
   await expect(draft).toBeHidden();
   const retry = await holdPassiveStatus(page);
   await expect(draft).toBeHidden();
@@ -1221,13 +1270,19 @@ test("a Broker citation opens the retained decision and reports expiry", async (
   await page.goto("/");
   await page.locator("[data-assistant-trigger]").click();
   const draft = page.getByRole("textbox", {name:"Message"});
-  await expect(draft).toBeFocused();
+  await draft.focus();
   await page.keyboard.type("When was the purchase?");
   await page.getByRole("button", {name:"Send"}).click();
-  await page.locator(".mx-turn-assistant").getByRole("link", {name:"Broker"}).click();
+  const source = page.locator(".mx-turn-assistant").getByRole("button", {name:/^Broker /});
+  await (await previewCitation(page, source)).click();
   await expect(page).toHaveURL(url => url.pathname === "/review" && url.searchParams.get("snapshotId") === snapshot);
   await expect.poll(() => requests[0]).toBe(snapshot);
   await expect(page.locator(".mx-decision-focus")).toContainText("Original synthetic fill");
+  const decision = page.locator(".mx-decision-focus .mx-row-link");
+  await expect(decision).toBeFocused();
+  if (!await source.isVisible()) await page.locator("[data-assistant-trigger]").click();
+  await (await previewCitation(page, source)).click();
+  await expect(decision).toBeFocused();
   if (!await page.locator(".mx-assistant-scope").isVisible()) await page.locator("[data-assistant-trigger]").click();
   await expect(page.locator(".mx-assistant-scope")).toContainText("Trade decision");
   await page.route("**/api/backend/assistant/chat*", route =>
@@ -1278,14 +1333,14 @@ for (const [zone, localDay] of [
     await draft.press("Enter");
     const reply = page.locator(".mx-turn-assistant");
     await expect(reply).toContainText(formatCalendarDate(localDay, "en"));
-    await reply.getByRole("link", {name:"Broker"}).first().click();
+    await (await previewCitation(page, reply.getByRole("button", {name:/^Broker /}).first())).click();
     const decision = page.locator(".mx-decision-focus");
     await expect(decision).toContainText("£125");
     await expect(decision).toContainText("Original synthetic fill");
   });
 }
 
-test("first approval focuses the lazy composer after the opening consent check", async ({page}, info) => {
+test("first approval focuses MaxAI after the opening consent check", async ({page}, info) => {
   if (info.project.name === "mobile") await page.setViewportSize({width:390,height:844});
   await fixtures(page);
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
@@ -1295,7 +1350,7 @@ test("first approval focuses the lazy composer after the opening consent check",
     await route.fulfill({json:{ready:true,code:null}});
   });
   await page.goto("/");
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   const panel = page.locator("#mx-assistant-panel");
   try { await expect(panel.getByRole("button", {name:"Close sidebar"})).toBeFocused(); }
   finally { approve(); }
@@ -1323,7 +1378,7 @@ test("handoff scope pill and past user turns keep their resolved context", async
   await page.goto("/?scope=isa&range=1M");
   const digest = page.locator(".mx-digest");
   await expect(digest).toContainText("全部投资账户");
-  await digest.locator("[aria-expanded]").click();
+  await digest.locator(".mx-digest-toggle").click();
   await digest.locator(".mx-reading-actions button").first().click();
 
   const scopePill = page.locator(".mx-assistant-scope");
@@ -1452,7 +1507,7 @@ test("opening an ISA holding from all accounts sends that row's scope and ticker
   await page.goto("/holdings");
   await page.getByRole("button", {name:/Synthetic ISA position/}).click();
   await expect(page.locator(".mx-position-drawer")).toBeVisible();
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await expect(page.locator(".mx-assistant-scope")).toHaveText("持仓与穿透 · SYNT · ISA");
   const composer = page.locator(".mx-assistant-composer textarea");
   await composer.fill("What do I hold here?");
@@ -1461,9 +1516,9 @@ test("opening an ISA holding from all accounts sends that row's scope and ticker
   expect((await submitted).postDataJSON().context).toMatchObject({
     page:"holdings", ticker:"SYNT", scope:"isa", snapshotId:"synthetic-loading",
   });
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await page.getByRole("button", {name:"关闭持仓明细", exact:true}).click();
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await expect(page.locator(".mx-assistant-scope")).toHaveText("持仓与穿透 · 全部投资账户");
 });
 
@@ -1520,9 +1575,9 @@ test("look-through chat keeps the open drawer publication and follows later sele
   });
   await page.goto("/holdings?view=lookthrough");
   const composer = page.locator(".mx-assistant-composer textarea");
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await expect(composer).toBeVisible();
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await expect(composer).toBeHidden();
   await page.locator(".mx-table-button", {hasText:"Original exposure"}).click();
   await expect(page.getByRole("dialog")).toContainText("Original exposure");
@@ -1531,7 +1586,7 @@ test("look-through chat keeps the open drawer publication and follows later sele
   await page.evaluate(() => document.dispatchEvent(new Event("visibilitychange")));
   await expect(page.locator(".mx-table-button", {hasText:"Updated exposure"})).toHaveCount(1);
   await expect(page.getByRole("dialog")).toContainText("Original exposure");
-  await page.keyboard.press("Control+j");
+  await assistantShortcut(page);
   await expect(page.locator(".mx-assistant-scope")).toContainText("敞口 · SYNT");
   const sheetBox = (await page.getByRole("dialog").boundingBox())!;
   const assistantBox = (await page.locator("#mx-assistant-panel").boundingBox())!;
@@ -1591,7 +1646,7 @@ test("Markets keeps market context for an open sector on fresh and stale boards"
     await page.goto("/sectors?market=global&view=sectors&sector=45");
     await expect(page.locator(".mx-sector-detail")).toBeVisible();
     if (isMobile && !isStale) await expect(page.locator(".mx-reading-sheet")).toBeVisible();
-    await page.keyboard.press("Control+j");
+    await assistantShortcut(page);
     if (!isStale) await expect(page.locator(".mx-assistant-opening .mx-reading-line")).toContainText("板块上涨 1.2%。");
     const composer = page.locator(".mx-assistant-composer textarea");
     await composer.fill("How is this market doing?");
@@ -1672,7 +1727,7 @@ test("current-data recovery keeps expired observations on the original turn", as
   await expect(turn.getByText("原始数据已不可用。", {exact:true})).toBeVisible();
   await expect(turn).toContainText("£88.88");
   await expect(turn.locator(".mx-assistant-turn-actions button")).toHaveCount(1);
-  await turn.getByRole("button", {name:"使用当前数据重新提问", exact:true}).click();
+  await turn.getByRole("button", {name:"按当前数据重试", exact:true}).click();
   await expect(turns).toHaveCount(2);
   const current = turns.nth(1);
   await expect(current).toHaveAttribute("data-turn-status", "failed");
@@ -1750,14 +1805,14 @@ test("stop keeps a typed draft, preserves verified content, ignores late events 
   await expect(turn).toContainText("本期净盈亏 £21.50");
   await expect(turn).not.toContainText("LATE_STREAM_CHUNK");
   await expect(turn).not.toContainText("partial-token");
-  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("已停止生成。");
+  await expect(page.locator("#mx-assistant-panel [data-assistant-announcement]")).toHaveText("已停止生成。");
 
   await turn.getByRole("button", {name:"重试", exact:true}).click();
   await expect(turn).toHaveAttribute("data-turn-status", "rate_limited");
   await expect(turn).toContainText("服务繁忙，稍后重试。");
   await expect(turn).toContainText("本期净盈亏 £21.50");
   await expect(input).toHaveValue("下一条草稿不要被覆盖");
-  await expect(page.locator("#mx-assistant-panel [aria-live=polite]")).toHaveText("服务繁忙，稍后重试。");
+  await expect(page.locator("#mx-assistant-panel [data-assistant-announcement]")).toHaveText("服务繁忙，稍后重试。");
 
   await turn.getByRole("button", {name:"重试", exact:true}).click();
   await expect(turn).toHaveAttribute("data-turn-status", "disconnected");
@@ -1797,8 +1852,16 @@ test("visible step labels stream live and collapse into the work disclosure", as
   await expect(page.locator("#mx-assistant-panel")).not.toContainText("portfolio_overview");
 
   await push([
-    {type:"tool-output-available", toolCallId:"s1", output:{evidence_id:"ev_ov", status:"ok", data:{total_value_gbp:1200}}},
+    {type:"tool-output-available", toolCallId:"s1", output:{evidence_id:"ev_ov", status:"ok",
+      data:{total_value_gbp:1200}, bound_arguments:{scope:"broker_total",range:"1M",date:"2026-11-13"}}},
     {type:"tool-input-available", toolCallId:"s2", toolName:"period_performance", input:{}},
+  ]);
+  const completedStep = liveWork.locator("[data-step-status=complete]");
+  await expect(completedStep.locator("small")).toContainText("1M · 11月13日 · 全部投资账户");
+  await expect(completedStep.locator(".mx-assistant-step-status")).toHaveText(/已完成 · [\d.]+ 秒/);
+  await expect(liveWork.locator("[data-step-status=running]")).toContainText("核对区间收益");
+
+  await push([
     {type:"tool-output-available", toolCallId:"s2", output:{evidence_id:"ev_pp", status:"ok",
       data:{period_pnl_gbp:21.5, window_start:"2026-11-12", window_end:"2026-11-13"}}},
     {type:"tool-input-available", toolCallId:"s3", toolName:"compare_benchmarks", input:{}},
@@ -1820,7 +1883,7 @@ test("visible step labels stream live and collapse into the work disclosure", as
   const disclosure = page.locator(".mx-turn-assistant details.mx-assistant-steps");
   await expect(disclosure).toBeVisible();
   await expect(disclosure).not.toHaveAttribute("open", "");
-  await expect(disclosure.locator("summary")).toHaveText("工作过程");
+  await expect(disclosure.locator("summary")).toContainText("工作过程");
   await expect(page.locator(".mx-turn-assistant")).toContainText("本期净盈亏 £21.50");
 
   await disclosure.locator("summary").click();
@@ -1835,3 +1898,486 @@ test("visible step labels stream live and collapse into the work disclosure", as
   await expect(page.locator("#mx-assistant-panel")).not.toContainText("period_pnl_gbp");
   expect((await new AxeBuilder({page}).include("#mx-assistant-panel").analyze()).violations).toEqual([]);
 });
+
+test("new conversations preserve each draft in history", async ({page}) => {
+  await fixtures(page);
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  await composer.fill("First local draft");
+  await panel.getByRole("button", {name:"新对话"}).click();
+  await expect(composer).toHaveValue("");
+  await composer.fill("Second local draft");
+  await panel.getByRole("button", {name:"历史对话"}).click();
+  await panel.getByRole("button", {name:"First local draft", exact:true}).click();
+  await expect(composer).toHaveValue("First local draft");
+  await panel.getByRole("button", {name:"历史对话"}).click();
+  await panel.getByRole("button", {name:"Second local draft", exact:true}).click();
+  await expect(composer).toHaveValue("Second local draft");
+});
+
+test("editing a question retains the old branch and its publication", async ({page}) => {
+  await fixtures(page);
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  await composer.fill("First version");
+  const first = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  const original = (await first).postDataJSON();
+  await expect(panel.locator(".mx-turn-assistant")).toHaveAttribute("data-turn-status", "completed");
+  await panel.getByRole("button", {name:"编辑问题", exact:true}).focus();
+  await page.keyboard.press("Enter");
+  await expect(composer).toHaveValue("First version");
+  await composer.fill("Second version");
+  const second = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  const edited = (await second).postDataJSON();
+  expect(edited.messages[0].id).toBe(original.messages[0].id);
+  expect(edited.context).toEqual(original.context);
+  await expect(panel.getByRole("group", {name:"回复分支"})).toContainText("2/2");
+  await panel.getByRole("button", {name:"上一分支"}).click();
+  await expect(panel.locator(".mx-assistant-user-bubble")).toContainText("First version");
+  await panel.getByRole("button", {name:"下一分支"}).click();
+  await expect(panel.locator(".mx-assistant-user-bubble")).toContainText("Second version");
+});
+
+test("the platform shortcut leaves active search in control", async ({page}) => {
+  await fixtures(page);
+  await page.goto("/");
+  const trigger = page.locator("[data-assistant-trigger]");
+  const search = page.locator("[data-search-trigger]:visible");
+  await search.click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await assistantShortcut(page);
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+  // Escape starts the dismissal; send the shortcut only once Search reports that it has closed.
+  await expect(search).toHaveAttribute("aria-expanded", "false");
+  await assistantShortcut(page);
+  await expect(trigger).toHaveAttribute("aria-expanded", "true");
+});
+
+test("a requested tool approval resumes the same bound turn", async ({page}) => {
+  await fixtures(page);
+  let continuation: unknown;
+  await page.route("**/api/backend/assistant/chat*", route => {
+    const body = route.request().postDataJSON();
+    const approving = body.messages[0].role === "assistant";
+    if (approving) continuation = body;
+    const chunks = approving ? [
+      {type:"start",messageId:"gate"}, {type:"start-step"},
+      {type:"tool-output-available",toolCallId:"gated-call",output:{status:"ok",evidence_id:"ev_gate",
+        data:{period_pnl_gbp:21.50, window_start:"2026-11-12", window_end:"2026-11-13"}}},
+      {type:"text-start",id:"gate-answer"},
+      {type:"text-delta",id:"gate-answer",delta:"{{/data/period_pnl_gbp}} [ev_gate]\n{{cash-flows}} [inference]"},
+      {type:"text-end",id:"gate-answer"}, {type:"finish-step"}, {type:"finish",finishReason:"stop"},
+    ] : [
+      {type:"start",messageId:"gate"}, {type:"start-step"},
+      {type:"tool-input-available",toolCallId:"gated-call",toolName:"period_performance",input:{}},
+      {type:"tool-approval-request",toolCallId:"gated-call",approvalId:"synthetic-approval"},
+      {type:"finish-step"}, {type:"finish",finishReason:"tool-calls"},
+    ];
+    return route.fulfill({
+      headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1",
+        ...(approving ? {} : {"x-assistant-snapshot-id":"bound-approval-batch"})},
+      body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n",
+    });
+  });
+  await page.goto("/analytics?scope=isa");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  await composer.fill("核对区间收益");
+  await composer.press("Enter");
+  await panel.getByRole("button", {name:"确认",exact:true}).click();
+  await expect(panel.locator(".mx-turn-assistant")).toHaveAttribute("data-turn-status","completed");
+  await expect(panel.locator(".mx-turn-assistant")).toContainText("£21.50");
+  expect(continuation).toMatchObject({context:{page:"analytics",scope:"isa",snapshotId:"bound-approval-batch"},messages:[{
+    role:"assistant",parts:expect.arrayContaining([expect.objectContaining({
+      state:"approval-responded",approval:{id:"synthetic-approval",approved:true},
+    })]),
+  }]});
+});
+
+test("closing MaxAI dismisses the holdings picker without changing the draft", async ({page}) => {
+  await fixtures(page);
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  await composer.fill("Keep this draft");
+  await panel.getByRole("button", {name:"持仓",exact:true}).click();
+  const picker = page.locator(".mx-assistant-holdings-popover");
+  await expect(picker).toBeVisible();
+  await assistantShortcut(page);
+  await expect(picker).toBeHidden();
+  await assistantShortcut(page);
+  await expect(composer).toHaveValue("Keep this draft");
+  await expect(picker).toBeHidden();
+});
+
+test("retrying an older failed question preserves the later verified answer and original batch", async ({page}) => {
+  await fixtures(page);
+  const contexts: Array<Record<string, unknown>> = [];
+  await page.route("**/api/backend/assistant/chat*", route => {
+    const {context} = route.request().postDataJSON();
+    contexts.push(context);
+    const chunks = contexts.length === 1 ? [
+      {type:"start", messageId:"failed-old"}, {type:"error", errorText:"provider_rate_limited"},
+    ] : [
+      {type:"start", messageId:"attempt-" + contexts.length}, {type:"start-step"},
+      {type:"tool-input-available", toolCallId:"p", toolName:"period_performance", input:{}},
+      {type:"tool-output-available", toolCallId:"p", output:{status:"ok", evidence_id:"ev_period",
+        data:{period_pnl_gbp:contexts.length === 2 ? 21.5 : 44.5, window_start:"2026-11-12", window_end:"2026-11-13"}}},
+      {type:"text-start", id:"t"}, {type:"text-delta", id:"t", delta:"{{/data/period_pnl_gbp}} [ev_period]\n{{cash-flows}} [inference]"},
+      {type:"text-end", id:"t"}, {type:"finish-step"}, {type:"finish", finishReason:"stop"},
+    ];
+    return route.fulfill({
+      headers:{"content-type":"text/event-stream", "x-vercel-ai-ui-message-stream":"v1",
+        "x-assistant-snapshot-id":contexts.length === 2 ? "newer-batch" : "original-batch"},
+      body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n",
+    });
+  });
+  await page.goto("/analytics?scope=isa&range=3M");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  await composer.fill("Old scope question");
+  await composer.press("Enter");
+  const answers = panel.locator(".mx-turn-assistant");
+  await expect(answers.first()).toHaveAttribute("data-turn-status","rate_limited");
+  await composer.fill("Later verified question");
+  await composer.press("Enter");
+  await expect(answers.nth(1)).toContainText("£21.50");
+  await answers.first().getByRole("button", {name:"重试", exact:true}).click();
+  await expect(panel.locator(".mx-assistant-user-bubble")).toHaveText([
+    "Old scope question", "Later verified question", "Old scope question",
+  ]);
+  await expect(answers.nth(1)).toContainText("£21.50");
+  await expect(answers.nth(2)).toContainText("£44.50");
+  expect(contexts[2]).toEqual({...contexts[0], snapshotId:"original-batch"});
+});
+
+test("text-end alone never publishes figures before final verification", async ({page}) => {
+  await fixtures(page);
+  const push = await holdNextChatStream(page);
+  await page.goto("/analytics?scope=isa");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  await composer.fill("Independently verified figures only");
+  await composer.press("Enter");
+  await push([
+    {type:"start", messageId:"unverified-mixed"}, {type:"start-step"},
+    {type:"tool-input-available", toolCallId:"p", toolName:"period_performance", input:{}},
+    {type:"tool-output-available", toolCallId:"p", output:{status:"ok", evidence_id:"ev_period",
+      data:{period_pnl_gbp:21.5, window_start:"2026-11-12", window_end:"2026-11-13"}}},
+    {type:"text-start", id:"t"}, {type:"text-delta", id:"t", delta:"{{/data/period_pnl_gbp}} [ev_period]\nUnverified extra line"},
+    {type:"text-end", id:"t"},
+    {type:"tool-input-available", toolCallId:"b", toolName:"compare_benchmarks", input:{}},
+  ]);
+  await expect(panel.locator(".mx-assistant-work")).toContainText("对比基准");
+  await expect(panel.getByRole("button", {name:"停止", exact:true})).toBeVisible();
+  await expect(panel.locator(".mx-turn-assistant")).not.toContainText("£21.50");
+  await push([{type:"finish-step"}, {type:"finish", finishReason:"stop"}], true);
+  await expect(panel.locator(".mx-turn-assistant")).toHaveAttribute("data-turn-status","failed");
+  await expect(panel.locator(".mx-turn-assistant")).not.toContainText("£21.50");
+});
+
+test("deleting a retained conversation uses its ID even if history is unavailable", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({status:503, json:{}}));
+  const erased: string[] = [];
+  await page.route("**/api/backend/assistant/conversations/*", route => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    erased.push(new URL(route.request().url()).pathname.split("/").at(-1)!);
+    return route.fulfill({status:erased.length === 1 ? 503 : 404, json:{}});
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  const composer = panel.getByRole("textbox", {name:"消息"});
+  await composer.fill("Retained question");
+  const sent = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
+  await composer.press("Enter");
+  const {id} = (await sent).postDataJSON();
+  await expect(panel.locator(".mx-turn-assistant")).toContainText("£21.50");
+  await composer.fill("Retained draft");
+  await panel.getByRole("button", {name:"历史对话"}).click();
+  await expect(panel.getByRole("alert")).toContainText("无法读取历史对话");
+  const deleteButton = panel.getByRole("button", {name:"删除对话 · Retained draft"});
+  await deleteButton.click();
+  const dialog = page.getByRole("alertdialog", {name:"删除对话"});
+  await dialog.getByRole("button", {name:"删除", exact:true}).click();
+  await expect(dialog.getByRole("alert")).toContainText("无法删除这段对话");
+  expect(erased).toEqual([id]);
+  await dialog.getByRole("button", {name:"取消", exact:true}).click();
+  await deleteButton.click();
+  await dialog.getByRole("button", {name:"删除", exact:true}).click();
+  await expect(dialog).toBeHidden();
+  await expect(deleteButton).toHaveCount(0);
+  expect(erased).toEqual([id, id]);
+});
+
+for (const savedContext of [true, false]) {
+  test("a restored tool approval expires visibly with " + (savedContext ? "saved context" : "no saved context"), async ({page}) => {
+    await fixtures(page);
+    await page.route("**/api/backend/assistant/conversations", route => route.fulfill({
+      json:[{id:"pending-saved", title:"Saved pending approval"}],
+    }));
+    await page.route("**/api/backend/assistant/conversations/pending-saved", route => route.fulfill({json:{
+      id:"pending-saved",
+      messages:[
+        {id:"pending-u", role:"user",
+          ...(savedContext && {metadata:{turnContext:{page:"analytics", scope:"isa", range:"3M"}}}),
+          parts:[{type:"text", text:"Saved tool question"}]},
+        {id:"pending-a", role:"assistant", parts:[{type:"tool-period_performance", toolCallId:"pending-p",
+          state:"approval-requested", input:{}, approval:{id:"saved-approval"}}]},
+      ],
+    }}));
+    await page.goto("/analytics?scope=invest&range=1M");
+    await page.locator("[data-assistant-trigger]").click();
+    const panel = page.locator("#mx-assistant-panel");
+    await panel.getByRole("button", {name:"历史对话"}).click();
+    await panel.getByRole("button", {name:"Saved pending approval", exact:true}).click();
+    await expect(panel.locator(".mx-turn-assistant")).toContainText("工具确认已过期");
+    await expect(panel.getByRole("button", {name:"确认", exact:true})).toHaveCount(0);
+    const turns = panel.locator(".mx-turn-user");
+    const oldChip = turns.first().locator(".mx-assistant-turn-context");
+    if (savedContext) await expect(oldChip).toHaveText("收益与风险 · ISA · 3M");
+    else await expect(oldChip).toHaveCount(0);
+    const sent = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
+    await panel.getByRole("button", {name:"按当前数据重试", exact:true}).click();
+    const body = (await sent).postDataJSON();
+    expect(body.context).toMatchObject({page:"analytics", scope:savedContext ? "isa" : "invest", range:savedContext ? "3M" : "1M"});
+    expect(body.context.snapshotId).toBeUndefined();
+    expect(body.messages[0]).toMatchObject({role:"user", parts:[{type:"text", text:"Saved tool question"}]});
+    await expect(turns).toHaveCount(2);
+    await expect(turns.last().locator(".mx-assistant-turn-context")).toHaveText(
+      savedContext ? "收益与风险 · ISA · 3M" : "收益与风险 · 投资账户 · 1M",
+    );
+  });
+}
+
+test("a restored tool approval resumes with its saved context and batch", async ({page}) => {
+  await fixtures(page);
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({
+    json:[{id:"bound-saved", title:"Saved approval with batch"}],
+  }));
+  await page.route("**/api/backend/assistant/conversations/bound-saved", route => route.fulfill({json:{
+    id:"bound-saved",
+    messages:[
+      {id:"saved-u", role:"user", metadata:{turnContext:{page:"analytics",scope:"isa",range:"3M",snapshotId:"saved-batch"}},
+        parts:[{type:"text", text:"Check saved ISA records"}]},
+      {id:"saved-a", role:"assistant", parts:[{type:"tool-period_performance", toolCallId:"saved-call",
+        state:"approval-requested", input:{}, approval:{id:"saved-gate"}}]},
+    ],
+  }}));
+  await page.route("**/api/backend/assistant/chat*", route => {
+    const chunks = [
+      {type:"start",messageId:"saved-a"}, {type:"start-step"},
+      {type:"tool-output-denied",toolCallId:"saved-call"},
+      {type:"finish-step"}, {type:"finish",finishReason:"stop"},
+    ];
+    return route.fulfill({
+      headers:{"content-type":"text/event-stream","x-vercel-ai-ui-message-stream":"v1"},
+      body:chunks.map(chunk => "data: " + JSON.stringify(chunk) + "\n\n").join("") + "data: [DONE]\n\n",
+    });
+  });
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  const panel = page.locator("#mx-assistant-panel");
+  await panel.getByRole("button", {name:"历史对话"}).click();
+  await panel.getByRole("button", {name:"Saved approval with batch", exact:true}).click();
+  const sent = page.waitForRequest(request => new URL(request.url()).pathname.endsWith("/assistant/chat"));
+  await panel.getByRole("button", {name:"拒绝", exact:true}).click();
+  expect((await sent).postDataJSON()).toMatchObject({id:"bound-saved",
+    context:{page:"analytics",scope:"isa",range:"3M",snapshotId:"saved-batch"},
+    messages:[{id:"saved-a",role:"assistant",parts:[{state:"approval-responded",approval:{id:"saved-gate",approved:false}}]}],
+  });
+});
+
+test("phone handoff keeps touch focus on Close and keyboard focus on the composer", async ({page}, info) => {
+  test.skip(info.project.name !== "mobile", "Requires a touch surface.");
+  await fixtures(page);
+  await page.goto("/");
+  const digest = page.locator(".mx-digest");
+  await digest.locator(".mx-digest-toggle").click();
+  const handoff = digest.locator(".mx-reading-actions button").first();
+  await handoff.tap();
+  const panel = page.locator("#mx-assistant-panel");
+  const dismiss = panel.locator("[data-assistant-dismiss]");
+  await expect(dismiss).toBeFocused();
+  await dismiss.tap();
+  await handoff.press("Enter");
+  await expect(panel.getByRole("textbox", {name:"消息"})).toBeFocused();
+});
+test("citation previews expose verified data on hover, focus and touch", async ({page, isMobile}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.goto("/");
+  const digest = page.locator(".mx-digest");
+  await digest.locator(".mx-digest-toggle").click();
+  const external = digest.getByRole("button", {name:/^Calendar /});
+  if (isMobile) await external.tap();
+  else await external.hover();
+  const preview = page.getByRole("dialog", {name:/Calendar event/});
+  await expect(preview).toBeVisible({timeout:3000});
+  const openRecord = preview.getByRole("link", {name:/Open record.*opens in a new tab/});
+  await expect(openRecord).toHaveAttribute("href", "https://example.org/calendar");
+  await expect(openRecord).toHaveAttribute("rel", "noreferrer");
+  await expect(openRecord).toHaveAttribute("target", "_blank");
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+
+  await page.locator("[data-assistant-trigger]").click();
+  const composer = page.getByRole("textbox", {name:"Message"});
+  await composer.fill("Read the latest P&L");
+  await composer.press("Enter");
+  const answer = page.locator(".mx-turn-assistant");
+  const citation = answer.getByRole("button", {name:/^Account.*Period performance/});
+  const inference = answer.getByText("Inference", {exact:true});
+  await expect(inference).toHaveCSS("text-decoration-line", "none");
+  await expect(inference).not.toHaveAttribute("tabindex");
+  if (isMobile) await citation.tap();
+  else await citation.focus();
+  const performance = page.getByRole("dialog", {name:/Period performance/});
+  await expect(performance).toContainText("£21.50");
+  await expect(performance).toContainText(/limited coverage/i);
+  await expect(performance).toContainText("All investment accounts");
+  await expect(performance).toContainText("12 Nov");
+  if (!isMobile) {
+    await page.keyboard.press("Tab");
+    await expect(performance.getByRole("link")).toBeFocused();
+  }
+  await page.keyboard.press("Escape");
+  await expect(performance).toBeHidden();
+  await expect(citation).toBeFocused();
+  await expect(composer).toBeVisible();
+  if (isMobile) {
+    await citation.tap();
+    await expect(performance).toBeVisible();
+    await citation.tap();
+    await expect(performance).toBeHidden();
+    await expect(page.getByRole("button", {name:"Close sidebar"})).toBeFocused();
+  }
+});
+
+test("a saved account citation shows only the retained balances and discloses expiry", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  const saved = "retained-invest";
+  const current = "current-invest";
+  let expired = false;
+  await page.route("**/api/backend/dashboard/lens/overview?**", route => {
+    const url = new URL(route.request().url());
+    const historic = url.searchParams.get("runId") === saved;
+    if (historic && expired) return route.fulfill({status:404,json:{detail:"snapshot not found"}});
+    const data = backendFixture(url) as DashboardLens;
+    const totalValueGbp = historic ? 21.5 : 9876.54;
+    return route.fulfill({json:{...data, runId:historic ? saved : current,
+      totalValueGbp: historic ? 321.5 : totalValueGbp,
+      citedAccount:historic ? {scope:"invest",totalValueGbp,cashGbp:10,investedGbp:11.5,unrealizedPnlGbp:2} : undefined,
+      accounts:data.accounts?.map(account => ({...account, realizedPnlGbp:historic ? 0 : account.realizedPnlGbp,
+        totalValueGbp:historic && account.code !== "A" ? 300 : totalValueGbp}))}});
+  });
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[{id:"saved-balances", title:"Saved balances"}]}));
+  await page.route("**/api/backend/assistant/conversations/saved-balances", route => route.fulfill({json:{messages:[
+    {id:"question",role:"user",parts:[{type:"text",text:"What was my Invest balance?"}]},
+    {id:"answer",role:"assistant",parts:[
+      {type:"dynamic-tool",toolName:"portfolio_overview",toolCallId:"account",state:"output-available",
+        input:{},output:{evidence_id:"ev_balance",status:"partial",snapshot_id:saved,scope:"invest",
+          data:{total_value_gbp:21.5,realized_pnl_gbp:null}}},
+      {type:"text",text:"{{/data/total_value_gbp}} [ev_balance]\n{{cash-flows}} [inference]"},
+    ]},
+  ]}}));
+  await page.goto("/");
+  const main = page.locator("#main-content");
+  await expect(main.locator(".mx-overview-totals")).toContainText("£9,876.54");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.getByRole("button",{name:"Conversation history"}).click();
+  await page.getByRole("button",{name:"Saved balances",exact:true}).click();
+  const source = page.locator(".mx-turn-assistant").getByRole("button",{name:/^Account .*Invest/});
+  const link = await previewCitation(page, source);
+  await expect(page.locator(".mx-citation-preview[data-open]")).toContainText("£21.50");
+  await expect(page.locator(".mx-citation-preview[data-open]")).not.toContainText("£0.00");
+  await link.click();
+  await expect(main).toContainText("£21.50", {timeout:3000});
+  await expect(main.getByText("Realised P&L", {exact:true})).toHaveCount(0);
+  await expect(main).not.toContainText("£9,876.54");
+  await expect(main).not.toContainText("£321.50");
+  await expect(main.locator("[data-cited-account]")).toBeFocused();
+  await expect(page).toHaveURL(url => url.searchParams.get("snapshotId") === saved &&
+    url.searchParams.get("scope") === "invest");
+
+  if (!(await source.isVisible())) await page.locator("[data-assistant-trigger]").click();
+  await (await previewCitation(page, source)).click();
+  await expect(main.locator("[data-cited-account]")).toBeFocused({timeout:3000});
+
+  expired = true;
+  await page.reload();
+  await expect(main).toContainText("Cited publication unavailable");
+  await expect(main).not.toContainText("£9,876.54");
+  await expect(main).not.toContainText("£21.50");
+});
+
+test("a saved research field reports unavailable inside its preview without opening live data", async ({page}) => {
+  await fixtures(page);
+  await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
+  await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[{id:"saved-research",title:"Saved research"}]}));
+  await page.route("**/api/backend/assistant/conversations/saved-research", route => route.fulfill({json:{messages:[
+    {id:"question",role:"user",parts:[{type:"text",text:"What was the technical score?"}]},
+    {id:"answer",role:"assistant",parts:[
+      {type:"dynamic-tool",toolName:"read_research_lens",toolCallId:"research",state:"output-available",
+        input:{ticker:"SYNT",lens:"technical"},output:{evidence_id:"ev_research",status:"ok",snapshot_id:"old-research",
+          data:{ticker:"SYNT",items:[{dataset:"technical",path:"/technical_score",value:27}]}}},
+      {type:"text",text:"{{/data/items/0/value}} [ev_research]\n{{insufficient-evidence}} [inference]"},
+    ]},
+  ]}}));
+  await page.goto("/");
+  await page.locator("[data-assistant-trigger]").click();
+  await page.getByRole("button",{name:"Conversation history"}).click();
+  await page.getByRole("button",{name:"Saved research",exact:true}).click();
+  await page.locator(".mx-turn-assistant").getByRole("button",{name:/^Technicals /}).click();
+  const preview = page.locator(".mx-citation-preview[data-open]");
+  await expect(preview).toContainText("Technical score 27");
+  await preview.getByText("Open record",{exact:true}).click();
+  await expect(preview.getByRole("status")).toHaveText("Cited record unavailable");
+  await expect(page).toHaveURL(url => url.pathname === "/");
+});
+
+for (const [locale, word, open, metrics] of [
+  ["zh", "账户", "打开记录", ["本期净盈亏", "净流入"]],
+  ["en", "Account", "Open record", ["Period net P&L", "Net contributions"]],
+] as const) {
+  test(`money citation names identify each field in ${locale}`, async ({page}) => {
+    await fixtures(page);
+    await page.addInitScript(language => localStorage.setItem("trading_max-locale", language),locale);
+    await page.route("**/api/backend/assistant/conversations", route => route.fulfill({json:[{id:"saved-money",title:"Saved money"}]}));
+    await page.route("**/api/backend/assistant/conversations/saved-money", route => route.fulfill({json:{messages:[
+      {id:"question",role:"user",parts:[{type:"text",text:"What was the P&L and contribution?"}]},
+      {id:"answer",role:"assistant",parts:[
+        {type:"dynamic-tool",toolName:"period_performance",toolCallId:"money",state:"output-available",input:{},
+          output:{evidence_id:"ev_money",status:"ok",snapshot_id:"pinned-money",scope:"isa",
+            data:{period_pnl_gbp:20,net_contributions_gbp:120,range:"1W",window_start:"2026-01-26",window_end:"2026-01-30"}}},
+        {type:"text",text:"{{/data/period_pnl_gbp}} [ev_money]\n{{/data/net_contributions_gbp}} [ev_money]"},
+      ]},
+    ]}}));
+    await page.goto("/");
+    await page.locator("[data-assistant-trigger]").click();
+    await page.getByRole("button",{name:locale === "zh" ? "历史对话" : "Conversation history"}).click();
+    await page.getByRole("button",{name:"Saved money",exact:true}).click();
+    const sources = page.locator(".mx-turn-assistant").getByRole("button",{name:new RegExp("^" + word + " ")});
+    await expect(sources).toHaveCount(metrics.length);
+    for (const [index, metric] of metrics.entries()) {
+      await expect(sources.nth(index)).toHaveAccessibleName(new RegExp("^" + word + ".*" + metric),{timeout:3000});
+      await expect(await previewCitation(page, sources.nth(index))).toHaveAccessibleName(new RegExp("^" + open + ".*" + metric));
+      await page.keyboard.press("Escape");
+    }
+  });
+}

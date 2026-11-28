@@ -1,6 +1,6 @@
 {
   "name": "trading-max-web",
-  "version": "1.80.1",
+  "version": "1.81.0",
   "private": true,
   "license": "Apache-2.0",
   "repository": {
@@ -35,6 +35,8 @@
   ],
   "dependencies": {
     "@ai-sdk/react": "^4.0.188",
+    "@assistant-ui/react": "0.15.38",
+    "@assistant-ui/react-ai-sdk": "1.4.25",
     "@base-ui/react": "^1.9.0",
     "@mantine/core": "^9.8.0",
     "@mantine/hooks": "^9.8.0",

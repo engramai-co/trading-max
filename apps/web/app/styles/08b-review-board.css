@@ -356,7 +356,7 @@ a.mx-journal-act:focus-visible,
   gap: 12px;
   border-top: 1px solid var(--mx-border);
 }
-.mx-habit-line > button {
+.mx-habit-line > button[aria-pressed] {
   flex: 1;
   display: flex;
   align-items: center;
@@ -366,7 +366,7 @@ a.mx-journal-act:focus-visible,
   padding: 6px 4px;
   text-align: start;
 }
-.mx-habit-line > button svg {
+.mx-habit-line > button[aria-pressed] svg {
   flex: none;
 }
 .mx-habit-line[data-selected] {
@@ -431,14 +431,14 @@ a.mx-journal-act:focus-visible,
 @media (max-width: 767px) {
   .mx-review-expand-head > a,
   .mx-journal-body button,
-  .mx-habit-line > button,
+  .mx-habit-line > button[aria-pressed],
   .mx-review-filter {
     min-height: 44px;
   }
   .mx-review-expand-head > a {
     min-width: 44px;
   }
-  .mx-habit-line > button {
+  .mx-habit-line > button[aria-pressed] {
     font: inherit;
     color: inherit;
     background: transparent;

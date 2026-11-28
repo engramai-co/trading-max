@@ -284,7 +284,7 @@ test("index reading questions keep the selected series and typed chat uses page 
   await track.click();
   const card = page.locator(isMobile ? ".mx-reading-sheet" : ".mx-anchored-reading");
   await expect(card.locator(".mx-reading-line")).toHaveCount(2);
-  if (isMobile) await page.keyboard.press("Control+j");
+  if (isMobile) await page.keyboard.press((await page.locator("[data-assistant-trigger]").getAttribute("aria-keyshortcuts")) === "Meta+J" ? "Meta+j" : "Control+j");
   else await page.locator("[data-assistant-trigger]").click();
   await expect(opening.getByRole("heading")).toContainText(index.nameZh + " · " + formatCalendarDate(date, "zh", new Date(stamp)));
   await expect(opening.locator(".mx-reading-line")).toHaveText([/指数点位/, /同期变动/]);

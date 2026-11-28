@@ -53,8 +53,8 @@ describe("visible work step mapping", () => {
 
     const liveZh = extractWorkSteps(message, true, "zh");
     expect(liveZh).toEqual([
-      { id: "c1", label: "读取账户记录", status: "complete" },
-      { id: "c2", label: "核对区间收益", status: "running" },
+      { id: "c1", label: "读取账户记录", detail: "ISA", status: "complete" },
+      { id: "c2", label: "核对区间收益", detail: "3M", status: "running" },
       { id: "c3", label: "对比基准回报", status: "unavailable" },
       { id: "c4", label: "检查数据状态", status: "unavailable" },
     ]);
@@ -68,6 +68,7 @@ describe("visible work step mapping", () => {
     expect(settledEn[1]).toEqual({
       id: "c2",
       label: "Check period performance",
+      detail: "3M",
       status: "unavailable",
     });
     expect(stepStatusLabel("running", "zh")).toBe("进行中");

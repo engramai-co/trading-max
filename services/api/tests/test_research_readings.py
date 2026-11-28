@@ -733,6 +733,56 @@ def test_reopened_research_citation_rechecks_retention_and_event_identity(tmp_pa
     assert client.get(path, params=params).status_code == 404
 
 
+def test_company_citation_reopens_the_retained_description_only(tmp_path):
+    from pathlib import Path
+
+    from fastapi import FastAPI
+
+    from services.api.trading_max_api.routes.research import router
+
+    store = ArtifactStore(tmp_path)
+
+    def publish(description):
+        publication(
+            store,
+            extra_artifacts={
+                tools.FUNDAMENTALS: {
+                    "rows": [{"ticker": "TEST", "metrics": {"longBusinessSummary": description}}]
+                },
+            },
+        )
+
+    publish("Synthetic widgets are sold in two markets.")
+    factory = AssistantDepsFactory(store)
+    deps = factory.for_run()
+    result = (
+        role_registry()["company-summary"]
+        .reader(deps, SecurityContext(ticker="TEST"))
+        .read(research.company_profile, {})
+    )
+    publish(description="Synthetic widgets are sold in twelve markets.")
+    app = FastAPI()
+    app.include_router(router)
+    app.state.store = factory.store
+    app.state.assistant = SimpleNamespace(deps_for_run=factory.for_run)
+    path = "/v1/research/TEST/citation"
+    params = {
+        "tool": "company_profile",
+        "snapshotId": deps.snapshot_id,
+        "evidenceId": result["evidence_id"],
+    }
+    with TestClient(app) as client:
+        old = client.get(path, params=params)
+        assert old.status_code == 200
+        assert old.json()["output"]["data"]["sentences"] == [
+            "Synthetic widgets are sold in two markets."
+        ]
+        assert client.get(path, params={**params, "evidenceId": "ev_unmatched"}).status_code == 404
+        root = factory.store.immutable_snapshots.snapshots_root
+        Path(root / deps.snapshot_id).rename(tmp_path / "expired")
+        assert client.get(path, params=params).status_code == 404
+
+
 def test_generic_event_citation_reopens_the_same_page_and_time_zone(tmp_path):
     from fastapi import FastAPI
 

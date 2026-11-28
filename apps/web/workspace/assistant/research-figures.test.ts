@@ -16,21 +16,21 @@ function message(tool: Tool, field: string, line?: string): UIMessage {
 
 describe("research follow-up citations", () => {
   it.each([
-    ["research_position","/data/change","-6.25%","eventDate=2026-02-03"],
+    ["research_position","/data/change","down 6.25%","eventDate=2026-02-03"],
     ["research_position","/data/trade_date","2026-01-28","eventDate=2026-01-28"],
     ["research_position","/data/event/date","Earnings reported","eventId=report"],
-    ["price_key_moments","/data/items/0/move_fraction","+6.25%","eventDate=2026-01-30"],
-    ["price_key_moments","/data/following/1/return_fraction","-11.76%","eventDate=2026-01-30"],
+    ["price_key_moments","/data/items/0/move_fraction","up 6.25%","eventDate=2026-01-30"],
+    ["price_key_moments","/data/following/1/return_fraction","down 11.76%","eventDate=2026-01-30"],
     ["research_earnings","/data/changes/0/change","Change US$0.25","analystView=forecast"],
     ["research_earnings","/data/report/actual","$1.20/share","eventId=report"],
     ["research_earnings","/data/report/surprise","+4.35%","eventId=report"],
     ["research_earnings","/data/estimates/0/mean","$1.25/share","analystView=forecast"],
-    ["research_headline","/data/title","Related headline · Issuer publishes outlook","evidence=research_headline"],
+    ["research_headline","/data/title","A report about TEST on 2026-01-30 ran the headline “Issuer publishes outlook”","evidence=research_headline"],
     ["company_profile","/data/sentences/1","The company also offers Widget Cloud, a subscription service.","evidence=company_profile"],
   ] as const)("renders the actual %s field %s and opens its source", (tool, field, expected, href) => {
     const [line] = verifiedLines(message(tool,field));
     expect(line.text).toContain(expected);
-    if (field === "/data/change" || field.endsWith("/move_fraction")) expect(line.text).toContain("Split- and dividend-adjusted return");
+    if (field === "/data/change" || field.endsWith("/move_fraction")) expect(line.text).toContain("split- and dividend-adjusted return");
     if (field === "/data/changes/0/change") for (const value of ["2026-01-31","2026-02-03","$1.00","$1.25"]) expect(line.text).toContain(value);
     expect(evidenceHref(line.evidence!)).toContain(href);
     if (tool === "company_profile") expect(evidenceHref(line.evidence!)).toContain("sentence=1&sentenceId=6e2b34b5");
@@ -73,4 +73,12 @@ it.each([["dividend","Reported dividend"],["ex_dividend","Ex-dividend date"],["d
     const link = new URL(evidenceHref(line.evidence!)!,"http://localhost");
     expect(Object.fromEntries(link.searchParams)).toMatchObject({series:output.data.published_series_id,
       date:selected.date,event:kind,eventId:event.reference,snapshotId:output.snapshot_id});
+  });
+
+it.each([["zh", "TEST 在 2026-02-03 收于 US$30.00，较 2026-01-28 收盘下跌 6.25%。", "下跌 6.25%"],
+  ["en", "TEST closed at US$30.00 on 2026-02-03, down 6.25% from the close on 2026-01-28.", "down 6.25%"]] as const)(
+  "keeps the verified closing move and citation in the %s sentence", (locale, text, move) => {
+    const [line] = verifiedLines(message("research_position", "/data/close"), locale);
+    expect(line).toMatchObject({text, move:{text:move, tone:"loss"},
+      evidence:{arguments:{snapshotId:results.research_position.snapshot_id, date:"2026-02-03"}}});
   });

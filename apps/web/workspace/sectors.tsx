@@ -32,7 +32,7 @@ import type { SectorBoardResponse, SectorGroupingKind, SectorMarketCode } from "
 import { formatDateTime } from "@/ui/formatters";
 import { api } from "@/workspace/data";
 import { useDemonstration } from "./demonstration";
-import { Empty, Page, Pending, Segments, useCopy } from "./foundation";
+import { Empty, Page, Panel, Pending, Segments, useCopy } from "./foundation";
 import { GlobalMarkets } from "./global-markets";
 import { GlobalSectors, GlobalViewSwitch, globalView, useGlobalSectors } from "./global-sectors";
 import Link from "./link";
@@ -46,6 +46,17 @@ import { SectorMarketSwitch } from "./sectors-market-switch";
 import { SECTOR_MARKETS, marketPhase, sectorMarket, strongestGroup } from "./sectors-data";
 
 export function SectorsWorkspace() {
+  const {params} = useRouteState();
+  const t = useCopy();
+  if (["market_sector", "global_map"].includes(params.get("evidence") ?? "")) {
+    return <Page title={t("市场", "Markets")}>
+      <Panel><p data-cited-missing="" role="status">{t("引用的行情记录暂不可用", "Cited market observation unavailable")}</p></Panel>
+    </Page>;
+  }
+  return <CurrentSectors />;
+}
+
+function CurrentSectors() {
   const t = useCopy();
   const demonstration = useDemonstration();
   const { locale, timeZone } = useLocale();
@@ -262,10 +273,6 @@ export function SectorsWorkspace() {
   const sectorNext = nextRun
     ? t("下一次采集：", "Next collection: ") + formatDateTime(nextRun, locale, timeZone)
     : t("请在数据状态查看板块行情的更新计划。", "Check the sector quote schedule in Data status.");
-  const citedSector = params.get("evidence") === "market_sector" && params.get("observed");
-  const observed = requested === "global" ? world.data?.asOf : board?.fetchedAt;
-  const expiredSector = citedSector && !(requested === "global" ? world.isPending : query.isPending) &&
-    (!observed || Date.parse(citedSector) !== Date.parse(observed) || (requested === "global" ? world.data?.pricesStale || !world.data?.sectors.some(s=>s.gics === requestedSector) : !explicit || refreshFailed));
   const body = indicesOnly
     ? <p className="mx-index-note">{t("本市场仅有指数覆盖。可切换市场查看板块。", "Only index quotes are covered here. Switch markets to see sector boards.")}</p>
     : !rejected && (query.isPending || switching) ? (
@@ -377,7 +384,7 @@ export function SectorsWorkspace() {
           {board && !phoneDetail && (market === "jp" || market === "hk" || market === "kr") && (
             <p className="mx-index-note">{t("板块篮子：", "Sector basket: ")}{board.source.universe}</p>
           )}
-          {expiredSector ? <Empty title={t("引用的行情记录暂不可用","Cited market observation unavailable")} /> : market === "global" ? (view === "sectors"
+          {market === "global" ? (view === "sectors"
             ? <GlobalSectors query={world} demo={demonstration} phone={phone} sector={globalSector}
                 onSelect={select} returnTo={returnTo} onFocused={() => setReturnTo(null)} />
             : <GlobalMarkets demo={demonstration} onMarket={(value) =>

@@ -7,8 +7,10 @@ import type { Evidence } from "./evidence";
 import { formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
 import { tradingDay } from "@/lib/portfolio/history";
 import { numeric } from "@/lib/numeric";
-import { currency, number, object, objects, percent, str, type Json } from "../data";
+import { number, object, objects, percent, signedCurrency, str, type Json } from "../data";
+import { minus } from "../reading-figures";
 import { renderReviewField } from "./review-figures";
+import { PERIOD_MONEY_LABELS } from "../money-readings";
 
 type Words = readonly [en: string, zh: string];
 const word = (words: Words, locale: Locale) => words[locale === "en" ? 0 : 1];
@@ -18,9 +20,7 @@ const word = (words: Words, locale: Locale) => words[locale === "en" ? 0 : 1];
 const labels: Record<string, Words> = {
   total_value_gbp: ["Portfolio value", "账户总值"], cash_gbp: ["Cash", "现金"],
   invested_gbp: ["Invested value", "投资市值"], realized_pnl_gbp: ["Realised P&L", "已实现盈亏"],
-  unrealized_pnl_gbp: ["Unrealised P&L", "未实现盈亏"], opening_value_gbp: ["Opening value", "期初市值"],
-  ending_value_gbp: ["Closing value", "期末市值"], net_contributions_gbp: ["Net contributions", "净流入"],
-  period_pnl_gbp: ["Period net P&L", "本期净盈亏"], max_money_drawdown_gbp: ["Maximum money drawdown", "最大金额回撤"],
+  unrealized_pnl_gbp: ["Unrealised P&L", "未实现盈亏"],
   carried_cfd_proxy_gbp: ["Carried CFD cash-equity proxy", "沿用的 CFD 现金权益代理值"],
   current_value_gbp: ["Position value", "持仓市值"], total_cost_gbp: ["Cost", "持仓成本"],
   unrealized_profit_loss_gbp: ["Unrealised P&L", "未实现盈亏"], fx_impact_gbp: ["FX impact", "汇率影响"],
@@ -36,6 +36,7 @@ const labels: Record<string, Words> = {
   effect_to_date_gbp: ["Effect to date", "至今影响"], amount: ["Amount", "金额"], gross_result: ["Gross result", "毛收益"],
   fx_fee: ["FX fee", "汇兑费用"], result_after_fx_fee: ["Result after FX fees", "扣除汇兑费用后收益"],
   date: ["Event date", "事件日期"],
+  ...Object.fromEntries(Object.entries(PERIOD_MONEY_LABELS).map(([field, [zh, en]]) => [field, [en, zh] as const])),
 };
 const statusWords: Record<string, Words> = {
   ok: ["Data available", "数据可用"], partial: ["Limited coverage", "覆盖不完整"],
@@ -191,8 +192,8 @@ export function calendarObservation(ref: Evidence, output: Json, pointer: string
 }
 
 function money(value: number, unit: unknown, digits = 2) {
-  if (unit === "GBp" || unit === "GBX" || unit === "GBx") return number(value, digits) + " GBp";
-  return /^[A-Z]{3}$/.test(str(unit)) ? currency(value, str(unit), digits) : null;
+  if (unit === "GBp" || unit === "GBX" || unit === "GBx") return minus(number(value, digits)) + " GBp";
+  return /^[A-Z]{3}$/.test(str(unit)) ? signedCurrency(value, str(unit), digits) : null;
 }
 function researchField(row: NonNullable<ReturnType<typeof resolveField>>, locale: Locale) {
   const {parent, value, data} = row;
@@ -237,7 +238,7 @@ function formatField(tool: string, row: NonNullable<ReturnType<typeof resolveFie
   }
   if (!Object.hasOwn(labels, field)) return null;
   let display: string | null = null;
-  if (field.endsWith("_gbp")) display = currency(n, "GBP", 2);
+  if (field.endsWith("_gbp")) display = signedCurrency(n, "GBP", 2);
   else if (field.endsWith("_fraction") || (tool === "period_performance" && group === "twr" && field === "fraction")) display = percent(n, false, 2);
   else if (field === "current_price") display = money(n, parent.price_currency, 4);
   else if (field.endsWith("_count") && Number.isSafeInteger(n) && n >= 0) display = number(n, 0);

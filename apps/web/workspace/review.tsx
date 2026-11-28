@@ -172,7 +172,7 @@ export function ReviewWorkspace() {
     snapshot: data.runId, horizon, habit, selected:selected?.row ?? null,location:selected?.location ?? null,id:readingId,
     toggle:(row,location,trigger) => setSelection(selected?.row === row && selected.location === location ? null : {row,location,trigger}),
     reading:selected && <div id={readingId}><DecisionReading key={readingId + selected.location + horizonScope(selected.row.account, selected.row) + readingHorizon + data.runId}
-      snapshot={data.runId} scope={shown} row={selected.row} horizon={readingHorizon} habit={habit} onClose={closeReading}/></div>,
+      snapshot={data.runId} scope={shown} row={selected.row} horizon={readingHorizon} habit={habit} onClose={closeReading} onFollowCitation={() => setSelection(null)}/></div>,
   } : undefined;
   const filterButton = useRef<HTMLButtonElement>(null);
   const focusFilter = useRef<Habit | null>(null);

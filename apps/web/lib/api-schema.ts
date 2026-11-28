@@ -3383,6 +3383,26 @@ export interface components {
             /** Symbol */
             symbol?: string | null;
         };
+        /** CitedAccountBalance */
+        CitedAccountBalance: {
+            /** Asof */
+            asOf?: string | null;
+            /** Cashgbp */
+            cashGbp?: number | null;
+            /** Investedgbp */
+            investedGbp?: number | null;
+            /** Realizedpnlgbp */
+            realizedPnlGbp?: number | null;
+            /**
+             * Scope
+             * @enum {string}
+             */
+            scope: "invest" | "isa" | "broker_total" | "household" | "cfd";
+            /** Totalvaluegbp */
+            totalValueGbp: number;
+            /** Unrealizedpnlgbp */
+            unrealizedPnlGbp?: number | null;
+        };
         /** CitedHoldingEvent */
         CitedHoldingEvent: {
             /** Actual Eps */
@@ -3655,6 +3675,7 @@ export interface components {
             brokerAsOf: string;
             cfd?: components["schemas"]["CfdSummary"] | null;
             cfdReview?: components["schemas"]["CfdAccountReview"] | null;
+            citedAccount?: components["schemas"]["CitedAccountBalance"] | null;
             dayAttribution?: components["schemas"]["DayAttribution"] | null;
             /** Decisionreviews */
             decisionReviews?: {
@@ -12913,7 +12934,7 @@ export interface operations {
     research_citation_v1_research__ticker__citation_get: {
         parameters: {
             query: {
-                tool: "price_key_moments" | "research_position" | "research_earnings" | "research_headline" | "news_and_events" | "upcoming_events";
+                tool: "price_key_moments" | "research_position" | "research_earnings" | "research_headline" | "company_profile" | "news_and_events" | "upcoming_events";
                 snapshotId: string;
                 evidenceId: string;
                 series?: string | null;

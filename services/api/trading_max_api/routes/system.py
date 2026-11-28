@@ -21,6 +21,8 @@ from trading_max.infrastructure import SnapshotIntegrityError
 from trading_max.research.calendars.refresh import MACRO_KEY, MACRO_STATUS_KEY
 from trading_max.research.news import NEWS_KEY, NEWS_STATUS_KEY
 
+from ..agent.deps import ALL_ACCOUNT_SCOPES, AssistantDeps
+from ..agent.tools import Scoped, read_portfolio_overview
 from ..artifacts import ArtifactStore
 from ..assistant_settings import ASSISTANT_CONSENT_REVISION
 from ..dashboard import (
@@ -34,6 +36,7 @@ from ..dashboard_models import (
     AccountCode,
     AccountDecisions,
     BenchmarkPricePoint,
+    CitedAccountBalance,
     DashboardLensName,
     DashboardLensSnapshot,
     DashboardResponse,
@@ -506,6 +509,14 @@ def dashboard_lens(
         ),
     ),
 ) -> DashboardLensSnapshot:
+    overview_pin = (
+        run_id is not None
+        and view == "overview"
+        and detail == "summary"
+        and account is None
+        and range is None
+        and projection == "returns"
+    )
     review_pin = (
         run_id is not None
         and detail == "summary"
@@ -517,7 +528,7 @@ def dashboard_lens(
             or (view == "account-analysis" and account in {"A", "B"})
         )
     )
-    if run_id is not None and not review_pin:
+    if run_id is not None and not (overview_pin or review_pin):
         holdings = view in {"holdings-positions", "holdings-lookthrough"}
         valid_holdings = (
             holdings
@@ -541,6 +552,24 @@ def dashboard_lens(
             ),
         )
     manifest = _dashboard_manifest(request, run_id)
+    if overview_pin:
+        account_scope = "broker_total" if scope in (None, "total") else scope
+        deps = AssistantDeps(manifest, ALL_ACCOUNT_SCOPES, app_service(request, "store"))
+        record = read_portfolio_overview(deps, Scoped(scope=account_scope))["data"]
+        if not record:
+            raise HTTPException(404, "Cited account balances unavailable")
+        as_of = max(
+            (row["values_as_of"] for row in record["components"] if row.get("values_as_of")),
+            default=None,
+        )
+        return DashboardLensSnapshot(
+            view=view,
+            run_id=manifest.run_id,
+            generated_at=manifest.created_at.isoformat(),
+            broker_as_of=as_of or "",
+            research_as_of="",
+            cited_account=CitedAccountBalance(scope=account_scope, as_of=as_of, **record),
+        )
     dashboard_data = request.app.state.cached_dashboard(
         manifest, include_history=detail != "summary", retained=review_pin
     )
@@ -553,6 +582,15 @@ def dashboard_lens(
     }
 
     if view == "overview":
+        balances = {
+            "total_value_gbp": dashboard_data.total_value_gbp,
+            "total_cash_gbp": dashboard_data.total_cash_gbp,
+            "total_invested_gbp": dashboard_data.total_invested_gbp,
+            "total_unrealized_pnl_gbp": dashboard_data.total_unrealized_pnl_gbp,
+            "household_total_value_gbp": dashboard_data.household_total_value_gbp,
+            "accounts": [item for item in dashboard_data.accounts if item.is_investable],
+            "cfd": dashboard_data.cfd,
+        }
         held = researched_holdings(dashboard_data.holdings)
         equity_listings = {
             h.research_ticker or h.ticker for h in dashboard_data.holdings if not h.is_fund
@@ -588,16 +626,10 @@ def dashboard_lens(
             )
         return DashboardLensSnapshot(
             **base,
-            total_value_gbp=dashboard_data.total_value_gbp,
-            total_cash_gbp=dashboard_data.total_cash_gbp,
-            total_invested_gbp=dashboard_data.total_invested_gbp,
-            total_unrealized_pnl_gbp=dashboard_data.total_unrealized_pnl_gbp,
+            **balances,
             latest_model_day_return=dashboard_data.latest_model_day_return,
             day_attribution=_day_attribution(request, manifest.run_id),
             window_attribution=_window_attribution(request, manifest.run_id),
-            household_total_value_gbp=dashboard_data.household_total_value_gbp,
-            accounts=[item for item in dashboard_data.accounts if item.is_investable],
-            cfd=dashboard_data.cfd,
             review_summaries=review_summaries,
             holdings=dashboard_data.holdings,
             technical=[

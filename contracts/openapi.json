@@ -5136,6 +5136,86 @@
         "title": "CfdUnmatchedOrder",
         "type": "object"
       },
+      "CitedAccountBalance": {
+        "properties": {
+          "asOf": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asof"
+          },
+          "cashGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cashgbp"
+          },
+          "investedGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Investedgbp"
+          },
+          "realizedPnlGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Realizedpnlgbp"
+          },
+          "scope": {
+            "enum": [
+              "invest",
+              "isa",
+              "broker_total",
+              "household",
+              "cfd"
+            ],
+            "title": "Scope",
+            "type": "string"
+          },
+          "totalValueGbp": {
+            "title": "Totalvaluegbp",
+            "type": "number"
+          },
+          "unrealizedPnlGbp": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unrealizedpnlgbp"
+          }
+        },
+        "required": [
+          "scope",
+          "totalValueGbp"
+        ],
+        "title": "CitedAccountBalance",
+        "type": "object"
+      },
       "CitedHoldingEvent": {
         "properties": {
           "actual_eps": {
@@ -6082,6 +6162,16 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/CfdAccountReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "citedAccount": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CitedAccountBalance"
               },
               {
                 "type": "null"
@@ -30191,7 +30281,7 @@
   },
   "info": {
     "title": "Trading Max Portfolio API",
-    "version": "1.80.1"
+    "version": "1.81.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -32600,6 +32690,7 @@
                 "research_position",
                 "research_earnings",
                 "research_headline",
+                "company_profile",
                 "news_and_events",
                 "upcoming_events"
               ],

@@ -4,6 +4,9 @@ import type { Locale } from "@/components/locale-provider";
 import { formatCalendarDate, formatDateTime, formatDateTimeInTimeZone } from "@/ui/formatters";
 import type { UIMessage } from "ai";
 import { object, safeUrl, str, type Json } from "../data";
+import { countryName, industryName } from "../exposure-names";
+import { PERIOD_MONEY_LABELS } from "../money-readings";
+import { habitLabels, isHabit } from "../review-patterns";
 import type { PageTurnContext, ResearchTurnContext } from "./context";
 
 export const sourceWords = {
@@ -13,7 +16,10 @@ export const sourceWords = {
   review: ["复盘", "Review"], health: ["数据状态", "Data status"], calendar: ["日历", "Calendar"],
   inference: ["推断", "Inference"], publisher: ["披露", "Disclosure"],
 } as const;
-export type Evidence = components["schemas"]["ReadingEvidence"];
+const verifiedCitation = Symbol("verifiedCitation");
+export type Evidence = components["schemas"]["ReadingEvidence"] & {
+  [verifiedCitation]?: {text: string; field: string; details: CitationDetails};
+};
 export type Reading = components["schemas"]["RoleReading"];
 
 export function sourceLabel(evidence: Evidence | null, t: (zh: string, en: string) => string) {
@@ -39,20 +45,41 @@ const destinations: Record<string, [string, Evidence["source"]]> = {
   decision_timing_and_habits: ["/review", "review"], review_patterns: ["/review", "review"],
 };
 const lensWords: Record<string, Evidence["source"]> = { technical: "technical", fundamentals: "financials", analyst: "analysts", ledger: "disclosure" };
+const snapshotPattern = /^[A-Za-z0-9_-]{1,100}$/;
+const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+function externalCitationUrl(value: string) {
+  const href = safeUrl(value);
+  if (!href) return null;
+  const {username, password} = new URL(href);
+  return username || password ? null : href;
+}
+
 export function evidenceHref(ref: Evidence): string | null {
+  const href = recordHref(ref);
+  const args = ref.arguments ?? {};
+  const field = ref[verifiedCitation]?.field || args.field;
+  if (!href?.startsWith("/") || (!args.snapshotId && !field)) return href;
+  const url = new URL(href, "https://workspace.invalid");
+  if (args.snapshotId) url.searchParams.set("snapshotId", args.snapshotId);
+  if (field) url.searchParams.set("field", field);
+  return url.pathname + url.search + url.hash;
+}
+
+function recordHref(ref: Evidence): string | null {
+  if (ref.source === "inference") return null;
   if (!ref.arguments?.rowCitation && ref.tool === "news_and_events" && ref.arguments?.event === "own_trade") {
     const args = ref.arguments;
     if (!args.snapshotId || !args.eventId || !["invest", "isa"].includes(args.scope) ||
         !["buy", "sell"].includes(args.side) || !args.date || !args.ticker) return null;
     const query = new URLSearchParams({
       account:args.scope === "invest" ? "A" : "B",
-      decision:[args.date, args.side, args.ticker].join("."), snapshotId:args.snapshotId,
+      decision:[args.date, args.side, args.ticker].join("."), snapshotId:args.snapshotId, evidence:"recent_decisions",
     });
     return "/review?" + query;
   }
   if (!ref.arguments?.rowCitation && (ref.tool === "upcoming_events" || (ref.tool === "news_and_events" && ref.arguments?.eventId && ref.arguments.snapshotId))) {
     const args = ref.arguments ?? {};
-    if (args.url) return safeUrl(args.url) ?? null;
+    if (args.url) return externalCitationUrl(args.url);
     if (args.holdingTicker && args.eventId) {
       return evidenceHref({...ref, tool:"read_research_lens", arguments:{
         ticker:args.holdingTicker, lens:args.researchEventId ? "analyst" : "overview", event:args.event,
@@ -62,22 +89,26 @@ export function evidenceHref(ref: Evidence): string | null {
     }
     return null;
   }
+  if (!Object.hasOwn(destinations, ref.tool)) return null;
   const entry = destinations[ref.tool];
-  if (!entry) return null;
   const a = ref.arguments ?? {};
   const decisionEvent = ref.tool === "decision_timing_and_habits" && a.lens === "analyst" && Boolean(a.listing);
   // A cited calendar or account row reopens from its research publication.
   const path = decisionEvent || a.rowCitation ? "/research" : entry[0];
   const params = new URLSearchParams();
+  if (ref.tool === "portfolio_overview") {
+    if (!snapshotPattern.test(a.snapshotId ?? "") || !Object.hasOwn(scopeNames, a.scope ?? "")) return null;
+    params.set("snapshotId", a.snapshotId);
+  }
   if (a.snapshotId && ["/holdings","/sectors"].includes(path)) params.set("snapshotId",a.snapshotId);
-  if (ref.source === "inference") return null;
   // A saved research headline reopens its publication, which links the original article.
   if (ref.source === "publisher" && a.url && !(ref.tool === "research_headline" && a.snapshotId)) {
-    try {const url = new URL(a.url); return ["https:","http:"].includes(url.protocol) && !url.username && !url.password ? url.href : null;} catch {return null;}
+    return externalCitationUrl(a.url);
   }
   const eventSource = decisionEvent || ref.tool === "news_and_events";
   if (eventSource && !a.rowCitation && a.url && /^https:\/\//i.test(a.url)) {
-    try { const url = new URL(a.url); if (!url.username && !url.password) return url.href; } catch {}
+    const original = externalCitationUrl(a.url);
+    if (original) return original;
   }
   if (path === "/review") {
     if (a.snapshotId) params.set("snapshotId", a.snapshotId);
@@ -90,13 +121,14 @@ export function evidenceHref(ref: Evidence): string | null {
     if (habit) params.set("habit", habit);
   }
   if (path === "/analytics") {
-    params.set("view", ref.tool === "period_performance" && (a.metric === "period_pnl_gbp" || a.range === "1D") ? "money" : "returns");
+    const periodMoney = ref.tool === "period_performance" && Object.hasOwn(PERIOD_MONEY_LABELS, a.metric);
+    params.set("view", periodMoney || (ref.tool === "period_performance" && a.range === "1D") ? "money" : "returns");
     if (["daily_returns","selected_money","holding_fx_split","selected_daily","selected_fx"].includes(ref.tool) && a.start && a.end) {
       params.set("view",a.view ?? "returns"); params.set("inspectFrom",a.start); params.set("inspectTo",a.end);
       if (a.snapshotId) params.set("snapshotId",a.snapshotId);
     }
     if (a.range) params.set("range", a.range);
-    if (a.metric === "period_pnl_gbp" && a.start && a.end && a.snapshotId) {
+    if (periodMoney && a.start && a.end && a.snapshotId) {
       params.set("moneyFrom", a.start);
       params.set("moneyTo", a.end);
       params.set("snapshotId", a.snapshotId);
@@ -139,7 +171,7 @@ export function evidenceHref(ref: Evidence): string | null {
   if (path === "/research") {
     if (!a.snapshotId && ["research_headline","research_position","research_earnings","price_key_moments"].includes(ref.tool)) {
       if (ref.tool === "research_headline" && a.url) {
-        const original = safeUrl(a.url);
+        const original = externalCitationUrl(a.url);
         if (original) return original;
       }
       params.set("unavailable","1");
@@ -168,6 +200,8 @@ export function evidenceHref(ref: Evidence): string | null {
     // A restated company description cites one sentence of one publication.
     if (ref.tool === "company_profile") {
       for (const key of ["sentence", "sentenceId", "snapshotId"]) if (a[key]) params.set(key, a[key]);
+      if (a.snapshotId) params.set("evidenceId", ref.evidenceId);
+      if (/^(0|[1-9]\d?)$/.test(a.sentence ?? "")) params.set("field", "/data/sentences/" + a.sentence);
     }
     if (a.analystView) params.set("analystView",a.analystView);
     if (a.date && a.lens === "technical") { params.set("eventDate",a.date); params.set("priceRange","ALL"); params.set("interval","1d"); }
@@ -232,7 +266,7 @@ export function completedEvidence(message: UIMessage) {
     const ref: Evidence = { evidenceId: id, tool, arguments: args, source: tool === "read_research_lens" && lensWords[args.lens] || destinations[tool][1] };
     if (tool === "research_headline") {
       const story = object(output.data);
-      const url = safeUrl(str(story.url));
+      const url = externalCitationUrl(str(story.url));
       if (!url || !str(story.publisher)) continue;
       ref.publisher = str(story.publisher);
       ref.arguments = {...args, url};
@@ -299,4 +333,160 @@ export function readableDates(text: string, locale: Locale, timeZone: string, no
   return text
     .replace(ISO_INSTANT, (instant) => formatDateTime(instant, locale, timeZone, now))
     .replace(ISO_DAY, (_, before: string, day: string) => before + formatCalendarDate(day, locale, now));
+}
+
+const recordNames: Record<string, readonly [string, string]> = {
+  portfolio_overview: ["账户概览", "Account overview"],
+  period_performance: ["区间表现", "Period performance"],
+  compare_benchmarks: ["基准对比", "Benchmark comparison"],
+  list_holdings: ["持仓明细", "Holdings record"],
+  position_detail: ["持仓明细", "Position record"],
+  lookthrough_exposure: ["穿透配置", "Exposure allocation"],
+  selected_exposure: ["穿透配置", "Exposure allocation"],
+  dated_exposure: ["历史穿透配置", "Historical exposure allocation"],
+  exposure_benchmark: ["基准权重", "Benchmark weight"],
+  read_research_lens: ["研究记录", "Research observation"],
+  read_valuation_evidence: ["估值记录", "Valuation record"],
+  company_profile: ["公司资料", "Company profile"],
+  recent_decisions: ["交易记录", "Trading record"],
+  decision_timing_and_habits: ["决策记录", "Decision record"],
+  review_patterns: ["决策习惯", "Decision habits"],
+  research_position: ["行情记录", "Price record"],
+  price_key_moments: ["日线", "Daily bar"],
+  research_earnings: ["业绩记录", "Earnings record"],
+  research_headline: ["报道", "News report"],
+  selected_daily: ["每日收益", "Daily returns"],
+  daily_returns: ["每日收益", "Daily returns"],
+  selected_money: ["区间盈亏", "Period P&L"],
+  selected_fx: ["汇率归因", "Currency attribution"],
+  holding_fx_split: ["汇率归因", "Currency attribution"],
+  market_sector: ["板块行情", "Sector moves"],
+  global_map: ["全球行情", "Global market moves"],
+  sector_headline: ["报道", "News report"],
+  update_issue: ["更新任务", "Update task"],
+  data_freshness: ["数据状态", "Data status"],
+  news_and_events: ["历史事件", "Historical event"],
+  upcoming_events: ["日历事件", "Calendar event"],
+};
+
+const scopeNames: Record<string, readonly [string, string]> = {
+  invest: ["投资账户", "Invest"], isa: ["ISA", "ISA"], cfd: ["CFD", "CFD"],
+  broker_total: ["全部投资账户", "All investment accounts"], household: ["家庭账户", "Household"],
+};
+
+const recordedDate = (value?: string) => value &&
+  /^\d{4}-\d{2}-\d{2}(?:T[^\s]+)?$/.test(value) && Number.isFinite(Date.parse(value)) ? value : "";
+
+type CitationDetails = { start?: string; end?: string; date?: string; scope?: string; subject?: string; event?: { date: string; end: string } };
+
+/** Read metadata only from the completed tool that supplied the verified observation. */
+function citationDetails(ref: Evidence, output: Json, pointer: string): CitationDetails {
+  const data = object(output.data);
+  const args = ref.arguments ?? {};
+  const item = /^\/data\/([a-z_]+)\/(0|[1-9][0-9]{0,4})\/[a-z_]+$/.exec(pointer);
+  const rows = item && Object.hasOwn(data, item[1]) && data[item[1]];
+  const row = Array.isArray(rows) && item ? object(rows[Number(item[2])]) : {};
+  const scope = str(row.scope) || str(output.scope);
+  const calendarRow = (ref.tool === "upcoming_events" || ref.tool === "news_and_events") && str(row.evidence_id);
+  const eventDate = str(ref.tool === "news_and_events" && pointer.endsWith("/date") ? row.date : row.local_date || row.date);
+  return {
+    subject: str(row.ticker || row.name) || undefined,
+    scope: Object.hasOwn(scopeNames, scope) ? scope : undefined,
+    start: recordedDate(str(data.window_start) || str(data.start)) || undefined,
+    end: recordedDate(str(data.window_end) || str(data.end)) || undefined,
+    date: recordedDate(args.date || str(row.observed_at || row.date || data.date || data.as_of || data.finished_at || data.broker_as_of)) || undefined,
+    event: calendarRow && eventDate ? {date:eventDate, end:str(row.end_date)} : undefined,
+  };
+}
+
+export function verifiedCitationLine(line: {text: string; evidence: Evidence}, output: Json, pointer: string, previewText = line.text) {
+  const {text, evidence} = line;
+  const field = evidence.arguments?.rowCitation ? evidence.arguments.field || pointer : pointer;
+  const details = citationDetails(evidence, output, field);
+  const args = evidence.arguments ?? {};
+  const scope = evidence.tool === "portfolio_overview" || evidence.tool === "list_holdings" || evidence.tool === "position_detail"
+    ? details.scope ?? args.scope : args.scope || details.scope;
+  const metric = evidence.tool === "period_performance" ? /^\/data\/([a-z_]+)$/.exec(pointer)?.[1] : undefined;
+  const ticker = (evidence.tool === "list_holdings" || evidence.tool === "position_detail") ? details.subject || args.ticker : args.ticker;
+  return {text, evidence:{...evidence, arguments:{...args, snapshotId:str(output.snapshot_id),
+    ...(scope ? {scope} : {}), ...(metric ? {metric} : {}), ...(ticker ? {ticker} : {}),
+  }, [verifiedCitation]:{text: previewText, details, field}}};
+}
+
+/** A saved observation needs a destination that verifies its publication or its own record identity. */
+function canReopen(href: string) {
+  const url = new URL(href, "https://workspace.invalid");
+  const params = url.searchParams;
+  const snapshot = snapshotPattern.test(params.get("snapshotId") ?? "");
+  const tool = params.get("evidence");
+  switch (url.pathname) {
+    case "/":
+    case "/review": return snapshot;
+    case "/holdings": return snapshot && tool !== "dated_exposure";
+    case "/analytics": {
+      const from = params.get("moneyFrom"), to = params.get("moneyTo");
+      return snapshot && (Boolean(from && to && dayPattern.test(from) && dayPattern.test(to) && from <= to) ||
+        (params.has("inspectFrom") && params.has("inspectTo")) || (params.has("returnFrom") && params.has("returnTo")));
+    }
+    case "/research": return snapshot && (tool === "company_profile"
+      ? params.has("evidenceId") && /^(0|[1-9]\d?)$/.test(params.get("sentence") ?? "") && /^[0-9a-f]{8}$/.test(params.get("sentenceId") ?? "")
+      : params.has("evidenceId") ||
+      ((Boolean(citedEventKind(params.get("event"))) || ["actions", "events"].includes(params.get("analystView") ?? "")) &&
+        (params.has("eventId") || params.has("calendarEventId"))));
+    case "/health": return tool === "update_issue" && params.has("job");
+    // Sector boards and the regional map are maintained outside the retained publication store.
+    case "/sectors": return false;
+    default: return false;
+  }
+}
+
+/** The preview reads the same localised observation already accepted for display. */
+export function citationPreview(evidence: Evidence, locale: Locale, timeZone: string, observation?: string) {
+  const verified = evidence[verifiedCitation];
+  const details = verified?.details;
+  const target = evidenceHref(evidence);
+  const args = evidence.arguments ?? {};
+  if (evidence.source === "inference" || !Object.hasOwn(destinations, evidence.tool) || (!target && (!args.snapshotId || args.url))) return null;
+  const href = target?.startsWith("/") && !canReopen(target) ? null : target;
+  const t = (zh: string, en: string) => locale === "zh" ? zh : en;
+  const habit = args.habit || args.habitSection;
+  const names = evidence.tool === "review_patterns" && isHabit(habit) ? habitLabels[habit]
+    : Object.hasOwn(recordNames, evidence.tool) ? recordNames[evidence.tool] : null;
+  const name = names ? t(...names) : sourceLabel(evidence, t);
+  const category = args.dimension === "country" ? countryName(args.category, locale)
+    : args.dimension === "sector" || args.dimension === "gics" ? industryName(args.category, locale) : args.category;
+  const subject = args.holdingTicker || details?.subject || args.ticker || args.listing || args.benchmarkSource || category || args.index || args.index_id || args.market;
+  const title = subject && subject !== "MARKET" ? (locale === "zh" ? subject + " " + name : name + " · " + subject) : name;
+  const reading = verified?.text ?? observation;
+  const chart = evidence.tool === "research_position" || evidence.tool === "price_key_moments";
+  // Streamed chart figures lead with the listing. In-place observations lead with their date or window.
+  const dateText = chart && verified && args.field ? reading?.split(" · ")[1] : reading;
+  const window = dateText?.match(chart ? /^\d{4}-\d{2}-\d{2}(?: – \d{4}-\d{2}-\d{2})?(?=$|[\s,，])/
+    : /^\d{4}-\d{2}-\d{2}(?: – \d{4}-\d{2}-\d{2})?/)?.[0].split(" – ");
+  const calendar = evidence.tool === "upcoming_events" || evidence.tool === "news_and_events";
+  const dateValue = args.instant || args.date || args.decision_date || args.reportDate || args.observedAt || args.observed;
+  const start = recordedDate(calendar ? details?.event?.date || dateValue : chart ? window?.[0] || dateValue || details?.date
+    : dateValue || args.start || args.benchmarkAsOf || details?.start || details?.date || window?.[0]);
+  const end = recordedDate(calendar ? details?.event?.end || args.endDate
+    : chart ? window?.[1] : args.endDate || args.end || (dateValue ? undefined : details?.end || window?.[1]));
+  const date = [start, end && end !== start ? end : ""].filter(Boolean).map(value =>
+    value.includes("T") ? formatDateTime(value, locale, timeZone) : formatCalendarDate(value, locale),
+  ).join(" – ");
+  const scopeKey = details?.scope || args.scope || "";
+  const scope = Object.hasOwn(scopeNames, scopeKey) ? t(...scopeNames[scopeKey]) : "";
+  const sentence = /^\d{1,2}$/.test(args.sentence ?? "") ? Number(args.sentence) + 1 : null;
+  const sentenceLabel = sentence ? t("第 {n} 句", "Sentence {n}").replace("{n}", String(sentence)) : "";
+  const formatted = reading && readableDates(reading, locale, timeZone);
+  const fact = formatted?.split(" · ")
+    .map(part => {
+      const suffix = date && part.startsWith(date) ? part.slice(date.length) : "";
+      return (chart ? /^[ ,，]/ : /^ /).test(suffix) ? suffix.slice(1).trimStart() : part;
+    })
+    .filter(part => part !== subject && part !== scope && part !== date).join(" · ")
+    .replace(/-(?=(?:[£$€¥])?\d)/g, (minus, offset, text: string) => offset === 0 || /[\s£$€¥(+]/.test(text[offset - 1]) ? "−" : minus);
+  const description = evidence.source === "publisher" || (evidence.source === "calendar" && args.url) ? fact : undefined;
+  const metric = evidence.tool === "period_performance" && Object.hasOwn(PERIOD_MONEY_LABELS, args.metric)
+    ? t(...PERIOD_MONEY_LABELS[args.metric]) : "";
+  const context = [title, metric, date, scope, sentenceLabel, description].filter(Boolean).join(" · ");
+  return {href:href ?? null, title, date, scope, context, fact, credit: args.credit, external: Boolean(href && /^https?:/.test(href))};
 }

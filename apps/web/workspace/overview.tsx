@@ -78,12 +78,44 @@ const OverviewBrief = dynamic(() => import("./assistant/overview").then(module =
 
 export function OverviewWorkspace({ localWorkspace = false }: { localWorkspace?: boolean }) {
   const t = useCopy();
+  const { params } = useRouteState();
+  const snapshotId = params.get("snapshotId");
   return (
     <Page className="mx-overview-page" title={t("组合总览", "Portfolio overview")} titleHidden>
-      <OverviewContent localWorkspace={localWorkspace} />
+      {params.get("evidence") === "portfolio_overview" ? (
+        <CitedAccountBalances snapshotId={snapshotId} scope={params.get("scope") ?? "broker_total"} />
+      ) : <OverviewContent localWorkspace={localWorkspace} />}
     </Page>
   );
 }
+
+function CitedAccountBalances({ snapshotId, scope }: { snapshotId: string | null; scope: string }) {
+  const t = useCopy();
+  const names: Record<string, string> = {
+    invest: t("投资账户", "Invest"), isa: "ISA", cfd: "CFD", household: t("家庭账户", "Household"),
+    broker_total: t("全部投资账户", "All investment accounts"),
+  };
+  const enabled = /^[A-Za-z0-9_-]{1,100}$/.test(snapshotId ?? "") && Object.hasOwn(names, scope);
+  const query = useDashboardLens("overview", undefined, enabled, { detail: "summary", scope: scope === "broker_total" ? "total" : scope }, snapshotId ?? undefined);
+  const balance = enabled && !query.isFetching && !query.isError && query.data?.runId === snapshotId && query.data.citedAccount?.scope === scope
+    ? query.data.citedAccount : undefined;
+  const title = t("引用的账户记录", "Cited account balances");
+  useAssistantPageContext({ page: "overview", scope: balance?.scope, snapshotId: balance ? snapshotId ?? undefined : undefined });
+  return <Panel title={balance ? title + " · " + names[scope] : title}
+    action={balance?.asOf ? <Freshness date={balance.asOf} /> : undefined}>
+    {enabled && query.isFetching ? <Pending shape="summary" quiet /> : !balance ? (
+      <p role="status" data-cited-account="">{t("引用的快照已不可用", "Cited publication unavailable")}</p>
+    ) : <div className="mx-metric-grid mx-metric-lead" data-cited-account="">
+      <Metric large label={scope === "cfd" ? t("已实现现金权益", "Realised cash equity") : t("账户价值", "Account value")}
+        value={currency(balance.totalValueGbp, "GBP", 2)} />
+      {balance.cashGbp != null && <Metric label={t("现金", "Cash balance")} value={currency(balance.cashGbp, "GBP", 2)} />}
+      {balance.investedGbp != null && <Metric label={t("已投资金额", "Invested value")} value={currency(balance.investedGbp, "GBP", 2)} />}
+      {balance.realizedPnlGbp != null && <Metric label={t("已实现盈亏", "Realised P&L")} value={currency(balance.realizedPnlGbp, "GBP", 2)} tone={tone(balance.realizedPnlGbp)} />}
+      {balance.unrealizedPnlGbp != null && <Metric label={t("浮动盈亏", "Unrealised P&L")} value={currency(balance.unrealizedPnlGbp, "GBP", 2)} tone={tone(balance.unrealizedPnlGbp)} />}
+    </div>}
+  </Panel>;
+}
+
 function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   const t = useCopy();
   const { locale } = useLocale();

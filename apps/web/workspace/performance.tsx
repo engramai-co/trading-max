@@ -52,7 +52,7 @@ import { portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history"
 import { portfolioMoney } from "@/lib/portfolio/money";
 import { portfolioValueLines } from "./portfolio-value-lines";
 import { usePortfolioHistory } from "@/lib/portfolio-history-query";
-import { MoneyDrawdown, MoneySummary } from "./performance-money";
+import { CitedMoneyAmount, MoneyDrawdown, MoneySummary, citedMoneyAmount } from "./performance-money";
 import { ReadingBoundary, useReadingBoundary } from "@/ui/charts/reading";
 import { usePublicationFailure } from "@/ui/publication-provider";
 import { useChartColours } from "@/ui/charts/palette";
@@ -78,7 +78,7 @@ export function PerformanceContent({
   const { data: profile } = useWorkspaceProfile();
   const { params, update: updateRoute } = useRouteState();
   const update = (values: Record<string, string | null>) => updateRoute({
-    moneyFrom:null, moneyTo:null, inspectFrom:null, inspectTo:null, snapshotId:null, evidence:null, ...values,
+    moneyFrom:null, moneyTo:null, inspectFrom:null, inspectTo:null, snapshotId:null, evidence:null, field:null, record:null, ...values,
   });
   const view =
     params.get("view") === "returns"
@@ -105,12 +105,14 @@ export function PerformanceContent({
   }, []);
   const [phoneRange,setPhoneRange] = useState<string | null>(null);
   const [moneyUnit, setMoneyUnit] = useState("gbp");
-  const start = params.get("returnFrom"), end = params.get("returnTo");
+  const linkedFrom = params.get("inspectFrom"), linkedTo = params.get("inspectTo");
+  const showRecord = params.get("record") === "1";
+  const start = params.get("returnFrom") ?? (showRecord ? linkedFrom : null);
+  const end = params.get("returnTo") ?? (showRecord ? linkedTo : null);
   const customRange = view === "returns" && start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end) && start < end
     ? { start, end } : null;
   const requestedRange = view === "risk" || customRange ? "ALL" : view === "returns" && range === "1D" ? "3M" : range;
   const citedId = params.get("snapshotId");
-  const linkedFrom = params.get("inspectFrom"), linkedTo = params.get("inspectTo");
   const inspectionCitation = Boolean(citedId && linkedFrom && linkedTo);
   const pinnedLens = view !== "money" && (inspectionCitation || (view === "returns" && params.get("evidence") === "compare_benchmarks"))
     ? citedId || undefined : undefined;
@@ -127,6 +129,10 @@ export function PerformanceContent({
   const historyId = pinnedMoney ?? incoming?.runId ?? "";
   const historyQuery = usePortfolioHistory({ runId: historyId, range: requestedRange, scope: requestedScope },
     view === "money" && Boolean(historyId), [], Boolean(pinnedMoney));
+  const citedMoneyField = pinnedMoney && moneyCitation ? params.get("field") : null;
+  const wrongMoneyRecord = Boolean(pinnedMoney && historyQuery.data && (historyQuery.data.runId !== pinnedMoney ||
+    (citedMoneyField && (historyQuery.data.history.startDay !== moneyFrom || historyQuery.data.history.endDay !== moneyTo ||
+      citedMoneyAmount(historyQuery.data.money, citedMoneyField) == null))));
   const runtime = useChartRuntime();
   const colours = useChartColours();
   // A single commit point: figures, dates, records and plots all consume this pair.
@@ -144,7 +150,8 @@ export function PerformanceContent({
     (!activeRange || publicationOf(next) === activeRange.snapshotId) &&
     (!reading.active || next.data?.runId === pinnedLens || next.view !== previous.view || next.range !== previous.range || next.scope !== previous.scope));
   const shown = retained?.view === view && retained.scope === requestedScope &&
-    (!pinnedLens || (!summary.isError && retained.data?.runId === pinnedLens)) && (!pinnedMoney || (!historyQuery.isError && retained.history?.runId === pinnedMoney)) ? retained : undefined;
+    (!pinnedLens || (!summary.isFetching && !summary.isError && retained.data?.runId === pinnedLens)) &&
+    (!pinnedMoney || (!historyQuery.isFetching && !historyQuery.isError && !wrongMoneyRecord && retained.history?.runId === pinnedMoney)) ? retained : undefined;
   const data = shown?.data;
   const scope = shown?.scope ?? requestedScope;
   const actualRange = shown?.range ?? requestedRange;
@@ -169,7 +176,8 @@ export function PerformanceContent({
   const waitingLabel = view === "risk"
     ? t("正在读取全部可用历史…", "Loading all available history…")
     : t("正在读取 ", "Loading ") + rangeLabel + t(" 记录…", " records…");
-  const unavailable = runtime.status === "failed"
+  const unavailable = wrongMoneyRecord ? { label:t("引用的记录暂不可用", "Cited record unavailable"), retry:historyQuery.refetch }
+    : runtime.status === "failed"
     ? { label: t("图表暂不可用", "Chart unavailable"), retry: runtime.retry }
     : failure && !shown ? {
       label: pinnedLens || pinnedMoney ? t("引用的数据版本暂不可用", "Cited publication unavailable")
@@ -228,17 +236,20 @@ export function PerformanceContent({
 
   const citedWindow = citedId && citedId===plottedId && linkedFrom && linkedTo
     ? {start:linkedFrom,end:linkedTo,snapshotId:citedId} : null;
-  const selectedWindow = activeRange ?? citedWindow;
+  const [followedWindow, setFollowedWindow] = useState("");
+  const recordOnly = showRecord || followedWindow === identity;
+  const selectedWindow = activeRange ?? (followedWindow === identity && !showRecord ? null : citedWindow);
   const endpointsPresent = selectedWindow && points.some(p=>p.date===selectedWindow.start) && points.some(p=>p.date===selectedWindow.end);
   const endpointLabel = (value:string) => value.length===10 ? value : formatDateTime(value,locale,timeZone);
   const newestId = current && publicationOf(current);
-  const inspection = <PageInspection key={selectedWindow?.snapshotId} role="attribution"
+  const inspection = <PageInspection key={selectedWindow?.snapshotId} role="attribution" showInline={recordOnly && !activeRange}
       returnFocusRef={activeRange ? rangeTrigger : undefined}
       unavailable={Boolean(selectedWindow && !endpointsPresent && shown)}
       snapshotId={selectedWindow?.snapshotId ?? plottedId} object={selectedWindow ? endpointLabel(selectedWindow.start)+" – "+endpointLabel(selectedWindow.end) : t("所选区间","Selected range")}
       context={selectedWindow ? {scope:scope==="total"?"broker_total":scope,benchmark,view,range:actualRange,start:selectedWindow.start,end:selectedWindow.end} : undefined}
       onUpdate={activeRange && newestId && activeRange.snapshotId !== newestId ? () => setSelectionRange({...activeRange,snapshotId:newestId}) : undefined}
-      onClose={() => {setSelectionRange(null);setPhoneRange(null);if (citedWindow) updateRoute({inspectFrom:null,inspectTo:null});}}/>;
+      onFollowCitation={() => {setSelectionRange(null); setPhoneRange(null); setFollowedWindow(identity);}}
+      onClose={() => {setSelectionRange(null);setPhoneRange(null);if (citedWindow && !showRecord) updateRoute({inspectFrom:null,inspectTo:null});}}/>;
   const first = points[0],
     last = points.at(-1);
   const publishedMoney = view === "money" ? shown?.history?.money : undefined;
@@ -393,14 +404,14 @@ export function PerformanceContent({
           )}
         </Notice>
       ) : view === "risk" ? (
-        <div className="mx-data-body mx-performance-risk" aria-busy={waiting || undefined}>
+        <div className="mx-data-body mx-performance-risk" data-citation-ready={Boolean(shown && !waiting) || undefined} aria-busy={waiting || undefined}>
           <RiskDashboard onBrush={brush} rangeTrigger={bindRiskRangeTrigger} inspection={inspection} data={runtime.status === "ready" ? data : undefined} scope={scope}
             unavailable={unavailable} retry={usesAnalytics ? summary.refetch : undefined} />
         </div>
       ) : (
         <>
           <Panel className="mx-performance-chart">
-            {ready && <h2 className="sr-only">{view === "money" ? t("资金与盈亏","Money and P&L") : t("收益对比","Return comparison")}</h2>}
+            {ready && <h2 className="sr-only" data-citation-ready={Boolean(shown && !waiting) || undefined}>{view === "money" ? t("资金与盈亏","Money and P&L") : t("收益对比","Return comparison")}</h2>}
             {/* The tab names the view; the chart's controls share one row. */}
             <div className="mx-toolbar mx-chart-toolbar">
               {view === "money" ? (
@@ -462,6 +473,7 @@ export function PerformanceContent({
             {pinnedMoney && shown?.history && <p className="mx-return-range">{shown.history.history.startDay} – {shown.history.history.endDay} <button type="button" className="mx-text-link" onClick={() => update({})}>
               {t("返回当前记录", "Return to current history")}</button></p>}
             {view === "money" && <HistoryCoverage history={history} />}
+            {citedMoneyField && <CitedMoneyAmount money={money} field={citedMoneyField} />}
             {view === "money" ? (
               <MoneySummary money={money} points={points} />
             ) : (

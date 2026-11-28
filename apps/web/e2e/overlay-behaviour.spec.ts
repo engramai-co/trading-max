@@ -416,9 +416,11 @@ test.describe("workspace overlays", () => {
 
     await page.goto("/");
     const digest = page.locator(".mx-digest");
-    await digest.locator("[aria-expanded]").click();
-    await expect(digest).toContainText("Synthetic News Credit");
-    const link = digest.getByRole("link", { name: "Example Wire", exact: true });
+    await digest.locator(".mx-digest-toggle").click();
+    await digest.getByRole("button", { name: /^Example Wire .*opens in a new tab/ }).tap();
+    const preview = page.locator(".mx-citation-preview");
+    await expect(preview).toContainText("Synthetic News Credit");
+    const link = preview.getByRole("link", { name: /Open record.*opens in a new tab/ });
     await expect(link).toBeVisible();
     await expect(link).toHaveAttribute("href", "https://example.org/story");
     await expect(link).toHaveAttribute("target", "_blank");

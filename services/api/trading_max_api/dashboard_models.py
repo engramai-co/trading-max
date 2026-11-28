@@ -66,6 +66,16 @@ class AccountSummary(ApiModel):
     nav_quality: str
 
 
+class CitedAccountBalance(ApiModel):
+    scope: Literal["invest", "isa", "broker_total", "household", "cfd"]
+    as_of: str | None = None
+    total_value_gbp: float
+    cash_gbp: float | None = None
+    invested_gbp: float | None = None
+    realized_pnl_gbp: float | None = None
+    unrealized_pnl_gbp: float | None = None
+
+
 class CfdSummary(ApiModel):
     code: Literal["C"]
     name: str
@@ -1494,6 +1504,7 @@ class DashboardLensSnapshot(ApiModel):
     generated_at: str
     broker_as_of: str
     research_as_of: str
+    cited_account: CitedAccountBalance | None = None
     total_value_gbp: float | None = None
     household_total_value_gbp: float | None = None
     total_cash_gbp: float | None = None

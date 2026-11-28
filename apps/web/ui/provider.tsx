@@ -1,6 +1,6 @@
 "use client";
 
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { TooltipProvider, overlayCloseDelay, overlayHoverDelay } from "@/components/ui/tooltip";
 import { MantineProvider } from "@mantine/core";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
@@ -34,7 +34,7 @@ export function TradingMaxProvider({
       >
         <QueryClientProvider client={queryClient}>
           <SnapshotCacheProvider scope={scope} desktop={desktopCache}>
-            <PublicationProvider><FinePointerProvider><TooltipProvider delay={250} closeDelay={100} timeout={100}>{children}</TooltipProvider></FinePointerProvider></PublicationProvider>
+            <PublicationProvider><FinePointerProvider><TooltipProvider delay={overlayHoverDelay} closeDelay={overlayCloseDelay} timeout={overlayCloseDelay}>{children}</TooltipProvider></FinePointerProvider></PublicationProvider>
           </SnapshotCacheProvider>
         </QueryClientProvider>
       </MantineProvider>

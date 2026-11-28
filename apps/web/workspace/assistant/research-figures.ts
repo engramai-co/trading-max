@@ -1,19 +1,25 @@
 import type { Locale } from "@/components/locale-provider";
 import { formatDateTime } from "@/ui/formatters";
-import { currency, number, object, objects, percent, str, type Json } from "../data";
+import { number, object, objects, percent, signedCurrency, str, type Json } from "../data";
 import { sentenceId } from "../company-profile";
+import { minus } from "../reading-figures";
 import { calendarObservation } from "./figures";
 import type { Evidence } from "./evidence";
+import { replyMove, type ReplyMove } from "./reply-move";
 
 const finite = (n: unknown): n is number => typeof n === "number" && Number.isFinite(n);
 const isoDay = (value: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(str(value)) ? str(value) : "";
 function nativeMoney(n: unknown, unit: unknown, digits = 2) {
   if (!finite(n)) return "";
-  if (["GBp", "GBx", "GBX"].includes(str(unit))) return number(n, 4) + " GBp";
-  return /^[A-Z]{3}$/.test(str(unit)) ? currency(n, str(unit), digits) : "";
+  if (["GBp", "GBx", "GBX"].includes(str(unit))) return minus(number(n, 4)) + " GBp";
+  return /^[A-Z]{3}$/.test(str(unit)) ? signedCurrency(n, str(unit), digits) : "";
 }
 
-export type ResearchFigure = { text: string; evidence: Evidence };
+export type ResearchFigure = {
+  text: string;
+  evidence: Evidence;
+  reply?: {text: string; subject: string; move?: ReplyMove; day?: string; sameDayText?: string};
+};
 
 const eventLabels: Record<string, [zh:string,en:string,source:Evidence["source"],lens:string]> = {
   earnings:["财报","Earnings reported","financials","analyst"], rating_change:["评级变动","Rating change","analysts","analyst"],
@@ -38,9 +44,11 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
   const data = object(output.data);
   const ticker = str(data.listing) || str(data.ticker) || str(ref.arguments?.ticker);
   if (!ticker && !eventsTool) return null;
+  const subject = ticker === "INDEX" ? str(ref.arguments?.index_id) || str(ref.arguments?.index) || ticker : ticker;
   const t = (zh: string, en: string) => locale === "zh" ? zh : en;
-  const figure = (values: string[], source: Evidence["source"], args: Record<string, string>) => ({
+  const figure = (values: string[], source: Evidence["source"], args: Record<string, string>, reply?: Omit<NonNullable<ResearchFigure["reply"]>, "subject">): ResearchFigure => ({
     text: [ticker, ...values].filter(Boolean).join(" · "),
+    ...(reply && {reply: {...reply, subject}}),
     evidence: {...ref, source, arguments: {...ref.arguments, ticker:str(ref.arguments?.ticker) || ticker, field:path, ...(tool === "price_key_moments" && !ref.arguments?.date ? {unselected:"1"} : {}), snapshotId:str(output.snapshot_id) || str(ref.arguments?.snapshotId), ...args}},
   });
   if (eventsTool) {
@@ -64,7 +72,13 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
   if (tool === "research_headline") {
     if (path !== "/data/title" || !str(data.title) || !str(data.publisher)) return null;
     const day = isoDay(data.date) || (str(data.date).includes("T") && Number.isFinite(Date.parse(str(data.date))) ? formatDateTime(str(data.date), locale, timeZone) : "");
-    return day ? figure([day, t("相关报道", "Related headline") + " · " + str(data.title)], "publisher", {reference:str(ref.arguments?.reference) || str(data.reference),role:"lead"}) : null;
+    if (!day) return null;
+    const title = str(data.title);
+    const text = t("{day} 关于 {subject} 的报道标题是「{title}」。", "A report about {subject} on {day} ran the headline “{title}”.")
+      .replace("{day}", day).replace("{subject}", subject).replace("{title}", title);
+    const sameDayText = t("当天的报道标题是「{title}」。", "A report that day ran the headline “{title}”.").replace("{title}", title);
+    return figure([day, t("相关报道", "Related headline") + " · " + title], "publisher",
+      {reference:str(ref.arguments?.reference) || str(data.reference),role:"lead"}, {text, day, sameDayText});
   }
   if (tool === "price_key_moments") {
     const nested = /^\/data\/items\/(0|[1-9]\d?)\/events\/(0|[1-9]\d?)\/(kind|date|reference)$/.exec(path);
@@ -78,8 +92,15 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     if (after) {
       const row = objects(data.following)[Number(after[1])];
       if (!row || !isoDay(row.start) || !isoDay(row.date) || !finite(row.return_fraction)) return null;
-      return figure([str(row.start) + " – " + str(row.date), basisName(data.adjustment,locale) + " " + percent(row.return_fraction,true,2)],
-        "market",{date:str(row.start),lens:"technical",indexRange:str(data.index_range)});
+      const basis = basisName(data.adjustment, locale);
+      const move = replyMove(row.return_fraction, locale);
+      const text = (move ? t("{start} 至 {end}，{subject} 的{basis}{move}。", "From {start} to {end}, the {basis} for {subject} was {move}.")
+        .replace("{move}", move.text) : t("{start} 至 {end}，{subject} 的{basis}持平。", "From {start} to {end}, the {basis} for {subject} was flat."))
+        .replace("{start}", str(row.start)).replace("{end}", str(row.date))
+        .replace("{subject}", subject)
+        .replace("{basis}", locale === "en" ? basis.toLowerCase() : basis);
+      return figure([str(row.start) + " – " + str(row.date), basis + " " + (move?.text ?? t("持平", "flat"))],
+        "market",{date:str(row.start),lens:"technical",indexRange:str(data.index_range)}, {text, move});
     }
     const match = /^\/data\/items\/(0|[1-9]\d?)\/(move_fraction|volume_z_score)$/.exec(path);
     if (!match) return null;
@@ -88,9 +109,24 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     const value = item?.[match[2]];
     if (!day || !finite(value)) return null;
     const move = match[2] === "move_fraction";
-    const metric = move ? basisName(data.adjustment,locale) + " " + percent(value, true, 2)
+    const direction = move ? replyMove(value, locale) : undefined;
+    const basis = basisName(data.adjustment, locale);
+    const metric = move ? basis + " " + (direction?.text ?? t("持平", "flat"))
       : t("成交量较此前 20 个交易日均值的偏差", "Volume deviation from the prior 20-session mean") + " " + number(value) + " σ";
-    return figure([day, metric], move ? "market" : "technical", {date:day, lens:"technical", indexRange:str(data.index_range)});
+    const deviation = value === 0 ? t("{volume}与此前 20 个交易日的均值相同。", "{volume} matched the average of the previous 20 trading days.")
+      : (value < 0 ? t("{volume}比此前 20 个交易日的均值低 {value} 个标准差。",
+        "{volume} was {value} standard deviations below the previous 20 trading days’ average.")
+        : t("{volume}比此前 20 个交易日的均值高 {value} 个标准差。",
+          "{volume} was {value} standard deviations above the previous 20 trading days’ average."))
+        .replace("{value}", number(Math.abs(value)));
+    const text = (move
+      ? (direction ? t("{subject} 在 {day} 的{basis}{move}。", "On {day}, the {basis} for {subject} was {move}.").replace("{move}", direction.text)
+        : t("{subject} 在 {day} 的{basis}持平。", "On {day}, the {basis} for {subject} was flat."))
+        .replace("{basis}", locale === "en" ? basis.toLowerCase() : basis)
+      : deviation.replace("{volume}", t("{subject} 在 {day} 的成交量", "Volume for {subject} on {day}")))
+      .replace("{day}", day).replace("{subject}", subject);
+    return figure([day, metric], move ? "market" : "technical", {date:day, lens:"technical", indexRange:str(data.index_range)},
+      {text, day, move: direction, sameDayText: move ? undefined : deviation.replace("{volume}", t("成交量", "Volume"))});
   }
   if (tool === "research_position") {
     const end = isoDay(data.end), start = isoDay(data.start);
@@ -102,9 +138,25 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     }
     const quote = data.unit === "points" && finite(data.close) ? number(data.close) + t(" 点", " index points") : nativeMoney(data.close, data.currency);
     const chart = {lens:"technical", date:end, indexRange:str(data.range)};
-    if (path === "/data/close" && quote) return figure([end, t("收盘", "Close") + " " + quote], "market", chart);
-    if (path === "/data/change" && start && finite(data.change)) return figure([start + " – " + end,
-      basisName(data.unit === "points" ? "index-level" : data.adjustment,locale) + " " + percent(data.change, true, 2)], "market", chart);
+    if (path === "/data/close" && quote) {
+      const change = start && start < end && finite(data.change) ? data.change : null;
+      const move = change === null ? undefined : replyMove(change, locale);
+      const text = (move ? t("{end} 收于 {quote}，较 {start} 收盘{move}。",
+        "Closed at {quote} on {end}, {move} from the close on {start}.").replace("{move}", move.text).replace("{start}", start)
+        : t("{end} 收于 {quote}。", "Closed at {quote} on {end}."))
+        .replace("{end}", end).replace("{quote}", quote);
+      const sentence = t("{subject} 在 {close}", "{subject} {close}").replace("{subject}", subject)
+        .replace("{close}", locale === "zh" ? text : text[0].toLowerCase() + text.slice(1));
+      return figure([text], "market", chart, {text: sentence, day: end, move});
+    }
+    if (path === "/data/change" && start && start <= end && finite(data.change)) {
+      const basis = basisName(data.unit === "points" ? "index-level" : data.adjustment,locale);
+      const move = replyMove(data.change, locale);
+      const text = (move ? t("{start} 至 {end}，{subject} 的{basis}{move}。", "From {start} to {end}, the {basis} for {subject} was {move}.").replace("{move}", move.text)
+        : t("{start} 至 {end}，{subject} 的{basis}持平。", "From {start} to {end}, the {basis} for {subject} was flat."))
+        .replace("{start}", start).replace("{end}", end).replace("{subject}", subject).replace("{basis}", locale === "en" ? basis.toLowerCase() : basis);
+      return figure([start + " – " + end, basis + " " + (move?.text ?? t("持平", "flat"))], "market", chart, {text, move});
+    }
     const day = isoDay(data.trade_date);
     if (path === "/data/trade_date" && day && ["buy", "sell", "trade"].includes(str(data.side))) {
       return figure([day, data.side === "buy" ? t("最近一笔已核实买入", "Latest verified buy") : data.side === "sell" ? t("最近一笔已核实卖出", "Latest verified sell") : t("最近已核实的成交日", "Latest verified trading day")], "broker", {...chart, date:day});
@@ -113,10 +165,10 @@ export function researchFigure(ref: Evidence, output: Json, path: string, locale
     if (!match) return null;
     const row = objects(data.benchmarks)[Number(match[1])], value = row?.[match[2]];
     if (!row || !str(row.symbol) || !Number.isSafeInteger(row.sessions) || !finite(value)) return null;
-    const subject = match[2] === "asset" ? ticker : str(row.name) || str(row.symbol);
+    const comparisonSubject = match[2] === "asset" ? ticker : str(row.name) || str(row.symbol);
     if (!isoDay(row.start) || !isoDay(row.end)) return null;
     const basis = match[2] === "benchmark" && row.benchmark_basis === "price-index" ? "index-level" : "split-and-dividend-adjusted";
-    return figure([str(row.start) + " – " + str(row.end), basisName(basis,locale), subject + " · " + str(data.currency) + " · " + number(row.sessions, 0) +
+    return figure([str(row.start) + " – " + str(row.end), basisName(basis,locale), comparisonSubject + " · " + str(data.currency) + " · " + number(row.sessions, 0) +
       t(" 个共同交易日", " matched sessions") + " · " + percent(value, true, 2)], "technical", chart);
   }
   const report = object(data.report), day = isoDay(str(report.date).slice(0,10));

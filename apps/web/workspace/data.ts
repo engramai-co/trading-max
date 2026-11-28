@@ -45,6 +45,9 @@ export const currency = (value: unknown, code = "GBP", digits = 0) => {
   }
   return format.format(rounded);
 };
+/** Use the mathematical minus for readings while keeping the existing currency layout elsewhere. */
+export const signedCurrency = (value: unknown, code = "GBP", digits = 0) =>
+  currency(value, code, digits).replace(/^-/, "−");
 export const percent = (value: unknown, signed = false, digits = 1) => {
   const n = numeric(value);
   const rounded = n == null ? null : Number((n * 100).toFixed(digits));
