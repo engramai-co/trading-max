@@ -68,45 +68,6 @@
 .mx-desktop-surface .mx-panel-title h2 {
   font-size: 16px;
 }
-.mx-desktop-surface .mx-health-hero {
-  padding: 20px 22px;
-  gap: 16px;
-}
-.mx-desktop-surface .mx-health-hero h2 {
-  font-size: 19px;
-}
-.mx-desktop-surface .mx-health-hero p {
-  margin-bottom: 6px;
-}
-.mx-desktop-surface .mx-health-symbol {
-  width: 40px;
-  height: 40px;
-}
-.mx-desktop-surface .mx-job-row {
-  padding-block: 18px;
-}
-.mx-activity-controls {
-  border: 1px solid var(--mx-border);
-  background: var(--mx-surface);
-  border-radius: 10px;
-}
-.mx-activity-controls > summary {
-  padding: 16px 22px;
-  color: var(--mx-muted);
-  font-size: 13px;
-}
-.mx-activity-controls[open] > summary {
-  border-bottom: 1px solid var(--mx-border);
-  margin-bottom: 20px;
-}
-.mx-activity-controls > .mx-grid-two {
-  display: flex;
-  flex-direction: column;
-  margin: 0 20px 20px;
-}
-.mx-activity-controls > .mx-panel {
-  margin: 0 20px 20px;
-}
 .mx-import-steps {
   list-style: none;
   display: flex;

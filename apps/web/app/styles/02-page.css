@@ -114,7 +114,7 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border-top: 1px solid var(--mx-border);
+  border-top: 1px solid var(--border);
 }
 .mx-job-outcomes li {
   display: flex;
@@ -122,8 +122,9 @@
   align-items: baseline;
   gap: 4px 14px;
   padding: 10px 0;
-  border-bottom: 1px solid var(--mx-border);
+  border-bottom: 1px solid var(--border);
   font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 /* The raw backend message stays one click away, under the human cause. */
 .mx-job-outcomes li > details {
@@ -132,16 +133,16 @@
   font-size: 0.75rem;
 }
 .mx-job-outcomes li > details > summary {
-  color: var(--mx-muted);
+  color: var(--muted-foreground);
   font-weight: 400;
 }
 .mx-job-outcomes li > details > code {
   display: block;
   margin-top: 6px;
   padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--mx-soft);
-  color: var(--mx-muted);
+  border-radius: var(--radius-tooltip);
+  background: var(--muted);
+  color: var(--muted-foreground);
   font-size: 0.6875rem;
   line-height: 1.6;
   white-space: pre-wrap;

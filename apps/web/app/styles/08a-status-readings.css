@@ -33,6 +33,160 @@
   margin-block-start: 6px;
 }
 
+.mx-health-hero {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  padding: 28px;
+  min-inline-size: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-panel);
+  background: var(--card);
+  box-shadow: var(--shadow-panel);
+}
+.mx-health-symbol {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 70px;
+  height: 70px;
+  border-radius: var(--radius-control);
+  background: var(--muted);
+  color: var(--warning);
+}
+.mx-health-hero[data-ready] .mx-health-symbol {
+  color: var(--foreground);
+}
+.mx-health-hero h2 {
+  font-size: 1.4375rem;
+  font-weight: 550;
+  letter-spacing: -0.022em;
+}
+.mx-health-hero p {
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+  line-height: 1.8;
+  margin: 8px 0 12px;
+}
+.mx-health-hero > :nth-child(2) {
+  min-inline-size: 0;
+  overflow-wrap: break-word;
+}
+.mx-health-hero > [data-slot="badge"] {
+  flex: none;
+  margin-inline-start: auto;
+}
+.mx-health-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 22px;
+}
+.mx-health-disclosure {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+.mx-health-page details > .mx-health-summary,
+.mx-health-drawer details > .mx-health-summary {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 40px;
+  gap: 4px;
+  border-radius: var(--radius-control);
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+.mx-health-summary > svg {
+  flex: none;
+  color: var(--muted-foreground);
+}
+.mx-health-summary > span {
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+details > summary.mx-health-summary::before {
+  content: none;
+}
+details[open] > .mx-health-summary > svg {
+  transform: rotate(90deg);
+}
+.mx-health-summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.mx-health-drawer .tm-overlay-title,
+.mx-health-drawer h3 {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.mx-health-drawer [data-slot="badge"] {
+  white-space: normal;
+  max-inline-size: 100%;
+}
+.mx-health-drawer .mx-facts > div {
+  flex-wrap: wrap;
+  gap: 6px 16px;
+}
+.mx-health-drawer .mx-facts :is(dt, dd),
+.mx-health-page [data-slot="alert"] > div,
+.mx-health-drawer [data-slot="alert"] > div {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.mx-diagnostic-code {
+  display: block;
+  color: var(--foreground);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-inline-size: 100%;
+}
+.mx-activity-page .mx-health-hero {
+  padding: 20px 22px;
+  gap: 16px;
+}
+.mx-activity-page .mx-health-hero h2 {
+  font-size: 1.1875rem;
+}
+.mx-activity-page .mx-health-hero p {
+  margin-bottom: 6px;
+}
+.mx-activity-page .mx-health-symbol {
+  width: 40px;
+  height: 40px;
+}
+.mx-activity-controls {
+  border: 1px solid var(--panel-edge);
+  border-radius: var(--radius-panel);
+  background: var(--card);
+  box-shadow: var(--shadow-panel);
+}
+.mx-health-page .mx-activity-controls > .mx-health-summary {
+  padding: 16px 22px;
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+.mx-activity-controls[open] > summary {
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.mx-activity-controls > .mx-health-grid {
+  display: flex;
+  flex-direction: column;
+  margin: 0 20px 20px;
+}
+.mx-activity-controls > .mx-panel {
+  margin: 0 20px 20px;
+}
+@media (max-width: 959px) {
+  .mx-health-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 767px) {
   .mx-health-hero {
     display: grid;
@@ -43,21 +197,22 @@
     width: 32px;
     height: 32px;
   }
-  /* The heading already says why the status needs attention. */
-  .mx-health-hero > .mx-tag {
+  .mx-health-hero > [data-slot="badge"] {
     display: none;
   }
+  .mx-health-grid {
+    gap: var(--mx-space-section);
+  }
 }
-
-.mx-health-source-failure {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  gap: 4px 12px;
-  margin-block: 6px;
-  overflow-wrap: anywhere;
+@media (pointer: coarse) {
+  .mx-health-page details > .mx-health-summary,
+  .mx-health-drawer details > .mx-health-summary {
+    min-height: 44px;
+  }
 }
-.mx-health-source-failure small {
-  color: var(--mx-muted);
-  font-variant-numeric: tabular-nums;
+@media (prefers-reduced-motion: reduce) {
+  .mx-health-page details[open] > :not(summary),
+  .mx-health-drawer details[open] > :not(summary) {
+    animation: none;
+  }
 }

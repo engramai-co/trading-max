@@ -31850,6 +31850,55 @@
         ]
       }
     },
+    "/v1/job-history/{job_id}": {
+      "get": {
+        "description": "Resolve a user-visible refresh task by ID.",
+        "operationId": "get_history_job_v1_job_history__job_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9_-]+$",
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobRecord"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "description": "Task is absent from public update history"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get History Job",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
     "/v1/jobs": {
       "get": {
         "operationId": "list_jobs_v1_jobs_get",

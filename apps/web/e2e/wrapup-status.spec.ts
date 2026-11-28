@@ -76,9 +76,13 @@ test.describe("data status and scheduled updates", () => {
     await expect(page.getByText("Scopes needing attention: CFD review", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "View issue", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Update task details" });
+    await dialog.locator("summary").filter({ hasText: "Technical details" }).press("Enter");
     await expect(dialog.locator("code")).toHaveText(failed.error);
+    await expect(dialog.locator("code")).toBeVisible();
+    await expect(dialog.getByText(/No stage details were recorded/)).toBeVisible();
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "View issue", exact: true })).toBeFocused();
 
     latestTerminalJobs = [completed, jobs[0]];
     await page.getByRole("button", { name: "Check now", exact: true }).click();
@@ -105,7 +109,7 @@ test.describe("data status and scheduled updates", () => {
 
     await page.goto("/health");
     await expect(page.getByRole("heading", { name: "The data service needs attention" })).toBeVisible();
-    await expect(page.getByText("The last published snapshot is 5d old.")).toBeVisible();
+    await expect(page.getByText("The last published snapshot is 5d old.", { exact: true })).toBeVisible();
     const schedule = page.locator("section.mx-panel").filter({
       has: page.getByRole("heading", { name: "Next scheduled updates" }),
     });
@@ -121,6 +125,14 @@ test.describe("data status and scheduled updates", () => {
     }).getByText("2", { exact: true })).toBeVisible();
     await expect(history.getByText("All 2 updates in the last 7 days succeeded")).toBeVisible();
     await expect(page.getByRole("button", { name: /Recheck (schedule|history|status)/ })).toHaveCount(0);
+    await expect(schedule.locator("code")).toHaveCount(2);
+    await expect(schedule.locator("code").first()).toBeHidden();
+    const diagnostics = schedule.locator("summary").filter({ hasText: "Runtime diagnostics" });
+    await diagnostics.press("Enter");
+    await expect(schedule.locator("code").first()).toBeVisible();
+    await expect(schedule.getByText("refresh · 503", { exact: true })).toBeVisible();
+    await diagnostics.press("Space");
+    await expect(schedule.locator("code").first()).toBeHidden();
 
     probesDown = false;
     const checkNow = page.getByRole("button", { name: "Check now", exact: true });
@@ -163,6 +175,8 @@ test.describe("data status and scheduled updates", () => {
       const beforePoll = requests;
       const response = page.waitForResponse(healthRoute);
       await page.clock.fastForward(5_100);
+      expect(requests).toBe(beforePoll);
+      await page.clock.fastForward(25_000);
       await expect.poll(() => requests).toBe(beforePoll + 1);
       await expect(checkNow).toBeEnabled();
       await expect(checkNow).not.toHaveAttribute("aria-busy");
@@ -172,7 +186,7 @@ test.describe("data status and scheduled updates", () => {
       await expect(announcer).toHaveText("");
 
       failed = true;
-      await page.clock.fastForward(5_100);
+      await page.clock.fastForward(30_100);
       await expect(announcer).toContainText("The data service needs attention");
       await expect(announcer).toContainText("Performance");
       await expect(checkNow).toBeFocused();
@@ -197,7 +211,7 @@ test.describe("data status and scheduled updates", () => {
 
       // An additional source failure changes the announcement even while the headline is degraded.
       newsFailed = true;
-      await page.clock.fastForward(5_100);
+      await page.clock.fastForward(30_100);
       await expect(announcer).toContainText("Security news · 1 source refresh failed · Fixture news");
       await expect(checkNow).toBeFocused();
     });
@@ -224,6 +238,9 @@ test.describe("data status and scheduled updates", () => {
     await page.goto("/health");
     await page.getByRole("button", { name: "View issue", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Update task details" });
+    const disclosures = dialog.locator("summary").filter({ hasText: "Technical details" });
+    await disclosures.nth(0).press("Enter");
+    await disclosures.nth(1).press("Space");
     const diagnostics = dialog.locator("code");
     await expect(diagnostics).toHaveText([jobError, stageError]);
     const fonts = () => diagnostics.evaluateAll((nodes) => nodes.map((node) => parseFloat(getComputedStyle(node).fontSize)));
@@ -264,6 +281,162 @@ test.describe("data status and scheduled updates", () => {
     expect(await diagnostic.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
     expect(await outcomes.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
   });
+
+  test("task links resolve older records and explain when a record is unavailable", async ({ page }) => {
+    await mockHealth(page, () => healthFixture());
+    const taskRoute = "**/api/backend/health/task?job=*";
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    await page.route(taskRoute, async (route) => {
+      await gate;
+      if (new URL(route.request().url()).searchParams.get("job") !== "old-performance") {
+        return route.fulfill({ status: 404, json: {} });
+      }
+      await route.fulfill({ json: { ...failedJob, jobId: "old-performance" } });
+    });
+
+    await page.goto("/health?job=old-performance");
+    const dialog = page.getByRole("dialog", { name: "Update task details" });
+    await expect(dialog.locator(".mx-loading-message")).toHaveText("Loading data…");
+    release();
+    await expect(dialog.getByRole("heading", { name: "Performance" })).toBeVisible();
+    await expect(dialog.getByText("No stage details were recorded.", { exact: false })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Check now" })).toBeFocused();
+
+    await page.goto("/health?job=missing-performance");
+    await expect(dialog.locator("[data-cited-missing]")).toHaveText("Cited update task unavailable");
+    await expect(dialog.getByRole("heading", { name: "Performance" })).toHaveCount(0);
+  });
+
+  test("a delayed missing task is announced inside the sheet without moving focus", async ({ page }) => {
+    await mockHealth(page, () => healthFixture());
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    await page.route("**/api/backend/health/task?job=missing-performance", async (route) => {
+      await gate;
+      await route.fulfill({ status: 404, json: {} });
+    });
+
+    await page.goto("/health?job=missing-performance");
+    const dialog = page.getByRole("dialog", { name: "Update task details" });
+    const status = dialog.locator('[role="status"][aria-atomic="true"]');
+    const close = dialog.getByRole("button", { name: "Close task details" });
+    await expect(dialog.locator(".mx-loading-message")).toHaveText("Loading data…");
+    await expect(status).toHaveText("");
+    await close.focus();
+    release();
+
+    await expect(dialog.locator("[data-cited-missing]")).toHaveText("Cited update task unavailable");
+    await expect(status).toHaveText("Cited update task unavailable");
+    await expect(close).toBeFocused();
+    await expect(dialog).toBeVisible();
+  });
+
+  test("Check now refreshes seven-day totals before announcing completion", async ({ page }) => {
+    await page.clock.install();
+    await mockHealth(page, () => ({ ...healthFixture(), outcomes: undefined }));
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    let total = 2;
+    await page.route("**/api/backend/health/outcomes", async (route) => {
+      if (total === 3) await gate;
+      await route.fulfill({ json: { totals: { succeeded: total }, causes: [] } });
+    });
+
+    await page.goto("/health");
+    await expect(page.getByText("All 2 updates in the last 7 days succeeded")).toBeVisible();
+    total = 3;
+    const refreshing = page.waitForRequest("**/api/backend/health/outcomes", { timeout: 4000 });
+    await page.getByRole("button", { name: "Check now", exact: true }).press("Enter");
+    await refreshing;
+    const status = page.locator(".mx-health-page > [role=status][aria-live]");
+    await expect(status).toHaveText("Checking data status…");
+    release();
+    await expect(page.getByText("All 3 updates in the last 7 days succeeded")).toBeVisible();
+    await expect(status).toContainText("Check complete:");
+  });
+
+  test("Check now announces an outcomes outage and keeps the last totals until recovery", async ({ page }) => {
+    await mockHealth(page, () => ({ ...healthFixture(), outcomes: undefined }));
+    let failing = false;
+    let total = 2;
+    await page.route("**/api/backend/health/outcomes", (route) => route.fulfill(failing
+      ? { status: 503, json: { detail: "Update outcomes unavailable" } }
+      : { json: { totals: { succeeded: total }, causes: [] } }));
+
+    await page.goto("/health");
+    const previous = page.getByText("All 2 updates in the last 7 days succeeded");
+    await expect(previous).toBeVisible();
+    failing = true;
+    const check = page.getByRole("button", { name: "Check now", exact: true });
+    const status = page.locator(".mx-health-page > [role=status][aria-live]");
+    await check.press("Enter");
+    await expect(status).toHaveText("Check failed: The seven-day update summary could not be checked.");
+    await expect(previous).toBeVisible();
+    await expect(check).toBeFocused();
+
+    failing = false;
+    total = 3;
+    await check.press("Enter");
+    await expect(page.getByText("All 3 updates in the last 7 days succeeded")).toBeVisible();
+    await expect(status).toContainText("Check complete:");
+  });
+
+  test("history keyboard filtering and scope selection preserve update actions", async ({ page }) => {
+    const routine = {
+      ...failedJob, status: "succeeded", scope: "live", trigger: "live", error: null,
+    };
+    const queued = {
+      ...failedJob, jobId: "enqueued", trigger: "on_demand", status: "queued", error: null, startedAt: null, finishedAt: null,
+    };
+    let started = false;
+    await mockHealth(page, () => {
+      const fixture = healthFixture({ jobs: started ? [queued] : [
+        failedJob,
+        { ...routine, jobId: "live-new" },
+        { ...routine, jobId: "live-old", createdAt: "2026-11-18T07:54:00Z" },
+      ] });
+      if (started) fixture.health.queue.queued = 1;
+      return fixture;
+    });
+    await page.route("**/api/backend/refresh", async (route) => {
+      expect(route.request().postDataJSON()).toEqual({ scope: "performance", skipSync: false, tickers: [] });
+      started = true;
+      await route.fulfill({ status: 202, json: queued });
+    });
+
+    await page.goto("/health");
+    const rows = page.locator(".mx-job-row");
+    await expect(rows).toHaveCount(2);
+    const expand = page.getByRole("button", { name: "Show every update" });
+    await expand.press("Space");
+    await expect(rows).toHaveCount(3);
+    await page.getByRole("button", { name: "Combine repeated successes" }).press("Enter");
+    await expect(rows).toHaveCount(2);
+
+    const filter = page.getByRole("combobox", { name: "Filter task status" });
+    await filter.press("ArrowDown");
+    await page.getByRole("option", { name: "Failed", exact: true }).click();
+    await expect(filter).toHaveAttribute("aria-expanded", "false");
+    await expect(rows).toHaveCount(1);
+    await rows.first().press("Enter");
+    const dialog = page.getByRole("dialog", { name: "Update task details" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Prepare another update with this scope" }).press("Enter");
+    await expect(dialog).toHaveCount(0);
+    const scope = page.getByRole("combobox", { name: "Update scope" });
+    await expect(scope).toHaveText("Performance");
+    await scope.press("ArrowDown");
+    await expect(page.getByRole("listbox", { name: "Update scope" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(scope).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: "Start update" })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(scope).toBeFocused();
+
+    await page.getByRole("button", { name: "Start update" }).press("Enter");
+    await expect(dialog.getByRole("progressbar", { name: "Update stage progress" })).toBeAttached();
+    await expect(dialog.getByText("The task is queued.", { exact: false })).toBeVisible();
+  });
 });
 
 const healthRoute = "**/api/backend/health/details";
@@ -279,9 +452,16 @@ test("a failed health poll discloses interruption beside retained task stages", 
   await expect(dialog.locator(".mx-stage-list > li")).toHaveCount(1);
   await expect(dialog.getByRole("note").filter({ hasText: "Data is temporarily unavailable" })).toHaveCount(0);
   failing = true;
-  await page.clock.runFor(7_000);
+  await page.clock.runFor(32_000);
   await expect(dialog.getByRole("note").filter({ hasText: "Data is temporarily unavailable" })).toBeVisible();
   await expect(dialog.locator(".mx-stage-list > li")).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("heading", { name: "Update history" })).toBeVisible();
+  await expect(page.getByText("Last successful check", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Check now" })).toBeFocused();
+  failing = false;
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Last successful check", { exact: false })).toHaveCount(0);
 });
 
 const failedJob = {
@@ -306,6 +486,7 @@ function healthFixture(overrides: { jobs?: object[] } = {}) {
     health: { status: "ok", latestRunId: "synthetic-run", worker, queue, artifactAgeSeconds: 60 },
     readiness: { status: "ready", latestRunId: "synthetic-run", worker, queue },
     refresh: {},
+    outcomes: null,
     jobs: [],
     errors: [],
     ...overrides,

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, status
 from fastapi.responses import PlainTextResponse
 
 from ..job_errors import JobConflict
@@ -66,6 +66,22 @@ def get_job(job_id: str, request: Request) -> JobRecord:
         return app_service(request, "jobs").get(job_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get(
+    "/v1/job-history/{job_id}",
+    response_model=JobRecord,
+    responses={404: {"description": "Task is absent from public update history"}},
+)
+def get_history_job(
+    job_id: Annotated[str, Path(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")],
+    request: Request,
+) -> JobRecord:
+    """Resolve a user-visible refresh task by ID."""
+    try:
+        return app_service(request, "jobs").get(job_id, include_system=False)
+    except FileNotFoundError:
+        raise HTTPException(404, detail={"code": "job_history_not_found"}) from None
 
 
 @router.post(

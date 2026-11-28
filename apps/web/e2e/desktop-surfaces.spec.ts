@@ -134,6 +134,7 @@ test.describe("desktop surfaces", () => {
     // The auxiliary window has no MaxAI workspace, so it offers no diagnosis entry.
     await expect(page.getByRole("button", { name: /✦\s*(为什么|Why)/ })).toHaveCount(0);
     await page.getByRole("button", { name: /查看原因|View issue/ }).click();
+    await page.getByRole("dialog").getByText(/技术详情|Technical details/).click();
     await expect(page.getByRole("dialog")).toContainText("Synthetic history conflict");
     await expect(page.getByRole("dialog")).toContainText(/没有留下阶段记录|No stage details were recorded/);
     await expect(page.getByRole("dialog")).not.toContainText(/任务已排队|The task is queued/);
