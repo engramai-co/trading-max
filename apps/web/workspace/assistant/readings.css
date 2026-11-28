@@ -224,23 +224,6 @@ a.mx-reading-source {
     background: var(--ghost-hover);
   }
 }
-.mx-brief-period {
-  display: inline-flex;
-  padding: 3px;
-  border-radius: 8px;
-  background: var(--mx-soft);
-}
-.mx-brief-period button {
-  min-height: 30px;
-  padding-inline: 10px;
-  border-radius: 6px;
-  color: var(--mx-muted);
-}
-.mx-brief-period button[aria-pressed="true"] {
-  background: var(--segment-indicator);
-  color: var(--mx-ink);
-  box-shadow: var(--mx-shadow);
-}
 .mx-brief-empty {
   display: flex;
   align-items: center;

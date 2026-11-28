@@ -167,9 +167,11 @@ export function OverviewSectors({ online, sharedRecovery = false }: { online: bo
   const picker = (
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger render={
-        <button ref={marketTrigger} type="button" className="mx-overview-market" aria-label={t("选择市场，当前：", "Choose market, now: ") + title}>
+        <button ref={marketTrigger} type="button" data-slot="button"
+          className={cn(buttonVariants({ variant: "ghost" }), "mx-overview-market -my-2 -ms-2 me-1 min-w-10 gap-1.5 border-0 py-0 ps-2 pe-1 text-left text-base leading-normal font-semibold whitespace-normal max-phone:text-[length:var(--mx-text-title)] pointer-coarse:-my-[11px] pointer-coarse:min-w-11")}
+          aria-label={t("选择市场，当前：", "Choose market, now: ") + title}>
           {title}
-          <ChevronDown size={16} aria-hidden="true" />
+          <ChevronDown size={16} className="text-muted-foreground" aria-hidden="true" />
         </button>
       } />
       <DropdownMenuContent aria-label={t("选择市场", "Choose market")}>
@@ -338,9 +340,9 @@ function AcwiTotal({ move }: { move: number | null }) {
   const t = useCopy();
   const { locale } = useLocale();
   return (
-    <Link href="/sectors" className="mx-overview-acwi">
+    <Link href="/sectors" className="inline-flex items-baseline gap-1.5 me-1.5 rounded-full text-[13px] text-muted-foreground no-underline hover:text-link focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight]">
       {t("MSCI 全球", "MSCI ACWI")}
-      <strong className={move == null ? undefined : "mx-" + tone(move)}>{formatDeltaPercent(move, locale, 2)}</strong>
+      <strong className={cn("text-[15px] font-semibold tabular-nums", move ? "mx-" + tone(move) : "text-foreground")}>{formatDeltaPercent(move, locale, 2)}</strong>
     </Link>
   );
 }
@@ -388,7 +390,8 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
       .map((item) => item.market)
     : WORLD_ORDER;
   return (
-    <div className="mx-overview-world" role="group" aria-label={label} data-weighted={weighted ? "" : undefined}>
+    <div className={cn("mx-overview-world @container min-h-[248px] flex-auto grid-cols-3 auto-rows-[minmax(52px,auto)] gap-[3px] phone:grid-cols-7 phone:grid-rows-[repeat(3,minmax(64px,1fr))]",
+      weighted ? "hidden pointer-coarse:grid max-phone:grid [@media(hover:none)]:grid" : "grid")} role="group" aria-label={label} data-weighted={weighted ? "" : undefined}>
       {markets.map((item) => {
         const { market, move, notOpen } = item;
         const place = WORLD[market];
@@ -407,7 +410,7 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
           <Tip key={market} disabled={market !== "cn"} describes={false}
             label={<TipLines name={globalMarketReading(market, full, locale)} figures={[change]} />}>
           <Link href={"/sectors?market=" + market}
-            className="mx-overview-sector tm-heat-surface tm-tile-interactive relative flex flex-col justify-center gap-[1px] overflow-clip rounded-[6px] px-1.5 py-2 text-foreground no-underline"
+            className="mx-overview-sector tm-heat-surface tm-tile-interactive relative flex flex-col justify-center gap-[1px] overflow-clip rounded-[var(--radius-heat-tile)] px-1.5 py-2 text-foreground no-underline phone:col-[var(--mx-world-column)] phone:row-[var(--mx-world-row)]"
             style={style}
             data-tone={idle ? undefined : changeTone(move)} data-idle={idle ? "" : undefined}
             aria-label={reading}>
@@ -423,9 +426,9 @@ function WorldBlocks({ markets, acwiMove, label, weighted }: {
           </Tip>
         );
       })}
-      <Link href="/sectors" className="mx-overview-world-total" aria-label={t("MSCI 全球 ", "MSCI ACWI ") + total}>
+      <Link href="/sectors" className="mx-overview-world-total col-[1/5] row-start-3 flex flex-col justify-end gap-0.5 rounded-[var(--radius-heat-tile)] py-2 text-[13px] text-muted-foreground no-underline hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring forced-colors:focus-visible:outline-[Highlight] phone:px-2.5 max-phone:order-first max-phone:col-span-full max-phone:row-auto" aria-label={t("MSCI 全球 ", "MSCI ACWI ") + total}>
         <span>{t("MSCI 全球", "MSCI ACWI")}</span>
-        <strong className={acwiMove == null ? undefined : "mx-" + tone(acwiMove)}>{total}</strong>
+        <strong className={cn("text-2xl leading-[30px] font-semibold tabular-nums", acwiMove ? "mx-" + tone(acwiMove) : "text-foreground")}>{total}</strong>
       </Link>
     </div>
   );
@@ -514,7 +517,7 @@ function WorldMap({ markets, other, label }: { markets: WorldMove[]; other: numb
           <Tip key={key} label={<TipLines name={globalMarketReading(key, name, locale)} figures={[change, percent(share, false, 1)]} />} describes={false}>
             <Link href={key === "other" ? "/sectors" : "/sectors?market=" + key}
               className={cn(
-                "mx-overview-sector tm-heat-surface tm-tile-interactive absolute flex overflow-clip rounded-[6px] text-foreground no-underline",
+                "mx-overview-sector tm-heat-surface tm-tile-interactive absolute flex overflow-clip rounded-[var(--radius-heat-tile)] text-foreground no-underline",
                 shown.inline ? "flex-row items-baseline gap-1.5" : "flex-col gap-[1px]",
                 TILE_TIER_PADDING[shown.tier],
                 TILE_TIER_TEXT[shown.tier],
@@ -640,7 +643,7 @@ function SectorMap({ groups, market, label }: { groups: SectorGroup[]; market: S
         );
         const attributes = {
           className: cn(
-            "mx-overview-sector tm-heat-surface tm-tile-interactive absolute flex overflow-clip rounded-[6px] text-foreground no-underline",
+            "mx-overview-sector tm-heat-surface tm-tile-interactive absolute flex overflow-clip rounded-[var(--radius-heat-tile)] text-foreground no-underline",
             shown.inline ? "flex-row items-baseline gap-1.5" : "flex-col gap-[1px]",
             TILE_TIER_PADDING[shown.tier],
             TILE_TIER_TEXT[shown.tier],
@@ -719,7 +722,7 @@ function SectorGrid({ groups, market, label }: { groups: SectorGroup[]; market: 
         const fits = !room || measureTileText(full, room.fontSize, room.family) <= (index === 0 ? room.first : room.other);
         return (
           <Link key={group.key} href={"/sectors?market=" + market + "&sector=" + encodeURIComponent(group.key)}
-            className="mx-overview-sector tm-heat-surface tm-tile-interactive relative flex flex-col justify-center gap-[1px] overflow-clip rounded-[6px] px-2.5 py-2 text-foreground no-underline"
+            className="mx-overview-sector tm-heat-surface tm-tile-interactive relative flex flex-col justify-center gap-[1px] overflow-clip rounded-[var(--radius-heat-tile)] px-2.5 py-2 text-foreground no-underline"
             data-tone={changeTone(group.change)} aria-label={spoken(group)}
             style={{ "--mx-heat-mix": heatMix(group.change, scheme) } as CSSProperties}>
             <span className="mx-overview-sector-name truncate text-[13px] font-semibold leading-[18px]">{fits ? full : short}</span>

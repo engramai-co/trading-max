@@ -99,7 +99,7 @@ const sectors = {
 };
 
 /** Answers every backend request with the synthetic account, so any layout can load the overview. */
-async function prepare(page: Page, locale: "zh" | "en", { estimated = false, large = false } = {}) {
+async function prepare(page: Page, locale: "zh" | "en", { estimated = false, large = false, loss = 0 } = {}) {
   await page.clock.install({ time: new Date(brokerAsOf) });
   await page.addInitScript((value) => localStorage.setItem("trading_max-locale", value), locale);
   // No write leaves the page, and every backend request is answered here.
@@ -107,7 +107,14 @@ async function prepare(page: Page, locale: "zh" | "en", { estimated = false, lar
   await page.route("**/api/backend/**", (route) => {
     const url = new URL(route.request().url());
     if (url.pathname.endsWith("/dashboard/history")) {
-      const history = prepared(url.searchParams.get("range") === "1W" ? "1W" : "1D", estimated);
+      const range = url.searchParams.get("range") === "1W" ? "1W" : "1D";
+      const history = loss ? prepareHistory({
+        runId: "synthetic-phone", dataRevision: "synthetic", brokerAsOf,
+        intradayNav: nav(estimated).map((point, index, points) => {
+          const value = 2_000_000_000 - (index === points.length - 1 ? loss : 0);
+          return { ...point, invest: value, total: value, household: value };
+        }),
+      }, { range, scope: "invest" }) : prepared(range, estimated);
       const openings = url.searchParams.getAll("opening");
       return route.fulfill({ json: openings.length ? { ...history.chart, openings: pnlsAt(history, openings) } : history.chart });
     }
@@ -288,7 +295,7 @@ test.describe("overview on phones", () => {
   }
 
   for (const locale of ["zh", "en"] as const) {
-    for (const width of [390, 501, 1440]) {
+    for (const width of locale === "en" ? [375, 390, 501, 1440] : [390, 501, 1440]) {
       test(`delayed account names preserve the overview toolbar at ${width}px (${locale})`, async ({ page, isMobile }) => {
         await page.setViewportSize({ width, height: 900 });
         await prepare(page, locale);
@@ -310,7 +317,7 @@ test.describe("overview on phones", () => {
           await page.evaluate(() => document.fonts.ready);
           const first = (await account.boundingBox())!;
           const time = (await freshness.boundingBox())!;
-          const twoRows = locale === "en" && width === 390;
+          const twoRows = locale === "en" && width <= 400;
           if (twoRows) {
             expect(time.y).toBeGreaterThan(first.y + first.height);
             const value = account.locator(".tm-select-value");
@@ -390,13 +397,65 @@ test.describe("overview on phones", () => {
     });
   }
 
+
+  test("a ten-digit loss stays in its box with its minus sign on a 320px phone", async ({ page, isMobile }) => {
+    test.skip(!isMobile, "The phone layout");
+    await page.setViewportSize({ width: 320, height: 844 });
+    await prepare(page, "en", { loss: 1_234_567_890 });
+    await page.goto("/?scope=invest&range=1D");
+    const figure = page.locator(".mx-overview-lead-figure > strong");
+    await expect(figure).toHaveText("−£1,234,567,890.00");
+    await expect(figure).toHaveCSS("font-size", "32px");
+    await expect(figure.locator("span").first()).toHaveText("−£1,");
+    await page.evaluate(() => document.fonts.ready);
+    const bounds = await figure.evaluate(element => {
+      const parts = [...element.querySelectorAll("span")].map(part => {
+        const range = document.createRange();
+        range.selectNodeContents(part);
+        return [...range.getClientRects()];
+      });
+      const figure = element.closest(".mx-overview-portfolio")!.getBoundingClientRect();
+      const amount = element.getBoundingClientRect();
+      const percent = element.nextElementSibling!.getBoundingClientRect();
+      const text = parts.flat();
+      return {
+        lines: new Set(text.map(rect => Math.round(rect.top))).size,
+        textWidth: Math.max(...text.map(rect => rect.right)) - Math.min(...text.map(rect => rect.left)),
+        amountWidth: amount.width,
+        cardWidth: figure.width,
+        amountInside: amount.left >= figure.left - 0.5 && amount.right <= figure.right + 0.5,
+        percentBelow: percent.top >= amount.bottom - 0.5,
+        pageOverflow: document.documentElement.scrollWidth - innerWidth,
+      };
+    });
+    await test.info().attach("320px amount", { body: JSON.stringify(bounds), contentType: "application/json" });
+    expect(bounds).toMatchObject({ lines: 1, amountInside: true, percentBelow: true, pageOverflow: 0 });
+  });
+
+  test("the visible P&L figure and chart identify reconstructed observations", async ({ page, isMobile }) => {
+    await prepare(page, "en", { estimated: true });
+    await page.goto("/?scope=invest&range=1D");
+    const estimate = page.getByRole("button", { name: /Includes estimates/ });
+    await expect(estimate).toHaveCount(1);
+    await expect(estimate).toBeVisible();
+    await expect(page.locator(".mx-overview-history .mx-plot").getByLabel(/Includes estimates/).first()).toBeAttached();
+    await estimate.press("Space");
+    const disclosure = page.getByRole("dialog", { name: /Includes estimates/ });
+    await expect(disclosure).toContainText("reconstructed");
+    if (isMobile) await disclosure.getByRole("button", { name: "Close explanation" }).click();
+    else await page.keyboard.press("Escape");
+    await expect(estimate).toBeFocused();
+  });
+
   test("the period move leads, then the total and one line of balances", async ({ page, isMobile }) => {
     test.skip(!isMobile, "The phone layout");
     await open(page, "zh", { range: "1D" });
     const lead = page.locator(".mx-overview-lead");
     await expect(lead.locator(".mx-overview-lead-label")).toHaveText("今日");
     await expect(page.locator(".mx-overview-history .mx-period-figure")).toBeHidden();
-    await expect(page.locator(".mx-overview-history .mx-data-body > .mx-day-drivers")).toBeHidden();
+    const duplicateDrivers = page.locator(".mx-overview-history .mx-overview-history-details > .mx-day-drivers");
+    await expect(duplicateDrivers).toBeAttached();
+    await expect(duplicateDrivers).toBeHidden();
     const figure = await page.locator(".mx-overview-history .mx-period-figure strong").textContent();
     await expect(lead.locator(".mx-overview-lead-figure strong")).toHaveText(figure ?? "");
     for (const width of [375, 390]) {

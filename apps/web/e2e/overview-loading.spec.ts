@@ -29,6 +29,18 @@ const lens = {
   totalValueGbp: 2050, totalCashGbp: 100, totalUnrealizedPnlGbp: 50,
   holdings: holdings(20),
 };
+const estimatedLossLens = {
+  ...lens, totalValueGbp: 186_700.38, totalCashGbp: 3_000, totalUnrealizedPnlGbp: 68.71,
+  intradayNav: lens.intradayNav.map((point, index) => ({
+    ...point, total: 198_000 - index * 5_204.295, valuationSource: "reconstructed" as const,
+  })),
+};
+const exactMoveLens = {
+  ...lens,
+  intradayNav: lens.intradayNav.map((point, index) => ({
+    ...point, total: 2_049 + index / 2,
+  })),
+};
 
 async function mockOverview(page: Page, controls: {
   beforeLens?: () => Promise<void>;
@@ -39,24 +51,33 @@ async function mockOverview(page: Page, controls: {
   assistantEnabled?: () => boolean;
   longRangeFails?: () => boolean;
   holdingCount?: () => number;
+  fundCount?: number;
   mixedQuoteDates?: boolean;
   emptyHistory?: boolean;
+  estimatedLoss?: boolean;
+  exactMove?: boolean;
+  runningClock?: boolean;
   warning?: boolean;
   fullPage?: boolean;
   beforeSupportingReads?: () => Promise<void>;
 } = {}) {
+  const reading = controls.estimatedLoss ? estimatedLossLens : controls.exactMove ? exactMoveLens : lens;
   await page.addInitScript(() => localStorage.setItem("trading_max-locale", "en"));
-  await page.clock.setFixedTime(new Date(saturday));
+  if (controls.runningClock) await page.clock.install({ time: new Date(saturday) });
+  else await page.clock.setFixedTime(new Date(saturday));
   await page.route("**/api/backend/**", async (route) => {
     const { pathname, searchParams } = new URL(route.request().url());
     if (pathname.endsWith("/dashboard/lens/overview")) {
       await controls.beforeLens?.();
       if (controls.noAccounts?.()) return route.fulfill({ json: { ...lens, accounts: [], holdings: [], totalValueGbp: null } });
       const count = controls.holdingCount?.() ?? lens.holdings.length;
-      return route.fulfill(controls.lensFails?.() ? { status: 503, json: {} } : { json: { ...lens,
+      return route.fulfill(controls.lensFails?.() ? { status: 503, json: {} } : { json: {
+        ...reading,
         holdings: controls.fullPage ? holdings(13, true).map((row, index) => ({ ...row, dayChangeDate: friday, isFund: index >= 8 }))
-          : count > lens.holdings.length ? holdings(count, controls.mixedQuoteDates) : lens.holdings.slice(0, count),
-        ...(controls.fullPage && { dayAttribution: { day: friday, accounts: {
+          : count > lens.holdings.length ? holdings(count, controls.mixedQuoteDates).map((row, index) => ({
+            ...row, isFund: index >= count - (controls.fundCount ?? 0),
+          })) : lens.holdings.slice(0, count),
+        ...(controls.fullPage && !controls.estimatedLoss && { dayAttribution: { day: friday, accounts: {
           A: { since: lens.intradayNav[0].date, asOf: lens.brokerAsOf, contributions: [
             { ticker: "SYN0", name: "Synthetic stock", contributionGbp: 12 },
             { ticker: "SYN8", name: "Synthetic fund", contributionGbp: 8 },
@@ -69,7 +90,7 @@ async function mockOverview(page: Page, controls: {
       const range = portfolioRange(searchParams.get("range"), "1D");
       await controls.beforeHistory?.();
       if (range === "3M" && controls.longRangeFails?.()) return route.fulfill({ status: 503, json: {} });
-      const input = controls.emptyHistory ? { ...lens, nav: [], intradayNav: [] } : lens;
+      const input = controls.emptyHistory ? { ...lens, nav: [], intradayNav: [] } : reading;
       const history = prepareHistory(input, { range, scope: "total" });
       const openings = searchParams.getAll("opening");
       return route.fulfill({ json: openings.length ? { ...history.chart, openings: pnlsAt(history, openings) } : history.chart });
@@ -94,7 +115,7 @@ async function mockOverview(page: Page, controls: {
       await controls.beforeSupportingReads?.();
       return route.fulfill({ contentType: "application/x-ndjson", body: JSON.stringify({ type: "empty" }) + "\n" });
     }
-    const json = pathname.endsWith("/health") ? { status: "ok", latestRunId: runId }
+    const json = pathname.endsWith("/health") ? { service: "trading_max-api", status: "ok", latestRunId: runId }
       : pathname.endsWith("/refresh/attention") && controls.warning !== false ? { issues: [{
         scope: "accounts", consecutiveFailures: 3, failingSince: friday + "T20:00:00Z",
       }] }
@@ -232,20 +253,135 @@ test.describe("Overview loading and recovery", () => {
       await fresh.close();
     }
 
-    // Simulate the pre-1.82 record in an existing workspace. Only the wide chart row was shorter.
-    const [key] = await layoutKeys(page);
-    await page.evaluate(({ key, isMobile }) => {
-      const entry = JSON.parse(localStorage.getItem(key)!);
-      delete entry.reading.periodFigure;
-      if (!isMobile) {
-        entry.reading.history -= 3;
-        entry.reading.plotTop -= 3;
-        entry.sectors -= 3;
-      }
-      localStorage.setItem(key, JSON.stringify(entry));
-    }, { key, isMobile });
-    await verify(page, () => page.reload({ waitUntil: "commit" }), "1.81 cached layout");
   });
+
+
+  const firstPaintCases = [1440, 390, 320].flatMap(width => [
+    { width, mode: "first visit", estimated: false },
+    { width, mode: "saved layout", estimated: false },
+    { width, mode: "saved layout", estimated: true },
+    ...(width === 320 ? [] : [{ width, mode: "a 1.84 record", estimated: false }]),
+  ]);
+  for (const { width, mode, estimated } of firstPaintCases) {
+    test(`Overview keeps ${estimated ? "estimated" : "exact"} 1D geometry at ${width}px from first paint with ${mode}`, async ({ page, isMobile }) => {
+      test.skip(isMobile !== (width < 768));
+      const oldRecord = mode === "a 1.84 record";
+      const firstVisit = mode === "first visit";
+      await page.setViewportSize({ width, height: width < 768 ? 844 : 900 });
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      const gate = Promise.withResolvers<void>();
+      let holdHistory = firstVisit;
+      await mockOverview(page, {
+        estimatedLoss: estimated, exactMove: !estimated,
+        holdingCount: oldRecord ? () => 240 : undefined, fundCount: 2, mixedQuoteDates: oldRecord,
+        beforeHistory: async () => { if (holdHistory) await gate.promise; },
+      });
+      await page.addInitScript(key => localStorage.removeItem(key), snapshotCacheStorageKey);
+
+      const ledger = page.locator(".mx-overview-holdings .mx-ledger");
+      const pendingLedger = ledger.filter({ has: page.locator(".mx-ledger-rows-placeholder") });
+      const ledgerHeight = () => ledger.evaluate(node => node.getBoundingClientRect().height);
+      let priorLedgerHeight: number | undefined;
+      if (!firstVisit) {
+        await page.goto("/?range=1D");
+        await expect(page.locator(".mx-overview-history [data-tm-chart-ready=true]")).toBeVisible();
+        await expect.poll(() => layoutKeys(page)).toHaveLength(1);
+        await page.evaluate(() => document.fonts.ready);
+        holdHistory = true;
+      }
+      if (mode === "saved layout") {
+        const [key] = await layoutKeys(page);
+        const saved = await page.evaluate(key => JSON.parse(localStorage.getItem(key)!), key);
+        expect.soft(saved.reading.disclosure).toEqual({ estimated, attribution: estimated });
+      }
+      if (oldRecord) {
+        priorLedgerHeight = await ledgerHeight();
+        const [key] = await layoutKeys(page);
+        const rows = await page.evaluate(({ key, isMobile }) => {
+          const legacyKey = key.replace(/mx-overview-layout-v\d+:/, "mx-overview-layout-v2:");
+          const entry = JSON.parse(localStorage.getItem(key)!);
+          // Measurements from the old layout before the estimate and attribution disclosures.
+          entry.reading = isMobile
+            ? { range: "1D", summary: 326, history: 376, plotTop: 115, periodFigure: 0 }
+            : { range: "1D", summary: 270, history: 396, plotTop: 132, periodFigure: 40 };
+          entry.ledger = 1_000; // Old height must be remeasured with the new rows.
+          localStorage.removeItem(key);
+          localStorage.setItem(legacyKey, JSON.stringify(entry));
+          return entry.rows;
+        }, { key, isMobile });
+        expect(rows).toEqual({ stocks: 238, funds: 2, dateTagged: 24 });
+      }
+      const hydration = await holdHydration(page);
+      const pending = page.locator(".mx-overview-history .mx-loading-chart");
+      const plot = page.locator(".mx-overview-history .mx-plot");
+      const pendingReading = page.locator(isMobile ? ".mx-overview-lead-pending" : ".mx-overview-history-pending");
+      const checkDisclosures = async () => {
+        for (const name of ["estimate", "attribution"]) {
+          const value = await pendingReading.locator(`.mx-overview-${name}-placeholder`).evaluateAll(items =>
+            items.map(item => getComputedStyle(item).display !== "none"));
+          expect.soft(value, `pending ${name} placeholder`).toEqual([estimated]);
+        }
+      };
+      const measure = (locator: typeof plot) => locator.evaluate(node => {
+        const top = (element: Element) => element.getBoundingClientRect().top + scrollY;
+        const summary = document.querySelector(".mx-overview-portfolio")!;
+        const history = node.closest(".mx-overview-history")!;
+        const ledger = document.querySelector(".mx-overview-holdings .mx-ledger")!;
+        const blockSize = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().height;
+        return { summaryHeight: summary.getBoundingClientRect().height, history: top(history), plot: top(node),
+          ledgerHeight: ledger.getBoundingClientRect().height, lead: blockSize(".mx-overview-lead"),
+          balances: blockSize(".mx-overview-totals, .mx-loading-summary"),
+          attention: blockSize(".mx-attention, .mx-overview-attention-placeholder") };
+      });
+      let firstPaint: Awaited<ReturnType<typeof measure>>;
+      let waiting: Awaited<ReturnType<typeof measure>>;
+      try {
+        if (firstVisit) await page.goto("/?range=1D", { waitUntil: "commit" });
+        else await page.reload({ waitUntil: "commit" });
+        await hydration.waitForScripts();
+        await expect(pending).toBeVisible();
+        if (oldRecord) await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+        firstPaint = await measure(pending);
+        await checkDisclosures();
+        if (oldRecord) {
+          expect.soft((await layoutKeys(page)).some(key => key.startsWith("mx-overview-layout-v2:"))).toBe(false);
+          expect.soft(await pendingLedger.evaluate(node => getComputedStyle(node).getPropertyValue("--mx-ledger-rows").trim())).toBe("240");
+          expect.soft(Math.abs(firstPaint.ledgerHeight - priorLedgerHeight!), "upgraded first-paint ledger height").toBeLessThanOrEqual(2);
+        }
+        const requested = page.waitForRequest(request => request.url().includes("/dashboard/history?"));
+        hydration.release();
+        await requested;
+        await page.evaluate(() => document.fonts.ready);
+        waiting = await measure(pending);
+        await checkDisclosures();
+        if (oldRecord) expect.soft(Math.abs(waiting.ledgerHeight - priorLedgerHeight!), "upgraded hydrated ledger height").toBeLessThanOrEqual(2);
+      } finally {
+        hydration.release();
+        gate.resolve();
+      }
+      await expect(page.locator(".mx-overview-history [data-tm-chart-ready=true]")).toBeVisible();
+      if (estimated) {
+        await expect(plot.getByRole("group", { name: /Includes estimates/ })).toBeVisible();
+        await expect(page.locator(".mx-overview-drivers-unavailable:visible")).toHaveText("Holding attribution unavailable.");
+      } else {
+        const figure = page.locator(".mx-overview-lead-figure:visible, .mx-overview-history .mx-period-figure:visible");
+        await expect(figure.locator("strong")).toHaveText("£1.00");
+        await expect(figure.locator(".mx-tag-help")).toHaveCount(0);
+        const details = page.locator(isMobile ? ".mx-overview-lead" : ".mx-overview-history-details");
+        const blank = await details.evaluate(node => {
+          const last = node.lastElementChild!;
+          return node.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom - parseFloat(getComputedStyle(last).marginBottom);
+        });
+        expect.soft(Math.abs(blank), "extra blank space after the exact figure").toBeLessThan(0.5);
+      }
+      const published = await measure(plot);
+      if (oldRecord) expect.soft(published.ledgerHeight, "upgraded published ledger height").toBe(priorLedgerHeight);
+      await test.info().attach("plot positions", { body: JSON.stringify({ firstPaint, waiting, published }), contentType: "application/json" });
+      expect.soft(Math.abs(firstPaint.plot - published.plot), `first paint ${JSON.stringify(firstPaint)}, published ${JSON.stringify(published)}`).toBeLessThanOrEqual(2);
+      expect.soft(Math.abs(waiting.plot - published.plot), `waiting ${JSON.stringify(waiting)}, published ${JSON.stringify(published)}`).toBeLessThanOrEqual(2);
+      if (firstVisit) expect.soft(Math.round(firstPaint.plot)).toBe(Math.round(published.plot));
+    });
+  }
 
   test("cold Overview reserves the loaded period figure height without a saved layout", async ({ page, isMobile }) => {
     test.skip(isMobile, "The period figure is displayed only in the wide layout.");
@@ -535,6 +671,30 @@ test.describe("Overview loading and recovery", () => {
     }
   });
 
+  test("the native minimum and compact desktop keep the dated move in its column", async ({ page, isMobile }) => {
+    test.skip(isMobile, "The wide ledger layout");
+    await mockOverview(page, { holdingCount: () => 40, mixedQuoteDates: true });
+    await page.route("**/api/backend/health/details", route => route.fulfill({ json: {
+      checkedAt: saturday, health: null, readiness: null, refresh: null, jobs: [], errors: [],
+    } }));
+    await page.goto("/desktop");
+    await expect(page.getByRole("link", { name: /SYN39/ })).toBeVisible();
+    for (const width of [1280, 900]) {
+      await page.setViewportSize({ width, height: 900 });
+      const tagged = page.locator(".mx-ledger-table .mx-ledger-day:has(.mx-ledger-date)");
+      await expect(tagged).toHaveCount(4);
+      const overflow = await tagged.evaluateAll(cells => cells.some(cell => {
+        const right = cell.getBoundingClientRect().right;
+        return [...cell.children].some(child => {
+          const range = document.createRange();
+          range.selectNodeContents(child);
+          return range.getBoundingClientRect().right > right + 0.5;
+        });
+      }));
+      expect(overflow, `ledger moves at ${width}px`).toBe(false);
+    }
+  });
+
   test("oversized entries fall back to defaults and invalid heights keep valid counts", async ({ page, isMobile }) => {
     await page.setViewportSize(isMobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
     await page.emulateMedia({ reducedMotion: "reduce" });
@@ -678,6 +838,52 @@ test.describe("Overview loading and recovery", () => {
     await page.reload();
     await expect(page.getByRole("heading", { name: "No account data" })).toBeVisible();
     await expect.poll(() => layoutKeys(page)).toEqual([]);
+  });
+
+  test("1.84 layout migration keeps a confirmed clear across WebKit tabs", async ({ page, context, browserName }) => {
+    test.skip(browserName !== "webkit");
+    const workspace = "a".repeat(64);
+    const oldKey = `mx-overview-layout-v2:${workspace}:total:en:phone`;
+    const key = `mx-overview-layout-v3:${workspace}:total:en:phone`;
+    const gate = Promise.withResolvers<void>();
+    const next = await context.newPage();
+    try {
+      for (const tab of [page, next]) {
+        await tab.setViewportSize({ width: 390, height: 844 });
+        await mockOverview(tab, { beforeLens: () => gate.promise });
+        await mockWorkspaceScope(tab, "a");
+        await tab.route("**/layout-upgrade-fixture", route => route.fulfill({ contentType: "text/html", body: "<title>Migration fixture</title>" }));
+        await tab.goto("/layout-upgrade-fixture");
+      }
+      await next.evaluate(oldKey => sessionStorage.setItem(oldKey, JSON.stringify({ rows: { stocks: 238, funds: 2 } })), oldKey);
+      // Another 1.84 tab has confirmed the workspace is empty and cleared the persisted reservation.
+      await page.evaluate(({ workspace, oldKey }) => {
+        localStorage.setItem("mx-active-overview-workspace", `mx-overview-layout-v2:${workspace}:`);
+        localStorage.setItem(oldKey + ":generation", "confirmed-empty");
+      }, { workspace, oldKey });
+
+      await page.goto("/");
+      await expect(page.locator(".mx-ledger-pending")).toHaveCSS("--mx-ledger-rows", "5");
+      expect(await page.evaluate(oldKey => localStorage.getItem(oldKey + ":generation"), oldKey)).toBeNull();
+      expect.soft(await page.evaluate(key => localStorage.getItem(key + ":generation"), key)).toBe("confirmed-empty");
+      expect(await next.evaluate(oldKey => sessionStorage.getItem(oldKey), oldKey)).toContain('"stocks":238');
+
+      const hydration = await holdHydration(next);
+      try {
+        await next.goto("/", { waitUntil: "commit" });
+        await hydration.waitForScripts();
+        const pending = next.locator(".mx-ledger-pending");
+        await expect(pending).toBeAttached();
+        expect.soft(await pending.evaluate(node => getComputedStyle(node).getPropertyValue("--mx-ledger-rows").trim())).toBe("5");
+        expect.soft(await next.evaluate(key => localStorage.getItem(key), key)).toBeNull();
+        expect(await next.evaluate(oldKey => sessionStorage.getItem(oldKey), oldKey)).toBeNull();
+      } finally {
+        hydration.release();
+      }
+    } finally {
+      gate.resolve();
+      await next.close();
+    }
   });
 
   test("an older same-workspace tab waits for a new nonempty read after the reservation is cleared", async ({ page, context, browserName }) => {
@@ -829,6 +1035,33 @@ test.describe("Overview loading and recovery", () => {
     await expect(overview.getByRole("status").filter({ hasText: "P&L history is available again." })).toHaveCount(1);
     await expect(account).toHaveCount(0);
     await expect(history).toHaveCount(0);
+  });
+
+
+  test("a retained empty holdings result identifies a failed refresh in its own panel", async ({ page, context }) => {
+    let failed = false;
+    await mockOverview(page, { holdingCount: () => 0, lensFails: () => failed, runningClock: true });
+    await page.goto("/");
+    const holdings = page.locator(".mx-overview-holdings");
+    await expect(holdings.getByText("No holdings yet")).toBeVisible();
+    const marker = holdings.getByRole("button", { name: /Retry/ });
+    await expect(marker).toHaveCount(0);
+    failed = true;
+    // A reconnect refetches the stale lens, then the normal retry policy exhausts both attempts.
+    await page.clock.fastForward(31_000);
+    await context.setOffline(true);
+    const firstFailure = page.waitForResponse(response => response.url().includes("/dashboard/lens/overview?") && response.status() === 503);
+    await context.setOffline(false);
+    await firstFailure;
+    await page.clock.fastForward(2_000);
+    await expect(page.locator(".mx-overview-portfolio .mx-update-failure")).toBeVisible();
+    await expect(marker).toBeVisible();
+    await expect(holdings.getByText("No holdings yet")).toBeVisible();
+
+    failed = false;
+    await marker.click();
+    await expect(marker).toHaveCount(0);
+    await expect(holdings.getByText("No holdings yet")).toBeVisible();
   });
 
   test("paused sector and global market reads name the interruption and resume separately", async ({ page, context }) => {

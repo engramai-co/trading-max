@@ -163,8 +163,7 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
   });
 
   test("ETF cells arrive after the table and preserve the warning and loss dots", async ({ page }, info) => {
-    let release!: () => void;
-    const late = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: late, resolve: release } = Promise.withResolvers<void>();
     await synthetic(page, late);
     // The fund's ISIN names its issuer logo; a fund ticker alone can belong to another company.
     const fundLogo = page.waitForRequest((request) => {
@@ -225,9 +224,27 @@ test.describe("ETF surfaces from synthetic snapshots", () => {
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   });
 
+
+  test("a stale tracking figure shows its caveat and retains the evidence help", async ({ page }) => {
+    await synthetic(page);
+    await page.route("**/api/backend/dashboard/etfs?**", route => route.fulfill({ json: {
+      runId, funds: [{ ...reading, tracking: { ...reading.tracking, state: "stale" } }],
+    } }));
+    await page.goto("/?range=1D");
+    const ledger = page.locator(".mx-ledger-table:visible, .mx-ledger-list:visible");
+    const tracking = ledger.locator(".mx-ledger-etf");
+    await expect(tracking.getByText("未更新")).toBeVisible();
+    await expect(tracking.locator(".mx-ledger-flag")).toHaveCount(0);
+    const source = tracking.getByRole("button", { name: /一年跟踪差.*未更新/ });
+    await source.click();
+    const basis = page.getByRole("dialog", { name: "一年跟踪差", exact: true });
+    await expect(basis).toContainText(/截至 10月31日.*未更新/);
+    await basis.getByRole("button", { name: "关闭说明" }).click();
+    await expect(source).toBeFocused();
+  });
+
   test("changing the account clears a pending reading from the previous view", async ({ page }) => {
-    let release!: () => void;
-    const late = new Promise<void>((resolve) => { release = resolve; });
+    const { promise: late, resolve: release } = Promise.withResolvers<void>();
     await synthetic(page, late);
     await page.goto("/?range=1D");
     const ledger = page.locator(".mx-ledger-table:visible, .mx-ledger-list:visible");

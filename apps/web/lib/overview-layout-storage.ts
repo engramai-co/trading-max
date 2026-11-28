@@ -5,7 +5,8 @@ import type { Range } from "@/lib/portfolio/nav";
 import { ledgerWidthClass, observeLedgerReservation } from "@/lib/overview-ledger-reservation";
 
 export const OVERVIEW_LAYOUT_PREFIX = "mx-overview-layout-";
-export const OVERVIEW_LAYOUT_VERSION_PREFIX = OVERVIEW_LAYOUT_PREFIX + "v2:";
+export const OVERVIEW_LAYOUT_VERSION_PREFIX = OVERVIEW_LAYOUT_PREFIX + "v3:";
+const PREVIOUS_LAYOUT_VERSION_PREFIX = OVERVIEW_LAYOUT_PREFIX + "v2:";
 export const OVERVIEW_LAYOUT_ACTIVE_KEY = "mx-active-overview-workspace";
 export const OVERVIEW_LAYOUT_GENERATION_SUFFIX = ":generation";
 export const OVERVIEW_LAYOUT_MEDIA = {
@@ -16,7 +17,13 @@ export const OVERVIEW_LAYOUT_MEDIA = {
 } as const;
 
 export type LedgerRows = { stocks: number; funds: number; dateTagged?: number };
-export type ReadingLayout = { range: Range; summary: number; history: number; plotTop?: number; periodFigure?: number };
+export type ReadingLayout = {
+  range: Range;
+  summary: number;
+  history: number;
+  plotTop?: number;
+  disclosure?: { estimated: boolean; attribution: boolean };
+};
 export type LedgerWidth = "wide" | "stacked";
 export type OverviewLayout = { rows: LedgerRows; ledger?: number; ledgerWidth?: LedgerWidth; reading?: ReadingLayout; sectors?: number; brief?: number };
 
@@ -57,12 +64,12 @@ function validateLayout(raw: string | null | undefined, bounds: typeof layoutBou
     if (brief !== undefined && size(brief, bounds.panel)) valid.brief = brief;
     if (!reading || !bounds.ranges.includes(reading.range) ||
         !size(reading.summary, bounds.panel) || !size(reading.history, bounds.panel)) return valid;
-    const { range, summary, history, plotTop, periodFigure } = reading;
+    const { range, summary, history, plotTop, disclosure } = reading;
     if (plotTop !== undefined && (!Number.isFinite(plotTop) || plotTop < 0 ||
         plotTop > Math.min(history, bounds.plotOffset))) return valid;
     valid.reading = { range, summary, history, plotTop };
-    if (periodFigure === 0 || periodFigure !== undefined && size(periodFigure, history)) {
-      valid.reading.periodFigure = periodFigure;
+    if (typeof disclosure?.estimated === "boolean" && typeof disclosure.attribution === "boolean") {
+      valid.reading.disclosure = { estimated: disclosure.estimated, attribution: disclosure.attribution };
     }
     return valid;
   } catch {
@@ -76,14 +83,38 @@ export function parseOverviewLayout(raw: string | null | undefined) {
 
 /** Shared with the head script. Limit the cache to the current workspace's 30 supported keys. */
 function prepareStorage(
-  storage: Storage, legacy: Storage | undefined, prefix: string, workspace: string, key: string | undefined,
+  storage: Storage, legacy: Storage | undefined, prefix: string, workspace: string, previousWorkspace: string, key: string | undefined,
   validate: typeof validateLayout, bounds: typeof layoutBounds, generationSuffix: string,
 ) {
-  const belongs = (name: string) => name.startsWith(workspace) &&
-    /^(total|invest|isa):(zh|en):(narrow-phone|phone|tablet|compact|desktop)$/.test(name.slice(workspace.length));
+  const belongs = (name: string, owner = workspace) => name.startsWith(owner) &&
+    /^(total|invest|isa):(zh|en):(narrow-phone|phone|tablet|compact|desktop)$/.test(name.slice(owner.length));
+  // Counts are independent of the old spacing. The current ledger probe recalculates dimensions.
+  const migrateRows = (source: Storage) => {
+    for (const name of Object.keys(source)) {
+      if (!belongs(name, previousWorkspace)) continue;
+      if (source !== storage && storage.getItem(name + generationSuffix) !== null) continue;
+      const target = workspace + name.slice(previousWorkspace.length);
+      if (storage.getItem(target + generationSuffix) !== null || validate(storage.getItem(target), bounds)) continue;
+      const entry = validate(source.getItem(name), bounds);
+      if (entry) storage.setItem(target, JSON.stringify({ rows: entry.rows }));
+    }
+  };
+  migrateRows(storage);
+  if (legacy) {
+    try { migrateRows(legacy); } catch {
+      // Continue clearing outdated entries if tab storage is unavailable.
+    }
+  }
   for (const name of Object.keys(storage)) {
     const layoutKey = name.endsWith(generationSuffix) ? name.slice(0, -generationSuffix.length) : name;
-    if (name.startsWith(prefix) && !belongs(layoutKey)) storage.removeItem(name);
+    if (!name.startsWith(prefix) || belongs(layoutKey)) continue;
+    // Later tabs may still have v2 session rows from before a confirmed clear.
+    if (name !== layoutKey && belongs(layoutKey, previousWorkspace)) {
+      const target = workspace + name.slice(previousWorkspace.length);
+      const generation = storage.getItem(name);
+      if (generation !== null && storage.getItem(target) === null) storage.setItem(target, generation);
+    }
+    storage.removeItem(name);
   }
   if (legacy) {
     try {
@@ -119,8 +150,9 @@ export function prepareOverviewLayoutStorage(workspace: string, key: string) {
   if (!isActiveOverviewWorkspace(workspace)) return;
   let legacy: Storage | undefined;
   try { legacy = window.sessionStorage; } catch {}
-  return prepareStorage(window.localStorage, legacy, OVERVIEW_LAYOUT_PREFIX, workspace, key, validateLayout, layoutBounds,
-    OVERVIEW_LAYOUT_GENERATION_SUFFIX);
+  const previousWorkspace = PREVIOUS_LAYOUT_VERSION_PREFIX + workspace.slice(OVERVIEW_LAYOUT_VERSION_PREFIX.length);
+  return prepareStorage(window.localStorage, legacy, OVERVIEW_LAYOUT_PREFIX, workspace, previousWorkspace, key,
+    validateLayout, layoutBounds, OVERVIEW_LAYOUT_GENERATION_SUFFIX);
 }
 
 /** Apply the same persistent layout the Overview will read after hydration. */
@@ -129,6 +161,7 @@ export function overviewLayoutInitScript(scope: string) {
   const config = JSON.stringify({
     prefix: OVERVIEW_LAYOUT_PREFIX,
     workspace: OVERVIEW_LAYOUT_VERSION_PREFIX + scope + ":",
+    previousWorkspace: PREVIOUS_LAYOUT_VERSION_PREFIX + scope + ":",
     activeKey: OVERVIEW_LAYOUT_ACTIVE_KEY,
     generationSuffix: OVERVIEW_LAYOUT_GENERATION_SUFFIX,
     localeKey: DISPLAY_LOCALE_STORAGE_KEY,
@@ -143,7 +176,8 @@ export function overviewLayoutInitScript(scope: string) {
     var legacy;
     try { legacy = sessionStorage; } catch (error) {}
     if (!/^\\/(?:desktop\\/?)?$/.test(location.pathname)) {
-      if (changed) prepare(localStorage, legacy, config.prefix, config.workspace, undefined, validate, config.bounds, config.generationSuffix);
+      if (changed) prepare(localStorage, legacy, config.prefix, config.workspace, config.previousWorkspace,
+        undefined, validate, config.bounds, config.generationSuffix);
       return;
     }
     var params = new URLSearchParams(location.search);
@@ -183,7 +217,8 @@ export function overviewLayoutInitScript(scope: string) {
       document.addEventListener("DOMContentLoaded", function() { findProbe.disconnect(); }, { once: true });
     }
     var key = config.workspace + [account, locale, breakpoint].join(":");
-    var entry = prepare(localStorage, legacy, config.prefix, config.workspace, key, validate, config.bounds, config.generationSuffix);
+    var entry = prepare(localStorage, legacy, config.prefix, config.workspace, config.previousWorkspace,
+      key, validate, config.bounds, config.generationSuffix);
     if (!entry) {
       reserveRows({ stocks: 5, funds: 0 });
       return;
@@ -200,9 +235,10 @@ export function overviewLayoutInitScript(scope: string) {
     if (navigator.onLine && reading && reading.range === range) {
       root.style.setProperty("--mx-boot-summary-size", reading.summary + "px");
       root.style.setProperty("--mx-boot-history-size", reading.history + "px");
-      if (reading.periodFigure !== undefined) root.style.setProperty("--mx-boot-period-figure", reading.periodFigure + "px");
       var plot = reading.plotTop !== undefined;
       if (plot) root.style.setProperty("--mx-boot-plot-top", reading.plotTop + "px");
+      if (reading.disclosure?.estimated) root.style.setProperty("--mx-boot-estimate-placeholder", "block");
+      if (reading.disclosure?.attribution) root.style.setProperty("--mx-boot-attribution-placeholder", "block");
       root.setAttribute("data-mx-boot-history", plot ? "plot" : "empty");
     }
     if (navigator.onLine && entry.sectors !== undefined) {

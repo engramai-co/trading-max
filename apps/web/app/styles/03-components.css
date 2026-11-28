@@ -376,22 +376,6 @@
   color: var(--mx-muted);
   margin-top: 7px;
 }
-@media (max-width: 700px) {
-  .mx-attention {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    scroll-snap-type: x proximity;
-    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
-  }
-  .mx-attention::-webkit-scrollbar {
-    display: none;
-  }
-  .mx-attention a {
-    flex: none;
-    scroll-snap-align: start;
-  }
-}
 .mx-month-table td.mx-month-return {
   padding: 9px 4px;
   text-align: center;

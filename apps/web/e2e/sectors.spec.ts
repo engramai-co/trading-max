@@ -718,7 +718,7 @@ test.describe("market index layer", () => {
     const colorScheme = mobile ? "dark" : "light";
     await page.addInitScript((scheme) => localStorage.setItem("mantine-color-scheme-value", scheme), colorScheme);
     await page.emulateMedia({ colorScheme, reducedMotion: "reduce" });
-    await mockIndices(page, { global: chinaGlobal });
+    await mockIndices(page, { global: { ...chinaGlobal, acwiMove: 0 } });
     await page.goto("/");
     const card = page.locator(".mx-overview-sectors");
     const picker = card.getByRole("button", { name: /选择市场|Choose market/ });
@@ -740,6 +740,16 @@ test.describe("market index layer", () => {
       await page.keyboard.press("Enter");
       await expect(card.getByRole("button", { name: /选择市场.*全球市场|Choose market.*Global markets/ })).toBeFocused();
     }
+    const total = card.getByRole("link", { name: /MSCI 全球|MSCI ACWI/ }).locator("strong");
+    await expect(total).toHaveText("0%");
+    expect(await total.evaluate(node => {
+      const ink = document.createElement("span");
+      ink.style.color = "var(--foreground)";
+      node.appendChild(ink);
+      const result = [getComputedStyle(node).color, getComputedStyle(ink).color];
+      ink.remove();
+      return result[0] === result[1];
+    })).toBe(true);
     const board = card.locator(mobile ? ".mx-overview-world" : ".mx-overview-world-map");
     const china = board.getByRole("link", { name: /中国.*沪深 300.*1.23|China.*CSI 300.*1.23/ });
     await expect(china).toHaveAttribute("href", "/sectors?market=cn");

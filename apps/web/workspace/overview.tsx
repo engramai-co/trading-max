@@ -16,11 +16,12 @@
  *   DESIGN.md, and every shipping raster carrying its provenance.
  */
 
-import { ChartLine } from "lucide-react";
+import { ArrowRight, ChartLine } from "lucide-react";
 import Link from "./link";
-import { useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useCallback, useMemo, useRef, useState, type CSSProperties } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useBrowserOnline } from "@/ui/query-client";
 import { useDashboardLens } from "@/lib/dashboard-lenses";
@@ -28,7 +29,7 @@ import type { DashboardLens, RefreshAttention } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { TimelineChart, timelinePlotHeight } from "./timeline-chart";
 import { readingTone, signedPercent, signedPounds } from "./reading-format";
-import { api, currency, percent, tone } from "@/workspace/data";
+import { api, currency, percent, signedCurrency, tone } from "@/workspace/data";
 import { useLocale } from "@/components/locale-provider";
 import { attentionItems, type AttentionItem } from "./attention";
 import { type Range, type Scope } from "@/lib/portfolio/nav";
@@ -52,7 +53,7 @@ import { accountName, useWorkspaceProfile } from "./profile";
 import dynamic from "next/dynamic";
 import { useAssistant, useAssistantPageContext } from "./assistant/context";
 import { Narrative } from "./narrative";
-import { HistoryCoverage, HistoryHelp, PeriodSpan, periodSpan } from "./history-coverage";
+import { EstimateTag, HistoryCoverage, HistoryHelp, PeriodSpan, estimateCoverage, periodSpan } from "./history-coverage";
 import { DayDrivers, dayDrivers, driverOpenings } from "./day-drivers";
 import { portfolioPerformanceHref, portfolioRange, selectPortfolioHistory } from "@/lib/portfolio/history";
 import { portfolioMoney } from "@/lib/portfolio/money";
@@ -225,7 +226,8 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
     "--mx-overview-summary-size": px(reservedLayout?.summary),
     "--mx-overview-history-size": px(reservedLayout?.history),
     "--mx-overview-plot-top": px(reservedLayout?.plotTop),
-    "--mx-overview-saved-period-figure": px(reservedLayout?.periodFigure),
+    "--mx-overview-estimate-placeholder": reservedLayout?.disclosure?.estimated ? "block" : undefined,
+    "--mx-overview-attribution-placeholder": reservedLayout?.disclosure?.attribution ? "block" : undefined,
     "--mx-overview-sectors-size": px(sectorsHeight),
     "--mx-overview-brief-size": px(briefHeight),
     "--mx-overview-brief-display": briefHeight === undefined ? undefined : "block",
@@ -260,10 +262,11 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
   return (
     <ReadingBoundary.Provider value={reading.report}><div ref={overview} className="mx-overview-read" style={pendingStyle}
       data-summary-reserved={!!reservedLayout || undefined}
+      data-short-range={range === "1D" || range === "1W" || undefined}
       data-sectors-reserved={sectorsHeight !== undefined || undefined}
       data-layout-bootstrap={booting && initialWaiting || undefined}>
       <StatusMessage message={offline ? offlineLabel : undefined} />
-      <div className="mx-panel mx-overview-portfolio" data-waiting={initialWaiting || undefined}>
+      <Card as="div" className="mx-overview-portfolio" data-waiting={initialWaiting || undefined}>
         <ReadStatus failure={accountReadFailure} ready={!initialWaiting && query.isSuccess && !!data}
           recovered={t("账户价值已恢复。", "Account value is available again.")} />
         <section
@@ -350,7 +353,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
             </Notice>
           </div>
         )}
-      </div>
+      </Card>
       <div className="mx-overview-row">
         <OverviewHistory
           range={range}
@@ -376,6 +379,7 @@ function OverviewContent({ localWorkspace }: { localWorkspace: boolean }) {
         pendingRows={counts ?? savedRows}
         pendingHeight={matchingRows ? layout?.ledger : undefined}
         pendingWidth={matchingRows ? layout?.ledgerWidth : undefined}
+        refreshFailure={summaryFailure}
         waiting={initialWaiting} failed={initialError} error={query.error}
         retry={sharedRecovery ? undefined : query.refetch} showDataStatusLink={!sharedRecovery} />
       {!initialWaiting && data && <Narrative snapshot={data.runId} lens="daily_cio_brief" page="overview" />}
@@ -418,12 +422,40 @@ function Attention({ items }: { items: AttentionItem[] }) {
           <Link key="stale" href="/health" data-slot="button" className={attentionButton}>
             {warningDot}
             {age(item.hours)}
+            <ArrowRight aria-hidden="true" size={14} className="shrink-0" />
           </Link>
         ),
       )}
     </nav>
   );
 }
+/** Keep a signed figure together when it moves to another row. At larger text sizes the first digits keep the sign. */
+function PeriodAmount({ value }: { value: number | null }) {
+  const amount = signedCurrency(value, "GBP", 2);
+  const groups = amount.split(/(?<=,)/);
+  return <strong className={value == null ? undefined : "mx-" + tone(value)} data-wide-amount={amount.length >= 13 || undefined}>
+    {groups.map((part, index) => <Fragment key={index}>
+      {index > 0 && <wbr />}
+      <span className="whitespace-nowrap">{part}</span>
+    </Fragment>)}
+  </strong>;
+}
+
+function OverviewDrivers({ drivers, range, pnl, cutOff }: {
+  drivers: ReturnType<typeof dayDrivers>;
+  range: Range;
+  pnl: number | null;
+  cutOff: boolean;
+}) {
+  const t = useCopy();
+  if (drivers) return <DayDrivers span={range === "1W" ? "5D" : "1D"} drivers={drivers} />;
+  // The drivers use £5 as the floor for a material unexplained amount. The cutoff already has a coverage message.
+  if (cutOff || (range !== "1D" && range !== "1W") || pnl == null || Math.abs(pnl) < 5) return null;
+  return <p className="mx-overview-drivers-unavailable">
+    {t("持仓归因暂不可用。", "Holding attribution unavailable.")}
+  </p>;
+}
+
 /** The calendar day it is now where the reader is, as YYYY-MM-DD. */
 function localDay(timeZone: string) {
   return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -448,6 +480,8 @@ function OverviewLead({ selection, data, failed, retained, dayAttribution, windo
     return failed ? null : (
       <div className="mx-overview-lead mx-overview-lead-pending" aria-hidden="true">
         <Skeleton className="mx-loading-shape" />
+        <Skeleton className="mx-overview-estimate-placeholder" />
+        <Skeleton className="mx-overview-attribution-placeholder" />
       </div>
     );
   }
@@ -480,9 +514,7 @@ function OverviewLead({ selection, data, failed, retained, dayAttribution, windo
         </TextLink>
       </div>
       <div className="mx-overview-lead-figure">
-        <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
-          {currency(money.pnl, "GBP", 2)}
-        </strong>
+        <PeriodAmount value={money.pnl} />
         {money.pnl != null && (
           <span
             className={"mx-" + tone(money.pnl)}
@@ -490,8 +522,9 @@ function OverviewLead({ selection, data, failed, retained, dayAttribution, windo
             {percent(money.pnlPercents.at(-1), true, 2)}
           </span>
         )}
+        {money.pnl != null && <EstimateTag points={points} />}
       </div>
-      {drivers && <DayDrivers span={range === "1W" ? "5D" : "1D"} drivers={drivers} />}
+      <OverviewDrivers drivers={drivers} range={range} pnl={money.pnl} cutOff={history.pendingCashFlows} />
     </div>
   );
 }
@@ -523,6 +556,9 @@ function OverviewHistory({
   const history = useMemo(() => data?.history ?? selectPortfolioHistory({ range, scope }), [data?.history, range, scope]);
   const { points } = history;
   const isIntraday = history.source === "intraday";
+  const estimated = useMemo(() => estimateCoverage(points).estimated, [points]);
+  const chartLabel = t("区间净盈亏曲线", "Period net profit and loss over time") +
+    (estimated ? t(" · 含估算", " · Includes estimates") : "");
   const money = useMemo(() => data?.money ?? portfolioMoney([], scope), [data?.money, scope]);
   // The 1D figure is today's: the positions behind it follow, as the five-day window's do.
   const attribution = range === "1D" ? dayAttribution : range === "1W" ? windowAttribution : undefined;
@@ -569,8 +605,12 @@ function OverviewHistory({
         recovered={t("盈亏记录已恢复。", "P&L history is available again.")} />
       {initialWaiting || !data && !failed ? (
         <div className="mx-overview-history-pending">
-          <div className="mx-period-figure" aria-hidden="true">
-            <Skeleton as="span" className="mx-period-figure-placeholder" />
+          <div className="mx-overview-history-details" aria-hidden="true">
+            <div className="mx-period-figure">
+              <Skeleton as="span" className="mx-period-figure-placeholder" />
+              <Skeleton as="span" className="mx-overview-estimate-placeholder" />
+            </div>
+            <Skeleton className="mx-overview-attribution-placeholder" />
           </div>
           {reservation !== "empty" && <Pending shape="chart" height={pendingPlotHeight} quiet={initialWaiting || offline} label={t("正在读取 ", "Loading ") +
             rangeName(requestedRange, t("全部", "all")) + t(" 盈亏记录…", " P&L history…")} />}
@@ -586,26 +626,27 @@ function OverviewHistory({
           {range !== requestedRange && <p className="mx-prior-range">
             {t("当前显示 ", "Showing ")}{rangeName(range, t("全部", "all"))}
           </p>}
-          <div className="mx-period-figure" ref={setFigureAnchor}>
-            <strong className={money.pnl == null ? undefined : "mx-" + tone(money.pnl)}>
-              {currency(money.pnl, "GBP", 2)}
-            </strong>
-            {money.pnl != null && (
-              <span>
-                {percent(money.pnlPercents.at(-1), true, 2)}
-              </span>
-            )}
-            <TextLink href={portfolioPerformanceHref(scope, range)}>
-              <ChartLine aria-hidden="true" size={16} />
-              {t("收益分析", "View performance")}
-            </TextLink>
+          <div className="mx-overview-history-details">
+            <div className="mx-period-figure" ref={setFigureAnchor}>
+              <PeriodAmount value={money.pnl} />
+              {money.pnl != null && (
+                <span>
+                  {percent(money.pnlPercents.at(-1), true, 2)}
+                </span>
+              )}
+              {money.pnl != null && <EstimateTag points={points} />}
+              <TextLink href={portfolioPerformanceHref(scope, range)}>
+                <ChartLine aria-hidden="true" size={16} />
+                {t("收益分析", "View performance")}
+              </TextLink>
+            </div>
+            <OverviewDrivers drivers={drivers} range={range} pnl={money.pnl} cutOff={history.pendingCashFlows} />
           </div>
-          {drivers && <DayDrivers span={range === "1W" ? "5D" : "1D"} drivers={drivers} />}
           <HistoryCoverage history={history} />
           <TimelineChart
             dates={dates}
             layers={layers}
-            label={t("区间净盈亏曲线", "Period net profit and loss over time")}
+            label={chartLabel}
             intraday={isIntraday}
             range={range}
             timeline={history.timeline}

@@ -62,7 +62,7 @@
   flex: 1 1 auto;
   min-height: 248px;
   overflow: clip;
-  border-radius: 8px;
+  border-radius: var(--radius-heat-tile);
 }
 /* Phones and touch: one block per sector, by index weight, each a target of its own with its whole move. With an odd
    count the largest sector takes a double block, so eleven sectors fill two, three or four columns evenly; rows share
@@ -74,7 +74,7 @@
   grid-auto-rows: minmax(52px, 1fr);
   gap: 3px;
   overflow: clip;
-  border-radius: 8px;
+  border-radius: var(--radius-heat-tile);
 }
 .mx-overview-sector-grid > .mx-overview-sector:first-child:nth-last-child(odd) {
   grid-column: span 2;
@@ -88,95 +88,7 @@
   }
 }
 
-/* The card's title chooses its market: it reads as the title, with a caret that says it opens. */
-.mx-overview-market {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-block: -6px;
-  /* Clear of the help button's 44px tap area beside it. */
-  margin-inline-end: 4px;
-  padding: 6px 4px 6px 0;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-.mx-overview-market svg {
-  color: var(--mx-muted);
-}
-@media (hover: hover) {
-  .mx-overview-market:hover,
-  .mx-overview-market:hover svg {
-    color: var(--mx-brand);
-  }
-}
-.mx-overview-market:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-}
-@media (pointer: coarse) {
-  .mx-overview-market {
-    min-width: 44px;
-    min-height: 44px;
-    margin-block: -11px;
-    padding-block: 11px;
-  }
-}
-
 /* Global: the classic block world map, one equal block per market where it lies; the ocean corner holds MSCI ACWI. */
-.mx-overview-world {
-  container-type: inline-size;
-  display: grid;
-  flex: 1 1 auto;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  grid-template-rows: repeat(3, minmax(64px, 1fr));
-  gap: 3px;
-  min-height: 248px;
-}
-/* With weights a mouse reads the share map instead; these blocks stay for phones and touch. */
-.mx-overview-world[data-weighted] {
-  display: none;
-}
-@media (max-width: 767px), (hover: none), (pointer: coarse) {
-  .mx-overview-world[data-weighted] {
-    display: grid;
-  }
-}
-/* Beside the clock while the share map fills the card. */
-.mx-overview-acwi {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  margin-right: 6px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  text-decoration: none;
-}
-.mx-overview-acwi strong {
-  font-size: 15px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-.mx-overview-acwi strong:not(.mx-up, .mx-down) {
-  color: var(--foreground);
-}
-@media (hover: hover) {
-  .mx-overview-acwi:hover {
-    color: var(--link);
-  }
-}
-.mx-overview-acwi:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
-.mx-overview-world > .mx-overview-sector {
-  grid-column: var(--mx-world-column);
-  grid-row: var(--mx-world-row);
-}
 .mx-overview-world-short {
   display: none;
 }
@@ -192,63 +104,8 @@
     }
   }
 }
-.mx-overview-world-total {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 2px;
-  grid-column: 1 / 5;
-  grid-row: 3;
-  padding: 8px 10px;
-  border-radius: 6px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  text-decoration: none;
-}
-.mx-overview-world-total strong {
-  font-size: 24px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  line-height: 30px;
-}
-.mx-overview-world-total strong:not(.mx-up, .mx-down) {
-  color: var(--foreground);
-}
-@media (hover: hover) {
-  .mx-overview-world-total:hover {
-    background: var(--muted);
-  }
-}
-.mx-overview-world-total:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
-}
-@media (forced-colors: active) {
-  .mx-overview-world-total:focus-visible {
-    outline-color: Highlight;
-  }
-}
-/* Phones: the same blocks in rows of three, west to east, under the global figure. */
-@media (max-width: 767px) {
-  .mx-overview-world {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    grid-template-rows: none;
-    grid-auto-rows: minmax(52px, auto);
-  }
-  .mx-overview-world > .mx-overview-sector {
-    grid-column: auto;
-    grid-row: auto;
-  }
-  .mx-overview-world-total {
-    order: -1;
-    grid-column: 1 / -1;
-    grid-row: auto;
-    padding-inline: 0;
-  }
-}
 /* Holdings: the donut keys the ledger; each row's dot is its segment. */
 .mx-overview-holdings {
-  --mx-ledger-rule: color-mix(in oklab, var(--mx-border) 62%, var(--mx-surface));
   container: holdings-ledger / inline-size;
 }
 .mx-ledger {
@@ -287,40 +144,6 @@
 .mx-ledger-donut svg[data-focus] path[data-current] {
   stroke: var(--foreground);
   stroke-width: 2px;
-}
-.mx-ledger-centre {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  pointer-events: none;
-  text-align: center;
-}
-.mx-ledger-centre strong {
-  max-width: 120px;
-  overflow: hidden;
-  font-size: 24px;
-  font-weight: 600;
-  line-height: 1.25;
-  letter-spacing: -0.02em;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* English names the count in a smaller word; Chinese keeps 只 at the figure's size. */
-.mx-ledger-centre strong small {
-  margin-left: 4px;
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-weight: 500;
-  letter-spacing: 0;
-}
-.mx-ledger-centre span {
-  color: var(--muted-foreground);
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
 }
 .mx-ledger-table {
   width: 100%;
@@ -363,7 +186,7 @@
   padding-top: 16px;
 }
 .mx-ledger-table .mx-ledger-row {
-  border-bottom: 1px solid var(--mx-ledger-rule);
+  border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background-color 150ms var(--mx-ease);
 }
@@ -384,13 +207,13 @@
   align-items: center;
   gap: 12px;
   min-width: 0;
-  border-radius: 6px;
+  border-radius: var(--radius-heat-tile);
   color: inherit;
   text-decoration: none;
 }
-.mx-ledger-link:focus-visible {
-  outline: 2px solid var(--mx-brand);
-  outline-offset: 3px;
+:is(.mx-ledger-link, .mx-ledger-item-head):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }
 .mx-ledger-link .mx-peek-target {
   min-width: 0;
@@ -412,10 +235,6 @@
   padding: 3px;
 }
 .mx-ledger-dot {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
   background: var(--mx-dot);
 }
 .mx-ledger-dot[data-rest] {
@@ -437,7 +256,9 @@
   padding-inline-start: 0;
   white-space: normal;
 }
-.mx-ledger-day > span {
+.mx-ledger-day > span:not(.mx-ledger-date) {
+  display: inline-block;
+  max-inline-size: 100%;
   white-space: nowrap;
 }
 .mx-ledger-date {
@@ -549,7 +370,7 @@
     overflow-wrap: anywhere;
   }
   .mx-ledger-list li + li {
-    border-top: 1px solid var(--mx-ledger-rule);
+    border-top: 1px solid var(--border);
   }
   .mx-ledger-item {
     position: relative;
@@ -624,8 +445,18 @@
 .mx-ledger-etf {
   white-space: nowrap;
 }
-.mx-ledger-etf[data-stale] {
-  color: var(--mx-warning);
+.mx-ledger-etf:has(.mx-ledger-tracking-status) .tm-reading-trigger {
+  max-inline-size: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.mx-ledger-tracking-status {
+  font-size: 0.75rem;
+}
+@media (max-width: 767px) {
+  .mx-ledger-etf:has(.mx-ledger-tracking-status) .tm-reading-trigger {
+    justify-content: flex-start;
+  }
 }
 
 /* The total leads and the two balances share a column at the end; today's move reads in the period panel below.
@@ -672,6 +503,10 @@
   display: flex;
   flex-direction: column;
 }
+.mx-overview-history-details {
+  display: flex;
+  flex-direction: column;
+}
 .mx-overview-portfolio[data-waiting] {
   block-size: var(--mx-overview-summary-size, auto);
 }
@@ -697,26 +532,42 @@ html[data-mx-boot-history] .mx-overview-read[data-layout-bootstrap] {
   --mx-overview-summary-size: var(--mx-boot-summary-size);
   --mx-overview-history-size: var(--mx-boot-history-size);
   --mx-overview-plot-top: var(--mx-boot-plot-top);
-  --mx-overview-saved-period-figure: var(--mx-boot-period-figure);
-}
-@media (min-width: 768px) and (pointer: fine) {
-  /* Older saved layouts use the period figure's previous 37px minimum. */
-  .mx-overview-history {
-    --mx-overview-period-growth: max(0px, calc(var(--mx-action-size) - var(--mx-overview-saved-period-figure, 37px)));
-  }
+  --mx-overview-estimate-placeholder: var(--mx-boot-estimate-placeholder);
+  --mx-overview-attribution-placeholder: var(--mx-boot-attribution-placeholder);
 }
 :is(.mx-overview-history-reserved, html[data-mx-boot-history] [data-layout-bootstrap] .mx-overview-history) {
   position: relative;
-  min-block-size: calc(var(--mx-overview-history-size) + var(--mx-overview-period-growth, 0px));
+  min-block-size: var(--mx-overview-history-size);
 }
 :is(.mx-overview-history-reserved, html[data-mx-boot-history="plot"] [data-layout-bootstrap] .mx-overview-history) .mx-loading-chart {
   position: absolute;
-  inset-block-start: calc(var(--mx-overview-plot-top) + var(--mx-overview-period-growth, 0px));
-  inset-inline: var(--mx-space-panel);
+  inset-block-start: var(--mx-overview-plot-top);
+  inset-inline: var(--mx-space-panel, 23px);
 }
 html[data-mx-boot-history] [data-layout-bootstrap] .mx-overview-attention-placeholder,
 html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history .mx-loading-chart {
   display: none;
+}
+@media (min-width: 768px) {
+  .mx-overview-read[data-short-range] .mx-loading-summary {
+    min-block-size: 90px;
+  }
+}
+.mx-overview-estimate-placeholder {
+  display: var(--mx-overview-estimate-placeholder, none);
+  inline-size: 7rem;
+  block-size: 16px;
+  margin-block: calc((var(--mx-action-size) - 16px) / 2);
+  border-radius: var(--radius-control);
+  background: var(--mx-placeholder);
+}
+.mx-overview-attribution-placeholder {
+  display: var(--mx-overview-attribution-placeholder, none);
+  inline-size: 11rem;
+  block-size: 12px;
+  margin-block: 4px;
+  border-radius: var(--radius-tooltip);
+  background: var(--mx-placeholder);
 }
 .mx-overview-attention-placeholder {
   min-block-size: calc(var(--mx-action-size) + 24px);
@@ -796,9 +647,27 @@ html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history 
 .mx-overview-lead {
   display: none;
 }
+:is(.mx-overview-lead-figure, .mx-overview-history .mx-period-figure) > strong {
+  inline-size: max-content;
+  max-inline-size: 100%;
+}
+:is(.mx-overview-lead-figure, .mx-overview-history .mx-period-figure) > .mx-tag-help {
+  min-block-size: var(--mx-action-size);
+  align-items: center;
+}
+.mx-overview-drivers-unavailable {
+  margin: 0 0 var(--mx-space-group);
+  color: var(--muted-foreground);
+  font-size: var(--mx-text-label);
+}
+.mx-overview-lead > .mx-overview-drivers-unavailable {
+  margin-block-end: 0;
+}
 @media (max-width: 767px) {
   .mx-overview-read .mx-overview-lead {
+    --mx-overview-lead-font: clamp(30px, 10vw, 40px);
     display: grid;
+    align-content: start;
     gap: var(--mx-space-tight);
     margin-bottom: var(--mx-space-items);
   }
@@ -826,11 +695,11 @@ html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history 
     font-variant-numeric: tabular-nums;
   }
   .mx-page .mx-overview-lead-figure strong {
-    font-size: clamp(30px, 10vw, 40px);
+    flex: none;
+    font-size: var(--mx-overview-lead-font);
     font-weight: 600;
     line-height: 1.12;
     letter-spacing: -0.035em;
-    overflow-wrap: anywhere;
   }
   .mx-overview-lead-figure > span {
     font-size: var(--mx-text-title);
@@ -838,15 +707,18 @@ html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history 
   .mx-page .mx-overview-lead .mx-day-drivers {
     margin: 0;
   }
+  .mx-page .mx-overview-lead-figure:has(> .mx-tag-help) + .mx-day-drivers {
+    margin-block-start: 8px;
+  }
   .mx-overview-read .mx-overview-lead-pending {
     display: block;
-    min-height: 92px;
   }
   .mx-overview-lead-pending > .mx-loading-shape {
+    /* The exact lead has a header action, the figure's line box and the gap between them. */
+    min-block-size: calc(var(--mx-action-size) + 1.12 * var(--mx-overview-lead-font) + var(--mx-space-tight));
     background:
       linear-gradient(var(--mx-placeholder) 0 0) 0 2px / 14% 12px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 24px / 52% 38px no-repeat,
-      linear-gradient(var(--mx-placeholder) 0 0) 0 74px / 62% 14px no-repeat;
+      linear-gradient(var(--mx-placeholder) 0 0) 0 24px / 52% 38px no-repeat;
   }
   /* The total and the two balances support the move: the total on one line, the balances on the next. */
   .mx-page .mx-overview-read .mx-overview-totals {
@@ -892,8 +764,91 @@ html[data-mx-boot-history="empty"] [data-layout-bootstrap] .mx-overview-history 
       linear-gradient(var(--mx-placeholder) 0 0) 0 56px / 43% 13px no-repeat;
   }
   /* The move leads the summary above, so the period panel shows its chart without repeating it. */
-  .mx-page .mx-overview-history .mx-period-figure,
-  .mx-page .mx-overview-history .mx-data-body > .mx-day-drivers {
+  .mx-overview-history-details {
     display: none;
   }
+}
+
+/* Long amounts get their own row and can use the card's gutters on small phones. */
+@media (max-width: 420px) {
+  .mx-overview-lead-figure:has(> [data-wide-amount]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: start;
+  }
+  .mx-overview-portfolio:has(.mx-overview-lead-figure > [data-wide-amount]) {
+    --mx-overview-extra-gutter: 6px;
+    margin-inline: calc(-1 * var(--mx-overview-extra-gutter));
+  }
+  .mx-overview-portfolio:has(.mx-overview-lead-figure > [data-wide-amount]) > .mx-summary {
+    padding-inline: calc(var(--mx-space-panel) + var(--mx-overview-extra-gutter));
+  }
+  .mx-overview-lead-figure > strong[data-wide-amount] {
+    --mx-overview-amount-gutter: calc(var(--mx-space-panel) + var(--mx-overview-extra-gutter) - 4px);
+    margin-inline-start: calc(-1 * var(--mx-overview-amount-gutter));
+    inline-size: calc(100% + 2 * var(--mx-overview-amount-gutter));
+    max-inline-size: none;
+  }
+}
+
+.mx-attention {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 24px;
+}
+.mx-attention strong {
+  font-weight: 650;
+}
+
+/* Keep keyboard focus visible inside the warning scroller. Overflow has a native affordance in both WebKit and Firefox. */
+@media (max-width: 700px) {
+  .mx-overview-read .mx-attention {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    padding: 4px;
+    margin-inline: -4px;
+    margin-block-end: -8px;
+    scroll-padding-inline: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+  .mx-attention a {
+    scroll-snap-align: start;
+  }
+  .mx-overview-read .mx-attention::-webkit-scrollbar {
+    block-size: 4px;
+  }
+  .mx-overview-read .mx-attention::-webkit-scrollbar-thumb {
+    border-radius: var(--radius-control);
+    background: var(--scrollbar-thumb);
+  }
+}
+@media (max-width: 767px) {
+  .mx-overview-history .mx-panel-title > .mx-info,
+  .mx-overview-sectors .mx-panel-title > .mx-info {
+    min-inline-size: 44px;
+    min-block-size: 44px;
+  }
+  .mx-overview-history .mx-period-figure > .mx-tag-help,
+  .mx-overview-lead-figure > .mx-tag-help {
+    min-block-size: 44px;
+  }
+}
+
+.mx-overview-brief > .mx-digest {
+  border-color: var(--panel-edge);
+  border-radius: var(--radius-panel);
+  background: var(--card);
+  box-shadow: var(--shadow-panel);
+}
+.mx-overview-brief .mx-digest-toggle {
+  min-block-size: var(--mx-action-size);
+  border-radius: var(--radius-control);
+}
+.mx-overview-brief .mx-digest-toggle:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
 }

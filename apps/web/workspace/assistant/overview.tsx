@@ -2,6 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import { useLocale } from "@/components/locale-provider";
 import type { Scope } from "@/lib/portfolio/nav";
 import { useCopy } from "../foundation";
@@ -41,9 +42,11 @@ export function OverviewBrief({ snapshot, scope = "total" }: { snapshot: string;
   }), [role, title, t, benchmark, reading, snapshot]);
   usePageRole(card);
   const portfolio = reading?.lines.find(line => line.section === "portfolio");
-  return <DigestRow storageKey="overview" pending={query.isPending && query.fetchStatus !== "paused"} header={<div className="mx-brief-period" role="group" aria-label={t("简报周期", "Brief period")}>
-    {(["daily", "weekly"] as const).map(v => <button key={v} aria-pressed={role === v} onClick={() => { if (role !== v) { generate.reset(); setRole(v); } }}>
-      {v === "daily" ? t("日报", "Daily") : t("周报", "Weekly")}</button>)}</div>}
+  return <DigestRow storageKey="overview" pending={query.isPending && query.fetchStatus !== "paused"} header={<div className="inline-flex items-center rounded-full border border-transparent bg-muted p-[3px]" role="group" aria-label={t("简报周期", "Brief period")}>
+    {(["daily", "weekly"] as const).map(v => <Button key={v} variant="ghost"
+      className="min-h-8 min-w-10 px-2.5 py-0 text-xs text-muted-foreground before:absolute before:inset-x-0 before:-inset-y-1 hover:text-foreground aria-pressed:bg-[var(--segment-indicator)] aria-pressed:text-foreground pointer-coarse:min-h-11 pointer-coarse:min-w-11 pointer-coarse:before:hidden"
+      aria-pressed={role === v} onClick={() => { if (role !== v) { generate.reset(); setRole(v); } }}>
+      {v === "daily" ? t("日报", "Daily") : t("周报", "Weekly")}</Button>)}</div>}
     summary={portfolio && readerText(portfolio, locale, timeZone)}
     headline={<span>{overviewBriefHeadline({ scope, objectLabel: card.object, asOfLabel: asOf ? t("截至 ", "As of ") + asOf : null })}</span>}>
     {reading ? <><div className="mx-digest-grid">
@@ -53,7 +56,7 @@ export function OverviewBrief({ snapshot, scope = "total" }: { snapshot: string;
       <p>{generate.isPending ? t("正在读取账户、基准与日历…", "Reading accounts, benchmarks and calendars…") :
         generate.isError || query.isError ? t("简报暂时不可用。", "The brief is unavailable.") :
         generate.isSuccess ? t("可核实的记录不足。", "There are too few verified observations.") : t("尚无已写好的简报。", "No brief has been written yet.")}</p>
-      <button onClick={() => generate.isPending ? controller.current?.abort() : generate.mutate()}>{generate.isPending ? t("停止", "Stop") : t("撰写简报", "Write brief")}</button>
+      <Button variant="link" onClick={() => generate.isPending ? controller.current?.abort() : generate.mutate()}>{generate.isPending ? t("停止", "Stop") : t("撰写简报", "Write brief")}</Button>
     </div>}
   </DigestRow>;
 }

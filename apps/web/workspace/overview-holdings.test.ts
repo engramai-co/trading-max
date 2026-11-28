@@ -1,6 +1,5 @@
 "use client";
 
-import { MantineProvider } from "@mantine/core";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement as el, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -19,9 +18,7 @@ vi.mock("./current-day", () => ({
 
 function render(child: ReactNode) {
   const query = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return renderToStaticMarkup(
-    el(MantineProvider, {}, el(QueryClientProvider, { client: query }, el(LocaleProvider, { children: child }))),
-  );
+  return renderToStaticMarkup(el(QueryClientProvider, { client: query }, el(LocaleProvider, { children: child })));
 }
 
 describe("OverviewHoldings failure and empty rendering", () => {
