@@ -4,6 +4,21 @@ All notable public Trading Max releases are recorded here.
 
 ## [Unreleased]
 
+## [1.81.0] - 2026-11-28
+
+### Added
+- When MaxAI is enabled, you can edit a sent question, switch between reply versions, copy a reply, or continue with a suggested follow-up.
+- Hover, focus or tap a source to preview its evidence. **Open record** takes you to the cited record or says when it’s unavailable.
+- Conversation history shows last activity and asks for confirmation before deleting a conversation.
+
+### Changed
+- MaxAI’s work steps show what each tool read and how long it took when that information is available.
+- The message box shows the model beside the conversation context and lets you pick a holding to mention. Unsent drafts stay with their conversations.
+
+### Fixed
+- Tool approvals keep the original data batch. If a saved approval can’t be resumed, MaxAI offers to retry with current data.
+- Ctrl+J or ⌘J no longer opens MaxAI while Search is active.
+
 ## [1.80.1] - 2026-11-28
 
 ### Fixed
